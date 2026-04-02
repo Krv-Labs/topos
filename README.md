@@ -58,10 +58,6 @@ topos/
     └── tree_sitter.py # AST parsing
 ```
 
-## License
-
-MIT
-
 ---
 
 _"In a world where code is commodity, structure is truth."_

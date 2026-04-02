@@ -2,7 +2,7 @@
 
 > Treating programs as morphisms in a world of commodity code.
 
-**Topos** classifies code quality using a **Heyting Algebra**—a lattice of evaluation values from topos theory that expresses partial confidence about correctness and maintainability. Instead of a single score, every program is mapped to one of six stages:
+**Topos** classifies code quality using a **Heyting Algebra**—a lattice of evaluation values that expresses partial confidence about correctness and maintainability. Instead of a single score, every program is mapped to one of six stages:
 
 | Symbol | Stage          | Meaning                            |
 | ------ | -------------- | ---------------------------------- |
@@ -13,7 +13,7 @@
 | ◐      | `COMMODITY`    | Functional but structurally weak   |
 | ⊤      | `VERIFIED`     | Maintainable, human-aligned        |
 
-The **subobject classifier** (Ω) from topos theory drives this: for any piece of code X, a characteristic map χ: X → Ω combines cyclomatic complexity and entropy into an evaluation value in the lattice.
+This represents a our development of a **subobject classifier** (Ω), that for any piece of code X, a characteristic map χ: X → Ω combines cyclomatic complexity and entropy into an evaluation value in the lattice.
 
 ## Install
 

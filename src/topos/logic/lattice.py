@@ -134,7 +134,10 @@ class EvaluationLattice:
         Args:
             cover: Mapping from each value to its immediate successors.
         """
-        return cls(cover=cover)
+        normalized_cover = {
+            value: list(successors) for value, successors in cover.items()
+        }
+        return cls(cover=normalized_cover)
 
     def _set_total_chain(self) -> None:
         """

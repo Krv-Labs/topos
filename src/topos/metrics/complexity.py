@@ -18,7 +18,7 @@ Mathematical Inspiration:
     Equivalently, M = (number of decision points) + 1
 
     High complexity in commodity code suggests the morphism is
-    'logic-heavy' but 'truth-poor'—many paths, but questionable
+    'logic-heavy' but 'quality-poor'—many paths, but questionable
     structural integrity.
 
     We compute this directly from the AST by counting decision nodes

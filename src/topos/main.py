@@ -7,7 +7,7 @@ This is the literal implementation of the classification map. When a user
 runs `topos evaluate my_code.py`, the library:
 1. Lifts the text into a Morphism (Category Object)
 2. Passes it through the Subobject Classifier (Ω)
-3. Outputs a Truth Value from the Lattice
+3. Outputs an Evaluation from the Lattice
 
 Usage:
     topos evaluate path/to/code.py
@@ -24,7 +24,7 @@ import click
 
 from topos import __version__
 from topos.core.morphism import ProgramMorphism
-from topos.logic.lattice import TruthValue
+from topos.logic.lattice import EvaluationValue
 from topos.logic.omega import SubobjectClassifier
 
 
@@ -69,13 +69,15 @@ def evaluate(
     """
     Evaluate code quality using the Subobject Classifier.
 
-    Analyzes Python files and classifies them in the Trust Lattice:
+    Analyzes Python files and classifies them in the evaluation lattice:
 
     \b
-    ⊥ INVALID      - Syntactically broken code
-    ○ HALLUCINATED - Parses but logically vacuous
-    ◐ COMMODITY    - Functional but structurally weak
-    ⊤ VERIFIED     - Maintainable and human-aligned
+    ⊥ INVALID        - Syntactically broken code
+    ○ HALLUCINATED   - Likely vacuous or fabricated output
+    ◑ NOISY         - Repetitive/atypical structural signal
+    ◒ WEAK          - Functional with elevated structural risk
+    ◐ COMMODITY     - Functional but with concerns
+    ⊤ VERIFIED       - Maintainable and human-aligned
 
     Examples:
 
@@ -106,7 +108,9 @@ def evaluate(
     else:
         _output_text(results, verbose)
 
-    overall = classifier.combine(*[TruthValue[r["truth_value"]] for r in results])
+    overall = classifier.combine(
+        *[EvaluationValue[r["evaluation"]] for r in results]
+    )
     click.echo()
     click.echo(f"Overall: {overall}")
 
@@ -182,7 +186,7 @@ def inspect(path: str) -> None:
 
     click.echo("Classification")
     click.echo("-" * 40)
-    click.echo(f"Truth Value: {result.truth_value}")
+    click.echo(f"Evaluation: {result.evaluation}")
     click.echo(f"Valid Syntax: {result.is_valid}")
     click.echo()
 
@@ -251,8 +255,8 @@ def _evaluate_file(
 
         return {
             "file": str(filepath),
-            "truth_value": result.truth_value.name,
-            "symbol": result.truth_value.symbol,
+            "evaluation": result.evaluation.name,
+            "symbol": result.evaluation.symbol,
             "complexity": result.complexity_score,
             "entropy": result.entropy_score,
             "valid": result.is_valid,
@@ -261,7 +265,7 @@ def _evaluate_file(
     except Exception as e:
         return {
             "file": str(filepath),
-            "truth_value": "INVALID",
+            "evaluation": "INVALID",
             "symbol": "⊥",
             "complexity": 1.0,
             "entropy": 1.0,
@@ -273,7 +277,7 @@ def _evaluate_file(
 def _output_text(results: list[dict], verbose: bool) -> None:
     """Output results as formatted text."""
     for result in results:
-        line = f"{result['symbol']} {result['truth_value']:12} {result['file']}"
+        line = f"{result['symbol']} {result['evaluation']:12} {result['file']}"
         click.echo(line)
 
         if verbose:

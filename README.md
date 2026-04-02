@@ -2,23 +2,23 @@
 
 > Treating programs as morphisms in a world of commodity code.
 
-**Topos** classifies code quality using a **Heyting Algebra**—a lattice of truth values from topos theory that expresses partial truths about correctness and maintainability. Instead of a single score, every program is mapped to one of four stages:
+**Topos** classifies code quality using a **Heyting Algebra**—a lattice of evaluation values from topos theory that expresses partial confidence about correctness and maintainability. Instead of a single score, every program is mapped to one of six stages:
 
-| Symbol | Stage          | Meaning                          |
-| ------ | -------------- | -------------------------------- |
-| ⊥      | `INVALID`      | Fails to parse                   |
-| ○      | `HALLUCINATED` | Parses but logically vacuous     |
-| ◐      | `COMMODITY`    | Functional but structurally weak |
-| ⊤      | `VERIFIED`     | Maintainable, human-aligned      |
+| Symbol | Stage          | Meaning                            |
+| ------ | -------------- | ---------------------------------- |
+| ⊥      | `INVALID`      | Fails to parse                     |
+| ○      | `HALLUCINATED` | Parses but logically vacuous       |
+| ◑      | `NOISY`        | Syntactically valid but repetitive |
+| ◒      | `WEAK`         | Functional with elevated risk      |
+| ◐      | `COMMODITY`    | Functional but structurally weak   |
+| ⊤      | `VERIFIED`     | Maintainable, human-aligned        |
 
-The **subobject classifier** (Ω) from topos theory drives this: for any piece of code X, a characteristic map χ: X → Ω combines cyclomatic complexity and entropy into a truth value in the lattice.
+The **subobject classifier** (Ω) from topos theory drives this: for any piece of code X, a characteristic map χ: X → Ω combines cyclomatic complexity and entropy into an evaluation value in the lattice.
 
 ## Install
 
 ```bash
-uv add topos
-# or
-pip install topos
+uv pip install -e .
 ```
 
 ## Usage
@@ -35,7 +35,7 @@ from topos import ProgramMorphism, SubobjectClassifier
 morphism = ProgramMorphism.from_file("my_code.py")
 result = SubobjectClassifier().classify_detailed(morphism)
 
-print(result.truth_value)       # ◐ COMMODITY
+print(result.evaluation)        # ◐ COMMODITY
 print(result.complexity_score)  # 0.65
 print(result.entropy_score)     # 0.42
 ```
@@ -49,6 +49,7 @@ topos/
 │   └── object.py      # AST as a categorical object
 ├── logic/
 │   ├── lattice.py     # Heyting Algebra (meet, join, implies, ¬)
+│   ├── policies.py    # Metric-to-lattice evaluation sections
 │   └── omega.py       # The Subobject Classifier
 ├── metrics/
 │   ├── complexity.py  # Cyclomatic complexity

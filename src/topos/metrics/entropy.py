@@ -20,11 +20,6 @@ Mathematical Inspiration:
 
     This metric captures 'algorithmic debt'—code that is overly verbose
     or unnecessarily complex will have distinctive entropy signatures.
-
-    In our Topos, entropy contributes to the classification:
-    - Very low entropy → possible code duplication
-    - Very high entropy → possible obfuscation or hallucination
-    - Moderate entropy → likely meaningful, structured code
 """
 
 from __future__ import annotations
@@ -68,14 +63,6 @@ def calculate_kolmogorov_proxy(source: str) -> float:
         A ratio in (0, 1] representing the compression ratio.
         Lower values indicate more compressible (redundant) code.
         Higher values indicate less compressible code.
-
-    Example:
-        "aaaaaaaaaa" → ~0.1 (very compressible)
-        "a1b2c3d4e5" → ~0.5 (moderate)
-        random noise → ~1.0 (incompressible)
-
-    Note:
-        Empty strings return 0.0 to avoid division by zero.
     """
     if not source:
         return 0.0
@@ -134,13 +121,6 @@ def calculate_block_entropy(source: str, block_size: int = 100) -> list[float]:
 
     Useful for identifying sections of code with unusual entropy
     (e.g., embedded data, obfuscated sections).
-
-    Args:
-        source: The source code as a string.
-        block_size: Number of characters per block.
-
-    Returns:
-        A list of entropy ratios, one per block.
     """
     if not source:
         return []
@@ -156,13 +136,6 @@ def calculate_entropy_variance(source: str, block_size: int = 100) -> float:
 
     High variance may indicate mixed content (e.g., code with
     embedded base64 data or dramatically different coding styles).
-
-    Args:
-        source: The source code as a string.
-        block_size: Number of characters per block.
-
-    Returns:
-        The variance of block entropies.
     """
     block_entropies = calculate_block_entropy(source, block_size)
 

@@ -8,7 +8,7 @@ Each metric represents a different 'axis' of code quality:
 - Distance: Topological drift from canonical forms
 - Entropy: Algorithmic compressibility (Kolmogorov proxy)
 
-These metrics are combined by Ω to produce truth values in the lattice.
+These metrics are combined by Ω to produce evaluation values in the lattice.
 """
 
 from topos.metrics.complexity import calculate_cyclomatic_complexity

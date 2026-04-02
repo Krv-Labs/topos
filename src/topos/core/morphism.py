@@ -14,7 +14,7 @@ Mathematical Inspiration:
     internal structure. A morphism that is 'commodity code' may compute
     correctly but lack the structural integrity of a 'verified' morphism.
 
-    The characteristic map χ: Morphism → Ω assigns each morphism a truth
+    The characteristic map χ: Morphism → Ω assigns each morphism an evaluation
     value in our Heyting Algebra, capturing this nuanced view of correctness.
 """
 
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 from topos.core.object import ProgramObject
 
 if TYPE_CHECKING:
-    from topos.logic.lattice import TruthValue
+    from topos.logic.lattice import EvaluationValue
 
 
 @dataclass
@@ -110,13 +110,13 @@ class ProgramMorphism:
             return self.filepath.name
         return f"<morphism:{hash(self.source) % 10000:04d}>"
 
-    def classify(self) -> TruthValue:
+    def classify(self) -> EvaluationValue:
         """
         Evaluate this morphism using the Subobject Classifier.
 
         Returns:
-            A TruthValue from the Heyting Algebra representing the
-            code's position in the lattice of trust.
+            An EvaluationValue from the Heyting Algebra representing the
+            code's position in the evaluation lattice.
         """
         from topos.logic.omega import SubobjectClassifier
 

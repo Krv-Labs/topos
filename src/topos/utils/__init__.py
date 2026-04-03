@@ -7,6 +7,6 @@ Provides a language-agnostic interface to tree-sitter, designed
 for future extension to multiple programming languages.
 """
 
-from topos.utils.tree_sitter import parse_python, PythonParser
+from topos.utils.tree_sitter import PythonParser, parse_python
 
 __all__ = ["parse_python", "PythonParser"]

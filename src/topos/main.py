@@ -108,9 +108,7 @@ def evaluate(
     else:
         _output_text(results, verbose)
 
-    overall = classifier.combine(
-        *[EvaluationValue[r["evaluation"]] for r in results]
-    )
+    overall = classifier.combine(*[EvaluationValue[r["evaluation"]] for r in results])
     click.echo()
     click.echo(f"Overall: {overall}")
 

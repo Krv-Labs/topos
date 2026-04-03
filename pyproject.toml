@@ -4,13 +4,13 @@ version = "0.1.0"
 description = "Treating programs as morphisms in a world of commodity code. Building the subobject classifier for rigorous program evaluations."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "BSD-3-Clause" }
 authors = [{ name = "Krv Labs", email = "team@krv.ai"}]
 keywords = ["code-quality", "static-analysis", "category-theory", "topos", "ast"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -21,6 +21,7 @@ dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "click>=8.1",
+    "fastmcp>=0.1",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,7 @@ dev = [
 
 [project.scripts]
 topos = "topos.main:cli"
+topos-mcp = "topos.server:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -49,9 +51,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--cov=src/topos --cov-report=term-missing"
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
     "ruff>=0.15.8",
 ]

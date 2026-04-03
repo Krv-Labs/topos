@@ -1,6 +1,7 @@
 # Agents
 .cursor/
 .claude/
+.gemini/
 
 # Python env
 uv.lock

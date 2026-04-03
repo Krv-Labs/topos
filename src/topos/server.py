@@ -18,9 +18,7 @@ except PackageNotFoundError:
 
 mcp = FastMCP("topos", version=__version__)
 
-FILE_ACCESS_ROOT = Path(
-    os.getenv("TOPOS_MCP_FILE_ROOT", Path.cwd())
-).resolve()
+FILE_ACCESS_ROOT = Path(os.getenv("TOPOS_MCP_FILE_ROOT", Path.cwd())).resolve()
 
 
 def _is_within_allowed_root(path: Path) -> bool:
@@ -61,11 +59,11 @@ def evaluate_code(code: str, language: str = "python") -> dict[str, Any]:
     """
     Evaluate code quality directly from a string.
     Analyzes the code and classifies it in the evaluation lattice.
-    
+
     Args:
         code: The raw source code to evaluate.
         language: The programming language (default: 'python').
-        
+
     Returns:
         A dictionary containing the evaluation result,
         metrics, and classification symbol.
@@ -92,7 +90,7 @@ def evaluate_code(code: str, language: str = "python") -> dict[str, Any]:
 def evaluate_file(filepath: str) -> dict[str, Any]:
     """
     Evaluate code quality of a file.
-    
+
     Args:
         filepath: The path to the Python file to evaluate.
     """
@@ -111,12 +109,12 @@ def compare_code(
     """
     Compare structural distance between two code strings.
     Computes the AST edit distance (topological drift).
-    
+
     Args:
         source_code: The source code string.
         target_code: The target code string (e.g., a proposed refactor).
         language: The programming language (default: 'python').
-        
+
     Returns:
         A dictionary containing distance metrics and edit operations.
     """
@@ -174,14 +172,14 @@ def assess_improvement(
 ) -> dict[str, Any]:
     """
     Assess if the proposed code is an improvement over the current code.
-    Uses the topos evaluation lattice and structural metrics to determine if the 
+    Uses the topos evaluation lattice and structural metrics to determine if the
     change improves quality, reduces complexity, or maintainability.
-    
+
     Args:
         current_code: The existing source code.
         proposed_code: The new or refactored code.
         language: The programming language (default: 'python').
-        
+
     Returns:
         A comparative analysis of the improvement.
     """
@@ -243,16 +241,12 @@ def assess_improvement(
                 "complexity_delta": complexity_delta,
                 "distance_computed": can_compute_distance,
                 "structural_distance": (
-                    dist_res.normalized_distance
-                    if dist_res is not None
-                    else None
+                    dist_res.normalized_distance if dist_res is not None else None
                 ),
                 "similarity": (
-                    1.0 - dist_res.normalized_distance
-                    if dist_res is not None
-                    else None
+                    1.0 - dist_res.normalized_distance if dist_res is not None else None
                 ),
-            }
+            },
         }
     except Exception as e:
         return {"error": str(e)}
@@ -262,7 +256,7 @@ def assess_improvement(
 def inspect_code(code: str, language: str = "python") -> dict[str, Any]:
     """
     Inspect detailed metrics for a code string.
-    
+
     Args:
         code: The source code to inspect.
         language: The programming language (default: 'python').

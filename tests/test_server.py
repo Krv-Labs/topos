@@ -16,11 +16,13 @@ def isolated_file_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 # --- Metadata & Basic Info ---
 
+
 def test_server_version() -> None:
     assert isinstance(server.__version__, str)
 
 
 # --- Code Evaluation Tools ---
+
 
 def test_evaluate_code_happy_path() -> None:
     code = "def foo(): pass"
@@ -46,6 +48,7 @@ def test_inspect_code_happy_path() -> None:
 
 # --- Structural Comparison Tools ---
 
+
 def test_compare_code_happy_path() -> None:
     res = server.compare_code(source_code="x = 1", target_code="y = 2")
     assert "raw_distance" in res
@@ -67,7 +70,7 @@ def test_compare_code_reports_validity_flags_on_parse_error() -> None:
 def test_assess_improvement_regression() -> None:
     curr = "def f(x):\n    pass"
     prop = "def f(x"  # Syntactically broken
-    
+
     res = server.assess_improvement(curr, prop)
     assert "status" in res
     assert "REGRESSION" in res["status"]
@@ -77,10 +80,11 @@ def test_assess_improvement_regression() -> None:
 
 # --- File-Based Tools & Safety ---
 
+
 def test_evaluate_file_happy_path(isolated_file_root: Path) -> None:
     p = isolated_file_root / "test.py"
     p.write_text("x = 1", encoding="utf-8")
-    
+
     res = server.evaluate_file(str(p))
     assert "evaluation" in res
 
@@ -118,7 +122,7 @@ def test_compare_files_happy_path(isolated_file_root: Path) -> None:
     p2 = isolated_file_root / "2.py"
     p1.write_text("x = 1", encoding="utf-8")
     p2.write_text("y = 2", encoding="utf-8")
-    
+
     res = server.compare_files(str(p1), str(p2))
     assert "raw_distance" in res
 

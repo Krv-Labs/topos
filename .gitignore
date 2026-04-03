@@ -2,6 +2,8 @@
 .cursor/
 .claude/
 .gemini/
+topos-skill/
+*.skill
 
 # Python env
 uv.lock

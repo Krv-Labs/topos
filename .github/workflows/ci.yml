@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev --python ${{ matrix.python-version }}
+
+      - name: Run tests
+        run: uv run pytest -v
+
+      - name: Run Ruff lint checks
+        if: matrix.python-version == '3.13'
+        run: uv run ruff check src tests
+
+      - name: Run Ruff formatting checks
+        if: matrix.python-version == '3.13'
+        run: uv run ruff format --check src tests

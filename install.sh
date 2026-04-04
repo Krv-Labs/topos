@@ -33,7 +33,7 @@ detect_platform() {
             OS="linux"
             ;;
         darwin)
-            OS="darwin"
+            OS="macos"
             ;;
         *)
             error "Unsupported operating system: $OS"

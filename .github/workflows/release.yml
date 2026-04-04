@@ -1,6 +1,9 @@
 name: Build and Release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     tags:
       - "v*"
@@ -23,9 +26,9 @@ jobs:
           - os: ubuntu-24.04-arm
             target: linux-arm64
           - os: macos-latest
-            target: darwin-arm64
-          - os: macos-13
-            target: darwin-amd64
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-amd64
 
     runs-on: ${{ matrix.os }}
 
@@ -43,7 +46,7 @@ jobs:
 
       - name: Build binary with PyInstaller
         run: |
-          uv run pyinstaller --name topos \
+          uv run --with pyinstaller pyinstaller --name topos \
             --onefile \
             --clean \
             --collect-all tree_sitter \
@@ -60,6 +63,7 @@ jobs:
           path: dist/topos-${{ matrix.target }}
 
   release:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     steps:

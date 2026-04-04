@@ -25,8 +25,6 @@ jobs:
             target: linux-amd64
           - os: ubuntu-24.04-arm
             target: linux-arm64
-          - os: windows-latest
-            target: windows-amd64
           - os: macos-latest
             target: macos-arm64
           - os: macos-15-intel

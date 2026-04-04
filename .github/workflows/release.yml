@@ -22,10 +22,6 @@ jobs:
             target: linux-amd64
           - os: ubuntu-24.04-arm
             target: linux-arm64
-          - os: macos-latest
-            target: darwin-arm64
-          - os: macos-13
-            target: darwin-amd64
 
     runs-on: ${{ matrix.os }}
 

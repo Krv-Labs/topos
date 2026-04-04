@@ -1,6 +1,9 @@
 name: Build and Release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     tags:
       - "v*"
@@ -56,6 +59,7 @@ jobs:
           path: dist/topos-${{ matrix.target }}
 
   release:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     steps:

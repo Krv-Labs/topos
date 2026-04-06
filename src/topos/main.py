@@ -489,11 +489,10 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
 
 def _remove_provenance_record() -> None:
     provenance_path = _provenance_file()
-    if not provenance_path.exists():
-        return
-
     try:
         provenance_path.unlink()
+    except FileNotFoundError:
+        return
     except OSError as exc:
         click.echo(f"Failed to remove provenance file {provenance_path}: {exc}", err=True)
         return

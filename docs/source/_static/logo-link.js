@@ -3,9 +3,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const logos = document.querySelectorAll('.sidebar-logo');
     logos.forEach(function(logo) {
       logo.style.cursor = 'pointer';
+      if (logo.dataset.logoLinkInitialized === 'true') {
+        return;
+      }
       logo.addEventListener('click', function() {
         window.open('https://krv.ai', '_blank');
       });
+      logo.dataset.logoLinkInitialized = 'true';
     });
   }
   

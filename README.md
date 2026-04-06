@@ -17,8 +17,17 @@ This represents a our development of a **subobject classifier** (Ω), that for a
 
 ## Install
 
+**Binary (fastest):**
+
 ```bash
-uv pip install -e .
+curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
+```
+
+**From source:**
+
+```bash
+git clone https://github.com/Krv-Labs/topos.git
+cd topos && uv pip install -e .
 ```
 
 ## Usage

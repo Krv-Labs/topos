@@ -19,6 +19,10 @@ REPO="Krv-Labs/topos"
 INSTALL_DIR="${TOPOS_INSTALL:-$HOME/.local/bin}"
 VERSION="${TOPOS_VERSION:-latest}"
 TMP_DIR=""
+PROVENANCE_FILE="${TOPOS_PROVENANCE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/topos/install-provenance}"
+PATH_HINT_BEGIN="# BEGIN TOPOS INSTALLER PATH"
+PATH_HINT_END="# END TOPOS INSTALLER PATH"
+PATH_HINT_FILE=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -51,6 +55,64 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        error "Missing required dependency: $1"
+        exit 1
+    fi
+}
+
+check_dependencies() {
+    require_command curl
+    require_command mktemp
+    require_command sed
+    require_command grep
+    require_command uname
+    require_command mkdir
+    require_command mv
+    require_command chmod
+}
+
+validate_install_dir() {
+    if [ -z "${INSTALL_DIR}" ]; then
+        error "TOPOS_INSTALL resolved to an empty path"
+        exit 1
+    fi
+
+    case "${INSTALL_DIR}" in
+        *$'\n'*|*$'\r'*)
+            error "INSTALL_DIR must not contain newlines"
+            exit 1
+            ;;
+    esac
+}
+
+escape_for_double_quotes() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//\$/\\\$}"
+    value="${value//\`/\\\`}"
+    printf '%s' "${value}"
+}
+
+calculate_sha256() {
+    local file="$1"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "${file}" | awk '{print $1}'
+        return
+    fi
+
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "${file}" | awk '{print $1}'
+        return
+    fi
+
+    error "Missing required dependency: sha256sum or shasum"
+    exit 1
+}
+
 # Detect platform
 detect_platform() {
     local os arch
@@ -72,14 +134,28 @@ detect_platform() {
 
 # Get the latest release version
 get_latest_version() {
-    curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep '"tag_name":' \
-        | sed -E 's/.*"([^"]+)".*/\1/'
+    local latest_url version
+
+    latest_url=$(curl --fail -sSL -o /dev/null -w '%{url_effective}' \
+        "https://github.com/${REPO}/releases/latest") || return 1
+
+    if [[ "${latest_url}" != *"/releases/tag/"* ]]; then
+        return 1
+    fi
+
+    version=$(printf '%s\n' "${latest_url##*/}" | sed 's/[?#].*$//')
+    # Accept versions like v1.2.3, 1.2.3, and prerelease/build suffixes.
+    if [[ -z "${version}" || ! "${version}" =~ ^v?[0-9]+([.][0-9]+)+([-.][0-9A-Za-z]+)*$ ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "${version}"
 }
 
 # Download and install
 install_topos() {
-    local platform version download_url asset_name tmp_binary
+    local platform version download_url checksums_url asset_name tmp_binary checksums_file
+    local expected_checksum actual_checksum expected_checksum_normalized actual_checksum_normalized
 
     platform=$(detect_platform)
     info "Detected platform: ${platform}"
@@ -102,6 +178,7 @@ install_topos() {
     # Create temp directory
     TMP_DIR=$(mktemp -d)
     tmp_binary="${TMP_DIR}/topos"
+    checksums_file="${TMP_DIR}/checksums.txt"
 
     info "Downloading ${download_url}..."
     if ! curl --fail -sSL -o "${tmp_binary}" "$download_url"; then
@@ -121,6 +198,32 @@ install_topos() {
         exit 1
     fi
 
+    checksums_url="https://github.com/${REPO}/releases/download/${version}/checksums.txt"
+    info "Verifying checksum..."
+    if ! curl --fail -sSL -o "${checksums_file}" "${checksums_url}"; then
+        error "Failed to download checksums.txt for ${version}"
+        exit 1
+    fi
+
+    expected_checksum=$(
+        grep -E "[[:space:]]${asset_name}$" "${checksums_file}" \
+            | sed -E 's/^([A-Fa-f0-9]{64}).*/\1/' \
+            | head -n 1
+    )
+
+    if [ -z "${expected_checksum}" ]; then
+        error "Could not find checksum entry for ${asset_name}"
+        exit 1
+    fi
+
+    actual_checksum=$(calculate_sha256 "${tmp_binary}")
+    actual_checksum_normalized=$(printf '%s' "${actual_checksum}" | tr '[:upper:]' '[:lower:]')
+    expected_checksum_normalized=$(printf '%s' "${expected_checksum}" | tr '[:upper:]' '[:lower:]')
+    if [ "${actual_checksum_normalized}" != "${expected_checksum_normalized}" ]; then
+        error "Checksum verification failed for ${asset_name}"
+        exit 1
+    fi
+
     # Create install directory if needed
     mkdir -p "$INSTALL_DIR"
 
@@ -134,31 +237,43 @@ install_topos() {
 
 # Add to PATH if needed
 setup_path() {
+    local shell_rc="" shell_name path_line escaped_install_dir escaped_install_dir_regex
+
     if [ "${TOPOS_NO_MODIFY_PATH:-0}" = "1" ]; then
         return
     fi
 
-    # Check if already in PATH
-    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
-        return
-    fi
-
-    local shell_rc=""
-    case "${SHELL:-}" in
+    shell_name="${SHELL:-}"
+    case "${shell_name}" in
         */bash) shell_rc="$HOME/.bashrc" ;;
         */zsh)  shell_rc="$HOME/.zshrc" ;;
         */fish) shell_rc="$HOME/.config/fish/config.fish" ;;
     esac
 
-    if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
-        echo "" >> "$shell_rc"
-        echo "# Added by Topos installer" >> "$shell_rc"
+    escaped_install_dir=$(escape_for_double_quotes "${INSTALL_DIR}")
+    escaped_install_dir_regex="${INSTALL_DIR//\//\\/}"
+    if [[ "${shell_name}" == */fish ]]; then
+        path_line="set -gx PATH \"${escaped_install_dir}\" \$PATH"
+    else
+        path_line="export PATH=\"${escaped_install_dir}:\$PATH\""
+    fi
 
-        if [[ "$SHELL" == */fish ]]; then
-            echo "set -gx PATH \"$INSTALL_DIR\" \$PATH" >> "$shell_rc"
-        else
-            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$shell_rc"
+    # Check if already in PATH
+    if [[ ":${PATH:-}:" == *":$INSTALL_DIR:"* ]]; then
+        return
+    fi
+
+    if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
+        if grep -Eq "PATH=.*${escaped_install_dir_regex}" "${shell_rc}"; then
+            return
         fi
+
+        echo "" >> "$shell_rc"
+        echo "${PATH_HINT_BEGIN}" >> "$shell_rc"
+        echo "# Added by Topos installer" >> "$shell_rc"
+        echo "${path_line}" >> "$shell_rc"
+        echo "${PATH_HINT_END}" >> "$shell_rc"
+        PATH_HINT_FILE="${shell_rc}"
 
         warn "Added ${INSTALL_DIR} to PATH in ${shell_rc}"
         warn "Run 'source ${shell_rc}' or start a new shell to use topos"
@@ -170,18 +285,40 @@ setup_path() {
     fi
 }
 
+write_provenance() {
+    local provenance_dir
+    provenance_dir=$(dirname "${PROVENANCE_FILE}")
+    mkdir -p "${provenance_dir}"
+    cat > "${PROVENANCE_FILE}" <<EOF
+install_method=binary-installer
+install_path=${INSTALL_DIR}/topos
+install_version=${VERSION}
+path_hint_file=${PATH_HINT_FILE}
+path_hint_begin=${PATH_HINT_BEGIN}
+path_hint_end=${PATH_HINT_END}
+EOF
+}
+
 # Verify installation
 verify_install() {
+    local path_topos resolved_topos
+    path_topos="${INSTALL_DIR}/topos"
+
     echo ""
-    if command -v topos &> /dev/null; then
-        success "Verification: topos is available in PATH"
-        topos --version 2>/dev/null || true
-    elif [ -x "${INSTALL_DIR}/topos" ]; then
-        success "Verification: topos installed at ${INSTALL_DIR}/topos"
-        "${INSTALL_DIR}/topos" --version 2>/dev/null || true
-    else
+    if [ ! -x "${path_topos}" ]; then
         error "Verification failed: topos not found"
         exit 1
+    fi
+
+    success "Verification: topos installed at ${path_topos}"
+    "${path_topos}" --version 2>/dev/null || true
+
+    resolved_topos="$(command -v topos 2>/dev/null || true)"
+    if [ -n "${resolved_topos}" ] && [ "${resolved_topos}" != "${path_topos}" ]; then
+        warn "Another topos is earlier on PATH: ${resolved_topos}"
+        warn "Use ${path_topos} directly or update your PATH order."
+    elif [ -n "${resolved_topos}" ]; then
+        success "Verification: topos is available in PATH"
     fi
 
     echo ""
@@ -207,8 +344,11 @@ main() {
     echo "  ╚════════════════════════════════════════════════════════════╝"
     echo ""
 
+    check_dependencies
+    validate_install_dir
     install_topos
     setup_path
+    write_provenance
     verify_install
 }
 

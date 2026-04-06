@@ -48,13 +48,13 @@ detect_platform() {
 
     case "$(uname -s)" in
         Linux*)  os="linux" ;;
-        Darwin*) os="darwin" ;;
+        Darwin*) os="macos" ;;
         *)       error "Unsupported OS: $(uname -s)"; exit 1 ;;
     esac
 
     case "$(uname -m)" in
-        x86_64|amd64)  arch="x86_64" ;;
-        aarch64|arm64) arch="aarch64" ;;
+        x86_64|amd64)  arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
         *)             error "Unsupported architecture: $(uname -m)"; exit 1 ;;
     esac
 
@@ -70,7 +70,7 @@ get_latest_version() {
 
 # Download and install
 install_topos() {
-    local platform version download_url archive_name
+    local platform version download_url asset_name tmp_binary
 
     platform=$(detect_platform)
     info "Detected platform: ${platform}"
@@ -87,16 +87,17 @@ install_topos() {
         info "Installing version: ${version}"
     fi
 
-    archive_name="topos-${platform}.tar.gz"
-    download_url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
+    asset_name="topos-${platform}"
+    download_url="https://github.com/${REPO}/releases/download/${version}/${asset_name}"
 
     # Create temp directory
     local tmp_dir
     tmp_dir=$(mktemp -d)
     trap 'rm -rf "$tmp_dir"' EXIT
+    tmp_binary="${tmp_dir}/topos"
 
     info "Downloading ${download_url}..."
-    if ! curl -sSL -o "${tmp_dir}/${archive_name}" "$download_url"; then
+    if ! curl --fail -sSL -o "${tmp_binary}" "$download_url"; then
         error "Download failed. The release asset may not exist for this platform."
         echo ""
         echo "Alternative installation methods:"
@@ -113,15 +114,12 @@ install_topos() {
         exit 1
     fi
 
-    info "Extracting archive..."
-    tar -xzf "${tmp_dir}/${archive_name}" -C "${tmp_dir}"
-
     # Create install directory if needed
     mkdir -p "$INSTALL_DIR"
 
     # Install the binary
     info "Installing to ${INSTALL_DIR}/topos..."
-    mv "${tmp_dir}/topos" "${INSTALL_DIR}/topos"
+    mv "${tmp_binary}" "${INSTALL_DIR}/topos"
     chmod +x "${INSTALL_DIR}/topos"
 
     success "Topos ${version} installed successfully!"

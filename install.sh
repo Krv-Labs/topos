@@ -18,6 +18,7 @@ set -euo pipefail
 REPO="Krv-Labs/topos"
 INSTALL_DIR="${TOPOS_INSTALL:-$HOME/.local/bin}"
 VERSION="${TOPOS_VERSION:-latest}"
+TMP_DIR=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -41,6 +42,14 @@ warn() {
 error() {
     echo -e "${RED}[error]${NC} $1" >&2
 }
+
+cleanup() {
+    if [ -n "${TMP_DIR:-}" ] && [ -d "${TMP_DIR}" ]; then
+        rm -rf -- "${TMP_DIR}"
+    fi
+}
+
+trap cleanup EXIT INT TERM
 
 # Detect platform
 detect_platform() {
@@ -91,10 +100,8 @@ install_topos() {
     download_url="https://github.com/${REPO}/releases/download/${version}/${asset_name}"
 
     # Create temp directory
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' EXIT
-    tmp_binary="${tmp_dir}/topos"
+    TMP_DIR=$(mktemp -d)
+    tmp_binary="${TMP_DIR}/topos"
 
     info "Downloading ${download_url}..."
     if ! curl --fail -sSL -o "${tmp_binary}" "$download_url"; then

@@ -260,7 +260,7 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
         click.echo("Installer provenance is missing install_path.", err=True)
         sys.exit(1)
 
-    path = Path(install_path)
+    path = Path(install_path).expanduser()
 
     if dry_run:
         if path.exists():
@@ -275,10 +275,22 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
                 return
 
         if path.exists():
-            path.unlink()
-            click.echo(f"Removed binary: {path}")
+            if not (path.is_file() or path.is_symlink()):
+                click.echo(f"Refusing to remove non-file path: {path}", err=True)
+                sys.exit(1)
+
+            try:
+                path.unlink()
+            except OSError as exc:
+                click.echo(f"Failed to remove binary {path}: {exc}", err=True)
+                sys.exit(1)
+            else:
+                click.echo(f"Removed binary: {path}")
         else:
             click.echo(f"Binary already removed: {path}")
+
+    if not dry_run:
+        _remove_provenance_record()
 
     if prune_path_hints:
         _prune_path_hints(provenance, dry_run=dry_run)
@@ -387,7 +399,11 @@ def _load_provenance() -> dict[str, str] | None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        data[key.strip()] = value.strip()
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        data[key] = value
     return data or None
 
 
@@ -401,7 +417,11 @@ def _detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
     except importlib.metadata.PackageNotFoundError:
         return "unknown", None, None
 
-    installer_raw = dist.read_text("INSTALLER")
+    try:
+        installer_raw = dist.read_text("INSTALLER")
+    except (FileNotFoundError, OSError, UnicodeError):
+        installer_raw = "pip"
+
     installer = (installer_raw or "").strip().lower()
     if installer == "uv":
         return "package-manager", None, "uv pip uninstall topos"
@@ -420,7 +440,7 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         "path_hint_begin", "# BEGIN TOPOS INSTALLER PATH"
     ).strip()
     marker_end = provenance.get("path_hint_end", "# END TOPOS INSTALLER PATH").strip()
-    rc_path = Path(path_hint_file)
+    rc_path = Path(path_hint_file).expanduser()
 
     if not rc_path.exists():
         click.echo(f"PATH hint file already absent: {rc_path}")
@@ -429,26 +449,30 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
     original_content = rc_path.read_text(encoding="utf-8")
     had_trailing_newline = original_content.endswith("\n")
     original_lines = original_content.splitlines()
-    updated_lines: list[str] = []
-    in_block = False
-    removed_lines = 0
+    begin_index = None
+    end_index = None
 
-    for line in original_lines:
+    for idx, line in enumerate(original_lines):
         stripped = line.strip()
-        if stripped == marker_begin:
-            in_block = True
-            removed_lines += 1
+        if stripped == marker_begin and begin_index is None:
+            begin_index = idx
             continue
-        if in_block:
-            removed_lines += 1
-            if stripped == marker_end:
-                in_block = False
-            continue
-        updated_lines.append(line)
+        if stripped == marker_end and begin_index is not None and end_index is None:
+            end_index = idx
+            break
 
-    if removed_lines == 0:
+    if begin_index is None:
         click.echo(f"No installer PATH hint block found in {rc_path}")
         return
+
+    if end_index is None:
+        click.echo(
+            f"Malformed PATH hint block in {rc_path}: missing end marker {marker_end}"
+        )
+        return
+
+    removed_lines = end_index - begin_index + 1
+    updated_lines = original_lines[:begin_index] + original_lines[end_index + 1 :]
 
     if dry_run:
         click.echo(
@@ -461,6 +485,19 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         new_content += "\n"
     rc_path.write_text(new_content, encoding="utf-8")
     click.echo(f"Pruned installer PATH hints from {rc_path}")
+
+
+def _remove_provenance_record() -> None:
+    provenance_path = _provenance_file()
+    if not provenance_path.exists():
+        return
+
+    try:
+        provenance_path.unlink()
+    except OSError as exc:
+        click.echo(f"Failed to remove provenance file {provenance_path}: {exc}", err=True)
+        return
+    click.echo(f"Removed provenance record: {provenance_path}")
 
 
 if __name__ == "__main__":

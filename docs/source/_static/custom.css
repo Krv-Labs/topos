@@ -1,0 +1,265 @@
+/* Custom styles for Topos documentation */
+
+:root {
+  --topos-primary: #0a5ea8;
+  --topos-primary-dark: #094b84;
+  --topos-accent: #1677ff;
+  --topos-success: #2f855a;
+  --topos-lattice-top: #22c55e;
+  --topos-lattice-high: #84cc16;
+  --topos-lattice-mid: #eab308;
+  --topos-lattice-low: #f97316;
+  --topos-lattice-bottom: #ef4444;
+  --topos-math-bg: #f8fafc;
+  --topos-math-border: #e2e8f0;
+}
+
+.sidebar-logo {
+  cursor: pointer;
+}
+
+.intro-card {
+  padding: 1.2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  text-align: center;
+  border-top: 3px solid var(--topos-primary);
+}
+
+.intro-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
+}
+
+.sd-btn-secondary {
+  background-color: var(--topos-primary) !important;
+  border-color: var(--topos-primary) !important;
+}
+
+.sd-btn-secondary:hover {
+  background-color: var(--topos-primary-dark) !important;
+  border-color: var(--topos-primary-dark) !important;
+}
+
+h2 {
+  border-bottom: 2px solid #e6eef8;
+  padding-bottom: 0.4rem;
+}
+
+.references {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #d9e3f0;
+}
+
+/* Philosophy box styling */
+.philosophy-box {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-left: 4px solid var(--topos-primary);
+  border-radius: 0 8px 8px 0;
+  padding: 1.5rem;
+  margin: 2rem 0;
+  box-shadow: 0 2px 8px rgba(10, 94, 168, 0.1);
+}
+
+.philosophy-box .admonition-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--topos-primary-dark);
+  margin-bottom: 0.75rem;
+}
+
+.philosophy-box p:last-child {
+  margin-bottom: 0;
+}
+
+/* Lattice value badges */
+.eval-verified {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #dcfce7;
+  color: #166534;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.eval-commodity {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #fef9c3;
+  color: #854d0e;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.eval-weak {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #ffedd5;
+  color: #9a3412;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.eval-noisy {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #fee2e2;
+  color: #991b1b;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.eval-hallucinated {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #fce7f3;
+  color: #9d174d;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.eval-invalid {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background-color: #f1f5f9;
+  color: #475569;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+/* Mathematical notation styling */
+.math-block {
+  background-color: var(--topos-math-bg);
+  border: 1px solid var(--topos-math-border);
+  border-radius: 6px;
+  padding: 1rem 1.5rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.math-inline {
+  font-family: "Computer Modern", "Latin Modern Math", serif;
+  font-style: italic;
+}
+
+/* Category theory symbol styling */
+.cat-symbol {
+  font-family: "Computer Modern", "Latin Modern Math", serif;
+  font-size: 1.1em;
+}
+
+/* Hasse diagram emphasis */
+.hasse-diagram {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  border-radius: 8px;
+  border: 1px solid #e5e5e5;
+}
+
+/* Mermaid diagram improvements */
+.mermaid {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background-color: #fafafa;
+  border-radius: 8px;
+}
+
+/* Unicode lattice symbols in tables */
+td:first-child {
+  font-size: 1.2em;
+  text-align: center;
+}
+
+/* Code block improvements */
+.highlight pre {
+  border-radius: 6px;
+}
+
+/* Tip and note admonitions */
+.admonition.tip {
+  background-color: #f0fdf4;
+  border-left-color: var(--topos-success);
+}
+
+.admonition.note {
+  background-color: #eff6ff;
+  border-left-color: var(--topos-accent);
+}
+
+/* Definition list styling for concepts */
+dl.simple dt {
+  font-weight: 600;
+  color: var(--topos-primary-dark);
+  margin-top: 1rem;
+}
+
+dl.simple dd {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .philosophy-box {
+    background: linear-gradient(135deg, #1e3a5f 0%, #1e293b 100%);
+    border-left-color: #60a5fa;
+  }
+
+  .philosophy-box .admonition-title {
+    color: #93c5fd;
+  }
+
+  .math-block {
+    background-color: #1e293b;
+    border-color: #334155;
+  }
+
+  .hasse-diagram {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    border-color: #334155;
+  }
+
+  .mermaid {
+    background-color: #1e293b;
+  }
+
+  .eval-verified {
+    background-color: #166534;
+    color: #dcfce7;
+  }
+
+  .eval-commodity {
+    background-color: #854d0e;
+    color: #fef9c3;
+  }
+
+  .eval-weak {
+    background-color: #9a3412;
+    color: #ffedd5;
+  }
+
+  .eval-noisy {
+    background-color: #991b1b;
+    color: #fee2e2;
+  }
+
+  .eval-hallucinated {
+    background-color: #9d174d;
+    color: #fce7f3;
+  }
+
+  .eval-invalid {
+    background-color: #475569;
+    color: #f1f5f9;
+  }
+}

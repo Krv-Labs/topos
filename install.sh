@@ -77,7 +77,7 @@ validate_install_dir() {
 
     case "${INSTALL_DIR}" in
         *$'\n'*|*$'\r'*)
-            error "TOPOS_INSTALL must not contain newlines"
+            error "INSTALL_DIR must not contain newlines"
             exit 1
             ;;
     esac
@@ -140,6 +140,7 @@ get_latest_version() {
     fi
 
     version=$(printf '%s\n' "${latest_url##*/}" | sed 's/[?#].*$//')
+    # Accept versions like v1.2.3, 1.2.3, and prerelease/build suffixes.
     if [[ -z "${version}" || ! "${version}" =~ ^v?[0-9]+([.][0-9]+)*([-.][0-9A-Za-z]+)*$ ]]; then
         return 1
     fi
@@ -150,7 +151,7 @@ get_latest_version() {
 # Download and install
 install_topos() {
     local platform version download_url checksums_url asset_name tmp_binary checksums_file
-    local expected_checksum actual_checksum
+    local expected_checksum actual_checksum expected_checksum_normalized actual_checksum_normalized
 
     platform=$(detect_platform)
     info "Detected platform: ${platform}"
@@ -212,7 +213,9 @@ install_topos() {
     fi
 
     actual_checksum=$(calculate_sha256 "${tmp_binary}")
-    if [ "${actual_checksum,,}" != "${expected_checksum,,}" ]; then
+    actual_checksum_normalized=$(printf '%s' "${actual_checksum}" | tr '[:upper:]' '[:lower:]')
+    expected_checksum_normalized=$(printf '%s' "${expected_checksum}" | tr '[:upper:]' '[:lower:]')
+    if [ "${actual_checksum_normalized}" != "${expected_checksum_normalized}" ]; then
         error "Checksum verification failed for ${asset_name}"
         exit 1
     fi
@@ -230,7 +233,7 @@ install_topos() {
 
 # Add to PATH if needed
 setup_path() {
-    local shell_rc="" shell_name path_line escaped_install_dir
+    local shell_rc="" shell_name path_line escaped_install_dir escaped_install_dir_regex
 
     if [ "${TOPOS_NO_MODIFY_PATH:-0}" = "1" ]; then
         return
@@ -249,6 +252,7 @@ setup_path() {
     esac
 
     escaped_install_dir=$(escape_for_double_quotes "${INSTALL_DIR}")
+    escaped_install_dir_regex="${INSTALL_DIR//\//\\/}"
     if [[ "${shell_name}" == */fish ]]; then
         path_line="set -gx PATH \"${escaped_install_dir}\" \$PATH"
     else
@@ -257,7 +261,7 @@ setup_path() {
 
     if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
         if grep -Fq "${path_line}" "${shell_rc}" \
-            || grep -Eq "PATH=.*${INSTALL_DIR//\//\\/}" "${shell_rc}"; then
+            || grep -Eq "PATH=.*${escaped_install_dir_regex}" "${shell_rc}"; then
             return
         fi
 

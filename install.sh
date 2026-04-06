@@ -19,6 +19,10 @@ REPO="Krv-Labs/topos"
 INSTALL_DIR="${TOPOS_INSTALL:-$HOME/.local/bin}"
 VERSION="${TOPOS_VERSION:-latest}"
 TMP_DIR=""
+PROVENANCE_FILE="${TOPOS_PROVENANCE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/topos/install-provenance}"
+PATH_HINT_BEGIN="# BEGIN TOPOS INSTALLER PATH"
+PATH_HINT_END="# END TOPOS INSTALLER PATH"
+PATH_HINT_FILE=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -260,14 +264,16 @@ setup_path() {
     fi
 
     if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
-        if grep -Fq "${path_line}" "${shell_rc}" \
-            || grep -Eq "PATH=.*${escaped_install_dir_regex}" "${shell_rc}"; then
+        if grep -Eq "PATH=.*${escaped_install_dir_regex}" "${shell_rc}"; then
             return
         fi
 
         echo "" >> "$shell_rc"
+        echo "${PATH_HINT_BEGIN}" >> "$shell_rc"
         echo "# Added by Topos installer" >> "$shell_rc"
         echo "${path_line}" >> "$shell_rc"
+        echo "${PATH_HINT_END}" >> "$shell_rc"
+        PATH_HINT_FILE="${shell_rc}"
 
         warn "Added ${INSTALL_DIR} to PATH in ${shell_rc}"
         warn "Run 'source ${shell_rc}' or start a new shell to use topos"
@@ -277,6 +283,20 @@ setup_path() {
         echo ""
         echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
+}
+
+write_provenance() {
+    local provenance_dir
+    provenance_dir=$(dirname "${PROVENANCE_FILE}")
+    mkdir -p "${provenance_dir}"
+    cat > "${PROVENANCE_FILE}" <<EOF
+install_method=binary-installer
+install_path=${INSTALL_DIR}/topos
+install_version=${VERSION}
+path_hint_file=${PATH_HINT_FILE}
+path_hint_begin=${PATH_HINT_BEGIN}
+path_hint_end=${PATH_HINT_END}
+EOF
 }
 
 # Verify installation
@@ -328,6 +348,7 @@ main() {
     validate_install_dir
     install_topos
     setup_path
+    write_provenance
     verify_install
 }
 

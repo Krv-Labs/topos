@@ -494,7 +494,9 @@ def _remove_provenance_record() -> None:
     except FileNotFoundError:
         return
     except OSError as exc:
-        click.echo(f"Failed to remove provenance file {provenance_path}: {exc}", err=True)
+        click.echo(
+            f"Failed to remove provenance file {provenance_path}: {exc}", err=True
+        )
         return
     click.echo(f"Removed provenance record: {provenance_path}")
 

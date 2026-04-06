@@ -130,7 +130,7 @@ detect_platform() {
 
 # Get the latest release version
 get_latest_version() {
-    local latest_url
+    local latest_url version
 
     latest_url=$(curl --fail -sSL -o /dev/null -w '%{url_effective}' \
         "https://github.com/${REPO}/releases/latest") || return 1
@@ -139,7 +139,12 @@ get_latest_version() {
         return 1
     fi
 
-    printf '%s\n' "${latest_url##*/}" | sed 's/[?#].*$//'
+    version=$(printf '%s\n' "${latest_url##*/}" | sed 's/[?#].*$//')
+    if [[ -z "${version}" || ! "${version}" =~ ^v?[0-9]+([.][0-9]+)*([-.][0-9A-Za-z]+)*$ ]]; then
+        return 1
+    fi
+
+    printf '%s\n' "${version}"
 }
 
 # Download and install
@@ -251,7 +256,8 @@ setup_path() {
     fi
 
     if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
-        if grep -Fq "${path_line}" "${shell_rc}"; then
+        if grep -Fq "${path_line}" "${shell_rc}" \
+            || grep -Eq "PATH=.*${INSTALL_DIR//\//\\/}" "${shell_rc}"; then
             return
         fi
 

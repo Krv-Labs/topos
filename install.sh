@@ -1,114 +1,210 @@
-#!/bin/sh
-set -e
+#!/usr/bin/env bash
+#
+# Topos Installation Script
+# =========================
+# Install Topos - category-theoretic code quality evaluation for Python
+#
+# Usage:
+#   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
+#
+# Options (via environment variables):
+#   TOPOS_VERSION   - Specific version to install (default: latest)
+#   TOPOS_INSTALL   - Installation directory (default: ~/.local/bin)
+#   TOPOS_NO_MODIFY_PATH - Set to 1 to skip PATH modification
 
+set -euo pipefail
+
+# Configuration
 REPO="Krv-Labs/topos"
-INSTALL_DIR="/usr/local/bin"
-BINARY_NAME="topos"
+INSTALL_DIR="${TOPOS_INSTALL:-$HOME/.local/bin}"
+VERSION="${TOPOS_VERSION:-latest}"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 info() {
-    printf "${GREEN}>>>${NC} %s\n" "$1"
+    echo -e "${BLUE}[info]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}[ok]${NC} $1"
 }
 
 warn() {
-    printf "${YELLOW}>>>${NC} %s\n" "$1"
+    echo -e "${YELLOW}[warn]${NC} $1"
 }
 
 error() {
-    printf "${RED}>>>${NC} %s\n" "$1" >&2
-    exit 1
+    echo -e "${RED}[error]${NC} $1" >&2
 }
 
+# Detect platform
 detect_platform() {
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
+    local os arch
 
-    case "$OS" in
-        linux)
-            OS="linux"
-            ;;
-        darwin)
-            OS="macos"
-            ;;
-        *)
-            error "Unsupported operating system: $OS"
-            ;;
+    case "$(uname -s)" in
+        Linux*)  os="linux" ;;
+        Darwin*) os="darwin" ;;
+        *)       error "Unsupported OS: $(uname -s)"; exit 1 ;;
     esac
 
-    case "$ARCH" in
-        x86_64|amd64)
-            ARCH="amd64"
-            ;;
-        arm64|aarch64)
-            ARCH="arm64"
-            ;;
-        *)
-            error "Unsupported architecture: $ARCH"
-            ;;
+    case "$(uname -m)" in
+        x86_64|amd64)  arch="x86_64" ;;
+        aarch64|arm64) arch="aarch64" ;;
+        *)             error "Unsupported architecture: $(uname -m)"; exit 1 ;;
     esac
 
-    PLATFORM="${OS}-${ARCH}"
-    info "Detected platform: $PLATFORM"
+    echo "${os}-${arch}"
 }
 
+# Get the latest release version
 get_latest_version() {
-    VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [ -z "$VERSION" ]; then
-        error "Failed to fetch latest version"
-    fi
-    info "Latest version: $VERSION"
+    curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep '"tag_name":' \
+        | sed -E 's/.*"([^"]+)".*/\1/'
 }
 
-download_binary() {
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY_NAME}-${PLATFORM}"
-    
-    info "Downloading from: $DOWNLOAD_URL"
-    
-    TMPDIR=$(mktemp -d)
-    TMPFILE="${TMPDIR}/${BINARY_NAME}"
-    
-    if ! curl -fsSL "$DOWNLOAD_URL" -o "$TMPFILE"; then
-        rm -rf "$TMPDIR"
-        error "Failed to download binary"
-    fi
-    
-    chmod +x "$TMPFILE"
-}
+# Download and install
+install_topos() {
+    local platform version download_url archive_name
 
-install_binary() {
-    info "Installing to $INSTALL_DIR/$BINARY_NAME"
-    
-    if [ -w "$INSTALL_DIR" ]; then
-        mv "$TMPFILE" "$INSTALL_DIR/$BINARY_NAME"
+    platform=$(detect_platform)
+    info "Detected platform: ${platform}"
+
+    if [ "$VERSION" = "latest" ]; then
+        version=$(get_latest_version)
+        if [ -z "$version" ]; then
+            error "Could not determine latest version"
+            exit 1
+        fi
+        info "Latest version: ${version}"
     else
-        warn "Elevated permissions required to install to $INSTALL_DIR"
-        sudo mv "$TMPFILE" "$INSTALL_DIR/$BINARY_NAME"
+        version="$VERSION"
+        info "Installing version: ${version}"
     fi
-    
-    rm -rf "$TMPDIR"
+
+    archive_name="topos-${platform}.tar.gz"
+    download_url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
+
+    # Create temp directory
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
+
+    info "Downloading ${download_url}..."
+    if ! curl -sSL -o "${tmp_dir}/${archive_name}" "$download_url"; then
+        error "Download failed. The release asset may not exist for this platform."
+        echo ""
+        echo "Alternative installation methods:"
+        echo ""
+        echo "  # Using uv (recommended for Python users)"
+        echo "  uv pip install topos"
+        echo ""
+        echo "  # Using pip"
+        echo "  pip install topos"
+        echo ""
+        echo "  # From source"
+        echo "  git clone https://github.com/${REPO}.git"
+        echo "  cd topos && uv sync"
+        exit 1
+    fi
+
+    info "Extracting archive..."
+    tar -xzf "${tmp_dir}/${archive_name}" -C "${tmp_dir}"
+
+    # Create install directory if needed
+    mkdir -p "$INSTALL_DIR"
+
+    # Install the binary
+    info "Installing to ${INSTALL_DIR}/topos..."
+    mv "${tmp_dir}/topos" "${INSTALL_DIR}/topos"
+    chmod +x "${INSTALL_DIR}/topos"
+
+    success "Topos ${version} installed successfully!"
 }
 
-verify_installation() {
-    if command -v "$BINARY_NAME" >/dev/null 2>&1; then
-        info "Successfully installed $BINARY_NAME!"
-        info "Run '$BINARY_NAME --help' to get started"
+# Add to PATH if needed
+setup_path() {
+    if [ "${TOPOS_NO_MODIFY_PATH:-0}" = "1" ]; then
+        return
+    fi
+
+    # Check if already in PATH
+    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
+        return
+    fi
+
+    local shell_rc=""
+    case "${SHELL:-}" in
+        */bash) shell_rc="$HOME/.bashrc" ;;
+        */zsh)  shell_rc="$HOME/.zshrc" ;;
+        */fish) shell_rc="$HOME/.config/fish/config.fish" ;;
+    esac
+
+    if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then
+        echo "" >> "$shell_rc"
+        echo "# Added by Topos installer" >> "$shell_rc"
+
+        if [[ "$SHELL" == */fish ]]; then
+            echo "set -gx PATH \"$INSTALL_DIR\" \$PATH" >> "$shell_rc"
+        else
+            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$shell_rc"
+        fi
+
+        warn "Added ${INSTALL_DIR} to PATH in ${shell_rc}"
+        warn "Run 'source ${shell_rc}' or start a new shell to use topos"
     else
-        warn "Binary installed but not in PATH. Add $INSTALL_DIR to your PATH"
+        warn "${INSTALL_DIR} is not in your PATH"
+        warn "Add this to your shell profile:"
+        echo ""
+        echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     fi
 }
 
+# Verify installation
+verify_install() {
+    echo ""
+    if command -v topos &> /dev/null; then
+        success "Verification: topos is available in PATH"
+        topos --version 2>/dev/null || true
+    elif [ -x "${INSTALL_DIR}/topos" ]; then
+        success "Verification: topos installed at ${INSTALL_DIR}/topos"
+        "${INSTALL_DIR}/topos" --version 2>/dev/null || true
+    else
+        error "Verification failed: topos not found"
+        exit 1
+    fi
+
+    echo ""
+    echo "Get started:"
+    echo ""
+    echo "  topos evaluate src/         # Evaluate a directory"
+    echo "  topos inspect module.py     # Detailed metrics"
+    echo "  topos compare a.py b.py     # Structural diff"
+    echo ""
+    echo "Documentation: https://krv-labs.github.io/topos/"
+}
+
+# Main
 main() {
-    info "Installing topos..."
-    detect_platform
-    get_latest_version
-    download_binary
-    install_binary
-    verify_installation
+    echo ""
+    echo "  ╔════════════════════════════════════════════════════════════╗"
+    echo "  ║                                                            ║"
+    echo "  ║   Topos - Category-theoretic code quality evaluation       ║"
+    echo "  ║                                                            ║"
+    echo "  ║   Treating programs as morphisms in a world of             ║"
+    echo "  ║   commodity code.                                          ║"
+    echo "  ║                                                            ║"
+    echo "  ╚════════════════════════════════════════════════════════════╝"
+    echo ""
+
+    install_topos
+    setup_path
+    verify_install
 }
 
-main
+main "$@"

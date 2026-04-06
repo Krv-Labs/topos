@@ -20,7 +20,7 @@ This represents a our development of a **subobject classifier** (Ω), that for a
 **Binary (fastest):**
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 ```
 
 **From source:**

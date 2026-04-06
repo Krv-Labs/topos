@@ -11,20 +11,9 @@ Quick Install
 
 .. code-block:: bash
 
-   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 
 This downloads the latest release binary and installs it to ``~/.local/bin``.
-
-Install as a Python Package
----------------------------
-
-.. code-block:: bash
-
-   # Using uv (recommended)
-   uv pip install topos
-
-   # Using pip
-   pip install topos
 
 Install from Source
 -------------------
@@ -33,7 +22,7 @@ Install from Source
 
    git clone https://github.com/Krv-Labs/topos.git
    cd topos
-   uv sync
+   uv pip install -e .
 
 Verify Installation
 -------------------

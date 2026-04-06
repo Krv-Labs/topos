@@ -247,7 +247,10 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
         return
 
     if method != "binary-installer" or provenance is None:
-        click.echo("Could not determine a managed installer provenance record.", err=True)
+        click.echo(
+            "Could not determine a managed installer provenance record.",
+            err=True,
+        )
         click.echo("If installed via pip: pip uninstall topos", err=True)
         click.echo("If installed via uv: uv pip uninstall topos", err=True)
         sys.exit(1)
@@ -283,8 +286,8 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
         path_hint_file = provenance.get("path_hint_file", "").strip()
         if path_hint_file:
             click.echo(
-                "PATH hints were left unchanged. Re-run with --prune-path-hints to remove "
-                "installer-added PATH blocks."
+                "PATH hints were left unchanged. Re-run with --prune-path-hints "
+                "to remove installer-added PATH blocks."
             )
 
 
@@ -445,7 +448,9 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         return
 
     if dry_run:
-        click.echo(f"[dry-run] Would prune {removed_lines} PATH hint lines in {rc_path}")
+        click.echo(
+            f"[dry-run] Would prune {removed_lines} PATH hint lines in {rc_path}"
+        )
         return
 
     rc_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")

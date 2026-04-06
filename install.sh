@@ -184,7 +184,7 @@ verify_install() {
     echo "  topos inspect module.py     # Detailed metrics"
     echo "  topos compare a.py b.py     # Structural diff"
     echo ""
-    echo "Documentation: https://krv-labs.github.io/topos/"
+    echo "Documentation: https://docs.krv.ai/topos"
 }
 
 # Main

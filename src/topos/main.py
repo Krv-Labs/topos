@@ -17,6 +17,8 @@ Usage:
 
 from __future__ import annotations
 
+import importlib.metadata
+import os
 import sys
 from pathlib import Path
 
@@ -219,6 +221,73 @@ def inspect(path: str) -> None:
     click.echo(f"  Interpretation: {entropy.interpretation}")
 
 
+@cli.command()
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be removed without changing anything.",
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    help="Skip confirmation prompts.",
+)
+@click.option(
+    "--prune-path-hints",
+    is_flag=True,
+    help="Remove PATH hint blocks previously added by the installer.",
+)
+def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
+    """Safely uninstall topos based on installation provenance."""
+    method, provenance, uninstall_cmd = _detect_install_method()
+
+    if method == "package-manager":
+        click.echo("Detected package-manager installation.")
+        click.echo(f"Run: {uninstall_cmd}")
+        return
+
+    if method != "binary-installer" or provenance is None:
+        click.echo("Could not determine a managed installer provenance record.", err=True)
+        click.echo("If installed via pip: pip uninstall topos", err=True)
+        click.echo("If installed via uv: uv pip uninstall topos", err=True)
+        sys.exit(1)
+
+    install_path = provenance.get("install_path", "").strip()
+    if not install_path:
+        click.echo("Installer provenance is missing install_path.", err=True)
+        sys.exit(1)
+
+    path = Path(install_path)
+
+    if dry_run:
+        if path.exists():
+            click.echo(f"[dry-run] Would remove binary: {path}")
+        else:
+            click.echo(f"[dry-run] Binary already removed: {path}")
+    else:
+        if not yes:
+            confirmed = click.confirm(f"Remove binary at {path}?", default=False)
+            if not confirmed:
+                click.echo("Uninstall cancelled.")
+                return
+
+        if path.exists():
+            path.unlink()
+            click.echo(f"Removed binary: {path}")
+        else:
+            click.echo(f"Binary already removed: {path}")
+
+    if prune_path_hints:
+        _prune_path_hints(provenance, dry_run=dry_run)
+    else:
+        path_hint_file = provenance.get("path_hint_file", "").strip()
+        if path_hint_file:
+            click.echo(
+                "PATH hints were left unchanged. Re-run with --prune-path-hints to remove "
+                "installer-added PATH blocks."
+            )
+
+
 def main() -> None:
     """Console script entrypoint."""
     cli()
@@ -294,6 +363,93 @@ def _output_json(results: list[dict]) -> None:
         "results": results,
     }
     click.echo(json.dumps(output, indent=2))
+
+
+def _provenance_file() -> Path:
+    override = os.environ.get("TOPOS_PROVENANCE_FILE")
+    if override:
+        return Path(override).expanduser()
+    state_home = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser()
+    return state_home / "topos" / "install-provenance"
+
+
+def _load_provenance() -> dict[str, str] | None:
+    path = _provenance_file()
+    if not path.exists():
+        return None
+
+    data: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        data[key.strip()] = value.strip()
+    return data or None
+
+
+def _detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
+    provenance = _load_provenance()
+    if provenance and provenance.get("install_method") == "binary-installer":
+        return "binary-installer", provenance, None
+
+    try:
+        dist = importlib.metadata.distribution("topos")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown", None, None
+
+    installer = (dist.read_text("INSTALLER") or "").strip().lower()
+    if installer == "uv":
+        return "package-manager", None, "uv pip uninstall topos"
+    if installer in {"pip", ""}:
+        return "package-manager", None, "pip uninstall topos"
+    return "package-manager", None, f"{installer} uninstall topos"
+
+
+def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
+    path_hint_file = provenance.get("path_hint_file", "").strip()
+    if not path_hint_file:
+        click.echo("No PATH hint file recorded in installer provenance.")
+        return
+
+    marker_begin = provenance.get(
+        "path_hint_begin", "# BEGIN TOPOS INSTALLER PATH"
+    ).strip()
+    marker_end = provenance.get("path_hint_end", "# END TOPOS INSTALLER PATH").strip()
+    rc_path = Path(path_hint_file)
+
+    if not rc_path.exists():
+        click.echo(f"PATH hint file already absent: {rc_path}")
+        return
+
+    original_lines = rc_path.read_text(encoding="utf-8").splitlines()
+    updated_lines: list[str] = []
+    in_block = False
+    removed_lines = 0
+
+    for line in original_lines:
+        stripped = line.strip()
+        if stripped == marker_begin:
+            in_block = True
+            removed_lines += 1
+            continue
+        if in_block:
+            removed_lines += 1
+            if stripped == marker_end:
+                in_block = False
+            continue
+        updated_lines.append(line)
+
+    if removed_lines == 0:
+        click.echo(f"No installer PATH hint block found in {rc_path}")
+        return
+
+    if dry_run:
+        click.echo(f"[dry-run] Would prune {removed_lines} PATH hint lines in {rc_path}")
+        return
+
+    rc_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+    click.echo(f"Pruned installer PATH hints from {rc_path}")
 
 
 if __name__ == "__main__":

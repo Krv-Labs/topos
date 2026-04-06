@@ -77,3 +77,116 @@ def test_evaluate_directory(tmp_path):
     result = runner.invoke(cli, ["evaluate", str(d), "-r"])
     assert result.exit_code == 0
     assert "test_file.py" in result.output
+
+
+def test_uninstall_binary_installer_dry_run(tmp_path, monkeypatch):
+    runner = CliRunner()
+    bin_path = tmp_path / "bin" / "topos"
+    bin_path.parent.mkdir(parents=True)
+    bin_path.write_text("binary", encoding="utf-8")
+
+    provenance = tmp_path / "install-provenance"
+    provenance.write_text(
+        "\n".join(
+            [
+                "install_method=binary-installer",
+                f"install_path={bin_path}",
+                "install_version=v1.2.3",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TOPOS_PROVENANCE_FILE", str(provenance))
+
+    result = runner.invoke(cli, ["uninstall", "--dry-run", "--yes"])
+    assert result.exit_code == 0
+    assert "Would remove binary" in result.output
+    assert bin_path.exists()
+
+
+def test_uninstall_binary_installer_idempotent(tmp_path, monkeypatch):
+    runner = CliRunner()
+    bin_path = tmp_path / "bin" / "topos"
+    bin_path.parent.mkdir(parents=True)
+    provenance = tmp_path / "install-provenance"
+    provenance.write_text(
+        "\n".join(
+            [
+                "install_method=binary-installer",
+                f"install_path={bin_path}",
+                "install_version=v1.2.3",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TOPOS_PROVENANCE_FILE", str(provenance))
+
+    result = runner.invoke(cli, ["uninstall", "--yes"])
+    assert result.exit_code == 0
+    assert "already removed" in result.output
+
+
+def test_uninstall_package_manager_prints_command(monkeypatch):
+    runner = CliRunner()
+
+    from topos import main as main_module
+
+    monkeypatch.setattr(
+        main_module,
+        "_detect_install_method",
+        lambda: ("package-manager", None, "uv pip uninstall topos"),
+    )
+    result = runner.invoke(cli, ["uninstall"])
+
+    assert result.exit_code == 0
+    assert "Detected package-manager installation." in result.output
+    assert "uv pip uninstall topos" in result.output
+
+
+def test_uninstall_prune_path_hints(tmp_path, monkeypatch):
+    runner = CliRunner()
+    bin_path = tmp_path / "bin" / "topos"
+    bin_path.parent.mkdir(parents=True)
+    bin_path.write_text("binary", encoding="utf-8")
+
+    rc_file = tmp_path / ".bashrc"
+    rc_file.write_text(
+        "\n".join(
+            [
+                "export LANG=en_US.UTF-8",
+                "# BEGIN TOPOS INSTALLER PATH",
+                "# Added by Topos installer",
+                'export PATH="/tmp/topos-bin:$PATH"',
+                "# END TOPOS INSTALLER PATH",
+                "alias ll='ls -la'",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    provenance = tmp_path / "install-provenance"
+    provenance.write_text(
+        "\n".join(
+            [
+                "install_method=binary-installer",
+                f"install_path={bin_path}",
+                f"path_hint_file={rc_file}",
+                "path_hint_begin=# BEGIN TOPOS INSTALLER PATH",
+                "path_hint_end=# END TOPOS INSTALLER PATH",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TOPOS_PROVENANCE_FILE", str(provenance))
+
+    result = runner.invoke(cli, ["uninstall", "--yes", "--prune-path-hints"])
+    assert result.exit_code == 0
+    updated = rc_file.read_text(encoding="utf-8")
+    assert "BEGIN TOPOS INSTALLER PATH" not in updated
+    assert "END TOPOS INSTALLER PATH" not in updated
+    assert "export LANG=en_US.UTF-8" in updated
+    assert "alias ll='ls -la'" in updated

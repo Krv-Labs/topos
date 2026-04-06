@@ -30,6 +30,24 @@ git clone https://github.com/Krv-Labs/topos.git
 cd topos && uv pip install -e .
 ```
 
+## Uninstall
+
+**If installed with the binary installer:**
+
+```bash
+topos uninstall
+topos uninstall --dry-run
+topos uninstall --yes --prune-path-hints
+```
+
+**If installed with uv/pip:**
+
+```bash
+uv pip uninstall topos
+# or
+pip uninstall topos
+```
+
 ## Usage
 
 ```bash

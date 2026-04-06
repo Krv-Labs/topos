@@ -1,3 +1,4 @@
+import importlib.metadata
 import os
 import sys
 
@@ -7,7 +8,13 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = "Topos"
 author = "Krv Labs"
 copyright = "2026, Krv Labs"
-release = "0.1.0"
+try:
+    release = importlib.metadata.version("topos")
+except importlib.metadata.PackageNotFoundError:
+    # Fallback for docs builds from source trees where package metadata is unavailable.
+    from topos import __version__
+
+    release = __version__
 
 extensions = [
     "sphinx.ext.autodoc",

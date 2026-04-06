@@ -280,10 +280,7 @@ def test_uninstall_prune_path_hints_requires_matching_markers(tmp_path, monkeypa
 
     result = runner.invoke(cli, ["uninstall", "--yes", "--prune-path-hints"])
     assert result.exit_code == 0
-    assert (
-        "Malformed PATH hint block in"
-        in result.output.replace("\n", " ")
-    )
+    assert "Malformed PATH hint block in" in result.output.replace("\n", " ")
     updated = rc_file.read_text(encoding="utf-8")
     assert "# BEGIN TOPOS INSTALLER PATH" in updated
     assert "Malformed" not in updated
@@ -302,7 +299,8 @@ def test_detect_install_method_falls_back_when_installer_metadata_missing(monkey
         lambda _name: DummyDist(),
     )
 
-    assert (
-        main_module._detect_install_method()
-        == ("package-manager", None, "pip uninstall topos")
+    assert main_module._detect_install_method() == (
+        "package-manager",
+        None,
+        "pip uninstall topos",
     )

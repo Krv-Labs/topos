@@ -145,7 +145,7 @@ get_latest_version() {
 
     version=$(printf '%s\n' "${latest_url##*/}" | sed 's/[?#].*$//')
     # Accept versions like v1.2.3, 1.2.3, and prerelease/build suffixes.
-    if [[ -z "${version}" || ! "${version}" =~ ^v?[0-9]+([.][0-9]+)*([-.][0-9A-Za-z]+)*$ ]]; then
+    if [[ -z "${version}" || ! "${version}" =~ ^v?[0-9]+([.][0-9]+)+([-.][0-9A-Za-z]+)*$ ]]; then
         return 1
     fi
 
@@ -243,11 +243,6 @@ setup_path() {
         return
     fi
 
-    # Check if already in PATH
-    if [[ ":${PATH:-}:" == *":$INSTALL_DIR:"* ]]; then
-        return
-    fi
-
     shell_name="${SHELL:-}"
     case "${shell_name}" in
         */bash) shell_rc="$HOME/.bashrc" ;;
@@ -261,6 +256,11 @@ setup_path() {
         path_line="set -gx PATH \"${escaped_install_dir}\" \$PATH"
     else
         path_line="export PATH=\"${escaped_install_dir}:\$PATH\""
+    fi
+
+    # Check if already in PATH
+    if [[ ":${PATH:-}:" == *":$INSTALL_DIR:"* ]]; then
+        return
     fi
 
     if [ -n "$shell_rc" ] && [ -f "$shell_rc" ]; then

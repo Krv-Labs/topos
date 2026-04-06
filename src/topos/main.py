@@ -401,7 +401,8 @@ def _detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
     except importlib.metadata.PackageNotFoundError:
         return "unknown", None, None
 
-    installer = (dist.read_text("INSTALLER") or "").strip().lower()
+    installer_raw = dist.read_text("INSTALLER")
+    installer = (installer_raw or "").strip().lower()
     if installer == "uv":
         return "package-manager", None, "uv pip uninstall topos"
     if installer in {"pip", ""}:
@@ -425,7 +426,9 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         click.echo(f"PATH hint file already absent: {rc_path}")
         return
 
-    original_lines = rc_path.read_text(encoding="utf-8").splitlines()
+    original_content = rc_path.read_text(encoding="utf-8")
+    had_trailing_newline = original_content.endswith("\n")
+    original_lines = original_content.splitlines()
     updated_lines: list[str] = []
     in_block = False
     removed_lines = 0
@@ -453,7 +456,10 @@ def _prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         )
         return
 
-    rc_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+    new_content = "\n".join(updated_lines)
+    if had_trailing_newline:
+        new_content += "\n"
+    rc_path.write_text(new_content, encoding="utf-8")
     click.echo(f"Pruned installer PATH hints from {rc_path}")
 
 

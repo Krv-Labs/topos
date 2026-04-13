@@ -7,8 +7,10 @@ Topos
 **Treating programs as morphisms in a world of commodity code.**
 
 Topos is a code quality evaluation tool that maps every Python program to one of six
-evaluation values using cyclomatic complexity and entropy metrics. Instead of a numeric
-score, you get a lattice position that encodes structural quality with partial confidence.
+evaluation values. By default it uses AST complexity and entropy metrics, and it can
+optionally incorporate dependency-graph metrics when that representation is available.
+Instead of a numeric score, you get a lattice position that encodes structural quality
+with partial confidence.
 
 The six evaluation values form a `Heyting algebra <https://en.wikipedia.org/wiki/Heyting_algebra>`_:
 
@@ -46,3 +48,4 @@ The six evaluation values form a `Heyting algebra <https://en.wikipedia.org/wiki
    installation
    getting_started
    concepts
+   architecture

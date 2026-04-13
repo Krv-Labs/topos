@@ -30,6 +30,10 @@ from topos.logic.lattice import EvaluationValue
 from topos.logic.omega import SubobjectClassifier
 
 
+class DepgraphLoadError(RuntimeError):
+    """Raised when a requested dependency graph representation cannot be built."""
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="topos")
 def cli() -> None:
@@ -66,7 +70,11 @@ def cli() -> None:
     "--gitnexus-dir",
     type=click.Path(exists=True, file_okay=False),
     default=None,
-    help="Path to a .gitnexus/ directory for dependency-graph evaluation.",
+    help=(
+        "Path to a .gitnexus/ directory for dependency-graph evaluation. "
+        "Requires GitNexus (npm install -g gitnexus) — run "
+        "'gitnexus analyze' in the repo root to generate this directory."
+    ),
 )
 def evaluate(
     paths: tuple[str, ...],
@@ -110,7 +118,11 @@ def evaluate(
     results: list[dict] = []
 
     for filepath in files:
-        result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir)
+        try:
+            result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir)
+        except DepgraphLoadError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(1)
         results.append(result)
 
     if output_json:
@@ -175,7 +187,11 @@ def compare(source: str, target: str, verbose: bool) -> None:
     "--gitnexus-dir",
     type=click.Path(exists=True, file_okay=False),
     default=None,
-    help="Path to a .gitnexus/ directory for dependency-graph metrics.",
+    help=(
+        "Path to a .gitnexus/ directory for dependency-graph metrics. "
+        "Requires GitNexus (npm install -g gitnexus) — run "
+        "'gitnexus analyze' in the repo root to generate this directory."
+    ),
 )
 def inspect(path: str, gitnexus_dir: str | None) -> None:
     """
@@ -193,12 +209,14 @@ def inspect(path: str, gitnexus_dir: str | None) -> None:
     from topos.metrics.ast.entropy import calculate_entropy_detailed
 
     morphism = ProgramMorphism.from_file(path)
-    representations = _build_representations(str(path), gitnexus_dir)
+    try:
+        representations = _build_representations(str(path), gitnexus_dir)
+    except DepgraphLoadError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
 
     classifier = SubobjectClassifier()
-    result = classifier.classify_detailed(
-        morphism, representations=representations or None
-    )
+    result = classifier.classify_detailed(morphism, representations=representations)
 
     click.echo(f"File: {path}")
     click.echo()
@@ -352,19 +370,19 @@ def _collect_files(paths: tuple[str, ...], recursive: bool) -> list[Path]:
     return sorted(set(files))
 
 
-def _build_representations(
-    filepath: str, gitnexus_dir: str | None
-) -> list:
+def _build_representations(filepath: str, gitnexus_dir: str | None) -> list:
     """Build extra representations for a file."""
     representations: list = []
     if gitnexus_dir:
-        try:
-            from topos.representations.depgraph.graph import DependencyGraph
+        from topos.graphs.depgraph.graph import DependencyGraph
 
+        try:
             depgraph = DependencyGraph.from_gitnexus_dir(gitnexus_dir, filepath)
-            representations.append(depgraph)
-        except (FileNotFoundError, Exception):
-            pass
+        except Exception as exc:
+            raise DepgraphLoadError(
+                f"Failed to build depgraph for {filepath} using {gitnexus_dir}: {exc}"
+            ) from exc
+        representations.append(depgraph)
     return representations
 
 
@@ -378,9 +396,7 @@ def _evaluate_file(
     try:
         morphism = ProgramMorphism.from_file(filepath)
         representations = _build_representations(str(filepath), gitnexus_dir)
-        result = classifier.classify_detailed(
-            morphism, representations=representations or None
-        )
+        result = classifier.classify_detailed(morphism, representations=representations)
 
         return {
             "file": str(filepath),
@@ -391,6 +407,8 @@ def _evaluate_file(
             "valid": result.is_valid,
             "metrics": result.metrics,
         }
+    except DepgraphLoadError:
+        raise
     except Exception as e:
         return {
             "file": str(filepath),

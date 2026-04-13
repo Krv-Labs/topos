@@ -62,11 +62,18 @@ def cli() -> None:
     is_flag=True,
     help="Output results as JSON.",
 )
+@click.option(
+    "--gitnexus-dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Path to a .gitnexus/ directory for dependency-graph evaluation.",
+)
 def evaluate(
     paths: tuple[str, ...],
     recursive: bool,
     verbose: bool,
     output_json: bool,
+    gitnexus_dir: str | None,
 ) -> None:
     """
     Evaluate code quality using the Subobject Classifier.
@@ -87,6 +94,7 @@ def evaluate(
         topos evaluate script.py
         topos evaluate src/ -r
         topos evaluate *.py -v
+        topos evaluate src/ -r --gitnexus-dir .gitnexus
     """
     if not paths:
         click.echo("Error: No paths provided.", err=True)
@@ -102,7 +110,7 @@ def evaluate(
     results: list[dict] = []
 
     for filepath in files:
-        result = _evaluate_file(filepath, classifier, verbose)
+        result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir)
         results.append(result)
 
     if output_json:
@@ -163,7 +171,13 @@ def compare(source: str, target: str, verbose: bool) -> None:
 
 @cli.command()
 @click.argument("path", type=click.Path(exists=True))
-def inspect(path: str) -> None:
+@click.option(
+    "--gitnexus-dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Path to a .gitnexus/ directory for dependency-graph metrics.",
+)
+def inspect(path: str, gitnexus_dir: str | None) -> None:
     """
     Inspect detailed metrics for a single file.
 
@@ -173,13 +187,18 @@ def inspect(path: str) -> None:
 
     \b
         topos inspect module.py
+        topos inspect module.py --gitnexus-dir .gitnexus
     """
-    from topos.metrics.complexity import calculate_function_complexities
-    from topos.metrics.entropy import calculate_entropy_detailed
+    from topos.metrics.ast.complexity import calculate_function_complexities
+    from topos.metrics.ast.entropy import calculate_entropy_detailed
 
     morphism = ProgramMorphism.from_file(path)
+    representations = _build_representations(str(path), gitnexus_dir)
+
     classifier = SubobjectClassifier()
-    result = classifier.classify_detailed(morphism)
+    result = classifier.classify_detailed(
+        morphism, representations=representations or None
+    )
 
     click.echo(f"File: {path}")
     click.echo()
@@ -219,6 +238,14 @@ def inspect(path: str) -> None:
     entropy = calculate_entropy_detailed(morphism.source)
     click.echo(f"  Compression Ratio: {entropy.ratio:.3f}")
     click.echo(f"  Interpretation: {entropy.interpretation}")
+
+    if result.representation_metrics:
+        for rep_name, rep_metrics in result.representation_metrics.items():
+            click.echo()
+            click.echo(f"{rep_name.upper()} Metrics")
+            click.echo("-" * 40)
+            for k, v in rep_metrics.items():
+                click.echo(f"  {k}: {v:.3f}")
 
 
 @cli.command()
@@ -325,15 +352,35 @@ def _collect_files(paths: tuple[str, ...], recursive: bool) -> list[Path]:
     return sorted(set(files))
 
 
+def _build_representations(
+    filepath: str, gitnexus_dir: str | None
+) -> list:
+    """Build extra representations for a file."""
+    representations: list = []
+    if gitnexus_dir:
+        try:
+            from topos.representations.depgraph.graph import DependencyGraph
+
+            depgraph = DependencyGraph.from_gitnexus_dir(gitnexus_dir, filepath)
+            representations.append(depgraph)
+        except (FileNotFoundError, Exception):
+            pass
+    return representations
+
+
 def _evaluate_file(
     filepath: Path,
     classifier: SubobjectClassifier,
     verbose: bool,
+    gitnexus_dir: str | None = None,
 ) -> dict:
     """Evaluate a single file and return results as a dict."""
     try:
         morphism = ProgramMorphism.from_file(filepath)
-        result = classifier.classify_detailed(morphism)
+        representations = _build_representations(str(filepath), gitnexus_dir)
+        result = classifier.classify_detailed(
+            morphism, representations=representations or None
+        )
 
         return {
             "file": str(filepath),

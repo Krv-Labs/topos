@@ -67,6 +67,29 @@ Two programs may compute the same function but have dramatically different
 internal structure. By modeling programs as morphisms and parsing their ASTs,
 Topos can reason about *structural invariants* that input-output testing cannot reveal.
 
+Representations and Metrics
+---------------------------
+
+Topos organizes metrics by representation. A single program can be viewed
+through multiple structural lenses:
+
+- ``ast`` representation (complexity, entropy)
+- ``depgraph`` representation (coupling, instability, fan-in/out, dependency depth)
+
+Each representation emits namespaced metrics (for example
+``ast.complexity`` or ``depgraph.coupling``) that can be fed into
+classification.
+
+By default, classification runs on AST metrics. When additional
+representations are supplied (for example depgraph via ``--gitnexus-dir``),
+their metric verdicts are aggregated into the final lattice value.
+
+For depgraph specifically, Topos consumes repository-level GitNexus output
+from ``.gitnexus/lbug`` but computes observations for one target file at a
+time. All depgraph observations are reported, but only
+``depgraph.coupling`` and ``depgraph.instability`` currently map to policy
+verdicts used by lattice aggregation.
+
 The Subobject Classifier
 ------------------------
 
@@ -88,9 +111,9 @@ The ``SubobjectClassifier`` implements this map:
    result = SubobjectClassifier().classify(morphism)
    print(result)  # e.g., "◐ COMMODITY"
 
-The map factors through two stages:
+The map factors through three stages:
 
-1. **Metrics** — extract complexity and entropy from the AST
+1. **Metrics** — extract values from AST and any attached representations
 2. **Policies** — map metric values to evaluation values via threshold bins
 3. **Aggregation** — combine metric verdicts using lattice meet
 

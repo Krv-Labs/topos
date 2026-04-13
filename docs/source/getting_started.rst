@@ -24,7 +24,12 @@ for AI-assisted workflows. Choose your path below.
          topos inspect src/topos/main.py
 
       Shows the lattice evaluation, complexity and entropy scores,
-      function-level complexity breakdown, and AST metrics.
+      function-level complexity breakdown, and AST metrics. Pass
+      ``--gitnexus-dir`` to include dependency-graph metrics:
+
+      .. code-block:: bash
+
+         topos inspect src/topos/main.py --gitnexus-dir .gitnexus
 
       **Evaluate a directory**
 
@@ -37,6 +42,17 @@ for AI-assisted workflows. Choose your path below.
       .. code-block:: bash
 
          topos evaluate src/ -r --json
+
+      To include dependency-graph metrics from GitNexus output:
+
+      .. code-block:: bash
+
+         topos evaluate src/ -r --gitnexus-dir .gitnexus
+
+      This reads repository-level graph data from ``.gitnexus/lbug`` and
+      computes depgraph metrics per evaluated file. If ``--gitnexus-dir`` is
+      provided but the depgraph cannot be loaded, the command exits with an
+      error (no silent AST-only fallback).
 
       **Compare two files**
 
@@ -59,6 +75,16 @@ for AI-assisted workflows. Choose your path below.
          print(result.evaluation)        # e.g., "◐ COMMODITY"
          print(result.complexity_score)
          print(result.entropy_score)
+
+      Canonical metric imports are representation-scoped:
+
+      .. code-block:: python
+
+         from topos.metrics.ast.complexity import calculate_cyclomatic_complexity
+         from topos.metrics.ast.entropy import calculate_kolmogorov_proxy
+
+      Compatibility note: common AST metrics are also re-exported from
+      ``topos.metrics``.
 
       To compare two programs:
 

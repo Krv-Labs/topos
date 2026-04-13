@@ -17,9 +17,9 @@ from topos.logic.lattice import (
     EvaluationValue,
 )
 from topos.logic.omega import SubobjectClassifier
-from topos.representations.ast.object import ASTRepresentation
-from topos.representations.base import Representation
-from topos.representations.depgraph.graph import DependencyGraph
+from topos.graphs.ast.object import ASTRepresentation
+from topos.graphs.base import Representation
+from topos.graphs.depgraph.graph import DependencyGraph
 
 __version__ = "0.1.0"
 

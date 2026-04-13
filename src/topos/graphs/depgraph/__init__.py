@@ -2,10 +2,10 @@
 Dependency Graph Representation Sub-package
 --------------------------------------------
 Parses GitNexus output into a :class:`DependencyGraph` that conforms
-to the :class:`~topos.representations.base.Representation` protocol.
+to the :class:`~topos.graphs.base.Representation` protocol.
 """
 
-from topos.representations.depgraph.graph import (
+from topos.graphs.depgraph.graph import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,

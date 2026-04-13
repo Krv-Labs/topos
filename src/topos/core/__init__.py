@@ -8,15 +8,15 @@ In the category of Programs:
 - Morphisms are programs themselves (transformations between states)
 
 Program representations (AST, dependency graph, ...) live in the
-``topos.representations`` package and are re-exported here for
+``topos.graphs`` package and are re-exported here for
 convenience.
 """
 
 from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
-from topos.representations.ast.object import ASTRepresentation
-from topos.representations.base import Representation
-from topos.representations.depgraph.graph import DependencyGraph
+from topos.graphs.ast.object import ASTRepresentation
+from topos.graphs.base import Representation
+from topos.graphs.depgraph.graph import DependencyGraph
 
 __all__ = [
     "ProgramMorphism",

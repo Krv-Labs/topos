@@ -1,5 +1,9 @@
 """Tests for depgraph-specific metrics (coupling, fan, depth)."""
 
+import json
+import tempfile
+from pathlib import Path
+
 from topos.metrics.depgraph.coupling import (
     CouplingResult,
     calculate_coupling,
@@ -7,7 +11,7 @@ from topos.metrics.depgraph.coupling import (
     calculate_instability,
 )
 from topos.metrics.depgraph.fan import FanResult, calculate_fan_in_out
-from topos.representations.depgraph.graph import (
+from topos.graphs.depgraph.graph import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,
@@ -310,3 +314,365 @@ def test_classification_result_str_with_representations():
     text = str(result)
     assert "depgraph" in text
     assert "coupling" in text
+
+
+# ---------------------------------------------------------------------------
+# _owning_file edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_owning_file_symbol_with_no_contains_parent():
+    """A Function node that has no CONTAINS edge returns None from _owning_file."""
+    from topos.metrics.depgraph.coupling import _owning_file
+
+    g = DependencyGraph(target_file="orphan.py")
+    g.add_node(
+        GraphNode(
+            id="Func:orphan:stray",
+            label="Function",
+            properties={"filePath": "orphan.py", "name": "stray"},
+        )
+    )
+    # No CONTAINS relationship pointing at this symbol
+    assert _owning_file(g, "Func:orphan:stray") is None
+
+
+def test_owning_file_unknown_node():
+    """Asking for a node_id that doesn't exist in the graph returns None."""
+    from topos.metrics.depgraph.coupling import _owning_file
+
+    g = DependencyGraph(target_file="x.py")
+    assert _owning_file(g, "nonexistent-id") is None
+
+
+def test_owning_file_via_contains_edge():
+    """A Function reachable via a CONTAINS edge resolves to its File owner."""
+    from topos.metrics.depgraph.coupling import _owning_file
+
+    g = DependencyGraph(target_file="owner.py")
+    g.add_node(
+        GraphNode(
+            id="File:owner.py",
+            label="File",
+            properties={"filePath": "owner.py"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="Func:owner:fn",
+            label="Function",
+            properties={"filePath": "owner.py", "name": "fn"},
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="c1",
+            source_id="File:owner.py",
+            target_id="Func:owner:fn",
+            type="CONTAINS",
+        )
+    )
+    assert _owning_file(g, "Func:owner:fn") == "File:owner.py"
+
+
+# ---------------------------------------------------------------------------
+# outgoing / incoming without rel_type filter
+# ---------------------------------------------------------------------------
+
+
+def test_outgoing_all_types():
+    g = _graph_with_linear_chain()
+    all_out = g.outgoing("File:a.py")
+    assert len(all_out) >= 1
+    types = {r.type for r in all_out}
+    assert "IMPORTS" in types
+
+
+def test_incoming_all_types():
+    g = _graph_with_linear_chain()
+    all_in = g.incoming("File:b.py")
+    assert len(all_in) >= 1
+    types = {r.type for r in all_in}
+    assert "IMPORTS" in types
+
+
+def test_outgoing_missing_node_returns_empty():
+    g = DependencyGraph(target_file="empty.py")
+    assert g.outgoing("no-such-node") == []
+    assert g.incoming("no-such-node") == []
+
+
+# ---------------------------------------------------------------------------
+# DependencyGraph.from_gitnexus_dir — list-format JSON
+# ---------------------------------------------------------------------------
+
+
+def _write_lbug_dir(base: Path, data: object) -> None:
+    lbug = base / "lbug"
+    lbug.mkdir(parents=True)
+    (lbug / "graph.json").write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_from_gitnexus_dir_list_format():
+    """Parse the LadybugDB list-of-items JSON format."""
+    items = [
+        {
+            "id": "File:src/main.py",
+            "label": "File",
+            "properties": {"filePath": "src/main.py"},
+        },
+        {
+            "id": "File:src/lib.py",
+            "label": "File",
+            "properties": {"filePath": "src/lib.py"},
+        },
+        {
+            "id": "rel-1",
+            "sourceId": "File:src/main.py",
+            "targetId": "File:src/lib.py",
+            "type": "IMPORTS",
+            "confidence": 0.9,
+            "reason": "direct import",
+        },
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _write_lbug_dir(base, items)
+        g = DependencyGraph.from_gitnexus_dir(base, target_file="src/main.py")
+
+    assert g.get_node("File:src/main.py") is not None
+    assert g.get_node("File:src/lib.py") is not None
+    assert len(g.relationships_of_type("IMPORTS")) == 1
+    rel = g.relationships_of_type("IMPORTS")[0]
+    assert rel.confidence == 0.9
+    assert rel.reason == "direct import"
+
+
+def test_from_gitnexus_dir_dict_format():
+    """Parse the LadybugDB dict-with-nodes/relationships JSON format."""
+    data = {
+        "nodes": [
+            {
+                "id": "File:app.py",
+                "label": "File",
+                "properties": {"filePath": "app.py"},
+            },
+            {
+                "id": "File:utils.py",
+                "label": "File",
+                "properties": {"filePath": "utils.py"},
+            },
+        ],
+        "relationships": [
+            {
+                "sourceId": "File:app.py",
+                "targetId": "File:utils.py",
+                "type": "IMPORTS",
+            }
+        ],
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _write_lbug_dir(base, data)
+        g = DependencyGraph.from_gitnexus_dir(base, target_file="app.py")
+
+    assert g.get_node("File:app.py") is not None
+    assert len(g.relationships_of_type("IMPORTS")) == 1
+    # Auto-generated relationship id
+    rel = g.relationships_of_type("IMPORTS")[0]
+    assert rel.source_id == "File:app.py"
+
+
+def test_from_gitnexus_dir_missing_lbug_raises():
+    """Missing lbug/ directory raises FileNotFoundError."""
+    import pytest
+
+    with tempfile.TemporaryDirectory() as tmp:
+        with pytest.raises(FileNotFoundError, match="LadybugDB"):
+            DependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
+
+
+def test_from_gitnexus_dir_list_format_auto_id():
+    """Relationships without an explicit id get an auto-generated id."""
+    items = [
+        {"id": "File:a.py", "label": "File", "properties": {"filePath": "a.py"}},
+        {"id": "File:b.py", "label": "File", "properties": {"filePath": "b.py"}},
+        {
+            "sourceId": "File:a.py",
+            "targetId": "File:b.py",
+            "type": "IMPORTS",
+        },
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _write_lbug_dir(base, items)
+        g = DependencyGraph.from_gitnexus_dir(base, target_file="a.py")
+
+    assert len(g.relationships_of_type("IMPORTS")) == 1
+
+
+# ---------------------------------------------------------------------------
+# dep_policies — bin boundary coverage
+# ---------------------------------------------------------------------------
+
+
+def test_dep_policies_coupling_bins():
+    from topos.logic.dep_policies import classify_coupling
+    from topos.logic.lattice import EvaluationValue
+
+    assert classify_coupling(0).evaluation == EvaluationValue.VERIFIED
+    assert classify_coupling(4).evaluation == EvaluationValue.VERIFIED
+    assert classify_coupling(5).evaluation == EvaluationValue.COMMODITY
+    assert classify_coupling(11).evaluation == EvaluationValue.COMMODITY
+    assert classify_coupling(12).evaluation == EvaluationValue.WEAK
+    assert classify_coupling(19).evaluation == EvaluationValue.WEAK
+    assert classify_coupling(20).evaluation == EvaluationValue.NOISY
+    assert classify_coupling(34).evaluation == EvaluationValue.NOISY
+    assert classify_coupling(35).evaluation == EvaluationValue.HALLUCINATED
+    assert classify_coupling(100).evaluation == EvaluationValue.HALLUCINATED
+
+
+def test_dep_policies_instability_bins():
+    from topos.logic.dep_policies import classify_instability
+    from topos.logic.lattice import EvaluationValue
+
+    assert classify_instability(0.0).evaluation == EvaluationValue.WEAK
+    assert classify_instability(0.05).evaluation == EvaluationValue.WEAK
+    assert classify_instability(0.1).evaluation == EvaluationValue.COMMODITY
+    assert classify_instability(0.2).evaluation == EvaluationValue.COMMODITY
+    assert classify_instability(0.3).evaluation == EvaluationValue.VERIFIED
+    assert classify_instability(0.5).evaluation == EvaluationValue.VERIFIED
+    assert classify_instability(0.7).evaluation == EvaluationValue.COMMODITY
+    assert classify_instability(0.8).evaluation == EvaluationValue.COMMODITY
+    assert classify_instability(0.9).evaluation == EvaluationValue.WEAK
+    assert classify_instability(1.0).evaluation == EvaluationValue.WEAK
+
+
+def test_dep_policies_classify_coupling_returns_metric_decision():
+    from topos.logic.dep_policies import classify_coupling
+
+    decision = classify_coupling(3.0)
+    assert decision.raw_score == 3.0
+    assert decision.interpretation != ""
+
+
+def test_dep_policies_classify_instability_returns_metric_decision():
+    from topos.logic.dep_policies import classify_instability
+
+    decision = classify_instability(0.5)
+    assert decision.raw_score == 0.5
+    assert decision.interpretation != ""
+
+
+def test_depgraph_verdicts_only_route_policy_active_metrics():
+    from topos.logic.omega import _depgraph_verdicts
+
+    verdicts = _depgraph_verdicts(
+        {
+            "depgraph.coupling": 6.0,
+            "depgraph.instability": 0.5,
+            "depgraph.fan_in": 10.0,
+            "depgraph.fan_out": 8.0,
+            "depgraph.dep_depth": 3.0,
+        }
+    )
+
+    assert set(verdicts.keys()) == {
+        "depgraph.coupling",
+        "depgraph.instability",
+    }
+
+
+# ---------------------------------------------------------------------------
+# _owning_file — multi-level CONTAINS traversal
+# ---------------------------------------------------------------------------
+
+
+def test_owning_file_method_inside_class_inside_file():
+    """Method → Class → File: _owning_file must walk both CONTAINS hops."""
+    from topos.metrics.depgraph.coupling import _owning_file
+
+    g = DependencyGraph(target_file="mod.py")
+    g.add_node(
+        GraphNode(id="File:mod.py", label="File", properties={"filePath": "mod.py"})
+    )
+    g.add_node(GraphNode(id="Class:mod:MyClass", label="Class", properties={}))
+    g.add_node(GraphNode(id="Method:mod:MyClass:run", label="Method", properties={}))
+    g.add_relationship(
+        GraphRelationship(
+            id="c1",
+            source_id="File:mod.py",
+            target_id="Class:mod:MyClass",
+            type="CONTAINS",
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="c2",
+            source_id="Class:mod:MyClass",
+            target_id="Method:mod:MyClass:run",
+            type="CONTAINS",
+        )
+    )
+
+    assert _owning_file(g, "Method:mod:MyClass:run") == "File:mod.py"
+    assert _owning_file(g, "Class:mod:MyClass") == "File:mod.py"
+
+
+def test_owning_file_contains_cycle_returns_none():
+    """A CONTAINS cycle must not hang; _owning_file returns None."""
+    from topos.metrics.depgraph.coupling import _owning_file
+
+    g = DependencyGraph(target_file="x.py")
+    g.add_node(GraphNode(id="A", label="Class", properties={}))
+    g.add_node(GraphNode(id="B", label="Class", properties={}))
+    g.add_relationship(
+        GraphRelationship(id="c1", source_id="A", target_id="B", type="CONTAINS")
+    )
+    g.add_relationship(
+        GraphRelationship(id="c2", source_id="B", target_id="A", type="CONTAINS")
+    )
+    # Neither A nor B is a File, and they form a cycle
+    assert _owning_file(g, "A") is None
+    assert _owning_file(g, "B") is None
+
+
+def test_coupling_counts_nested_method_imports():
+    """Efferent coupling via a Method nested in a Class should be counted."""
+    g = DependencyGraph(target_file="a.py")
+    g.add_node(
+        GraphNode(
+            id="File:a.py", label="File", properties={"filePath": "a.py"}
+        )
+    )
+    g.add_node(GraphNode(id="Class:a:A", label="Class", properties={}))
+    g.add_node(GraphNode(id="Method:a:A:go", label="Method", properties={}))
+    g.add_node(
+        GraphNode(
+            id="File:b.py", label="File", properties={"filePath": "b.py"}
+        )
+    )
+    # File:a.py → Class:a:A → Method:a:A:go  (nested two levels)
+    g.add_relationship(
+        GraphRelationship(
+            id="c1", source_id="File:a.py", target_id="Class:a:A", type="CONTAINS"
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="c2", source_id="Class:a:A", target_id="Method:a:A:go", type="CONTAINS"
+        )
+    )
+    # Method:a:A:go imports File:b.py
+    g.add_relationship(
+        GraphRelationship(
+            id="i1",
+            source_id="Method:a:A:go",
+            target_id="File:b.py",
+            type="IMPORTS",
+        )
+    )
+
+    result = calculate_coupling(g, "File:a.py")
+    assert result.efferent == 1
+    assert result.afferent == 0

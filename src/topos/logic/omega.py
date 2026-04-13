@@ -22,7 +22,7 @@ Mathematical Inspiration:
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -38,11 +38,22 @@ from topos.metrics.ast.entropy import calculate_kolmogorov_proxy
 
 if TYPE_CHECKING:
     from topos.core.morphism import ProgramMorphism
-    from topos.representations.base import Representation
+    from topos.graphs.base import Representation
 
 
 # Maps representation names to functions that turn raw metrics
 # into ``{metric_name: EvaluationValue}`` dicts.
+def _ast_verdicts(raw: dict[str, float]) -> dict[str, EvaluationValue]:
+    verdicts: dict[str, EvaluationValue] = {}
+    if "ast.complexity" in raw:
+        verdicts["ast.complexity"] = classify_complexity(
+            raw["ast.complexity"]
+        ).evaluation
+    if "ast.entropy" in raw:
+        verdicts["ast.entropy"] = classify_entropy(raw["ast.entropy"]).evaluation
+    return verdicts
+
+
 def _depgraph_verdicts(raw: dict[str, float]) -> dict[str, EvaluationValue]:
     from topos.logic.dep_policies import classify_coupling, classify_instability
 
@@ -60,9 +71,10 @@ def _depgraph_verdicts(raw: dict[str, float]) -> dict[str, EvaluationValue]:
 
 _REPRESENTATION_VERDICT_DISPATCHERS: dict[
     str,
-    type[object] | None,
+    Callable[[dict[str, float]], dict[str, EvaluationValue]],
 ] = {
-    "depgraph": None,  # sentinel; dispatch handled inline
+    "ast": _ast_verdicts,
+    "depgraph": _depgraph_verdicts,
 }
 
 
@@ -187,8 +199,9 @@ class SubobjectClassifier:
                 raw = rep.metrics()
                 representation_metrics[rep.name] = raw
 
-                if rep.name == "depgraph":
-                    verdicts.update(_depgraph_verdicts(raw))
+                dispatcher = _REPRESENTATION_VERDICT_DISPATCHERS.get(rep.name)
+                if dispatcher:
+                    verdicts.update(dispatcher(raw))
 
         evaluation = self.omega.aggregate(verdicts)
 

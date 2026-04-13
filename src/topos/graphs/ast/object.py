@@ -2,7 +2,7 @@
 AST Representation
 ------------------
 Adapts the existing :class:`~topos.core.object.ProgramObject` to the
-:class:`~topos.representations.base.Representation` protocol.
+:class:`~topos.graphs.base.Representation` protocol.
 
 This does **not** replace ``ProgramObject``; it wraps it so the
 SubobjectClassifier can treat it uniformly alongside other

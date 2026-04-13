@@ -1,7 +1,7 @@
 """
 Dependency Graph Metrics Sub-package
 -------------------------------------
-Metrics that operate on the :class:`~topos.representations.depgraph.DependencyGraph`
+Metrics that operate on the :class:`~topos.graphs.depgraph.DependencyGraph`
 representation:
 
 - Coupling (afferent/efferent) and instability

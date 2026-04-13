@@ -1,9 +1,9 @@
-"""Tests for the representations package."""
+"""Tests for the graphs package."""
 
 from topos.core.object import ProgramObject
-from topos.representations.ast.object import ASTRepresentation
-from topos.representations.base import Representation
-from topos.representations.depgraph.graph import (
+from topos.graphs.ast.object import ASTRepresentation
+from topos.graphs.base import Representation
+from topos.graphs.depgraph.graph import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,
@@ -259,6 +259,55 @@ def test_depgraph_metrics_no_file_found():
     m = g.metrics()
     assert m["depgraph.coupling"] == 0.0
     assert m["depgraph.instability"] == 0.5
+
+
+# ---------------------------------------------------------------------------
+# ASTRepresentation — verdict dispatch via registry
+# ---------------------------------------------------------------------------
+
+
+def test_ast_representation_dispatches_verdicts():
+    """ASTRepresentation in representations must produce verdicts via the registry."""
+    from topos.core.morphism import ProgramMorphism
+    from topos.core.object import ProgramObject
+    from topos.logic.omega import SubobjectClassifier
+    from topos.utils.tree_sitter import parse_python
+
+    source = "def foo():\n    if True:\n        pass\n    return 1\n"
+    morphism = ProgramMorphism(source=source)
+    root = parse_python(source)
+    obj = ProgramObject(root=root, source=source)
+    ast_rep = ASTRepresentation(program_object=obj, source=source)
+
+    classifier = SubobjectClassifier()
+    result = classifier.classify_detailed(morphism, representations=[ast_rep])
+
+    # Metrics must be stored under "ast"
+    assert "ast" in result.representation_metrics
+    assert "ast.complexity" in result.representation_metrics["ast"]
+    assert "ast.entropy" in result.representation_metrics["ast"]
+
+    # Result must equal baseline (same data path; meet is idempotent)
+    baseline = classifier.classify_detailed(morphism)
+    assert result.evaluation == baseline.evaluation
+
+
+def test_ast_verdicts_function_produces_correct_keys():
+    """_ast_verdicts maps ast.complexity and ast.entropy to EvaluationValues."""
+    from topos.logic.lattice import EvaluationValue
+    from topos.logic.omega import _ast_verdicts
+
+    verdicts = _ast_verdicts({"ast.complexity": 2.0, "ast.entropy": 0.5})
+    assert set(verdicts.keys()) == {"ast.complexity", "ast.entropy"}
+    assert all(isinstance(v, EvaluationValue) for v in verdicts.values())
+
+
+def test_ast_verdicts_ignores_missing_keys():
+    """_ast_verdicts returns an empty dict when expected keys are absent."""
+    from topos.logic.omega import _ast_verdicts
+
+    assert _ast_verdicts({}) == {}
+    assert _ast_verdicts({"depgraph.coupling": 3.0}) == {}
 
 
 # ---------------------------------------------------------------------------

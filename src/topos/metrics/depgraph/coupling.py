@@ -26,11 +26,12 @@ Mathematical Inspiration:
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from topos.representations.depgraph.graph import DependencyGraph
+    from topos.graphs.depgraph.graph import DependencyGraph
 
 
 @dataclass
@@ -52,7 +53,11 @@ class CouplingResult:
         return self.afferent + self.efferent
 
 
-def calculate_coupling(graph: DependencyGraph, file_node_id: str) -> CouplingResult:
+def calculate_coupling(
+    graph: DependencyGraph,
+    file_node_id: str,
+    symbol_ids: set[str] | None = None,
+) -> CouplingResult:
     """
     Calculate afferent and efferent coupling for a file node.
 
@@ -62,12 +67,15 @@ def calculate_coupling(graph: DependencyGraph, file_node_id: str) -> CouplingRes
     Args:
         graph: The dependency graph.
         file_node_id: The ID of the file node to analyse.
+        symbol_ids: Pre-computed set of all contained symbol IDs (including
+            *file_node_id* itself). Computed from the graph when not provided.
 
     Returns:
         A :class:`CouplingResult` with afferent and efferent counts.
     """
-    symbol_ids = set(graph.contained_symbols(file_node_id))
-    symbol_ids.add(file_node_id)
+    if symbol_ids is None:
+        symbol_ids = set(graph.all_contained_symbols(file_node_id))
+        symbol_ids.add(file_node_id)
 
     efferent_targets: set[str] = set()
     afferent_sources: set[str] = set()
@@ -108,11 +116,11 @@ def calculate_dependency_depth(graph: DependencyGraph, file_node_id: str) -> int
     Uses BFS to avoid cycles.
     """
     visited: set[str] = set()
-    frontier = [(file_node_id, 0)]
+    frontier: deque[tuple[str, int]] = deque([(file_node_id, 0)])
     max_depth = 0
 
     while frontier:
-        current, depth = frontier.pop(0)
+        current, depth = frontier.popleft()
         if current in visited:
             continue
         visited.add(current)
@@ -128,15 +136,17 @@ def calculate_dependency_depth(graph: DependencyGraph, file_node_id: str) -> int
 
 def _owning_file(graph: DependencyGraph, node_id: str) -> str | None:
     """Walk up CONTAINS edges to find the File node that owns *node_id*."""
-    node = graph.get_node(node_id)
-    if node is None:
-        return None
-    if node.label == "File":
-        return node.id
-
-    for rel in graph.incoming(node_id, "CONTAINS"):
-        owner = graph.get_node(rel.source_id)
-        if owner and owner.label == "File":
-            return owner.id
-
-    return None
+    visited: set[str] = set()
+    current = node_id
+    while current not in visited:
+        visited.add(current)
+        node = graph.get_node(current)
+        if node is None:
+            return None
+        if node.label == "File":
+            return current
+        parents = graph.incoming(current, "CONTAINS")
+        if not parents:
+            return None
+        current = parents[0].source_id
+    return None  # cycle in CONTAINS chain

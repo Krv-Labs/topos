@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from topos.representations.depgraph.graph import DependencyGraph
+    from topos.graphs.depgraph.graph import DependencyGraph
 
 
 @dataclass
@@ -40,7 +40,11 @@ class FanResult:
     fan_out: int
 
 
-def calculate_fan_in_out(graph: DependencyGraph, file_node_id: str) -> FanResult:
+def calculate_fan_in_out(
+    graph: DependencyGraph,
+    file_node_id: str,
+    symbol_ids: set[str] | None = None,
+) -> FanResult:
     """
     Calculate fan-in and fan-out for a file node.
 
@@ -50,12 +54,15 @@ def calculate_fan_in_out(graph: DependencyGraph, file_node_id: str) -> FanResult
     Args:
         graph: The dependency graph.
         file_node_id: The ID of the file node to analyse.
+        symbol_ids: Pre-computed set of all contained symbol IDs (including
+            *file_node_id* itself). Computed from the graph when not provided.
 
     Returns:
         A :class:`FanResult` with fan-in and fan-out counts.
     """
-    symbol_ids = set(graph.contained_symbols(file_node_id))
-    symbol_ids.add(file_node_id)
+    if symbol_ids is None:
+        symbol_ids = set(graph.all_contained_symbols(file_node_id))
+        symbol_ids.add(file_node_id)
 
     external_callers: set[str] = set()
     external_callees: set[str] = set()

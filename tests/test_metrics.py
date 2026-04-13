@@ -1,19 +1,19 @@
 from topos.core.object import ProgramObject
-from topos.metrics.complexity import (
+from topos.metrics.ast.complexity import (
     calculate_average_complexity,
     calculate_cyclomatic_complexity,
     calculate_function_complexities,
+)
+from topos.metrics.ast.entropy import (
+    calculate_block_entropy,
+    calculate_entropy_detailed,
+    calculate_entropy_variance,
+    calculate_kolmogorov_proxy,
 )
 from topos.metrics.distance import (
     are_clones,
     calculate_ast_distance,
     calculate_similarity,
-)
-from topos.metrics.entropy import (
-    calculate_block_entropy,
-    calculate_entropy_detailed,
-    calculate_entropy_variance,
-    calculate_kolmogorov_proxy,
 )
 from topos.utils.tree_sitter import parse_python
 
@@ -140,7 +140,7 @@ def test_distance_result_str():
 
 
 def test_entropy_result_str():
-    from topos.metrics.entropy import EntropyResult
+    from topos.metrics.ast.entropy import EntropyResult
 
     res = EntropyResult(
         ratio=0.5, compressed_size=10, original_size=20, interpretation="normal"

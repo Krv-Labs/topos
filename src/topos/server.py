@@ -7,9 +7,9 @@ from fastmcp import FastMCP
 
 from topos.core.morphism import ProgramMorphism
 from topos.logic.omega import SubobjectClassifier
-from topos.metrics.complexity import calculate_function_complexities
+from topos.metrics.ast.complexity import calculate_function_complexities
+from topos.metrics.ast.entropy import calculate_entropy_detailed
 from topos.metrics.distance import calculate_ast_distance
-from topos.metrics.entropy import calculate_entropy_detailed
 
 try:
     __version__ = version("topos")

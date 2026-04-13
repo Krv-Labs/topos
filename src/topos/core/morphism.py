@@ -28,6 +28,7 @@ from topos.core.object import ProgramObject
 
 if TYPE_CHECKING:
     from topos.logic.lattice import EvaluationValue
+    from topos.representations.base import Representation
 
 
 @dataclass
@@ -44,18 +45,22 @@ class ProgramMorphism:
         language: The programming language (default: 'python').
         filepath: Optional path to the source file.
         ast: The ProgramObject (AST) representation.
+        representations: Additional representations (depgraph, etc.)
+            attached to this morphism for multi-axis evaluation.
 
     Categorical Interpretation:
         In category theory, a morphism f: A → B is an arrow between objects.
-        Here, the source code IS the morphism—it defines how to transform
+        Here, the source code IS the morphism -- it defines how to transform
         inputs (domain) into outputs (codomain). The AST captures the
-        'internal structure' of this transformation.
+        'internal structure' of this transformation; additional
+        representations capture inter-module structure.
     """
 
     source: str
     language: str = "python"
     filepath: Path | None = None
     ast: ProgramObject | None = field(default=None, repr=False)
+    representations: list[Representation] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
         """Parse the source code into an AST if not provided."""
@@ -114,6 +119,9 @@ class ProgramMorphism:
         """
         Evaluate this morphism using the Subobject Classifier.
 
+        If additional representations are attached they will be included
+        in the evaluation.
+
         Returns:
             An EvaluationValue from the Heyting Algebra representing the
             code's position in the evaluation lattice.
@@ -121,7 +129,11 @@ class ProgramMorphism:
         from topos.logic.omega import SubobjectClassifier
 
         classifier = SubobjectClassifier()
-        return classifier.classify(self)
+        result = classifier.classify_detailed(
+            self,
+            representations=self.representations or None,
+        )
+        return result.evaluation
 
     def __hash__(self) -> int:
         """Hash based on source content."""

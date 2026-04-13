@@ -1,0 +1,290 @@
+"""Tests for the representations package."""
+
+from topos.core.object import ProgramObject
+from topos.representations.ast.object import ASTRepresentation
+from topos.representations.base import Representation
+from topos.representations.depgraph.graph import (
+    DependencyGraph,
+    GraphNode,
+    GraphRelationship,
+)
+from topos.utils.tree_sitter import parse_python
+
+# ---------------------------------------------------------------------------
+# Protocol conformance
+# ---------------------------------------------------------------------------
+
+
+def test_ast_representation_conforms_to_protocol():
+    source = "x = 1"
+    root = parse_python(source)
+    obj = ProgramObject(root=root, source=source)
+    rep = ASTRepresentation(program_object=obj, source=source)
+    assert isinstance(rep, Representation)
+
+
+def test_dependency_graph_conforms_to_protocol():
+    graph = DependencyGraph(target_file="foo.py")
+    assert isinstance(graph, Representation)
+
+
+# ---------------------------------------------------------------------------
+# ASTRepresentation
+# ---------------------------------------------------------------------------
+
+
+def test_ast_representation_name():
+    source = "x = 1"
+    root = parse_python(source)
+    obj = ProgramObject(root=root, source=source)
+    rep = ASTRepresentation(program_object=obj, source=source)
+    assert rep.name == "ast"
+
+
+def test_ast_representation_metrics():
+    source = "def foo():\n    if True:\n        pass\n    return 1"
+    root = parse_python(source)
+    obj = ProgramObject(root=root, source=source)
+    rep = ASTRepresentation(program_object=obj, source=source)
+
+    m = rep.metrics()
+    assert "ast.complexity" in m
+    assert "ast.entropy" in m
+    assert m["ast.complexity"] >= 1.0
+    assert 0.0 <= m["ast.entropy"] <= 2.0
+
+
+# ---------------------------------------------------------------------------
+# DependencyGraph construction and lookups
+# ---------------------------------------------------------------------------
+
+
+def _make_simple_graph() -> DependencyGraph:
+    """Build a small in-memory dependency graph for testing."""
+    g = DependencyGraph(target_file="src/app.py")
+
+    g.add_node(
+        GraphNode(
+            id="File:src/app.py",
+            label="File",
+            properties={"filePath": "src/app.py", "name": "app.py"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="File:src/utils.py",
+            label="File",
+            properties={"filePath": "src/utils.py", "name": "utils.py"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="File:src/db.py",
+            label="File",
+            properties={"filePath": "src/db.py", "name": "db.py"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="File:src/models.py",
+            label="File",
+            properties={"filePath": "src/models.py", "name": "models.py"},
+        )
+    )
+
+    g.add_node(
+        GraphNode(
+            id="Func:app:main",
+            label="Function",
+            properties={"filePath": "src/app.py", "name": "main"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="Func:utils:helper",
+            label="Function",
+            properties={"filePath": "src/utils.py", "name": "helper"},
+        )
+    )
+    g.add_node(
+        GraphNode(
+            id="Func:db:query",
+            label="Function",
+            properties={"filePath": "src/db.py", "name": "query"},
+        )
+    )
+
+    # CONTAINS edges
+    g.add_relationship(
+        GraphRelationship(
+            id="c1",
+            source_id="File:src/app.py",
+            target_id="Func:app:main",
+            type="CONTAINS",
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="c2",
+            source_id="File:src/utils.py",
+            target_id="Func:utils:helper",
+            type="CONTAINS",
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="c3",
+            source_id="File:src/db.py",
+            target_id="Func:db:query",
+            type="CONTAINS",
+        )
+    )
+
+    # app.py imports utils.py and db.py
+    g.add_relationship(
+        GraphRelationship(
+            id="i1",
+            source_id="File:src/app.py",
+            target_id="File:src/utils.py",
+            type="IMPORTS",
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="i2",
+            source_id="File:src/app.py",
+            target_id="File:src/db.py",
+            type="IMPORTS",
+        )
+    )
+
+    # db.py imports models.py (transitive chain: app -> db -> models)
+    g.add_relationship(
+        GraphRelationship(
+            id="i3",
+            source_id="File:src/db.py",
+            target_id="File:src/models.py",
+            type="IMPORTS",
+        )
+    )
+
+    # utils.py imports app.py (creates afferent coupling for app.py)
+    g.add_relationship(
+        GraphRelationship(
+            id="i4",
+            source_id="File:src/utils.py",
+            target_id="File:src/app.py",
+            type="IMPORTS",
+        )
+    )
+
+    # CALLS edges
+    g.add_relationship(
+        GraphRelationship(
+            id="call1",
+            source_id="Func:app:main",
+            target_id="Func:utils:helper",
+            type="CALLS",
+        )
+    )
+    g.add_relationship(
+        GraphRelationship(
+            id="call2",
+            source_id="Func:app:main",
+            target_id="Func:db:query",
+            type="CALLS",
+        )
+    )
+
+    return g
+
+
+def test_depgraph_name():
+    g = DependencyGraph(target_file="foo.py")
+    assert g.name == "depgraph"
+
+
+def test_depgraph_node_lookups():
+    g = _make_simple_graph()
+    assert g.get_node("File:src/app.py") is not None
+    assert g.get_node("nonexistent") is None
+    assert len(g.nodes_of_label("File")) == 4
+    assert len(g.nodes_of_label("Function")) == 3
+
+
+def test_depgraph_relationship_lookups():
+    g = _make_simple_graph()
+    assert len(g.relationships_of_type("IMPORTS")) == 4
+    assert len(g.relationships_of_type("CALLS")) == 2
+    assert len(g.relationships_of_type("CONTAINS")) == 3
+
+
+def test_depgraph_outgoing_incoming():
+    g = _make_simple_graph()
+    outgoing_imports = g.outgoing("File:src/app.py", "IMPORTS")
+    assert len(outgoing_imports) == 2
+
+    incoming_imports = g.incoming("File:src/app.py", "IMPORTS")
+    assert len(incoming_imports) == 1
+
+
+def test_depgraph_file_node_id():
+    g = _make_simple_graph()
+    assert g.file_node_id() == "File:src/app.py"
+
+    g2 = DependencyGraph(target_file="nonexistent.py")
+    assert g2.file_node_id() is None
+
+
+def test_depgraph_contained_symbols():
+    g = _make_simple_graph()
+    symbols = g.contained_symbols("File:src/app.py")
+    assert "Func:app:main" in symbols
+
+
+def test_depgraph_metrics():
+    g = _make_simple_graph()
+    m = g.metrics()
+    assert "depgraph.coupling" in m
+    assert "depgraph.instability" in m
+    assert "depgraph.fan_in" in m
+    assert "depgraph.fan_out" in m
+    assert "depgraph.dep_depth" in m
+    assert m["depgraph.coupling"] > 0
+    assert 0.0 <= m["depgraph.instability"] <= 1.0
+
+
+def test_depgraph_metrics_no_file_found():
+    g = DependencyGraph(target_file="nonexistent.py")
+    m = g.metrics()
+    assert m["depgraph.coupling"] == 0.0
+    assert m["depgraph.instability"] == 0.5
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility of metric imports
+# ---------------------------------------------------------------------------
+
+
+def test_backward_compat_metrics_imports():
+    from topos.metrics import (
+        calculate_ast_distance,
+        calculate_cyclomatic_complexity,
+        calculate_kolmogorov_proxy,
+    )
+
+    assert callable(calculate_cyclomatic_complexity)
+    assert callable(calculate_kolmogorov_proxy)
+    assert callable(calculate_ast_distance)
+
+
+def test_backward_compat_top_level_imports():
+    from topos import (
+        ASTRepresentation,
+        DependencyGraph,
+        Representation,
+    )
+
+    assert ASTRepresentation is not None
+    assert DependencyGraph is not None
+    assert Representation is not None

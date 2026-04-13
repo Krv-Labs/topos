@@ -15,12 +15,14 @@ Mathematical Inspiration:
     EvaluationLattice, and the characteristic map evaluates code quality
     along multiple dimensions.
 
-    The classifier combines metrics (complexity, entropy, distance)
-    into a single evaluation value, acting as the judgment of our system.
+    The classifier combines metrics from *all* attached representations
+    (AST, dependency graph, ...) into a single evaluation value via
+    lattice aggregation.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -31,11 +33,37 @@ from topos.logic.policies import (
     classify_entropy,
     normalize_complexity,
 )
-from topos.metrics.complexity import calculate_cyclomatic_complexity
-from topos.metrics.entropy import calculate_kolmogorov_proxy
+from topos.metrics.ast.complexity import calculate_cyclomatic_complexity
+from topos.metrics.ast.entropy import calculate_kolmogorov_proxy
 
 if TYPE_CHECKING:
     from topos.core.morphism import ProgramMorphism
+    from topos.representations.base import Representation
+
+
+# Maps representation names to functions that turn raw metrics
+# into ``{metric_name: EvaluationValue}`` dicts.
+def _depgraph_verdicts(raw: dict[str, float]) -> dict[str, EvaluationValue]:
+    from topos.logic.dep_policies import classify_coupling, classify_instability
+
+    verdicts: dict[str, EvaluationValue] = {}
+    if "depgraph.coupling" in raw:
+        verdicts["depgraph.coupling"] = classify_coupling(
+            raw["depgraph.coupling"]
+        ).evaluation
+    if "depgraph.instability" in raw:
+        verdicts["depgraph.instability"] = classify_instability(
+            raw["depgraph.instability"]
+        ).evaluation
+    return verdicts
+
+
+_REPRESENTATION_VERDICT_DISPATCHERS: dict[
+    str,
+    type[object] | None,
+] = {
+    "depgraph": None,  # sentinel; dispatch handled inline
+}
 
 
 @dataclass
@@ -52,6 +80,7 @@ class ClassificationResult:
         entropy_score: Normalized Kolmogorov proxy (0-1).
         is_valid: Whether the code parses successfully.
         metrics: Raw metric values for inspection.
+        representation_metrics: Per-representation raw metric dicts.
     """
 
     evaluation: EvaluationValue
@@ -59,14 +88,20 @@ class ClassificationResult:
     entropy_score: float
     is_valid: bool
     metrics: dict[str, object] = field(default_factory=dict)
+    representation_metrics: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def __str__(self) -> str:
-        return (
-            f"Classification: {self.evaluation}\n"
-            f"  Complexity: {self.complexity_score:.2f}\n"
-            f"  Entropy: {self.entropy_score:.2f}\n"
-            f"  Valid Syntax: {self.is_valid}"
-        )
+        parts = [
+            f"Classification: {self.evaluation}",
+            f"  Complexity: {self.complexity_score:.2f}",
+            f"  Entropy: {self.entropy_score:.2f}",
+            f"  Valid Syntax: {self.is_valid}",
+        ]
+        for rep_name, rep_metrics in self.representation_metrics.items():
+            parts.append(f"  [{rep_name}]")
+            for k, v in rep_metrics.items():
+                parts.append(f"    {k}: {v:.3f}")
+        return "\n".join(parts)
 
 
 @dataclass
@@ -78,10 +113,9 @@ class SubobjectClassifier:
     morphisms to evaluation values in the Heyting Algebra, implementing
     the characteristic map χ: Program → Ω.
 
-    The classifier combines metric verdicts to determine where a
-    piece of code falls in a six-point lattice:
-    INVALID < HALLUCINATED < VERIFIED and
-    INVALID < {NOISY, WEAK, COMMODITY} with NOISY/WEAK < COMMODITY < VERIFIED.
+    The classifier combines metric verdicts from the AST representation
+    and any additional attached representations to determine where a
+    piece of code falls in the evaluation lattice.
 
     Attributes:
         omega: The EvaluationLattice (our Ω).
@@ -93,13 +127,8 @@ class SubobjectClassifier:
         """
         Map a ProgramMorphism to an EvaluationValue in the lattice.
 
-        This is the core 'Evaluation' function of the library—the
+        This is the core 'Evaluation' function of the library -- the
         implementation of the characteristic map χ: X → Ω.
-
-        The classification logic:
-        1. If code doesn't parse → INVALID
-        2. Otherwise run metric-level classifiers from `complexity` and `entropy`.
-        3. Combine their lattice evaluations with meet to surface nuanced grades.
 
         Args:
             morphism: The program to classify.
@@ -110,12 +139,22 @@ class SubobjectClassifier:
         result = self.classify_detailed(morphism)
         return result.evaluation
 
-    def classify_detailed(self, morphism: ProgramMorphism) -> ClassificationResult:
+    def classify_detailed(
+        self,
+        morphism: ProgramMorphism,
+        representations: Sequence[Representation] | None = None,
+    ) -> ClassificationResult:
         """
         Perform detailed classification with full metrics.
 
+        The AST-based complexity/entropy evaluation always runs.  When
+        additional *representations* are provided their metrics are
+        computed, mapped through the appropriate evaluation section, and
+        aggregated into the final verdict via the lattice.
+
         Args:
             morphism: The program to classify.
+            representations: Optional extra representations to include.
 
         Returns:
             A ClassificationResult with the evaluation and all metrics.
@@ -135,12 +174,23 @@ class SubobjectClassifier:
 
         complexity_score = normalize_complexity(raw_complexity)
         entropy_score = raw_entropy
-        evaluation = self.omega.aggregate(
-            {
-                "complexity": complexity_assessment.evaluation,
-                "entropy": entropy_assessment.evaluation,
-            }
-        )
+
+        verdicts: dict[str, EvaluationValue] = {
+            "complexity": complexity_assessment.evaluation,
+            "entropy": entropy_assessment.evaluation,
+        }
+
+        representation_metrics: dict[str, dict[str, float]] = {}
+
+        if representations:
+            for rep in representations:
+                raw = rep.metrics()
+                representation_metrics[rep.name] = raw
+
+                if rep.name == "depgraph":
+                    verdicts.update(_depgraph_verdicts(raw))
+
+        evaluation = self.omega.aggregate(verdicts)
 
         return ClassificationResult(
             evaluation=evaluation,
@@ -157,6 +207,7 @@ class SubobjectClassifier:
                 "entropy_evaluation": entropy_assessment.evaluation.name,
                 "entropy_interpretation": entropy_assessment.interpretation,
             },
+            representation_metrics=representation_metrics,
         )
 
     def combine(self, *values: EvaluationValue) -> EvaluationValue:
@@ -164,7 +215,7 @@ class SubobjectClassifier:
         Combine multiple evaluation values using meet (∧).
 
         When evaluating a codebase with multiple files, the overall
-        evaluation is the meet of all individual evaluations—we're only as
+        evaluation is the meet of all individual evaluations -- we're only as
         strong as our weakest link.
         """
         return self.omega.combine(*values)

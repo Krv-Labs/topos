@@ -74,13 +74,13 @@ def evaluate_code(code: str, language: str = "python") -> dict[str, Any]:
         result = classifier.classify_detailed(morphism)
 
         return {
-            "evaluation": result.evaluation.name,
-            "symbol": result.evaluation.symbol,
-            "description": result.evaluation.description,
-            "complexity_score": result.complexity_score,
-            "entropy_score": result.entropy_score,
-            "is_valid": result.is_valid,
-            "metrics": result.metrics,
+            "is_parseable": result.is_parseable,
+            "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
+            "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
+            "summary": result.summary().name,
+            "summary_symbol": result.summary().symbol,
+            "summary_description": result.summary().description,
+            "raw_metrics": result.raw_metrics,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -193,19 +193,22 @@ def assess_improvement(
         curr_res = classifier.classify_detailed(curr_morph)
         prop_res = classifier.classify_detailed(prop_morph)
 
-        is_changed_evaluation = curr_res.evaluation != prop_res.evaluation
+        curr_summary = curr_res.summary()
+        prop_summary = prop_res.summary()
+
+        is_changed_evaluation = curr_summary != prop_summary
         is_improvement = (
-            lattice.leq(curr_res.evaluation, prop_res.evaluation)
-            and is_changed_evaluation
+            lattice.leq(curr_summary, prop_summary) and is_changed_evaluation
         )
         is_regression = (
-            lattice.leq(prop_res.evaluation, curr_res.evaluation)
-            and is_changed_evaluation
+            lattice.leq(prop_summary, curr_summary) and is_changed_evaluation
         )
 
-        complexity_delta = prop_res.complexity_score - curr_res.complexity_score
+        curr_complexity = curr_res.raw_metrics.get("ast.complexity", 0.0)
+        prop_complexity = prop_res.raw_metrics.get("ast.complexity", 0.0)
+        complexity_delta = prop_complexity - curr_complexity
 
-        can_compute_distance = curr_res.is_valid and prop_res.is_valid
+        can_compute_distance = curr_res.is_parseable and prop_res.is_parseable
         dist_res = (
             calculate_ast_distance(curr_morph.ast, prop_morph.ast)
             if can_compute_distance
@@ -217,7 +220,7 @@ def assess_improvement(
             status = "IMPROVEMENT"
         elif is_regression:
             status = "REGRESSION"
-        elif curr_res.evaluation == prop_res.evaluation:
+        elif curr_summary == prop_summary:
             if complexity_delta < 0:
                 status = "IMPROVEMENT (Lower Complexity)"
             elif complexity_delta > 0:
@@ -226,14 +229,16 @@ def assess_improvement(
         return {
             "status": status,
             "current": {
-                "evaluation": curr_res.evaluation.name,
-                "symbol": curr_res.evaluation.symbol,
-                "complexity": curr_res.complexity_score,
+                "dimensions": {dim: val.name for dim, val in curr_res.dimensions.items()},
+                "summary": curr_summary.name,
+                "summary_symbol": curr_summary.symbol,
+                "complexity": curr_complexity,
             },
             "proposed": {
-                "evaluation": prop_res.evaluation.name,
-                "symbol": prop_res.evaluation.symbol,
-                "complexity": prop_res.complexity_score,
+                "dimensions": {dim: val.name for dim, val in prop_res.dimensions.items()},
+                "summary": prop_summary.name,
+                "summary_symbol": prop_summary.symbol,
+                "complexity": prop_complexity,
             },
             "analysis": {
                 "evaluation_improved": is_improvement,
@@ -267,12 +272,11 @@ def inspect_code(code: str, language: str = "python") -> dict[str, Any]:
         result = classifier.classify_detailed(morphism)
 
         inspection: dict[str, Any] = {
-            "evaluation": result.evaluation.name,
-            "symbol": result.evaluation.symbol,
-            "is_valid": result.is_valid,
-            "complexity_score": result.complexity_score,
-            "entropy_score": result.entropy_score,
-            "ast_metrics": result.metrics,
+            "is_parseable": result.is_parseable,
+            "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
+            "summary": result.summary().name,
+            "raw_metrics": result.raw_metrics,
+            "interpretation": result.interpretation,
             "functions": {},
             "entropy_details": {},
         }

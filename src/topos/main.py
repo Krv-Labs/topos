@@ -7,7 +7,7 @@ This is the literal implementation of the classification map. When a user
 runs `topos evaluate my_code.py`, the library:
 1. Lifts the text into a Morphism (Category Object)
 2. Passes it through the Subobject Classifier (Ω)
-3. Outputs an Evaluation from the Lattice
+3. Outputs per-dimension Evaluations from the Lattice
 
 Usage:
     topos evaluate path/to/code.py
@@ -18,7 +18,10 @@ Usage:
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -27,7 +30,7 @@ import click
 from topos import __version__
 from topos.core.morphism import ProgramMorphism
 from topos.logic.lattice import EvaluationValue
-from topos.logic.omega import SubobjectClassifier
+from topos.logic.omega import ClassificationResult, SubobjectClassifier
 
 
 class DepgraphLoadError(RuntimeError):
@@ -40,7 +43,7 @@ def cli() -> None:
     """
     Topos: Category-theoretic code quality evaluation.
 
-    Treating programs as morphisms in a world of commodity code.
+    Treating programs as morphisms in a world of structured code.
     Building the subobject classifier for rigorous program evaluations.
     """
     pass
@@ -86,15 +89,20 @@ def evaluate(
     """
     Evaluate code quality using the Subobject Classifier.
 
-    Analyzes Python files and classifies them in the evaluation lattice:
+    Analyzes Python files and classifies them per quality dimension:
 
     \b
-    ⊥ INVALID        - Syntactically broken code
-    ○ HALLUCINATED   - Likely vacuous or fabricated output
-    ◑ NOISY         - Repetitive/atypical structural signal
-    ◒ WEAK          - Functional with elevated structural risk
-    ◐ COMMODITY     - Functional but with concerns
-    ⊤ VERIFIED       - Maintainable and human-aligned
+    structural — Internal code structure (complexity, entropy):
+      ⊥ BROKEN      - Structurally broken; cannot be evaluated
+      ○ ENTANGLED   - Extreme structural or coupling pathology
+      ◑ COUPLED     - Significant anomaly; tight coupling or brittle structure
+      ◒ COMPLEX     - More complex than the task warrants
+      ◐ STABLE      - Working code; structurally sound with minor concerns
+      ⊤ SOUND       - Clean, maintainable, appropriately scoped
+
+    \b
+    coupling — Module positioning (requires --gitnexus-dir):
+      Same scale applied to coupling and instability metrics.
 
     Examples:
 
@@ -130,9 +138,13 @@ def evaluate(
     else:
         _output_text(results, verbose)
 
-    overall = classifier.combine(*[EvaluationValue[r["evaluation"]] for r in results])
+    # Per-dimension overall rollup
+    classification_results = [r["_result"] for r in results]
+    overall = classifier.combine_dimensions(classification_results)
     click.echo()
-    click.echo(f"Overall: {overall}")
+    click.echo("Overall:")
+    for dim, val in overall.items():
+        click.echo(f"  {dim}: {val}")
 
 
 @cli.command()
@@ -197,7 +209,7 @@ def inspect(path: str, gitnexus_dir: str | None) -> None:
     """
     Inspect detailed metrics for a single file.
 
-    Shows all available metrics and classification details.
+    Shows all available metrics and per-dimension classification details.
 
     Example:
 
@@ -223,19 +235,23 @@ def inspect(path: str, gitnexus_dir: str | None) -> None:
 
     click.echo("Classification")
     click.echo("-" * 40)
-    click.echo(f"Evaluation: {result.evaluation}")
-    click.echo(f"Valid Syntax: {result.is_valid}")
+    if not result.is_parseable:
+        click.echo("⊥ BROKEN — parse failure")
+        sys.exit(1)
+
+    for dim, val in result.dimensions.items():
+        click.echo(f"  {dim}: {val}")
+    click.echo(f"  Valid Syntax: {result.is_parseable}")
     click.echo()
 
-    click.echo("Metrics")
+    click.echo("Raw Metrics")
     click.echo("-" * 40)
-    click.echo(f"Complexity Score: {result.complexity_score:.3f}")
-    click.echo(f"Entropy Score: {result.entropy_score:.3f}")
+    for k, v in result.raw_metrics.items():
+        interp = result.interpretation.get(k, "")
+        suffix = f"  ({interp})" if interp else ""
+        click.echo(f"  {k}: {v:.3f}{suffix}")
 
     if morphism.ast:
-        click.echo(f"AST Nodes: {result.metrics.get('node_count', 'N/A')}")
-        click.echo(f"AST Depth: {result.metrics.get('depth', 'N/A')}")
-
         click.echo()
         click.echo("Function Complexities")
         click.echo("-" * 40)
@@ -256,14 +272,6 @@ def inspect(path: str, gitnexus_dir: str | None) -> None:
     entropy = calculate_entropy_detailed(morphism.source)
     click.echo(f"  Compression Ratio: {entropy.ratio:.3f}")
     click.echo(f"  Interpretation: {entropy.interpretation}")
-
-    if result.representation_metrics:
-        for rep_name, rep_metrics in result.representation_metrics.items():
-            click.echo()
-            click.echo(f"{rep_name.upper()} Metrics")
-            click.echo("-" * 40)
-            for k, v in rep_metrics.items():
-                click.echo(f"  {k}: {v:.3f}")
 
 
 @cli.command()
@@ -348,6 +356,58 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
             )
 
 
+@cli.group()
+def depgraph() -> None:
+    """Commands for working with dependency graphs."""
+    pass
+
+
+@depgraph.command()
+@click.option(
+    "--dir",
+    "directory",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Repository root to analyze (default: current working directory).",
+)
+def generate(directory: str | None) -> None:
+    """
+    Generate a dependency graph using GitNexus.
+
+    Shells out to 'gitnexus analyze' and writes the .gitnexus/ directory
+    that --gitnexus-dir consumes.
+
+    Example:
+
+    \b
+        topos depgraph generate
+        topos depgraph generate --dir /path/to/repo
+    """
+    target_dir = Path(directory).resolve() if directory else Path.cwd()
+
+    if shutil.which("gitnexus") is None:
+        click.echo(
+            "GitNexus not found. Install it with: npm install -g gitnexus",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo(
+        "Using GitNexus (https://github.com/abhigyanpatwari/GitNexus) "
+        "to generate dependency graph...\n"
+    )
+    click.echo("  $ gitnexus analyze\n")
+
+    proc = subprocess.run(["gitnexus", "analyze"], cwd=target_dir)
+
+    if proc.returncode != 0:
+        sys.exit(proc.returncode)
+
+    gitnexus_path = target_dir / ".gitnexus"
+    click.echo(f"\nDependency graph written to {gitnexus_path}")
+    click.echo(f"Next: topos evaluate src/ -r --gitnexus-dir {gitnexus_path}")
+
+
 def main() -> None:
     """Console script entrypoint."""
     cli()
@@ -378,7 +438,7 @@ def _build_representations(filepath: str, gitnexus_dir: str | None) -> list:
 
         try:
             depgraph = DependencyGraph.from_gitnexus_dir(gitnexus_dir, filepath)
-        except Exception as exc:
+        except (OSError, json.JSONDecodeError, ValueError, KeyError) as exc:
             raise DepgraphLoadError(
                 f"Failed to build depgraph for {filepath} using {gitnexus_dir}: {exc}"
             ) from exc
@@ -398,49 +458,75 @@ def _evaluate_file(
         representations = _build_representations(str(filepath), gitnexus_dir)
         result = classifier.classify_detailed(morphism, representations=representations)
 
+        complexity = result.raw_metrics.get("ast.complexity", 0.0)
+        entropy = result.raw_metrics.get("ast.entropy", 0.0)
+
         return {
             "file": str(filepath),
-            "evaluation": result.evaluation.name,
-            "symbol": result.evaluation.symbol,
-            "complexity": result.complexity_score,
-            "entropy": result.entropy_score,
-            "valid": result.is_valid,
-            "metrics": result.metrics,
+            "is_parseable": result.is_parseable,
+            "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
+            "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
+            "summary": result.summary().name,
+            "summary_symbol": result.summary().symbol,
+            "raw_metrics": result.raw_metrics,
+            # Legacy scalar fields for backward compat
+            "evaluation": result.summary().name,
+            "symbol": result.summary().symbol,
+            "complexity": normalize_complexity(int(complexity)) if complexity else 0.0,
+            "entropy": entropy,
+            "valid": result.is_parseable,
+            "_result": result,  # internal; stripped before JSON output
         }
     except DepgraphLoadError:
         raise
     except Exception as e:
         return {
             "file": str(filepath),
-            "evaluation": "INVALID",
+            "is_parseable": False,
+            "dimensions": {},
+            "dimension_symbols": {},
+            "summary": "BROKEN",
+            "summary_symbol": "⊥",
+            "raw_metrics": {},
+            "evaluation": "BROKEN",
             "symbol": "⊥",
             "complexity": 1.0,
             "entropy": 1.0,
             "valid": False,
             "error": str(e),
+            "_result": ClassificationResult(is_parseable=False),
         }
 
 
 def _output_text(results: list[dict], verbose: bool) -> None:
     """Output results as formatted text."""
     for result in results:
-        line = f"{result['symbol']} {result['evaluation']:12} {result['file']}"
-        click.echo(line)
+        click.echo(result["file"])
+        for dim, name in result["dimensions"].items():
+            sym = result["dimension_symbols"].get(dim, "")
+            click.echo(f"  {dim}: {sym} {name}")
+        if not result["dimensions"]:
+            click.echo(f"  ⊥ BROKEN (parse failure)")
 
         if verbose:
-            click.echo(f"   Complexity: {result['complexity']:.3f}")
-            click.echo(f"   Entropy: {result['entropy']:.3f}")
+            for k, v in result["raw_metrics"].items():
+                click.echo(f"    {k}: {v:.3f}")
             if "error" in result:
-                click.echo(f"   Error: {result['error']}")
+                click.echo(f"    Error: {result['error']}")
 
 
 def _output_json(results: list[dict]) -> None:
     """Output results as JSON."""
     import json
 
+    # Strip internal _result key before serialising
+    serialisable = [
+        {k: v for k, v in r.items() if k != "_result"}
+        for r in results
+    ]
     output = {
         "version": __version__,
-        "results": results,
+        "results": serialisable,
     }
     click.echo(json.dumps(output, indent=2))
 
@@ -564,6 +650,11 @@ def _remove_provenance_record() -> None:
         )
         return
     click.echo(f"Removed provenance record: {provenance_path}")
+
+
+def normalize_complexity(raw: int) -> float:
+    from topos.logic.policies import normalize_complexity as _norm
+    return _norm(raw)
 
 
 if __name__ == "__main__":

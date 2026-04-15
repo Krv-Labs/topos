@@ -330,8 +330,11 @@ class SubobjectClassifier:
         Aggregate per-dimension verdicts across multiple files.
 
         Uses minimum score across files per dimension, then re-applies the
-        threshold to determine the lattice target.  Files without a given
-        dimension are skipped for that axis.
+        threshold to determine the lattice target.
+
+        Parse failures are treated as a failing structural signal
+        (score 0.0 for "structural") so syntactically invalid files always
+        affect aggregate results.
 
         Args:
             results:   Per-file ClassificationResult instances.
@@ -342,6 +345,11 @@ class SubobjectClassifier:
         """
         min_scores: dict[str, float] = {}
         for result in results:
+            if not result.is_parseable:
+                min_scores["structural"] = min(
+                    min_scores.get("structural", 1.0),
+                    0.0,
+                )
             for dim, score in result.scores.items():
                 if dim not in min_scores or score < min_scores[dim]:
                     min_scores[dim] = score

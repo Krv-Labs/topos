@@ -17,7 +17,7 @@ Mathematical Context:
 
     tree-sitter provides incremental parsing, making it efficient
     for repeated analysis of evolving code—perfect for evaluating
-    code as it's being generated or modified.
+    commodity code as it's being generated or modified.
 
 Usage:
     from topos.utils.tree_sitter import parse_python, PythonParser

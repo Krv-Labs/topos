@@ -5,7 +5,7 @@ The command-line interface for topos.
 
 This is the literal implementation of the classification map. When a user
 runs `topos evaluate my_code.py`, the library:
-1. Lifts the text into a Morphism (Category Object)
+1. Lifts the text into a Morphism (Categorical Arrow)
 2. Passes it through the Subobject Classifier (Ω)
 3. Outputs per-dimension Evaluations from the Lattice
 
@@ -29,8 +29,8 @@ import click
 
 from topos import __version__
 from topos.core.morphism import ProgramMorphism
-from topos.logic.lattice import EvaluationValue
 from topos.logic.omega import ClassificationResult, SubobjectClassifier
+from topos.logic.policies.base import Priority
 
 
 class DepgraphLoadError(RuntimeError):
@@ -70,6 +70,13 @@ def cli() -> None:
     help="Output results as JSON.",
 )
 @click.option(
+    "--priority",
+    type=click.Choice(["balanced", "composable", "self_contained"]),
+    default="balanced",
+    show_default=True,
+    help="Optimization priority: shifts metric weights toward the selected target.",
+)
+@click.option(
     "--gitnexus-dir",
     type=click.Path(exists=True, file_okay=False),
     default=None,
@@ -84,33 +91,36 @@ def evaluate(
     recursive: bool,
     verbose: bool,
     output_json: bool,
+    priority: str,
     gitnexus_dir: str | None,
 ) -> None:
     """
     Evaluate code quality using the Subobject Classifier.
 
-    Analyzes Python files and classifies them per quality dimension:
+    Classifies files on the diamond evaluation lattice:
 
     \b
-    structural — Internal code structure (complexity, entropy):
-      ⊥ BROKEN      - Structurally broken; cannot be evaluated
-      ○ ENTANGLED   - Extreme structural or coupling pathology
-      ◑ COUPLED     - Significant anomaly; tight coupling or brittle structure
-      ◒ COMPLEX     - More complex than the task warrants
-      ◐ STABLE      - Working code; structurally sound with minor concerns
-      ⊤ SOUND       - Clean, maintainable, appropriately scoped
+      ⊥ BROKEN         — Fails both targets (low quality or parse failure)
+      ◑ COMPOSABLE     — Good coupling; composes well with other modules
+      ◐ SELF_CONTAINED — Good structure; low complexity, clean entropy
+      ⊤ SOUND          — Both targets achieved (the ideal)
 
     \b
-    coupling — Module positioning (requires --gitnexus-dir):
-      Same scale applied to coupling and instability metrics.
+    Use --priority to direct the evaluation toward a specific target:
+      balanced       Equal weight on all metrics (default)
+      composable     Upweights coupling quality
+      self_contained Upweights structural quality (complexity + entropy)
+
+    \b
+    coupling dimension requires --gitnexus-dir (dependency graph data).
 
     Examples:
 
     \b
         topos evaluate script.py
-        topos evaluate src/ -r
+        topos evaluate src/ -r --priority self_contained
         topos evaluate *.py -v
-        topos evaluate src/ -r --gitnexus-dir .gitnexus
+        topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable
     """
     if not paths:
         click.echo("Error: No paths provided.", err=True)
@@ -125,9 +135,11 @@ def evaluate(
     classifier = SubobjectClassifier()
     results: list[dict] = []
 
+    parsed_priority = Priority(priority)
+
     for filepath in files:
         try:
-            result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir)
+            result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir, parsed_priority)
         except DepgraphLoadError as exc:
             click.echo(f"Error: {exc}", err=True)
             sys.exit(1)
@@ -138,7 +150,7 @@ def evaluate(
     else:
         _output_text(results, verbose)
 
-    # Per-dimension overall rollup
+    # Per-dimension overall rollup (min score across files, then threshold)
     classification_results = [r["_result"] for r in results]
     overall = classifier.combine_dimensions(classification_results)
     click.echo()
@@ -451,28 +463,28 @@ def _evaluate_file(
     classifier: SubobjectClassifier,
     verbose: bool,
     gitnexus_dir: str | None = None,
+    priority: Priority = Priority.BALANCED,
 ) -> dict:
     """Evaluate a single file and return results as a dict."""
     try:
         morphism = ProgramMorphism.from_file(filepath)
         representations = _build_representations(str(filepath), gitnexus_dir)
-        result = classifier.classify_detailed(morphism, representations=representations)
+        result = classifier.classify_detailed(
+            morphism, representations=representations, priority=priority
+        )
 
-        complexity = result.raw_metrics.get("ast.complexity", 0.0)
         entropy = result.raw_metrics.get("ast.entropy", 0.0)
 
         return {
             "file": str(filepath),
             "is_parseable": result.is_parseable,
+            "lattice_element": result.summary().name,
+            "lattice_symbol": result.summary().symbol,
             "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
             "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
-            "summary": result.summary().name,
-            "summary_symbol": result.summary().symbol,
+            "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+            "priority": priority.value,
             "raw_metrics": result.raw_metrics,
-            # Legacy scalar fields for backward compat
-            "evaluation": result.summary().name,
-            "symbol": result.summary().symbol,
-            "complexity": normalize_complexity(int(complexity)) if complexity else 0.0,
             "entropy": entropy,
             "valid": result.is_parseable,
             "_result": result,  # internal; stripped before JSON output
@@ -483,15 +495,14 @@ def _evaluate_file(
         return {
             "file": str(filepath),
             "is_parseable": False,
+            "lattice_element": "BROKEN",
+            "lattice_symbol": "⊥",
             "dimensions": {},
             "dimension_symbols": {},
-            "summary": "BROKEN",
-            "summary_symbol": "⊥",
+            "scores": {},
+            "priority": priority.value,
             "raw_metrics": {},
-            "evaluation": "BROKEN",
-            "symbol": "⊥",
-            "complexity": 1.0,
-            "entropy": 1.0,
+            "entropy": 0.0,
             "valid": False,
             "error": str(e),
             "_result": ClassificationResult(is_parseable=False),
@@ -504,9 +515,11 @@ def _output_text(results: list[dict], verbose: bool) -> None:
         click.echo(result["file"])
         for dim, name in result["dimensions"].items():
             sym = result["dimension_symbols"].get(dim, "")
-            click.echo(f"  {dim}: {sym} {name}")
+            score = result["scores"].get(dim)
+            score_str = f"  [{score:.0f}%]" if score is not None else ""
+            click.echo(f"  {dim}: {sym} {name}{score_str}")
         if not result["dimensions"]:
-            click.echo(f"  ⊥ BROKEN (parse failure)")
+            click.echo("  ⊥ BROKEN (parse failure)")
 
         if verbose:
             for k, v in result["raw_metrics"].items():
@@ -650,11 +663,6 @@ def _remove_provenance_record() -> None:
         )
         return
     click.echo(f"Removed provenance record: {provenance_path}")
-
-
-def normalize_complexity(raw: int) -> float:
-    from topos.logic.policies import normalize_complexity as _norm
-    return _norm(raw)
 
 
 if __name__ == "__main__":

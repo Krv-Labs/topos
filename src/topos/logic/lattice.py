@@ -3,7 +3,7 @@ Lattice Module (Heyting Algebra)
 --------------------------------
 Implements our configured evaluation lattice. In intuitionistic logic,
 evaluation is not merely binary {0, 1}, but can represent partial evidence
-across multiple stages.
+across orthogonal dimensions.
 
 Mathematical Inspiration:
     A Heyting Algebra is a bounded lattice that acts as the internal logic
@@ -24,50 +24,41 @@ from typing import ClassVar
 
 class EvaluationValue(IntEnum):
     """
-    The stages of code quality in our Heyting Algebra.
+    The four evaluation targets of our Heyting Algebra (diamond lattice).
 
-    This enumeration defines the six evaluation values that form our lattice,
-    ordered from bottom (⊥) to top (⊤) through a partial order.
+    This enumeration defines the four evaluation values that form our lattice,
+    arranged as a diamond (partial order — not a total chain).
 
-    Each label describes a *structural observation* about the code — what the
-    metrics are detecting — rather than an abstract quality judgment.  The two
-    middle pairs (ENTANGLED/COUPLED and COMPLEX/STABLE) correspond to the
-    project's two evaluation pillars: **complexity** (AST-derived) and
-    **coupling** (dependency-graph-derived).
+    The two middle values are the **optimization targets** agents aim for.
+    They are incomparable: neither COMPOSABLE ≤ SELF_CONTAINED nor the reverse.
+    SOUND is the join of both; BROKEN is their meet.
 
     Values:
-        BROKEN:     ⊥ - Parse failure (pre-evaluation) or lattice bottom within
-                    a dimension. When returned by a dimension, it means the
-                    structural signal for that axis is at the worst possible
-                    evaluation (not necessarily a syntax error).
-        ENTANGLED:  Extreme structural or coupling pathology. Complexity ≥ 40
-                    or entropy ≥ 0.95 — the code is too tangled to reason about.
-        COUPLED:    Anomalous structural signal. Significantly off-range entropy,
-                    high-range complexity ([24, 40)), or tight coupling that
-                    makes the module brittle.
-        COMPLEX:    Elevated branching or off-range entropy beyond what the task
-                    warrants, but still manageable.
-        STABLE:     Working code — structurally sound with minor concerns.
-                    Recoverable with targeted refactoring.
-        SOUND:      ⊤ - Clean, maintainable, and appropriately scoped.
+        BROKEN:         ⊥ - Fails both targets. Includes parse failures and code
+                        that does not meet the threshold on either quality axis.
+        COMPOSABLE:     Good coupling quality; composes well with other modules.
+                        Achieved when the coupling score ≥ threshold. Requires a
+                        DependencyGraph — unreachable from AST metrics alone.
+        SELF_CONTAINED: Good structural quality; stands alone cleanly.
+                        Achieved when the structural score ≥ threshold (low
+                        cyclomatic complexity, entropy near 0.5).
+        SOUND:          ⊤ - Both targets achieved. Clean, composable, and
+                        self-contained. Sometimes unachievable given finite
+                        resources; project managers set priorities accordingly.
     """
 
-    BROKEN = 0      # ⊥ (Bottom)
-    ENTANGLED = 1
-    COUPLED = 2
-    COMPLEX = 3
-    STABLE = 4
-    SOUND = 5       # ⊤ (Top)
+    BROKEN = 0          # ⊥ (Bottom)
+    COMPOSABLE = 1      # Good coupling; left branch of diamond
+    SELF_CONTAINED = 2  # Good structure; right branch of diamond
+    SOUND = 3           # ⊤ (Top)
 
     @property
     def symbol(self) -> str:
         """Unicode symbol representation."""
         symbols = {
             EvaluationValue.BROKEN: "⊥",
-            EvaluationValue.ENTANGLED: "○",
-            EvaluationValue.COUPLED: "◑",
-            EvaluationValue.COMPLEX: "◒",
-            EvaluationValue.STABLE: "◐",
+            EvaluationValue.COMPOSABLE: "◑",
+            EvaluationValue.SELF_CONTAINED: "◐",
             EvaluationValue.SOUND: "⊤",
         }
         return symbols[self]
@@ -76,12 +67,10 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.BROKEN: "Structurally broken; cannot be evaluated",
-            EvaluationValue.ENTANGLED: "Extreme structural or coupling pathology",
-            EvaluationValue.COUPLED: "Significant anomaly; tight coupling or brittle structure",
-            EvaluationValue.COMPLEX: "More complex than the task warrants",
-            EvaluationValue.STABLE: "Working code; structurally sound with minor concerns",
-            EvaluationValue.SOUND: "Clean, maintainable, appropriately scoped",
+            EvaluationValue.BROKEN: "Fails both targets; low quality or parse failure",
+            EvaluationValue.COMPOSABLE: "Composes well with other modules; coupling quality achieved",
+            EvaluationValue.SELF_CONTAINED: "Stands alone cleanly; structural quality achieved",
+            EvaluationValue.SOUND: "Clean, composable, and self-contained",
         }
         return descriptions[self]
 
@@ -108,15 +97,11 @@ class EvaluationLattice:
 
     DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = {
         EvaluationValue.BROKEN: [
-            EvaluationValue.ENTANGLED,
-            EvaluationValue.COUPLED,
-            EvaluationValue.COMPLEX,
-            EvaluationValue.STABLE,
+            EvaluationValue.COMPOSABLE,
+            EvaluationValue.SELF_CONTAINED,
         ],
-        EvaluationValue.ENTANGLED: [EvaluationValue.SOUND],
-        EvaluationValue.COUPLED: [EvaluationValue.STABLE],
-        EvaluationValue.COMPLEX: [EvaluationValue.STABLE],
-        EvaluationValue.STABLE: [EvaluationValue.SOUND],
+        EvaluationValue.COMPOSABLE: [EvaluationValue.SOUND],
+        EvaluationValue.SELF_CONTAINED: [EvaluationValue.SOUND],
         EvaluationValue.SOUND: [],
     }
 
@@ -130,7 +115,7 @@ class EvaluationLattice:
 
     def __post_init__(self) -> None:
         if not self.cover:
-            self._set_total_chain()
+            self._set_default_cover()
 
         self._closure = {}
         for value in EvaluationValue:
@@ -153,7 +138,7 @@ class EvaluationLattice:
         }
         return cls(cover=normalized_cover)
 
-    def _set_total_chain(self) -> None:
+    def _set_default_cover(self) -> None:
         """
         Safe fallback when no cover is provided.
 

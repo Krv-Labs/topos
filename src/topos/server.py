@@ -6,7 +6,8 @@ from typing import Any
 from fastmcp import FastMCP
 
 from topos.core.morphism import ProgramMorphism
-from topos.logic.omega import SubobjectClassifier
+from topos.logic.omega import ClassificationResult, SubobjectClassifier
+from topos.logic.policies.base import Priority
 from topos.metrics.ast.complexity import calculate_function_complexities
 from topos.metrics.ast.entropy import calculate_entropy_detailed
 from topos.metrics.distance import calculate_ast_distance
@@ -19,6 +20,63 @@ except PackageNotFoundError:
 mcp = FastMCP("topos", version=__version__)
 
 FILE_ACCESS_ROOT = Path(os.getenv("TOPOS_MCP_FILE_ROOT", Path.cwd())).resolve()
+
+
+def _parse_priority(priority: str) -> Priority:
+    """Parse a priority string, defaulting to BALANCED on invalid input."""
+    try:
+        return Priority(priority)
+    except ValueError:
+        return Priority.BALANCED
+
+
+def _build_evaluation_response(result: ClassificationResult) -> dict[str, Any]:
+    """Build the standard evaluation response dict from a ClassificationResult."""
+    summary = result.summary()
+    return {
+        "is_parseable": result.is_parseable,
+        "lattice_element": summary.name,
+        "lattice_symbol": summary.symbol,
+        "lattice_description": summary.description,
+        "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
+        "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
+        "scores": {
+            dim: round(score * 100.0, 1)
+            for dim, score in result.scores.items()
+        },
+        "priority": result.priority.value,
+        "guidance": _build_guidance(result),
+        "raw_metrics": result.raw_metrics,
+    }
+
+
+def _build_guidance(result: ClassificationResult) -> str:
+    """Return a short, priority-aware improvement hint."""
+    priority = result.priority
+    s_score = result.scores.get("structural", None)
+    c_score = result.scores.get("coupling", None)
+
+    if priority == Priority.COMPOSABLE:
+        if c_score is None:
+            return "Coupling not measured — provide a DependencyGraph for COMPOSABLE evaluation."
+        if c_score < 0.6:
+            return "Reduce coupling count and balance instability toward 0.3–0.7 to achieve COMPOSABLE."
+        return "COMPOSABLE target achieved. Consider structural improvements to reach SOUND."
+
+    if priority == Priority.SELF_CONTAINED:
+        if s_score is not None and s_score < 0.6:
+            return "Reduce cyclomatic complexity and normalize entropy toward 0.5 to achieve SELF_CONTAINED."
+        return "SELF_CONTAINED target achieved. Consider coupling improvements to reach SOUND."
+
+    # BALANCED
+    hints = []
+    if s_score is not None and s_score < 0.6:
+        hints.append("reduce complexity/entropy (structural)")
+    if c_score is not None and c_score < 0.6:
+        hints.append("reduce coupling (composability)")
+    if hints:
+        return "To improve: " + " and ".join(hints) + "."
+    return "Code meets balanced quality targets."
 
 
 def _is_within_allowed_root(path: Path) -> bool:
@@ -55,49 +113,54 @@ def _read_safe_utf8_file(filepath: str) -> tuple[str | None, dict[str, str] | No
 
 
 @mcp.tool()
-def evaluate_code(code: str, language: str = "python") -> dict[str, Any]:
+def evaluate_code(
+    code: str,
+    language: str = "python",
+    priority: str = "balanced",
+) -> dict[str, Any]:
     """
     Evaluate code quality directly from a string.
-    Analyzes the code and classifies it in the evaluation lattice.
+
+    Classifies the code on the diamond evaluation lattice:
+        BROKEN (⊥) — fails both targets
+        COMPOSABLE  — good coupling; composes well with other modules
+        SELF_CONTAINED — good structure; stands alone cleanly
+        SOUND (⊤)  — both targets achieved
 
     Args:
-        code: The raw source code to evaluate.
+        code:     The raw source code to evaluate.
         language: The programming language (default: 'python').
+        priority: Optimization priority — shifts metric weights within each
+                  dimension. One of: 'balanced' (default), 'composable',
+                  'self_contained'.
 
     Returns:
-        A dictionary containing the evaluation result,
-        metrics, and classification symbol.
+        A dictionary with lattice_element, per-dimension scores (0–100%),
+        a guidance hint, and raw metrics.
     """
     classifier = SubobjectClassifier()
     try:
         morphism = ProgramMorphism(source=code, language=language)
-        result = classifier.classify_detailed(morphism)
-
-        return {
-            "is_parseable": result.is_parseable,
-            "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
-            "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
-            "summary": result.summary().name,
-            "summary_symbol": result.summary().symbol,
-            "summary_description": result.summary().description,
-            "raw_metrics": result.raw_metrics,
-        }
+        result = classifier.classify_detailed(morphism, priority=_parse_priority(priority))
+        return _build_evaluation_response(result)
     except Exception as e:
         return {"error": str(e)}
 
 
 @mcp.tool()
-def evaluate_file(filepath: str) -> dict[str, Any]:
+def evaluate_file(filepath: str, priority: str = "balanced") -> dict[str, Any]:
     """
     Evaluate code quality of a file.
 
     Args:
         filepath: The path to the Python file to evaluate.
+        priority: Optimization priority — 'balanced', 'composable', or
+                  'self_contained'.
     """
     source, error = _read_safe_utf8_file(filepath)
     if error:
         return error
-    return evaluate_code(source)
+    return evaluate_code(source, priority=priority)
 
 
 @mcp.tool()
@@ -169,29 +232,34 @@ def assess_improvement(
     current_code: str,
     proposed_code: str,
     language: str = "python",
+    priority: str = "balanced",
 ) -> dict[str, Any]:
     """
     Assess if the proposed code is an improvement over the current code.
-    Uses the topos evaluation lattice and structural metrics to determine if the
-    change improves quality, reduces complexity, or maintainability.
+
+    Compares both the lattice element and per-dimension quality scores to
+    detect improvements even when the overall lattice element does not change.
 
     Args:
-        current_code: The existing source code.
+        current_code:  The existing source code.
         proposed_code: The new or refactored code.
-        language: The programming language (default: 'python').
+        language:      The programming language (default: 'python').
+        priority:      Optimization priority — 'balanced', 'composable', or
+                       'self_contained'.
 
     Returns:
-        A comparative analysis of the improvement.
+        A comparative analysis including status, scores, and lattice positions.
     """
     classifier = SubobjectClassifier()
     lattice = classifier.omega
+    parsed_priority = _parse_priority(priority)
 
     try:
         curr_morph = ProgramMorphism(source=current_code, language=language)
         prop_morph = ProgramMorphism(source=proposed_code, language=language)
 
-        curr_res = classifier.classify_detailed(curr_morph)
-        prop_res = classifier.classify_detailed(prop_morph)
+        curr_res = classifier.classify_detailed(curr_morph, priority=parsed_priority)
+        prop_res = classifier.classify_detailed(prop_morph, priority=parsed_priority)
 
         curr_summary = curr_res.summary()
         prop_summary = prop_res.summary()
@@ -208,6 +276,14 @@ def assess_improvement(
         prop_complexity = prop_res.raw_metrics.get("ast.complexity", 0.0)
         complexity_delta = prop_complexity - curr_complexity
 
+        # Score deltas per dimension (positive = improvement)
+        score_deltas = {
+            dim: round((prop_res.scores.get(dim, 0.0) - curr_res.scores.get(dim, 0.0)) * 100.0, 1)
+            for dim in set(curr_res.scores) | set(prop_res.scores)
+        }
+        score_improved = any(d > 0 for d in score_deltas.values())
+        score_regressed = any(d < 0 for d in score_deltas.values())
+
         can_compute_distance = curr_res.is_parseable and prop_res.is_parseable
         dist_res = (
             calculate_ast_distance(curr_morph.ast, prop_morph.ast)
@@ -221,28 +297,36 @@ def assess_improvement(
         elif is_regression:
             status = "REGRESSION"
         elif curr_summary == prop_summary:
-            if complexity_delta < 0:
+            if score_improved and not score_regressed:
+                status = "IMPROVEMENT (Score)"
+            elif score_regressed and not score_improved:
+                status = "REGRESSION (Score)"
+            elif complexity_delta < 0:
                 status = "IMPROVEMENT (Lower Complexity)"
             elif complexity_delta > 0:
                 status = "REGRESSION (Higher Complexity)"
 
         return {
             "status": status,
+            "priority": priority,
             "current": {
+                "lattice_element": curr_summary.name,
+                "lattice_symbol": curr_summary.symbol,
                 "dimensions": {dim: val.name for dim, val in curr_res.dimensions.items()},
-                "summary": curr_summary.name,
-                "summary_symbol": curr_summary.symbol,
+                "scores": {dim: round(s * 100.0, 1) for dim, s in curr_res.scores.items()},
                 "complexity": curr_complexity,
             },
             "proposed": {
+                "lattice_element": prop_summary.name,
+                "lattice_symbol": prop_summary.symbol,
                 "dimensions": {dim: val.name for dim, val in prop_res.dimensions.items()},
-                "summary": prop_summary.name,
-                "summary_symbol": prop_summary.symbol,
+                "scores": {dim: round(s * 100.0, 1) for dim, s in prop_res.scores.items()},
                 "complexity": prop_complexity,
             },
             "analysis": {
                 "evaluation_improved": is_improvement,
                 "evaluation_regressed": is_regression,
+                "score_deltas": score_deltas,
                 "complexity_delta": complexity_delta,
                 "distance_computed": can_compute_distance,
                 "structural_distance": (
@@ -258,23 +342,35 @@ def assess_improvement(
 
 
 @mcp.tool()
-def inspect_code(code: str, language: str = "python") -> dict[str, Any]:
+def inspect_code(
+    code: str,
+    language: str = "python",
+    priority: str = "balanced",
+) -> dict[str, Any]:
     """
     Inspect detailed metrics for a code string.
 
     Args:
-        code: The source code to inspect.
+        code:     The source code to inspect.
         language: The programming language (default: 'python').
+        priority: Optimization priority — 'balanced', 'composable', or
+                  'self_contained'.
     """
     try:
         morphism = ProgramMorphism(source=code, language=language)
         classifier = SubobjectClassifier()
-        result = classifier.classify_detailed(morphism)
+        result = classifier.classify_detailed(morphism, priority=_parse_priority(priority))
 
         inspection: dict[str, Any] = {
             "is_parseable": result.is_parseable,
+            "lattice_element": result.summary().name,
+            "lattice_symbol": result.summary().symbol,
             "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
-            "summary": result.summary().name,
+            "scores": {
+                dim: round(s * 100.0, 1) for dim, s in result.scores.items()
+            },
+            "priority": priority,
+            "guidance": _build_guidance(result),
             "raw_metrics": result.raw_metrics,
             "interpretation": result.interpretation,
             "functions": {},

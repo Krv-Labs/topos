@@ -11,25 +11,29 @@ Mathematical Inspiration:
 
     In Set (the category of sets), Ω = {0, 1} and the characteristic
     function is simply membership. In our Topos of Programs, Ω is the
-    EvaluationLattice, and the characteristic map evaluates code quality
-    along multiple *dimensions*.
+    EvaluationLattice (diamond), and the characteristic map evaluates code
+    quality along two independent *dimensions*.
 
-Per-Dimension Evaluation Model:
-    Different representations measure orthogonal program qualities.  AST
-    metrics capture *internal structural quality* (branching, entropy).
-    Dependency-graph metrics capture *coupling quality* (how well-positioned
-    the module is in the overall architecture).  These axes are independent
-    and should not be collapsed into a single verdict via meet.
+Diamond Lattice Evaluation Model:
+    Two dimensions measure orthogonal program qualities:
+        - "structural": AST metrics (complexity, entropy) → SELF_CONTAINED target
+        - "coupling":   Dep-graph metrics (coupling, instability) → COMPOSABLE target
 
-    ``classify_detailed`` groups representations by their ``dimension``
-    property, aggregates metrics within each group via the lattice's
-    non-total partial order, and returns a ``ClassificationResult`` whose
-    ``dimensions`` dict holds one ``EvaluationValue`` per axis.  Dimensions
-    are never merged automatically.
+    Each dimension produces a normalized quality score in [0, 1].  A score
+    ≥ threshold means the lattice target for that dimension is achieved.
 
-    To get a single scalar for tooling that needs one number, call
-    ``ClassificationResult.summary()`` — it returns the worst value across
-    dimensions.
+    The overall lattice element is determined by which targets are met:
+        Both achieved   → SOUND          (⊤)
+        Structural only → SELF_CONTAINED
+        Coupling only   → COMPOSABLE
+        Neither         → BROKEN         (⊥)
+
+    COMPOSABLE requires a DependencyGraph representation; it is unreachable
+    from AST metrics alone.
+
+Priority:
+    An optional Priority parameter shifts metric weights within each dimension,
+    letting agents express which quality axis matters most for the current task.
 """
 
 from __future__ import annotations
@@ -41,10 +45,11 @@ from typing import TYPE_CHECKING
 
 from topos.logic.lattice import EvaluationLattice, EvaluationValue
 from topos.logic.policies import (
-    MetricDecision,
+    Priority,
+    ScoredDecision,
     build_evaluation_lattice,
-    classify_complexity,
-    classify_entropy,
+    score_coupling,
+    score_structural,
 )
 
 if TYPE_CHECKING:
@@ -53,41 +58,41 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Verdict dispatchers
+# Score dispatchers
 # ---------------------------------------------------------------------------
 # Maps representation *name* to a function that converts raw metric floats
-# into {metric_name: EvaluationValue} dicts.  Keyed by rep.name (not
-# rep.dimension) so different representations on the same dimension can each
-# have their own verdict logic.
+# into a ScoredDecision for that representation's dimension.
 
-def _ast_verdicts(raw: dict[str, float]) -> dict[str, MetricDecision]:
-    decisions: dict[str, MetricDecision] = {}
-    if "ast.complexity" in raw:
-        decisions["ast.complexity"] = classify_complexity(raw["ast.complexity"])
-    if "ast.entropy" in raw:
-        decisions["ast.entropy"] = classify_entropy(raw["ast.entropy"])
-    return decisions
+def _score_ast(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
+    if "ast.complexity" not in raw or "ast.entropy" not in raw:
+        return None
+    return score_structural(raw["ast.complexity"], raw["ast.entropy"], priority)
 
 
-def _depgraph_verdicts(raw: dict[str, float]) -> dict[str, MetricDecision]:
-    from topos.logic.policies import classify_coupling, classify_instability
-
-    decisions: dict[str, MetricDecision] = {}
-    if "depgraph.coupling" in raw:
-        decisions["depgraph.coupling"] = classify_coupling(raw["depgraph.coupling"])
-    if "depgraph.instability" in raw:
-        decisions["depgraph.instability"] = classify_instability(
-            raw["depgraph.instability"]
-        )
-    return decisions
+def _score_depgraph(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
+    if "depgraph.coupling" not in raw or "depgraph.instability" not in raw:
+        return None
+    return score_coupling(
+        raw["depgraph.coupling"], raw["depgraph.instability"], priority
+    )
 
 
-_REPRESENTATION_VERDICT_DISPATCHERS: dict[
+_REPRESENTATION_SCORE_DISPATCHERS: dict[
     str,
-    Callable[[dict[str, float]], dict[str, MetricDecision]],
+    Callable[[dict[str, float], Priority], ScoredDecision | None],
 ] = {
-    "ast": _ast_verdicts,
-    "depgraph": _depgraph_verdicts,
+    "ast": _score_ast,
+    "depgraph": _score_depgraph,
+}
+
+# Map each representation name to its lattice target when achieved.
+_DIMENSION_TARGET: dict[str, EvaluationValue] = {
+    "structural": EvaluationValue.SELF_CONTAINED,
+    "coupling":   EvaluationValue.COMPOSABLE,
 }
 
 
@@ -101,19 +106,21 @@ class ClassificationResult:
     The result of classifying a program morphism.
 
     Attributes:
-        is_parseable: Whether the code parsed successfully. When False,
-            ``dimensions`` is empty and the code cannot be evaluated.
-        dimensions: Per-quality-axis evaluation values.  Keys are dimension
-            names (e.g. ``"structural"``, ``"coupling"``); values are
-            ``EvaluationValue`` instances representing the worst metric
-            verdict within that dimension.
-        raw_metrics: All raw metric floats, namespaced by representation
-            (e.g. ``{"ast.complexity": 12.0, "depgraph.coupling": 7.0}``).
-        interpretation: Per-metric interpretation strings from the bins.
+        is_parseable:    Whether the code parsed successfully.
+        dimensions:      Per-axis lattice target: SELF_CONTAINED or COMPOSABLE
+                         when achieved, BROKEN otherwise.
+        scores:          Per-axis normalized quality score in [0.0, 1.0].
+        lattice_element: Overall lattice element combining all dimensions.
+        priority:        The Priority profile used during classification.
+        raw_metrics:     All raw metric floats, namespaced by representation.
+        interpretation:  Per-metric interpretation strings.
     """
 
     is_parseable: bool
     dimensions: dict[str, EvaluationValue] = field(default_factory=dict)
+    scores: dict[str, float] = field(default_factory=dict)
+    lattice_element: EvaluationValue = field(default=EvaluationValue.BROKEN)
+    priority: Priority = field(default=Priority.BALANCED)
     raw_metrics: dict[str, float] = field(default_factory=dict)
     interpretation: dict[str, str] = field(default_factory=dict)
 
@@ -123,22 +130,21 @@ class ClassificationResult:
 
     def summary(self) -> EvaluationValue:
         """
-        Worst (lowest) value across all dimensions.
+        The overall lattice element.
 
-        Use this when a single scalar is needed (e.g. multi-file rollup,
-        backward-compat API).  Note that this collapses orthogonal axes and
-        loses information — prefer ``dimensions`` for display.
+        Use this when a single value is needed (e.g. multi-file rollup,
+        backward-compat API).  For per-dimension detail use ``dimensions``
+        and ``scores``.
         """
-        if not self.dimensions:
-            return EvaluationValue.BROKEN
-        return min(self.dimensions.values(), key=lambda v: v.value)
+        return self.lattice_element
 
     def __str__(self) -> str:
         if not self.is_parseable:
             return "Classification: ⊥ BROKEN (parse failure)"
         parts = []
         for dim, val in self.dimensions.items():
-            parts.append(f"  {dim}: {val}")
+            score_pct = f"{self.scores.get(dim, 0.0) * 100:.0f}%"
+            parts.append(f"  {dim}: {val}  [{score_pct}]")
         for k, v in self.raw_metrics.items():
             parts.append(f"    {k}: {v:.3f}")
         return "\n".join(parts)
@@ -157,10 +163,9 @@ class SubobjectClassifier:
     morphisms to evaluation values in the Heyting Algebra, implementing
     the characteristic map χ: Program → Ω.
 
-    The classifier aggregates metrics from representations grouped by their
-    ``dimension`` property.  Representations in the same dimension are
-    combined via lattice meet; representations in different dimensions
-    produce independent verdicts that are never merged automatically.
+    Each representation is scored independently and mapped to its lattice
+    target (SELF_CONTAINED for structural, COMPOSABLE for coupling).  The
+    overall lattice element is determined by which targets are achieved.
 
     Attributes:
         omega: The EvaluationLattice (our Ω).
@@ -172,8 +177,8 @@ class SubobjectClassifier:
         """
         Map a ProgramMorphism to an EvaluationValue.
 
-        Returns ``ClassificationResult.summary()`` — the worst value across
-        all dimensions.  For per-dimension detail use ``classify_detailed``.
+        Returns ``ClassificationResult.summary()`` — the overall lattice
+        element.  For per-dimension detail use ``classify_detailed``.
         """
         return self.classify_detailed(morphism).summary()
 
@@ -181,27 +186,31 @@ class SubobjectClassifier:
         self,
         morphism: ProgramMorphism,
         representations: Sequence[Representation] | None = None,
+        priority: Priority = Priority.BALANCED,
     ) -> ClassificationResult:
         """
         Perform detailed per-dimension classification.
 
         An ``ASTRepresentation`` is always built from the morphism and
         contributes to the ``"structural"`` dimension.  Any additional
-        *representations* are grouped by their ``dimension`` property;
-        within each group their metric verdicts are combined via lattice meet.
+        *representations* are grouped by their ``dimension`` property and
+        scored independently.
 
         Args:
-            morphism: The program to classify.
+            morphism:        The program to classify.
             representations: Optional extra representations (e.g. a
-                ``DependencyGraph`` for the ``"coupling"`` dimension).
+                             ``DependencyGraph`` for the ``"coupling"`` dimension).
+            priority:        Weight profile shifting which metrics are
+                             emphasised within each dimension.
 
         Returns:
-            A ``ClassificationResult`` with per-dimension verdicts and raw
-            metrics.  When the code fails to parse, ``is_parseable`` is
-            ``False`` and ``dimensions`` is empty.
+            A ``ClassificationResult`` with the overall lattice element,
+            per-dimension scores, and raw metrics.  When the code fails to
+            parse, ``is_parseable`` is ``False`` and ``lattice_element`` is
+            ``BROKEN``.
         """
         if morphism.ast is None or not morphism.is_valid:
-            return ClassificationResult(is_parseable=False)
+            return ClassificationResult(is_parseable=False, priority=priority)
 
         # Always include an ASTRepresentation for the structural dimension.
         from topos.graphs.ast.object import ASTRepresentation
@@ -222,26 +231,54 @@ class SubobjectClassifier:
         raw_metrics: dict[str, float] = {}
         interpretation: dict[str, str] = {}
         dimensions: dict[str, EvaluationValue] = {}
+        scores: dict[str, float] = {}
 
         for dim, reps in by_dimension.items():
-            dim_verdicts: dict[str, EvaluationValue] = {}
-
+            # Collect all raw metrics for this dimension.
+            dim_raw: dict[str, float] = {}
             for rep in reps:
-                rep_raw = rep.metrics()
-                raw_metrics.update(rep_raw)
+                dim_raw.update(rep.metrics())
+            raw_metrics.update(dim_raw)
 
-                dispatcher = _REPRESENTATION_VERDICT_DISPATCHERS.get(rep.name)
-                if dispatcher:
-                    rep_decisions = dispatcher(rep_raw)
-                    for metric_name, decision in rep_decisions.items():
-                        dim_verdicts[metric_name] = decision.evaluation
-                        interpretation[metric_name] = decision.interpretation
+            # Dispatch to the scorer for this representation type.
+            rep_name = reps[0].name
+            scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep_name)
+            if not scorer:
+                continue
 
-            dimensions[dim] = self.omega.aggregate(dim_verdicts)
+            decision = scorer(dim_raw, priority)
+            if decision is None:
+                continue
+
+            scores[dim] = decision.score
+            interpretation.update(decision.interpretation)
+
+            target = _DIMENSION_TARGET.get(dim, EvaluationValue.BROKEN)
+            dimensions[dim] = target if decision.achieved else EvaluationValue.BROKEN
+
+        # Assemble the overall lattice element from achieved targets.
+        structural_achieved = (
+            dimensions.get("structural") == EvaluationValue.SELF_CONTAINED
+        )
+        coupling_achieved = (
+            dimensions.get("coupling") == EvaluationValue.COMPOSABLE
+        )
+
+        if structural_achieved and coupling_achieved:
+            lattice_element = EvaluationValue.SOUND
+        elif structural_achieved:
+            lattice_element = EvaluationValue.SELF_CONTAINED
+        elif coupling_achieved:
+            lattice_element = EvaluationValue.COMPOSABLE
+        else:
+            lattice_element = EvaluationValue.BROKEN
 
         return ClassificationResult(
             is_parseable=True,
             dimensions=dimensions,
+            scores=scores,
+            lattice_element=lattice_element,
+            priority=priority,
             raw_metrics=raw_metrics,
             interpretation=interpretation,
         )
@@ -259,21 +296,30 @@ class SubobjectClassifier:
     def combine_dimensions(
         self,
         results: Iterable[ClassificationResult],
+        threshold: float = 0.6,
     ) -> dict[str, EvaluationValue]:
         """
         Aggregate per-dimension verdicts across multiple files.
 
-        For each dimension, computes the meet of all file-level verdicts.
-        Files that don't have a given dimension are skipped for that axis.
+        Uses minimum score across files per dimension, then re-applies the
+        threshold to determine the lattice target.  Files without a given
+        dimension are skipped for that axis.
+
+        Args:
+            results:   Per-file ClassificationResult instances.
+            threshold: Score threshold for achieving a lattice target.
 
         Returns:
-            A dict mapping dimension names to their combined verdict.
+            A dict mapping dimension names to their combined lattice target.
         """
-        accum: dict[str, EvaluationValue] = {}
+        min_scores: dict[str, float] = {}
         for result in results:
-            for dim, val in result.dimensions.items():
-                if dim in accum:
-                    accum[dim] = self.omega.meet(accum[dim], val)
-                else:
-                    accum[dim] = val
-        return accum
+            for dim, score in result.scores.items():
+                if dim not in min_scores or score < min_scores[dim]:
+                    min_scores[dim] = score
+
+        combined: dict[str, EvaluationValue] = {}
+        for dim, score in min_scores.items():
+            target = _DIMENSION_TARGET.get(dim, EvaluationValue.BROKEN)
+            combined[dim] = target if score >= threshold else EvaluationValue.BROKEN
+        return combined

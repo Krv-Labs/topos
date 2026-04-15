@@ -2,7 +2,7 @@
 AST Metrics Sub-package
 -----------------------
 Metrics that operate on the Abstract Syntax Tree representation:
-- Cyclomatic complexity (branching manifold)
+- Cyclomatic complexity (control-flow topology)
 - Kolmogorov proxy via compression (algorithmic entropy)
 """
 

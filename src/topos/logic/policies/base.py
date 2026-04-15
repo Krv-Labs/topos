@@ -1,19 +1,92 @@
 """
-Shared bin-walking machinery for evaluation sections.
+Shared scoring infrastructure for evaluation sections.
 
-``ObservationBin``, ``MetricDecision``, and ``BinClassifier`` are the
-infrastructure used by every evaluation section.  Dimension-specific sections
-(structural, coupling, ...) subclass ``BinClassifier`` and declare their own
-bin partitions.
+This module defines two layers:
+
+1. **New scoring layer** (Priority, WeightProfile, ScoredDecision):
+   The active production API.  Scorers produce a continuous normalized score
+   in [0, 1] and compare it against a threshold to determine whether a
+   lattice target (COMPOSABLE or SELF_CONTAINED) is achieved.
+
+2. **Legacy bin-walking layer** (ObservationBin, MetricDecision, BinClassifier):
+   Kept for reference; no longer used in production after the diamond-lattice
+   redesign.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from math import inf
 from typing import NamedTuple
 
 from topos.logic.lattice import EvaluationLattice, EvaluationValue
+
+
+# ---------------------------------------------------------------------------
+# Scoring layer (active)
+# ---------------------------------------------------------------------------
+
+
+class Priority(str, Enum):
+    """
+    Optimization priority that shifts metric weights within each dimension.
+
+    Agents select a priority to express which quality axis matters most for
+    the current task.  The priority controls internal weight profiles but does
+    not change the lattice structure — COMPOSABLE and SELF_CONTAINED remain
+    independent targets regardless of priority.
+
+    Values:
+        BALANCED:       Equal weight on all metrics (default).
+        COMPOSABLE:     Upweights coupling metrics; optimizes for inter-module
+                        composition quality.
+        SELF_CONTAINED: Upweights structural metrics; optimizes for internal
+                        complexity and entropy.
+    """
+
+    BALANCED = "balanced"
+    COMPOSABLE = "composable"
+    SELF_CONTAINED = "self_contained"
+
+
+@dataclass(frozen=True)
+class WeightProfile:
+    """
+    Per-dimension metric weights for a given Priority.
+
+    Attributes:
+        w_complexity: Weight on complexity_quality within the structural score
+                      (vs entropy_quality, which gets 1 - w_complexity).
+        w_coupling:   Weight on coupling_quality within the coupling score
+                      (vs instability_quality, which gets 1 - w_coupling).
+    """
+
+    w_complexity: float
+    w_coupling: float
+
+
+WEIGHT_PROFILES: dict[Priority, WeightProfile] = {
+    Priority.BALANCED:       WeightProfile(w_complexity=0.5, w_coupling=0.5),
+    Priority.COMPOSABLE:     WeightProfile(w_complexity=0.3, w_coupling=0.7),
+    Priority.SELF_CONTAINED: WeightProfile(w_complexity=0.7, w_coupling=0.3),
+}
+
+
+@dataclass(frozen=True)
+class ScoredDecision:
+    """
+    Result of scoring a quality dimension with a continuous normalized score.
+
+    Attributes:
+        score:          Weighted quality score in [0.0, 1.0].  Higher is better.
+        achieved:       True when score >= threshold (lattice target is met).
+        interpretation: Per-metric human-readable strings keyed by metric name.
+    """
+
+    score: float
+    achieved: bool
+    interpretation: dict[str, str] = field(default_factory=dict)
 
 
 class ObservationBin(NamedTuple):

@@ -53,6 +53,7 @@ jobs:
             --collect-all tree_sitter_python \
             --collect-all fastmcp \
             --collect-all real-ladybug \
+            --copy-metadata fastmcp \
             src/topos/main.py
 
       - name: Rename binary with platform suffix

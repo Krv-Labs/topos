@@ -4,8 +4,11 @@
 Getting Started
 ===============
 
-Topos can be used from the command line, as a Python library, or as an MCP server
-for AI-assisted workflows. Choose your path below.
+Topos evaluates Python code and returns a verdict — one of six stages.
+You can run it from the CLI, use the Python API, or connect it as an MCP server
+so your AI tool evaluates its own output automatically.
+
+For what each verdict means and how to act on it, see :doc:`architecture`.
 
 .. tab-set::
 
@@ -23,13 +26,8 @@ for AI-assisted workflows. Choose your path below.
 
          topos inspect src/topos/main.py
 
-      Shows the lattice evaluation, complexity and entropy scores,
-      function-level complexity breakdown, and AST metrics. Pass
-      ``--gitnexus-dir`` to include dependency-graph metrics:
-
-      .. code-block:: bash
-
-         topos inspect src/topos/main.py --gitnexus-dir .gitnexus
+      Shows the verdict, complexity and entropy scores, function-level
+      breakdown, and AST metrics.
 
       **Evaluate a directory**
 
@@ -43,16 +41,19 @@ for AI-assisted workflows. Choose your path below.
 
          topos evaluate src/ -r --json
 
-      To include dependency-graph metrics from GitNexus output:
+      **Add coupling metrics**
+
+      If you have `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_
+      set up (see :doc:`installation`), pass ``--gitnexus-dir`` to include
+      dependency-graph metrics alongside the structural ones:
 
       .. code-block:: bash
 
          topos evaluate src/ -r --gitnexus-dir .gitnexus
+         topos inspect src/topos/main.py --gitnexus-dir .gitnexus
 
-      This reads repository-level graph data from ``.gitnexus/lbug`` and
-      computes depgraph metrics per evaluated file. If ``--gitnexus-dir`` is
-      provided but the depgraph cannot be loaded, the command exits with an
-      error (no silent AST-only fallback).
+      If ``--gitnexus-dir`` is provided but the data can't be loaded,
+      Topos exits with an error rather than silently skipping coupling.
 
       **Compare two files**
 
@@ -60,8 +61,8 @@ for AI-assisted workflows. Choose your path below.
 
          topos compare before.py after.py
 
-      Reports normalized AST edit distance — useful for measuring structural
-      drift across a refactor or an AI-generated rewrite.
+      Reports AST edit distance — useful for measuring structural drift
+      across a refactor or AI-generated rewrite.
 
    .. tab-item:: Python API
 
@@ -72,21 +73,20 @@ for AI-assisted workflows. Choose your path below.
          morphism = ProgramMorphism.from_file("module.py")
          result = SubobjectClassifier().classify_detailed(morphism)
 
-         print(result.evaluation)        # e.g., "◐ COMMODITY"
-         print(result.complexity_score)
-         print(result.entropy_score)
+         print(result.dimensions)        # {"structural": <EvaluationValue.STABLE: 4>}
+         print(result.summary())         # e.g., "◐ STABLE"
+         print(result.raw_metrics)       # {"ast.complexity": 12.0, "ast.entropy": 0.44}
 
-      Canonical metric imports are representation-scoped:
+      **Metrics**
 
       .. code-block:: python
 
          from topos.metrics.ast.complexity import calculate_cyclomatic_complexity
          from topos.metrics.ast.entropy import calculate_kolmogorov_proxy
 
-      Compatibility note: common AST metrics are also re-exported from
-      ``topos.metrics``.
+      Common AST metrics are also re-exported from ``topos.metrics`` for convenience.
 
-      To compare two programs:
+      **Comparing two programs**
 
       .. code-block:: python
 
@@ -101,8 +101,8 @@ for AI-assisted workflows. Choose your path below.
 
    .. tab-item:: MCP Server
 
-      Topos ships an MCP server for use with Claude Desktop and other
-      MCP-capable clients.
+      Topos ships an MCP server so Claude, Cursor, or other MCP-capable tools
+      can evaluate code without leaving the conversation.
 
       **Start the server**
 
@@ -131,7 +131,7 @@ for AI-assisted workflows. Choose your path below.
          * - ``inspect_code``
            - Detailed metrics breakdown
 
-      To restrict file tool access to a safe directory:
+      To restrict file access to a specific directory:
 
       .. code-block:: bash
 

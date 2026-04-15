@@ -20,6 +20,8 @@ Mathematical Inspiration:
 
     This metric captures 'algorithmic debt'—code that is overly verbose
     or unnecessarily complex will have distinctive entropy signatures.
+    In the world of commodity code, these signatures help identify
+    morphisms that lack intentional structural compression.
 """
 
 from __future__ import annotations

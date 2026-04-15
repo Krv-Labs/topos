@@ -1,131 +1,122 @@
 """
-Dependency Evaluation Section: Observation Space -> Subobject Classifier
-------------------------------------------------------------------------
+Coupling Evaluation Scorer: Observation Space -> Subobject Classifier
+----------------------------------------------------------------------
 
-Maps dependency-graph metric observations into the evaluation lattice.
+Maps dependency-graph metric observations (coupling count, instability ratio)
+into a continuous quality score that determines whether the COMPOSABLE lattice
+target is achieved.
 
-This is the coupling-dimension counterpart of ``structural.py``.  The
-factorization is the same:
+The factorization is:
 
-    DependencyGraph --(metrics)--> R^n --(section)--> Omega
+    DependencyGraph --(dep metrics)--> R^2 --(scorer)--> [0, 1] --(threshold)--> Omega
 
-The bins below encode interpretive commitments about when coupling or
-instability levels are concerning.  Adjusting a bin boundary is a policy
-decision -- the same coupling score can mean different things for a
-microservice vs. a monolith.  These defaults target general-purpose
-Python codebases.
+``score_coupling`` is the interpretive layer for coupling-dimension metrics.
+Adjusting normalization bounds or the threshold is a policy decision; this
+module is where those decisions live.
 
-Note: ``DependencyEvaluationSection`` inherits *only* the ``BinClassifier``
-mixin (shared bin-walking machinery).  It intentionally does **not** inherit
-``StructuralEvaluationSection``; calling ``classify_complexity`` or
-``classify_entropy`` on this section would be a programming error.
+Quality functions:
+    coupling_quality    = 1 - min(coupling / MAX_COUPLING, 1.0)
+                          Linear fall from 1.0 at coupling=0 to 0.0 at MAX.
+
+    instability_quality = piecewise flat-top tent over [0.3, 0.7]:
+                            instability in [0.3, 0.7] → 1.0 (optimal range)
+                            instability < 0.3           → linear from 0.0 to 1.0
+                            instability > 0.7           → linear from 1.0 to 0.0
+                          Penalizes both extremely stable (hard to evolve) and
+                          extremely unstable (depends on everything) modules.
+
+The weighted coupling score = w_k * coupling_quality + (1-w_k) * instability_quality
+where w_k comes from the Priority's WeightProfile.
 """
 
 from __future__ import annotations
 
-from math import inf
-from typing import ClassVar
+from topos.logic.policies.base import (
+    Priority,
+    ScoredDecision,
+    WEIGHT_PROFILES,
+)
 
-from topos.logic.lattice import EvaluationValue
-from topos.logic.policies.base import BinClassifier, MetricDecision, ObservationBin
+# Normalization constants (policy decisions)
+MAX_COUPLING: float = 35.0          # coupling count at which quality reaches 0.0
+INSTABILITY_LOW: float = 0.3        # lower bound of optimal instability range
+INSTABILITY_HIGH: float = 0.7       # upper bound of optimal instability range
 
 
-class DependencyEvaluationSection(BinClassifier):
+def score_coupling(
+    coupling: float,
+    instability: float,
+    priority: Priority,
+    threshold: float = 0.6,
+) -> ScoredDecision:
     """
-    Evaluation section for dependency-graph metrics.
+    Score the coupling quality of a module.
 
-    Provides ``classify_coupling`` and ``classify_instability`` using
-    the same bin-walking machinery as the structural evaluation section.
+    Args:
+        coupling:    Total coupling count (fan-in + fan-out or similar).
+        instability: Martin's instability metric, in [0.0, 1.0].
+        priority:    Weight profile controlling coupling vs instability emphasis.
+        threshold:   Minimum score to achieve the COMPOSABLE lattice target.
 
-    Only coupling and instability bins are defined here.  Calling any
-    inherited method that requires ``complexity_bins`` or ``entropy_bins``
-    (e.g. ``normalize_complexity``) will raise ``AttributeError`` — those
-    bins belong to ``StructuralEvaluationSection``, not here.
+    Returns:
+        A ScoredDecision with a [0, 1] quality score and per-metric
+        interpretation strings.
     """
+    coupling_quality = 1.0 - min(coupling / MAX_COUPLING, 1.0)
+    instability_quality = _instability_tent(instability)
 
-    coupling_bins: ClassVar[tuple[ObservationBin, ...]] = (
-        ObservationBin(
-            0,
-            5,
-            EvaluationValue.SOUND,
-            "coupling within expected range",
-        ),
-        ObservationBin(
-            5,
-            12,
-            EvaluationValue.STABLE,
-            "coupling is elevated but manageable",
-        ),
-        ObservationBin(
-            12,
-            20,
-            EvaluationValue.COMPLEX,
-            "coupling is high and change-sensitive",
-        ),
-        ObservationBin(
-            20,
-            35,
-            EvaluationValue.COUPLED,
-            "coupling indicates entangled design",
-        ),
-        ObservationBin(
-            35,
-            inf,
-            EvaluationValue.ENTANGLED,
-            "coupling is pathologically high",
-        ),
+    w_k = WEIGHT_PROFILES[priority].w_coupling
+    coupling_score = w_k * coupling_quality + (1.0 - w_k) * instability_quality
+
+    return ScoredDecision(
+        score=coupling_score,
+        achieved=coupling_score >= threshold,
+        interpretation={
+            "depgraph.coupling": _coupling_interpretation(coupling, coupling_quality),
+            "depgraph.instability": _instability_interpretation(
+                instability, instability_quality
+            ),
+        },
     )
 
-    instability_bins: ClassVar[tuple[ObservationBin, ...]] = (
-        ObservationBin(
-            0.0,
-            0.1,
-            EvaluationValue.COMPLEX,
-            "module is extremely stable -- hard to evolve",
-        ),
-        ObservationBin(
-            0.1,
-            0.3,
-            EvaluationValue.STABLE,
-            "module is fairly stable",
-        ),
-        ObservationBin(
-            0.3,
-            0.7,
-            EvaluationValue.SOUND,
-            "instability in balanced range",
-        ),
-        ObservationBin(
-            0.7,
-            0.9,
-            EvaluationValue.STABLE,
-            "module is fairly unstable",
-        ),
-        ObservationBin(
-            0.9,
-            inf,
-            EvaluationValue.COMPLEX,
-            "module is extremely unstable -- depends on everything",
-        ),
-    )
 
-    @classmethod
-    def classify_coupling(cls, raw_coupling: float) -> MetricDecision:
-        """Map a total-coupling observation to Omega."""
-        return cls._classify(raw_coupling, cls.coupling_bins)
-
-    @classmethod
-    def classify_instability(cls, raw_instability: float) -> MetricDecision:
-        """Map an instability observation to Omega."""
-        return cls._classify(raw_instability, cls.instability_bins)
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
 
 
-dep_section = DependencyEvaluationSection()
+def _instability_tent(instability: float) -> float:
+    """
+    Flat-top tent function over [INSTABILITY_LOW, INSTABILITY_HIGH].
+
+    Returns 1.0 in the optimal range and falls linearly to 0.0 outside it.
+    """
+    if INSTABILITY_LOW <= instability <= INSTABILITY_HIGH:
+        return 1.0
+    if instability < INSTABILITY_LOW:
+        return instability / INSTABILITY_LOW
+    # instability > INSTABILITY_HIGH
+    return max(0.0, (1.0 - instability) / (1.0 - INSTABILITY_HIGH))
 
 
-def classify_coupling(raw_coupling: float) -> MetricDecision:
-    return dep_section.classify_coupling(raw_coupling)
+def _coupling_interpretation(coupling: float, quality: float) -> str:
+    if quality >= 0.75:
+        return "coupling within expected range"
+    if quality >= 0.5:
+        return "coupling is elevated but manageable"
+    if quality >= 0.25:
+        return "coupling is high and change-sensitive"
+    return "coupling is pathologically high; module is brittle"
 
 
-def classify_instability(raw_instability: float) -> MetricDecision:
-    return dep_section.classify_instability(raw_instability)
+def _instability_interpretation(instability: float, quality: float) -> str:
+    if quality >= 0.75:
+        return "instability in balanced range"
+    if instability < INSTABILITY_LOW:
+        if quality >= 0.5:
+            return "module is fairly stable"
+        return "module is extremely stable — hard to evolve"
+    # instability > INSTABILITY_HIGH
+    if quality >= 0.5:
+        return "module is fairly unstable"
+    return "module is extremely unstable — depends on everything"

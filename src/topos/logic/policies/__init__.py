@@ -1,31 +1,27 @@
-from topos.logic.policies.base import BinClassifier, MetricDecision, ObservationBin
-from topos.logic.policies.coupling import (
-    DependencyEvaluationSection,
-    classify_coupling,
-    classify_instability,
-    dep_section,
+from topos.logic.policies.base import (
+    Priority,
+    WeightProfile,
+    WEIGHT_PROFILES,
+    ScoredDecision,
+    # Legacy (kept for compatibility during transition)
+    BinClassifier,
+    MetricDecision,
+    ObservationBin,
 )
-from topos.logic.policies.structural import (
-    StructuralEvaluationSection,
-    build_evaluation_lattice,
-    classify_complexity,
-    classify_entropy,
-    normalize_complexity,
-    section,
-)
+from topos.logic.policies.coupling import score_coupling
+from topos.logic.policies.structural import build_evaluation_lattice, score_structural
 
 __all__ = [
+    # Active scoring API
+    "Priority",
+    "WeightProfile",
+    "WEIGHT_PROFILES",
+    "ScoredDecision",
+    "score_structural",
+    "score_coupling",
+    "build_evaluation_lattice",
+    # Legacy (deprecated)
     "BinClassifier",
     "MetricDecision",
     "ObservationBin",
-    "StructuralEvaluationSection",
-    "section",
-    "classify_complexity",
-    "classify_entropy",
-    "normalize_complexity",
-    "build_evaluation_lattice",
-    "DependencyEvaluationSection",
-    "dep_section",
-    "classify_coupling",
-    "classify_instability",
 ]

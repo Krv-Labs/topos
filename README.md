@@ -1,143 +1,102 @@
 # Topos
 
-> Treating programs as morphisms in a world of commodity code.
+> **Treating programs as morphisms in a world of commodity code.**
 
-Code has become a commodity -- cheap to produce, universally accessible. The Karpathian take: **ideas are now the currency.** Each of us is becoming more project manager than developer. The power lies in representing ideas in ways that models can effectively execute.
+Topos translates your quality priorities into measurable targets for AI coding agents. It provides a structured evaluation layer for managing generated code, giving agents the actionable metrics they need to iteratively reach your architectural goals.
 
-But moving from a weekend prototype to robust, long-lived code is an entirely different task. We are not yet equipped to understand, measure, and regulate the quality of generated code.
+---
 
-Code quality is not universal. It is contextual, subjective, and stylized. In the presence of perfect underlying metrics you shouldn't have to fine-tune N different quantitative thresholds on code output. You should pick a direction -- a style template -- and let your models optimize toward it. When you look at the outputs you assess how well they matched your goals.
+### Why Topos?
 
-**Topos captures the translation between qualitative, subjective assessments and clear optimizations that help your agents iteratively improve.**
+In an era of cheap code, **ideas are the currency.** Topos acts as a subobject classifier for project managers: it finds your version of success without you having to balance a raw scorecard of hard metrics. You pick a direction — a **priority template** — and let your models optimize toward it.
 
-## Why Topos?
+### The Two Pillars
 
-A [topos](https://ncatlab.org/nlab/show/topos) is a mathematical structure that only a small subset of mathematicians ever encounter. It is extremely abstract -- but it elegantly captures the ideal relationship between user and coding agent.
+Every program is evaluated along two orthogonal dimensions:
 
-An elementary topos has a **subobject classifier**: you describe objects (programs) by how they map into a classification hierarchy. The simplest example is the category of Sets, where set membership is defined by a map into {0, 1}.
+- **Complexity (AST):** Internal structure, cyclomatic complexity, and entropy.
+- **Coupling (Graph):** External relations, dependency distances, and fan metrics.
 
-For code quality we need more flexibility and nuance. A program is not simply well-written or not -- quality is entirely contextual. Topos builds the subobject classifier for project managers: find your version of success without balancing a raw scorecard of hard metrics.
+### The Evaluation Lattice
 
-## The Two Pillars
-
-Every program is evaluated along two independent dimensions:
-
-| Pillar | Source | Measures |
-|---|---|---|
-| **Complexity** | Abstract Syntax Tree | Cyclomatic complexity and entropy |
-| **Coupling** | Dependency graph | Coupling distances and fan metrics |
-
-These dimensions are orthogonal. A file can be internally clean but dangerously coupled, or self-contained but internally chaotic. Topos never collapses them into a single number -- you always see which axis is the problem.
-
-## The Evaluation Lattice
-
-Code quality maps to a six-valued lattice -- a partial order that captures degrees of structural quality rather than a binary pass/fail:
+Code quality maps to a four-valued diamond lattice (a Heyting algebra) — a partial order that captures degrees of structural quality rather than a binary pass/fail:
 
 ```mermaid
 graph BT
-    BROKEN["&perp; BROKEN -- Bad Code"]
-    ENTANGLED["&#9675; ENTANGLED -- Extreme pathology"]
-    COUPLED["&#9681; COUPLED -- Significant anomaly"]
-    COMPLEX["&#9682; COMPLEX -- Elevated complexity"]
-    STABLE["&#9680; STABLE -- Working code"]
-    SOUND["&top; SOUND -- Great Code"]
+    BROKEN["&perp; BROKEN<br/>Fails targets"]
+    COMPOSABLE["&#9681; COMPOSABLE<br/>Good coupling"]
+    SELF_CONTAINED["&#9680; SELF_CONTAINED<br/>Good structure"]
+    SOUND["&top; SOUND<br/>Both targets met"]
 
-    BROKEN --> ENTANGLED
-    BROKEN --> COUPLED
-    BROKEN --> COMPLEX
-    BROKEN --> STABLE
-    ENTANGLED --> SOUND
-    COUPLED --> STABLE
-    COMPLEX --> STABLE
-    STABLE --> SOUND
+    BROKEN --> COMPOSABLE
+    BROKEN --> SELF_CONTAINED
+    COMPOSABLE --> SOUND
+    SELF_CONTAINED --> SOUND
+
+    style BROKEN         fill:#f8d7da,stroke:#842029,color:#000
+    style COMPOSABLE     fill:#d1ecf1,stroke:#0c5460,color:#000
+    style SELF_CONTAINED fill:#d4edda,stroke:#155724,color:#000
+    style SOUND          fill:#fff3cd,stroke:#856404,color:#000
 ```
 
-> **Reading the lattice:** Arrows point from worse to better. COUPLED and COMPLEX are *incomparable* -- a function can have coupling issues without complexity issues, or vice versa. The lattice preserves this distinction rather than collapsing different failure modes.
+> [!TIP]
+> **Non-Total Order:** `COMPOSABLE` and `SELF_CONTAINED` are _incomparable_. A function can meet one target without meeting the other. `SOUND` is the join of both.
 
-### Lattice Targets
+---
 
-Different projects make different tradeoffs between the two pillars:
+### How It Works
 
-1. **Self-Contained** -- Low dependency, added complexity. You write everything from scratch; the code may be intricate but it doesn't break when a library updates.
+You give the agent a **Priority** (Self-Contained, Composable, or Balanced). The agent evaluates its own code against a lattice target and iterates until it hits it.
 
-2. **Composable** -- Low complexity, many dependencies. You lean on libraries and keep your own code paths simple and readable.
+**PM Directive:** _"Write a data pipeline module. Priority: self-contained."_
 
-```mermaid
-graph LR
-    subgraph "Target 1 -- Self-Contained"
-        A1["Low Coupling"] --- A2["Higher Complexity"]
-    end
-    subgraph "Target 2 -- Composable"
-        B1["Low Complexity"] --- B2["More Dependencies"]
-    end
-```
+1.  **Agent iteration 1:** `structural: ⊥ BROKEN [41%]`
+    - _Guidance: Reduce cyclomatic complexity and normalize entropy toward 0.5_
+2.  **Agent iteration 2:** `structural: ◐ SELF_CONTAINED [72%]`
+    - _✓ Target achieved._
 
-These targets are starting points. As Topos evolves you will define custom lattice configurations that encode your team's specific quality philosophy.
+---
 
-## Setup
+### Quick Start
 
-### Install
+#### 1. Install
 
 ```bash
-pip install topos
-# or with uv
-uv pip install topos
+curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 ```
 
-Optionally install [GitNexus](https://github.com/abhigyanpatwari/GitNexus) for coupling metrics:
+#### 2. CLI Usage
 
 ```bash
-npm install -g gitnexus
-gitnexus analyze            # generates .gitnexus/ in the repo root
+topos evaluate src/ -r --priority self_contained   # classify directory
+topos inspect module.py                             # detailed metrics
+topos compare before.py after.py                    # AST edit distance
 ```
 
-### CLI
+#### 3. MCP Server
 
-```bash
-topos evaluate src/ -r                        # classify a directory
-topos inspect module.py                       # detailed metrics + verdict
-topos compare before.py after.py              # AST edit distance
-topos evaluate src/ -r --gitnexus-dir .gitnexus  # include coupling metrics
-```
-
-### MCP Server
-
-Connect Topos to your AI coding tool so it can evaluate and improve its own output in a loop:
+Connect Topos to Claude, Cursor, or Windsurf to let them evaluate their own work:
 
 ```bash
 topos-mcp
 ```
 
-Point your MCP client at the `topos-mcp` command. See the [docs](docs/) for Claude Desktop, Claude Code, Cursor, and other configurations.
+---
 
-## Architecture
+### Contributing
 
-```
-topos/
-├── core/
-│   ├── morphism.py        # Programs as arrows between states
-│   └── object.py          # AST as a categorical object
-├── graphs/
-│   ├── base.py            # Representation protocol
-│   ├── ast/
-│   │   └── object.py      # ASTRepresentation (complexity pillar)
-│   └── depgraph/
-│       └── graph.py       # DependencyGraph (coupling pillar)
-├── logic/
-│   ├── lattice.py         # Heyting Algebra (meet, join, implies, neg)
-│   ├── policies/          # Metric-to-lattice rules per pillar
-│   │   ├── base.py
-│   │   ├── structural.py
-│   │   └── coupling.py
-│   └── omega.py           # The Subobject Classifier
-├── metrics/
-│   ├── ast/
-│   │   ├── complexity.py  # Cyclomatic complexity
-│   │   └── entropy.py     # Kolmogorov proxy via compression
-│   ├── depgraph/
-│   │   ├── coupling.py    # Afferent/efferent coupling + instability
-│   │   └── fan.py         # Fan-in / fan-out via CALLS edges
-│   └── distance.py        # AST edit distance
-└── utils/
-    └── tree_sitter.py     # AST parsing
-```
+Topos is currently used as an internal tool at Krv Labs to manage and regulate our AI agents' code outputs. We welcome new ideas, architectural critiques, and contributions from the community.
+
+- **Found a bug?** Open an [Issue](https://github.com/Krv-Labs/topos/issues).
+- **Have a feature idea?** Start a [Discussion](https://github.com/Krv-Labs/topos/discussions) or open a Pull Request.
+- **Want to collaborate?** Write to us directly at [team@krv.ai](mailto:team@krv.ai).
+
+---
+
+### Resources
+
+- [Full Documentation](docs/)
+- [Measures & Metrics](docs/source/measures.rst)
+- [Category Theory Concepts](docs/source/concepts.rst)
+
+_Built by [Krv Labs](https://krv.ai)_

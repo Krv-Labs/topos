@@ -4,27 +4,23 @@
 Concepts
 ========
 
-This page explains how verdicts connect to metrics and where the
-category-theoretic vocabulary comes from. You can use Topos without reading
-past the first section; the later sections add precision for extending
-policies, debugging a verdict, or auditing results.
+This page explains the mathematical inspiration behind Topos and where the category-theoretic vocabulary comes from. For a practical breakdown of what we actually measure, see :doc:`measures`.
 
 The Evaluation Lattice
 ----------------------
 
-Topos classifies code against a six-valued **Heyting algebra** — a partial
+Topos classifies code against a four-valued **Heyting algebra** (a diamond lattice) — a partial
 order that captures *degrees of structural confidence* rather than a single
 pass/fail score. Each label describes what the metrics detect, not an
 abstract quality judgment.
 
-``COUPLED`` and ``COMPLEX`` are *incomparable*: a function can be
-branching-heavy (``COMPLEX``) while having normal entropy, or structurally
-anomalous with tight coupling (``COUPLED``). The partial order preserves this
+``COMPOSABLE`` and ``SELF_CONTAINED`` are *incomparable*: a function can be
+structurally sound but highly coupled (``SELF_CONTAINED`` fails, but ``COMPOSABLE`` is reached), or entirely
+self-contained with poor coupling (``SELF_CONTAINED`` reached, but ``COMPOSABLE`` fails). The partial order preserves this
 distinction — Topos never collapses different failure modes without reason.
 
 Metric verdicts within a dimension are combined via **meet** — the
-greatest lower bound. The dimension verdict is only as strong as the weakest
-signal. Policy thresholds live in ``topos.logic.policies``.
+greatest lower bound. The overall verdict is determined by combining the achievements of the independent pillars. Policy thresholds live in ``topos.logic.policies``.
 
 Programs as Morphisms
 ---------------------
@@ -49,8 +45,8 @@ The Subobject Classifier
 
 The **subobject classifier** answers membership questions: for any
 subobject ``S`` of ``X`` there is a characteristic map into the lattice.
-In Topos, that lattice is the six-valued Heyting algebra, and the map
-sends any program to its structural class — one verdict per dimension.
+In Topos, that lattice is the four-valued diamond Heyting algebra, and the map
+sends any program to its structural class — determining if it meets its targets per dimension.
 
 .. code-block:: python
 
@@ -58,8 +54,8 @@ sends any program to its structural class — one verdict per dimension.
 
    morphism = ProgramMorphism.from_file("module.py")
    result = SubobjectClassifier().classify_detailed(morphism, [depgraph])
-   print(result.dimensions)   # {"structural": SOUND, "coupling": COMPLEX}
-   print(result.summary())    # worst across dimensions
+   print(result.dimensions)   # {"structural": SELF_CONTAINED, "coupling": BROKEN}
+   print(result.summary())    # meet across dimensions (e.g., SELF_CONTAINED)
 
 Dimensions are never automatically collapsed — call ``result.summary()``
 only when a single scalar is required. Use ``combine_dimensions(results)``
@@ -73,43 +69,13 @@ contributing metrics to a named dimension.
 
 **ASTRepresentation** (``structural`` dimension)
    Built automatically from the ``ProgramMorphism``. Parses source into a
-   tree-sitter AST and computes cyclomatic complexity and entropy.
+   tree-sitter AST and computes cyclomatic complexity and entropy. Targets the ``SELF_CONTAINED`` evaluation value.
 
 **DependencyGraph** (``coupling`` dimension)
    Built from GitNexus output. Computes coupling metrics for the target
    file against the repository dependency graph. Supplied via
    ``--gitnexus-dir`` on the CLI, or passed directly to
-   ``classify_detailed``.
+   ``classify_detailed``. Targets the ``COMPOSABLE`` evaluation value.
 
 Representations on the same dimension are aggregated via meet;
 representations on different dimensions produce independent verdicts.
-
-Metrics
--------
-
-Each representation emits namespaced metric keys that are mapped to lattice
-values through policy thresholds in ``topos.logic.policies`` — see
-``structural.py`` (AST metrics) and ``coupling.py`` (dependency-graph
-metrics).
-
-**Structural dimension** — ``ASTRepresentation``
-
-- ``ast.complexity`` — cyclomatic complexity: number of linearly independent
-  paths through the code. Higher values always produce a lower verdict.
-
-- ``ast.entropy`` — Kolmogorov-proxy entropy via compression ratio.
-  Very low entropy signals repetitive/boilerplate code; very high signals
-  unusual structure (generated or incoherent). The healthy range is near 0.5.
-
-**Coupling dimension** — ``DependencyGraph``
-
-- ``depgraph.coupling`` — total coupling (afferent + efferent). More
-  coupling always produces a lower verdict.
-
-- ``depgraph.instability`` — ``Ce / (Ca + Ce)``. Both extremes are bad:
-  near 0 is hard to evolve, near 1 depends on everything. The balanced
-  range (0.3--0.7) produces ``SOUND``.
-
-- ``depgraph.fan_in``, ``depgraph.fan_out``, ``depgraph.dep_depth`` —
-  diagnostic metrics visible in ``topos inspect`` output but not used in
-  verdicts.

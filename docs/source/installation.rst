@@ -4,62 +4,85 @@
 Installation
 ============
 
-Topos requires Python 3.11 or newer.
+.. meta::
+   :description: Get started with Topos. Install the CLI, MCP server, or Python API.
+   :twitter:description: Get started with Topos. Install the CLI, MCP server, or Python API.
 
-Quick install
--------------
+Topos is designed to be accessible as either a standalone binary or a Python library. 
 
-.. code-block:: bash
+.. hint::
+   **Prerequisites:** Topos requires **Python 3.11+** for core evaluation. If you use the Binary installation, the embedded Python environment is managed for you.
 
-   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
+.. tab-set::
 
-This downloads the latest release binary to ``~/.local/bin``.
+   .. tab-item:: 🚀 Binary CLI (Recommended)
 
-From source
------------
+      The quickest way to get up and running with the Topos CLI and MCP server.
 
-.. code-block:: bash
+      .. code-block:: bash
 
-   git clone https://github.com/Krv-Labs/topos.git
-   cd topos
-   uv pip install -e .
+         curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 
-Verify it works
----------------
+      .. card:: 
+         :header: **What happens during installation?**
 
-.. code-block:: bash
+         1. The latest release binary is downloaded to ``~/.local/bin``.
+         2. An embedded Python environment is configured.
+         3. You will be prompted to optionally install `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_ (requires Node.js 18+).
 
-   topos --help
+      .. note::
+         **Why GitNexus?** GitNexus enables **Coupling Analysis** (the ``COMPOSABLE`` lattice target). Without it, Topos performs structural analysis (AST-based) but cannot evaluate inter-module dependencies.
 
-Uninstall
----------
+      **Verify the Installation**
 
-**Binary installer:**
+      .. code-block:: bash
 
-.. code-block:: bash
+         topos --version
+         topos-mcp --help
 
-   topos uninstall
-   topos uninstall --dry-run
-   topos uninstall --yes --prune-path-hints
+   .. tab-item:: 🐍 Python API
 
-**pip / uv:**
+      Install Topos as a library to build custom subobject classifiers or integrate evaluation into your Python pipelines.
 
-.. code-block:: bash
+      .. code-block:: bash
 
-   uv pip uninstall topos
-   # or
-   pip uninstall topos
+         pip install topos
+         # or using uv
+         uv pip install topos
 
-Optional: coupling analysis
----------------------------
+      **Building from Source**
 
-Dependency-graph metrics (coupling, instability) require
-`GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, a separate npm tool
-(Node.js 18+):
+      If you want to contribute or use the latest development version:
 
-.. code-block:: bash
+      .. code-block:: bash
 
-   npm install -g gitnexus
-   gitnexus analyze          # run once in your repo root
+         git clone https://github.com/Krv-Labs/topos.git
+         cd topos
+         pip install -e .
 
-This produces a ``.gitnexus/`` directory that ``--gitnexus-dir`` consumes.
+.. grid:: 1 1 2 2
+   :gutter: 3
+
+   .. grid-item-card:: 🛠️ GitNexus Integration
+      :link: https://github.com/abhigyanpatwari/GitNexus
+      :link-type: url
+
+      For full categorical evaluation including the coupling dimension, use the built-in generator:
+      ^^^
+      .. code-block:: bash
+
+         topos depgraph generate
+
+   .. grid-item-card:: 🗑️ Uninstallation
+      :shadow: md
+
+      Removing the binary installation is simple and clean:
+      ^^^
+      .. code-block:: bash
+
+         topos uninstall
+
+Next Steps
+----------
+
+Once installed, proceed to the :ref:`Quickstart <index>` or learn about :ref:`Concepts <concepts>` to understand the Diamond Lattice evaluation model.

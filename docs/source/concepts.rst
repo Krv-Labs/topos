@@ -4,95 +4,78 @@
 Concepts
 ========
 
-Topos applies category theory and intuitionistic logic to code quality evaluation.
-You don't need to understand the math to use Topos — this page explains the
-ideas behind the design.
+This page explains the mathematical inspiration behind Topos and where the category-theoretic vocabulary comes from. For a practical breakdown of what we actually measure, see :doc:`measures`.
 
 The Evaluation Lattice
 ----------------------
 
-At the heart of Topos is a **Heyting algebra** of evaluation values. Unlike a
-simple pass/fail test, this algebra captures *degrees of confidence* about
-code quality.
+Topos classifies code against a four-valued **Heyting algebra** (a diamond lattice) — a partial
+order that captures *degrees of structural confidence* rather than a single
+pass/fail score. Each label describes what the metrics detect, not an
+abstract quality judgment.
 
-The values form a partial order:
+``COMPOSABLE`` and ``SELF_CONTAINED`` are *incomparable*: a function can be
+structurally sound but highly coupled (``SELF_CONTAINED`` fails, but ``COMPOSABLE`` is reached), or entirely
+self-contained with poor coupling (``SELF_CONTAINED`` reached, but ``COMPOSABLE`` fails). The partial order preserves this
+distinction — Topos never collapses different failure modes without reason.
 
-.. mermaid::
-
-   graph BT
-      INVALID["⊥ INVALID"]
-      HALLUCINATED["○ HALLUCINATED"]
-      NOISY["◑ NOISY"]
-      WEAK["◒ WEAK"]
-      COMMODITY["◐ COMMODITY"]
-      VERIFIED["⊤ VERIFIED"]
-
-      INVALID --> HALLUCINATED
-      INVALID --> NOISY
-      INVALID --> WEAK
-      INVALID --> COMMODITY
-      HALLUCINATED --> VERIFIED
-      NOISY --> COMMODITY
-      WEAK --> COMMODITY
-      COMMODITY --> VERIFIED
-
-This is a **partial order**, not a total order. ``NOISY`` and ``WEAK`` are
-*incomparable* — they represent qualitatively different concerns. A function
-might be branching-heavy (high complexity) but well-structured, or simple but
-repetitive. A partial order lets us track distinct failure modes without
-collapsing them onto a single axis.
-
-When combining multiple metric evaluations, Topos uses **meet (∧)** — the
-greatest lower bound. The overall evaluation is only as good as the weakest
-signal, so no single metric can hide a problem revealed by another.
+Metric verdicts within a dimension are combined via **meet** — the
+greatest lower bound. The overall verdict is determined by combining the achievements of the independent pillars. Policy thresholds live in ``topos.logic.policies``.
 
 Programs as Morphisms
 ---------------------
 
-In category theory, a **morphism** is an arrow ``f: A → B`` that transforms
-objects. Topos views programs the same way: source code is a morphism that
-transforms inputs into outputs.
-
-The ``ProgramMorphism`` class captures this:
+In category theory, a **morphism** is an arrow ``f: A -> B``. Topos models
+source code the same way: a program is a morphism that transforms inputs
+into outputs.
 
 .. code-block:: python
 
    from topos import ProgramMorphism
 
    morphism = ProgramMorphism.from_file("transform.py")
-   print(morphism.ast.node_count)
-   print(morphism.ast.depth)
 
 Two programs may compute the same function but have dramatically different
-internal structure. By modeling programs as morphisms and parsing their ASTs,
-Topos can reason about *structural invariants* that input-output testing cannot reveal.
+internal structure. By modelling programs as morphisms and analysing their
+ASTs, Topos can reason about *structural invariants* that input-output
+testing cannot reveal.
 
 The Subobject Classifier
 ------------------------
 
-In a Topos, the **subobject classifier** ``Ω`` is the object that answers
-membership questions. For any subobject ``S ⊆ X``, there is a unique
-**characteristic map** ``χ: X → Ω`` that classifies membership.
-
-In the category of Sets, ``Ω = {true, false}``. In our Topos of Programs,
-``Ω`` is the six-valued Heyting algebra, and ``χ`` captures *degrees* of
-membership in the class of well-structured code.
-
-The ``SubobjectClassifier`` implements this map:
+The **subobject classifier** answers membership questions: for any
+subobject ``S`` of ``X`` there is a characteristic map into the lattice.
+In Topos, that lattice is the four-valued diamond Heyting algebra, and the map
+sends any program to its structural class — determining if it meets its targets per dimension.
 
 .. code-block:: python
 
    from topos import ProgramMorphism, SubobjectClassifier
 
    morphism = ProgramMorphism.from_file("module.py")
-   result = SubobjectClassifier().classify(morphism)
-   print(result)  # e.g., "◐ COMMODITY"
+   result = SubobjectClassifier().classify_detailed(morphism, [depgraph])
+   print(result.dimensions)   # {"structural": SELF_CONTAINED, "coupling": BROKEN}
+   print(result.summary())    # meet across dimensions (e.g., SELF_CONTAINED)
 
-The map factors through two stages:
+Dimensions are never automatically collapsed — call ``result.summary()``
+only when a single scalar is required. Use ``combine_dimensions(results)``
+to fold a directory scan into a per-dimension overall verdict.
 
-1. **Metrics** — extract complexity and entropy from the AST
-2. **Policies** — map metric values to evaluation values via threshold bins
-3. **Aggregation** — combine metric verdicts using lattice meet
+Representations
+---------------
 
-This separates *what we measure* from *how we interpret it*, making the
-system transparent and extensible.
+Topos evaluates programs through pluggable **representations**, each
+contributing metrics to a named dimension.
+
+**ASTRepresentation** (``structural`` dimension)
+   Built automatically from the ``ProgramMorphism``. Parses source into a
+   tree-sitter AST and computes cyclomatic complexity and entropy. Targets the ``SELF_CONTAINED`` evaluation value.
+
+**DependencyGraph** (``coupling`` dimension)
+   Built from GitNexus output. Computes coupling metrics for the target
+   file against the repository dependency graph. Supplied via
+   ``--gitnexus-dir`` on the CLI, or passed directly to
+   ``classify_detailed``. Targets the ``COMPOSABLE`` evaluation value.
+
+Representations on the same dimension are aggregated via meet;
+representations on different dimensions produce independent verdicts.

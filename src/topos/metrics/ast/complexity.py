@@ -55,7 +55,7 @@ DECISION_NODE_TYPES = frozenset(
 
 def calculate_cyclomatic_complexity(ast: ProgramObject) -> int:
     """
-    Measures the branching manifold of the program.
+    Measures the control-flow topology of the program.
 
     Computes cyclomatic complexity by counting decision points in the AST.
     Each decision point adds one to the base complexity of 1.

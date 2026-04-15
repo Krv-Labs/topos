@@ -79,6 +79,59 @@ def test_evaluate_directory(tmp_path):
     assert "test_file.py" in result.output
 
 
+def test_evaluate_prints_fallback_when_overall_empty(tmp_path, monkeypatch):
+    runner = CliRunner()
+    p = tmp_path / "test_file.py"
+    p.write_text("def my_func():\n    return 1\n", encoding="utf-8")
+
+    from topos import main as main_module
+
+    monkeypatch.setattr(
+        main_module.SubobjectClassifier,
+        "combine_dimensions",
+        lambda self, _results: {},
+    )
+
+    result = runner.invoke(cli, ["evaluate", str(p)])
+
+    assert result.exit_code == 0
+    assert "Overall:" in result.output
+    assert "no evaluable dimensions" in result.output
+
+
+def test_evaluate_fails_when_depgraph_requested_but_unavailable(tmp_path):
+    runner = CliRunner()
+    source = tmp_path / "test_file.py"
+    source.write_text("def my_func():\n    return 1\n", encoding="utf-8")
+    gitnexus_dir = tmp_path / ".gitnexus"
+    gitnexus_dir.mkdir()
+
+    result = runner.invoke(
+        cli,
+        ["evaluate", str(source), "--gitnexus-dir", str(gitnexus_dir)],
+    )
+
+    assert result.exit_code == 1
+    assert "Failed to build depgraph" in result.output
+    assert "Overall:" not in result.output
+
+
+def test_inspect_fails_when_depgraph_requested_but_unavailable(tmp_path):
+    runner = CliRunner()
+    source = tmp_path / "inspect_file.py"
+    source.write_text("def func(x):\n    return x + 1\n", encoding="utf-8")
+    gitnexus_dir = tmp_path / ".gitnexus"
+    gitnexus_dir.mkdir()
+
+    result = runner.invoke(
+        cli,
+        ["inspect", str(source), "--gitnexus-dir", str(gitnexus_dir)],
+    )
+
+    assert result.exit_code == 1
+    assert "Failed to build depgraph" in result.output
+
+
 def test_uninstall_binary_installer_dry_run(tmp_path, monkeypatch):
     runner = CliRunner()
     bin_path = tmp_path / "bin" / "topos"

@@ -5,9 +5,9 @@ The command-line interface for topos.
 
 This is the literal implementation of the classification map. When a user
 runs `topos evaluate my_code.py`, the library:
-1. Lifts the text into a Morphism (Category Object)
+1. Lifts the text into a Morphism (Categorical Arrow)
 2. Passes it through the Subobject Classifier (Ω)
-3. Outputs an Evaluation from the Lattice
+3. Outputs per-dimension Evaluations from the Lattice
 
 Usage:
     topos evaluate path/to/code.py
@@ -18,7 +18,10 @@ Usage:
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,8 +29,12 @@ import click
 
 from topos import __version__
 from topos.core.morphism import ProgramMorphism
-from topos.logic.lattice import EvaluationValue
-from topos.logic.omega import SubobjectClassifier
+from topos.logic.omega import ClassificationResult, SubobjectClassifier
+from topos.logic.policies.base import Priority
+
+
+class DepgraphLoadError(RuntimeError):
+    """Raised when a requested dependency graph representation cannot be built."""
 
 
 @click.group()
@@ -36,7 +43,7 @@ def cli() -> None:
     """
     Topos: Category-theoretic code quality evaluation.
 
-    Treating programs as morphisms in a world of commodity code.
+    Treating programs as morphisms in a world of structured code.
     Building the subobject classifier for rigorous program evaluations.
     """
     pass
@@ -62,31 +69,58 @@ def cli() -> None:
     is_flag=True,
     help="Output results as JSON.",
 )
+@click.option(
+    "--priority",
+    type=click.Choice(["balanced", "composable", "self_contained"]),
+    default="balanced",
+    show_default=True,
+    help="Optimization priority: shifts metric weights toward the selected target.",
+)
+@click.option(
+    "--gitnexus-dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help=(
+        "Path to a .gitnexus/ directory for dependency-graph evaluation. "
+        "Requires GitNexus (npm install -g gitnexus) — run "
+        "'gitnexus analyze' in the repo root to generate this directory."
+    ),
+)
 def evaluate(
     paths: tuple[str, ...],
     recursive: bool,
     verbose: bool,
     output_json: bool,
+    priority: str,
+    gitnexus_dir: str | None,
 ) -> None:
     """
     Evaluate code quality using the Subobject Classifier.
 
-    Analyzes Python files and classifies them in the evaluation lattice:
+    Classifies files on the diamond evaluation lattice:
 
     \b
-    ⊥ INVALID        - Syntactically broken code
-    ○ HALLUCINATED   - Likely vacuous or fabricated output
-    ◑ NOISY         - Repetitive/atypical structural signal
-    ◒ WEAK          - Functional with elevated structural risk
-    ◐ COMMODITY     - Functional but with concerns
-    ⊤ VERIFIED       - Maintainable and human-aligned
+      ⊥ BROKEN         — Fails both targets (low quality or parse failure)
+      ◑ COMPOSABLE     — Good coupling; composes well with other modules
+      ◐ SELF_CONTAINED — Good structure; low complexity, clean entropy
+      ⊤ SOUND          — Both targets achieved (the ideal)
+
+    \b
+    Use --priority to direct the evaluation toward a specific target:
+      balanced       Equal weight on all metrics (default)
+      composable     Upweights coupling quality
+      self_contained Upweights structural quality (complexity + entropy)
+
+    \b
+    coupling dimension requires --gitnexus-dir (dependency graph data).
 
     Examples:
 
     \b
         topos evaluate script.py
-        topos evaluate src/ -r
+        topos evaluate src/ -r --priority self_contained
         topos evaluate *.py -v
+        topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable
     """
     if not paths:
         click.echo("Error: No paths provided.", err=True)
@@ -101,8 +135,16 @@ def evaluate(
     classifier = SubobjectClassifier()
     results: list[dict] = []
 
+    parsed_priority = Priority(priority)
+
     for filepath in files:
-        result = _evaluate_file(filepath, classifier, verbose)
+        try:
+            result = _evaluate_file(
+                filepath, classifier, verbose, gitnexus_dir, parsed_priority
+            )
+        except DepgraphLoadError as exc:
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(1)
         results.append(result)
 
     if output_json:
@@ -110,9 +152,18 @@ def evaluate(
     else:
         _output_text(results, verbose)
 
-    overall = classifier.combine(*[EvaluationValue[r["evaluation"]] for r in results])
+    # Per-dimension overall rollup (min score across files, then threshold)
+    classification_results = [r["_result"] for r in results]
+    overall = classifier.combine_dimensions(classification_results)
+
     click.echo()
-    click.echo(f"Overall: {overall}")
+    click.echo("Overall:")
+    if not overall:
+        click.echo("  structural: ⊥ BROKEN (no evaluable dimensions)")
+        return
+
+    for dim, val in overall.items():
+        click.echo(f"  {dim}: {val}")
 
 
 @cli.command()
@@ -163,42 +214,63 @@ def compare(source: str, target: str, verbose: bool) -> None:
 
 @cli.command()
 @click.argument("path", type=click.Path(exists=True))
-def inspect(path: str) -> None:
+@click.option(
+    "--gitnexus-dir",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help=(
+        "Path to a .gitnexus/ directory for dependency-graph metrics. "
+        "Requires GitNexus (npm install -g gitnexus) — run "
+        "'gitnexus analyze' in the repo root to generate this directory."
+    ),
+)
+def inspect(path: str, gitnexus_dir: str | None) -> None:
     """
     Inspect detailed metrics for a single file.
 
-    Shows all available metrics and classification details.
+    Shows all available metrics and per-dimension classification details.
 
     Example:
 
     \b
         topos inspect module.py
+        topos inspect module.py --gitnexus-dir .gitnexus
     """
-    from topos.metrics.complexity import calculate_function_complexities
-    from topos.metrics.entropy import calculate_entropy_detailed
+    from topos.metrics.ast.complexity import calculate_function_complexities
+    from topos.metrics.ast.entropy import calculate_entropy_detailed
 
     morphism = ProgramMorphism.from_file(path)
+    try:
+        representations = _build_representations(str(path), gitnexus_dir)
+    except DepgraphLoadError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
+
     classifier = SubobjectClassifier()
-    result = classifier.classify_detailed(morphism)
+    result = classifier.classify_detailed(morphism, representations=representations)
 
     click.echo(f"File: {path}")
     click.echo()
 
     click.echo("Classification")
     click.echo("-" * 40)
-    click.echo(f"Evaluation: {result.evaluation}")
-    click.echo(f"Valid Syntax: {result.is_valid}")
+    if not result.is_parseable:
+        click.echo("⊥ BROKEN — parse failure")
+        sys.exit(1)
+
+    for dim, val in result.dimensions.items():
+        click.echo(f"  {dim}: {val}")
+    click.echo(f"  Valid Syntax: {result.is_parseable}")
     click.echo()
 
-    click.echo("Metrics")
+    click.echo("Raw Metrics")
     click.echo("-" * 40)
-    click.echo(f"Complexity Score: {result.complexity_score:.3f}")
-    click.echo(f"Entropy Score: {result.entropy_score:.3f}")
+    for k, v in result.raw_metrics.items():
+        interp = result.interpretation.get(k, "")
+        suffix = f"  ({interp})" if interp else ""
+        click.echo(f"  {k}: {v:.3f}{suffix}")
 
     if morphism.ast:
-        click.echo(f"AST Nodes: {result.metrics.get('node_count', 'N/A')}")
-        click.echo(f"AST Depth: {result.metrics.get('depth', 'N/A')}")
-
         click.echo()
         click.echo("Function Complexities")
         click.echo("-" * 40)
@@ -303,6 +375,58 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
             )
 
 
+@cli.group()
+def depgraph() -> None:
+    """Commands for working with dependency graphs."""
+    pass
+
+
+@depgraph.command()
+@click.option(
+    "--dir",
+    "directory",
+    type=click.Path(exists=True, file_okay=False),
+    default=None,
+    help="Repository root to analyze (default: current working directory).",
+)
+def generate(directory: str | None) -> None:
+    """
+    Generate a dependency graph using GitNexus.
+
+    Shells out to 'gitnexus analyze' and writes the .gitnexus/ directory
+    that --gitnexus-dir consumes.
+
+    Example:
+
+    \b
+        topos depgraph generate
+        topos depgraph generate --dir /path/to/repo
+    """
+    target_dir = Path(directory).resolve() if directory else Path.cwd()
+
+    if shutil.which("gitnexus") is None:
+        click.echo(
+            "GitNexus not found. Install it with: npm install -g gitnexus",
+            err=True,
+        )
+        sys.exit(1)
+
+    click.echo(
+        "Using GitNexus (https://github.com/abhigyanpatwari/GitNexus) "
+        "to generate dependency graph...\n"
+    )
+    click.echo("  $ gitnexus analyze\n")
+
+    proc = subprocess.run(["gitnexus", "analyze"], cwd=target_dir)
+
+    if proc.returncode != 0:
+        sys.exit(proc.returncode)
+
+    gitnexus_path = target_dir / ".gitnexus"
+    click.echo(f"\nDependency graph written to {gitnexus_path}")
+    click.echo(f"Next: topos evaluate src/ -r --gitnexus-dir {gitnexus_path}")
+
+
 def main() -> None:
     """Console script entrypoint."""
     cli()
@@ -325,57 +449,103 @@ def _collect_files(paths: tuple[str, ...], recursive: bool) -> list[Path]:
     return sorted(set(files))
 
 
+def _build_representations(filepath: str, gitnexus_dir: str | None) -> list:
+    """Build extra representations for a file."""
+    representations: list = []
+    if gitnexus_dir:
+        from topos.graphs.depgraph.graph import DependencyGraph
+
+        try:
+            depgraph = DependencyGraph.from_gitnexus_dir(gitnexus_dir, filepath)
+        except (OSError, json.JSONDecodeError, ValueError, KeyError) as exc:
+            raise DepgraphLoadError(
+                f"Failed to build depgraph for {filepath} using {gitnexus_dir}: {exc}"
+            ) from exc
+        representations.append(depgraph)
+    return representations
+
+
 def _evaluate_file(
     filepath: Path,
     classifier: SubobjectClassifier,
     verbose: bool,
+    gitnexus_dir: str | None = None,
+    priority: Priority = Priority.BALANCED,
 ) -> dict:
     """Evaluate a single file and return results as a dict."""
     try:
         morphism = ProgramMorphism.from_file(filepath)
-        result = classifier.classify_detailed(morphism)
+        representations = _build_representations(str(filepath), gitnexus_dir)
+        result = classifier.classify_detailed(
+            morphism, representations=representations, priority=priority
+        )
+
+        entropy = result.raw_metrics.get("ast.entropy", 0.0)
 
         return {
             "file": str(filepath),
-            "evaluation": result.evaluation.name,
-            "symbol": result.evaluation.symbol,
-            "complexity": result.complexity_score,
-            "entropy": result.entropy_score,
-            "valid": result.is_valid,
-            "metrics": result.metrics,
+            "is_parseable": result.is_parseable,
+            "lattice_element": result.summary().name,
+            "lattice_symbol": result.summary().symbol,
+            "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
+            "dimension_symbols": {
+                dim: val.symbol for dim, val in result.dimensions.items()
+            },
+            "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+            "priority": priority.value,
+            "raw_metrics": result.raw_metrics,
+            "entropy": entropy,
+            "valid": result.is_parseable,
+            "_result": result,  # internal; stripped before JSON output
         }
+    except DepgraphLoadError:
+        raise
     except Exception as e:
         return {
             "file": str(filepath),
-            "evaluation": "INVALID",
-            "symbol": "⊥",
-            "complexity": 1.0,
-            "entropy": 1.0,
+            "is_parseable": False,
+            "lattice_element": "BROKEN",
+            "lattice_symbol": "⊥",
+            "dimensions": {},
+            "dimension_symbols": {},
+            "scores": {},
+            "priority": priority.value,
+            "raw_metrics": {},
+            "entropy": 0.0,
             "valid": False,
             "error": str(e),
+            "_result": ClassificationResult(is_parseable=False),
         }
 
 
 def _output_text(results: list[dict], verbose: bool) -> None:
     """Output results as formatted text."""
     for result in results:
-        line = f"{result['symbol']} {result['evaluation']:12} {result['file']}"
-        click.echo(line)
+        click.echo(result["file"])
+        for dim, name in result["dimensions"].items():
+            sym = result["dimension_symbols"].get(dim, "")
+            score = result["scores"].get(dim)
+            score_str = f"  [{score:.0f}%]" if score is not None else ""
+            click.echo(f"  {dim}: {sym} {name}{score_str}")
+        if not result["dimensions"]:
+            click.echo("  ⊥ BROKEN (parse failure)")
 
         if verbose:
-            click.echo(f"   Complexity: {result['complexity']:.3f}")
-            click.echo(f"   Entropy: {result['entropy']:.3f}")
+            for k, v in result["raw_metrics"].items():
+                click.echo(f"    {k}: {v:.3f}")
             if "error" in result:
-                click.echo(f"   Error: {result['error']}")
+                click.echo(f"    Error: {result['error']}")
 
 
 def _output_json(results: list[dict]) -> None:
     """Output results as JSON."""
     import json
 
+    # Strip internal _result key before serialising
+    serialisable = [{k: v for k, v in r.items() if k != "_result"} for r in results]
     output = {
         "version": __version__,
-        "results": results,
+        "results": serialisable,
     }
     click.echo(json.dumps(output, indent=2))
 

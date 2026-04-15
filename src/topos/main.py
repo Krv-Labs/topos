@@ -375,6 +375,14 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints: bool) -> None:
             )
 
 
+@cli.command()
+def mcp() -> None:
+    """Run the Topos MCP server."""
+    from topos.server import main as mcp_main
+
+    mcp_main()
+
+
 @cli.group()
 def depgraph() -> None:
     """Commands for working with dependency graphs."""

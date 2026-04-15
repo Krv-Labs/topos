@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 ARCHIVE_SUFFIXES = (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".zip", ".whl", ".tar")
-EVALUATION_ORDER = ("BROKEN", "ENTANGLED", "COUPLED", "COMPLEX", "STABLE", "SOUND")
+EVALUATION_ORDER = ("BROKEN", "COMPOSABLE", "SELF_CONTAINED", "SOUND")
 
 
 @dataclass(frozen=True)

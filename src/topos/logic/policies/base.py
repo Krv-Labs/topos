@@ -16,19 +16,18 @@ This module defines two layers:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from math import inf
 from typing import NamedTuple
 
 from topos.logic.lattice import EvaluationLattice, EvaluationValue
-
 
 # ---------------------------------------------------------------------------
 # Scoring layer (active)
 # ---------------------------------------------------------------------------
 
 
-class Priority(str, Enum):
+class Priority(StrEnum):
     """
     Optimization priority that shifts metric weights within each dimension.
 
@@ -67,8 +66,8 @@ class WeightProfile:
 
 
 WEIGHT_PROFILES: dict[Priority, WeightProfile] = {
-    Priority.BALANCED:       WeightProfile(w_complexity=0.5, w_coupling=0.5),
-    Priority.COMPOSABLE:     WeightProfile(w_complexity=0.3, w_coupling=0.7),
+    Priority.BALANCED: WeightProfile(w_complexity=0.5, w_coupling=0.5),
+    Priority.COMPOSABLE: WeightProfile(w_complexity=0.3, w_coupling=0.7),
     Priority.SELF_CONTAINED: WeightProfile(w_complexity=0.7, w_coupling=0.3),
 }
 
@@ -142,12 +141,8 @@ class BinClassifier:
             cls, "complexity_bins", None
         )
         if complexity_bins is None:
-            raise AttributeError(
-                f"{cls.__name__} does not define complexity_bins"
-            )
-        last_finite = next(
-            b.high for b in reversed(complexity_bins) if b.high < inf
-        )
+            raise AttributeError(f"{cls.__name__} does not define complexity_bins")
+        last_finite = next(b.high for b in reversed(complexity_bins) if b.high < inf)
         denominator = max(1.0, last_finite)
         return min(raw_complexity / denominator, 1.0)
 

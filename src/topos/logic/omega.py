@@ -63,17 +63,14 @@ if TYPE_CHECKING:
 # Maps representation *name* to a function that converts raw metric floats
 # into a ScoredDecision for that representation's dimension.
 
-def _score_ast(
-    raw: dict[str, float], priority: Priority
-) -> ScoredDecision | None:
+
+def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
     if "ast.complexity" not in raw or "ast.entropy" not in raw:
         return None
     return score_structural(raw["ast.complexity"], raw["ast.entropy"], priority)
 
 
-def _score_depgraph(
-    raw: dict[str, float], priority: Priority
-) -> ScoredDecision | None:
+def _score_depgraph(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
     if "depgraph.coupling" not in raw or "depgraph.instability" not in raw:
         return None
     return score_coupling(
@@ -92,13 +89,14 @@ _REPRESENTATION_SCORE_DISPATCHERS: dict[
 # Map each representation name to its lattice target when achieved.
 _DIMENSION_TARGET: dict[str, EvaluationValue] = {
     "structural": EvaluationValue.SELF_CONTAINED,
-    "coupling":   EvaluationValue.COMPOSABLE,
+    "coupling": EvaluationValue.COMPOSABLE,
 }
 
 
 # ---------------------------------------------------------------------------
 # Result dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ClassificationResult:
@@ -153,6 +151,7 @@ class ClassificationResult:
 # ---------------------------------------------------------------------------
 # Classifier
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class SubobjectClassifier:
@@ -260,9 +259,7 @@ class SubobjectClassifier:
         structural_achieved = (
             dimensions.get("structural") == EvaluationValue.SELF_CONTAINED
         )
-        coupling_achieved = (
-            dimensions.get("coupling") == EvaluationValue.COMPOSABLE
-        )
+        coupling_achieved = dimensions.get("coupling") == EvaluationValue.COMPOSABLE
 
         if structural_achieved and coupling_achieved:
             lattice_element = EvaluationValue.SOUND

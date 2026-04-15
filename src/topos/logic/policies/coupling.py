@@ -32,15 +32,15 @@ where w_k comes from the Priority's WeightProfile.
 from __future__ import annotations
 
 from topos.logic.policies.base import (
+    WEIGHT_PROFILES,
     Priority,
     ScoredDecision,
-    WEIGHT_PROFILES,
 )
 
 # Normalization constants (policy decisions)
-MAX_COUPLING: float = 35.0          # coupling count at which quality reaches 0.0
-INSTABILITY_LOW: float = 0.3        # lower bound of optimal instability range
-INSTABILITY_HIGH: float = 0.7       # upper bound of optimal instability range
+MAX_COUPLING: float = 35.0  # coupling count at which quality reaches 0.0
+INSTABILITY_LOW: float = 0.3  # lower bound of optimal instability range
+INSTABILITY_HIGH: float = 0.7  # upper bound of optimal instability range
 
 
 def score_coupling(

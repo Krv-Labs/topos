@@ -223,14 +223,16 @@ class DependencyGraph:
             src_id, dst_id, rel_type, confidence, reason = result.get_next()
             if src_id is None or dst_id is None:
                 continue
-            graph.add_relationship(GraphRelationship(
-                id=f"{src_id}->{dst_id}:{rel_type}:{idx}",
-                source_id=src_id,
-                target_id=dst_id,
-                type=rel_type,
-                confidence=confidence or 1.0,
-                reason=reason or "",
-            ))
+            graph.add_relationship(
+                GraphRelationship(
+                    id=f"{src_id}->{dst_id}:{rel_type}:{idx}",
+                    source_id=src_id,
+                    target_id=dst_id,
+                    type=rel_type,
+                    confidence=confidence or 1.0,
+                    reason=reason or "",
+                )
+            )
             idx += 1
 
         return graph
@@ -272,7 +274,9 @@ class DependencyGraph:
     def nodes_of_label(self, label: NodeLabel) -> list[GraphNode]:
         return [n for n in self.nodes.values() if n.label == label]
 
-    def relationships_of_type(self, rel_type: RelationshipType) -> list[GraphRelationship]:
+    def relationships_of_type(
+        self, rel_type: RelationshipType
+    ) -> list[GraphRelationship]:
         return [r for r in self.relationships.values() if r.type == rel_type]
 
     def outgoing(

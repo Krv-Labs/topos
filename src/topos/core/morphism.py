@@ -27,8 +27,8 @@ from typing import TYPE_CHECKING
 from topos.core.object import ProgramObject
 
 if TYPE_CHECKING:
-    from topos.logic.lattice import EvaluationValue
     from topos.graphs.base import Representation
+    from topos.logic.lattice import EvaluationValue
 
 
 @dataclass

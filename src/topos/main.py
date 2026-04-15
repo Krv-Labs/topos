@@ -139,7 +139,9 @@ def evaluate(
 
     for filepath in files:
         try:
-            result = _evaluate_file(filepath, classifier, verbose, gitnexus_dir, parsed_priority)
+            result = _evaluate_file(
+                filepath, classifier, verbose, gitnexus_dir, parsed_priority
+            )
         except DepgraphLoadError as exc:
             click.echo(f"Error: {exc}", err=True)
             sys.exit(1)
@@ -481,7 +483,9 @@ def _evaluate_file(
             "lattice_element": result.summary().name,
             "lattice_symbol": result.summary().symbol,
             "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
-            "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
+            "dimension_symbols": {
+                dim: val.symbol for dim, val in result.dimensions.items()
+            },
             "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
             "priority": priority.value,
             "raw_metrics": result.raw_metrics,
@@ -533,10 +537,7 @@ def _output_json(results: list[dict]) -> None:
     import json
 
     # Strip internal _result key before serialising
-    serialisable = [
-        {k: v for k, v in r.items() if k != "_result"}
-        for r in results
-    ]
+    serialisable = [{k: v for k, v in r.items() if k != "_result"} for r in results]
     output = {
         "version": __version__,
         "results": serialisable,

@@ -1,12 +1,12 @@
 from topos.logic.policies.base import (
-    Priority,
-    WeightProfile,
     WEIGHT_PROFILES,
-    ScoredDecision,
     # Legacy (kept for compatibility during transition)
     BinClassifier,
     MetricDecision,
     ObservationBin,
+    Priority,
+    ScoredDecision,
+    WeightProfile,
 )
 from topos.logic.policies.coupling import score_coupling
 from topos.logic.policies.structural import build_evaluation_lattice, score_structural

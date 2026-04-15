@@ -4,6 +4,11 @@ import json
 import tempfile
 from pathlib import Path
 
+from topos.graphs.depgraph.graph import (
+    DependencyGraph,
+    GraphNode,
+    GraphRelationship,
+)
 from topos.metrics.depgraph.coupling import (
     CouplingResult,
     calculate_coupling,
@@ -11,11 +16,6 @@ from topos.metrics.depgraph.coupling import (
     calculate_instability,
 )
 from topos.metrics.depgraph.fan import FanResult, calculate_fan_in_out
-from topos.graphs.depgraph.graph import (
-    DependencyGraph,
-    GraphNode,
-    GraphRelationship,
-)
 
 
 def _graph_with_linear_chain() -> DependencyGraph:
@@ -485,9 +485,11 @@ def test_from_gitnexus_dir_missing_lbug_raises():
     """Missing lbug/ directory raises FileNotFoundError."""
     import pytest
 
-    with tempfile.TemporaryDirectory() as tmp:
-        with pytest.raises(FileNotFoundError, match="LadybugDB"):
-            DependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        pytest.raises(FileNotFoundError, match="LadybugDB"),
+    ):
+        DependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
 
 
 def test_from_gitnexus_dir_list_format_auto_id():
@@ -515,8 +517,8 @@ def test_from_gitnexus_dir_list_format_auto_id():
 
 
 def test_dep_policies_score_coupling_perfect():
-    from topos.logic.policies.coupling import score_coupling
     from topos.logic.policies.base import Priority
+    from topos.logic.policies.coupling import score_coupling
 
     # Low coupling, ideal instability → high score, target achieved
     d = score_coupling(0.0, 0.5, Priority.BALANCED)
@@ -525,8 +527,8 @@ def test_dep_policies_score_coupling_perfect():
 
 
 def test_dep_policies_score_coupling_pathological():
-    from topos.logic.policies.coupling import score_coupling
     from topos.logic.policies.base import Priority
+    from topos.logic.policies.coupling import score_coupling
 
     # Max coupling, worst instability → low score, target not achieved
     d = score_coupling(35.0, 1.0, Priority.BALANCED)
@@ -535,8 +537,8 @@ def test_dep_policies_score_coupling_pathological():
 
 
 def test_dep_policies_score_coupling_priority_shifts_weight():
-    from topos.logic.policies.coupling import score_coupling
     from topos.logic.policies.base import Priority
+    from topos.logic.policies.coupling import score_coupling
 
     # High coupling (bad), perfect instability (good)
     balanced = score_coupling(20.0, 0.5, Priority.BALANCED)
@@ -546,8 +548,7 @@ def test_dep_policies_score_coupling_priority_shifts_weight():
 
 
 def test_dep_policies_score_instability_optimal_range():
-    from topos.logic.policies.coupling import score_coupling, _instability_tent
-    from topos.logic.policies.base import Priority
+    from topos.logic.policies.coupling import _instability_tent
 
     # Instability in [0.3, 0.7] → quality = 1.0
     assert _instability_tent(0.5) == 1.0
@@ -560,8 +561,8 @@ def test_dep_policies_score_instability_optimal_range():
 
 
 def test_dep_policies_score_coupling_returns_scored_decision():
-    from topos.logic.policies.coupling import score_coupling
     from topos.logic.policies.base import Priority, ScoredDecision
+    from topos.logic.policies.coupling import score_coupling
 
     decision = score_coupling(3.0, 0.5, Priority.BALANCED)
     assert isinstance(decision, ScoredDecision)
@@ -650,18 +651,10 @@ def test_owning_file_contains_cycle_returns_none():
 def test_coupling_counts_nested_method_imports():
     """Efferent coupling via a Method nested in a Class should be counted."""
     g = DependencyGraph(target_file="a.py")
-    g.add_node(
-        GraphNode(
-            id="File:a.py", label="File", properties={"filePath": "a.py"}
-        )
-    )
+    g.add_node(GraphNode(id="File:a.py", label="File", properties={"filePath": "a.py"}))
     g.add_node(GraphNode(id="Class:a:A", label="Class", properties={}))
     g.add_node(GraphNode(id="Method:a:A:go", label="Method", properties={}))
-    g.add_node(
-        GraphNode(
-            id="File:b.py", label="File", properties={"filePath": "b.py"}
-        )
-    )
+    g.add_node(GraphNode(id="File:b.py", label="File", properties={"filePath": "b.py"}))
     # File:a.py → Class:a:A → Method:a:A:go  (nested two levels)
     g.add_relationship(
         GraphRelationship(
@@ -764,7 +757,8 @@ def test_dependency_depth_diamond():
 
 
 def test_classify_detailed_interpretation_includes_depgraph():
-    """Coupling/instability interpretation strings must appear in ClassificationResult."""
+    """Coupling/instability interpretation strings must appear in
+    ClassificationResult."""
     from topos.core.morphism import ProgramMorphism
     from topos.logic.omega import SubobjectClassifier
 

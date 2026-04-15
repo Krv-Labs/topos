@@ -155,8 +155,13 @@ def evaluate(
     # Per-dimension overall rollup (min score across files, then threshold)
     classification_results = [r["_result"] for r in results]
     overall = classifier.combine_dimensions(classification_results)
+
     click.echo()
     click.echo("Overall:")
+    if not overall:
+        click.echo("  structural: ⊥ BROKEN (no evaluable dimensions)")
+        return
+
     for dim, val in overall.items():
         click.echo(f"  {dim}: {val}")
 

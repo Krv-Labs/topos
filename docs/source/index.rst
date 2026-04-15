@@ -35,7 +35,7 @@ Topos
       :link: installation
       :link-type: doc
 
-      Get started with the CLI, MCP server, or Python API.
+      Get started with the CLI, MCP server, or build from source.
 
    .. grid-item-card:: 🧠 Concepts
       :link: concepts

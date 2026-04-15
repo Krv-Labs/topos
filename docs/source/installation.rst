@@ -5,10 +5,10 @@ Installation
 ============
 
 .. meta::
-   :description: Get started with Topos. Install the CLI, MCP server, or Python API.
-   :twitter:description: Get started with Topos. Install the CLI, MCP server, or Python API.
+   :description: Get started with Topos. Install the CLI, MCP server, or build from source.
+   :twitter:description: Get started with Topos. Install the CLI, MCP server, or build from source.
 
-Topos is designed to be accessible as either a standalone binary or a Python library. 
+Topos is designed to be accessible as either a standalone binary or by building from source. 
 
 .. hint::
    **Prerequisites:** Topos requires **Python 3.11+** for core evaluation. If you use the Binary installation, the embedded Python environment is managed for you.
@@ -40,19 +40,9 @@ Topos is designed to be accessible as either a standalone binary or a Python lib
          topos --version
          topos-mcp --help
 
-   .. tab-item:: 🐍 Python API
+   .. tab-item:: 🐍 Building from Source
 
-      Install Topos as a library to build custom subobject classifiers or integrate evaluation into your Python pipelines.
-
-      .. code-block:: bash
-
-         pip install topos
-         # or using uv
-         uv pip install topos
-
-      **Building from Source**
-
-      If you want to contribute or use the latest development version:
+      If you want to contribute, use the latest development version, or integrate Topos into your Python pipelines:
 
       .. code-block:: bash
 
@@ -67,7 +57,7 @@ Topos is designed to be accessible as either a standalone binary or a Python lib
       :link: https://github.com/abhigyanpatwari/GitNexus
       :link-type: url
 
-      For full categorical evaluation including the coupling dimension, use the built-in generator:
+      For coupling analysis of dependency graphs, use the built-in generator:
       ^^^
       .. code-block:: bash
 

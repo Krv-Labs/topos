@@ -339,7 +339,8 @@ def test_uninstall_prune_path_hints_requires_matching_markers(tmp_path, monkeypa
     assert "Malformed" not in updated
 
 
-def test_detect_install_method_falls_back_when_installer_metadata_missing(monkeypatch):
+def test_detect_install_method_falls_back_when_installer_metadata_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("TOPOS_PROVENANCE_FILE", str(tmp_path / "nonexistent"))
     from topos import main as main_module
 
     class DummyDist:

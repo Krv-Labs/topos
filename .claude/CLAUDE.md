@@ -4,196 +4,134 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-**Topos** is a code quality evaluation framework that applies category theory (specifically Heyting Algebra) to classify Python code. Instead of a single numeric score, every program is mapped to one of six evaluation stages in a lattice, combining cyclomatic complexity and entropy metrics.
+**Topos** is a code quality evaluation framework that applies category theory (specifically Heyting Algebra) to classify Python code. Programs are evaluated across two independent *dimensions* and mapped to a 4-element diamond lattice rather than a single numeric score.
 
 The project consists of:
-- A CLI tool for evaluating and comparing code
-- An MCP (Model Context Protocol) server exposing code analysis as tools
-- Category-theoretic abstractions: ProgramMorphism, ProgramObject, SubobjectClassifier
+- A CLI tool (`topos`) for evaluating and comparing code
+- An MCP server (`topos-mcp`) exposing code analysis as tools for Claude and other MCP clients
+- Category-theoretic abstractions: `ProgramMorphism`, `ProgramObject`, `SubobjectClassifier`
 
 ## Development Commands
 
-**Installation & Setup:**
 ```bash
-uv pip install -e .                    # Install in editable mode
-uv pip install -e ".[dev]"             # Install with dev dependencies (pytest, ruff)
+uv pip install -e ".[dev]"              # Install with dev dependencies
+
+pytest                                   # Run all tests
+pytest tests/test_file.py::test_name    # Run a specific test
+pytest -v --tb=short                    # Verbose with short tracebacks
+
+ruff check src/ --fix && ruff format src/   # Lint and format
 ```
 
-**Running Tests:**
+## CLI Usage
+
 ```bash
-pytest                                  # Run all tests
-pytest tests/test_file.py              # Run a specific test file
-pytest tests/test_file.py::test_name   # Run a specific test
-pytest -v                               # Verbose output
-pytest --tb=short                       # Shorter traceback format
+topos evaluate path/to/code.py
+topos evaluate src/ -r --priority self_contained
+topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable
+topos compare file1.py file2.py -v
+topos inspect module.py --gitnexus-dir .gitnexus
+topos depgraph generate                 # Wraps 'gitnexus analyze' (requires npm install -g gitnexus)
+topos-mcp                               # Run the FastMCP server
 ```
 
-**Linting & Code Quality:**
-```bash
-ruff check src/                         # Check code style
-ruff check src/ --fix                   # Auto-fix style issues
-ruff format src/                        # Format code
+## Architecture
+
+### Two-Layer Representation Model
+
+The codebase separates *representations* (structural views of a program) from *raw metric functions*:
+
+- **`graphs/`** — `Representation` protocol + concrete implementations (`ASTRepresentation`, `DependencyGraph`). These are the objects passed to the classifier.
+- **`metrics/`** — Pure functions that compute raw floats from ASTs or dep-graph data. Called by representations via their `metrics()` method.
+
+The `Representation` protocol (`graphs/base.py`) requires:
+- `name: str` — identifies the representation type (`"ast"`, `"depgraph"`)
+- `dimension: str` — the quality axis it measures (`"structural"`, `"coupling"`)
+- `metrics() -> dict[str, float]` — computes namespaced metric values
+
+New representations go in `graphs/`; new measurement functions go in `metrics/`.
+
+### Evaluation Flow
+
+```
+ProgramMorphism.from_file(path)
+  → ASTRepresentation(morphism.ast)   [always built by classifier]
+  → DependencyGraph.from_gitnexus_dir(...)  [optional; requires .gitnexus/]
+
+SubobjectClassifier.classify_detailed(morphism, representations=[depgraph], priority=...)
+  → Group representations by dimension
+  → Call rep.metrics() → raw floats
+  → score_structural(complexity, entropy) → ScoredDecision [structural dim]
+  → score_coupling(coupling, instability) → ScoredDecision [coupling dim]
+  → score ≥ 0.6 → dimension achieved → mapped to lattice target
+  → Return ClassificationResult
 ```
 
-**CLI Usage:**
-```bash
-topos evaluate path/to/code.py          # Classify a single file
-topos evaluate src/ -r                  # Recursively classify a directory
-topos evaluate *.py -v                  # Verbose output with metrics
-topos evaluate src/ --json              # JSON output
-topos compare file1.py file2.py         # Compare AST structure (edit distance)
-topos compare file1.py file2.py -v      # Show operation counts
-topos inspect module.py                 # Detailed metrics and classifications
+### The Diamond Lattice
+
+`EvaluationLattice` implements a Heyting Algebra with four values:
+
+```
+        ⊤ SOUND         (both targets achieved)
+       /  \
+  COMPOSABLE  SELF_CONTAINED    (incomparable — neither ≤ the other)
+       \  /
+        ⊥ BROKEN        (neither achieved)
 ```
 
-**MCP Server:**
-```bash
-topos-mcp                               # Run the FastMCP server (tools available for Claude)
-```
+Key property: **COMPOSABLE and SELF_CONTAINED are incomparable**. `meet(COMPOSABLE, SELF_CONTAINED) = BROKEN`. In multi-file rollup, `combine_dimensions()` uses minimum score per dimension and re-applies the threshold — it is not a direct lattice meet.
 
-## Project Architecture
+### The Two Dimensions
 
-### Directory Structure
-```
-src/topos/
-├── core/              # Core categorical abstractions
-│   ├── morphism.py    # ProgramMorphism: programs as transformations
-│   ├── object.py      # ProgramObject: AST representation
-│   └── __init__.py
-├── logic/             # Lattice and classification logic
-│   ├── lattice.py     # EvaluationLattice: Heyting Algebra (6-valued logic)
-│   ├── omega.py       # SubobjectClassifier: classification engine
-│   ├── policies.py    # Metric-to-lattice evaluation rules
-│   └── __init__.py
-├── metrics/           # Code quality metrics
-│   ├── complexity.py  # Cyclomatic complexity calculation
-│   ├── entropy.py     # Kolmogorov proxy via compression
-│   ├── distance.py    # AST edit distance (topological drift)
-│   └── __init__.py
-├── utils/             # Utilities
-│   ├── tree_sitter.py # Tree-sitter AST parsing wrapper
-│   └── __init__.py
-├── main.py            # CLI entry point (Click)
-└── server.py          # MCP server (FastMCP)
-```
+| Dimension | Representation | Target | Metrics |
+|-----------|---------------|--------|---------|
+| structural | `ASTRepresentation` | `SELF_CONTAINED` | `ast.complexity`, `ast.entropy` |
+| coupling | `DependencyGraph` | `COMPOSABLE` | `depgraph.coupling`, `depgraph.instability`, `depgraph.fan_in`, `depgraph.fan_out`, `depgraph.dep_depth` |
 
-### Core Concepts
+**Scoring thresholds:**
+- Structural: score = weighted average of `1 - complexity/40` and bell-curve entropy (ideal = 0.5). Threshold: 0.6.
+- Coupling: score = weighted average of `1 - coupling/35` and instability quality (sweet spot [0.3, 0.7]). Threshold: 0.6.
 
-**ProgramMorphism** (`core/morphism.py`)
-- Central abstraction: represents a program as a transformation between computational states
-- Wraps source code and its parsed AST (ProgramObject)
-- Can be created from source string or file
-- Property `is_valid` checks syntactic validity
+**`--priority`** shifts metric weights *within* each dimension (via `Priority` enum: `BALANCED`, `COMPOSABLE`, `SELF_CONTAINED`). It does not change the lattice structure.
 
-**ProgramObject** (`core/object.py`)
-- Encapsulates the AST from tree-sitter
-- Provides methods to calculate AST metrics (depth, node count, etc.)
-- Used by metrics calculators
+### Key Non-Obvious Behaviors
 
-**EvaluationLattice** (`logic/lattice.py`)
-- Implements a Heyting Algebra with 6 values: BROKEN (⊥) → ENTANGLED → COUPLED | COMPLEX → STABLE → SOUND (⊤)
-- Supports lattice operations: `meet()`, `join()`, `implies()`, `complement()`
-- Each label describes a structural observation (what metrics detect), not an abstract quality judgment
+- **COMPOSABLE is unreachable without a DependencyGraph.** Coupling evaluation only runs when a `DependencyGraph` representation is provided (via `--gitnexus-dir`). Without it, only structural runs.
+- **GitNexus is an external npm tool.** Run `topos depgraph generate` (which calls `gitnexus analyze`) to produce the `.gitnexus/` directory consumed by `--gitnexus-dir`.
+- **Parse failures are always structural failures.** `is_parseable=False` → `BROKEN`; in `combine_dimensions()` they inject a 0.0 structural score, pulling multi-file aggregation down.
+- **Mixed representations within a dimension** are scored independently and combined via `min()` (conservative).
+- **`metrics/depgraph/fan.py`** computes fan-in/fan-out and dependency depth — separate from coupling/instability in `metrics/depgraph/coupling.py`.
 
-**SubobjectClassifier** (`logic/omega.py`)
-- The classification engine; groups representations by *dimension* and aggregates within each
-- `classify_detailed()` returns a `ClassificationResult` with `dimensions: dict[str, EvaluationValue]`
-- `classify()` returns `result.summary()` — the worst value across all dimensions
-- `combine_dimensions()` aggregates per-dimension verdicts across multiple files
+## Classification Result
 
-**Metrics**
-- `complexity.py`: Cyclomatic complexity (branches, loops, conditions)
-- `entropy.py`: Kolmogorov complexity proxy using compression ratios
-- `distance.py`: Tree-sitter AST edit distance for structural comparison
-
-### Evaluation Rules
-
-Classification is determined per *dimension*:
-1. **Syntax validity** → if parsing fails, `is_parseable=False` and `dimensions` is empty
-2. **Structural dimension** (always present):
-   - Complexity → cyclomatic complexity mapped via bins in `policies.py`
-   - Entropy → Kolmogorov-proxy compression ratio mapped via bins in `policies.py`
-   - Combined via `meet()` in the non-total lattice
-3. **Coupling dimension** (present when a `DependencyGraph` is passed):
-   - Coupling + instability mapped via bins in `dep_policies.py`
-
-See `logic/policies.py` and `logic/dep_policies.py` for threshold bins.
-
-## Common Workflows
-
-**Adding a New Metric:**
-1. Add calculation function to `metrics/` (e.g., `metrics/my_metric.py`)
-2. Update the relevant evaluation section in `policies.py` or `dep_policies.py`
-3. Register a verdict dispatcher in `omega._REPRESENTATION_VERDICT_DISPATCHERS`
-4. Add the metric key to the appropriate representation's `metrics()` method
-
-**Testing a Code Evaluation:**
 ```python
 from topos import ProgramMorphism, SubobjectClassifier
+from topos.graphs.depgraph.graph import DependencyGraph
 
 morphism = ProgramMorphism.from_file("my_code.py")
+depgraph = DependencyGraph.from_gitnexus_dir(".gitnexus", "my_code.py")  # optional
+
 classifier = SubobjectClassifier()
-result = classifier.classify_detailed(morphism)
+result = classifier.classify_detailed(morphism, representations=[depgraph])
 
-print(result.dimensions)          # {"structural": <EvaluationValue.STABLE: 4>}
-print(result.summary())           # ◐ STABLE
-print(result.raw_metrics)         # {"ast.complexity": 12.0, "ast.entropy": 0.44}
+result.dimensions    # {"structural": SELF_CONTAINED, "coupling": COMPOSABLE}
+result.scores        # {"structural": 0.72, "coupling": 0.65}
+result.summary()     # EvaluationValue.SOUND (both achieved)
+result.raw_metrics   # {"ast.complexity": 8.0, "ast.entropy": 0.52, ...}
 ```
 
-**Comparing Two Files:**
-```python
-from topos.metrics.distance import calculate_ast_distance
-from topos import ProgramMorphism
+## Adding a New Representation
 
-morph1 = ProgramMorphism.from_file("original.py")
-morph2 = ProgramMorphism.from_file("refactored.py")
-
-result = calculate_ast_distance(morph1.ast, morph2.ast)
-print(f"Similarity: {1 - result.normalized_distance:.1%}")
-```
-
-## Dependencies
-
-**Core:**
-- `tree-sitter` (>=0.23): AST parsing
-- `tree-sitter-python` (>=0.23): Python language support
-- `click` (>=8.1): CLI framework
-- `fastmcp`: Model Context Protocol server
-
-**Development:**
-- `pytest` (>=9.0.2): Testing framework
-- `ruff` (>=0.15.8): Linting & formatting
-
-## Configuration
-
-**Ruff (`pyproject.toml`):**
-- Line length: 88
-- Active rules: E, F, I, UP, B, SIM (style, format, imports, upgrades, bugbear, simplify)
-
-**Pytest (`pyproject.toml`):**
-- Test directory: `tests/`
-- Python path: `src/` (for imports)
-
-**Build System:**
-- Backend: `hatchling`
-- Package source: `src/topos`
-
-## Key Files to Understand First
-
-1. **README.md** — Overview of the evaluation lattice and CLI examples
-2. **src/topos/__init__.py** — Public API exports
-3. **src/topos/main.py** — CLI commands (evaluate, compare, inspect)
-4. **src/topos/logic/lattice.py** — EvaluationValue enum and lattice operations
-5. **src/topos/logic/omega.py** — Classification logic and result structure
-6. **src/topos/server.py** — MCP tools for code evaluation
+1. Create `graphs/<name>/object.py` implementing the `Representation` protocol (`name`, `dimension`, `metrics()`)
+2. Add raw metric functions to `metrics/<name>/`
+3. Add a score dispatcher to `omega._REPRESENTATION_SCORE_DISPATCHERS`
+4. Add the dimension target to `omega._DIMENSION_TARGET` if introducing a new dimension
 
 ## MCP Server Tools
 
-The `topos-mcp` server exposes these tools for use by Claude and other MCP clients:
-
-- **evaluate_code(code, language)** — Classify code from a string
-- **evaluate_file(filepath)** — Classify code from a file
-- **compare_code(source_code, target_code, language)** — Compare AST distance
-- **compare_files(source, target)** — Compare two files
-- **assess_improvement(current_code, proposed_code, language)** — Check if proposed code improves current
-- **inspect_code(code, language)** — Detailed metrics breakdown
+- `evaluate_code(code, language)` — Classify code from a string
+- `evaluate_file(filepath)` — Classify code from a file
+- `compare_code(source_code, target_code, language)` — Compare AST edit distance
+- `compare_files(source, target)` — Compare two files
+- `assess_improvement(current_code, proposed_code, language)` — Check if proposed code improves current
+- `inspect_code(code, language)` — Detailed metrics breakdown

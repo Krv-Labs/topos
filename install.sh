@@ -235,6 +235,49 @@ install_topos() {
     success "Topos ${version} installed successfully!"
 }
 
+# Install optional dependencies
+install_optional_dependencies() {
+    echo ""
+    info "Optional Dependencies"
+
+    if command -v gitnexus >/dev/null 2>&1; then
+        success "gitnexus is already installed."
+        return
+    fi
+
+    echo -e "gitnexus is required for dependency graph measures."
+
+    local reply=""
+    if [ -t 0 ]; then
+        echo -n -e "${BLUE}[?]${NC} Do you want to install gitnexus via npm? [Y/n] "
+        read -r reply
+    elif [ -c /dev/tty ]; then
+        echo -n -e "${BLUE}[?]${NC} Do you want to install gitnexus via npm? [Y/n] "
+        read -r reply < /dev/tty
+    fi
+
+    case "$reply" in
+        [yY][eE][sS]|[yY]|"")
+            if ! command -v npm >/dev/null 2>&1; then
+                warn "npm not found. Skipping gitnexus installation."
+                warn "Dependency graph measures will not be available."
+                return
+            fi
+            info "Installing gitnexus..."
+            if npm install -g gitnexus; then
+                success "gitnexus installed successfully!"
+            else
+                error "Failed to install gitnexus."
+                warn "You may need to install it manually: npm install -g gitnexus"
+            fi
+            ;;
+        *)
+            info "Skipping gitnexus installation."
+            info "Note: Dependency graph measures will not be available without gitnexus."
+            ;;
+    esac
+}
+
 # Add to PATH if needed
 setup_path() {
     local shell_rc="" shell_name path_line escaped_install_dir escaped_install_dir_regex
@@ -347,6 +390,7 @@ main() {
     check_dependencies
     validate_install_dir
     install_topos
+    install_optional_dependencies
     setup_path
     write_provenance
     verify_install

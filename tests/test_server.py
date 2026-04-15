@@ -27,9 +27,11 @@ def test_server_version() -> None:
 def test_evaluate_code_happy_path() -> None:
     code = "def foo(): pass"
     res = server.evaluate_code(code)
-    assert "evaluation" in res
-    assert "symbol" in res
-    assert res.get("is_valid") is True
+    assert "dimensions" in res
+    assert "lattice_element" in res
+    assert "scores" in res
+    assert "guidance" in res
+    assert res.get("is_parseable") is True
 
 
 def test_evaluate_code_error_on_unknown_language() -> None:
@@ -40,8 +42,8 @@ def test_evaluate_code_error_on_unknown_language() -> None:
 def test_inspect_code_happy_path() -> None:
     code = "def add(a, b): return a + b"
     res = server.inspect_code(code)
-    assert "evaluation" in res
-    assert "ast_metrics" in res
+    assert "dimensions" in res
+    assert "raw_metrics" in res
     assert "functions" in res
     assert "entropy_details" in res
 
@@ -78,6 +80,26 @@ def test_assess_improvement_regression() -> None:
     assert res["analysis"]["structural_distance"] is None
 
 
+def test_assess_improvement_normalizes_invalid_priority() -> None:
+    res = server.assess_improvement(
+        current_code="x = 1\n",
+        proposed_code="x = 2\n",
+        priority="not-a-priority",
+    )
+
+    assert "status" in res
+    assert res["priority"] == "balanced"
+    assert res["priority_input"] == "not-a-priority"
+
+
+def test_inspect_code_normalizes_invalid_priority() -> None:
+    res = server.inspect_code("x = 1\n", priority="totally-invalid")
+
+    assert "lattice_element" in res
+    assert res["priority"] == "balanced"
+    assert res["priority_input"] == "totally-invalid"
+
+
 # --- File-Based Tools & Safety ---
 
 
@@ -86,7 +108,7 @@ def test_evaluate_file_happy_path(isolated_file_root: Path) -> None:
     p.write_text("x = 1", encoding="utf-8")
 
     res = server.evaluate_file(str(p))
-    assert "evaluation" in res
+    assert "dimensions" in res
 
 
 def test_evaluate_file_rejects_path_outside_allowed_root(

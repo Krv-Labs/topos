@@ -1,3 +1,9 @@
+# Node 
+package-lock.json
+package.json
+node_modules/
+.DS_Store
+
 # Agents
 .cursor/
 .claude/
@@ -218,3 +224,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.gitnexus

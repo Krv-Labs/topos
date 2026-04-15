@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 ARCHIVE_SUFFIXES = (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".zip", ".whl", ".tar")
-EVALUATION_ORDER = ("INVALID", "HALLUCINATED", "NOISY", "WEAK", "COMMODITY", "VERIFIED")
+EVALUATION_ORDER = ("BROKEN", "COMPOSABLE", "SELF_CONTAINED", "SOUND")
 
 
 @dataclass(frozen=True)
@@ -297,20 +297,44 @@ def summarize_results(
     overall: str,
 ) -> VersionSummary:
     counts = Counter(
-        result.get("evaluation", "INVALID")
+        result.get("lattice_element") or result.get("summary", "BROKEN")
         for result in results
         if isinstance(result, dict)
     )
+
+    def _extract_complexity(result: dict[str, Any]) -> float | None:
+        raw_metrics = result.get("raw_metrics")
+        if isinstance(raw_metrics, dict):
+            value = raw_metrics.get("ast.complexity")
+            if isinstance(value, (int, float)):
+                return float(value)
+        value = result.get("complexity")
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    def _extract_entropy(result: dict[str, Any]) -> float | None:
+        raw_metrics = result.get("raw_metrics")
+        if isinstance(raw_metrics, dict):
+            value = raw_metrics.get("ast.entropy")
+            if isinstance(value, (int, float)):
+                return float(value)
+        value = result.get("entropy")
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
     complexities = [
-        float(result["complexity"])
+        complexity
         for result in results
         if isinstance(result, dict)
-        and isinstance(result.get("complexity"), (int, float))
+        and (complexity := _extract_complexity(result)) is not None
     ]
     entropies = [
-        float(result["entropy"])
+        entropy
         for result in results
-        if isinstance(result, dict) and isinstance(result.get("entropy"), (int, float))
+        if isinstance(result, dict)
+        and (entropy := _extract_entropy(result)) is not None
     ]
 
     avg_complexity = sum(complexities) / len(complexities) if complexities else 0.0

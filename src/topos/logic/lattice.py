@@ -3,7 +3,7 @@ Lattice Module (Heyting Algebra)
 --------------------------------
 Implements our configured evaluation lattice. In intuitionistic logic,
 evaluation is not merely binary {0, 1}, but can represent partial evidence
-across multiple stages.
+across orthogonal dimensions.
 
 Mathematical Inspiration:
     A Heyting Algebra is a bounded lattice that acts as the internal logic
@@ -24,37 +24,42 @@ from typing import ClassVar
 
 class EvaluationValue(IntEnum):
     """
-    The stages of code integrity in our Heyting Algebra.
+    The four evaluation targets of our Heyting Algebra (diamond lattice).
 
-    This enumeration defines the six evaluation values that form our lattice,
-    ordered from bottom (⊥) to top (⊤) through a partial order.
+    This enumeration defines the four evaluation values that form our lattice,
+    arranged as a diamond (partial order — not a total chain).
+
+    The two middle values are the **optimization targets** agents aim for.
+    They are incomparable: neither COMPOSABLE ≤ SELF_CONTAINED nor the reverse.
+    SOUND is the join of both; BROKEN is their meet.
 
     Values:
-        INVALID: ⊥ - Code that fails to parse. Syntactically broken.
-        HALLUCINATED: Parses correctly but likely hollow or fabricated.
-        NOISY: Structurally repetitive or suspicious.
-        WEAK: Functional with elevated structural risk.
-        COMMODITY: Functional with recoverable concerns.
-        VERIFIED: ⊤ - Maintainable, well-structured, and human-aligned code.
+        BROKEN:         ⊥ - Fails both targets. Includes parse failures and code
+                        that does not meet the threshold on either quality axis.
+        COMPOSABLE:     Good coupling quality; composes well with other modules.
+                        Achieved when the coupling score ≥ threshold. Requires a
+                        DependencyGraph — unreachable from AST metrics alone.
+        SELF_CONTAINED: Good structural quality; stands alone cleanly.
+                        Achieved when the structural score ≥ threshold (low
+                        cyclomatic complexity, entropy near 0.5).
+        SOUND:          ⊤ - Both targets achieved. Clean, composable, and
+                        self-contained. Sometimes unachievable given finite
+                        resources; project managers set priorities accordingly.
     """
 
-    INVALID = 0  # ⊥ (Bottom)
-    HALLUCINATED = 1
-    NOISY = 2
-    WEAK = 3
-    COMMODITY = 4
-    VERIFIED = 5  # ⊤ (Top)
+    BROKEN = 0  # ⊥ (Bottom)
+    COMPOSABLE = 1  # Good coupling; left branch of diamond
+    SELF_CONTAINED = 2  # Good structure; right branch of diamond
+    SOUND = 3  # ⊤ (Top)
 
     @property
     def symbol(self) -> str:
         """Unicode symbol representation."""
         symbols = {
-            EvaluationValue.INVALID: "⊥",
-            EvaluationValue.HALLUCINATED: "○",
-            EvaluationValue.NOISY: "◑",
-            EvaluationValue.WEAK: "◒",
-            EvaluationValue.COMMODITY: "◐",
-            EvaluationValue.VERIFIED: "⊤",
+            EvaluationValue.BROKEN: "⊥",
+            EvaluationValue.COMPOSABLE: "◑",
+            EvaluationValue.SELF_CONTAINED: "◐",
+            EvaluationValue.SOUND: "⊤",
         }
         return symbols[self]
 
@@ -62,12 +67,14 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.INVALID: "Syntactically invalid code",
-            EvaluationValue.HALLUCINATED: "Likely vacuous or fabricated output",
-            EvaluationValue.NOISY: "Syntactically valid but repetitive",
-            EvaluationValue.WEAK: "Functional with elevated structural risk",
-            EvaluationValue.COMMODITY: "Functional with recoverable concerns",
-            EvaluationValue.VERIFIED: "Verified, maintainable, and aligned",
+            EvaluationValue.BROKEN: "Fails both targets; low quality or parse failure",
+            EvaluationValue.COMPOSABLE: (
+                "Composes well with other modules; coupling quality achieved"
+            ),
+            EvaluationValue.SELF_CONTAINED: (
+                "Stands alone cleanly; structural quality achieved"
+            ),
+            EvaluationValue.SOUND: "Clean, composable, and self-contained",
         }
         return descriptions[self]
 
@@ -85,25 +92,21 @@ class EvaluationLattice:
     chain.
 
     Class Attributes:
-        BOTTOM: The least element (⊥ = INVALID)
-        TOP: The greatest element (⊤ = VERIFIED)
+        BOTTOM: The least element (⊥ = BROKEN)
+        TOP: The greatest element (⊤ = SOUND)
     """
 
-    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.INVALID
-    TOP: ClassVar[EvaluationValue] = EvaluationValue.VERIFIED
+    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.BROKEN
+    TOP: ClassVar[EvaluationValue] = EvaluationValue.SOUND
 
     DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = {
-        EvaluationValue.INVALID: [
-            EvaluationValue.HALLUCINATED,
-            EvaluationValue.NOISY,
-            EvaluationValue.WEAK,
-            EvaluationValue.COMMODITY,
+        EvaluationValue.BROKEN: [
+            EvaluationValue.COMPOSABLE,
+            EvaluationValue.SELF_CONTAINED,
         ],
-        EvaluationValue.HALLUCINATED: [EvaluationValue.VERIFIED],
-        EvaluationValue.NOISY: [EvaluationValue.COMMODITY],
-        EvaluationValue.WEAK: [EvaluationValue.COMMODITY],
-        EvaluationValue.COMMODITY: [EvaluationValue.VERIFIED],
-        EvaluationValue.VERIFIED: [],
+        EvaluationValue.COMPOSABLE: [EvaluationValue.SOUND],
+        EvaluationValue.SELF_CONTAINED: [EvaluationValue.SOUND],
+        EvaluationValue.SOUND: [],
     }
 
     # Direct cover relations: value -> immediate successors.
@@ -116,7 +119,7 @@ class EvaluationLattice:
 
     def __post_init__(self) -> None:
         if not self.cover:
-            self._set_total_chain()
+            self._set_default_cover()
 
         self._closure = {}
         for value in EvaluationValue:
@@ -139,7 +142,7 @@ class EvaluationLattice:
         }
         return cls(cover=normalized_cover)
 
-    def _set_total_chain(self) -> None:
+    def _set_default_cover(self) -> None:
         """
         Safe fallback when no cover is provided.
 

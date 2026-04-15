@@ -12,6 +12,9 @@ that can express partial confidence about program quality and maintainability.
 
 from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
+from topos.graphs.ast.object import ASTRepresentation
+from topos.graphs.base import Representation
+from topos.graphs.depgraph.graph import DependencyGraph
 from topos.logic.lattice import (
     EvaluationLattice,
     EvaluationValue,
@@ -26,4 +29,7 @@ __all__ = [
     "EvaluationLattice",
     "EvaluationValue",
     "SubobjectClassifier",
+    "Representation",
+    "ASTRepresentation",
+    "DependencyGraph",
 ]

@@ -327,9 +327,9 @@ def assess_improvement(
             elif complexity_delta > 0:
                 status = "REGRESSION (Higher Complexity)"
 
-        return {
+        response: dict[str, Any] = {
             "status": status,
-            "priority": priority,
+            "priority": parsed_priority.value,
             "current": {
                 "lattice_element": curr_summary.name,
                 "lattice_symbol": curr_summary.symbol,
@@ -366,6 +366,9 @@ def assess_improvement(
                 ),
             },
         }
+        if priority != parsed_priority.value:
+            response["priority_input"] = priority
+        return response
     except Exception as e:
         return {"error": str(e)}
 
@@ -386,11 +389,10 @@ def inspect_code(
                   'self_contained'.
     """
     try:
+        parsed_priority = _parse_priority(priority)
         morphism = ProgramMorphism(source=code, language=language)
         classifier = SubobjectClassifier()
-        result = classifier.classify_detailed(
-            morphism, priority=_parse_priority(priority)
-        )
+        result = classifier.classify_detailed(morphism, priority=parsed_priority)
 
         inspection: dict[str, Any] = {
             "is_parseable": result.is_parseable,
@@ -398,13 +400,15 @@ def inspect_code(
             "lattice_symbol": result.summary().symbol,
             "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
             "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-            "priority": priority,
+            "priority": parsed_priority.value,
             "guidance": _build_guidance(result),
             "raw_metrics": result.raw_metrics,
             "interpretation": result.interpretation,
             "functions": {},
             "entropy_details": {},
         }
+        if priority != parsed_priority.value:
+            inspection["priority_input"] = priority
 
         if morphism.ast:
             func_complexities = calculate_function_complexities(morphism.ast)

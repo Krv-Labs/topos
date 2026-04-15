@@ -55,10 +55,17 @@ html_theme = "furo"
 html_static_path = ["_static"]
 html_title = "Topos Documentation"
 html_css_files = ["custom.css"]
-html_js_files = ["logo-link.js"]
 
 html_theme_options = {
     "light_logo": "logo.png",
     "dark_logo": "logo-dark.png",
     "sidebar_hide_name": False,
+    "footer_icons": [
+        {
+            "name": "Krv Labs",
+            "url": "https://krv.ai",
+            "html": "Built by Krv Labs →",
+            "class": "",
+        }
+    ],
 }

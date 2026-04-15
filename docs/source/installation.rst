@@ -6,25 +6,17 @@ Installation
 
 Topos requires Python 3.11 or newer.
 
-Quick Install
+Quick install
 -------------
 
 .. code-block:: bash
 
    curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 
-This downloads the latest release binary and installs it to ``~/.local/bin``.
+This downloads the latest release binary to ``~/.local/bin``.
 
-Uninstall (binary installer):
-
-.. code-block:: bash
-
-   topos uninstall
-   topos uninstall --dry-run
-   topos uninstall --yes --prune-path-hints
-
-Install from Source
--------------------
+From source
+-----------
 
 .. code-block:: bash
 
@@ -32,7 +24,25 @@ Install from Source
    cd topos
    uv pip install -e .
 
-Uninstall (package manager):
+Verify it works
+---------------
+
+.. code-block:: bash
+
+   topos --help
+
+Uninstall
+---------
+
+**Binary installer:**
+
+.. code-block:: bash
+
+   topos uninstall
+   topos uninstall --dry-run
+   topos uninstall --yes --prune-path-hints
+
+**pip / uv:**
 
 .. code-block:: bash
 
@@ -40,9 +50,16 @@ Uninstall (package manager):
    # or
    pip uninstall topos
 
-Verify Installation
--------------------
+Optional: coupling analysis
+---------------------------
+
+Dependency-graph metrics (coupling, instability) require
+`GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, a separate npm tool
+(Node.js 18+):
 
 .. code-block:: bash
 
-   topos --help
+   npm install -g gitnexus
+   gitnexus analyze          # run once in your repo root
+
+This produces a ``.gitnexus/`` directory that ``--gitnexus-dir`` consumes.

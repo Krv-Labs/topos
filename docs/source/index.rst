@@ -4,41 +4,56 @@
 Topos
 =====
 
-**Treating programs as morphisms in a world of commodity code.**
+**Topos** gives every piece of Python code a plain-language verdict — one of six stages — so
+you always know whether code is clean, tangled, or broken, and exactly what to fix.
 
-Topos is a code quality evaluation tool that maps every Python program to one of six
-evaluation values. By default it uses AST complexity and entropy metrics, and it can
-optionally incorporate dependency-graph metrics when that representation is available.
-Instead of a numeric score, you get a lattice position that encodes structural quality
-with partial confidence.
+.. admonition:: Where to start
 
-The six evaluation values form a `Heyting algebra <https://en.wikipedia.org/wiki/Heyting_algebra>`_:
+   | **Using AI tools to write code?**
+   | → :doc:`architecture` — what each verdict means and how to act on it.
+   |
+   | **Building with or extending Topos?**
+   | → :doc:`getting_started` for commands, then :doc:`concepts` for the theory.
 
-.. list-table::
-   :widths: 10 20 70
-   :header-rows: 1
+Quick look
+----------
 
-   * - Symbol
-     - Value
-     - Meaning
-   * - ⊥
-     - ``INVALID``
-     - Fails to parse; syntactically broken
-   * - ○
-     - ``HALLUCINATED``
-     - Parses but appears structurally pathological
-   * - ◑
-     - ``NOISY``
-     - Valid code with high repetition or unstable structure
-   * - ◒
-     - ``WEAK``
-     - Functional with elevated structural risk
-   * - ◐
-     - ``COMMODITY``
-     - Functional with recoverable concerns
-   * - ⊤
-     - ``VERIFIED``
-     - Maintainable, well-structured, and human-aligned
+.. code-block:: bash
+
+   topos evaluate src/ -r              # classify a directory
+   topos inspect module.py             # detailed metrics
+   topos compare before.py after.py    # AST edit distance
+
+Each file gets a verdict per quality dimension — **structural** (complexity, entropy)
+and optionally **coupling** (dependency graph). You always see which axis is the
+problem, not a single blended number.
+
+For coupling metrics, point Topos at a
+`GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_ directory:
+
+.. code-block:: bash
+
+   topos evaluate src/ -r --gitnexus-dir .gitnexus
+
+See :doc:`getting_started` for the full CLI, Python API, and MCP server usage.
+
+How it works
+------------
+
+Topos measures two things about every file and maps them to one of six verdicts:
+
+- **Structure** — how many decision paths run through the code (complexity) and how
+  predictable its pattern is (entropy).
+- **Coupling** — how tightly the file is wired to the rest of the codebase (optional).
+
+The six verdicts range from ``SOUND`` (clean, well-scoped) down to ``BROKEN``
+(syntax error). See :doc:`architecture` for the full table and what to do with each.
+
+.. note::
+
+   Under the hood, Topos models code as a **morphism** and evaluates it via a
+   six-valued `Heyting algebra <https://en.wikipedia.org/wiki/Heyting_algebra>`_.
+   See :doc:`concepts` for the formal details.
 
 .. toctree::
    :maxdepth: 1
@@ -48,4 +63,4 @@ The six evaluation values form a `Heyting algebra <https://en.wikipedia.org/wiki
    installation
    getting_started
    concepts
-   architecture
+   For AI-assisted coding <architecture>

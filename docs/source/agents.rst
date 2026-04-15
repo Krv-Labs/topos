@@ -133,7 +133,7 @@ conversation.
 
 .. code-block:: bash
 
-   topos-mcp
+   topos mcp
 
 **For Claude Desktop**, add this to your config:
 
@@ -142,7 +142,8 @@ conversation.
    {
      "mcpServers": {
        "topos": {
-         "command": "topos-mcp"
+         "command": "topos",
+         "args": ["mcp"]
        }
      }
    }

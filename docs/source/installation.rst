@@ -23,8 +23,7 @@ Topos is designed to be accessible as either a standalone binary or by building 
 
          curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 
-      .. card:: 
-         :header: **What happens during installation?**
+      .. card:: **What happens during installation?**
 
          1. The latest release binary is downloaded to ``~/.local/bin``.
          2. An embedded Python environment is configured.
@@ -38,7 +37,7 @@ Topos is designed to be accessible as either a standalone binary or by building 
       .. code-block:: bash
 
          topos --version
-         topos-mcp --help
+         topos mcp --help
 
    .. tab-item:: 🐍 Building from Source
 

@@ -27,6 +27,7 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.githubpages",
     "sphinxcontrib.mermaid",
+    "sphinx_copybutton",
 ]
 
 autosectionlabel_prefix_document = True

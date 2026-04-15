@@ -144,6 +144,10 @@ class DependencyGraph:
     def name(self) -> str:
         return "depgraph"
 
+    @property
+    def dimension(self) -> str:
+        return "coupling"
+
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
@@ -153,26 +157,88 @@ class DependencyGraph:
         cls, gitnexus_dir: str | Path, target_file: str
     ) -> DependencyGraph:
         """
-        Build a DependencyGraph by loading the LadybugDB JSON store.
+        Build a DependencyGraph from a ``.gitnexus/`` directory.
+
+        Supports both the current LadybugDB binary format (``lbug`` file,
+        produced by GitNexus ≥ 1.5) and the legacy JSON directory format.
 
         Args:
             gitnexus_dir: Path to the ``.gitnexus/`` directory.
             target_file: The file path to compute metrics for.
 
         Raises:
-            FileNotFoundError: If the graph JSON cannot be found.
+            FileNotFoundError: If the graph store cannot be found.
+            ImportError: If ``real-ladybug`` is not installed for binary format.
         """
         base = Path(gitnexus_dir)
+        lbug_path = base / "lbug"
+
+        if lbug_path.is_file():
+            return cls._from_ladybugdb(lbug_path, target_file)
+
+        if lbug_path.is_dir():
+            return cls._from_json_dir(lbug_path, target_file)
+
+        raise FileNotFoundError(
+            f"LadybugDB store not found at {lbug_path}. "
+            "Install GitNexus (npm install -g gitnexus) and run "
+            "'gitnexus analyze' in the repository root first."
+        )
+
+    @classmethod
+    def _from_ladybugdb(cls, lbug_path: Path, target_file: str) -> DependencyGraph:
+        """Load from the binary LadybugDB format produced by GitNexus ≥ 1.5."""
+        import real_ladybug as lb
+
         graph = cls(target_file=target_file)
+        db = lb.Database(str(lbug_path), read_only=True)
+        conn = lb.Connection(db)
 
-        lbug_dir = base / "lbug"
-        if not lbug_dir.is_dir():
-            raise FileNotFoundError(
-                f"LadybugDB directory not found at {lbug_dir}. "
-                "Install GitNexus (npm install -g gitnexus) and run "
-                "'gitnexus analyze' in the repository root first."
-            )
+        # Discover node tables at runtime so we're not tied to a fixed schema.
+        tables_result = conn.execute("CALL show_tables() RETURN *")
+        node_tables = []
+        while tables_result.has_next():
+            row = tables_result.get_next()
+            # row: [id, name, type, database, comment]
+            if len(row) >= 3 and row[2] == "NODE":
+                node_tables.append(row[1])
 
+        for label in node_tables:
+            result = conn.execute(f"MATCH (n:`{label}`) RETURN n")
+            while result.has_next():
+                (node_data,) = result.get_next()
+                node_id = node_data.get("id")
+                if node_id is None:
+                    continue
+                props = {k: v for k, v in node_data.items() if not k.startswith("_")}
+                graph.add_node(GraphNode(id=node_id, label=label, properties=props))
+
+        # Load all relationships from the single CodeRelation table.
+        result = conn.execute(
+            "MATCH (src)-[r:CodeRelation]->(dst) "
+            "RETURN src.id, dst.id, r.type, r.confidence, r.reason"
+        )
+        idx = 0
+        while result.has_next():
+            src_id, dst_id, rel_type, confidence, reason = result.get_next()
+            if src_id is None or dst_id is None:
+                continue
+            graph.add_relationship(GraphRelationship(
+                id=f"{src_id}->{dst_id}:{rel_type}:{idx}",
+                source_id=src_id,
+                target_id=dst_id,
+                type=rel_type,
+                confidence=confidence or 1.0,
+                reason=reason or "",
+            ))
+            idx += 1
+
+        return graph
+
+    @classmethod
+    def _from_json_dir(cls, lbug_dir: Path, target_file: str) -> DependencyGraph:
+        """Load from the legacy JSON directory format produced by GitNexus < 1.5."""
+        graph = cls(target_file=target_file)
         for json_path in lbug_dir.glob("*.json"):
             data = json.loads(json_path.read_text(encoding="utf-8"))
             if isinstance(data, list):
@@ -186,7 +252,6 @@ class DependencyGraph:
                     graph.add_node(_parse_node(node_data))
                 for rel_data in data.get("relationships", []):
                     graph.add_relationship(_parse_relationship(rel_data))
-
         return graph
 
     def add_node(self, node: GraphNode) -> None:

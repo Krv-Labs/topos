@@ -34,6 +34,22 @@ class Representation(Protocol):
     @property
     def name(self) -> str: ...
 
+    @property
+    def dimension(self) -> str:
+        """
+        The quality axis this representation measures.
+
+        Representations with the same dimension are aggregated together
+        within a single dimension verdict via lattice meet.  Representations
+        with different dimensions are reported separately and never collapsed
+        into each other.
+
+        Standard dimension names:
+            ``"structural"`` — internal code structure (AST-based)
+            ``"coupling"``   — architectural positioning (dependency-graph)
+        """
+        ...
+
     def metrics(self) -> dict[str, float]:
         """
         Compute all metric values for this representation.

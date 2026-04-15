@@ -133,7 +133,7 @@ class ProgramMorphism:
             self,
             representations=self.representations or None,
         )
-        return result.evaluation
+        return result.summary()
 
     def __hash__(self) -> int:
         """Hash based on source content."""

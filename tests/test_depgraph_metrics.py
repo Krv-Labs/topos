@@ -302,7 +302,9 @@ def test_classification_result_str_with_representations():
 
     result = ClassificationResult(
         is_parseable=True,
-        dimensions={"coupling": EvaluationValue.STABLE},
+        dimensions={"coupling": EvaluationValue.COMPOSABLE},
+        scores={"coupling": 0.75},
+        lattice_element=EvaluationValue.COMPOSABLE,
         raw_metrics={
             "depgraph.coupling": 3.0,
             "depgraph.instability": 0.5,
@@ -512,74 +514,83 @@ def test_from_gitnexus_dir_list_format_auto_id():
 # ---------------------------------------------------------------------------
 
 
-def test_dep_policies_coupling_bins():
-    from topos.logic.policies import classify_coupling
-    from topos.logic.lattice import EvaluationValue
+def test_dep_policies_score_coupling_perfect():
+    from topos.logic.policies.coupling import score_coupling
+    from topos.logic.policies.base import Priority
 
-    assert classify_coupling(0).evaluation == EvaluationValue.SOUND
-    assert classify_coupling(4).evaluation == EvaluationValue.SOUND
-    assert classify_coupling(5).evaluation == EvaluationValue.STABLE
-    assert classify_coupling(11).evaluation == EvaluationValue.STABLE
-    assert classify_coupling(12).evaluation == EvaluationValue.COMPLEX
-    assert classify_coupling(19).evaluation == EvaluationValue.COMPLEX
-    assert classify_coupling(20).evaluation == EvaluationValue.COUPLED
-    assert classify_coupling(34).evaluation == EvaluationValue.COUPLED
-    assert classify_coupling(35).evaluation == EvaluationValue.ENTANGLED
-    assert classify_coupling(100).evaluation == EvaluationValue.ENTANGLED
+    # Low coupling, ideal instability → high score, target achieved
+    d = score_coupling(0.0, 0.5, Priority.BALANCED)
+    assert d.score >= 0.9
+    assert d.achieved is True
 
 
-def test_dep_policies_instability_bins():
-    from topos.logic.policies import classify_instability
-    from topos.logic.lattice import EvaluationValue
+def test_dep_policies_score_coupling_pathological():
+    from topos.logic.policies.coupling import score_coupling
+    from topos.logic.policies.base import Priority
 
-    assert classify_instability(0.0).evaluation == EvaluationValue.COMPLEX
-    assert classify_instability(0.05).evaluation == EvaluationValue.COMPLEX
-    assert classify_instability(0.1).evaluation == EvaluationValue.STABLE
-    assert classify_instability(0.2).evaluation == EvaluationValue.STABLE
-    assert classify_instability(0.3).evaluation == EvaluationValue.SOUND
-    assert classify_instability(0.5).evaluation == EvaluationValue.SOUND
-    assert classify_instability(0.7).evaluation == EvaluationValue.STABLE
-    assert classify_instability(0.8).evaluation == EvaluationValue.STABLE
-    assert classify_instability(0.9).evaluation == EvaluationValue.COMPLEX
-    assert classify_instability(1.0).evaluation == EvaluationValue.COMPLEX
+    # Max coupling, worst instability → low score, target not achieved
+    d = score_coupling(35.0, 1.0, Priority.BALANCED)
+    assert d.score < 0.6
+    assert d.achieved is False
 
 
-def test_dep_policies_classify_coupling_returns_metric_decision():
-    from topos.logic.policies import classify_coupling
+def test_dep_policies_score_coupling_priority_shifts_weight():
+    from topos.logic.policies.coupling import score_coupling
+    from topos.logic.policies.base import Priority
 
-    decision = classify_coupling(3.0)
-    assert decision.raw_score == 3.0
-    assert decision.interpretation != ""
-
-
-def test_dep_policies_classify_instability_returns_metric_decision():
-    from topos.logic.policies import classify_instability
-
-    decision = classify_instability(0.5)
-    assert decision.raw_score == 0.5
-    assert decision.interpretation != ""
+    # High coupling (bad), perfect instability (good)
+    balanced = score_coupling(20.0, 0.5, Priority.BALANCED)
+    composable = score_coupling(20.0, 0.5, Priority.COMPOSABLE)
+    # COMPOSABLE upweights coupling_quality (which is bad here) → lower score
+    assert composable.score <= balanced.score
 
 
-def test_depgraph_verdicts_only_route_policy_active_metrics():
-    from topos.logic.policies import MetricDecision
-    from topos.logic.omega import _depgraph_verdicts
+def test_dep_policies_score_instability_optimal_range():
+    from topos.logic.policies.coupling import score_coupling, _instability_tent
+    from topos.logic.policies.base import Priority
 
-    decisions = _depgraph_verdicts(
+    # Instability in [0.3, 0.7] → quality = 1.0
+    assert _instability_tent(0.5) == 1.0
+    assert _instability_tent(0.3) == 1.0
+    assert _instability_tent(0.7) == 1.0
+
+    # Outside optimal range → quality < 1.0
+    assert _instability_tent(0.0) < 1.0
+    assert _instability_tent(1.0) == 0.0
+
+
+def test_dep_policies_score_coupling_returns_scored_decision():
+    from topos.logic.policies.coupling import score_coupling
+    from topos.logic.policies.base import Priority, ScoredDecision
+
+    decision = score_coupling(3.0, 0.5, Priority.BALANCED)
+    assert isinstance(decision, ScoredDecision)
+    assert 0.0 <= decision.score <= 1.0
+    assert "depgraph.coupling" in decision.interpretation
+    assert "depgraph.instability" in decision.interpretation
+
+
+def test_score_depgraph_routes_to_active_metrics():
+    from topos.logic.omega import _score_depgraph
+    from topos.logic.policies.base import Priority
+
+    # Extra metrics (fan_in, fan_out, dep_depth) are passed through raw_metrics
+    # but _score_depgraph only uses coupling and instability
+    decision = _score_depgraph(
         {
             "depgraph.coupling": 6.0,
             "depgraph.instability": 0.5,
             "depgraph.fan_in": 10.0,
             "depgraph.fan_out": 8.0,
             "depgraph.dep_depth": 3.0,
-        }
+        },
+        Priority.BALANCED,
     )
-
-    assert set(decisions.keys()) == {
+    assert decision is not None
+    assert set(decision.interpretation.keys()) == {
         "depgraph.coupling",
         "depgraph.instability",
     }
-    assert all(isinstance(v, MetricDecision) for v in decisions.values())
-    assert all(v.interpretation != "" for v in decisions.values())
 
 
 # ---------------------------------------------------------------------------

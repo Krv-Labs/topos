@@ -291,23 +291,26 @@ def test_ast_representation_dispatches_verdicts():
     assert result.summary() == baseline.summary()
 
 
-def test_ast_verdicts_function_produces_correct_keys():
-    """_ast_verdicts returns MetricDecision values for ast.complexity and ast.entropy."""
-    from topos.logic.policies import MetricDecision
-    from topos.logic.omega import _ast_verdicts
+def test_score_ast_produces_scored_decision():
+    """_score_ast returns a ScoredDecision for ast.complexity and ast.entropy."""
+    from topos.logic.omega import _score_ast
+    from topos.logic.policies.base import Priority, ScoredDecision
 
-    decisions = _ast_verdicts({"ast.complexity": 2.0, "ast.entropy": 0.5})
-    assert set(decisions.keys()) == {"ast.complexity", "ast.entropy"}
-    assert all(isinstance(v, MetricDecision) for v in decisions.values())
-    assert all(v.interpretation != "" for v in decisions.values())
+    decision = _score_ast({"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.BALANCED)
+    assert decision is not None
+    assert isinstance(decision, ScoredDecision)
+    assert 0.0 <= decision.score <= 1.0
+    assert set(decision.interpretation.keys()) == {"ast.complexity", "ast.entropy"}
+    assert all(v != "" for v in decision.interpretation.values())
 
 
-def test_ast_verdicts_ignores_missing_keys():
-    """_ast_verdicts returns an empty dict when expected keys are absent."""
-    from topos.logic.omega import _ast_verdicts
+def test_score_ast_returns_none_on_missing_keys():
+    """_score_ast returns None when expected metric keys are absent."""
+    from topos.logic.omega import _score_ast
+    from topos.logic.policies.base import Priority
 
-    assert _ast_verdicts({}) == {}
-    assert _ast_verdicts({"depgraph.coupling": 3.0}) == {}
+    assert _score_ast({}, Priority.BALANCED) is None
+    assert _score_ast({"depgraph.coupling": 3.0}, Priority.BALANCED) is None
 
 
 # ---------------------------------------------------------------------------

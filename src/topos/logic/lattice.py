@@ -24,37 +24,51 @@ from typing import ClassVar
 
 class EvaluationValue(IntEnum):
     """
-    The stages of code integrity in our Heyting Algebra.
+    The stages of code quality in our Heyting Algebra.
 
     This enumeration defines the six evaluation values that form our lattice,
     ordered from bottom (⊥) to top (⊤) through a partial order.
 
+    Each label describes a *structural observation* about the code — what the
+    metrics are detecting — rather than an abstract quality judgment.  The two
+    middle pairs (ENTANGLED/COUPLED and COMPLEX/STABLE) correspond to the
+    project's two evaluation pillars: **complexity** (AST-derived) and
+    **coupling** (dependency-graph-derived).
+
     Values:
-        INVALID: ⊥ - Code that fails to parse. Syntactically broken.
-        HALLUCINATED: Parses correctly but likely hollow or fabricated.
-        NOISY: Structurally repetitive or suspicious.
-        WEAK: Functional with elevated structural risk.
-        COMMODITY: Functional with recoverable concerns.
-        VERIFIED: ⊤ - Maintainable, well-structured, and human-aligned code.
+        BROKEN:     ⊥ - Parse failure (pre-evaluation) or lattice bottom within
+                    a dimension. When returned by a dimension, it means the
+                    structural signal for that axis is at the worst possible
+                    evaluation (not necessarily a syntax error).
+        ENTANGLED:  Extreme structural or coupling pathology. Complexity ≥ 40
+                    or entropy ≥ 0.95 — the code is too tangled to reason about.
+        COUPLED:    Anomalous structural signal. Significantly off-range entropy,
+                    high-range complexity ([24, 40)), or tight coupling that
+                    makes the module brittle.
+        COMPLEX:    Elevated branching or off-range entropy beyond what the task
+                    warrants, but still manageable.
+        STABLE:     Working code — structurally sound with minor concerns.
+                    Recoverable with targeted refactoring.
+        SOUND:      ⊤ - Clean, maintainable, and appropriately scoped.
     """
 
-    INVALID = 0  # ⊥ (Bottom)
-    HALLUCINATED = 1
-    NOISY = 2
-    WEAK = 3
-    COMMODITY = 4
-    VERIFIED = 5  # ⊤ (Top)
+    BROKEN = 0      # ⊥ (Bottom)
+    ENTANGLED = 1
+    COUPLED = 2
+    COMPLEX = 3
+    STABLE = 4
+    SOUND = 5       # ⊤ (Top)
 
     @property
     def symbol(self) -> str:
         """Unicode symbol representation."""
         symbols = {
-            EvaluationValue.INVALID: "⊥",
-            EvaluationValue.HALLUCINATED: "○",
-            EvaluationValue.NOISY: "◑",
-            EvaluationValue.WEAK: "◒",
-            EvaluationValue.COMMODITY: "◐",
-            EvaluationValue.VERIFIED: "⊤",
+            EvaluationValue.BROKEN: "⊥",
+            EvaluationValue.ENTANGLED: "○",
+            EvaluationValue.COUPLED: "◑",
+            EvaluationValue.COMPLEX: "◒",
+            EvaluationValue.STABLE: "◐",
+            EvaluationValue.SOUND: "⊤",
         }
         return symbols[self]
 
@@ -62,12 +76,12 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.INVALID: "Syntactically invalid code",
-            EvaluationValue.HALLUCINATED: "Likely vacuous or fabricated output",
-            EvaluationValue.NOISY: "Syntactically valid but repetitive",
-            EvaluationValue.WEAK: "Functional with elevated structural risk",
-            EvaluationValue.COMMODITY: "Functional with recoverable concerns",
-            EvaluationValue.VERIFIED: "Verified, maintainable, and aligned",
+            EvaluationValue.BROKEN: "Structurally broken; cannot be evaluated",
+            EvaluationValue.ENTANGLED: "Extreme structural or coupling pathology",
+            EvaluationValue.COUPLED: "Significant anomaly; tight coupling or brittle structure",
+            EvaluationValue.COMPLEX: "More complex than the task warrants",
+            EvaluationValue.STABLE: "Working code; structurally sound with minor concerns",
+            EvaluationValue.SOUND: "Clean, maintainable, appropriately scoped",
         }
         return descriptions[self]
 
@@ -85,25 +99,25 @@ class EvaluationLattice:
     chain.
 
     Class Attributes:
-        BOTTOM: The least element (⊥ = INVALID)
-        TOP: The greatest element (⊤ = VERIFIED)
+        BOTTOM: The least element (⊥ = BROKEN)
+        TOP: The greatest element (⊤ = SOUND)
     """
 
-    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.INVALID
-    TOP: ClassVar[EvaluationValue] = EvaluationValue.VERIFIED
+    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.BROKEN
+    TOP: ClassVar[EvaluationValue] = EvaluationValue.SOUND
 
     DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = {
-        EvaluationValue.INVALID: [
-            EvaluationValue.HALLUCINATED,
-            EvaluationValue.NOISY,
-            EvaluationValue.WEAK,
-            EvaluationValue.COMMODITY,
+        EvaluationValue.BROKEN: [
+            EvaluationValue.ENTANGLED,
+            EvaluationValue.COUPLED,
+            EvaluationValue.COMPLEX,
+            EvaluationValue.STABLE,
         ],
-        EvaluationValue.HALLUCINATED: [EvaluationValue.VERIFIED],
-        EvaluationValue.NOISY: [EvaluationValue.COMMODITY],
-        EvaluationValue.WEAK: [EvaluationValue.COMMODITY],
-        EvaluationValue.COMMODITY: [EvaluationValue.VERIFIED],
-        EvaluationValue.VERIFIED: [],
+        EvaluationValue.ENTANGLED: [EvaluationValue.SOUND],
+        EvaluationValue.COUPLED: [EvaluationValue.STABLE],
+        EvaluationValue.COMPLEX: [EvaluationValue.STABLE],
+        EvaluationValue.STABLE: [EvaluationValue.SOUND],
+        EvaluationValue.SOUND: [],
     }
 
     # Direct cover relations: value -> immediate successors.

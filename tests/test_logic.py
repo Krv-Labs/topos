@@ -222,3 +222,20 @@ def test_combine_dimensions_uses_min_score():
     combined = classifier.combine_dimensions([r1, r2])
     # Min score = 0.4, below threshold 0.6 → BROKEN
     assert combined["structural"] == EvaluationValue.BROKEN
+
+
+def test_combine_dimensions_counts_parse_failures_as_structural_broken():
+    from topos.logic.omega import ClassificationResult
+
+    classifier = SubobjectClassifier()
+
+    good = ClassificationResult(
+        is_parseable=True,
+        dimensions={"structural": EvaluationValue.SELF_CONTAINED},
+        scores={"structural": 0.9},
+        lattice_element=EvaluationValue.SELF_CONTAINED,
+    )
+    parse_failure = ClassificationResult(is_parseable=False)
+
+    combined = classifier.combine_dimensions([good, parse_failure])
+    assert combined["structural"] == EvaluationValue.BROKEN

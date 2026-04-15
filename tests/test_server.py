@@ -27,9 +27,9 @@ def test_server_version() -> None:
 def test_evaluate_code_happy_path() -> None:
     code = "def foo(): pass"
     res = server.evaluate_code(code)
-    assert "evaluation" in res
-    assert "symbol" in res
-    assert res.get("is_valid") is True
+    assert "dimensions" in res
+    assert "summary" in res
+    assert res.get("is_parseable") is True
 
 
 def test_evaluate_code_error_on_unknown_language() -> None:
@@ -40,8 +40,8 @@ def test_evaluate_code_error_on_unknown_language() -> None:
 def test_inspect_code_happy_path() -> None:
     code = "def add(a, b): return a + b"
     res = server.inspect_code(code)
-    assert "evaluation" in res
-    assert "ast_metrics" in res
+    assert "dimensions" in res
+    assert "raw_metrics" in res
     assert "functions" in res
     assert "entropy_details" in res
 
@@ -86,7 +86,7 @@ def test_evaluate_file_happy_path(isolated_file_root: Path) -> None:
     p.write_text("x = 1", encoding="utf-8")
 
     res = server.evaluate_file(str(p))
-    assert "evaluation" in res
+    assert "dimensions" in res
 
 
 def test_evaluate_file_rejects_path_outside_allowed_root(

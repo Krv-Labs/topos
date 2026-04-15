@@ -18,7 +18,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 ARCHIVE_SUFFIXES = (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".zip", ".whl", ".tar")
-EVALUATION_ORDER = ("INVALID", "HALLUCINATED", "NOISY", "WEAK", "COMMODITY", "VERIFIED")
+EVALUATION_ORDER = ("BROKEN", "ENTANGLED", "COUPLED", "COMPLEX", "STABLE", "SOUND")
 
 
 @dataclass(frozen=True)
@@ -297,7 +297,7 @@ def summarize_results(
     overall: str,
 ) -> VersionSummary:
     counts = Counter(
-        result.get("evaluation", "INVALID")
+        result.get("summary", "BROKEN")
         for result in results
         if isinstance(result, dict)
     )

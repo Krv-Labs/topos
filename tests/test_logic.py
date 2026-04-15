@@ -7,26 +7,16 @@ from topos.logic.policies import section
 
 
 def test_evaluation_value_order():
-    # Basic ordering checks if they were a total chain (they aren't,
-    # but let's check the lattice)
-    lattice = EvaluationLattice()  # default uses total chain fallback or DEFAULT_COVER
+    # Basic ordering checks using DEFAULT_COVER (non-total)
+    lattice = EvaluationLattice()
 
-    # Using the DEFAULT_COVER which is non-total
-    assert lattice.leq(EvaluationValue.INVALID, EvaluationValue.VERIFIED)
-    assert lattice.leq(EvaluationValue.COMMODITY, EvaluationValue.VERIFIED)
-    assert lattice.leq(EvaluationValue.NOISY, EvaluationValue.COMMODITY)
+    assert lattice.leq(EvaluationValue.BROKEN, EvaluationValue.SOUND)
+    assert lattice.leq(EvaluationValue.STABLE, EvaluationValue.SOUND)
+    assert lattice.leq(EvaluationValue.COUPLED, EvaluationValue.STABLE)
 
-    # Check incomparable elements
-    # NOISY and WEAK are both <= COMMODITY but not necessarily related
-    # to each other in a simple chain
-    # In DEFAULT_COVER:
-    # INVALID -> HALLUCINATED, NOISY, WEAK, COMMODITY
-    # NOISY -> COMMODITY
-    # WEAK -> COMMODITY
-    # COMMODITY -> VERIFIED
-
-    assert not lattice.leq(EvaluationValue.NOISY, EvaluationValue.WEAK)
-    assert not lattice.leq(EvaluationValue.WEAK, EvaluationValue.NOISY)
+    # COUPLED and COMPLEX are incomparable
+    assert not lattice.leq(EvaluationValue.COUPLED, EvaluationValue.COMPLEX)
+    assert not lattice.leq(EvaluationValue.COMPLEX, EvaluationValue.COUPLED)
 
 
 def test_lattice_meet_join():
@@ -34,30 +24,28 @@ def test_lattice_meet_join():
 
     # Meet (And / GLB)
     assert (
-        lattice.meet(EvaluationValue.VERIFIED, EvaluationValue.COMMODITY)
-        == EvaluationValue.COMMODITY
+        lattice.meet(EvaluationValue.SOUND, EvaluationValue.STABLE)
+        == EvaluationValue.STABLE
     )
     assert (
-        lattice.meet(EvaluationValue.NOISY, EvaluationValue.WEAK)
-        == EvaluationValue.INVALID
+        lattice.meet(EvaluationValue.COUPLED, EvaluationValue.COMPLEX)
+        == EvaluationValue.BROKEN
     )
 
     # Join (Or / LUB)
     assert (
-        lattice.join(EvaluationValue.NOISY, EvaluationValue.WEAK)
-        == EvaluationValue.COMMODITY
+        lattice.join(EvaluationValue.COUPLED, EvaluationValue.COMPLEX)
+        == EvaluationValue.STABLE
     )
     assert (
-        lattice.join(EvaluationValue.INVALID, EvaluationValue.VERIFIED)
-        == EvaluationValue.VERIFIED
+        lattice.join(EvaluationValue.BROKEN, EvaluationValue.SOUND)
+        == EvaluationValue.SOUND
     )
 
 
 def test_subobject_classifier_simple():
     classifier = SubobjectClassifier()
 
-    # Use a slightly longer piece of code to avoid high compression ratios
-    # (entropy) on tiny strings
     source = """
 def process_data(data):
     \"\"\"Process the input data list.\"\"\"
@@ -70,9 +58,11 @@ def process_data(data):
     morphism = ProgramMorphism(source=source)
 
     result = classifier.classify_detailed(morphism)
-    assert result.is_valid is True
-    # Clean code should be VERIFIED or at least COMMODITY
-    assert result.evaluation >= EvaluationValue.COMMODITY
+    assert result.is_parseable is True
+    # Should have a structural dimension
+    assert "structural" in result.dimensions
+    # Clean code should be STABLE or better
+    assert result.dimensions["structural"] >= EvaluationValue.STABLE
 
 
 def test_subobject_classifier_invalid():
@@ -82,47 +72,45 @@ def test_subobject_classifier_invalid():
     morphism = ProgramMorphism(source=source)
 
     evaluation = classifier.classify(morphism)
-    assert evaluation == EvaluationValue.INVALID
+    assert evaluation == EvaluationValue.BROKEN
 
 
 def test_classifier_aggregation():
     classifier = SubobjectClassifier()
 
-    # Meet of VERIFIED and NOISY should be NOISY (if they are in a chain)
-    # Wait, in our lattice NOISY <= COMMODITY <= VERIFIED.
-    # So meet(VERIFIED, NOISY) = NOISY.
-
-    val1 = EvaluationValue.VERIFIED
-    val2 = EvaluationValue.NOISY
+    # meet(SOUND, COUPLED) = COUPLED (since COUPLED <= STABLE <= SOUND)
+    val1 = EvaluationValue.SOUND
+    val2 = EvaluationValue.COUPLED
 
     combined = classifier.combine(val1, val2)
-    assert combined == EvaluationValue.NOISY
+    assert combined == EvaluationValue.COUPLED
 
 
 def test_evaluation_value_properties():
-    val = EvaluationValue.VERIFIED
+    val = EvaluationValue.SOUND
     assert val.symbol == "⊤"
-    assert "Verified" in val.description
-    assert "VERIFIED" in str(val)
+    assert "clean" in val.description.lower() or "maintainable" in val.description.lower()
+    assert "SOUND" in str(val)
 
 
 def test_lattice_implies_and_negation():
     lattice = EvaluationLattice()
 
-    # negation = implies(val, BOTTOM)
-    # VERIFIED -> INVALID should be INVALID or similar in Heyting
-    assert lattice.negation(EvaluationValue.INVALID) == EvaluationValue.VERIFIED
+    # negation(BROKEN) = implies(BROKEN, BROKEN) = SOUND (anything is ≥ BROKEN meet x ≤ BROKEN)
+    assert lattice.negation(EvaluationValue.BROKEN) == EvaluationValue.SOUND
 
     # equivalent
-    assert lattice.equivalent(EvaluationValue.COMMODITY, EvaluationValue.COMMODITY)
-    assert not lattice.equivalent(EvaluationValue.COMMODITY, EvaluationValue.VERIFIED)
+    assert lattice.equivalent(EvaluationValue.STABLE, EvaluationValue.STABLE)
+    assert not lattice.equivalent(EvaluationValue.STABLE, EvaluationValue.SOUND)
 
 
 def test_subobject_classifier_str():
     classifier = SubobjectClassifier()
     morphism = ProgramMorphism(source="x = 1")
     res = classifier.classify_detailed(morphism)
-    assert "Classification:" in str(res)
+    # Per-dimension format
+    s = str(res)
+    assert "structural" in s
 
 
 def test_policies_classify_error():

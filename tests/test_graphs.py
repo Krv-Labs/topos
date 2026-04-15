@@ -282,24 +282,24 @@ def test_ast_representation_dispatches_verdicts():
     classifier = SubobjectClassifier()
     result = classifier.classify_detailed(morphism, representations=[ast_rep])
 
-    # Metrics must be stored under "ast"
-    assert "ast" in result.representation_metrics
-    assert "ast.complexity" in result.representation_metrics["ast"]
-    assert "ast.entropy" in result.representation_metrics["ast"]
+    # Metrics must be stored in raw_metrics
+    assert "ast.complexity" in result.raw_metrics
+    assert "ast.entropy" in result.raw_metrics
 
     # Result must equal baseline (same data path; meet is idempotent)
     baseline = classifier.classify_detailed(morphism)
-    assert result.evaluation == baseline.evaluation
+    assert result.summary() == baseline.summary()
 
 
 def test_ast_verdicts_function_produces_correct_keys():
-    """_ast_verdicts maps ast.complexity and ast.entropy to EvaluationValues."""
-    from topos.logic.lattice import EvaluationValue
+    """_ast_verdicts returns MetricDecision values for ast.complexity and ast.entropy."""
+    from topos.logic.policies import MetricDecision
     from topos.logic.omega import _ast_verdicts
 
-    verdicts = _ast_verdicts({"ast.complexity": 2.0, "ast.entropy": 0.5})
-    assert set(verdicts.keys()) == {"ast.complexity", "ast.entropy"}
-    assert all(isinstance(v, EvaluationValue) for v in verdicts.values())
+    decisions = _ast_verdicts({"ast.complexity": 2.0, "ast.entropy": 0.5})
+    assert set(decisions.keys()) == {"ast.complexity", "ast.entropy"}
+    assert all(isinstance(v, MetricDecision) for v in decisions.values())
+    assert all(v.interpretation != "" for v in decisions.values())
 
 
 def test_ast_verdicts_ignores_missing_keys():
@@ -337,3 +337,45 @@ def test_backward_compat_top_level_imports():
     assert ASTRepresentation is not None
     assert DependencyGraph is not None
     assert Representation is not None
+
+
+# ---------------------------------------------------------------------------
+# file_node_id — path-matching branch coverage
+# ---------------------------------------------------------------------------
+
+
+def _graph_with_file(target_file: str, file_path_property: str) -> DependencyGraph:
+    """Minimal graph with one File node for path-matching tests."""
+    g = DependencyGraph(target_file=target_file)
+    g.add_node(
+        GraphNode(
+            id="File:node",
+            label="File",
+            properties={"filePath": file_path_property},
+        )
+    )
+    return g
+
+
+def test_file_node_id_exact_match():
+    """Exact equality between target_file and filePath."""
+    g = _graph_with_file("src/foo.py", "src/foo.py")
+    assert g.file_node_id() == "File:node"
+
+
+def test_file_node_id_suffix_match():
+    """filePath ends with '/<target_file>'."""
+    g = _graph_with_file("foo.py", "src/foo.py")
+    assert g.file_node_id() == "File:node"
+
+
+def test_file_node_id_reverse_suffix_match():
+    """target_file ends with '/<filePath>'."""
+    g = _graph_with_file("src/foo.py", "foo.py")
+    assert g.file_node_id() == "File:node"
+
+
+def test_file_node_id_no_match():
+    """Neither path matches — returns None."""
+    g = _graph_with_file("bar.py", "foo.py")
+    assert g.file_node_id() is None

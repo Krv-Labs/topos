@@ -272,10 +272,10 @@ def test_classifier_with_depgraph_representation():
     g = _graph_with_linear_chain()
     result = classifier.classify_detailed(morphism, representations=[g])
 
-    assert result.is_valid
-    assert isinstance(result.evaluation, EvaluationValue)
-    assert "depgraph" in result.representation_metrics
-    assert "depgraph.coupling" in result.representation_metrics["depgraph"]
+    assert result.is_parseable
+    assert isinstance(result.summary(), EvaluationValue)
+    assert "coupling" in result.dimensions
+    assert "depgraph.coupling" in result.raw_metrics
 
 
 def test_classifier_without_representations_unchanged():
@@ -290,9 +290,10 @@ def test_classifier_without_representations_unchanged():
     result_with_none = classifier.classify_detailed(morphism, representations=None)
     result_with_empty = classifier.classify_detailed(morphism, representations=[])
 
-    assert result_without.evaluation == result_with_none.evaluation
-    assert result_without.evaluation == result_with_empty.evaluation
-    assert result_without.representation_metrics == {}
+    assert result_without.summary() == result_with_none.summary()
+    assert result_without.summary() == result_with_empty.summary()
+    # Without extra representations, only the structural dimension is present
+    assert set(result_without.dimensions.keys()) == {"structural"}
 
 
 def test_classification_result_str_with_representations():
@@ -300,19 +301,14 @@ def test_classification_result_str_with_representations():
     from topos.logic.omega import ClassificationResult
 
     result = ClassificationResult(
-        evaluation=EvaluationValue.COMMODITY,
-        complexity_score=0.5,
-        entropy_score=0.4,
-        is_valid=True,
-        representation_metrics={
-            "depgraph": {
-                "depgraph.coupling": 3.0,
-                "depgraph.instability": 0.5,
-            }
+        is_parseable=True,
+        dimensions={"coupling": EvaluationValue.STABLE},
+        raw_metrics={
+            "depgraph.coupling": 3.0,
+            "depgraph.instability": 0.5,
         },
     )
     text = str(result)
-    assert "depgraph" in text
     assert "coupling" in text
 
 
@@ -517,39 +513,39 @@ def test_from_gitnexus_dir_list_format_auto_id():
 
 
 def test_dep_policies_coupling_bins():
-    from topos.logic.dep_policies import classify_coupling
+    from topos.logic.policies import classify_coupling
     from topos.logic.lattice import EvaluationValue
 
-    assert classify_coupling(0).evaluation == EvaluationValue.VERIFIED
-    assert classify_coupling(4).evaluation == EvaluationValue.VERIFIED
-    assert classify_coupling(5).evaluation == EvaluationValue.COMMODITY
-    assert classify_coupling(11).evaluation == EvaluationValue.COMMODITY
-    assert classify_coupling(12).evaluation == EvaluationValue.WEAK
-    assert classify_coupling(19).evaluation == EvaluationValue.WEAK
-    assert classify_coupling(20).evaluation == EvaluationValue.NOISY
-    assert classify_coupling(34).evaluation == EvaluationValue.NOISY
-    assert classify_coupling(35).evaluation == EvaluationValue.HALLUCINATED
-    assert classify_coupling(100).evaluation == EvaluationValue.HALLUCINATED
+    assert classify_coupling(0).evaluation == EvaluationValue.SOUND
+    assert classify_coupling(4).evaluation == EvaluationValue.SOUND
+    assert classify_coupling(5).evaluation == EvaluationValue.STABLE
+    assert classify_coupling(11).evaluation == EvaluationValue.STABLE
+    assert classify_coupling(12).evaluation == EvaluationValue.COMPLEX
+    assert classify_coupling(19).evaluation == EvaluationValue.COMPLEX
+    assert classify_coupling(20).evaluation == EvaluationValue.COUPLED
+    assert classify_coupling(34).evaluation == EvaluationValue.COUPLED
+    assert classify_coupling(35).evaluation == EvaluationValue.ENTANGLED
+    assert classify_coupling(100).evaluation == EvaluationValue.ENTANGLED
 
 
 def test_dep_policies_instability_bins():
-    from topos.logic.dep_policies import classify_instability
+    from topos.logic.policies import classify_instability
     from topos.logic.lattice import EvaluationValue
 
-    assert classify_instability(0.0).evaluation == EvaluationValue.WEAK
-    assert classify_instability(0.05).evaluation == EvaluationValue.WEAK
-    assert classify_instability(0.1).evaluation == EvaluationValue.COMMODITY
-    assert classify_instability(0.2).evaluation == EvaluationValue.COMMODITY
-    assert classify_instability(0.3).evaluation == EvaluationValue.VERIFIED
-    assert classify_instability(0.5).evaluation == EvaluationValue.VERIFIED
-    assert classify_instability(0.7).evaluation == EvaluationValue.COMMODITY
-    assert classify_instability(0.8).evaluation == EvaluationValue.COMMODITY
-    assert classify_instability(0.9).evaluation == EvaluationValue.WEAK
-    assert classify_instability(1.0).evaluation == EvaluationValue.WEAK
+    assert classify_instability(0.0).evaluation == EvaluationValue.COMPLEX
+    assert classify_instability(0.05).evaluation == EvaluationValue.COMPLEX
+    assert classify_instability(0.1).evaluation == EvaluationValue.STABLE
+    assert classify_instability(0.2).evaluation == EvaluationValue.STABLE
+    assert classify_instability(0.3).evaluation == EvaluationValue.SOUND
+    assert classify_instability(0.5).evaluation == EvaluationValue.SOUND
+    assert classify_instability(0.7).evaluation == EvaluationValue.STABLE
+    assert classify_instability(0.8).evaluation == EvaluationValue.STABLE
+    assert classify_instability(0.9).evaluation == EvaluationValue.COMPLEX
+    assert classify_instability(1.0).evaluation == EvaluationValue.COMPLEX
 
 
 def test_dep_policies_classify_coupling_returns_metric_decision():
-    from topos.logic.dep_policies import classify_coupling
+    from topos.logic.policies import classify_coupling
 
     decision = classify_coupling(3.0)
     assert decision.raw_score == 3.0
@@ -557,7 +553,7 @@ def test_dep_policies_classify_coupling_returns_metric_decision():
 
 
 def test_dep_policies_classify_instability_returns_metric_decision():
-    from topos.logic.dep_policies import classify_instability
+    from topos.logic.policies import classify_instability
 
     decision = classify_instability(0.5)
     assert decision.raw_score == 0.5
@@ -565,9 +561,10 @@ def test_dep_policies_classify_instability_returns_metric_decision():
 
 
 def test_depgraph_verdicts_only_route_policy_active_metrics():
+    from topos.logic.policies import MetricDecision
     from topos.logic.omega import _depgraph_verdicts
 
-    verdicts = _depgraph_verdicts(
+    decisions = _depgraph_verdicts(
         {
             "depgraph.coupling": 6.0,
             "depgraph.instability": 0.5,
@@ -577,10 +574,12 @@ def test_depgraph_verdicts_only_route_policy_active_metrics():
         }
     )
 
-    assert set(verdicts.keys()) == {
+    assert set(decisions.keys()) == {
         "depgraph.coupling",
         "depgraph.instability",
     }
+    assert all(isinstance(v, MetricDecision) for v in decisions.values())
+    assert all(v.interpretation != "" for v in decisions.values())
 
 
 # ---------------------------------------------------------------------------
@@ -676,3 +675,98 @@ def test_coupling_counts_nested_method_imports():
     result = calculate_coupling(g, "File:a.py")
     assert result.efferent == 1
     assert result.afferent == 0
+
+
+# ---------------------------------------------------------------------------
+# from_gitnexus_dir — malformed JSON
+# ---------------------------------------------------------------------------
+
+
+def test_from_gitnexus_dir_malformed_json():
+    """A JSON file with invalid content raises json.JSONDecodeError."""
+    import pytest
+
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        lbug = base / "lbug"
+        lbug.mkdir()
+        (lbug / "bad.json").write_text("not valid json {")
+
+        with pytest.raises(json.JSONDecodeError):
+            DependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+
+
+# ---------------------------------------------------------------------------
+# calculate_dependency_depth — diamond topology
+# ---------------------------------------------------------------------------
+
+
+def test_dependency_depth_diamond():
+    """Diamond A→B, A→C, B→D, C→D: depth from A should be 2, D counted once."""
+    g = DependencyGraph(target_file="a.py")
+    for name in ("a", "b", "c", "d"):
+        g.add_node(
+            GraphNode(
+                id=f"File:{name}.py",
+                label="File",
+                properties={"filePath": f"{name}.py"},
+            )
+        )
+        g.add_node(
+            GraphNode(
+                id=f"Module:{name}",
+                label="Module",
+                properties={},
+            )
+        )
+        g.add_relationship(
+            GraphRelationship(
+                id=f"c_{name}",
+                source_id=f"File:{name}.py",
+                target_id=f"Module:{name}",
+                type="CONTAINS",
+            )
+        )
+
+    for src, tgt, rid in [
+        ("a", "b", "ab"),
+        ("a", "c", "ac"),
+        ("b", "d", "bd"),
+        ("c", "d", "cd"),
+    ]:
+        g.add_relationship(
+            GraphRelationship(
+                id=rid,
+                source_id=f"File:{src}.py",
+                target_id=f"File:{tgt}.py",
+                type="IMPORTS",
+            )
+        )
+
+    depth = calculate_dependency_depth(g, "File:a.py")
+    assert depth == 2
+
+
+# ---------------------------------------------------------------------------
+# classify_detailed — depgraph interpretation strings surfaced
+# ---------------------------------------------------------------------------
+
+
+def test_classify_detailed_interpretation_includes_depgraph():
+    """Coupling/instability interpretation strings must appear in ClassificationResult."""
+    from topos.core.morphism import ProgramMorphism
+    from topos.logic.omega import SubobjectClassifier
+
+    source = "x = 1\n"
+    morphism = ProgramMorphism(source=source)
+
+    g = DependencyGraph(target_file="x.py")
+    g.add_node(GraphNode(id="File:x.py", label="File", properties={"filePath": "x.py"}))
+
+    classifier = SubobjectClassifier()
+    result = classifier.classify_detailed(morphism, representations=[g])
+
+    assert "depgraph.coupling" in result.interpretation
+    assert "depgraph.instability" in result.interpretation
+    assert result.interpretation["depgraph.coupling"] != ""
+    assert result.interpretation["depgraph.instability"] != ""

@@ -114,11 +114,18 @@ def test_evaluation_value_properties():
 
     composable = EvaluationValue.COMPOSABLE
     assert composable.symbol == "◑"
-    assert "composable" in composable.description.lower() or "coupling" in composable.description.lower()
+    assert (
+        "composable" in composable.description.lower()
+        or "coupling" in composable.description.lower()
+    )
 
     sc = EvaluationValue.SELF_CONTAINED
     assert sc.symbol == "◐"
-    assert "structural" in sc.description.lower() or "self" in sc.description.lower() or "stand" in sc.description.lower()
+    assert (
+        "structural" in sc.description.lower()
+        or "self" in sc.description.lower()
+        or "stand" in sc.description.lower()
+    )
 
 
 def test_lattice_implies_and_negation():

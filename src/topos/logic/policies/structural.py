@@ -31,14 +31,14 @@ from __future__ import annotations
 
 from topos.logic.lattice import EvaluationLattice
 from topos.logic.policies.base import (
+    WEIGHT_PROFILES,
     Priority,
     ScoredDecision,
-    WEIGHT_PROFILES,
 )
 
 # Normalization constants (policy decisions)
-MAX_COMPLEXITY: float = 40.0   # complexity at which quality reaches 0.0
-ENTROPY_IDEAL: float = 0.5     # entropy value with maximum quality score
+MAX_COMPLEXITY: float = 40.0  # complexity at which quality reaches 0.0
+ENTROPY_IDEAL: float = 0.5  # entropy value with maximum quality score
 
 
 def score_structural(

@@ -296,7 +296,9 @@ def test_score_ast_produces_scored_decision():
     from topos.logic.omega import _score_ast
     from topos.logic.policies.base import Priority, ScoredDecision
 
-    decision = _score_ast({"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.BALANCED)
+    decision = _score_ast(
+        {"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.BALANCED
+    )
     assert decision is not None
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0

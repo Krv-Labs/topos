@@ -39,10 +39,11 @@ def _build_evaluation_response(result: ClassificationResult) -> dict[str, Any]:
         "lattice_symbol": summary.symbol,
         "lattice_description": summary.description,
         "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
-        "dimension_symbols": {dim: val.symbol for dim, val in result.dimensions.items()},
+        "dimension_symbols": {
+            dim: val.symbol for dim, val in result.dimensions.items()
+        },
         "scores": {
-            dim: round(score * 100.0, 1)
-            for dim, score in result.scores.items()
+            dim: round(score * 100.0, 1) for dim, score in result.scores.items()
         },
         "priority": result.priority.value,
         "guidance": _build_guidance(result),
@@ -58,15 +59,30 @@ def _build_guidance(result: ClassificationResult) -> str:
 
     if priority == Priority.COMPOSABLE:
         if c_score is None:
-            return "Coupling not measured — provide a DependencyGraph for COMPOSABLE evaluation."
+            return (
+                "Coupling not measured — provide a DependencyGraph for COMPOSABLE "
+                "evaluation."
+            )
         if c_score < 0.6:
-            return "Reduce coupling count and balance instability toward 0.3–0.7 to achieve COMPOSABLE."
-        return "COMPOSABLE target achieved. Consider structural improvements to reach SOUND."
+            return (
+                "Reduce coupling count and balance instability toward 0.3–0.7 to "
+                "achieve COMPOSABLE."
+            )
+        return (
+            "COMPOSABLE target achieved. Consider structural improvements to reach "
+            "SOUND."
+        )
 
     if priority == Priority.SELF_CONTAINED:
         if s_score is not None and s_score < 0.6:
-            return "Reduce cyclomatic complexity and normalize entropy toward 0.5 to achieve SELF_CONTAINED."
-        return "SELF_CONTAINED target achieved. Consider coupling improvements to reach SOUND."
+            return (
+                "Reduce cyclomatic complexity and normalize entropy toward 0.5 to "
+                "achieve SELF_CONTAINED."
+            )
+        return (
+            "SELF_CONTAINED target achieved. Consider coupling improvements to "
+            "reach SOUND."
+        )
 
     # BALANCED
     hints = []
@@ -141,7 +157,9 @@ def evaluate_code(
     classifier = SubobjectClassifier()
     try:
         morphism = ProgramMorphism(source=code, language=language)
-        result = classifier.classify_detailed(morphism, priority=_parse_priority(priority))
+        result = classifier.classify_detailed(
+            morphism, priority=_parse_priority(priority)
+        )
         return _build_evaluation_response(result)
     except Exception as e:
         return {"error": str(e)}
@@ -278,7 +296,10 @@ def assess_improvement(
 
         # Score deltas per dimension (positive = improvement)
         score_deltas = {
-            dim: round((prop_res.scores.get(dim, 0.0) - curr_res.scores.get(dim, 0.0)) * 100.0, 1)
+            dim: round(
+                (prop_res.scores.get(dim, 0.0) - curr_res.scores.get(dim, 0.0)) * 100.0,
+                1,
+            )
             for dim in set(curr_res.scores) | set(prop_res.scores)
         }
         score_improved = any(d > 0 for d in score_deltas.values())
@@ -312,15 +333,23 @@ def assess_improvement(
             "current": {
                 "lattice_element": curr_summary.name,
                 "lattice_symbol": curr_summary.symbol,
-                "dimensions": {dim: val.name for dim, val in curr_res.dimensions.items()},
-                "scores": {dim: round(s * 100.0, 1) for dim, s in curr_res.scores.items()},
+                "dimensions": {
+                    dim: val.name for dim, val in curr_res.dimensions.items()
+                },
+                "scores": {
+                    dim: round(s * 100.0, 1) for dim, s in curr_res.scores.items()
+                },
                 "complexity": curr_complexity,
             },
             "proposed": {
                 "lattice_element": prop_summary.name,
                 "lattice_symbol": prop_summary.symbol,
-                "dimensions": {dim: val.name for dim, val in prop_res.dimensions.items()},
-                "scores": {dim: round(s * 100.0, 1) for dim, s in prop_res.scores.items()},
+                "dimensions": {
+                    dim: val.name for dim, val in prop_res.dimensions.items()
+                },
+                "scores": {
+                    dim: round(s * 100.0, 1) for dim, s in prop_res.scores.items()
+                },
                 "complexity": prop_complexity,
             },
             "analysis": {
@@ -359,16 +388,16 @@ def inspect_code(
     try:
         morphism = ProgramMorphism(source=code, language=language)
         classifier = SubobjectClassifier()
-        result = classifier.classify_detailed(morphism, priority=_parse_priority(priority))
+        result = classifier.classify_detailed(
+            morphism, priority=_parse_priority(priority)
+        )
 
         inspection: dict[str, Any] = {
             "is_parseable": result.is_parseable,
             "lattice_element": result.summary().name,
             "lattice_symbol": result.summary().symbol,
             "dimensions": {dim: val.name for dim, val in result.dimensions.items()},
-            "scores": {
-                dim: round(s * 100.0, 1) for dim, s in result.scores.items()
-            },
+            "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
             "priority": priority,
             "guidance": _build_guidance(result),
             "raw_metrics": result.raw_metrics,

@@ -47,10 +47,10 @@ class EvaluationValue(IntEnum):
                         resources; project managers set priorities accordingly.
     """
 
-    BROKEN = 0          # ⊥ (Bottom)
-    COMPOSABLE = 1      # Good coupling; left branch of diamond
+    BROKEN = 0  # ⊥ (Bottom)
+    COMPOSABLE = 1  # Good coupling; left branch of diamond
     SELF_CONTAINED = 2  # Good structure; right branch of diamond
-    SOUND = 3           # ⊤ (Top)
+    SOUND = 3  # ⊤ (Top)
 
     @property
     def symbol(self) -> str:
@@ -68,8 +68,12 @@ class EvaluationValue(IntEnum):
         """Human-readable description of this evaluation value."""
         descriptions = {
             EvaluationValue.BROKEN: "Fails both targets; low quality or parse failure",
-            EvaluationValue.COMPOSABLE: "Composes well with other modules; coupling quality achieved",
-            EvaluationValue.SELF_CONTAINED: "Stands alone cleanly; structural quality achieved",
+            EvaluationValue.COMPOSABLE: (
+                "Composes well with other modules; coupling quality achieved"
+            ),
+            EvaluationValue.SELF_CONTAINED: (
+                "Stands alone cleanly; structural quality achieved"
+            ),
             EvaluationValue.SOUND: "Clean, composable, and self-contained",
         }
         return descriptions[self]

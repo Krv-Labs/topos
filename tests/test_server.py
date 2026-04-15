@@ -80,6 +80,26 @@ def test_assess_improvement_regression() -> None:
     assert res["analysis"]["structural_distance"] is None
 
 
+def test_assess_improvement_normalizes_invalid_priority() -> None:
+    res = server.assess_improvement(
+        current_code="x = 1\n",
+        proposed_code="x = 2\n",
+        priority="not-a-priority",
+    )
+
+    assert "status" in res
+    assert res["priority"] == "balanced"
+    assert res["priority_input"] == "not-a-priority"
+
+
+def test_inspect_code_normalizes_invalid_priority() -> None:
+    res = server.inspect_code("x = 1\n", priority="totally-invalid")
+
+    assert "lattice_element" in res
+    assert res["priority"] == "balanced"
+    assert res["priority_input"] == "totally-invalid"
+
+
 # --- File-Based Tools & Safety ---
 
 

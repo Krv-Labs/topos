@@ -297,20 +297,44 @@ def summarize_results(
     overall: str,
 ) -> VersionSummary:
     counts = Counter(
-        result.get("summary", "BROKEN")
+        result.get("lattice_element") or result.get("summary", "BROKEN")
         for result in results
         if isinstance(result, dict)
     )
+
+    def _extract_complexity(result: dict[str, Any]) -> float | None:
+        raw_metrics = result.get("raw_metrics")
+        if isinstance(raw_metrics, dict):
+            value = raw_metrics.get("ast.complexity")
+            if isinstance(value, (int, float)):
+                return float(value)
+        value = result.get("complexity")
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    def _extract_entropy(result: dict[str, Any]) -> float | None:
+        raw_metrics = result.get("raw_metrics")
+        if isinstance(raw_metrics, dict):
+            value = raw_metrics.get("ast.entropy")
+            if isinstance(value, (int, float)):
+                return float(value)
+        value = result.get("entropy")
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
     complexities = [
-        float(result["complexity"])
+        complexity
         for result in results
         if isinstance(result, dict)
-        and isinstance(result.get("complexity"), (int, float))
+        and (complexity := _extract_complexity(result)) is not None
     ]
     entropies = [
-        float(result["entropy"])
+        entropy
         for result in results
-        if isinstance(result, dict) and isinstance(result.get("entropy"), (int, float))
+        if isinstance(result, dict)
+        and (entropy := _extract_entropy(result)) is not None
     ]
 
     avg_complexity = sum(complexities) / len(complexities) if complexities else 0.0

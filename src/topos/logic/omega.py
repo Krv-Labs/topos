@@ -239,16 +239,47 @@ class SubobjectClassifier:
                 dim_raw.update(rep.metrics())
             raw_metrics.update(dim_raw)
 
-            # Dispatch to the scorer for this representation type.
-            rep_name = reps[0].name
-            scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep_name)
-            if not scorer:
-                continue
+            rep_names = {rep.name for rep in reps}
 
-            decision = scorer(dim_raw, priority)
-            if decision is None:
-                continue
+            if len(rep_names) == 1:
+                # Preserve the existing behavior when all representations in the
+                # dimension share the same type.
+                rep_name = reps[0].name
+                scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep_name)
+                if not scorer:
+                    continue
 
+                decision = scorer(dim_raw, priority)
+                if decision is None:
+                    continue
+            else:
+                # Mixed representation types within one dimension must be scored
+                # independently so dispatcher selection does not depend on reps[0].
+                mixed_scores: list[float] = []
+                mixed_interpretation: dict[str, str] = {}
+                mixed_achieved = True
+
+                for rep in reps:
+                    scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep.name)
+                    if not scorer:
+                        continue
+
+                    rep_decision = scorer(rep.metrics(), priority)
+                    if rep_decision is None:
+                        continue
+
+                    mixed_scores.append(rep_decision.score)
+                    mixed_interpretation.update(rep_decision.interpretation)
+                    mixed_achieved = mixed_achieved and rep_decision.achieved
+
+                if not mixed_scores:
+                    continue
+
+                decision = ScoredDecision(
+                    score=min(mixed_scores),
+                    achieved=mixed_achieved,
+                    interpretation=mixed_interpretation,
+                )
             scores[dim] = decision.score
             interpretation.update(decision.interpretation)
 

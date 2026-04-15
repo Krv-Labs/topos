@@ -28,7 +28,9 @@ def test_evaluate_code_happy_path() -> None:
     code = "def foo(): pass"
     res = server.evaluate_code(code)
     assert "dimensions" in res
-    assert "summary" in res
+    assert "lattice_element" in res
+    assert "scores" in res
+    assert "guidance" in res
     assert res.get("is_parseable") is True
 
 

@@ -78,7 +78,7 @@ topos compare before.py after.py                    # AST edit distance
 Connect Topos to Claude, Cursor, or Windsurf to let them evaluate their own work:
 
 ```bash
-topos-mcp
+topos mcp
 ```
 
 ---

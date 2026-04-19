@@ -75,79 +75,94 @@ topos compare before.py after.py                    # AST edit distance
 
 #### 3. MCP Server
 
-Expose Topos to any MCP-compatible coding agent (Claude Code, Cursor, Gemini CLI, Windsurf…) so it can evaluate, compare, and iterate on its own output.
+Give any MCP-compatible coding agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate, compare, and iterate on its own output instead of guessing whether it's helping.
 
 <details>
 <summary><b>Set up <code>topos-mcp</code> in your coding agent</b></summary>
 
 &nbsp;
 
-Pick your agent — each path is a single step. Run from your project's root directory so Topos auto-detects it.
+#### Step 1 — Build the dependency graph
+
+> [!IMPORTANT]
+> **Do this first. Not later, not "when you get around to it."** Without a dependency graph, Topos scores the structural dimension only; `COMPOSABLE` and `SOUND` become unreachable; your agent optimizes half a function and calls it a day. One-time setup per repo, and the cache handles itself afterwards.
+>
+> ```bash
+> npm install -g gitnexus        # one-time per machine (requires Node.js)
+> cd /path/to/your/repo
+> topos depgraph generate        # one-time per repo; writes .gitnexus/ at project root
+> ```
+>
+> Re-run `topos depgraph generate` when imports actually change — new modules, renames, package restructures. Editing function bodies is not that. The cache keys on `.gitnexus/` mtime and invalidates itself; you don't need to restart anything.
 
 > [!TIP]
-> **Quickest sanity check first:** `topos-mcp` — should print the FastMCP banner and hang waiting for input. `Ctrl-C` to exit. If that works, the binary is wired up correctly.
+> **Confirm the binary works before you go wiring it into editors.**
+> ```bash
+> topos-mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
+> ```
+> If that banner doesn't appear, the rest of this guide will not help you. Start with `pip install -e .[dev]` (or check your PATH) and come back.
 
-##### 🟣 Claude Code — one command
+#### Step 2 — Register with your agent
+
+Run these from your project root. Topos auto-detects its file-access root by walking up for `.git` or `pyproject.toml`, so cwd matters.
+
+##### 🟣 Claude Code
 
 ```bash
 claude mcp add topos topos-mcp
 ```
 
-##### 🔵 Gemini CLI — one command
+##### 🔵 Gemini CLI
 
 ```bash
 gemini mcp add topos topos-mcp
 ```
 
-##### ⚫ Cursor — one-click install
+##### ⚫ Cursor
 
-Click this link while Cursor is open:
+One click, assuming Cursor is running:
 
 <a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9">**➕ Install `topos` in Cursor**</a>
 
-Or add manually to `.cursor/mcp.json` in your project (or `~/.cursor/mcp.json` for all projects):
+Or edit `.cursor/mcp.json` (project) / `~/.cursor/mcp.json` (global) yourself:
 
 ```json
 { "mcpServers": { "topos": { "command": "topos-mcp" } } }
 ```
 
-##### 🟢 Windsurf / any other MCP client
+##### 🟢 Windsurf and everything else
 
-Same JSON, wherever that client reads MCP servers from:
+Same JSON. Put it wherever that client reads MCP servers from. The spec is standard; the config file's name is not.
 
 ```json
 { "mcpServers": { "topos": { "command": "topos-mcp" } } }
 ```
 
----
+#### Step 3 — Launch your agent from the project root
 
 > [!IMPORTANT]
-> Topos only reads files under a trusted root. It auto-detects the nearest `.git` or `pyproject.toml` — **so just run your agent from your project root and it works.** If you launch from elsewhere, set `TOPOS_MCP_FILE_ROOT` in the config's `env` block:
+> Topos refuses to read files outside a trusted root. It finds that root by walking up from cwd looking for `.git` or `pyproject.toml`, so launching your agent from anywhere sensible just works. If you insist on launching from elsewhere, tell it explicitly:
 > ```json
 > { "command": "topos-mcp", "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" } }
 > ```
+> The server fails closed when this can't be resolved. That's on purpose — an evaluator with unconstrained read access is a different product.
 
 > [!TIP]
-> **Unlock the `COMPOSABLE` / `SOUND` verdicts** by generating a dependency graph once per repo:
-> ```bash
-> npm install -g gitnexus   # one-time
-> topos depgraph generate   # writes .gitnexus/ at project root
-> ```
-> Topos auto-detects `.gitnexus/` and scores both dimensions on every call. Without it, only structural complexity is scored — coupling stays unmeasured.
-
-> [!TIP]
-> **Want the agent to use Topos well, first try?** After registering, paste this into your agent's first message:
-> > "Fetch `topos://docs/workflows` and use the Topos refactor loop to improve this codebase."
+> **Point the agent at the workflow doc on its first turn.** Topos works best when the agent has read its own instructions before deciding what "better" means.
+> > "Fetch `topos://docs/workflows` — or call `topos_get_doc(topic='workflows')` if your client doesn't expose MCP resources — and follow the Topos refactor loop."
 >
-> Or invoke the built-in prompt: `topos_refactor_until_sound(filepath="path/to/file.py")`.
+> Or just invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
 
-##### Try it
+#### Smoke test
 
-Ask your agent:
+A concrete task to run once everything is wired up:
 
-> "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify the improvement with `topos_assess_improvement`."
+> "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify with `topos_assess_improvement`."
 
-A healthy setup returns a per-file rollup, picks a target, and loops until `SOUND` or the iteration budget is spent.
+A healthy response has `coupling_available: true`, picks a real target, and loops until `SOUND` or the iteration budget runs out.
+
+> [!WARNING]
+> If every response comes back with `coupling_available: false`, you skipped Step 1. Go back and read it this time. Re-run `topos depgraph generate` from the project root and try again.
 
 </details>
 

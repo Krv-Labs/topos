@@ -82,66 +82,72 @@ Expose Topos to any MCP-compatible coding agent (Claude Code, Cursor, Gemini CLI
 
 &nbsp;
 
-The `topos-mcp` stdio server exposes **7 tools**, **4 docs resources**, and a **refactor-loop prompt**. Run it bare first to verify the binary is wired up:
+Pick your agent — each path is a single step. Run from your project's root directory so Topos auto-detects it.
+
+> [!TIP]
+> **Quickest sanity check first:** `topos-mcp` — should print the FastMCP banner and hang waiting for input. `Ctrl-C` to exit. If that works, the binary is wired up correctly.
+
+##### 🟣 Claude Code — one command
 
 ```bash
-topos-mcp   # Ctrl-C to exit; should print FastMCP banner
+claude mcp add topos topos-mcp
 ```
+
+##### 🔵 Gemini CLI — one command
+
+```bash
+gemini mcp add topos topos-mcp
+```
+
+##### ⚫ Cursor — one-click install
+
+Click this link while Cursor is open:
+
+<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9">**➕ Install `topos` in Cursor**</a>
+
+Or add manually to `.cursor/mcp.json` in your project (or `~/.cursor/mcp.json` for all projects):
+
+```json
+{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+```
+
+##### 🟢 Windsurf / any other MCP client
+
+Same JSON, wherever that client reads MCP servers from:
+
+```json
+{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+```
+
+---
 
 > [!IMPORTANT]
-> Set `TOPOS_MCP_FILE_ROOT` to the project you want the server to read from. Without it (and without a `.git` / `pyproject.toml` walking up from cwd), the server **fails closed** — it will not read any file.
-
-##### Claude Code
-
-```bash
-claude mcp add topos topos-mcp --env TOPOS_MCP_FILE_ROOT=$(pwd)
-```
-
-##### Cursor / Windsurf / generic MCP client
-
-Add to `~/.cursor/mcp.json` (or the equivalent per-client config):
-
-```json
-{
-  "mcpServers": {
-    "topos": {
-      "command": "topos-mcp",
-      "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/your/repo" }
-    }
-  }
-}
-```
-
-##### Gemini CLI
-
-Append to `~/.gemini/settings.json` → `mcpServers`:
-
-```json
-"topos": {
-  "command": "topos-mcp",
-  "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/your/repo" }
-}
-```
-
-> [!TIP]
-> **Unlock the `COMPOSABLE` / `SOUND` verdicts** by generating a dependency graph first:
-> ```bash
-> topos depgraph generate   # writes .gitnexus/ (requires: npm install -g gitnexus)
+> Topos only reads files under a trusted root. It auto-detects the nearest `.git` or `pyproject.toml` — **so just run your agent from your project root and it works.** If you launch from elsewhere, set `TOPOS_MCP_FILE_ROOT` in the config's `env` block:
+> ```json
+> { "command": "topos-mcp", "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" } }
 > ```
-> The server auto-detects `<project_root>/.gitnexus` and attaches it to every file evaluation. Without it, only the structural dimension scores — coupling stays unmeasured.
 
 > [!TIP]
-> **Tell the agent how to use Topos well** — point it at the workflow resource:
-> `"Before refactoring, fetch topos://docs/workflows and follow the loop."`
-> Or invoke the prompt directly: `topos_refactor_until_sound(filepath=...)`.
+> **Unlock the `COMPOSABLE` / `SOUND` verdicts** by generating a dependency graph once per repo:
+> ```bash
+> npm install -g gitnexus   # one-time
+> topos depgraph generate   # writes .gitnexus/ at project root
+> ```
+> Topos auto-detects `.gitnexus/` and scores both dimensions on every call. Without it, only structural complexity is scored — coupling stays unmeasured.
 
-##### Verify end-to-end
+> [!TIP]
+> **Want the agent to use Topos well, first try?** After registering, paste this into your agent's first message:
+> > "Fetch `topos://docs/workflows` and use the Topos refactor loop to improve this codebase."
+>
+> Or invoke the built-in prompt: `topos_refactor_until_sound(filepath="path/to/file.py")`.
 
-Once registered, ask your agent:
+##### Try it
 
-> "Use topos to find the worst-scoring file in `src/` and propose a refactor that improves it. Verify with `topos_assess_improvement`."
+Ask your agent:
 
-A healthy setup returns a per-file rollup, identifies a target, and loops until `SOUND` or the budget is spent.
+> "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify the improvement with `topos_assess_improvement`."
+
+A healthy setup returns a per-file rollup, picks a target, and loops until `SOUND` or the iteration budget is spent.
 
 </details>
 

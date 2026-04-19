@@ -75,11 +75,75 @@ topos compare before.py after.py                    # AST edit distance
 
 #### 3. MCP Server
 
-Connect Topos to Claude, Cursor, or Windsurf to let them evaluate their own work:
+Expose Topos to any MCP-compatible coding agent (Claude Code, Cursor, Gemini CLI, Windsurf…) so it can evaluate, compare, and iterate on its own output.
+
+<details>
+<summary><b>Set up <code>topos-mcp</code> in your coding agent</b></summary>
+
+&nbsp;
+
+The `topos-mcp` stdio server exposes **7 tools**, **4 docs resources**, and a **refactor-loop prompt**. Run it bare first to verify the binary is wired up:
 
 ```bash
-topos mcp
+topos-mcp   # Ctrl-C to exit; should print FastMCP banner
 ```
+
+> [!IMPORTANT]
+> Set `TOPOS_MCP_FILE_ROOT` to the project you want the server to read from. Without it (and without a `.git` / `pyproject.toml` walking up from cwd), the server **fails closed** — it will not read any file.
+
+##### Claude Code
+
+```bash
+claude mcp add topos topos-mcp --env TOPOS_MCP_FILE_ROOT=$(pwd)
+```
+
+##### Cursor / Windsurf / generic MCP client
+
+Add to `~/.cursor/mcp.json` (or the equivalent per-client config):
+
+```json
+{
+  "mcpServers": {
+    "topos": {
+      "command": "topos-mcp",
+      "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/your/repo" }
+    }
+  }
+}
+```
+
+##### Gemini CLI
+
+Append to `~/.gemini/settings.json` → `mcpServers`:
+
+```json
+"topos": {
+  "command": "topos-mcp",
+  "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/your/repo" }
+}
+```
+
+> [!TIP]
+> **Unlock the `COMPOSABLE` / `SOUND` verdicts** by generating a dependency graph first:
+> ```bash
+> topos depgraph generate   # writes .gitnexus/ (requires: npm install -g gitnexus)
+> ```
+> The server auto-detects `<project_root>/.gitnexus` and attaches it to every file evaluation. Without it, only the structural dimension scores — coupling stays unmeasured.
+
+> [!TIP]
+> **Tell the agent how to use Topos well** — point it at the workflow resource:
+> `"Before refactoring, fetch topos://docs/workflows and follow the loop."`
+> Or invoke the prompt directly: `topos_refactor_until_sound(filepath=...)`.
+
+##### Verify end-to-end
+
+Once registered, ask your agent:
+
+> "Use topos to find the worst-scoring file in `src/` and propose a refactor that improves it. Verify with `topos_assess_improvement`."
+
+A healthy setup returns a per-file rollup, identifies a target, and loops until `SOUND` or the budget is spent.
+
+</details>
 
 ---
 

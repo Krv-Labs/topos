@@ -1,0 +1,109 @@
+# Topos Agent Workflows
+
+Per CodeScene's 2026 best-practice research ("agent-first tools need
+AGENTS.md-style orchestration"), this document is the canonical recipe for
+using Topos tools in a closed-loop refactor. Agents should read this on
+first encounter with the server.
+
+## The canonical loop: review → plan → refactor → re-measure
+
+```
+┌────────────┐      ┌────────────┐      ┌──────────────┐      ┌────────────┐
+│ 1. MEASURE │ ───► │ 2. PLAN    │ ───► │ 3. PROPOSE   │ ───► │ 4. VERIFY  │
+│  (evaluate)│      │ (identify  │      │  (refactor)  │      │  (assess)  │
+│            │      │  weakest)  │      │              │      │            │
+└────────────┘      └────────────┘      └──────────────┘      └─────┬──────┘
+                                                                    │
+                          ┌─────────────────────────────────────────┘
+                          ▼
+                    ┌──────────────┐
+                    │ 5. DECIDE    │
+                    │ accept / try │
+                    │ again / stop │
+                    └──────────────┘
+```
+
+### 1. Measure
+
+- Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — REQUIRES
+  `gitnexus_dir` for coupling. Without it, COMPOSABLE/SOUND cannot happen.
+- Whole project: `topos_evaluate_project(path, gitnexus_dir)` — rollup +
+  worst-N file list. Start here to pick a target.
+
+### 2. Plan
+
+Read the `guidance` field of the evaluation result. It's priority-aware and
+tells you which dimension to work on. If `guidance` says "provide
+gitnexus_dir" you must run `topos depgraph generate` first.
+
+For deep analysis of a specific file, call `topos_inspect_code` — it returns
+top-N functions by complexity, entropy details, and the full metric table.
+
+### 3. Propose
+
+Write a refactor. Keep the change focused on one dimension at a time.
+Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
+
+### 4. Verify
+
+`topos_assess_improvement` returns one of:
+
+- `IMPROVEMENT` — lattice moved up (e.g. BROKEN → SELF_CONTAINED). Commit.
+- `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.
+  Progress, but not a verdict jump yet.
+- `LATERAL_MOVE` — neither improved nor regressed. Try a different angle.
+- `REGRESSION` / `REGRESSION_SCORE` — revert and re-plan.
+- **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** — ⚠️ scores moved but AST barely
+  changed. The refactor is probably cosmetic (whitespace / comments /
+  renames). Make a structural change, not a textual one. **Do not commit.**
+
+### 5. Decide
+
+Stop when:
+- Status = `SOUND` (both targets achieved), OR
+- Priority-specific target reached (`self_contained` → SELF_CONTAINED,
+  `composable` → COMPOSABLE), OR
+- `max_iterations` exhausted — report partial progress honestly rather than
+  gaming one more iteration.
+
+## Escape hatches — when the loop stalls
+
+### Stall #1: Both dimensions plateau below 60%
+
+Often a sign the file needs to be **split**, not refactored. Use
+`topos_inspect_code` to find the top-complexity functions; consider
+extracting them into a separate module. Re-run `topos_evaluate_project` to
+check the rollup doesn't regress as a result.
+
+### Stall #2: `SUSPICIOUS_NO_STRUCTURAL_CHANGE` repeatedly
+
+You're iterating on presentation. Step back: what is the *structural*
+problem? Rename → not a refactor. Whitespace → not a refactor. Loop
+unrolling, extracted helpers, collapsed conditionals → real refactors.
+
+### Stall #3: Structural improves, coupling regresses
+
+Classic "moved complexity elsewhere" anti-pattern. Re-run
+`topos_evaluate_project` — did the other file's score drop? If so, the
+refactor didn't reduce total system complexity, it just relocated it.
+Consider if the abstraction is actually an improvement or just a shuffle.
+
+## Priority selection cheat sheet
+
+- Leaf module (few callers) → `self_contained`
+- Library surface (many importers) → `composable`
+- Unknown / general cleanup → `balanced`
+
+See `topos://docs/priority` for more.
+
+## What Topos does NOT measure
+
+- **Test coverage.** A refactor that improves the score but breaks tests
+  is a regression. Topos cannot see this; run the test suite separately.
+- **Functional correctness.** AST edit distance measures *change*, not
+  *preservation of behavior*. Always verify behavior with tests.
+- **Runtime performance.** Orthogonal to all Topos metrics.
+- **Security.** Separate concern.
+
+Topos is one signal in a multi-signal loop. Pair it with test coverage and
+type checks for the full picture.

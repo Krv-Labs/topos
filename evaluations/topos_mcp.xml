@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Topos MCP Server — evaluation harness (10 Q/A pairs).
+
+  Format follows .claude/skills/mcp-builder/scripts/example_evaluation.xml:
+  each question must be solvable by an agent with access to the Topos MCP
+  server, and the answer is verifiable by exact string match against the
+  tool/resource output.
+
+  Run with the Topos repo as the working directory and TOPOS_MCP_FILE_ROOT
+  pointing to the repo root.
+-->
+<evaluation>
+
+  <qa_pair>
+    <question>Using only the Topos MCP server's tool surface, how many tools does it expose? Return the integer only.</question>
+    <answer>7</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>What is the URI of the Topos documentation resource that explains the diamond lattice? Return the full URI.</question>
+    <answer>topos://docs/lattice</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>According to the Topos metrics reference (topos://docs/metrics), what is the numeric threshold (between 0 and 1) for achieving a lattice target on either dimension? Return the number only.</question>
+    <answer>0.6</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>In the Topos priority profile named "composable", what is the weight on coupling metrics (w_coupling)? Return the number only.</question>
+    <answer>0.7</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>What assessment status does topos_assess_improvement return when scores move meaningfully but the AST edit distance is near zero (anti-gaming guardrail)? Return the exact status string.</question>
+    <answer>SUSPICIOUS_NO_STRUCTURAL_CHANGE</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Which Topos evaluation dimension (structural or coupling) is unreachable without providing a DependencyGraph / gitnexus_dir? Return one word.</question>
+    <answer>coupling</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>What Unicode symbol represents the SOUND lattice element in Topos? Return the single character.</question>
+    <answer>⊤</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Using topos_compare_files to compare src/topos/main.py against itself, what is the normalized_distance? Return the number only.</question>
+    <answer>0.0</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Using topos_inspect_code on the contents of src/topos/main.py, which function has the highest cyclomatic complexity? Return the function name only.</question>
+    <answer>uninstall</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>According to topos://docs/workflows, the canonical Topos refactor loop has four stages before the decision step. Name them in order, separated by " → ". Return the exact four-word sequence as shown in the document.</question>
+    <answer>review → plan → refactor → re-measure</answer>
+  </qa_pair>
+
+</evaluation>

@@ -23,7 +23,7 @@ mcp = FastMCP(
     version=__version__,
     instructions=(
         "Topos evaluates Python code quality on a diamond lattice. "
-        "FIRST: load the workflow guide — call `topos_get_doc(topic=\"workflows\")` "
+        'FIRST: load the workflow guide — call `topos_get_doc(topic="workflows")` '
         "(works on any client) OR fetch `topos://docs/workflows` as a resource "
         "(Claude Code, Cursor). "
         "Key call pattern: topos_evaluate_file → topos_assess_improvement. "

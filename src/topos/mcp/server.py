@@ -23,7 +23,9 @@ mcp = FastMCP(
     version=__version__,
     instructions=(
         "Topos evaluates Python code quality on a diamond lattice. "
-        "Read topos://docs/workflows for the canonical agent refactor loop. "
+        "FIRST: load the workflow guide — call `topos_get_doc(topic=\"workflows\")` "
+        "(works on any client) OR fetch `topos://docs/workflows` as a resource "
+        "(Claude Code, Cursor). "
         "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
         "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/SOUND."
     ),

@@ -1,3 +1,3 @@
 """Tool registration hub — importing this module attaches every tool to ``mcp``."""
 
-from topos.mcp.tools import assess, compare, evaluate, inspect  # noqa: F401
+from topos.mcp.tools import assess, compare, docs, evaluate, inspect  # noqa: F401

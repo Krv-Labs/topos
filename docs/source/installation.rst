@@ -37,7 +37,7 @@ Topos is designed to be accessible as either a standalone binary or by building 
       .. code-block:: bash
 
          topos --version
-         topos mcp --help
+         topos-mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
 
    .. tab-item:: 🐍 Building from Source
 

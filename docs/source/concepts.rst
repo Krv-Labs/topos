@@ -4,7 +4,7 @@
 Concepts
 ========
 
-This page explains the mathematical inspiration behind Topos and where the category-theoretic vocabulary comes from. For a practical breakdown of what we actually measure, see :doc:`measures`.
+This page is optional deeper reading — you don't need it to use Topos. It explains the mathematical inspiration behind the design and where the category-theoretic vocabulary comes from. For a practical breakdown of what we actually measure, see :doc:`measures`.
 
 The Evaluation Lattice
 ----------------------
@@ -36,7 +36,7 @@ into outputs.
    morphism = ProgramMorphism.from_file("transform.py")
 
 Two programs may compute the same function but have dramatically different
-internal structure. By modelling programs as morphisms and analysing their
+internal structure. By modeling programs as morphisms and analyzing their
 ASTs, Topos can reason about *structural invariants* that input-output
 testing cannot reveal.
 

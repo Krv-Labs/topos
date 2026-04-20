@@ -1,6 +1,6 @@
 # Topos
 
-> **Treating programs as morphisms in a world of commodity code.**
+> **Structured evaluations for programs written by agents.**
 
 Topos translates your quality priorities into measurable targets for AI coding agents. It provides a structured evaluation layer for managing generated code, giving agents the actionable metrics they need to iteratively reach your architectural goals.
 
@@ -8,9 +8,12 @@ Topos translates your quality priorities into measurable targets for AI coding a
 
 ### Why Topos?
 
-In an era of cheap code, **ideas are the currency.** Topos acts as a subobject classifier for project managers: it finds your version of success without you having to balance a raw scorecard of hard metrics. You pick a direction — a **priority template** — and let your models optimize toward it.
+In an era of cheap code, **ideas are the currency.** Topos acts as the (subobject) classifier for project managers: it finds your version of success without you having to balance a raw scorecard of hard metrics. You pick a direction — a **priority template** — and let your models optimize toward it.
 
-### The Two Pillars
+> [!IMPORTANT]
+> **Our secret sauce:** We view programs as maps (morphisms) and describe them as such, probing properties of program design that go beyond preserving inputs and outputs.
+
+### The Two Pillars (more incoming)
 
 Every program is evaluated along two orthogonal dimensions:
 
@@ -97,9 +100,11 @@ Give any MCP-compatible coding agent — Claude Code, Cursor, Gemini CLI, Windsu
 
 > [!TIP]
 > **Confirm the binary works before you go wiring it into editors.**
+>
 > ```bash
 > topos-mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
 > ```
+>
 > If that banner doesn't appear, the rest of this guide will not help you. Start with `pip install -e .[dev]` (or check your PATH) and come back.
 
 #### Step 2 — Register with your agent
@@ -142,13 +147,19 @@ Same JSON. Put it wherever that client reads MCP servers from. The spec is stand
 
 > [!IMPORTANT]
 > Topos refuses to read files outside a trusted root. It finds that root by walking up from cwd looking for `.git` or `pyproject.toml`, so launching your agent from anywhere sensible just works. If you insist on launching from elsewhere, tell it explicitly:
+>
 > ```json
-> { "command": "topos-mcp", "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" } }
+> {
+>   "command": "topos-mcp",
+>   "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
+> }
 > ```
+>
 > The server fails closed when this can't be resolved. That's on purpose — an evaluator with unconstrained read access is a different product.
 
 > [!TIP]
 > **Point the agent at the workflow doc on its first turn.** Topos works best when the agent has read its own instructions before deciding what "better" means.
+>
 > > "Fetch `topos://docs/workflows` — or call `topos_get_doc(topic='workflows')` if your client doesn't expose MCP resources — and follow the Topos refactor loop."
 >
 > Or just invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
@@ -184,4 +195,4 @@ Topos is currently used as an internal tool at Krv Labs to manage and regulate o
 - [Measures & Metrics](docs/source/measures.rst)
 - [Category Theory Concepts](docs/source/concepts.rst)
 
-_Built by [Krv Labs](https://krv.ai)_
+_Built with ❤️ by [Krv Labs](https://krv.ai)_

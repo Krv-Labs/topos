@@ -12,9 +12,9 @@ Topos
       :shadow: md
       :class-header: sd-bg-light sd-text-black sd-font-weight-bold
 
-      **Topos** translates your quality priorities into measurable targets for AI coding agents.
-      It provides a structured evaluation layer for managing generated code, giving agents the
-      actionable metrics they need to iteratively reach your architectural goals.
+      **Topos** gives you structural code quality metrics your agents can act on.
+      Pick a priority and Topos measures program structure — not just syntax — giving agents
+      concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -41,18 +41,18 @@ Topos
       :link: concepts
       :link-type: doc
 
-      The category-theoretic inspiration: Morphisms, Heyting Algebras, and the Subobject Classifier.
+      Optional deeper reading: the category-theoretic ideas behind the lattice and why it's structured this way.
 
 Quick look
 ----------
 
-Topos is designed to be picked up by an AI coding agent. You set a goal (a "lattice target"), and the agent can evaluate its own code to hit that target.
+Pick a priority, then let your agent evaluate and iterate on its own output.
 
 .. code-block:: bash
 
-   topos evaluate src/ -r              # classify a directory
-   topos inspect module.py             # detailed metrics
-   topos compare before.py after.py    # AST edit distance
+   topos evaluate src/ -r --priority self_contained   # classify a directory
+   topos inspect module.py                             # detailed metrics
+   topos compare before.py after.py                    # AST edit distance
 
 Each file gets a verdict per quality dimension — **structural** (complexity, entropy)
 and optionally **coupling** (dependency graph). You always see which axis is the

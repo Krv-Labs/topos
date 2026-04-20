@@ -83,7 +83,7 @@ The weights ``w_c`` and ``w_k`` are controlled by the **Priority**:
      - Upweights coupling quality; rewards tightly-bounded interfaces
 
 Changing the priority does not change what is measured — it changes what the
-agent is rewarded for optimising within each dimension.
+agent is rewarded for optimizing within each dimension.
 
 Verdicts
 --------

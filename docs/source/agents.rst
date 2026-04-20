@@ -97,13 +97,7 @@ Run from your project root — Topos auto-detects its file-access root by walkin
 
 **Cursor** — `➕ Install topos in Cursor <cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9>`_
 
-Or edit ``.cursor/mcp.json``:
-
-.. code-block:: json
-
-   { "mcpServers": { "topos": { "command": "topos-mcp" } } }
-
-**Windsurf and everything else:**
+For Cursor (``.cursor/mcp.json``), Windsurf, and most other MCP clients, use:
 
 .. code-block:: json
 

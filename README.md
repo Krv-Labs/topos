@@ -1,35 +1,31 @@
 # Topos
 
-> **Structured evaluations for programs written by agents.**
+> **Structural code quality metrics your agents can act on.**
 
-Topos translates your quality priorities into measurable targets for AI coding agents. It provides a structured evaluation layer for managing generated code, giving agents the actionable metrics they need to iteratively reach your architectural goals.
+Topos lets you set and manage the quality target while coding agents handle the iteration. Pick a priority and Topos measures program structure (not just syntax), giving agents concrete metrics to optimize toward on every pass.
+
+Current priorities:
+
+- **Self-Contained:** Minimal external dependencies; functionality lives within the module.
+- **Composable:** Connects cleanly with other modules without creating fragile dependency chains.
+
+More coming soon.
+
+> [!NOTE]
+> We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs.
 
 ---
 
-### Why Topos?
+### The Verdict
 
-In an era of cheap code, **ideas are the currency.** Topos acts as the (subobject) classifier for project managers: it finds your version of success without you having to balance a raw scorecard of hard metrics. You pick a direction — a **priority template** — and let your models optimize toward it.
-
-> [!IMPORTANT]
-> **Our secret sauce:** We view programs as maps (morphisms) and describe them as such, probing properties of program design that go beyond preserving inputs and outputs.
-
-### The Two Pillars (more incoming)
-
-Every program is evaluated along two orthogonal dimensions:
-
-- **Complexity (AST):** Internal structure, cyclomatic complexity, and entropy.
-- **Coupling (Graph):** External relations, dependency distances, and fan metrics.
-
-### The Evaluation Lattice
-
-Code quality maps to a four-valued diamond lattice (a Heyting algebra) — a partial order that captures degrees of structural quality rather than a binary pass/fail:
+Topos maps every file to a four-valued diamond lattice, so agents know exactly where they are and which direction to move:
 
 ```mermaid
 graph BT
-    BROKEN["&perp; BROKEN<br/>Fails targets"]
-    COMPOSABLE["&#9681; COMPOSABLE<br/>Good coupling"]
-    SELF_CONTAINED["&#9680; SELF_CONTAINED<br/>Good structure"]
-    SOUND["&top; SOUND<br/>Both targets met"]
+    BROKEN["⊥ BROKEN<br/>Fails targets"]
+    COMPOSABLE["◑ COMPOSABLE<br/>Good coupling"]
+    SELF_CONTAINED["◐ SELF_CONTAINED<br/>Good structure"]
+    SOUND["⊤ SOUND<br/>Both targets met"]
 
     BROKEN --> COMPOSABLE
     BROKEN --> SELF_CONTAINED
@@ -42,111 +38,106 @@ graph BT
     style SOUND          fill:#fff3cd,stroke:#856404,color:#000
 ```
 
+`COMPOSABLE` and `SELF_CONTAINED` are **incomparable** — code can satisfy one without the other. `SOUND` is the join of both.
+
 > [!TIP]
-> **Non-Total Order:** `COMPOSABLE` and `SELF_CONTAINED` are _incomparable_. A function can meet one target without meeting the other. `SOUND` is the join of both.
-
----
-
-### How It Works
-
-You give the agent a **Priority** (Self-Contained, Composable, or Balanced). The agent evaluates its own code against a lattice target and iterates until it hits it.
-
-**PM Directive:** _"Write a data pipeline module. Priority: self-contained."_
-
-1.  **Agent iteration 1:** `structural: ⊥ BROKEN [41%]`
-    - _Guidance: Reduce cyclomatic complexity and normalize entropy toward 0.5_
-2.  **Agent iteration 2:** `structural: ◐ SELF_CONTAINED [72%]`
-    - _✓ Target achieved._
+> Perfect code satisfies both — but agents operate under token and time budgets. A concrete priority gives them a formula to execute rather than an open-ended target.
 
 ---
 
 ### Quick Start
 
-#### 1. Install
+#### Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 ```
 
-#### 2. CLI Usage
+#### CLI
 
 ```bash
-topos evaluate src/ -r --priority self_contained   # classify directory
+topos evaluate src/ -r --priority self_contained   # classify a directory
 topos inspect module.py                             # detailed metrics
 topos compare before.py after.py                    # AST edit distance
 ```
 
-#### 3. MCP Server
+#### In an agent loop
 
-Give any MCP-compatible coding agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate, compare, and iterate on its own output instead of guessing whether it's helping.
+```
+Agent iteration 1: structural: ⊥ BROKEN [41%]
+  → Reduce cyclomatic complexity and normalize entropy toward 0.5
+
+Agent iteration 2: structural: ◐ SELF_CONTAINED [72%]
+  → ✓ Target achieved.
+```
+
+---
+
+### MCP Server
+
+Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
 <details>
-<summary><b>Set up <code>topos-mcp</code> in your coding agent</b></summary>
+<summary><b>Set up <code>topos-mcp</code> in your agent</b></summary>
 
 &nbsp;
 
 #### Step 1 — Build the dependency graph
 
 > [!IMPORTANT]
-> **Do this first. Not later, not "when you get around to it."** Without a dependency graph, Topos scores the structural dimension only; `COMPOSABLE` and `SOUND` become unreachable; your agent optimizes half a function and calls it a day. One-time setup per repo, and the cache handles itself afterwards.
+> **Do this first.** Without a dependency graph, Topos scores the structural dimension only — `COMPOSABLE` and `SOUND` become unreachable.
 >
 > ```bash
-> npm install -g gitnexus        # one-time per machine (requires Node.js)
+> npm install -g gitnexus        # one-time per machine
 > cd /path/to/your/repo
-> topos depgraph generate        # one-time per repo; writes .gitnexus/ at project root
+> topos depgraph generate        # one-time per repo; writes .gitnexus/
 > ```
 >
-> Re-run `topos depgraph generate` when imports actually change — new modules, renames, package restructures. Editing function bodies is not that. The cache keys on `.gitnexus/` mtime and invalidates itself; you don't need to restart anything.
+> Re-run when imports change (new modules, renames, restructures). The cache keys on `.gitnexus/` mtime and invalidates itself.
 
 > [!TIP]
-> **Confirm the binary works before you go wiring it into editors.**
+> Verify the binary before wiring it into editors:
 >
 > ```bash
 > topos-mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
 > ```
->
-> If that banner doesn't appear, the rest of this guide will not help you. Start with `pip install -e .[dev]` (or check your PATH) and come back.
 
 #### Step 2 — Register with your agent
 
-Run these from your project root. Topos auto-detects its file-access root by walking up for `.git` or `pyproject.toml`, so cwd matters.
+Run from your project root — Topos auto-detects its file-access root by walking up for `.git` or `pyproject.toml`.
 
-##### 🟣 Claude Code
+##### Claude Code
 
 ```bash
 claude mcp add topos topos-mcp
 ```
 
-##### 🔵 Gemini CLI
+##### Gemini CLI
 
 ```bash
 gemini mcp add topos topos-mcp
 ```
 
-##### ⚫ Cursor
-
-One click, assuming Cursor is running:
+##### Cursor
 
 <a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9">**➕ Install `topos` in Cursor**</a>
 
-Or edit `.cursor/mcp.json` (project) / `~/.cursor/mcp.json` (global) yourself:
+Or edit `.cursor/mcp.json`:
 
 ```json
 { "mcpServers": { "topos": { "command": "topos-mcp" } } }
 ```
 
-##### 🟢 Windsurf and everything else
-
-Same JSON. Put it wherever that client reads MCP servers from. The spec is standard; the config file's name is not.
+##### Windsurf and everything else
 
 ```json
 { "mcpServers": { "topos": { "command": "topos-mcp" } } }
 ```
 
-#### Step 3 — Launch your agent from the project root
+#### Step 3 — Launch from the project root
 
 > [!IMPORTANT]
-> Topos refuses to read files outside a trusted root. It finds that root by walking up from cwd looking for `.git` or `pyproject.toml`, so launching your agent from anywhere sensible just works. If you insist on launching from elsewhere, tell it explicitly:
+> Topos refuses to read files outside a trusted root. If you must launch from elsewhere, set it explicitly:
 >
 > ```json
 > {
@@ -154,26 +145,19 @@ Same JSON. Put it wherever that client reads MCP servers from. The spec is stand
 >   "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
 > }
 > ```
->
-> The server fails closed when this can't be resolved. That's on purpose — an evaluator with unconstrained read access is a different product.
 
 > [!TIP]
-> **Point the agent at the workflow doc on its first turn.** Topos works best when the agent has read its own instructions before deciding what "better" means.
+> On the agent's first turn, point it at the workflow doc:
 >
-> > "Fetch `topos://docs/workflows` — or call `topos_get_doc(topic='workflows')` if your client doesn't expose MCP resources — and follow the Topos refactor loop."
+> > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."
 >
-> Or just invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
+> Or invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
 
 #### Smoke test
 
-A concrete task to run once everything is wired up:
-
 > "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify with `topos_assess_improvement`."
 
-A healthy response has `coupling_available: true`, picks a real target, and loops until `SOUND` or the iteration budget runs out.
-
-> [!WARNING]
-> If every response comes back with `coupling_available: false`, you skipped Step 1. Go back and read it this time. Re-run `topos depgraph generate` from the project root and try again.
+A healthy response has `coupling_available: true`. If every response shows `coupling_available: false`, go back to Step 1.
 
 </details>
 
@@ -181,18 +165,14 @@ A healthy response has `coupling_available: true`, picks a real target, and loop
 
 ### Contributing
 
-Topos is currently used as an internal tool at Krv Labs to manage and regulate our AI agents' code outputs. We welcome new ideas, architectural critiques, and contributions from the community.
+Topos is used internally at [Krv Labs](https://krv.ai) to manage AI agent code output. We welcome bugs, ideas, and contributions.
 
-- **Found a bug?** Open an [Issue](https://github.com/Krv-Labs/topos/issues).
-- **Have a feature idea?** Start a [Discussion](https://github.com/Krv-Labs/topos/discussions) or open a Pull Request.
-- **Want to collaborate?** Write to us directly at [team@krv.ai](mailto:team@krv.ai).
+- **Bug?** Open an [Issue](https://github.com/Krv-Labs/topos/issues)
+- **Idea?** Start a [Discussion](https://github.com/Krv-Labs/topos/discussions) or open a PR
+- **Collaborate?** [team@krv.ai](mailto:team@krv.ai)
 
 ---
 
-### Resources
-
-- [Full Documentation](docs/)
-- [Measures & Metrics](docs/source/measures.rst)
-- [Category Theory Concepts](docs/source/concepts.rst)
+[Full Documentation](docs/) · [Measures & Metrics](docs/source/measures.rst) · [Category Theory Concepts](docs/source/concepts.rst)
 
 _Built with ❤️ by [Krv Labs](https://krv.ai)_

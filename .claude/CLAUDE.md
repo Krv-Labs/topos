@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Writing Style
+
+Always use **American English spelling** — "optimize" not "optimise", "analyze" not "analyse", "modeling" not "modelling", etc.
+
 ## Overview
 
 **Topos** is a code quality evaluation framework that applies category theory (specifically Heyting Algebra) to classify Python code. Programs are evaluated across two independent *dimensions* and mapped to a 4-element diamond lattice rather than a single numeric score.
@@ -127,11 +131,44 @@ result.raw_metrics   # {"ast.complexity": 8.0, "ast.entropy": 0.52, ...}
 3. Add a score dispatcher to `omega._REPRESENTATION_SCORE_DISPATCHERS`
 4. Add the dimension target to `omega._DIMENSION_TARGET` if introducing a new dimension
 
-## MCP Server Tools
+## MCP Server (`topos-mcp`)
 
-- `evaluate_code(code, language)` — Classify code from a string
-- `evaluate_file(filepath)` — Classify code from a file
-- `compare_code(source_code, target_code, language)` — Compare AST edit distance
-- `compare_files(source, target)` — Compare two files
-- `assess_improvement(current_code, proposed_code, language)` — Check if proposed code improves current
-- `inspect_code(code, language)` — Detailed metrics breakdown
+Run with `topos-mcp` (stdio transport). Requires `TOPOS_MCP_FILE_ROOT` env var, or a project marker (`.git`/`pyproject.toml`) walking up from cwd — otherwise the server fails closed.
+
+### Tools
+
+- `topos_evaluate_code(code, language, priority, response_format)` — classify a string (structural dim only).
+- `topos_evaluate_file(filepath, priority, gitnexus_dir, response_format)` — classify a file. **Pass `gitnexus_dir` to enable coupling dimension and reach COMPOSABLE/SOUND.**
+- `topos_evaluate_project(path, priority, gitnexus_dir, limit, offset, response_format)` — project-wide rollup with `ctx.report_progress`. Returns worst-scoring files first.
+- `topos_compare_code(source_code, target_code, language, response_format)` — AST edit distance between two strings.
+- `topos_compare_files(source, target, response_format)` — AST edit distance between two files.
+- `topos_assess_improvement(proposed_code, filepath | current_code, priority, gitnexus_dir, response_format)` — agent refactor loop tool. Prefer `filepath` to enable coupling scoring. Anti-gaming guardrail: returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when scores move but AST edit distance is near zero.
+- `topos_inspect_code(code, language, priority, top_n_functions, response_format)` — detailed breakdown: top-N functions by complexity, entropy details, full metric table.
+
+### Resources
+
+- `topos://docs/lattice` — the diamond lattice (BROKEN / COMPOSABLE / SELF_CONTAINED / SOUND).
+- `topos://docs/metrics` — every metric key and threshold.
+- `topos://docs/priority` — priority profiles (balanced / composable / self_contained).
+- `topos://docs/workflows` — canonical review→plan→refactor→re-measure agent loop. Read first.
+
+### Prompts
+
+- `topos_refactor_until_sound(filepath, priority, max_iterations)` — scaffolds the full refactor loop.
+
+### Package layout
+
+Code lives under `src/topos/mcp/`:
+- `server.py` — FastMCP instance + stdio entry point.
+- `schemas.py` — Pydantic input + structured return models.
+- `security.py` — fail-closed file-root resolution.
+- `cache.py` — LRU cache for `DependencyGraph` keyed on `.gitnexus` mtime.
+- `evaluation.py` — shared classifier pipeline (attaches dep graph when available).
+- `formatting.py` — response builders.
+- `tools/` — one module per tool category: `evaluate.py`, `compare.py`, `assess.py`, `inspect.py`.
+- `resources/docs.py` + `resources/content/*.md` — static documentation.
+- `prompts/refactor.py` — the refactor prompt template.
+
+### Evaluation harness
+
+`evaluations/topos_mcp.xml` — 10 Q/A pairs per the mcp-builder skill Phase 4.

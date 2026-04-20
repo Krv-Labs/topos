@@ -7,7 +7,9 @@ node_modules/
 # Agents
 .cursor/
 .claude/
+!.claude/CLAUDE.md
 .gemini/
+!.gemini/GEMINI.md
 topos-skill/
 *.skill
 
@@ -225,3 +227,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .gitnexus
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json

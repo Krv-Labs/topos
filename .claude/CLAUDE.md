@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Writing Style
+
+Always use **American English spelling** — "optimize" not "optimise", "analyze" not "analyse", "modeling" not "modelling", etc.
+
 ## Overview
 
 **Topos** is a code quality evaluation framework that applies category theory (specifically Heyting Algebra) to classify Python code. Programs are evaluated across two independent *dimensions* and mapped to a 4-element diamond lattice rather than a single numeric score.

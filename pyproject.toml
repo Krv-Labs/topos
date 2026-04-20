@@ -1,6 +1,6 @@
 [project]
 name = "topos"
-version = "0.1.0"
+version = "0.2.0"
 description = "Treating programs as morphisms in a world of commodity code. Building the subobject classifier for rigorous program evaluations."
 readme = "README.md"
 requires-python = ">=3.11"

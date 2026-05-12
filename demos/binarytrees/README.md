@@ -32,6 +32,24 @@ This will:
    - `uast/*.uast.json` (normalized UAST)
    - `native/*.native.txt` (native AST dump when available)
 
+## Comparing Implementations
+
+After extracting the ASTs, run the cross-language comparison:
+
+```bash
+uv run python demos/binarytrees/compare_asts.py
+```
+
+This builds a pairwise 4x4 structural comparison over the UAST representations and writes:
+- `results/comparison.json` — full machine-readable report (kind histograms, edit distance, control-flow deltas, summary deltas).
+- `results/comparison.md` — markdown distance matrices plus per-pair control-flow deltas.
+
+### Interpreting the output
+
+- **Kind-histogram distance** (L1, `[0, 1]`): measures how differently each language uses UAST node kinds. `0.0` means identical kind mix, `1.0` means disjoint vocabularies.
+- **UAST edit distance** (normalized, `[0, 1]`): Wagner-Fischer edit distance over DFS-ordered UAST kinds. Captures structural shape, not just kind frequency.
+- **Control-flow delta**: signed counts (`target - source`) for control-flow-relevant UAST kinds (`IfStmt`, `ForStmt`, `WhileStmt`, `MatchStmt`, `CallExpr`, `ReturnStmt`, ...). Empty delta vs non-empty delta is the strongest "did we detect a difference?" signal.
+
 ## Purpose
 
-This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages.
+This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages. The comparison runner answers that question quantitatively via the UAST metrics module ([src/topos/metrics/uast/](../../src/topos/metrics/uast/)).

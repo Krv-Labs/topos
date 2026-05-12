@@ -1,22 +1,53 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, version
 
 from tree_sitter import Node
 
 from topos.graphs.ast.uast.models import NativeRef, SourceSpan, UASTNode
 
-PARSER_VERSION = "tree-sitter>=0.23"
+_TREE_SITTER_PACKAGE = {
+    "python": "tree-sitter-python",
+    "rust": "tree-sitter-rust",
+    "javascript": "tree-sitter-javascript",
+    "cpp": "tree-sitter-cpp",
+}
+
+
+def parser_identity(language: str, *, native: bool = False) -> tuple[str, str]:
+    """
+    Return the canonical `(parser_name, parser_version)` for a language.
+
+    `native=True` selects the language's native parser identity (currently
+    only CPython's stdlib `ast` for Python); otherwise the tree-sitter
+    grammar identity is returned. Unknown languages fall back to
+    `("tree-sitter", "unknown")`.
+    """
+    if native and language == "python":
+        return (
+            "cpython-ast",
+            f"python-{sys.version_info.major}.{sys.version_info.minor}",
+        )
+
+    package = _TREE_SITTER_PACKAGE.get(language)
+    if package is None:
+        return "tree-sitter", "unknown"
+    try:
+        return package, version(package)
+    except PackageNotFoundError:
+        return package, "unknown"
 
 
 def map_tree_sitter_to_uast(
     root: Node,
     language: str,
     map_node_kind: Callable[[Node], str],
-    parser_name: str = "tree-sitter",
-    parser_version: str = PARSER_VERSION,
     file: str | None = None,
 ) -> UASTNode:
+    parser_name, parser_version = parser_identity(language)
+
     def to_uast(node: Node) -> UASTNode:
         start_point = node.start_point
         end_point = node.end_point

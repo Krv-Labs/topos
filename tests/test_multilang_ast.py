@@ -26,7 +26,7 @@ def test_parse_source_rust_hybrid_falls_back_to_tree_sitter():
     )
     assert result.native_ast is None
     assert result.uast_root is not None
-    assert result.provenance.parser == "tree-sitter"
+    assert result.provenance.parser == "tree-sitter-rust"
 
 
 def test_program_morphism_supports_multiple_languages():
@@ -51,6 +51,27 @@ def test_capability_matrix_tracks_native_and_uast_support():
     assert matrix["rust"]["supports_native"] is False
     assert matrix["javascript"]["supports_uast"] is True
     assert matrix["cpp"]["supports_tree_sitter"] is True
+
+
+def test_native_ref_parser_identity_per_language():
+    cases = [
+        ("python", "def add(a, b):\n    return a + b\n", "cpython-ast"),
+        ("rust", "fn main() {}", "tree-sitter-rust"),
+        ("javascript", "function x() { return 1; }", "tree-sitter-javascript"),
+        ("cpp", "int main() { return 0; }", "tree-sitter-cpp"),
+    ]
+    for language, source, expected_parser in cases:
+        result = parse_source(source, language=language)
+        assert result.provenance.parser == expected_parser
+        assert result.provenance.parser_version
+        assert result.provenance.parser_version != "unknown"
+        parsers_seen = {node.native.parser for node in _walk_uast(result.uast_root)}
+        # UAST nodes always carry the tree-sitter grammar identity, even when
+        # the top-level provenance reflects the native parser (e.g. cpython-ast).
+        expected_uast_parser = (
+            "tree-sitter-python" if language == "python" else expected_parser
+        )
+        assert expected_uast_parser in parsers_seen
 
 
 def test_binarytrees_sources_produce_minimum_uast_invariants():

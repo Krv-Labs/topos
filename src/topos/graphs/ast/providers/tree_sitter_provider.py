@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from topos.graphs.ast.types import ParseResult, ParserProvenance
+from topos.graphs.ast.uast.mapper_common import parser_identity
 from topos.graphs.ast.uast.mapper_cpp import map_cpp_tree_to_uast
 from topos.graphs.ast.uast.mapper_javascript import map_javascript_tree_to_uast
 from topos.graphs.ast.uast.mapper_python import map_python_tree_to_uast
@@ -32,7 +33,6 @@ _TREE_SITTER_UAST = {
 @dataclass
 class TreeSitterProvider:
     name: str = "tree-sitter"
-    parser_version: str = "tree-sitter>=0.23"
 
     def supports(self, language: str) -> bool:
         return language in _TREE_SITTER_PARSE
@@ -43,9 +43,10 @@ class TreeSitterProvider:
 
         root = _TREE_SITTER_PARSE[language](source)
         uast_root = _TREE_SITTER_UAST[language](root, file=file)
+        parser_name, parser_version = parser_identity(language)
         provenance = ParserProvenance(
-            parser=self.name,
-            parser_version=self.parser_version,
+            parser=parser_name,
+            parser_version=parser_version,
             node_kind=root.type,
         )
         return ParseResult(

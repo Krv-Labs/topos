@@ -1,5 +1,21 @@
 from __future__ import annotations
 
+"""
+UAST Mapper Common
+------------------
+
+Shared logic for mapping Tree-sitter Concrete Syntax Trees (CSTs) to the
+normalized UAST representation.
+
+This module provides the core transformation engine that:
+1.  **Filters Noise**: Only "named" nodes from Tree-sitter are mapped; anonymous
+    nodes (punctuation, keywords, whitespace) are ignored.
+2.  **Standardizes Kinds**: Uses language-specific mapping functions to translate
+    native Tree-sitter types into unified UNodeKinds.
+3.  **Preserves Fidelity**: Populates every UASTNode with the original byte
+    spans and a NativeRef containing the parser identity and native node type.
+"""
+
 import hashlib
 import sys
 from collections.abc import Callable

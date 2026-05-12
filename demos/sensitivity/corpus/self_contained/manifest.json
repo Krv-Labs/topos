@@ -1,0 +1,58 @@
+{
+  "entries": [
+    {
+      "name": "toolz_recipes",
+      "package": "toolz",
+      "version": "0.12.1",
+      "source": "demos/sensitivity/corpus/self_contained/toolz_recipes.py",
+      "origin_relative": "toolz/recipes.py",
+      "smoke_test": "import ast, pathlib; ast.parse(pathlib.Path(SRC).read_text())",
+      "baseline": {
+        "lattice_element": "SELF_CONTAINED",
+        "lattice_symbol": "\u25d0",
+        "structural_score": 95.5,
+        "raw_metrics": {
+          "ast.complexity": 2.0,
+          "ast.entropy": 0.48328025477707004
+        },
+        "priority": "self_contained"
+      }
+    },
+    {
+      "name": "humanize_number",
+      "package": "humanize",
+      "version": "4.10.0",
+      "source": "demos/sensitivity/corpus/self_contained/humanize_number.py",
+      "origin_relative": "src/humanize/number.py",
+      "smoke_test": "import ast, pathlib; ast.parse(pathlib.Path(SRC).read_text())",
+      "baseline": {
+        "lattice_element": "BROKEN",
+        "lattice_symbol": "\u22a5",
+        "structural_score": 16.7,
+        "raw_metrics": {
+          "ast.complexity": 44.0,
+          "ast.entropy": 0.27867742134105045
+        },
+        "priority": "self_contained"
+      }
+    },
+    {
+      "name": "tabulate_init",
+      "package": "tabulate",
+      "version": "0.9.0",
+      "source": "demos/sensitivity/corpus/self_contained/tabulate_init.py",
+      "origin_relative": "tabulate/__init__.py",
+      "smoke_test": "import ast, pathlib; ast.parse(pathlib.Path(SRC).read_text())",
+      "baseline": {
+        "lattice_element": "BROKEN",
+        "lattice_symbol": "\u22a5",
+        "structural_score": 14.0,
+        "raw_metrics": {
+          "ast.complexity": 153.0,
+          "ast.entropy": 0.23265820128030223
+        },
+        "priority": "self_contained"
+      }
+    }
+  ]
+}

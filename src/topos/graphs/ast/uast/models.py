@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""
+UAST Models
+-----------
+
+Data structures for the Universal Abstract Syntax Tree. These models define the
+"Normalized" layer of our "Native-first, Normalized-second" architecture.
+"""
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,8 +35,14 @@ class UASTNode:
     """
     Language-normalized node carrying provenance and source spans.
 
-    The `kind` values intentionally follow the industry-standard reference
-    in docs/uast-industry-standards.md.
+    The UASTNode acts as a normalization layer over language-specific Concrete
+    Syntax Trees (CSTs) from Tree-sitter. It maps disparate native nodes into
+    unified `kind` values that follow the industry-standard reference in
+    docs/uast-industry-standards.md.
+
+    While normalized, each node strictly retains its `native` provenance and
+    `span` data to ensure fidelity with compiler-native AST expectations
+    (e.g., Python ast, ESTree, Rust syn, Clang).
 
     `id` is a deterministic 16-hex-char identifier required by the
     `UNodeBase` schema for referential integrity (diffs, refactor links,

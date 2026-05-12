@@ -61,6 +61,19 @@ Dimensions are never automatically collapsed — call ``result.summary()``
 only when a single scalar is required. Use ``combine_dimensions(results)``
 to fold a directory scan into a per-dimension overall verdict.
 
+The Universal AST (UAST)
+-----------------------
+
+Topos evaluates code through a **Universal Abstract Syntax Tree (UAST)**—a language-normalized representation that bridges the gap between raw, language-specific parsing and high-level cross-language analysis.
+
+UAST follows a **"Native-first, Normalized-second"** architecture:
+
+1. **The Tree-sitter Engine**: We use Tree-sitter to generate a **Concrete Syntax Tree (CST)**. Tree-sitter is industry-leading, highly maintained, and provides fast, incremental parsing.
+2. **The Normalization Layer**: The UAST acts as a filter over the CST. It ignores surface-level noise (punctuation, whitespace) and maps language-specific nodes to a set of unified `UNodeKind` values (e.g., ``FunctionDecl``, ``IfStmt``, ``CallExpr``).
+3. **Fidelity and Provenance**: Crucially, every UAST node retains a ``NativeRef``. This preserves the exact byte-offsets and native parser provenance, ensuring the representation remains faithful to established industry standards like Python ``ast``, ESTree (JS), Rust ``syn``, and the Clang AST (C++).
+
+This unified layer allows Topos algorithms (like complexity analysis) to operate identically across multiple languages without losing the precision required for professional-grade static analysis.
+
 Representations
 ---------------
 

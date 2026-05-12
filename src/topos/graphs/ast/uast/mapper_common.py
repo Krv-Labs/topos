@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sys
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
@@ -40,6 +41,17 @@ def parser_identity(language: str, *, native: bool = False) -> tuple[str, str]:
         return package, "unknown"
 
 
+def _compute_node_id(
+    lang: str,
+    node_kind: str,
+    start_byte: int,
+    end_byte: int,
+    parent_id: str,
+) -> str:
+    payload = f"{lang}|{node_kind}|{start_byte}|{end_byte}|{parent_id}".encode()
+    return hashlib.blake2b(payload, digest_size=8).hexdigest()
+
+
 def map_tree_sitter_to_uast(
     root: Node,
     language: str,
@@ -48,7 +60,7 @@ def map_tree_sitter_to_uast(
 ) -> UASTNode:
     parser_name, parser_version = parser_identity(language)
 
-    def to_uast(node: Node) -> UASTNode:
+    def to_uast(node: Node, parent_id: str = "") -> UASTNode:
         start_point = node.start_point
         end_point = node.end_point
         span = SourceSpan(
@@ -65,7 +77,18 @@ def map_tree_sitter_to_uast(
             parser_version=parser_version,
             node_kind=node.type,
         )
-        children = [to_uast(child) for child in node.children if child.is_named]
+        node_id = _compute_node_id(
+            lang=language,
+            node_kind=native.node_kind,
+            start_byte=span.start_byte,
+            end_byte=span.end_byte,
+            parent_id=parent_id,
+        )
+        children = [
+            to_uast(child, parent_id=node_id)
+            for child in node.children
+            if child.is_named
+        ]
         return UASTNode(
             kind=map_node_kind(node),
             lang=language,
@@ -73,6 +96,7 @@ def map_tree_sitter_to_uast(
             native=native,
             attributes={"named": node.is_named},
             children=children,
+            id=node_id,
         )
 
     return to_uast(root)

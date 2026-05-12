@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        default=Path("demos/.cache"),
+        default=Path("demos/libraries/.cache"),
         help="Where downloaded archives and extracted sources are stored.",
     )
     parser.add_argument(
@@ -91,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--json-output",
         type=Path,
-        default=Path("demos/results/version_summaries.json"),
+        default=Path("demos/libraries/results/version_summaries.json"),
         help="Output path for summary JSON when --write-json is enabled.",
     )
     parser.add_argument(
@@ -103,7 +103,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def canonicalize(name: str) -> str:

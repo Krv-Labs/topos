@@ -2,7 +2,7 @@
 #
 # Topos Installation Script
 # =========================
-# Install Topos - category-theoretic code quality evaluation for Python
+# Install Topos - structural code quality metrics for AI coding agents
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
@@ -245,7 +245,7 @@ install_optional_dependencies() {
         return
     fi
 
-    echo -e "gitnexus is required for dependency graph measures."
+    echo -e "gitnexus is required for coupling metrics (COMPOSABLE/SOUND targets)."
 
     local reply=""
     if [ -t 0 ]; then
@@ -260,7 +260,7 @@ install_optional_dependencies() {
         [yY][eE][sS]|[yY]|"")
             if ! command -v npm >/dev/null 2>&1; then
                 warn "npm not found. Skipping gitnexus installation."
-                warn "Dependency graph measures will not be available."
+                warn "Coupling metrics will not be available."
                 return
             fi
             info "Installing gitnexus..."
@@ -273,7 +273,7 @@ install_optional_dependencies() {
             ;;
         *)
             info "Skipping gitnexus installation."
-            info "Note: Dependency graph measures will not be available without gitnexus."
+            info "Note: Coupling metrics will not be available without gitnexus."
             ;;
     esac
 }
@@ -367,22 +367,29 @@ verify_install() {
     echo ""
     echo "Get started:"
     echo ""
-    echo "  topos evaluate src/         # Evaluate a directory"
-    echo "  topos inspect module.py     # Detailed metrics"
-    echo "  topos compare a.py b.py     # Structural diff"
+    echo "  topos evaluate src/ -r --priority self_contained   # classify a directory"
+    echo "  topos inspect module.py                             # detailed metrics"
+    echo "  topos compare before.py after.py                    # AST edit distance"
     echo ""
-    echo "Documentation: https://docs.krv.ai/topos"
+    echo "Lattice elements: BROKEN (⊥), COMPOSABLE (◑), SELF_CONTAINED (◐), SOUND (⊤)"
+    echo "Metrics: structural (complexity, entropy) + coupling (dependency graph via GitNexus)"
+    echo ""
+    echo "Next step for agent-led workflows (recommended):"
+    echo "  topos depgraph generate     # enable coupling metrics for COMPOSABLE/SOUND"
+    echo "  topos-mcp                   # verify MCP server, then register in your agent"
+    echo ""
+    echo "Docs: https://docs.krv.ai/topos"
+    echo "MCP setup: https://docs.krv.ai/topos/agents"
 }
 
 # Main
 main() {
     echo ""
     echo "  ╔════════════════════════════════════════════════════════════╗"
+    echo "  ║                          Topos                             ║"
     echo "  ║                                                            ║"
-    echo "  ║   Topos - Category-theoretic code quality evaluation       ║"
-    echo "  ║                                                            ║"
-    echo "  ║   Treating programs as morphisms in a world of             ║"
-    echo "  ║   commodity code.                                          ║"
+    echo "  ║   Topos translates your quality priorities into            ║"
+    echo "  ║   measurable targets for AI coding agents.                ║"
     echo "  ║                                                            ║"
     echo "  ╚════════════════════════════════════════════════════════════╝"
     echo ""

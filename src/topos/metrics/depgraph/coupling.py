@@ -103,10 +103,17 @@ def calculate_instability(graph: DependencyGraph, file_node_id: str) -> float:
 
     Returns 0.5 when the module has zero coupling (no signal).
     """
-    result = calculate_coupling(graph, file_node_id)
-    if result.total == 0:
-        return 0.5
-    return result.efferent / result.total
+    return _instability_from_coupling(calculate_coupling(graph, file_node_id))
+
+
+def calculate_instability_from_result(result: CouplingResult) -> float:
+    """
+    Calculate Martin's Instability metric from a precomputed coupling result.
+
+    Useful when coupling has already been computed and we want to avoid
+    traversing the graph twice.
+    """
+    return _instability_from_coupling(result)
 
 
 def calculate_dependency_depth(graph: DependencyGraph, file_node_id: str) -> int:
@@ -150,3 +157,9 @@ def _owning_file(graph: DependencyGraph, node_id: str) -> str | None:
             return None
         current = parents[0].source_id
     return None  # cycle in CONTAINS chain
+
+
+def _instability_from_coupling(result: CouplingResult) -> float:
+    if result.total == 0:
+        return 0.5
+    return result.efferent / result.total

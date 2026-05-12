@@ -14,6 +14,7 @@ from topos.metrics.depgraph.coupling import (
     calculate_coupling,
     calculate_dependency_depth,
     calculate_instability,
+    calculate_instability_from_result,
 )
 from topos.metrics.depgraph.fan import FanResult, calculate_fan_in_out
 
@@ -165,6 +166,12 @@ def test_instability_zero_coupling():
     )
     instability = calculate_instability(g, "File:isolated.py")
     assert instability == 0.5  # default for zero coupling
+
+
+def test_instability_from_precomputed_coupling():
+    result = CouplingResult(afferent=3, efferent=1)
+    instability = calculate_instability_from_result(result)
+    assert instability == 0.25
 
 
 # ---------------------------------------------------------------------------

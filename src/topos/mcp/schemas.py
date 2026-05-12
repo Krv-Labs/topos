@@ -66,7 +66,10 @@ class EvaluateCodeInput(_StrictModel):
     )
     language: str = Field(
         default="python",
-        description="Programming language of the source (currently only 'python').",
+        description=(
+            "Programming language of the source. Supported via tree-sitter: "
+            "'python', 'rust', 'javascript', 'cpp'."
+        ),
     )
     priority: Priority = Field(
         default=Priority.BALANCED,

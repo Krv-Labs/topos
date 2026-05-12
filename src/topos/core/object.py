@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Any
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -48,6 +49,11 @@ class ProgramObject:
     root: Node
     source: str
     language: str = "python"
+    native_ast: Any | None = field(default=None, repr=False)
+    uast_root: Any | None = field(default=None, repr=False)
+    parser_name: str = "tree-sitter"
+    parser_version: str = "tree-sitter>=0.23"
+    native_node_kind: str = "module"
     _node_count: int | None = field(default=None, repr=False)
 
     @property

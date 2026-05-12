@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from topos.core.object import ProgramObject
+from topos.graphs.ast.dispatch import AstBackend, parse_source
 
 if TYPE_CHECKING:
     from topos.graphs.base import Representation
@@ -58,6 +59,7 @@ class ProgramMorphism:
 
     source: str
     language: str = "python"
+    parser_backend: AstBackend = "hybrid"
     filepath: Path | None = None
     ast: ProgramObject | None = field(default=None, repr=False)
     representations: list[Representation] = field(default_factory=list, repr=False)
@@ -77,17 +79,29 @@ class ProgramMorphism:
         Raises:
             ValueError: If the language is not supported.
         """
-        from topos.utils.tree_sitter import parse_python
-
-        if self.language != "python":
-            raise ValueError(f"Language '{self.language}' not yet supported")
-
-        root = parse_python(self.source)
-        return ProgramObject(root=root, source=self.source, language=self.language)
+        parse_result = parse_source(
+            source=self.source,
+            language=self.language,
+            backend=self.parser_backend,
+            file=str(self.filepath) if self.filepath else None,
+        )
+        return ProgramObject(
+            root=parse_result.root,
+            source=self.source,
+            language=self.language,
+            native_ast=parse_result.native_ast,
+            uast_root=parse_result.uast_root,
+            parser_name=parse_result.provenance.parser,
+            parser_version=parse_result.provenance.parser_version,
+            native_node_kind=parse_result.provenance.node_kind,
+        )
 
     @classmethod
     def from_file(
-        cls, filepath: str | Path, language: str = "python"
+        cls,
+        filepath: str | Path,
+        language: str = "python",
+        parser_backend: AstBackend = "hybrid",
     ) -> ProgramMorphism:
         """
         Create a ProgramMorphism from a source file.
@@ -101,7 +115,12 @@ class ProgramMorphism:
         """
         path = Path(filepath)
         source = path.read_text(encoding="utf-8")
-        return cls(source=source, language=language, filepath=path)
+        return cls(
+            source=source,
+            language=language,
+            parser_backend=parser_backend,
+            filepath=path,
+        )
 
     @property
     def is_valid(self) -> bool:

@@ -29,8 +29,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from topos.core.object import ProgramObject
+from topos.core.object import ProgramObject
 
 DECISION_NODE_TYPES = frozenset(
     {
@@ -49,6 +48,16 @@ DECISION_NODE_TYPES = frozenset(
         "dictionary_comprehension",
         "set_comprehension",
         "generator_expression",
+    }
+)
+
+DECISION_UAST_KINDS = frozenset(
+    {
+        "IfStmt",
+        "ForStmt",
+        "WhileStmt",
+        "MatchStmt",
+        "TryStmt",
     }
 )
 
@@ -76,6 +85,9 @@ def calculate_cyclomatic_complexity(ast: ProgramObject) -> int:
         analyzing the control flow graph, but AST-based counting provides
         a reasonable proxy for most Python code.
     """
+    if ast.uast_root is not None:
+        return _calculate_cyclomatic_complexity_uast(ast.uast_root)
+
     decision_count = 0
 
     for node in ast.traverse():
@@ -84,6 +96,25 @@ def calculate_cyclomatic_complexity(ast: ProgramObject) -> int:
             if node.type == "boolean_operator":
                 decision_count += _count_boolean_operators(node) - 1
 
+    return decision_count + 1
+
+
+def _calculate_cyclomatic_complexity_uast(root) -> int:
+    decision_count = 0
+
+    def walk(node) -> None:
+        nonlocal decision_count
+        kind = getattr(node, "kind", "")
+        if kind in DECISION_UAST_KINDS:
+            decision_count += 1
+        if kind == "BinaryExpr":
+            operator = getattr(node, "attributes", {}).get("operator")
+            if operator in {"and", "or", "&&", "||"}:
+                decision_count += 1
+        for child in getattr(node, "children", []):
+            walk(child)
+
+    walk(root)
     return decision_count + 1
 
 
@@ -101,6 +132,13 @@ def _count_boolean_operators(node) -> int:
     return count
 
 
+def _extract_function_name(node, source_bytes: bytes) -> str | None:
+    for child in node.children:
+        if child.type == "identifier":
+            return source_bytes[child.start_byte : child.end_byte].decode("utf-8")
+    return None
+
+
 def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
     """
     Calculate cyclomatic complexity for each function in the AST.
@@ -111,24 +149,13 @@ def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
     Returns:
         A dictionary mapping function names to their complexity scores.
     """
-    from topos.core.object import ProgramObject
-
     complexities: dict[str, int] = {}
     source_bytes = ast.source.encode("utf-8")
 
     for node in ast.nodes_of_type("function_definition", "async_function_definition"):
-        name_node = None
-        for child in node.children:
-            if child.type == "identifier":
-                name_node = child
-                break
-
-        if name_node is None:
+        func_name = _extract_function_name(node, source_bytes)
+        if func_name is None:
             continue
-
-        func_name = source_bytes[name_node.start_byte : name_node.end_byte].decode(
-            "utf-8"
-        )
 
         func_ast = ProgramObject(
             root=node,

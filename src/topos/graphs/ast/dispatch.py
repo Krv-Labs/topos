@@ -18,7 +18,7 @@ class ParserDispatch:
     native_provider: NativeAstProvider
 
     @classmethod
-    def default(cls) -> "ParserDispatch":
+    def default(cls) -> ParserDispatch:
         return cls(
             tree_sitter_provider=TreeSitterProvider(),
             native_provider=NativeAstProvider(),
@@ -67,7 +67,12 @@ def parse_source(
     backend: AstBackend = "hybrid",
     file: str | None = None,
 ) -> ParseResult:
-    return get_dispatch().parse(source=source, language=language, backend=backend, file=file)
+    return get_dispatch().parse(
+        source=source,
+        language=language,
+        backend=backend,
+        file=file,
+    )
 
 
 def get_capability_matrix() -> dict[str, dict[str, bool]]:

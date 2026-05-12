@@ -20,8 +20,9 @@ LANGUAGES = {
 def _load_uasts(src_dir: Path) -> dict[str, object]:
     uasts: dict[str, object] = {}
     for language, filename in LANGUAGES.items():
-        source = (src_dir / filename).read_text(encoding="utf-8")
-        result = parse_source(source=source, language=language, file=str(src_dir / filename))
+        path = src_dir / filename
+        source = path.read_text(encoding="utf-8")
+        result = parse_source(source=source, language=language, file=str(path))
         uasts[language] = result.uast_root
     return uasts
 

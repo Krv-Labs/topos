@@ -24,6 +24,7 @@ def _serialize_native_ast(native_ast_obj, language: str) -> str:
         return py_ast.dump(native_ast_obj, indent=2)
     return repr(native_ast_obj)
 
+
 def main():
     src_dir = Path("demos/binarytrees/src")
     ast_dir = Path("demos/binarytrees/asts")
@@ -49,7 +50,12 @@ def main():
         print(f"Parsing {src_file.name} ({lang})...")
 
         source = src_file.read_text()
-        result = parse_source(source=source, language=lang, backend="hybrid", file=str(src_file))
+        result = parse_source(
+            source=source,
+            language=lang,
+            backend="hybrid",
+            file=str(src_file),
+        )
         root = result.root
 
         # Check for errors
@@ -75,6 +81,7 @@ def main():
         native_file = native_dir / f"{base_name}.native.txt"
         native_file.write_text(_serialize_native_ast(result.native_ast, lang))
         print(f"  Saved native AST to {native_file}")
+
 
 if __name__ == "__main__":
     main()

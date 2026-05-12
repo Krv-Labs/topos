@@ -11,8 +11,8 @@ compared without depending on language-specific node names.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 CONTROL_FLOW_KINDS: frozenset[str] = frozenset(
     {

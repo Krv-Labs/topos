@@ -48,7 +48,11 @@ packages = ["src/topos"]
 [tool.ruff]
 src = ["src"]
 line-length = 88
-extend-exclude = ["demos/binarytrees/src"]
+extend-exclude = [
+    "demos/binarytrees/src",
+    "demos/sensitivity/corpus",
+    "demos/sensitivity/.cache",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

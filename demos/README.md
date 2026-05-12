@@ -14,6 +14,11 @@ Generates and compares ASTs for the Binary Trees benchmark across multiple langu
 - **Location:** `demos/binarytrees/`
 - **Runner:** `uv run python demos/binarytrees/get_asts.py`
 
+### 3. [Measure Sensitivity Benchmark](./sensitivity/README.md)
+Curates Self-Contained and Composable reference programs from popular packages, then applies axis-specific I/O-preserving noise to characterize how the Topos scores respond. Outputs feed into regularization analysis.
+- **Location:** `demos/sensitivity/`
+- **Runners:** `uv run python demos/sensitivity/curate.py` → `experiments/run_structural.py` → `experiments/run_coupling.py`
+
 ## Structure
 
 Each demo is organized as a self-contained module:

@@ -1,0 +1,621 @@
+{
+  "entries": [
+    {
+      "name": "toolz",
+      "package": "toolz",
+      "version": "0.12.1",
+      "package_dir": "demos/sensitivity/corpus/composable/toolz/toolz",
+      "smoke_test": "import ast, pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(PKG).rglob('*.py')]",
+      "baseline": {
+        "gitnexus_available": true,
+        "per_file": [
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/__init__.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 97.6,
+              "coupling": 84.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.5118110236220472,
+              "depgraph.coupling": 8.0,
+              "depgraph.instability": 0.625,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 2.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/_signatures.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 35.4,
+              "coupling": 66.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 29.0,
+              "ast.entropy": 0.1941133544149842,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 1.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/_version.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 69.7,
+              "coupling": 68.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.7108433734939759,
+              "depgraph.coupling": 1.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 0.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/compatibility.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 94.8,
+              "coupling": 68.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.4684052156469408,
+              "depgraph.coupling": 1.0,
+              "depgraph.instability": 1.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 4.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/curried/__init__.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 74.5,
+              "coupling": 66.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.3233333333333333,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 1.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/curried/exceptions.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 87.8,
+              "coupling": 96.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.41839762611275966,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/curried/operator.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 91.2,
+              "coupling": 74.7
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.55765595463138,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.16666666666666666,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/dicttoolz.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 52.9,
+              "coupling": 96.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 23.0,
+              "ast.entropy": 0.2868788386376326,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 4.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/functoolz.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 34.9,
+              "coupling": 88.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 75.0,
+              "ast.entropy": 0.24922034807685858,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/itertoolz.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 39.0,
+              "coupling": 88.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 96.0,
+              "ast.entropy": 0.27841546873302675,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 4.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/recipes.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 96.2,
+              "coupling": 96.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 2.0,
+              "ast.entropy": 0.48328025477707004,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 5.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/sandbox/__init__.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 31.3,
+              "coupling": 66.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.9852941176470589,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 1.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 6.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/sandbox/core.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 82.3,
+              "coupling": 96.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 5.0,
+              "ast.entropy": 0.40046136101499424,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 5.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/sandbox/parallel.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 83.2,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 5.0,
+              "ast.entropy": 0.4068891280947255,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.6666666666666666,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 5.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/toolz/toolz/utils.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 64.8,
+              "coupling": 64.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 2.0,
+              "ast.entropy": 0.7410071942446043,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 0.0
+            }
+          }
+        ],
+        "lattice_counts": {
+          "SOUND": 10,
+          "COMPOSABLE": 5
+        },
+        "avg_coupling_score": 80.71333333333334,
+        "n_files": 15,
+        "staging_dir": "demos/sensitivity/.cache/staging/toolz"
+      }
+    },
+    {
+      "name": "funcy",
+      "package": "funcy",
+      "version": "2.0",
+      "package_dir": "demos/sensitivity/corpus/composable/funcy/funcy",
+      "smoke_test": "import ast, pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(PKG).rglob('*.py')]",
+      "baseline": {
+        "gitnexus_available": true,
+        "per_file": [
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/__init__.py",
+            "lattice_element": "SELF_CONTAINED",
+            "scores": {
+              "structural": 86.8,
+              "coupling": 49.1
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.411214953271028,
+              "depgraph.coupling": 14.0,
+              "depgraph.instability": 0.9285714285714286,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/_inspect.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 73.9,
+              "coupling": 96.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 10.0,
+              "ast.entropy": 0.3670557717250324,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/calc.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 68.4,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 10.0,
+              "ast.entropy": 0.3278407875026749,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/colls.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 45.8,
+              "coupling": 86.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 32.0,
+              "ast.entropy": 0.2843489697501096,
+              "depgraph.coupling": 7.0,
+              "depgraph.instability": 0.5714285714285714,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/compat.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 82.0,
+              "coupling": 66.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 4.0,
+              "ast.entropy": 0.3925318761384335,
+              "depgraph.coupling": 2.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 0.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/debug.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 49.1,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 24.0,
+              "ast.entropy": 0.26501628664495114,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 2.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/decorators.py",
+            "lattice_element": "SELF_CONTAINED",
+            "scores": {
+              "structural": 64.8,
+              "coupling": 58.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 14.0,
+              "ast.entropy": 0.3233142493638677,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 0.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/flow.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 55.8,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 23.0,
+              "ast.entropy": 0.30775543701272057,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/funcmakers.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 92.9,
+              "coupling": 87.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 2.0,
+              "ast.entropy": 0.45982694684796044,
+              "depgraph.coupling": 4.0,
+              "depgraph.instability": 0.25,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/funcolls.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 77.1,
+              "coupling": 92.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.3419354838709677,
+              "depgraph.coupling": 4.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/funcs.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 66.6,
+              "coupling": 86.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 9.0,
+              "ast.entropy": 0.3098754037840332,
+              "depgraph.coupling": 7.0,
+              "depgraph.instability": 0.42857142857142855,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/objects.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 74.9,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 5.0,
+              "ast.entropy": 0.34770206022187006,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/primitives.py",
+            "lattice_element": "SELF_CONTAINED",
+            "scores": {
+              "structural": 95.1,
+              "coupling": 58.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.5294117647058824,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 0.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/py2.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 89.7,
+              "coupling": 64.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 3.0,
+              "ast.entropy": 0.4424626006904488,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 1.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 3.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/py3.py",
+            "lattice_element": "SELF_CONTAINED",
+            "scores": {
+              "structural": 93.0,
+              "coupling": 46.7
+            },
+            "raw_metrics": {
+              "ast.complexity": 2.0,
+              "ast.entropy": 0.4604767879548306,
+              "depgraph.coupling": 15.0,
+              "depgraph.instability": 0.9333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/seqs.py",
+            "lattice_element": "COMPOSABLE",
+            "scores": {
+              "structural": 36.4,
+              "coupling": 88.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 52.0,
+              "ast.entropy": 0.2597952930438751,
+              "depgraph.coupling": 6.0,
+              "depgraph.instability": 0.5,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 2.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/strings.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 72.0,
+              "coupling": 80.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 5.0,
+              "ast.entropy": 0.3266721044045677,
+              "depgraph.coupling": 5.0,
+              "depgraph.instability": 0.2,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/tree.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 63.5,
+              "coupling": 94.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 7.0,
+              "ast.entropy": 0.27699115044247785,
+              "depgraph.coupling": 3.0,
+              "depgraph.instability": 0.3333333333333333,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 0.0,
+              "depgraph.dep_depth": 1.0
+            }
+          },
+          {
+            "file": "/Users/jeremywayland/krv/open-source/topos-issue-13/demos/sensitivity/.cache/staging/funcy/funcy/types.py",
+            "lattice_element": "SOUND",
+            "scores": {
+              "structural": 96.1,
+              "coupling": 62.0
+            },
+            "raw_metrics": {
+              "ast.complexity": 1.0,
+              "ast.entropy": 0.4771986970684039,
+              "depgraph.coupling": 4.0,
+              "depgraph.instability": 0.0,
+              "depgraph.fan_in": 0.0,
+              "depgraph.fan_out": 1.0,
+              "depgraph.dep_depth": 0.0
+            }
+          }
+        ],
+        "lattice_counts": {
+          "SELF_CONTAINED": 4,
+          "SOUND": 11,
+          "COMPOSABLE": 4
+        },
+        "avg_coupling_score": 78.3578947368421,
+        "n_files": 19,
+        "staging_dir": "demos/sensitivity/.cache/staging/funcy"
+      }
+    }
+  ]
+}

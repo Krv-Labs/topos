@@ -91,6 +91,40 @@ def test_structural_summary_counts_declarations():
     assert summary.declaration_count >= 3  # two functions + one class
 
 
+def _collect_ids(node) -> list[str]:
+    ids = [node.id]
+    for child in node.children:
+        ids.extend(_collect_ids(child))
+    return ids
+
+
+def test_uast_node_id_is_deterministic():
+    source = "def f(x):\n    return x + 1\n"
+    root_a = _parse(source, language="python")
+    root_b = _parse(source, language="python")
+
+    ids_a = _collect_ids(root_a)
+    ids_b = _collect_ids(root_b)
+
+    assert ids_a == ids_b
+    assert all(len(node_id) == 16 for node_id in ids_a)
+
+
+def test_uast_node_id_is_unique_within_tree():
+    source = Path("demos/binarytrees/src/binarytrees.py").read_text()
+    root = _parse(source, language="python")
+
+    ids = _collect_ids(root)
+    assert len(ids) == len(set(ids))
+
+
+def test_uast_node_id_differs_across_languages():
+    py_root = _parse("x = 1\n", language="python")
+    js_root = _parse("x = 1\n", language="javascript")
+
+    assert py_root.id != js_root.id
+
+
 def test_compare_uast_handles_empty_uast_node():
     span = SourceSpan(
         file=None,

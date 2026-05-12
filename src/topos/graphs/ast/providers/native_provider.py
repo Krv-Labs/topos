@@ -6,6 +6,7 @@ from typing import Any
 
 from topos.graphs.ast.providers.tree_sitter_provider import TreeSitterProvider
 from topos.graphs.ast.types import ParseResult, ParserProvenance
+from topos.graphs.ast.uast.mapper_common import parser_identity
 
 
 @dataclass
@@ -18,7 +19,6 @@ class NativeAstProvider:
     """
 
     name: str = "native"
-    parser_version: str = "python-stdlib-ast"
 
     def __post_init__(self) -> None:
         self._fallback_provider = TreeSitterProvider()
@@ -32,14 +32,12 @@ class NativeAstProvider:
         fallback = self._fallback_provider.parse(source, language=language, file=file)
 
         native_ast: Any | None = None
-        parser_name = "tree-sitter"
-        parser_version = fallback.provenance.parser_version
+        parser_name, parser_version = parser_identity(language)
 
         if language == "python":
             try:
                 native_ast = py_ast.parse(source)
-                parser_name = "cpython-ast"
-                parser_version = self.parser_version
+                parser_name, parser_version = parser_identity(language, native=True)
             except SyntaxError:
                 # Keep working artifact path even on syntax errors.
                 native_ast = None

@@ -340,6 +340,7 @@ class DependencyGraph:
         from topos.metrics.depgraph.coupling import (
             calculate_coupling,
             calculate_dependency_depth,
+            calculate_instability_from_result,
         )
         from topos.metrics.depgraph.fan import calculate_fan_in_out
 
@@ -356,11 +357,7 @@ class DependencyGraph:
         symbol_ids = set(self.all_contained_symbols(file_id))
         symbol_ids.add(file_id)
         coupling_result = calculate_coupling(self, file_id, symbol_ids)
-        instability = (
-            coupling_result.efferent / coupling_result.total
-            if coupling_result.total > 0
-            else 0.5
-        )
+        instability = calculate_instability_from_result(coupling_result)
         fan_result = calculate_fan_in_out(self, file_id, symbol_ids)
         dep_depth = calculate_dependency_depth(self, file_id)
 

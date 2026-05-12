@@ -1,0 +1,376 @@
+Module(
+  body=[
+    Import(
+      names=[
+        alias(name='sys')]),
+    Import(
+      names=[
+        alias(name='multiprocessing', asname='mp')]),
+    FunctionDef(
+      name='make_tree',
+      args=arguments(
+        args=[
+          arg(arg='d')]),
+      body=[
+        Expr(
+          value=Constant(value='Recursively creates a binary tree of depth d.')),
+        If(
+          test=Compare(
+            left=Name(id='d', ctx=Load()),
+            ops=[
+              Gt()],
+            comparators=[
+              Constant(value=0)]),
+          body=[
+            AugAssign(
+              target=Name(id='d', ctx=Store()),
+              op=Sub(),
+              value=Constant(value=1)),
+            Return(
+              value=Tuple(
+                elts=[
+                  Call(
+                    func=Name(id='make_tree', ctx=Load()),
+                    args=[
+                      Name(id='d', ctx=Load())]),
+                  Call(
+                    func=Name(id='make_tree', ctx=Load()),
+                    args=[
+                      Name(id='d', ctx=Load())])],
+                ctx=Load()))]),
+        Return(
+          value=Tuple(
+            elts=[
+              Constant(value=None),
+              Constant(value=None)],
+            ctx=Load()))]),
+    FunctionDef(
+      name='check_tree',
+      args=arguments(
+        args=[
+          arg(arg='node')]),
+      body=[
+        Expr(
+          value=Constant(value='Recursively traverses the tree to return a checksum.')),
+        Assign(
+          targets=[
+            Tuple(
+              elts=[
+                Name(id='l', ctx=Store()),
+                Name(id='r', ctx=Store())],
+              ctx=Store())],
+          value=Name(id='node', ctx=Load())),
+        If(
+          test=Compare(
+            left=Name(id='l', ctx=Load()),
+            ops=[
+              Is()],
+            comparators=[
+              Constant(value=None)]),
+          body=[
+            Return(
+              value=Constant(value=1))],
+          orelse=[
+            Return(
+              value=BinOp(
+                left=BinOp(
+                  left=Constant(value=1),
+                  op=Add(),
+                  right=Call(
+                    func=Name(id='check_tree', ctx=Load()),
+                    args=[
+                      Name(id='l', ctx=Load())])),
+                op=Add(),
+                right=Call(
+                  func=Name(id='check_tree', ctx=Load()),
+                  args=[
+                    Name(id='r', ctx=Load())])))])]),
+    FunctionDef(
+      name='make_check',
+      args=arguments(
+        args=[
+          arg(arg='itde')]),
+      body=[
+        Expr(
+          value=Constant(value='Helper for multiprocessing: creates and checks a tree.')),
+        Assign(
+          targets=[
+            Tuple(
+              elts=[
+                Name(id='i', ctx=Store()),
+                Name(id='d', ctx=Store())],
+              ctx=Store())],
+          value=Name(id='itde', ctx=Load())),
+        Return(
+          value=Call(
+            func=Name(id='check_tree', ctx=Load()),
+            args=[
+              Call(
+                func=Name(id='make_tree', ctx=Load()),
+                args=[
+                  Name(id='d', ctx=Load())])]))]),
+    FunctionDef(
+      name='get_argchunks',
+      args=arguments(
+        args=[
+          arg(arg='i'),
+          arg(arg='d'),
+          arg(arg='chunksize')],
+        defaults=[
+          Constant(value=5000)]),
+      body=[
+        Expr(
+          value=Constant(value='Yields chunks of arguments to avoid overhead in multiprocessing.')),
+        Assign(
+          targets=[
+            Name(id='chunk', ctx=Store())],
+          value=List(ctx=Load())),
+        For(
+          target=Name(id='k', ctx=Store()),
+          iter=Call(
+            func=Name(id='range', ctx=Load()),
+            args=[
+              Constant(value=1),
+              BinOp(
+                left=Name(id='i', ctx=Load()),
+                op=Add(),
+                right=Constant(value=1))]),
+          body=[
+            Expr(
+              value=Call(
+                func=Attribute(
+                  value=Name(id='chunk', ctx=Load()),
+                  attr='append',
+                  ctx=Load()),
+                args=[
+                  Tuple(
+                    elts=[
+                      Name(id='k', ctx=Load()),
+                      Name(id='d', ctx=Load())],
+                    ctx=Load())])),
+            If(
+              test=Compare(
+                left=Call(
+                  func=Name(id='len', ctx=Load()),
+                  args=[
+                    Name(id='chunk', ctx=Load())]),
+                ops=[
+                  Eq()],
+                comparators=[
+                  Name(id='chunksize', ctx=Load())]),
+              body=[
+                Expr(
+                  value=Yield(
+                    value=Name(id='chunk', ctx=Load()))),
+                Assign(
+                  targets=[
+                    Name(id='chunk', ctx=Store())],
+                  value=List(ctx=Load()))])]),
+        If(
+          test=Name(id='chunk', ctx=Load()),
+          body=[
+            Expr(
+              value=Yield(
+                value=Name(id='chunk', ctx=Load())))])]),
+    FunctionDef(
+      name='main',
+      args=arguments(
+        args=[
+          arg(arg='n'),
+          arg(arg='min_depth')],
+        defaults=[
+          Constant(value=4)]),
+      body=[
+        Assign(
+          targets=[
+            Name(id='max_depth', ctx=Store())],
+          value=Call(
+            func=Name(id='max', ctx=Load()),
+            args=[
+              BinOp(
+                left=Name(id='min_depth', ctx=Load()),
+                op=Add(),
+                right=Constant(value=2)),
+              Name(id='n', ctx=Load())])),
+        Assign(
+          targets=[
+            Name(id='stretch_depth', ctx=Store())],
+          value=BinOp(
+            left=Name(id='max_depth', ctx=Load()),
+            op=Add(),
+            right=Constant(value=1))),
+        Expr(
+          value=Call(
+            func=Name(id='print', ctx=Load()),
+            args=[
+              Call(
+                func=Attribute(
+                  value=Constant(value='stretch tree of depth {0}\t check: {1}'),
+                  attr='format',
+                  ctx=Load()),
+                args=[
+                  Name(id='stretch_depth', ctx=Load()),
+                  Call(
+                    func=Name(id='make_check', ctx=Load()),
+                    args=[
+                      Tuple(
+                        elts=[
+                          Constant(value=0),
+                          Name(id='stretch_depth', ctx=Load())],
+                        ctx=Load())])])])),
+        Assign(
+          targets=[
+            Name(id='long_lived_tree', ctx=Store())],
+          value=Call(
+            func=Name(id='make_tree', ctx=Load()),
+            args=[
+              Name(id='max_depth', ctx=Load())])),
+        Assign(
+          targets=[
+            Name(id='mmd', ctx=Store())],
+          value=BinOp(
+            left=Name(id='max_depth', ctx=Load()),
+            op=Add(),
+            right=Name(id='min_depth', ctx=Load()))),
+        If(
+          test=Compare(
+            left=Call(
+              func=Attribute(
+                value=Name(id='mp', ctx=Load()),
+                attr='cpu_count',
+                ctx=Load())),
+            ops=[
+              Gt()],
+            comparators=[
+              Constant(value=1)]),
+          body=[
+            Assign(
+              targets=[
+                Name(id='pool', ctx=Store())],
+              value=Call(
+                func=Attribute(
+                  value=Name(id='mp', ctx=Load()),
+                  attr='Pool',
+                  ctx=Load()))),
+            Assign(
+              targets=[
+                Name(id='chunkmap', ctx=Store())],
+              value=Attribute(
+                value=Name(id='pool', ctx=Load()),
+                attr='map',
+                ctx=Load()))],
+          orelse=[
+            Assign(
+              targets=[
+                Name(id='chunkmap', ctx=Store())],
+              value=Name(id='map', ctx=Load()))]),
+        For(
+          target=Name(id='d', ctx=Store()),
+          iter=Call(
+            func=Name(id='range', ctx=Load()),
+            args=[
+              Name(id='min_depth', ctx=Load()),
+              Name(id='stretch_depth', ctx=Load()),
+              Constant(value=2)]),
+          body=[
+            Assign(
+              targets=[
+                Name(id='i', ctx=Store())],
+              value=BinOp(
+                left=Constant(value=2),
+                op=Pow(),
+                right=BinOp(
+                  left=Name(id='mmd', ctx=Load()),
+                  op=Sub(),
+                  right=Name(id='d', ctx=Load())))),
+            Assign(
+              targets=[
+                Name(id='cs', ctx=Store())],
+              value=Constant(value=0)),
+            For(
+              target=Name(id='argchunk', ctx=Store()),
+              iter=Call(
+                func=Name(id='get_argchunks', ctx=Load()),
+                args=[
+                  Name(id='i', ctx=Load()),
+                  Name(id='d', ctx=Load())]),
+              body=[
+                AugAssign(
+                  target=Name(id='cs', ctx=Store()),
+                  op=Add(),
+                  value=Call(
+                    func=Name(id='sum', ctx=Load()),
+                    args=[
+                      Call(
+                        func=Name(id='chunkmap', ctx=Load()),
+                        args=[
+                          Name(id='make_check', ctx=Load()),
+                          Name(id='argchunk', ctx=Load())])]))]),
+            Expr(
+              value=Call(
+                func=Name(id='print', ctx=Load()),
+                args=[
+                  Call(
+                    func=Attribute(
+                      value=Constant(value='{0}\t trees of depth {1}\t check: {2}'),
+                      attr='format',
+                      ctx=Load()),
+                    args=[
+                      Name(id='i', ctx=Load()),
+                      Name(id='d', ctx=Load()),
+                      Name(id='cs', ctx=Load())])]))]),
+        Expr(
+          value=Call(
+            func=Name(id='print', ctx=Load()),
+            args=[
+              Call(
+                func=Attribute(
+                  value=Constant(value='long lived tree of depth {0}\t check: {1}'),
+                  attr='format',
+                  ctx=Load()),
+                args=[
+                  Name(id='max_depth', ctx=Load()),
+                  Call(
+                    func=Name(id='check_tree', ctx=Load()),
+                    args=[
+                      Name(id='long_lived_tree', ctx=Load())])])]))]),
+    If(
+      test=Compare(
+        left=Name(id='__name__', ctx=Load()),
+        ops=[
+          Eq()],
+        comparators=[
+          Constant(value='__main__')]),
+      body=[
+        Assign(
+          targets=[
+            Name(id='n', ctx=Store())],
+          value=IfExp(
+            test=Compare(
+              left=Call(
+                func=Name(id='len', ctx=Load()),
+                args=[
+                  Attribute(
+                    value=Name(id='sys', ctx=Load()),
+                    attr='argv',
+                    ctx=Load())]),
+              ops=[
+                Gt()],
+              comparators=[
+                Constant(value=1)]),
+            body=Call(
+              func=Name(id='int', ctx=Load()),
+              args=[
+                Subscript(
+                  value=Attribute(
+                    value=Name(id='sys', ctx=Load()),
+                    attr='argv',
+                    ctx=Load()),
+                  slice=Constant(value=1),
+                  ctx=Load())]),
+            orelse=Constant(value=10))),
+        Expr(
+          value=Call(
+            func=Name(id='main', ctx=Load()),
+            args=[
+              Name(id='n', ctx=Load())]))])])

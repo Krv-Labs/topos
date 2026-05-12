@@ -1,65 +1,23 @@
-# Topos Version-Based Library Evaluations
+# Topos Demos
 
-This demo setup evaluates source code from two versions of each popular library:
+This directory contains demonstrations and experimental setups for Topos.
 
-- `numpy`: `1.26.4` vs `2.4.4`
-- `scipy`: `1.11.4` vs `1.17.1`
-- `scikit-learn`: `1.4.2` vs `1.8.0`
-- `networkx`: `2.8.8` vs `3.6.1`
+## Available Demos
 
-The runner downloads source archives, extracts them into a local cache, finds the
-library import directory (for example `sklearn` for `scikit-learn`), then runs:
+### 1. [Library Version Evaluations](./libraries/README.md)
+Compares two versions of popular Python libraries (`numpy`, `scipy`, `scikit-learn`, `networkx`) using Topos structural metrics.
+- **Location:** `demos/libraries/`
+- **Runner:** `uv run python demos/libraries/run_all.py`
 
-```bash
-topos evaluate <package_dir> -r --json
-```
+### 2. [Binary Trees AST Comparison](./binarytrees/README.md)
+Generates and compares ASTs for the Binary Trees benchmark across multiple languages (Python, Rust, JS, C++).
+- **Location:** `demos/binarytrees/`
+- **Runner:** `uv run python demos/binarytrees/get_asts.py`
 
-## Install
+## Structure
 
-From the repository root:
-
-```bash
-uv pip install -e .
-```
-
-The runner fetches release files from PyPI, so network access is required on first run.
-
-## Run all version evaluations
-
-```bash
-uv run python demos/run_all.py
-```
-
-Write a JSON summary artifact:
-
-```bash
-uv run python demos/run_all.py --write-json
-uv run python demos/run_all.py --write-json --json-output demos/results/version_summaries.json
-```
-
-## Run a subset of libraries
-
-```bash
-uv run python demos/run_all.py --library numpy --library scipy
-```
-
-## Reuse cached downloads
-
-```bash
-uv run python demos/run_all.py --skip-download
-```
-
-This mode fails if the required archives are not already available under
-`demos/.cache/downloads`.
-
-## What the output includes
-
-For each library/version pair, the runner reports:
-
-- `overall` lattice outcome from Topos
-- `files` evaluated
-- average complexity score
-- average entropy score
-- count of files per evaluation level
-
-It also prints a delta line between the older and newer version for quick comparison.
+Each demo is organized as a self-contained module:
+- `README.md`: Specific instructions for the demo.
+- `run.py` or similar: The main entry point.
+- `src/`: (Optional) Source code or assets used by the demo.
+- `results/`: (Optional) Output artifacts.

@@ -14,7 +14,6 @@ from topos.utils.tree_sitter import (
     parse_rust,
 )
 
-
 _TREE_SITTER_PARSE = {
     "python": parse_python,
     "rust": parse_rust,

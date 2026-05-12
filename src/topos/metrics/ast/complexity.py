@@ -27,8 +27,6 @@ Mathematical Inspiration:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from topos.core.object import ProgramObject
 
 DECISION_NODE_TYPES = frozenset(

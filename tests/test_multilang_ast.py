@@ -21,7 +21,7 @@ def test_parse_source_python_hybrid_has_native_and_uast():
 
 def test_parse_source_rust_hybrid_falls_back_to_tree_sitter():
     result = parse_source(
-        "fn main() { let x = 1; if x > 0 { println!(\"ok\"); } }",
+        'fn main() { let x = 1; if x > 0 { println!("ok"); } }',
         language="rust",
     )
     assert result.native_ast is None
@@ -31,7 +31,10 @@ def test_parse_source_rust_hybrid_falls_back_to_tree_sitter():
 
 def test_program_morphism_supports_multiple_languages():
     rust_morphism = ProgramMorphism(source="fn main() {}", language="rust")
-    js_morphism = ProgramMorphism(source="function x() { return 1; }", language="javascript")
+    js_morphism = ProgramMorphism(
+        source="function x() { return 1; }",
+        language="javascript",
+    )
     cpp_morphism = ProgramMorphism(source="int main() { return 0; }", language="cpp")
 
     assert rust_morphism.ast is not None

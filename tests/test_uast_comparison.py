@@ -50,7 +50,7 @@ def test_python_vs_rust_binarytrees_differ():
 
 def test_kind_histogram_excludes_unknown_when_requested():
     rs_root = _parse(
-        "fn main() { let x = 1; if x > 0 { println!(\"ok\"); } }",
+        'fn main() { let x = 1; if x > 0 { println!("ok"); } }',
         language="rust",
     )
 
@@ -81,10 +81,7 @@ def test_control_flow_profile_counts_loops_and_returns():
 
 def test_structural_summary_counts_declarations():
     root = _parse(
-        "def a(): pass\n"
-        "def b(): pass\n"
-        "class C:\n"
-        "    def m(self): pass\n",
+        "def a(): pass\ndef b(): pass\nclass C:\n    def m(self): pass\n",
         language="python",
     )
 

@@ -12,7 +12,7 @@ on a single axis.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from topos.metrics.distance import DistanceResult, _compute_sequence_distance
 from topos.metrics.uast.signature import (

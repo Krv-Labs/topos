@@ -36,4 +36,4 @@ class UASTNode:
     span: SourceSpan
     native: NativeRef
     attributes: dict[str, Any] = field(default_factory=dict)
-    children: list["UASTNode"] = field(default_factory=list)
+    children: list[UASTNode] = field(default_factory=list)

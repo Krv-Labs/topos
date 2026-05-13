@@ -47,6 +47,30 @@ def test_compare_command(tmp_path):
     assert "Operations:" in result.output
 
 
+def test_structural_test_coverage_cli_json(tmp_path):
+    runner = CliRunner()
+    put = tmp_path / "mod.py"
+    put.write_text(
+        "def f():\n    for i in range(3):\n        pass\n",
+        encoding="utf-8",
+    )
+    tst = tmp_path / "test_mod.py"
+    tst.write_text("def test_x():\n    assert 1\n", encoding="utf-8")
+    result = runner.invoke(
+        cli,
+        [
+            "structural-test-coverage",
+            "--tests",
+            str(tst),
+            "--json",
+            str(put),
+        ],
+    )
+    assert result.exit_code == 0
+    assert '"kind_recall"' in result.output
+    assert '"composite_v0"' in result.output
+
+
 def test_inspect_command(tmp_path):
     runner = CliRunner()
     p = tmp_path / "inspect_file.py"
@@ -77,6 +101,22 @@ def test_evaluate_directory(tmp_path):
     result = runner.invoke(cli, ["evaluate", str(d), "-r"])
     assert result.exit_code == 0
     assert "test_file.py" in result.output
+
+
+def test_evaluate_directory_rust_recursive(tmp_path):
+    runner = CliRunner()
+    d = tmp_path / "src"
+    d.mkdir()
+    p = d / "lib.rs"
+    p.write_text("fn main() {}\n", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        ["evaluate", str(d), "-r", "--language", "rust", "--json"],
+    )
+    assert result.exit_code == 0
+    assert "lib.rs" in result.output
+    assert '"results":' in result.output
 
 
 def test_evaluate_prints_fallback_when_overall_empty(tmp_path, monkeypatch):

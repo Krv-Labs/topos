@@ -106,3 +106,9 @@ response is determined by which combination of targets was reached:
    Structural only      → SELF_CONTAINED
    Coupling only        → COMPOSABLE
    Neither              → BROKEN
+
+Structural test coverage (experimental)
+---------------------------------------
+
+For UAST overlap between a program and its tests (kind / control-flow / k-gram
+recall), see :doc:`structural_test_coverage`.

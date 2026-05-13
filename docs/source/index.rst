@@ -53,6 +53,7 @@ Pick a priority, then let your agent evaluate and iterate on its own output.
    topos evaluate src/ -r --priority self_contained   # classify a directory
    topos inspect module.py                             # detailed metrics
    topos compare before.py after.py                    # AST edit distance
+   topos structural-test-coverage --tests t.py src/m.py   # UAST test overlap
 
 Each file gets a verdict per quality dimension — **structural** (complexity, entropy)
 and optionally **coupling** (dependency graph). You always see which axis is the
@@ -98,4 +99,5 @@ Topos measures code along two orthogonal axes and maps them to a diamond evaluat
    installation
    For Agents <agents>
    Measures <measures>
+   Structural test coverage <structural_test_coverage>
    concepts

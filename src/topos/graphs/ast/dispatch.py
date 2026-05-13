@@ -78,7 +78,7 @@ def get_dispatch() -> ParserDispatch:
 
 
 def reset_dispatch() -> None:
-    """Reset the module-level singleton. Intended for tests that need a clean dispatch."""
+    """Reset the module-level singleton. Intended for test isolation."""
     global _DEFAULT_DISPATCH
     _DEFAULT_DISPATCH = None
 

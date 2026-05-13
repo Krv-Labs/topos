@@ -19,14 +19,30 @@ from topos.metrics.uast.signature import (
     uast_kind_histogram,
 )
 
-_STMT_KINDS: frozenset[str] = frozenset({
-    "IfStmt", "ForStmt", "WhileStmt", "MatchStmt", "ReturnStmt",
-    "BreakStmt", "ContinueStmt", "ThrowStmt", "TryStmt", "ExprStmt",
-})
+_STMT_KINDS: frozenset[str] = frozenset(
+    {
+        "IfStmt",
+        "ForStmt",
+        "WhileStmt",
+        "MatchStmt",
+        "ReturnStmt",
+        "BreakStmt",
+        "ContinueStmt",
+        "ThrowStmt",
+        "TryStmt",
+        "ExprStmt",
+    }
+)
 
-_EXPR_KINDS: frozenset[str] = frozenset({
-    "AssignExpr", "BinaryExpr", "UnaryExpr", "CallExpr", "MemberExpr",
-})
+_EXPR_KINDS: frozenset[str] = frozenset(
+    {
+        "AssignExpr",
+        "BinaryExpr",
+        "UnaryExpr",
+        "CallExpr",
+        "MemberExpr",
+    }
+)
 
 _DECL_KINDS: frozenset[str] = frozenset({"FunctionDecl", "MethodDecl"})
 
@@ -302,8 +318,8 @@ def declaration_coverage(
 
     if put_decls:
         mean_decl_cov = sum(best_recall) / len(best_recall)
-        decl_cov_rate = (
-            sum(1 for s in best_recall if s >= coverage_threshold) / len(best_recall)
+        decl_cov_rate = sum(1 for s in best_recall if s >= coverage_threshold) / len(
+            best_recall
         )
     else:
         mean_decl_cov = decl_cov_rate = 1.0
@@ -333,14 +349,20 @@ def declaration_coverage(
     # Declaration-scoped k-gram recall — k-grams bounded within each declaration
     put_kg: Counter[tuple[str, ...]] = Counter()
     for d in put_decls:
-        put_kg.update(_kgrams_from_sequence(
-            uast_dfs_kind_sequence(d, include_unknown=include_unknown), k,
-        ))
+        put_kg.update(
+            _kgrams_from_sequence(
+                uast_dfs_kind_sequence(d, include_unknown=include_unknown),
+                k,
+            )
+        )
     test_kg: Counter[tuple[str, ...]] = Counter()
     for d in test_decls:
-        test_kg.update(_kgrams_from_sequence(
-            uast_dfs_kind_sequence(d, include_unknown=include_unknown), k,
-        ))
+        test_kg.update(
+            _kgrams_from_sequence(
+                uast_dfs_kind_sequence(d, include_unknown=include_unknown),
+                k,
+            )
+        )
 
     return DeclarationCoverageReport(
         mean_declaration_coverage=mean_decl_cov,

@@ -113,7 +113,9 @@ def test_deeply_nested_source_does_not_hit_recursion_limit():
 
 
 def test_parse_result_has_errors_is_false_for_valid_source():
-    result = parse_source("def f(): return 1\n", language="python", backend="tree-sitter")
+    result = parse_source(
+        "def f(): return 1\n", language="python", backend="tree-sitter"
+    )
     assert result.has_errors is False
 
 

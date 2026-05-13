@@ -121,7 +121,9 @@ def test_decl_coverage_identical_put_and_test_full_scores():
 
 
 def test_decl_coverage_empty_tests_yield_zero():
-    src = "def g():\n    while True:\n        if True:\n            break\n    return 0\n"
+    src = (
+        "def g():\n    while True:\n        if True:\n            break\n    return 0\n"
+    )
     put = _parse(src)
     rep = declaration_coverage([put], [], k=3)
     assert rep.mean_declaration_coverage == pytest.approx(0.0)
@@ -138,14 +140,11 @@ def test_decl_coverage_unrelated_test_does_not_inflate():
         "    result = []\n"
         "    for x in xs:\n"
         "        if x > 0:\n"
-            "            result.append(x)\n"
+        "            result.append(x)\n"
         "    return result\n"
     )
     unrelated_test = _parse(
-        "def test_math():\n"
-        "    a = 1 + 2\n"
-        "    b = a * 3\n"
-        "    assert b == 9\n"
+        "def test_math():\n    a = 1 + 2\n    b = a * 3\n    assert b == 9\n"
     )
     rep = declaration_coverage([put], [unrelated_test], k=3)
     # An unrelated test should not fully cover the loop-heavy PUT declaration
@@ -189,18 +188,8 @@ def test_decl_coverage_bloated_test_does_not_fully_cover_focused_put():
 
 
 def test_decl_coverage_precision_tight_vs_bloated():
-    put = _parse(
-        "def f(x):\n"
-        "    if x > 0:\n"
-        "        return x\n"
-        "    return -x\n"
-    )
-    tight = _parse(
-        "def test_f():\n"
-        "    if True:\n"
-        "        return 1\n"
-        "    return -1\n"
-    )
+    put = _parse("def f(x):\n    if x > 0:\n        return x\n    return -x\n")
+    tight = _parse("def test_f():\n    if True:\n        return 1\n    return -1\n")
     # Bloated suite: one aligned test + several structurally unrelated functions
     # (non-empty bodies so they don't get vacuous 1.0 precision)
     bloated = _parse(
@@ -254,7 +243,7 @@ def test_decl_coverage_category_stratified_disjoint():
     rep = declaration_coverage([put], [test_src], k=3)
     # Stmt recall should be positive (both have loops/conditionals)
     assert rep.stmt_recall > 0.0
-    # Stmt and expr are computed from disjoint kind subsets — both are valid floats in [0,1]
+    # Stmt and expr use disjoint kind subsets — both are valid floats in [0,1]
     assert 0.0 <= rep.stmt_recall <= 1.0
     assert 0.0 <= rep.expr_recall <= 1.0
 

@@ -29,6 +29,7 @@ _TREE_SITTER_PACKAGE = {
     "python": "tree-sitter-python",
     "rust": "tree-sitter-rust",
     "javascript": "tree-sitter-javascript",
+    "typescript": "tree-sitter-typescript",
     "cpp": "tree-sitter-cpp",
 }
 
@@ -76,7 +77,36 @@ def map_tree_sitter_to_uast(
 ) -> UASTNode:
     parser_name, parser_version = parser_identity(language)
 
-    def to_uast(node: Node, parent_id: str = "") -> UASTNode:
+    # Two-phase iterative traversal — avoids Python recursion limits on deeply
+    # nested trees (macro-expanded Rust, minified JS, etc.).
+    #
+    # Phase 1: pre-order DFS to record visit order and compute stable IDs.
+    # Phase 2: reverse pre-order (children before parents) to build UASTNodes.
+    # node.id is the tree-sitter C-layer node identity; stable across repeated
+    # calls to node.children on the same tree.
+
+    order: list[tuple[Node, str]] = []
+    stable_ids: dict[int, str] = {}
+
+    stack: list[tuple[Node, str]] = [(root, "")]
+    while stack:
+        node, parent_stable_id = stack.pop()
+        node_stable_id = _compute_node_id(
+            lang=language,
+            node_kind=node.type,
+            start_byte=node.start_byte,
+            end_byte=node.end_byte,
+            parent_id=parent_stable_id,
+        )
+        stable_ids[node.id] = node_stable_id
+        order.append((node, node_stable_id))
+        for child in reversed([c for c in node.children if c.is_named]):
+            stack.append((child, node_stable_id))
+
+    uast_nodes: dict[int, UASTNode] = {}
+    for node, node_stable_id in reversed(order):
+        named_children = [c for c in node.children if c.is_named]
+        children = [uast_nodes[c.id] for c in named_children]
         start_point = node.start_point
         end_point = node.end_point
         span = SourceSpan(
@@ -93,26 +123,14 @@ def map_tree_sitter_to_uast(
             parser_version=parser_version,
             node_kind=node.type,
         )
-        node_id = _compute_node_id(
-            lang=language,
-            node_kind=native.node_kind,
-            start_byte=span.start_byte,
-            end_byte=span.end_byte,
-            parent_id=parent_id,
-        )
-        children = [
-            to_uast(child, parent_id=node_id)
-            for child in node.children
-            if child.is_named
-        ]
-        return UASTNode(
+        uast_nodes[node.id] = UASTNode(
             kind=map_node_kind(node),
             lang=language,
             span=span,
             native=native,
             attributes={"named": node.is_named},
             children=children,
-            id=node_id,
+            id=node_stable_id,
         )
 
-    return to_uast(root)
+    return uast_nodes[root.id]

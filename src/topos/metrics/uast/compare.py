@@ -20,6 +20,7 @@ from topos.metrics.uast.signature import (
     StructuralSummary,
     control_flow_profile,
     structural_summary,
+    uast_dfs_kind_sequence,
     uast_kind_histogram,
 )
 
@@ -45,20 +46,6 @@ class UASTComparison:
         if any(value != 0 for value in self.control_flow_delta.values()):
             return True
         return any(value != 0 for value in self.summary_delta.values())
-
-
-def _dfs_kinds(root, *, include_unknown: bool = True) -> list[str]:
-    out: list[str] = []
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        kind = getattr(node, "kind", "Unknown")
-        if include_unknown or kind != "Unknown":
-            out.append(kind)
-        # Preserve DFS pre-order by reversing children onto the stack.
-        children = list(getattr(node, "children", []))
-        stack.extend(reversed(children))
-    return out
 
 
 def uast_kind_distance(
@@ -101,8 +88,8 @@ def uast_edit_distance(
     so the operation accounting stays consistent with the tree-sitter
     variant.
     """
-    source_kinds = _dfs_kinds(source, include_unknown=include_unknown)
-    target_kinds = _dfs_kinds(target, include_unknown=include_unknown)
+    source_kinds = uast_dfs_kind_sequence(source, include_unknown=include_unknown)
+    target_kinds = uast_dfs_kind_sequence(target, include_unknown=include_unknown)
 
     distance, ops = _compute_sequence_distance(source_kinds, target_kinds)
     max_size = max(len(source_kinds), len(target_kinds), 1)

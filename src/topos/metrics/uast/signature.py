@@ -66,6 +66,25 @@ def uast_kind_histogram(root, *, include_unknown: bool = True) -> dict[str, int]
     return dict(counts)
 
 
+def uast_dfs_kind_sequence(root, *, include_unknown: bool = True) -> list[str]:
+    """
+    DFS pre-order traversal of UAST `kind` strings (same order as edit distance).
+
+    When ``include_unknown`` is False, nodes mapped to ``Unknown`` are omitted
+    from the sequence entirely (not counted as a step).
+    """
+    out: list[str] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        kind = getattr(node, "kind", "Unknown")
+        if include_unknown or kind != "Unknown":
+            out.append(kind)
+        children = list(getattr(node, "children", []))
+        stack.extend(reversed(children))
+    return out
+
+
 def control_flow_profile(root) -> dict[str, int]:
     """Count control-flow-relevant UAST kinds (loops, branches, calls, returns)."""
     profile = {kind: 0 for kind in CONTROL_FLOW_KINDS}

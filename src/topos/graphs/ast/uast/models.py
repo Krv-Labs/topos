@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 UAST Models
 -----------
@@ -7,6 +5,8 @@ UAST Models
 Data structures for the Universal Abstract Syntax Tree. These models define the
 "Normalized" layer of our "Native-first, Normalized-second" architecture.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any

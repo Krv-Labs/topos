@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 UAST Mapper Common
 ------------------
@@ -15,6 +13,8 @@ This module provides the core transformation engine that:
 3.  **Preserves Fidelity**: Populates every UASTNode with the original byte
     spans and a NativeRef containing the parser identity and native node type.
 """
+
+from __future__ import annotations
 
 import hashlib
 import sys

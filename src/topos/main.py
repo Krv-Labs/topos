@@ -13,6 +13,7 @@ Usage:
     topos evaluate path/to/code.py
     topos evaluate src/ --recursive
     topos compare file1.py file2.py
+    topos structural-test-coverage --tests t.py src/m.py
 """
 
 from __future__ import annotations
@@ -29,8 +30,11 @@ import click
 
 from topos import __version__
 from topos.core.morphism import ProgramMorphism
+from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, language_file_suffixes
 from topos.logic.omega import ClassificationResult, SubobjectClassifier
 from topos.logic.policies.base import Priority
+
+_EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 
 
 class DepgraphLoadError(RuntimeError):
@@ -86,6 +90,13 @@ def cli() -> None:
         "'gitnexus analyze' in the repo root to generate this directory."
     ),
 )
+@click.option(
+    "--language",
+    type=_EVALUATE_LANGUAGE_CHOICE,
+    default="python",
+    show_default=True,
+    help="Source language for parsing and file discovery when paths are directories.",
+)
 def evaluate(
     paths: tuple[str, ...],
     recursive: bool,
@@ -93,6 +104,7 @@ def evaluate(
     output_json: bool,
     priority: str,
     gitnexus_dir: str | None,
+    language: str,
 ) -> None:
     """
     Evaluate code quality using the Subobject Classifier.
@@ -126,10 +138,14 @@ def evaluate(
         click.echo("Error: No paths provided.", err=True)
         sys.exit(1)
 
-    files = _collect_files(paths, recursive)
+    files = _collect_files(paths, recursive, language)
 
     if not files:
-        click.echo("No Python files found.", err=True)
+        suffixes = ", ".join(language_file_suffixes(language))
+        click.echo(
+            f"No {language} source files found (expected suffixes: {suffixes}).",
+            err=True,
+        )
         sys.exit(1)
 
     classifier = SubobjectClassifier()
@@ -140,7 +156,12 @@ def evaluate(
     for filepath in files:
         try:
             result = _evaluate_file(
-                filepath, classifier, verbose, gitnexus_dir, parsed_priority
+                filepath,
+                classifier,
+                verbose,
+                gitnexus_dir,
+                parsed_priority,
+                language=language,
             )
         except DepgraphLoadError as exc:
             click.echo(f"Error: {exc}", err=True)
@@ -210,6 +231,214 @@ def compare(source: str, target: str, verbose: bool) -> None:
         click.echo(f"  Insertions:    {result.operations['insertions']}")
         click.echo(f"  Deletions:     {result.operations['deletions']}")
         click.echo(f"  Substitutions: {result.operations['substitutions']}")
+
+
+@cli.command("structural-test-coverage")
+@click.option(
+    "--language",
+    default="python",
+    show_default=True,
+    type=_EVALUATE_LANGUAGE_CHOICE,
+    help="Language for tree-sitter / UAST parsing of all listed files.",
+)
+@click.option(
+    "--tests",
+    "test_paths",
+    type=click.Path(exists=True, dir_okay=False),
+    multiple=True,
+    required=True,
+    help="Test file path (repeat for multiple test modules).",
+)
+@click.option(
+    "--k",
+    "kgram_length",
+    default=3,
+    show_default=True,
+    type=int,
+    help="Length of each DFS kind n-gram for path recall.",
+)
+@click.option(
+    "--include-unknown",
+    is_flag=True,
+    help="Count Unknown UAST kinds in histograms and k-grams.",
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    help="Emit a single JSON object with scores and diagnostics.",
+)
+@click.option(
+    "--v2",
+    "use_v2",
+    is_flag=True,
+    help="Use declaration-level bipartite coverage (v2) instead of v0/v1.",
+)
+@click.option(
+    "--coverage-threshold",
+    default=0.5,
+    show_default=True,
+    type=float,
+    help="(v2 only) Minimum best-match recall to count a PUT declaration as covered.",
+)
+@click.argument(
+    "put_paths",
+    nargs=-1,
+    type=click.Path(exists=True, dir_okay=False),
+    required=True,
+)
+def structural_test_coverage_cmd(
+    put_paths: tuple[str, ...],
+    test_paths: tuple[str, ...],
+    language: str,
+    kgram_length: int,
+    include_unknown: bool,
+    output_json: bool,
+    use_v2: bool,
+    coverage_threshold: float,
+) -> None:
+    """
+    Structural overlap of tests toward the program-under-test (UAST).
+
+    Default (v0/v1): kind recall, control-flow recall, and k-gram path recall
+    over pooled UAST kind histograms.
+
+    With --v2: declaration-level bipartite coverage — each PUT function/method
+    is matched against test declarations by body structure recall. Includes
+    precision signal, F2 score, and uncovered declaration locations.
+
+    Example:
+
+    \b
+        topos structural-test-coverage --tests tests/test_foo.py src/foo.py
+        topos structural-test-coverage --v2 --tests tests/test_foo.py src/foo.py
+    """
+    from dataclasses import asdict
+
+    from topos.graphs.ast.dispatch import parse_source
+
+    if kgram_length < 1:
+        click.echo("Error: --k must be >= 1.", err=True)
+        sys.exit(1)
+
+    put_roots: list[object] = []
+    for path in put_paths:
+        source = Path(path).read_text(encoding="utf-8")
+        result = parse_source(source=source, language=language, file=str(path))
+        if result.uast_root is None:
+            click.echo(f"Error: No UAST root for PUT file {path}.", err=True)
+            sys.exit(1)
+        put_roots.append(result.uast_root)
+
+    test_roots: list[object] = []
+    for path in test_paths:
+        source = Path(path).read_text(encoding="utf-8")
+        result = parse_source(source=source, language=language, file=str(path))
+        if result.uast_root is None:
+            click.echo(f"Error: No UAST root for test file {path}.", err=True)
+            sys.exit(1)
+        test_roots.append(result.uast_root)
+
+    if use_v2:
+        from topos.metrics.uast.structural_test_coverage import declaration_coverage
+
+        report_v2 = declaration_coverage(
+            put_roots,
+            test_roots,
+            k=kgram_length,
+            include_unknown=include_unknown,
+            coverage_threshold=coverage_threshold,
+        )
+        if output_json:
+            payload = asdict(report_v2)
+            payload["language"] = language
+            payload["put_paths"] = list(put_paths)
+            payload["test_paths"] = list(test_paths)
+            click.echo(json.dumps(payload, indent=2))
+            return
+        _print_v2_report(report_v2, put_paths, test_paths, language)
+        return
+
+    from topos.metrics.uast.structural_test_coverage import structural_test_coverage
+
+    report = structural_test_coverage(
+        put_roots,
+        test_roots,
+        k=kgram_length,
+        include_unknown=include_unknown,
+    )
+
+    if output_json:
+        payload = asdict(report)
+        payload["language"] = language
+        payload["put_paths"] = list(put_paths)
+        payload["test_paths"] = list(test_paths)
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    click.echo("Structural test coverage (UAST)")
+    click.echo(f"Language: {language}")
+    click.echo(f"PUT files ({len(put_paths)}): {', '.join(put_paths)}")
+    click.echo(f"Test files ({len(test_paths)}): {', '.join(test_paths)}")
+    click.echo()
+    click.echo("Scores (higher = more PUT structure mass matched in tests)")
+    click.echo("-" * 48)
+    click.echo(f"  Kind recall (v0):           {report.kind_recall:.4f}")
+    click.echo(f"  Control-flow recall (v0): {report.control_flow_recall:.4f}")
+    click.echo(f"  Composite v0:             {report.composite_v0:.4f}")
+    click.echo(f"  Path recall k={report.k} (v1):     {report.path_recall_kgram:.4f}")
+    click.echo()
+    click.echo("Diagnostics")
+    click.echo("-" * 48)
+    click.echo(f"  PUT kind nodes (histogram):  {report.put_kind_nodes}")
+    click.echo(f"  Test kind nodes (histogram): {report.test_kind_nodes}")
+    click.echo(f"  PUT CF nodes:                {report.put_cf_nodes}")
+    click.echo(f"  Test CF nodes:               {report.test_cf_nodes}")
+    click.echo(f"  PUT k-gram mass:             {report.put_kgram_mass}")
+    click.echo(f"  Test k-gram mass:            {report.test_kgram_mass}")
+
+
+def _print_v2_report(
+    report: object,
+    put_paths: tuple[str, ...],
+    test_paths: tuple[str, ...],
+    language: str,
+) -> None:
+    click.echo("Structural test coverage v2 (declaration-level bipartite)")
+    click.echo(f"Language: {language}")
+    click.echo(f"PUT files ({len(put_paths)}): {', '.join(put_paths)}")
+    click.echo(f"Test files ({len(test_paths)}): {', '.join(test_paths)}")
+    click.echo()
+    click.echo("Declaration Coverage")
+    click.echo("-" * 52)
+    click.echo(f"  Mean declaration coverage:  {report.mean_declaration_coverage:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  Declaration coverage rate:  {report.declaration_coverage_rate:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  Coverage threshold:         {report.coverage_threshold:.2f}")  # type: ignore[attr-defined]
+    click.echo(f"  PUT declarations:           {report.put_declaration_count}")  # type: ignore[attr-defined]
+    click.echo(f"  Test declarations:          {report.test_declaration_count}")  # type: ignore[attr-defined]
+    click.echo()
+    click.echo("Category-Stratified Recall (disjoint)")
+    click.echo("-" * 52)
+    click.echo(f"  Statement recall:           {report.stmt_recall:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  Expression recall:          {report.expr_recall:.4f}")  # type: ignore[attr-defined]
+    click.echo()
+    click.echo("Precision and F-score")
+    click.echo("-" * 52)
+    click.echo(f"  Mean test precision:        {report.mean_test_precision:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  F2 score (beta=2):          {report.f2_score:.4f}")  # type: ignore[attr-defined]
+    click.echo()
+    click.echo(f"Path Recall (declaration-scoped k={report.k} grams)")  # type: ignore[attr-defined]
+    click.echo("-" * 52)
+    path_recall = report.declaration_path_recall_kgram  # type: ignore[attr-defined]
+    click.echo(f"  Decl path recall:           {path_recall:.4f}")
+    uncovered = report.uncovered_declarations  # type: ignore[attr-defined]
+    if uncovered:
+        click.echo()
+        threshold_pct = f"{report.coverage_threshold:.0%}"  # type: ignore[attr-defined]
+        click.echo(f"Uncovered PUT declarations (below {threshold_pct})")
+        click.echo("-" * 52)
+        for loc, score in uncovered:
+            click.echo(f"  {loc}  (best score: {score:.3f})")
 
 
 @cli.command()
@@ -440,21 +669,25 @@ def main() -> None:
     cli()
 
 
-def _collect_files(paths: tuple[str, ...], recursive: bool) -> list[Path]:
-    """Collect all Python files from the given paths."""
-    files: list[Path] = []
+def _collect_files(
+    paths: tuple[str, ...], recursive: bool, language: str
+) -> list[Path]:
+    """Collect source files for *language* from *paths* (files or directories)."""
+    suffixes = language_file_suffixes(language)
+    files: set[Path] = set()
 
     for path_str in paths:
         path = Path(path_str)
 
         if path.is_file():
-            if path.suffix == ".py":
-                files.append(path)
+            if path.suffix in suffixes:
+                files.add(path)
         elif path.is_dir():
-            pattern = "**/*.py" if recursive else "*.py"
-            files.extend(path.glob(pattern))
+            for suffix in suffixes:
+                pattern = f"**/*{suffix}" if recursive else f"*{suffix}"
+                files.update(path.glob(pattern))
 
-    return sorted(set(files))
+    return sorted(files)
 
 
 def _build_representations(filepath: str, gitnexus_dir: str | None) -> list:
@@ -479,10 +712,12 @@ def _evaluate_file(
     verbose: bool,
     gitnexus_dir: str | None = None,
     priority: Priority = Priority.BALANCED,
+    *,
+    language: str = "python",
 ) -> dict:
     """Evaluate a single file and return results as a dict."""
     try:
-        morphism = ProgramMorphism.from_file(filepath)
+        morphism = ProgramMorphism.from_file(filepath, language=language)
         representations = _build_representations(str(filepath), gitnexus_dir)
         result = classifier.classify_detailed(
             morphism, representations=representations, priority=priority

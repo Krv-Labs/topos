@@ -9,7 +9,23 @@ from topos.graphs.ast.types import ParseResult
 
 AstBackend = Literal["tree-sitter", "native", "hybrid"]
 
-SUPPORTED_LANGUAGES = frozenset({"python", "rust", "javascript", "cpp"})
+SUPPORTED_LANGUAGES = frozenset({"python", "rust", "javascript", "typescript", "cpp"})
+
+# Suffixes used by ``topos evaluate`` when collecting files from paths.
+LANGUAGE_FILE_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "python": (".py",),
+    "rust": (".rs",),
+    "javascript": (".js", ".mjs", ".cjs"),
+    "typescript": (".ts", ".tsx"),
+    "cpp": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
+}
+
+
+def language_file_suffixes(language: str) -> tuple[str, ...]:
+    """Return filename suffixes associated with *language* for source discovery."""
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(f"Language '{language}' not supported")
+    return LANGUAGE_FILE_SUFFIXES[language]
 
 
 @dataclass
@@ -59,6 +75,12 @@ def get_dispatch() -> ParserDispatch:
     if _DEFAULT_DISPATCH is None:
         _DEFAULT_DISPATCH = ParserDispatch.default()
     return _DEFAULT_DISPATCH
+
+
+def reset_dispatch() -> None:
+    """Reset the module-level singleton. Intended for tests that need a clean dispatch."""
+    global _DEFAULT_DISPATCH
+    _DEFAULT_DISPATCH = None
 
 
 def parse_source(

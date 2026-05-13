@@ -25,3 +25,4 @@ class ParseResult:
     provenance: ParserProvenance
     native_ast: Any | None = None
     uast_root: Any | None = None
+    has_errors: bool = False

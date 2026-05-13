@@ -1,15 +1,17 @@
-"""Analyze the structural_scores.jsonl output from run_structural_baseline.py.
+"""Analyze the structural_scores.jsonl output from run_structural_baseline*.py.
 
 For each package in the JSONL, computes per-package summary statistics,
 sweeps thresholds, optionally stratifies by usage label (usage_profiles.csv),
-and optionally cross-joins with PyPI evidence (pypi_evidence.jsonl).
+and optionally cross-joins with an evidence JSONL (PyPI, crates.io, npm, vcpkg).
 
 Writes a JSON summary to ``evaluations/calibration/results/score_analysis.json``.
 
 Run:
     python evaluations/calibration/scripts/analyze_scores.py
     python evaluations/calibration/scripts/analyze_scores.py \\
-        --scores evaluations/calibration/results/structural_scores.jsonl
+        --scores evaluations/calibration/results/structural_scores_rust.jsonl \\
+        --evidence evaluations/calibration/evidence/crates_evidence.jsonl \\
+        --ecosystem rust --language rust
 """
 
 from __future__ import annotations
@@ -17,7 +19,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 import statistics
 from collections import defaultdict
 from pathlib import Path
@@ -39,7 +40,12 @@ THRESHOLD_SWEEP = [0.40, 0.50, 0.55, 0.60, 0.65, 0.70]
 # ---------------------------------------------------------------------------
 
 
-def load_scores(path: Path) -> list[dict]:
+def load_scores(
+    path: Path,
+    *,
+    ecosystem: str | None = None,
+    language: str | None = None,
+) -> list[dict]:
     """Load per-file records from a JSONL file, skipping error records."""
     records: list[dict] = []
     if not path.is_file():
@@ -56,6 +62,10 @@ def load_scores(path: Path) -> list[dict]:
                 continue
             if "error" in record:
                 continue  # skip error records from run_structural_baseline
+            if ecosystem is not None and record.get("ecosystem") != ecosystem:
+                continue
+            if language is not None and record.get("language") != language:
+                continue
             records.append(record)
     return records
 
@@ -93,7 +103,7 @@ def load_profiles(path: Path) -> dict[str, str]:
 
 
 def load_evidence(path: Path) -> dict[str, dict]:
-    """Load package → signal dict from pypi_evidence.jsonl.  Returns empty dict if absent."""
+    """Load package → signal dict from evidence JSONL."""
     if not path.is_file():
         return {}
     evidence: dict[str, dict] = {}
@@ -148,7 +158,8 @@ def compute_package_stats(
         mean = statistics.mean(score_list) if n else 0.0
         median = statistics.median(score_list) if n else 0.0
         stdev = statistics.stdev(score_list) if n >= 2 else 0.0
-        # Scores from the CLI are in [0, 100]; normalize to [0, 1] for threshold comparison.
+        # Scores from the CLI are in [0, 100]; normalize to [0, 1] for threshold
+        # comparison.
         pct_passing = (
             sum(1 for s in score_list if s / 100.0 >= 0.6) / n * 100.0 if n else 0.0
         )
@@ -266,7 +277,7 @@ def print_evidence_analysis(
             signal_scores[sig].extend(s["scores"])
 
     if signal_scores:
-        print("\nMean structural score by PyPI signal_classification:")
+        print("\nMean structural score by evidence signal_classification:")
         for sig, scores in sorted(signal_scores.items()):
             mean = statistics.mean(scores) if scores else 0.0
             print(f"  {sig:<20} n_files={len(scores):<6} mean={mean:.1f}")
@@ -301,7 +312,10 @@ def print_evidence_analysis(
         for score, dep_count in pairs:
             quartile_deps[_quartile_label(score)].append(dep_count)
 
-        print("\nMean direct_dep_count per structural score quartile:")
+        print(
+            "\nMean direct_dep_count (or evidence proxy) per structural "
+            "score quartile:"
+        )
         for quartile_label in sorted(quartile_deps.keys()):
             dep_list = quartile_deps[quartile_label]
             mean_deps = statistics.mean(dep_list) if dep_list else 0.0
@@ -320,6 +334,8 @@ def build_summary(
     stats: dict[str, dict],
     profiles: dict[str, str],
     evidence: dict[str, dict],
+    *,
+    filters: dict[str, str | None] | None = None,
 ) -> dict[str, Any]:
     """Build the JSON summary artifact."""
     all_scores: list[float] = []
@@ -359,20 +375,27 @@ def build_summary(
 
     per_package_summary = {
         package: {
-            k: v for k, v in s.items() if k != "scores"  # omit raw score lists
+            k: v
+            for k, v in s.items()
+            if k != "scores"  # omit raw score lists
         }
         for package, s in stats.items()
     }
 
-    return {
+    out: dict[str, Any] = {
         "total_packages": total_packages,
         "total_files": total_files,
         "overall_mean_structural": statistics.mean(all_scores) if all_scores else None,
-        "overall_median_structural": statistics.median(all_scores) if all_scores else None,
+        "overall_median_structural": statistics.median(all_scores)
+        if all_scores
+        else None,
         "threshold_sweep": threshold_sweep_results,
         "by_label": label_stats,
         "per_package": per_package_summary,
     }
+    if filters:
+        out["filters"] = {k: v for k, v in filters.items() if v is not None}
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -383,8 +406,8 @@ def build_summary(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Analyze structural_scores.jsonl output from run_structural_baseline.py. "
-            "Prints per-package statistics, threshold sweep, and optional stratification."
+            "Analyze structural_scores.jsonl from run_structural_baseline*.py. "
+            "Prints per-package stats, threshold sweep, and optional stratification."
         )
     )
     parser.add_argument(
@@ -405,8 +428,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--evidence",
         type=Path,
         default=CALIBRATION_DIR / "evidence" / "pypi_evidence.jsonl",
-        help="Path to pypi_evidence.jsonl. "
+        help="Path to evidence JSONL (PyPI, crates.io, npm, or vcpkg format). "
         "Default: evaluations/calibration/evidence/pypi_evidence.jsonl",
+    )
+    parser.add_argument(
+        "--ecosystem",
+        default=None,
+        help="If set, keep only JSONL score rows whose ``ecosystem`` field matches.",
+    )
+    parser.add_argument(
+        "--language",
+        default=None,
+        help="If set, keep only JSONL score rows whose ``language`` field matches.",
     )
     parser.add_argument(
         "--output",
@@ -424,7 +457,11 @@ def main() -> None:
     args = parser.parse_args()
 
     print(f"Loading scores from {args.scores} ...")
-    records = load_scores(args.scores)
+    records = load_scores(
+        args.scores,
+        ecosystem=args.ecosystem,
+        language=args.language,
+    )
     print(f"  Loaded {len(records)} file records.")
 
     stats = compute_package_stats(records)
@@ -434,13 +471,18 @@ def main() -> None:
     if profiles:
         print(f"  Loaded {len(profiles)} usage labels from {args.profiles}")
     else:
-        print(f"  No usage_profiles.csv found at {args.profiles} — skipping stratification")
+        print(
+            f"  No usage_profiles.csv at {args.profiles} — "
+            "skipping stratification"
+        )
 
     evidence = load_evidence(args.evidence)
     if evidence:
-        print(f"  Loaded PyPI evidence for {len(evidence)} packages from {args.evidence}")
+        print(f"  Loaded evidence for {len(evidence)} packages from {args.evidence}")
     else:
-        print(f"  No pypi_evidence.jsonl found at {args.evidence} — skipping evidence analysis")
+        print(
+            f"  No evidence JSONL found at {args.evidence} — skipping evidence analysis"
+        )
 
     print()
     print("=" * 72)
@@ -457,7 +499,12 @@ def main() -> None:
         print_evidence_analysis(stats, evidence)
 
     # Write JSON summary.
-    summary = build_summary(stats, profiles, evidence)
+    summary = build_summary(
+        stats,
+        profiles,
+        evidence,
+        filters={"ecosystem": args.ecosystem, "language": args.language},
+    )
     output_path: Path = args.output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")

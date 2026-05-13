@@ -212,6 +212,66 @@ whether the metric itself is miscalibrated.
   - `evaluations/calibration/results/priority_ab.csv`  (Experiment 2)
   - `evaluations/calibration/results/score_label_alignment.json`  (Experiment 5)
 
+## Multilanguage calibration (Rust, C++, JavaScript, TypeScript)
+
+Structural scores are **not directly comparable** across languages: parsers,
+UAST kind histograms, and file-selection rules differ. Use these baselines to
+study **within-language** distributions and to tune thresholds per ecosystem,
+not to rank Python against Rust or C++.
+
+### Cohort lists
+
+| Ecosystem | Cohort file | Default JSONL output |
+|-----------|-------------|------------------------|
+| Rust (crates.io) | `evaluations/calibration/top100_crates_io.txt` | `evaluations/calibration/results/structural_scores_rust.jsonl` |
+| npm (JavaScript) | `evaluations/calibration/top100_npm_js.txt` | `evaluations/calibration/results/structural_scores_npm_js.jsonl` |
+| npm (TypeScript) | `evaluations/calibration/top100_npm_ts.txt` | `evaluations/calibration/results/structural_scores_npm_ts.jsonl` |
+| C++ (vcpkg ports) | `evaluations/calibration/top100_vcpkg_ports.txt` | `evaluations/calibration/results/structural_scores_vcpkg.jsonl` |
+
+Refresh snapshots (requires network, except vcpkg port verification):
+
+- `python evaluations/calibration/scripts/refresh_top100_crates_io.py`
+- `python evaluations/calibration/scripts/refresh_top100_npm_cohorts.py`
+- `python evaluations/calibration/scripts/refresh_top100_vcpkg_ports.py`
+
+### Experiment 4 — structural baseline (multilanguage)
+
+Prerequisites:
+
+- `topos evaluate` with `--language` (`python`, `rust`, `javascript`, `typescript`, `cpp`).
+- For vcpkg: a local [vcpkg](https://github.com/microsoft/vcpkg) clone on disk, `VCPKG_ROOT` set, and the `vcpkg` executable on `PATH`.
+
+Run the baseline runner:
+
+```bash
+python evaluations/calibration/scripts/run_structural_baseline_i18n.py --ecosystem rust
+python evaluations/calibration/scripts/run_structural_baseline_i18n.py --ecosystem npm_js --limit 10
+python evaluations/calibration/scripts/run_structural_baseline_i18n.py --ecosystem npm_ts
+python evaluations/calibration/scripts/run_structural_baseline_i18n.py --ecosystem vcpkg --vcpkg-root "$VCPKG_ROOT"
+```
+
+Each JSONL line includes `package`, `version`, `ecosystem`, `language`, plus the usual per-file fields from `topos evaluate`.
+
+### Experiment 3 — registry evidence (lighter audit)
+
+- Rust: `python evaluations/calibration/scripts/collect_crates_evidence.py`
+- npm: `python evaluations/calibration/scripts/collect_npm_evidence.py --cohort evaluations/calibration/top100_npm_ts.txt`
+- vcpkg: `python evaluations/calibration/scripts/collect_vcpkg_evidence.py --vcpkg-root "$VCPKG_ROOT"`
+
+Artifacts: `evidence/crates_evidence.jsonl`, `evidence/npm_evidence.jsonl`, `evidence/vcpkg_evidence.jsonl`.
+
+### Analysis
+
+Point `analyze_scores.py` at the ecosystem JSONL and matching evidence file. Optional filters match `ecosystem` / `language` columns on score rows:
+
+```bash
+python evaluations/calibration/scripts/analyze_scores.py \
+  --scores evaluations/calibration/results/structural_scores_rust.jsonl \
+  --evidence evaluations/calibration/evidence/crates_evidence.jsonl \
+  --ecosystem rust --language rust \
+  --output evaluations/calibration/results/score_analysis_rust.json
+```
+
 ## Notes
 
 - This is experiment setup and classification scaffolding only.

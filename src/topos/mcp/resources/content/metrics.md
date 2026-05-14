@@ -20,16 +20,16 @@ curve (peak at 0.5).  Threshold to satisfy SIMPLE: **0.6**.
 
 ## COMPOSABLE generator (← Dependency Graph)
 
-Requires a `DependencyGraph` parsed from `.gitnexus/`.  Only populated when
+Requires a `ModuleDependencyGraph` parsed from `.gitnexus/`.  Only populated when
 `gitnexus_dir` is provided or auto-detected.
 
 | Key | What it measures | Good range |
 |---|---|---|
-| `depgraph.coupling`    | Ca + Ce (afferent + efferent coupling).  | ≤ 35 |
-| `depgraph.instability` | `Ce / (Ca + Ce)`.                        | 0.3 – 0.7 |
-| `depgraph.fan_in`      | Incoming `CALLS` edges.                  | — |
-| `depgraph.fan_out`     | Outgoing `CALLS` edges.                  | — |
-| `depgraph.dep_depth`   | Longest `IMPORTS` chain.                 | — |
+| `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | ≤ 35 |
+| `mdg.instability` | `Ce / (Ca + Ce)`.                        | 0.3 – 0.7 |
+| `mdg.fan_in`      | Incoming `CALLS` edges.                  | — |
+| `mdg.fan_out`     | Outgoing `CALLS` edges.                  | — |
+| `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | — |
 
 `Φ_COMPOSABLE` = weighted average of `1 - coupling/35` and the instability
 tent over `[0.3, 0.7]`.  Threshold: **0.6**.

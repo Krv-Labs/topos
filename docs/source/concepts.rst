@@ -9,18 +9,25 @@ This page is optional deeper reading — you don't need it to use Topos. It expl
 The Evaluation Lattice
 ----------------------
 
-Topos classifies code against a four-valued **Heyting algebra** (a diamond lattice) — a partial
-order that captures *degrees of structural confidence* rather than a single
+Topos classifies code against an eight-valued **free Heyting algebra** (on three generators) — a partial
+order that captures *degrees of independent quality* rather than a single
 pass/fail score. Each label describes what the metrics detect, not an
 abstract quality judgment.
 
-``COMPOSABLE`` and ``SELF_CONTAINED`` are *incomparable*: a function can be
-structurally sound but highly coupled (``SELF_CONTAINED`` fails, but ``COMPOSABLE`` is reached), or entirely
-self-contained with poor coupling (``SELF_CONTAINED`` reached, but ``COMPOSABLE`` fails). The partial order preserves this
-distinction — Topos never collapses different failure modes without reason.
+The three generators — ``SIMPLE`` (code complexity), ``COMPOSABLE`` (module coupling), and ``SECURE`` (data flow safety) — are *pairwise incomparable*. A program can achieve any subset of {S, C, Sc}:
 
-Metric verdicts within a dimension are combined via **meet** — the
-greatest lower bound. The overall verdict is determined by combining the achievements of the independent pillars. Policy thresholds live in ``topos.logic.policies``.
+- ``SIMPLE`` only: low complexity but high coupling or security risk
+- ``COMPOSABLE`` only: good module design but high complexity or taint exposure
+- ``SECURE`` only: minimal dangerous operations but hard to understand or integrate
+- ``SIMPLE`` + ``COMPOSABLE``: both structure and coupling good, but vulnerable
+- ``SIMPLE`` + ``SECURE``: simple and secure, but tightly coupled
+- ``COMPOSABLE`` + ``SECURE``: well-designed and secure, but complex
+- ``IDEAL``: all three achieved
+
+The partial order preserves these distinctions — Topos never collapses different failure modes without reason.
+
+Metric verdicts within a generator are combined via **meet** — the greatest lower bound.
+The overall verdict is determined by which generators scored ≥ 0.6. Policy thresholds and scoring live in ``topos.evaluation.policies``.
 
 Programs as Morphisms
 ---------------------
@@ -45,50 +52,54 @@ The Subobject Classifier
 
 The **subobject classifier** answers membership questions: for any
 subobject ``S`` of ``X`` there is a characteristic map into the lattice.
-In Topos, that lattice is the four-valued diamond Heyting algebra, and the map
-sends any program to its structural class — determining if it meets its targets per dimension.
+In Topos, that lattice is the eight-valued free Heyting algebra on three generators, and the map
+sends any program to its quality class — determining if it meets its targets per generator.
 
 .. code-block:: python
 
-   from topos import ProgramMorphism, SubobjectClassifier
+   from topos import CharacteristicMorphism, ModuleDependencyGraph, ProgramMorphism
 
    morphism = ProgramMorphism.from_file("module.py")
-   result = SubobjectClassifier().classify_detailed(morphism, [depgraph])
-   print(result.dimensions)   # {"structural": SELF_CONTAINED, "coupling": BROKEN}
-   print(result.summary())    # meet across dimensions (e.g., SELF_CONTAINED)
+   mdg = ModuleDependencyGraph.from_gitnexus_dir(".gitnexus", "module.py")
+   # CFG / PDG / CPG are derived intrinsically from the morphism's UAST:
+   cfg = morphism.build_cfg()
+   cpg = morphism.build_cpg()
+   result = CharacteristicMorphism().classify_detailed(morphism, [cfg, cpg, mdg])
+   print(result.dimensions)   # {"simple": SIMPLE, "composable": COMPOSABLE, "secure": SLOP}
+   print(result.summary())    # SIMPLE_COMPOSABLE (both S and C achieved, not Sc)
 
-Dimensions are never automatically collapsed — call ``result.summary()``
-only when a single scalar is required. Use ``combine_dimensions(results)``
-to fold a directory scan into a per-dimension overall verdict.
-
-The Universal AST (UAST)
------------------------
-
-Topos evaluates code through a **Universal Abstract Syntax Tree (UAST)**—a language-normalized representation that bridges the gap between raw, language-specific parsing and high-level cross-language analysis.
-
-UAST follows a **"Native-first, Normalized-second"** architecture:
-
-1. **The Tree-sitter Engine**: We use Tree-sitter to generate a **Concrete Syntax Tree (CST)**. Tree-sitter is industry-leading, highly maintained, and provides fast, incremental parsing.
-2. **The Normalization Layer**: The UAST acts as a filter over the CST. It ignores surface-level noise (punctuation, whitespace) and maps language-specific nodes to a set of unified `UNodeKind` values (e.g., ``FunctionDecl``, ``IfStmt``, ``CallExpr``).
-3. **Fidelity and Provenance**: Crucially, every UAST node retains a ``NativeRef``. This preserves the exact byte-offsets and native parser provenance, ensuring the representation remains faithful to established industry standards like Python ``ast``, ESTree (JS), Rust ``syn``, and the Clang AST (C++).
-
-This unified layer allows Topos algorithms (like complexity analysis) to operate identically across multiple languages without losing the precision required for professional-grade static analysis.
+Generators are never automatically collapsed — call ``result.summary()``
+to get the combined 8-element lattice verdict. Use
+``CharacteristicMorphism.combine_dimensions(results)`` to fold a
+directory scan into a per-generator overall verdict.
 
 Representations
 ---------------
 
 Topos evaluates programs through pluggable **representations**, each
-contributing metrics to a named dimension.
+contributing metrics to a named generator.
 
-**ASTRepresentation** (``structural`` dimension)
-   Built automatically from the ``ProgramMorphism``. Parses source into a
-   tree-sitter AST and computes cyclomatic complexity and entropy. Targets the ``SELF_CONTAINED`` evaluation value.
+**ControlFlowGraph** (``simple`` generator)
+   Built automatically from the AST via tree-sitter. Computes cyclomatic complexity, essential complexity,
+   nesting depth, longest path, and entropy. Targets the ``SIMPLE`` evaluation value. Always available.
 
-**DependencyGraph** (``coupling`` dimension)
-   Built from GitNexus output. Computes coupling metrics for the target
-   file against the repository dependency graph. Supplied via
-   ``--gitnexus-dir`` on the CLI, or passed directly to
-   ``classify_detailed``. Targets the ``COMPOSABLE`` evaluation value.
+**ModuleDependencyGraph** (``composable`` generator)
+   Built from GitNexus output. Computes coupling, instability,
+   fan-in/out, and dependency depth for the target file against the
+   repository dependency graph. Supplied via ``--gitnexus-dir`` on the
+   CLI, or passed directly to ``classify_detailed``. Targets the
+   ``COMPOSABLE`` evaluation value. Requires a ``.gitnexus/``
+   directory.
 
-Representations on the same dimension are aggregated via meet;
-representations on different dimensions produce independent verdicts.
+**CodePropertyGraph** (``secure`` generator)
+   Fuses AST ∪ CFG ∪ DDG ∪ CDG into a single labeled multigraph
+   (Yamaguchi et al., arxiv:1909.03496).  Built intrinsically from the
+   UAST — no external tooling required.  Computes dangerous-API
+   reachability and source→sink taint paths.  Targets the ``SECURE``
+   evaluation value.  Always available.
+
+**ProgramDependenceGraph** (diagnostic only)
+   Intra-procedural control and data dependence graph. Computes dependence density. Not counted toward verdict.
+
+Representations on the same generator are aggregated via meet (greatest lower bound);
+representations on different generators produce independent verdicts.

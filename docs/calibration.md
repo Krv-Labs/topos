@@ -102,7 +102,7 @@ Three falsifiable hypotheses connecting usage labels to expected Topos metric
 behavior. Each experiment below specifies which hypothesis it tests.
 
 **H₁ (score distribution):** Libraries labeled `composable` will have lower
-`depgraph.instability` than libraries labeled `self_contained` (Wilcoxon
+`mdg.instability` than libraries labeled `self_contained` (Wilcoxon
 rank-sum, α=0.05). Rationale: composable libraries are designed to be imported
 without large transitive dependency trees, so their internal modules should
 have lower instability scores.
@@ -189,7 +189,7 @@ GitNexus (`npm install -g gitnexus`).
 2. For each file with both structural and coupling scores, compute:
    `Δcoupling = score(priority=composable) − score(priority=self_contained)`
 3. Group packages by `usage_classification` from `usage_profiles.csv`.
-4. Run Wilcoxon rank-sum on `depgraph.instability` grouped by label (tests H₁).
+4. Run Wilcoxon rank-sum on `mdg.instability` grouped by label (tests H₁).
 5. Plot coupling score ECDF for composable vs self_contained groups (tests H₂).
 6. Compare `|Δcoupling|` distributions by label (tests H₃).
 

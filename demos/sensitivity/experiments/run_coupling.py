@@ -119,10 +119,10 @@ def summarize_results(results: list[dict]) -> dict:
         if isinstance(coupling, (int, float)):
             coupling_scores.append(float(coupling))
         raw = r.get("raw_metrics", {})
-        if isinstance(raw.get("depgraph.coupling"), (int, float)):
-            raw_coupling.append(float(raw["depgraph.coupling"]))
-        if isinstance(raw.get("depgraph.instability"), (int, float)):
-            raw_instability.append(float(raw["depgraph.instability"]))
+        if isinstance(raw.get("mdg.coupling"), (int, float)):
+            raw_coupling.append(float(raw["mdg.coupling"]))
+        if isinstance(raw.get("mdg.instability"), (int, float)):
+            raw_instability.append(float(raw["mdg.instability"]))
 
     def _mean(xs: list[float]) -> float | None:
         return sum(xs) / len(xs) if xs else None

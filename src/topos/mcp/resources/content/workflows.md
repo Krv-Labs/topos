@@ -98,6 +98,28 @@ Consider if the abstraction is actually an improvement or just a shuffle.
 
 See `topos://docs/priority` for more.
 
+## Preference-driven targeting
+
+For agent loops that need a concrete *next-best* verdict to aim for —
+not just an upweighted generator — pass `preferences` alongside
+`priority`. A `preferences.ranking` like `["composable", "secure",
+"simple"]` induces a total order on Ω and produces a **two-stage**
+target:
+
+1. **`target`** — aspirational, default `IDEAL`. Try to beat the
+   thresholds for all three generators first.
+2. **`fallback_target`** — the **"ideal intersection"**, i.e. the meet
+   of the top-two ranked generators (`COMPOSABLE_SECURE` in the
+   example above). When IDEAL plateaus, divert here.
+
+The result also returns a **`walk`** (descending verdicts from IDEAL
+down) and a **`next_step`** (the smallest improvement above the
+current verdict).
+
+Concretely: aim for IDEAL for the first few iterations; if the lattice
+verdict won't move, switch to `fallback_target` and try to satisfy
+only the top-two generators. See `topos://docs/preferences`.
+
 ## What Topos does NOT measure
 
 - **Test coverage.** A refactor that improves the score but breaks tests

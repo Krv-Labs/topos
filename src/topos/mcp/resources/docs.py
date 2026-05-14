@@ -54,6 +54,16 @@ def priority_reference() -> str:
 
 
 @mcp.resource(
+    "topos://docs/preferences",
+    name="topos_preferences_reference",
+    mime_type="text/markdown",
+)
+def preferences_reference() -> str:
+    """User preferences over G_qual: induced total order on Ω and the targeted relaxation walk toward the ideal intersection."""
+    return _read("preferences.md")
+
+
+@mcp.resource(
     "topos://docs/workflows",
     name="topos_workflow_guide",
     mime_type="text/markdown",

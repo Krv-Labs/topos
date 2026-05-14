@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from tree_sitter import Node
 
-from topos.graphs.ast.uast.mapper_common import map_tree_sitter_to_uast
-from topos.graphs.ast.uast.models import UASTNode
+from topos.graphs.uast.mapper_common import map_tree_sitter_to_uast
+from topos.graphs.uast.models import UASTNode
 
 _DECLARATION_TYPES = {
     "function_definition": "FunctionDecl",
@@ -59,10 +59,10 @@ def map_node_kind(node: Node) -> str:
     return "Unknown"
 
 
-def map_javascript_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
+def map_cpp_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
     return map_tree_sitter_to_uast(
         root=root,
-        language="javascript",
+        language="cpp",
         map_node_kind=map_node_kind,
         file=file,
     )

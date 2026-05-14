@@ -20,6 +20,6 @@ Rust syn, Clang) while providing a stable target for cross-language metrics
 and agents.
 """
 
-from topos.graphs.ast.uast.models import NativeRef, SourceSpan, UASTNode
+from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 
 __all__ = ["SourceSpan", "NativeRef", "UASTNode"]

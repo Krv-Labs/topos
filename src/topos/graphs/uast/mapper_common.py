@@ -23,7 +23,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from tree_sitter import Node
 
-from topos.graphs.ast.uast.models import NativeRef, SourceSpan, UASTNode
+from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 
 _TREE_SITTER_PACKAGE = {
     "python": "tree-sitter-python",

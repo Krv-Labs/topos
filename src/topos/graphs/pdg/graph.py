@@ -337,12 +337,12 @@ class DependencyGraph:
     # ------------------------------------------------------------------
 
     def metrics(self) -> dict[str, float]:
-        from topos.metrics.depgraph.coupling import (
+        from topos.functors.probes.pdg.coupling import (
             calculate_coupling,
             calculate_dependency_depth,
             calculate_instability_from_result,
         )
-        from topos.metrics.depgraph.fan import calculate_fan_in_out
+        from topos.functors.probes.pdg.fan import calculate_fan_in_out
 
         file_id = self.file_node_id()
         if file_id is None:

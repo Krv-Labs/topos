@@ -4,13 +4,13 @@
 
 Topos lets you set and manage the quality target while coding agents handle the iteration. Pick a priority and Topos measures program structure (not just syntax), giving agents concrete metrics to optimize toward on every pass.
 
-Current priorities:
+Three independent quality generators:
 
-- **SIMPLE:** Minimal external dependencies; functionality lives within the module.
-- **COMPOSABLE:** Connects cleanly with other modules without creating fragile dependency chains.
-- **SECURE:** Surfaces and hardens risky patterns so agents can drive toward safer structure.
+- **SIMPLE:** CFG cyclomatic complexity, nesting depth, and AST entropy. Always evaluated.
+- **COMPOSABLE:** Martin coupling and instability over the module dependency graph. Requires GitNexus.
+- **SECURE:** Dangerous-API reachability and source→sink taint over the Code Property Graph. Always evaluated.
 
-More coming soon.
+Set a priority (`simple`, `composable`, `secure`, or `balanced`) to guide the agent's iteration strategy.
 
 > [!NOTE]
 > We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs.
@@ -19,72 +19,46 @@ More coming soon.
 
 ### The Verdict
 
-The Hasse diagram is drawn **bottom = best** (`IDEAL`, meet of all three satisfied axes), **top = worst** (`SLOP`, no axis satisfied): edges cover **adding one more failure** (turning off one generator). Pair labels are literal **meets** of which generators still pass (for example your program at `COMPOSABLE ∧ SIMPLE`).
+Topos maps every file to an **eight-valued Heyting algebra** — a free lattice on three independent generators. Agents always know exactly where they are:
 
 ```mermaid
 graph BT
-    IDEAL["⊥ IDEAL<br/>All targets met"]
+    SLOP["⊥ SLOP<br/>No generators met"]
+    SIMPLE["S<br/>Simple code"]
+    COMPOSABLE["C<br/>Composable<br/>(needs GitNexus)"]
+    SECURE["Sc<br/>Secure"]
+    SC["S∧C<br/>Simple &<br/>Composable"]
+    SSc["S∧Sc<br/>Simple &<br/>Secure"]
+    CSc["C∧Sc<br/>Composable &<br/>Secure"]
+    IDEAL["⊤ IDEAL<br/>All three:<br/>Simple, Composable, Secure"]
 
-    CS["◑◐<br/>COMPOSABLE ∧ SIMPLE"]
-    CSEC["◑◇<br/>COMPOSABLE ∧ SECURE"]
-    SSEC["◐◇<br/>SIMPLE ∧ SECURE"]
+    SLOP --> SIMPLE
+    SLOP --> COMPOSABLE
+    SLOP --> SECURE
+    SIMPLE --> SC
+    SIMPLE --> SSc
+    COMPOSABLE --> SC
+    COMPOSABLE --> CSc
+    SECURE --> SSc
+    SECURE --> CSc
+    SC --> IDEAL
+    SSc --> IDEAL
+    CSc --> IDEAL
 
-    COMPOSABLE["◑ COMPOSABLE<br/>Good coupling"]
-    SIMPLE["◐ SIMPLE<br/>Minimal complexity"]
-    SECURE["◇ SECURE<br/>Good security"]
-
-    SLOP["⊤ SLOP<br/>Fails targets"]
-
-    IDEAL --> CS
-    IDEAL --> CSEC
-    IDEAL --> SSEC
-
-    CS --> COMPOSABLE
-    CS --> SIMPLE
-    CSEC --> COMPOSABLE
-    CSEC --> SECURE
-    SSEC --> SIMPLE
-    SSEC --> SECURE
-
-    COMPOSABLE --> SLOP
-    SIMPLE --> SLOP
-    SECURE --> SLOP
-
-    style SLOP           fill:#f8d7da,stroke:#842029,color:#000
-    style COMPOSABLE     fill:#d1ecf1,stroke:#0c5460,color:#000
-    style SIMPLE         fill:#d4edda,stroke:#155724,color:#000
-    style SECURE         fill:#e2e3f3,stroke:#383d66,color:#000
-    style CS             fill:#cfe2ff,stroke:#084298,color:#000
-    style CSEC           fill:#cff4fc,stroke:#055160,color:#000
-    style SSEC           fill:#d3f9e8,stroke:#0f5132,color:#000
-    style IDEAL          fill:#fff3cd,stroke:#856404,color:#000
+    style SLOP       fill:#f8d7da,stroke:#842029,color:#000
+    style SIMPLE     fill:#d4edda,stroke:#155724,color:#000
+    style COMPOSABLE fill:#d1ecf1,stroke:#0c5460,color:#000
+    style SECURE     fill:#d1f1dc,stroke:#155724,color:#000
+    style SC         fill:#e2f5eb,stroke:#155724,color:#000
+    style SSc        fill:#e2f5eb,stroke:#155724,color:#000
+    style CSc        fill:#e2f5eb,stroke:#155724,color:#000
+    style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
 ```
 
-The three base measures are **pairwise incomparable** — code can satisfy any one without the others. Along this order, **meet** is intersection of satisfied generators (closure under ∧); `SLOP` is the **top** (⊤) and `IDEAL` the **bottom** (⊥).
-
-That diagram is the intrinsic **partial order** on satisfied subsets: one verdict is **below** another in the drawing when it satisfies a *superset* of the same generators (coordinate-wise implication toward `IDEAL`). Many pairs of verdicts are still incomparable (for example `COMPOSABLE` versus `SIMPLE`).
-
-**Manager priority lists.** Whoever runs the agent picks a **strict total order on the generators** — which dimension matters most when trade-offs appear. That does not replace the partial order; it **ranks acceptable targets** so the run has a single walk when budgets bite.
-
-Treat the priority list as most important → least important. Write each verdict as a 3-bit pattern in that same order (1 = satisfied). Sort verdicts by the integer value of that bit pattern, **descending** (best targets first). `SLOP` (⊤ here) is always last in that relaxation list.
-
-Example priority list: **SECURE > COMPOSABLE > SIMPLE**. List each verdict as three bits in that same order (most significant bit = **SECURE**).
-
- Verdict | Bits |
-| --- | --- |
-| `IDEAL` | `111` |
-| `COMPOSABLE ∧ SECURE` | `110` |
-| `SIMPLE ∧ SECURE` | `101` |
-| `COMPOSABLE ∧ SIMPLE` | `011` |
-| `SECURE` | `100` |
-| `COMPOSABLE` | `010` |
-| `SIMPLE` | `001` |
-| `SLOP` | `000` |
-
-That is the **target relaxation walk**: aim for step 1, then if time or tokens force a compromise, treat step 2 as the next acceptable plateau, and so on, until the manager’s minimum bar is reached.
+**SIMPLE**, **COMPOSABLE**, and **SECURE** are **pairwise incomparable** — code can achieve any subset independently. **IDEAL** is the join of all three.
 
 > [!TIP]
-> Perfect code satisfies every target — but agents operate under token and time budgets. A concrete priority gives them a formula to execute rather than an open-ended target.
+> Perfect code reaches **IDEAL** — but agents operate under token and time budgets. A concrete priority gives them a formula to execute. Set `--priority simple` to focus on complexity, `--priority composable` for clean interfaces, or `--priority secure` for data flow safety.
 
 ---
 
@@ -99,19 +73,24 @@ curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 #### CLI
 
 ```bash
-topos evaluate src/ -r --priority SIMPLE   # classify a directory
+topos evaluate src/ -r --priority simple           # classify a directory
+topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable  # with coupling & security
 topos inspect module.py                             # detailed metrics
+topos structural-test-coverage src/ --language python  # measure test code coverage
 topos compare before.py after.py                    # AST edit distance
 ```
 
 #### In an agent loop
 
 ```
-Agent iteration 1: simple: ⊤ SLOP [41%]
-  → Reduce CFG cyclomatic complexity and normalize entropy toward 0.5
+Agent iteration 1: SLOP [simple: 41%, composable: -, secure: -]
+  → Reduce cyclomatic complexity and normalize entropy toward 0.5
 
-Agent iteration 2: simple: ◐ SIMPLE [72%]
-  → ✓ Target achieved.
+Agent iteration 2: SIMPLE [simple: 72%, composable: -, secure: -]
+  → ✓ SIMPLE achieved.
+
+Agent iteration 3: SIMPLE_COMPOSABLE [simple: 72%, composable: 65%, secure: -]
+  → ✓ Both SIMPLE and COMPOSABLE achieved. (With GitNexus enabled)
 ```
 
 ---
@@ -125,10 +104,10 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 
 &nbsp;
 
-#### Step 1 — Build the dependency graph
+#### Step 1 — Build the dependency graph (optional but recommended)
 
 > [!IMPORTANT]
-> **Do this first.** Without a dependency graph, Topos can score the SIMPLE and SECURE generators only — `COMPOSABLE` and any verdict containing it (including `IDEAL`) become unreachable.
+> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable.  `SIMPLE` and `SECURE` always run.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine
@@ -194,13 +173,13 @@ Or edit `.cursor/mcp.json`:
 >
 > > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."
 >
-> Or invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
+> Or invoke the prompt directly: `topos_refactor_until_ideal(filepath="path/to/file.py")`.
 
 #### Smoke test
 
 > "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify with `topos_assess_improvement`."
 
-A healthy response has `coupling_available: true`. If every response shows `coupling_available: false`, go back to Step 1.
+A healthy response shows `{simple: 72%, composable: 65%, secure: 95%}` when GitNexus is configured. If the response is missing `composable`, go back to Step 1.
 
 </details>
 

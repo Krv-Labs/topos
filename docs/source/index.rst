@@ -50,46 +50,65 @@ Pick a priority, then let your agent evaluate and iterate on its own output.
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --priority self_contained   # classify a directory
+   topos evaluate src/ -r --priority simple           # classify a directory
    topos inspect module.py                             # detailed metrics
+   topos structural-test-coverage src/ --language python  # measure test code coverage
    topos compare before.py after.py                    # AST edit distance
-   topos structural-test-coverage --tests t.py src/m.py   # UAST test overlap
 
-Each file gets a verdict per quality dimension — **structural** (complexity, entropy)
-and optionally **coupling** (dependency graph). You always see which axis is the
-problem, not a single blended number.
+Each file gets a verdict per quality generator — **simple** (complexity,
+entropy), **composable** (dependency graph, requires GitNexus), and
+**secure** (taint and dangerous-API analysis on the CPG, always
+available).  You always see which generator is the problem, not a
+single blended number.
 
 How it works
 ------------
 
-Topos measures code along two orthogonal axes and maps them to a diamond evaluation lattice:
+Topos measures code along three independent quality generators and maps them to an 8-element evaluation lattice:
 
-- **Structure** — how many decision paths run through the code (complexity) and how
-  predictable its pattern is (entropy).
-- **Coupling** — how tightly the file is wired to the rest of the codebase (optional, requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_).
+- **SIMPLE** — how many decision paths run through the code (cyclomatic complexity) and how
+  predictable its pattern is (entropy). Built from control flow graph.
+- **COMPOSABLE** — how tightly the file is wired to the rest of the codebase (optional, requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_). Built from module dependency graph.
+- **SECURE** — whether the code flow can reach dangerous operations or untrusted data. Built from the Code Property Graph (AST ∪ CFG ∪ DDG ∪ CDG); always available, no external tooling required.
 
 .. mermaid::
 
    graph BT
-       BROKEN["⊥ BROKEN<br/>Fails both targets"]
-       COMPOSABLE["◑ COMPOSABLE<br/>Good coupling"]
-       SELF_CONTAINED["◐ SELF_CONTAINED<br/>Good structure"]
-       SOUND["⊤ SOUND<br/>Both targets met"]
+       SLOP["⊥ SLOP<br/>No generators met"]
+       SIMPLE["S<br/>Simple code"]
+       COMPOSABLE["C<br/>Composable"]
+       SECURE["Sc<br/>Secure"]
+       SC["S∧C"]
+       SSc["S∧Sc"]
+       CSc["C∧Sc"]
+       IDEAL["⊤ IDEAL<br/>All three"]
 
-       BROKEN --> COMPOSABLE
-       BROKEN --> SELF_CONTAINED
-       COMPOSABLE --> SOUND
-       SELF_CONTAINED --> SOUND
+       SLOP --> SIMPLE
+       SLOP --> COMPOSABLE
+       SLOP --> SECURE
+       SIMPLE --> SC
+       SIMPLE --> SSc
+       COMPOSABLE --> SC
+       COMPOSABLE --> CSc
+       SECURE --> SSc
+       SECURE --> CSc
+       SC --> IDEAL
+       SSc --> IDEAL
+       CSc --> IDEAL
 
-       style BROKEN         fill:#f8d7da,stroke:#842029,color:#000
-       style COMPOSABLE     fill:#d1ecf1,stroke:#0c5460,color:#000
-       style SELF_CONTAINED fill:#d4edda,stroke:#155724,color:#000
-       style SOUND          fill:#fff3cd,stroke:#856404,color:#000
+       style SLOP       fill:#f8d7da,stroke:#842029,color:#000
+       style SIMPLE     fill:#d4edda,stroke:#155724,color:#000
+       style COMPOSABLE fill:#d1ecf1,stroke:#0c5460,color:#000
+       style SECURE     fill:#d1f1dc,stroke:#0c5460,color:#000
+       style SC         fill:#e2f5eb,stroke:#155724,color:#000
+       style SSc        fill:#e2f5eb,stroke:#155724,color:#000
+       style CSc        fill:#e2f5eb,stroke:#155724,color:#000
+       style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
 
 .. hint::
-   **Non-Total Order:** ``COMPOSABLE`` and ``SELF_CONTAINED`` sit
-   side-by-side and are **incomparable**. A file can meet one target without meeting
-   the other. ``SOUND`` is the join of both.
+   **Three Independent Generators:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
+   **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently.
+   ``IDEAL`` is the join of all three. The 8 possible combinations form a free Heyting algebra.
 
 .. toctree::
    :maxdepth: 1
@@ -99,5 +118,4 @@ Topos measures code along two orthogonal axes and maps them to a diamond evaluat
    installation
    For Agents <agents>
    Measures <measures>
-   Structural test coverage <structural_test_coverage>
    concepts

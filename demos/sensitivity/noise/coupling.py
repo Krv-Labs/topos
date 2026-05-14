@@ -11,7 +11,7 @@ package. Each transform exclusively adds new files or appends new lines;
 existing source bodies are never rewritten.
 
 Expected effect on the coupling metrics (per
-``topos.metrics.depgraph.coupling``):
+``topos.metrics.mdg.coupling``):
 
 ============================  =========================================
 Transform                      Δ behavior per unit intensity

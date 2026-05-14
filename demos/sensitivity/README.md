@@ -15,9 +15,9 @@ The two scoring axes are independently sensitive:
   - `ast.entropy` → bell-curve peak at `ENTROPY_IDEAL = 0.5`.
   - Scored from the AST alone; a single file is enough.
 - **Composable** (`topos.logic.policies.coupling`)
-  - `depgraph.coupling` → linear fall to 0 at `MAX_COUPLING = 35`.
-  - `depgraph.instability` → flat-top tent over `[INSTABILITY_LOW=0.3, INSTABILITY_HIGH=0.7]`.
-  - Requires a `DependencyGraph` from `.gitnexus/` (multi-module package needed).
+  - `mdg.coupling` → linear fall to 0 at `MAX_COUPLING = 35`.
+  - `mdg.instability` → flat-top tent over `[INSTABILITY_LOW=0.3, INSTABILITY_HIGH=0.7]`.
+  - Requires a `ModuleDependencyGraph` from `.gitnexus/` (multi-module package needed).
 
 Single-file noise tests Self-Contained only; package-level noise tests
 Composable only. The two are exercised separately.

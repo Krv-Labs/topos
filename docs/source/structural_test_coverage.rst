@@ -8,7 +8,7 @@ Topos can estimate how much of a **program-under-test (PUT)** appears in a **tes
 
 A Markdown version of this material (suitable for repo browsing outside Sphinx) lives at ``docs/structural-test-coverage.md``. This is not line or branch coverage and does not prove that tests call production code; it answers a narrower question: *does the test code contain similar structural shapes (kinds, control-flow nodes, short kind paths) as the PUT?*
 
-The implementation lives in ``topos.metrics.uast.structural_test_coverage``. The CLI command is:
+The implementation lives in ``topos.functors.profunctors.uast.structural_test_coverage``. The CLI command is:
 
 .. code-block:: bash
 
@@ -65,4 +65,4 @@ Further reading
 ---------------
 
 - Evaluation script and field notes: ``demos/structural_test_coverage/run_evaluation.py`` and ``demos/structural_test_coverage/EVALUATION.md``.
-- Related symmetric distances between two programs: :doc:`measures` (lattice metrics) and ``compare_uast`` in ``topos.metrics.uast``.
+- Related symmetric distances between two programs: :doc:`measures` (lattice metrics) and ``compare_uast`` in ``topos.functors.profunctors.uast``.

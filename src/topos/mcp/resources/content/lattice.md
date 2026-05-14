@@ -51,7 +51,7 @@ evidence across orthogonal axes, no law of excluded middle.
 | Generator    | Translational functor (Representation) | Probes |
 |--------------|----------------------------------------|--------|
 | `SIMPLE`     | Control Flow Graph (CFG)               | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth` |
-| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `depgraph.coupling`, `depgraph.instability`, `depgraph.fan_in/out` |
+| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `mdg.coupling`, `mdg.instability`, `mdg.fan_in/out` |
 | `SECURE`     | Code Property Graph (CPG)              | `cpg.dangerous_calls`, `cpg.taint_flows` |
 
 The AST and UAST are substrate representations — every other graph is

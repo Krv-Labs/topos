@@ -40,7 +40,7 @@ handlers, deserialization sinks, shell-out wrappers.
 `src/topos/server.py` (MCP entry point, few callers, lots of internal
 orchestration): use `simple` — the SIMPLE generator reflects real quality.
 
-`src/topos/logic/omega.py` (the classifier, imported by every evaluation
+`src/topos/evaluation/omega.py` (the classifier, imported by every evaluation
 path): use `composable` — coupling quality is the main lever here.
 
 `src/topos/utils/yaml_loader.py` (parses untrusted user config): use

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.functors.profunctors.ast.compare import calculate_ast_distance
+
 from ..evaluation import (
     classify_code_string,
     classify_morphism,
@@ -32,7 +34,6 @@ from ..security import (
     resolve_within_root,
 )
 from ..server import mcp
-from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 _READ_ONLY_ANN = {
     "title": "Topos Refactor Assessment",
@@ -101,11 +102,12 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     )
     proposed_res = classify_morphism(proposed_morph, params.priority, dep_graph)
 
+    prefs = params.preferences.to_preferences() if params.preferences else None
     current_eval = to_evaluation_result(
-        current_res, coupling_available=dep_graph is not None
+        current_res, coupling_available=dep_graph is not None, preferences=prefs
     )
     proposed_eval = to_evaluation_result(
-        proposed_res, coupling_available=coupling_for_proposed
+        proposed_res, coupling_available=coupling_for_proposed, preferences=prefs
     )
 
     # ---- score deltas ----

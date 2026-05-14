@@ -6,12 +6,14 @@ from pathlib import Path
 from topos.graphs.ast.dispatch import parse_source
 from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 from topos.functors.probes.uast import (
-    compare_uast,
     control_flow_profile,
     structural_summary,
+    uast_kind_histogram,
+)
+from topos.functors.profunctors.uast import (
+    compare_uast,
     uast_edit_distance,
     uast_kind_distance,
-    uast_kind_histogram,
 )
 
 

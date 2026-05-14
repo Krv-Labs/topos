@@ -1,15 +1,11 @@
 """
-UAST Metrics Module
--------------------
-Cross-language structural metrics built on UAST `kind` values.
+UAST probes — single-program structural signatures over UAST kinds.
+
+Pairwise comparison and structural test-coverage (two-program operations)
+live in :mod:`topos.functors.profunctors.uast`; this package holds only
+the per-program probes ``P : E → ℝ`` that those profunctors compose.
 """
 
-from topos.functors.probes.uast.compare import (
-    UASTComparison,
-    compare_uast,
-    uast_edit_distance,
-    uast_kind_distance,
-)
 from topos.functors.probes.uast.signature import (
     CONTROL_FLOW_KINDS,
     StructuralSummary,
@@ -18,34 +14,12 @@ from topos.functors.probes.uast.signature import (
     uast_dfs_kind_sequence,
     uast_kind_histogram,
 )
-from topos.functors.probes.uast.structural_test_coverage import (
-    DeclarationCoverageReport,
-    StructuralTestCoverageReport,
-    declaration_coverage,
-    extract_declarations,
-    merge_control_flow_profiles,
-    merge_kgram_counters,
-    merge_uast_kind_histograms,
-    structural_test_coverage,
-)
 
 __all__ = [
     "CONTROL_FLOW_KINDS",
-    "DeclarationCoverageReport",
     "StructuralSummary",
-    "StructuralTestCoverageReport",
-    "UASTComparison",
-    "compare_uast",
     "control_flow_profile",
-    "declaration_coverage",
-    "extract_declarations",
-    "merge_control_flow_profiles",
-    "merge_kgram_counters",
-    "merge_uast_kind_histograms",
     "structural_summary",
-    "structural_test_coverage",
     "uast_dfs_kind_sequence",
-    "uast_edit_distance",
-    "uast_kind_distance",
     "uast_kind_histogram",
 ]

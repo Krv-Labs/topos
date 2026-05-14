@@ -35,13 +35,13 @@ rather than an open-ended target.
    * - Priority
      - Directive
      - Optimizes toward
-   * - ``simple``
+   * - ``simple`` (default)
      - *"Keep this module simple and easy to understand."*
      - Lower cyclomatic complexity, nesting depth, and entropy near 0.5. Tolerates higher coupling.
    * - ``composable``
      - *"Keep this module easy to integrate without fragile dependency chains."*
      - Clean inter-module coupling and balanced instability. Tolerates internal complexity.
-   * - ``secure`` (default)
+   * - ``secure``
      - *"Minimize dangerous operations and taint exposure."*
      - Reduced reachable dangerous calls and taint flows. Tolerates higher complexity or coupling.
 

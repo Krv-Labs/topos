@@ -143,7 +143,7 @@ class Priority(StrEnum):
         COMPOSABLE:  The user's top-ranked generator is COMPOSABLE.
         SECURE:      The user's top-ranked generator is SECURE.
 
-    Default across the codebase is ``SECURE`` — the most conservative
+    Default across the codebase is ``SIMPLE`` — the most conservative
     single choice, matching :func:`topos.evaluation.preferences.default_preferences`.
     """
 

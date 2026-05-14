@@ -6,6 +6,7 @@ entropy breakdown.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
+from topos.evaluation.policies.base import Priority
 from topos.functors.probes.ast.complexity import calculate_function_complexities
 from topos.functors.probes.ast.entropy import calculate_entropy_detailed
 
@@ -42,7 +43,7 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
     functions and blowing out agent context.
     """
     try:
-        result = classify_code_string(params.code, params.language, params.priority)
+        result = classify_code_string(params.code, params.language, Priority.SIMPLE)
     except Exception as exc:
         empty = EvaluationResult(
             is_parseable=False,
@@ -51,7 +52,7 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
             lattice_description="evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),

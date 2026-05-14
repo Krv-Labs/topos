@@ -158,7 +158,7 @@ class ClassificationResult:
     dimensions: dict[str, EvaluationValue] = field(default_factory=dict)
     scores: dict[str, float] = field(default_factory=dict)
     lattice_element: EvaluationValue = field(default=EvaluationValue.SLOP)
-    priority: Priority = field(default=Priority.BALANCED)
+    priority: Priority = field(default=Priority.SECURE)
     raw_metrics: dict[str, float] = field(default_factory=dict)
     interpretation: dict[str, str] = field(default_factory=dict)
 
@@ -214,7 +214,7 @@ class CharacteristicMorphism:
         self,
         morphism: ProgramMorphism,
         representations: Sequence[Representation] | None = None,
-        priority: Priority = Priority.BALANCED,
+        priority: Priority = Priority.SECURE,
     ) -> ClassificationResult:
         """
         Compute χ_S : P → Ω in full detail.

@@ -35,6 +35,10 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
+from topos.evaluation.policies.base import (
+    threshold as default_threshold,
+)
+from topos.evaluation.preferences import Generator
 
 # Normalization constants (policy decisions)
 DANGER_SCALE: float = 3.0  # dangerous-call count that drops quality to 1/e
@@ -44,8 +48,8 @@ TAINT_SCALE: float = 3.0  # taint-flow count that drops quality to 1/e
 def score_secure(
     dangerous_calls: float,
     taint_flows: float,
-    priority: Priority = Priority.BALANCED,
-    threshold: float = 0.6,
+    priority: Priority = Priority.SECURE,
+    threshold: float | None = None,
 ) -> ScoredDecision:
     """
     Φ_SECURE — score the SECURE generator from CPG observations.
@@ -56,8 +60,16 @@ def score_secure(
         taint_flows:     Count of source→sink data-flow paths
                          (``cpg.taint_flows``).
         priority:        Weight profile controlling danger vs taint emphasis.
-        threshold:       Minimum score to mark SECURE as satisfied.
+        threshold:       Minimum score to mark SECURE as satisfied.  When
+                         ``None`` (the typical case), defaults to
+                         ``THRESHOLDS[Generator.SECURE]`` in
+                         :mod:`topos.evaluation.policies.base`.
+                         Note this default is higher than SIMPLE /
+                         COMPOSABLE — security's false-negative cost
+                         is asymmetrically high.
     """
+    if threshold is None:
+        threshold = default_threshold(Generator.SECURE)
     danger_quality = exp(-max(dangerous_calls, 0.0) / DANGER_SCALE)
     taint_quality = exp(-max(taint_flows, 0.0) / TAINT_SCALE)
 

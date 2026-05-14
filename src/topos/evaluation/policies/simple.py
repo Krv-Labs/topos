@@ -33,6 +33,10 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
+from topos.evaluation.policies.base import (
+    threshold as default_threshold,
+)
+from topos.evaluation.preferences import Generator
 
 # Normalization constants (policy decisions)
 MAX_CYCLOMATIC: float = 40.0  # cyclomatic at which quality reaches 0.0
@@ -42,8 +46,8 @@ ENTROPY_IDEAL: float = 0.5  # entropy value with maximum quality score
 def score_simple(
     cyclomatic: float,
     entropy: float | None = None,
-    priority: Priority = Priority.BALANCED,
-    threshold: float = 0.6,
+    priority: Priority = Priority.SECURE,
+    threshold: float | None = None,
 ) -> ScoredDecision:
     """
     Φ_SIMPLE — score the SIMPLE generator from CFG / AST observations.
@@ -54,12 +58,16 @@ def score_simple(
         entropy:    Optional Kolmogorov-proxy entropy from the source.  If
                     ``None``, only cyclomatic contributes to the score.
         priority:   Weight profile controlling cyclomatic vs entropy emphasis.
-        threshold:  Minimum score to mark SIMPLE as satisfied.
+        threshold:  Minimum score to mark SIMPLE as satisfied.  When
+                    ``None``, falls back to ``THRESHOLDS[Generator.SIMPLE]``
+                    in :mod:`topos.evaluation.policies.base`.
 
     Returns:
         A ScoredDecision; ``achieved`` is the truth value of the SIMPLE
         generator for this program.
     """
+    if threshold is None:
+        threshold = default_threshold(Generator.SIMPLE)
     cyclomatic_quality = 1.0 - min(cyclomatic / MAX_CYCLOMATIC, 1.0)
     w_c = WEIGHT_PROFILES[priority].w_complexity
 

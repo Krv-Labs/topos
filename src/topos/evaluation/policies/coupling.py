@@ -36,6 +36,10 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
+from topos.evaluation.policies.base import (
+    threshold as default_threshold,
+)
+from topos.evaluation.preferences import Generator
 
 # Normalization constants (policy decisions)
 MAX_COUPLING: float = 35.0  # coupling count at which quality reaches 0.0
@@ -47,7 +51,7 @@ def score_coupling(
     coupling: float,
     instability: float,
     priority: Priority,
-    threshold: float = 0.6,
+    threshold: float | None = None,
 ) -> ScoredDecision:
     """
     Score the coupling quality of a module.
@@ -57,11 +61,16 @@ def score_coupling(
         instability: Martin's instability metric, in [0.0, 1.0].
         priority:    Weight profile controlling coupling vs instability emphasis.
         threshold:   Minimum score to achieve the COMPOSABLE lattice target.
+                     When ``None``, defaults to
+                     ``THRESHOLDS[Generator.COMPOSABLE]`` in
+                     :mod:`topos.evaluation.policies.base`.
 
     Returns:
         A ScoredDecision with a [0, 1] quality score and per-metric
         interpretation strings.
     """
+    if threshold is None:
+        threshold = default_threshold(Generator.COMPOSABLE)
     coupling_quality = 1.0 - min(coupling / MAX_COUPLING, 1.0)
     instability_quality = _instability_tent(instability)
 

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-import topos.mcp.prompts
-import topos.mcp.resources
-import topos.mcp.tools
-
-
-
+import topos.mcp.prompts  # noqa: F401
+import topos.mcp.resources  # noqa: F401
+import topos.mcp.tools  # noqa: F401
 from topos.mcp.server import mcp
 
 

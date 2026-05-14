@@ -72,9 +72,7 @@ def _ast_edges(root: UASTNode) -> list[CPGEdge]:
         for child in parent.children:
             child_id = child.id or f"anon::{id(child):x}"
             edges.append(
-                CPGEdge(
-                    source=parent_id, target=child_id, kind=CPGEdgeKind.AST
-                )
+                CPGEdge(source=parent_id, target=child_id, kind=CPGEdgeKind.AST)
             )
             stack.append(child)
     return edges
@@ -106,9 +104,7 @@ def _cfg_edges(cfg: ControlFlowGraph) -> list[CPGEdge]:
 def _dependence_edges(pdg: ProgramDependenceGraph) -> list[CPGEdge]:
     edges: list[CPGEdge] = []
     for dep in pdg.edges:
-        kind = (
-            CPGEdgeKind.DDG if dep.kind is DependenceKind.DATA else CPGEdgeKind.CDG
-        )
+        kind = CPGEdgeKind.DDG if dep.kind is DependenceKind.DATA else CPGEdgeKind.CDG
         edges.append(
             CPGEdge(
                 source=dep.source,

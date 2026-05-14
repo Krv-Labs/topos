@@ -11,7 +11,8 @@ lives in :mod:`topos.core.omega`; this module ties them together.
 mappings, and provides convenience access to:
 
     - the subobject classifier  ``Ω``   (:class:`~topos.core.omega.Omega`)
-    - the characteristic morphism χ_S   (:class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`)
+    - the characteristic morphism χ_S
+      (:class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`)
 
 so callers never need to reach into the logic subpackage just to classify
 or compose programs.
@@ -25,11 +26,11 @@ from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
 
 if TYPE_CHECKING:
+    from topos.core.omega import EvaluationValue, Omega
     from topos.evaluation.characteristic_morphism import (
         CharacteristicMorphism,
         ClassificationResult,
     )
-    from topos.core.omega import EvaluationValue, Omega
 
 
 class CategoryError(Exception):
@@ -152,9 +153,7 @@ class ProgramCategory:
         return cls.characteristic_morphism().classify(program)
 
     @classmethod
-    def classify_detailed(
-        cls, program: ProgramMorphism
-    ) -> ClassificationResult:
+    def classify_detailed(cls, program: ProgramMorphism) -> ClassificationResult:
         """
         Apply χ_S : P → Ω with full per-generator detail.
 

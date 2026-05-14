@@ -98,9 +98,7 @@ def build_guidance(result: ClassificationResult) -> str:
             "Eliminate dangerous-API calls and source→sink taint flows "
             "to satisfy SECURE."
         )
-    return (
-        "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach IDEAL."
-    )
+    return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach IDEAL."
 
 
 def to_evaluation_result(

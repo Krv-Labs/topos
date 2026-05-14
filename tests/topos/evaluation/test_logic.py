@@ -8,11 +8,14 @@ bottom is SLOP (none).
 
 from topos.core.morphism import ProgramMorphism
 from topos.core.omega import (
-    Omega,
     EvaluationValue,
+    Omega,
     verdict_from_generators,
 )
-from topos.evaluation.characteristic_morphism import ClassificationResult, CharacteristicMorphism
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
 from topos.evaluation.policies.base import Priority
 
 
@@ -39,13 +42,9 @@ def test_evaluation_value_order():
         assert not lattice.leq(b, a)
 
     # SIMPLE ≤ SIMPLE_COMPOSABLE ≤ IDEAL but not SIMPLE_COMPOSABLE ≤ SECURE
-    assert lattice.leq(
-        EvaluationValue.SIMPLE, EvaluationValue.SIMPLE_COMPOSABLE
-    )
+    assert lattice.leq(EvaluationValue.SIMPLE, EvaluationValue.SIMPLE_COMPOSABLE)
     assert lattice.leq(EvaluationValue.SIMPLE_COMPOSABLE, EvaluationValue.IDEAL)
-    assert not lattice.leq(
-        EvaluationValue.SIMPLE_COMPOSABLE, EvaluationValue.SECURE
-    )
+    assert not lattice.leq(EvaluationValue.SIMPLE_COMPOSABLE, EvaluationValue.SECURE)
 
 
 def test_lattice_meet_join():
@@ -265,12 +264,8 @@ def test_classify_detailed_priority_parameter():
     classifier = CharacteristicMorphism()
     morphism = ProgramMorphism(source="x = 1 + 2")
 
-    result_secure = classifier.classify_detailed(
-        morphism, priority=Priority.SECURE
-    )
-    result_simple = classifier.classify_detailed(
-        morphism, priority=Priority.SIMPLE
-    )
+    result_secure = classifier.classify_detailed(morphism, priority=Priority.SECURE)
+    result_simple = classifier.classify_detailed(morphism, priority=Priority.SIMPLE)
 
     assert result_secure.priority == Priority.SECURE
     assert result_simple.priority == Priority.SIMPLE

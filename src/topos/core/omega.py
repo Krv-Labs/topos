@@ -134,9 +134,7 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.SLOP: (
-                "Fails every generator; unconstrained code"
-            ),
+            EvaluationValue.SLOP: ("Fails every generator; unconstrained code"),
             EvaluationValue.SIMPLE: "Low complexity; SIMPLE generator satisfied",
             EvaluationValue.COMPOSABLE: (
                 "Composes well with other modules; COMPOSABLE generator satisfied"
@@ -153,9 +151,7 @@ class EvaluationValue(IntEnum):
             EvaluationValue.COMPOSABLE_SECURE: (
                 "COMPOSABLE ∧ SECURE — well-coupled with no dangerous patterns"
             ),
-            EvaluationValue.IDEAL: (
-                "⊤ - meet of all generators; ideal program state"
-            ),
+            EvaluationValue.IDEAL: ("⊤ - meet of all generators; ideal program state"),
         }
         return descriptions[self]
 
@@ -245,9 +241,7 @@ class Omega:
     BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.SLOP
     TOP: ClassVar[EvaluationValue] = EvaluationValue.IDEAL
 
-    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = (
-        _CUBE_COVER
-    )
+    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = _CUBE_COVER
 
     # Direct cover relations: value -> immediate successors.
     cover: dict[EvaluationValue, list[EvaluationValue]] = field(default_factory=dict)
@@ -399,7 +393,7 @@ class Omega:
     def _select_extrema(
         self, candidates: list[EvaluationValue], *, minimal: bool
     ) -> list[EvaluationValue]:
-        """Select minimal or maximal elements from candidates under the partial order."""
+        """Select minimal or maximal elements under the partial order."""
         if not candidates:
             return []
         return [

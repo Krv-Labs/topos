@@ -95,9 +95,7 @@ def taint_flow_paths(cpg: CodePropertyGraph) -> int:
             callee = _callee_from_text(snippet)
             if callee and _matches_registry(callee, sink_registry):
                 sinks.add(nid)
-        if node.kind == "Identifier" and snippet in source_registry:
-            sources.append(nid)
-        elif node.kind == "MemberExpr" and snippet in source_registry:
+        if node.kind in ("Identifier", "MemberExpr") and snippet in source_registry:
             sources.append(nid)
 
     if not sources or not sinks:

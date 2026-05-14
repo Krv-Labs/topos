@@ -49,12 +49,7 @@ def test_cyclomatic_linear_function_is_one():
 
 
 def test_cyclomatic_single_if_is_two():
-    cfg = _cfg(
-        "def f(x):\n"
-        "    if x > 0:\n"
-        "        return 1\n"
-        "    return 0\n"
-    )
+    cfg = _cfg("def f(x):\n    if x > 0:\n        return 1\n    return 0\n")
     assert cfg.metrics()["cfg.cyclomatic"] == 2.0
 
 
@@ -79,9 +74,7 @@ def test_cfg_contains_entry_and_exit_blocks():
 
 
 def test_if_statement_generates_true_and_false_edges():
-    cfg = _cfg(
-        "def f(x):\n    if x:\n        return 1\n    return 0\n"
-    )
+    cfg = _cfg("def f(x):\n    if x:\n        return 1\n    return 0\n")
     kinds = {e.kind for e in cfg.edges}
     assert EdgeKind.TRUE in kinds
     assert EdgeKind.FALSE in kinds
@@ -89,9 +82,7 @@ def test_if_statement_generates_true_and_false_edges():
 
 
 def test_while_loop_generates_back_edge():
-    cfg = _cfg(
-        "def f(x):\n    while x > 0:\n        x -= 1\n    return x\n"
-    )
+    cfg = _cfg("def f(x):\n    while x > 0:\n        x -= 1\n    return x\n")
     kinds = {e.kind for e in cfg.edges}
     assert EdgeKind.LOOP_BACK in kinds
 
@@ -114,7 +105,11 @@ def test_break_continue_resolve_to_loop_targets():
 @pytest.mark.parametrize(
     "language,linear,branchy",
     [
-        ("python", "def f(x): return x\n", "def f(x):\n    if x: return 1\n    return 0\n"),
+        (
+            "python",
+            "def f(x): return x\n",
+            "def f(x):\n    if x: return 1\n    return 0\n",
+        ),
         (
             "javascript",
             "function f(x) { return x; }\n",
@@ -127,9 +122,7 @@ def test_break_continue_resolve_to_loop_targets():
         ),
     ],
 )
-def test_cyclomatic_grows_with_branching_across_languages(
-    language, linear, branchy
-):
+def test_cyclomatic_grows_with_branching_across_languages(language, linear, branchy):
     linear_cyc = _cfg(linear, language=language).metrics()["cfg.cyclomatic"]
     branchy_cyc = _cfg(branchy, language=language).metrics()["cfg.cyclomatic"]
     assert branchy_cyc > linear_cyc, f"{language}: {linear_cyc} -> {branchy_cyc}"

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from topos.functors.profunctors.ast.compare import DistanceResult, _compute_sequence_distance
 from topos.functors.probes.uast.signature import (
     CONTROL_FLOW_KINDS,
     StructuralSummary,
@@ -22,6 +21,10 @@ from topos.functors.probes.uast.signature import (
     structural_summary,
     uast_dfs_kind_sequence,
     uast_kind_histogram,
+)
+from topos.functors.profunctors.ast.compare import (
+    DistanceResult,
+    _compute_sequence_distance,
 )
 
 

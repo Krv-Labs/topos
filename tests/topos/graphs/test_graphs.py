@@ -4,9 +4,9 @@ from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import (
-    ModuleDependencyGraph,
     GraphNode,
     GraphRelationship,
+    ModuleDependencyGraph,
 )
 from topos.utils.tree_sitter import parse_python
 
@@ -298,9 +298,7 @@ def test_score_ast_produces_scored_decision():
     from topos.evaluation.characteristic_morphism import _score_ast
     from topos.evaluation.policies.base import Priority, ScoredDecision
 
-    decision = _score_ast(
-        {"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.SECURE
-    )
+    decision = _score_ast({"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.SECURE)
     assert decision is not None
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
@@ -343,7 +341,9 @@ def test_backward_compat_top_level_imports():
 # ---------------------------------------------------------------------------
 
 
-def _graph_with_file(target_file: str, file_path_property: str) -> ModuleDependencyGraph:
+def _graph_with_file(
+    target_file: str, file_path_property: str
+) -> ModuleDependencyGraph:
     """Minimal graph with one File node for path-matching tests."""
     g = ModuleDependencyGraph(target_file=target_file)
     g.add_node(

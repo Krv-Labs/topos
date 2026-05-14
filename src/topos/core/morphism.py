@@ -28,11 +28,11 @@ from topos.core.object import ProgramObject
 from topos.graphs.ast.dispatch import AstBackend, parse_source
 
 if TYPE_CHECKING:
+    from topos.core.omega import EvaluationValue
     from topos.graphs.base import Representation
     from topos.graphs.cfg.object import ControlFlowGraph
     from topos.graphs.cpg.object import CodePropertyGraph
     from topos.graphs.pdg.object import ProgramDependenceGraph
-    from topos.core.omega import EvaluationValue
 
 
 @dataclass
@@ -66,11 +66,9 @@ class ProgramMorphism:
     filepath: Path | None = None
     ast: ProgramObject | None = field(default=None, repr=False)
     representations: list[Representation] = field(default_factory=list, repr=False)
-    _cfg: "ControlFlowGraph | None" = field(default=None, repr=False, compare=False)
-    _pdg: "ProgramDependenceGraph | None" = field(
-        default=None, repr=False, compare=False
-    )
-    _cpg: "CodePropertyGraph | None" = field(default=None, repr=False, compare=False)
+    _cfg: ControlFlowGraph | None = field(default=None, repr=False, compare=False)
+    _pdg: ProgramDependenceGraph | None = field(default=None, repr=False, compare=False)
+    _cpg: CodePropertyGraph | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Parse the source code into an AST if not provided."""
@@ -142,7 +140,7 @@ class ProgramMorphism:
     # R: Lang → E required by the math spec.  All three are derived from
     # the UAST built during parsing.
 
-    def build_cfg(self) -> "ControlFlowGraph | None":
+    def build_cfg(self) -> ControlFlowGraph | None:
         """Build (and cache) the Control Flow Graph representation."""
         if self._cfg is not None:
             return self._cfg
@@ -153,7 +151,7 @@ class ProgramMorphism:
         self._cfg = ControlFlowGraph.from_uast(self.ast.uast_root)
         return self._cfg
 
-    def build_pdg(self) -> "ProgramDependenceGraph | None":
+    def build_pdg(self) -> ProgramDependenceGraph | None:
         """Build (and cache) the academic Program Dependence Graph."""
         if self._pdg is not None:
             return self._pdg
@@ -164,7 +162,7 @@ class ProgramMorphism:
         self._pdg = ProgramDependenceGraph.from_uast(self.ast.uast_root)
         return self._pdg
 
-    def build_cpg(self) -> "CodePropertyGraph | None":
+    def build_cpg(self) -> CodePropertyGraph | None:
         """Build (and cache) the Code Property Graph."""
         if self._cpg is not None:
             return self._cpg
@@ -172,9 +170,7 @@ class ProgramMorphism:
             return None
         from topos.graphs.cpg.object import CodePropertyGraph
 
-        self._cpg = CodePropertyGraph.from_uast(
-            self.ast.uast_root, source=self.source
-        )
+        self._cpg = CodePropertyGraph.from_uast(self.ast.uast_root, source=self.source)
         return self._cpg
 
     @property

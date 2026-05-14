@@ -198,7 +198,9 @@ class ModuleDependencyGraph:
         )
 
     @classmethod
-    def _from_ladybugdb(cls, lbug_path: Path, target_file: str) -> ModuleDependencyGraph:
+    def _from_ladybugdb(
+        cls, lbug_path: Path, target_file: str
+    ) -> ModuleDependencyGraph:
         """Load from the binary LadybugDB format produced by GitNexus ≥ 1.5."""
         import real_ladybug as lb
 

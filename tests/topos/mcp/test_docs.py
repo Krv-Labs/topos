@@ -36,10 +36,9 @@ def test_get_doc_matches_resource_content() -> None:
     """Same source file; tool and resource must return byte-identical content."""
     import asyncio
 
-    import topos.mcp.prompts
-    import topos.mcp.resources
-    import topos.mcp.tools
-
+    import topos.mcp.prompts  # noqa: F401
+    import topos.mcp.resources  # noqa: F401
+    import topos.mcp.tools  # noqa: F401
     from topos.mcp.server import mcp
 
     for topic in ("lattice", "metrics", "priority", "workflows"):

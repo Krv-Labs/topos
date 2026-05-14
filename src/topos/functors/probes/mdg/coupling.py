@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from topos.graphs.mdg.object import DependencyGraph
+    from topos.graphs.mdg.object import ModuleDependencyGraph
 
 
 @dataclass
@@ -54,7 +54,7 @@ class CouplingResult:
 
 
 def calculate_coupling(
-    graph: DependencyGraph,
+    graph: ModuleDependencyGraph,
     file_node_id: str,
     symbol_ids: set[str] | None = None,
 ) -> CouplingResult:
@@ -97,7 +97,7 @@ def calculate_coupling(
     )
 
 
-def calculate_instability(graph: DependencyGraph, file_node_id: str) -> float:
+def calculate_instability(graph: ModuleDependencyGraph, file_node_id: str) -> float:
     """
     Calculate Martin's Instability metric: I = Ce / (Ca + Ce).
 
@@ -116,7 +116,7 @@ def calculate_instability_from_result(result: CouplingResult) -> float:
     return _instability_from_coupling(result)
 
 
-def calculate_dependency_depth(graph: DependencyGraph, file_node_id: str) -> int:
+def calculate_dependency_depth(graph: ModuleDependencyGraph, file_node_id: str) -> int:
     """
     Longest chain of transitive IMPORTS from *file_node_id*.
 
@@ -141,7 +141,7 @@ def calculate_dependency_depth(graph: DependencyGraph, file_node_id: str) -> int
     return max_depth
 
 
-def _owning_file(graph: DependencyGraph, node_id: str) -> str | None:
+def _owning_file(graph: ModuleDependencyGraph, node_id: str) -> str | None:
     """Walk up CONTAINS edges to find the File node that owns *node_id*."""
     visited: set[str] = set()
     current = node_id

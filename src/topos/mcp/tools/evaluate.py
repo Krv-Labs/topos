@@ -2,7 +2,7 @@
 Evaluation tools: code string, single file, whole project.
 
 The single-file tool is the P0 bug fix — the previous ``evaluate_file``
-delegated to ``evaluate_code`` and dropped the filepath, so DependencyGraph
+delegated to ``evaluate_code`` and dropped the filepath, so ModuleDependencyGraph
 was never built and COMPOSABLE/SOUND were unreachable via MCP.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from fastmcp import Context
 
-from topos.logic.omega import SubobjectClassifier
+from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from ..evaluation import (
     classify_code_string,
     classify_file,
@@ -50,7 +50,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
     """Classify a raw code string on the free Heyting algebra H(G_qual).
 
     SIMPLE and SECURE generators are scored from CFG / CPG built on the
-    source.  COMPOSABLE requires a ``DependencyGraph`` (and is therefore
+    source.  COMPOSABLE requires a ``ModuleDependencyGraph`` (and is therefore
     unreachable from a bare string); use ``topos_evaluate_file`` with
     ``gitnexus_dir`` to enable it.
 
@@ -87,7 +87,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     """Evaluate a file on disk. **Enables the COMPOSABLE generator.**
 
     When ``gitnexus_dir`` is provided (or auto-detected at
-    ``<project_root>/.gitnexus``), a ``DependencyGraph`` is attached to
+    ``<project_root>/.gitnexus``), a ``ModuleDependencyGraph`` is attached to
     the classifier so the COMPOSABLE generator can be scored.  CFG and
     CPG (SIMPLE and SECURE generators) always run.
 
@@ -157,7 +157,7 @@ async def topos_evaluate_project(
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
     a live bar during long walks. Rolls up per-dimension scores using the
-    project-wide minimum (``SubobjectClassifier.combine_dimensions``).
+    project-wide minimum (``CharacteristicMorphism.combine_dimensions``).
 
     Returns a paginated per-file table plus the overall rollup. Use ``limit``
     / ``offset`` to page through large codebases.
@@ -204,13 +204,13 @@ async def topos_evaluate_project(
         if idx % max(1, total_files // 20) == 0 or idx == total_files:
             await ctx.report_progress(progress=idx, total=total_files)
 
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     rolled = classifier.combine_dimensions(per_file_results)
     rolled_scores = _minimum_scores_by_dim(per_file_results)
 
     # Combine the three rolled-up generator verdicts into a single ℋ
     # element via the free-algebra encoding.
-    from topos.logic.lattice import (
+    from topos.core.omega import (
         EvaluationValue,
         verdict_from_generators,
     )

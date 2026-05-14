@@ -5,7 +5,7 @@ Adapts the existing :class:`~topos.core.object.ProgramObject` to the
 :class:`~topos.graphs.base.Representation` protocol.
 
 This does **not** replace ``ProgramObject``; it wraps it so the
-SubobjectClassifier can treat it uniformly alongside other
+CharacteristicMorphism can treat it uniformly alongside other
 representations (dependency graph, CFG, etc.).
 
 The metrics produced by this representation are:
@@ -44,9 +44,8 @@ class ASTRepresentation:
 
     @property
     def dimension(self) -> str:
-        # Feeds the SIMPLE generator (via ast.entropy).  Cyclomatic
-        # complexity has moved to the CFG representation; this AST
-        # representation still contributes entropy.
+        # Feeds the SIMPLE generator via ``ast.entropy``.  Cyclomatic
+        # complexity is produced by the CFG representation.
         return "simple"
 
     def metrics(self) -> dict[str, float]:

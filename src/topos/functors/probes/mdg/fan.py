@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from topos.graphs.mdg.object import DependencyGraph
+    from topos.graphs.mdg.object import ModuleDependencyGraph
 
 
 @dataclass
@@ -41,7 +41,7 @@ class FanResult:
 
 
 def calculate_fan_in_out(
-    graph: DependencyGraph,
+    graph: ModuleDependencyGraph,
     file_node_id: str,
     symbol_ids: set[str] | None = None,
 ) -> FanResult:

@@ -8,9 +8,9 @@ flavor used when ``response_format="markdown"``.
 
 from __future__ import annotations
 
-from topos.logic.lattice import EvaluationValue
-from topos.logic.omega import ClassificationResult
-from topos.logic.policies.base import Priority
+from topos.core.omega import EvaluationValue
+from topos.evaluation.characteristic_morphism import ClassificationResult
+from topos.evaluation.policies.base import Priority
 
 from .schemas import EvaluationResult, LatticeElement
 
@@ -43,7 +43,7 @@ def build_guidance(result: ClassificationResult) -> str:
     if priority == Priority.COMPOSABLE:
         if composable_score is None:
             return (
-                "COMPOSABLE not measured — provide a DependencyGraph "
+                "COMPOSABLE not measured — provide a ModuleDependencyGraph "
                 "(gitnexus_dir) to score the composable generator."
             )
         if composable_score < 0.6:
@@ -136,7 +136,7 @@ def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
         lines.append(f"- **{dim}**: {val.value} ({score:.1f}%)")
     if not e.coupling_available:
         lines.append(
-            "- _composable: not measured (no DependencyGraph available — "
+            "- _composable: not measured (no ModuleDependencyGraph available — "
             "COMPOSABLE / IDEAL unreachable)._"
         )
 

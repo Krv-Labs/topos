@@ -13,7 +13,6 @@ statement granularity.
 """
 
 from topos.graphs.mdg.object import (
-    DependencyGraph,
     GraphNode,
     GraphRelationship,
     ModuleDependencyGraph,
@@ -21,7 +20,6 @@ from topos.graphs.mdg.object import (
 
 __all__ = [
     "ModuleDependencyGraph",
-    "DependencyGraph",  # deprecated alias
     "GraphNode",
     "GraphRelationship",
 ]

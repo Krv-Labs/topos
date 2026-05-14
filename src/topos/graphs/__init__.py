@@ -20,7 +20,7 @@ from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
 from topos.graphs.cfg.object import ControlFlowGraph
 from topos.graphs.cpg.object import CodePropertyGraph
-from topos.graphs.mdg.object import DependencyGraph, ModuleDependencyGraph
+from topos.graphs.mdg.object import ModuleDependencyGraph
 from topos.graphs.pdg.object import ProgramDependenceGraph
 
 __all__ = [
@@ -30,6 +30,4 @@ __all__ = [
     "ProgramDependenceGraph",
     "ModuleDependencyGraph",
     "CodePropertyGraph",
-    # Deprecated alias for ModuleDependencyGraph.
-    "DependencyGraph",
 ]

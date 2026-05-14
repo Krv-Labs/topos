@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from math import exp
 
-from topos.logic.policies.base import (
+from topos.evaluation.policies.base import (
     WEIGHT_PROFILES,
     Priority,
     ScoredDecision,

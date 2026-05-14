@@ -27,8 +27,8 @@ where ``w_c`` comes from the active Priority's ``WeightProfile``.
 
 from __future__ import annotations
 
-from topos.logic.lattice import EvaluationLattice
-from topos.logic.policies.base import (
+from topos.core.omega import Omega
+from topos.evaluation.policies.base import (
     WEIGHT_PROFILES,
     Priority,
     ScoredDecision,
@@ -81,9 +81,9 @@ def score_simple(
     )
 
 
-def build_evaluation_lattice() -> EvaluationLattice:
-    """Build the free Heyting algebra H(G_qual) (8-element cube)."""
-    return EvaluationLattice()
+def build_omega() -> Omega:
+    """Build the subobject classifier Ω = H(G_qual) (8-element 3-cube)."""
+    return Omega()
 
 
 # ---------------------------------------------------------------------------

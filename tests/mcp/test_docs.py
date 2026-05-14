@@ -22,7 +22,7 @@ def test_get_doc_returns_lattice() -> None:
 def test_get_doc_returns_metrics() -> None:
     body = topos_get_doc(topic="metrics")
     assert "cfg.cyclomatic" in body
-    assert "depgraph.coupling" in body
+    assert "mdg.coupling" in body
     assert "cpg.dangerous_calls" in body
 
 

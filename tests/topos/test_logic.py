@@ -7,17 +7,17 @@ bottom is SLOP (none).
 """
 
 from topos.core.morphism import ProgramMorphism
-from topos.logic.lattice import (
-    EvaluationLattice,
+from topos.core.omega import (
+    Omega,
     EvaluationValue,
     verdict_from_generators,
 )
-from topos.logic.omega import ClassificationResult, SubobjectClassifier
-from topos.logic.policies.base import Priority
+from topos.evaluation.characteristic_morphism import ClassificationResult, CharacteristicMorphism
+from topos.evaluation.policies.base import Priority
 
 
 def test_evaluation_value_order():
-    lattice = EvaluationLattice()
+    lattice = Omega()
 
     # SLOP ≤ every generator ≤ every pair ≤ IDEAL
     for gen in (
@@ -49,7 +49,7 @@ def test_evaluation_value_order():
 
 
 def test_lattice_meet_join():
-    lattice = EvaluationLattice()
+    lattice = Omega()
 
     # Pairwise incomparable atoms meet at SLOP (standard lattice GLB)
     assert (
@@ -123,7 +123,7 @@ def test_verdict_from_generators_truth_table():
 
 
 def test_subobject_classifier_simple_generator():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     source = """
 def process_data(data):
@@ -146,7 +146,7 @@ def process_data(data):
 
 
 def test_subobject_classifier_invalid():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     source = "def broken(:"
     morphism = ProgramMorphism(source=source)
@@ -156,7 +156,7 @@ def test_subobject_classifier_invalid():
 
 
 def test_classifier_aggregation():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     # meet(IDEAL, COMPOSABLE) = COMPOSABLE
     assert (
@@ -186,7 +186,7 @@ def test_evaluation_value_properties():
 
 
 def test_lattice_implies_and_negation():
-    lattice = EvaluationLattice()
+    lattice = Omega()
 
     # negation(SLOP) = IDEAL (bottom → bottom = top)
     assert lattice.negation(EvaluationValue.SLOP) == EvaluationValue.IDEAL
@@ -198,7 +198,7 @@ def test_lattice_implies_and_negation():
 
 
 def test_subobject_classifier_str():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     morphism = ProgramMorphism(source="x = 1")
     res = classifier.classify_detailed(morphism)
     s = str(res)
@@ -207,7 +207,7 @@ def test_subobject_classifier_str():
 
 
 def test_priority_weight_profiles():
-    from topos.logic.policies.base import WEIGHT_PROFILES
+    from topos.evaluation.policies.base import WEIGHT_PROFILES
 
     for priority in Priority:
         profile = WEIGHT_PROFILES[priority]
@@ -217,7 +217,7 @@ def test_priority_weight_profiles():
 
 
 def test_score_simple_perfect_code():
-    from topos.logic.policies.simple import score_simple
+    from topos.evaluation.policies.simple import score_simple
 
     # Ideal: cyclomatic=0, entropy=0.5
     result = score_simple(0, 0.5, Priority.BALANCED)
@@ -226,7 +226,7 @@ def test_score_simple_perfect_code():
 
 
 def test_score_simple_pathological_code():
-    from topos.logic.policies.simple import score_simple
+    from topos.evaluation.policies.simple import score_simple
 
     # Worst case: cyclomatic=40, entropy=1.0
     result = score_simple(40, 1.0, Priority.BALANCED)
@@ -235,7 +235,7 @@ def test_score_simple_pathological_code():
 
 
 def test_score_simple_priority_shifts():
-    from topos.logic.policies.simple import score_simple
+    from topos.evaluation.policies.simple import score_simple
 
     # Code with bad entropy but reasonable complexity
     balanced = score_simple(5, 0.95, Priority.BALANCED)
@@ -244,7 +244,7 @@ def test_score_simple_priority_shifts():
 
 
 def test_score_secure_clean_code():
-    from topos.logic.policies.secure import score_secure
+    from topos.evaluation.policies.secure import score_secure
 
     result = score_secure(dangerous_calls=0, taint_flows=0)
     assert result.score == 1.0
@@ -252,7 +252,7 @@ def test_score_secure_clean_code():
 
 
 def test_score_secure_dangerous_code():
-    from topos.logic.policies.secure import score_secure
+    from topos.evaluation.policies.secure import score_secure
 
     result = score_secure(dangerous_calls=20, taint_flows=20)
     assert result.score < 0.6
@@ -260,7 +260,7 @@ def test_score_secure_dangerous_code():
 
 
 def test_classify_detailed_priority_parameter():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     morphism = ProgramMorphism(source="x = 1 + 2")
 
     result_balanced = classifier.classify_detailed(
@@ -277,7 +277,7 @@ def test_classify_detailed_priority_parameter():
 
 
 def test_combine_dimensions_uses_min_score():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     r1 = ClassificationResult(
         is_parseable=True,
@@ -298,7 +298,7 @@ def test_combine_dimensions_uses_min_score():
 
 
 def test_combine_dimensions_counts_parse_failures_as_simple_slop():
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     good = ClassificationResult(
         is_parseable=True,

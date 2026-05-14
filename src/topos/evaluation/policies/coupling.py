@@ -1,18 +1,18 @@
 """
-Coupling Evaluation Scorer: Observation Space -> Subobject Classifier
-----------------------------------------------------------------------
+Φ_COMPOSABLE — Policy translator for the COMPOSABLE generator.
+--------------------------------------------------------------
 
-Maps dependency-graph metric observations (coupling count, instability ratio)
-into a continuous quality score that determines whether the COMPOSABLE lattice
-target is achieved.
+Maps ModuleDependencyGraph metric observations (Martin coupling count,
+instability ratio) into a continuous quality score that determines
+whether the COMPOSABLE generator of Ω is satisfied.
 
-The factorization is:
+The factorization is::
 
-    DependencyGraph --(dep metrics)--> R^2 --(scorer)--> [0, 1] --(threshold)--> Omega
+    ModuleDependencyGraph --(probes)--> ℝ² --(Φ_COMPOSABLE)--> [0, 1] --(threshold)--> Ω
 
-``score_coupling`` is the interpretive layer for coupling-dimension metrics.
-Adjusting normalization bounds or the threshold is a policy decision; this
-module is where those decisions live.
+``score_coupling`` is the interpretive layer for the COMPOSABLE
+generator's metrics.  Normalization bounds and threshold are policy
+decisions; this module is where they live.
 
 Quality functions:
     coupling_quality    = 1 - min(coupling / MAX_COUPLING, 1.0)
@@ -31,7 +31,7 @@ where w_k comes from the Priority's WeightProfile.
 
 from __future__ import annotations
 
-from topos.logic.policies.base import (
+from topos.evaluation.policies.base import (
     WEIGHT_PROFILES,
     Priority,
     ScoredDecision,
@@ -72,8 +72,8 @@ def score_coupling(
         score=coupling_score,
         achieved=coupling_score >= threshold,
         interpretation={
-            "depgraph.coupling": _coupling_interpretation(coupling, coupling_quality),
-            "depgraph.instability": _instability_interpretation(
+            "mdg.coupling": _coupling_interpretation(coupling, coupling_quality),
+            "mdg.instability": _instability_interpretation(
                 instability, instability_quality
             ),
         },

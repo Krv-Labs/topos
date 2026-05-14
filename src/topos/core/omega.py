@@ -1,19 +1,21 @@
 """
-Lattice Module (Free Heyting Algebra on Quality Generators)
------------------------------------------------------------
+Omega — The Subobject Classifier of the Topos
+=============================================
 
-This module implements ``H = H(G_qual)``, the **free Heyting algebra** on the
-finite set of quality generators
+This module *is* ``Ω``, the subobject classifier of the topos
+``E = Set^(C × H^op)``.  Equivalently, it is the value Heyting algebra
+``H = H(G_qual)``, the **free Heyting algebra** on the finite set of
+quality generators
 
     G_qual = { SIMPLE, COMPOSABLE, SECURE }
 
-following the mathematical specification of Topos as a Grothendieck topos
+In a topos the subobject classifier object and the internal-logic Heyting
+algebra coincide — Ω carries both roles.  The *characteristic morphism*
+``χ_S : P → Ω`` that maps a program into Ω lives in
+:mod:`topos.evaluation.characteristic_morphism`; this file holds only the
+algebra itself (objects, ordering, lattice operations).
 
-    E = Set^(C x H^op)
-
-where C is the standard graph index category (see ``graphs/base.py``) and H
-is the value Heyting algebra defined here.  The carrier of H is the 8-element
-poset of all subsets of G_qual:
+The carrier of Ω is the 8-element poset of all subsets of ``G_qual``:
 
 ::
 
@@ -50,10 +52,18 @@ incomparable, so the Hasse diagram is a 3-cube, not a chain.  ``meet`` /
 ``join`` / ``implies`` / ``negation`` are computed generically from the
 cover, so this engine works for arbitrary finite Heyting algebras.
 
-Renaming note: this is the *expanded* lattice.  The earlier 4-element
-"diamond" called the top ``SOUND``; the new top is ``IDEAL`` — the meet of
-all generators, matching the math spec.  The bottom is ``SLOP``, the
-unconstrained universe.
+Categorical / Pythonic names::
+
+    Math               Python
+    --------------     -----------------------------------------
+    Ω                  Omega                         (this class)
+    elements of Ω      EvaluationValue                (the enum)
+    ⊤                  EvaluationValue.IDEAL          / Omega.TOP
+    ⊥                  EvaluationValue.SLOP           / Omega.BOTTOM
+    χ_S : P → Ω        CharacteristicMorphism         (sibling module)
+
+The top is ``IDEAL`` — the joint-satisfaction of all generators.  The
+bottom is ``SLOP``, the unconstrained universe.
 """
 
 from __future__ import annotations
@@ -211,14 +221,21 @@ def verdict_from_generators(
 
 
 @dataclass
-class EvaluationLattice:
+class Omega:
     """
-    The free Heyting algebra H(G_qual) on three quality generators.
+    Ω — the subobject classifier object of the program topos.
+
+    In the topos ``E = Set^(C × H^op)`` the subobject classifier coincides
+    with the value Heyting algebra ``H(G_qual)``.  This class carries both
+    roles: it is the truth-value object whose elements (``EvaluationValue``)
+    are the verdicts a program can receive, *and* the Heyting algebra whose
+    operations (meet, join, implies, negation) give the internal logic of
+    the topos.
 
     Encodes the 3-cube Hasse diagram via an explicit cover relation.  All
-    lattice operations (meet, join, implies, negation) are computed
-    generically from the cover; no change is needed if the algebra is later
-    extended with additional generators or modified by quotient relations.
+    lattice operations are computed generically from the cover; no change
+    is needed if the algebra is later extended with additional generators
+    or modified by quotient relations.
 
     Class Attributes:
         BOTTOM: The least element (⊥ = SLOP)
@@ -228,7 +245,9 @@ class EvaluationLattice:
     BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.SLOP
     TOP: ClassVar[EvaluationValue] = EvaluationValue.IDEAL
 
-    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = _CUBE_COVER
+    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = (
+        _CUBE_COVER
+    )
 
     # Direct cover relations: value -> immediate successors.
     cover: dict[EvaluationValue, list[EvaluationValue]] = field(default_factory=dict)
@@ -251,7 +270,7 @@ class EvaluationLattice:
     @classmethod
     def from_cover_relation(
         cls, cover: Mapping[EvaluationValue, Iterable[EvaluationValue]]
-    ) -> EvaluationLattice:
+    ) -> Omega:
         """
         Construct a lattice from direct cover relations.
 

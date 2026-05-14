@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from topos.graphs.cfg.object import ControlFlowGraph
     from topos.graphs.cpg.object import CodePropertyGraph
     from topos.graphs.pdg.object import ProgramDependenceGraph
-    from topos.logic.lattice import EvaluationValue
+    from topos.core.omega import EvaluationValue
 
 
 @dataclass
@@ -195,9 +195,9 @@ class ProgramMorphism:
             An EvaluationValue from the Heyting Algebra representing the
             code's position in the evaluation lattice.
         """
-        from topos.logic.omega import SubobjectClassifier
+        from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 
-        classifier = SubobjectClassifier()
+        classifier = CharacteristicMorphism()
         result = classifier.classify_detailed(
             self,
             representations=self.representations or None,

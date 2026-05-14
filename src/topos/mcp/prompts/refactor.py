@@ -13,12 +13,12 @@ user-facing prompt prose where soft-wrapping mid-sentence hurts readability.
 
 from __future__ import annotations
 
-from topos.logic.policies.base import Priority
+from topos.evaluation.policies.base import Priority
 from ..server import mcp
 
 
 @mcp.prompt(
-    name="topos_refactor_until_sound",
+    name="topos_refactor_until_ideal",
     tags={"workflow"},
     description=(
         "Scaffolds the canonical Topos refactor loop (review → plan → refactor "
@@ -26,7 +26,7 @@ from ..server import mcp
         "termination criteria."
     ),
 )
-def topos_refactor_until_sound(
+def topos_refactor_until_ideal(
     filepath: str,
     priority: Priority = Priority.BALANCED,
     max_iterations: int = 5,
@@ -35,8 +35,8 @@ def topos_refactor_until_sound(
 
     Args:
         filepath: Target file to refactor.
-        priority: Which dimension to prioritize (``balanced``, ``composable``,
-                  or ``self_contained``).
+        priority: Which generator to prioritize (``balanced``, ``simple``,
+                  ``composable``, or ``secure``).
         max_iterations: Budget for iterations before stopping.
     """
     return f"""Refactor `{filepath}` using the Topos closed-loop method. Priority: **{priority.value}**. Budget: **{max_iterations} iterations**.
@@ -47,26 +47,26 @@ def topos_refactor_until_sound(
 
 ### Step 1 — Measure baseline
 Call `topos_evaluate_file(filepath="{filepath}", priority="{priority.value}")`.
-If `coupling_available: false` in the response, run `topos depgraph generate` first; COMPOSABLE/SOUND are unreachable without it.
+If `coupling_available: false` in the response, run `topos depgraph generate` first; any verdict containing COMPOSABLE (including IDEAL) is unreachable without it.
 
 ### Step 2 — Inspect
 Read the file. Call `topos_inspect_code(code=<contents>, priority="{priority.value}")` to find the highest-complexity functions.
 
 ### Step 3 — Propose
-Make ONE focused change targeting the lowest-scoring dimension. Do not shuffle complexity between dimensions; reduce it.
+Make ONE focused change targeting the lowest-scoring generator. Do not shuffle complexity between generators; reduce it.
 
 ### Step 4 — Verify
 Call `topos_assess_improvement(filepath="{filepath}", proposed_code=<new code>, priority="{priority.value}")`.
 
 Read the `status` field:
-- `IMPROVEMENT` → apply the change, record progress, return to step 1 if not SOUND.
-- `IMPROVEMENT_SCORE` → lattice unchanged but progress made; continue.
+- `IMPROVEMENT` → apply the change, record progress, return to step 1 if not IDEAL.
+- `IMPROVEMENT_SCORE` → verdict unchanged but progress made; continue.
 - `LATERAL_MOVE` / `REGRESSION*` → discard the change, try a different angle.
 - **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** → ⚠️ the tree barely changed. You are gaming the metric. Make a real structural change (extract, inline, split, merge), not a cosmetic one. Do NOT commit.
 
 ### Step 5 — Stop when
-- Lattice = `SOUND`, OR
-- Priority-specific target reached (`{priority.value}` → matching lattice element), OR
+- Verdict = `IDEAL`, OR
+- Priority-specific generator satisfied (`{priority.value}` bit set), OR
 - Iteration budget exhausted → report partial progress honestly.
 
 ### Do NOT

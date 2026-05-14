@@ -1,10 +1,10 @@
 """
-Shared scoring infrastructure for the policy translators Φᵢ: ℝ → ℋ.
+Shared scoring infrastructure for the policy translators Φᵢ : ℝ → Ω.
 
 Following the math spec (§3 "Policy Translation"), each quality generator
 gᵢ ∈ G_qual has an associated policy translator Φᵢ that maps real-valued
-probe outputs (cyclomatic complexity, Martin instability, taint-flow counts,
-…) into the truth-value carrier ℋ.
+probe outputs (cyclomatic complexity, Martin instability, taint-flow
+counts, …) into the truth-value carrier of Ω.
 
 This module defines the shared types used by every Φᵢ:
 
@@ -15,19 +15,15 @@ This module defines the shared types used by every Φᵢ:
 
 There is exactly one ``Φᵢ`` per generator:
 
-    Φ_SIMPLE      ↦ topos/logic/policies/simple.py::score_simple
-    Φ_COMPOSABLE  ↦ topos/logic/policies/coupling.py::score_coupling
-    Φ_SECURE      ↦ topos/logic/policies/secure.py::score_secure
+    Φ_SIMPLE      ↦ topos/evaluation/policies/simple.py::score_simple
+    Φ_COMPOSABLE  ↦ topos/evaluation/policies/coupling.py::score_coupling
+    Φ_SECURE      ↦ topos/evaluation/policies/secure.py::score_secure
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from math import inf
-from typing import NamedTuple
-
-from topos.logic.lattice import EvaluationLattice, EvaluationValue
 
 
 class Priority(StrEnum):
@@ -96,7 +92,7 @@ WEIGHT_PROFILES: dict[Priority, WeightProfile] = {
 @dataclass(frozen=True)
 class ScoredDecision:
     """
-    Result of applying one policy translator Φᵢ: ℝ → ℋ.
+    Result of applying one policy translator Φᵢ : ℝ → Ω.
 
     Attributes:
         score:          Quality score in [0.0, 1.0]; higher is better.
@@ -109,67 +105,3 @@ class ScoredDecision:
     score: float
     achieved: bool
     interpretation: dict[str, str] = field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# Legacy bin-walking layer (kept for back-compat with old metrics callers)
-# ---------------------------------------------------------------------------
-
-
-class ObservationBin(NamedTuple):
-    """A half-open interval [low, high) labeled with an evaluation value."""
-
-    low: float
-    high: float
-    evaluation: EvaluationValue
-    interpretation: str
-
-
-@dataclass(frozen=True)
-class MetricDecision:
-    """Result of mapping a raw metric score through a bin partition."""
-
-    raw_score: float
-    evaluation: EvaluationValue
-    interpretation: str
-
-
-class BinClassifier:
-    """
-    Shared bin-walking machinery for evaluation sections.  Legacy; no new
-    code should depend on this.
-    """
-
-    @classmethod
-    def _classify(
-        cls, value: float, bins: tuple[ObservationBin, ...]
-    ) -> MetricDecision:
-        """Walk a partition and return the unique bin containing ``value``."""
-        for b in bins:
-            if b.low <= value < b.high:
-                return MetricDecision(
-                    raw_score=float(value),
-                    evaluation=b.evaluation,
-                    interpretation=b.interpretation,
-                )
-        raise ValueError(
-            f"Observation {value} is outside the partition domain "
-            f"[{bins[0].low}, {bins[-1].high})"
-        )
-
-    @classmethod
-    def normalize_complexity(cls, raw_complexity: int) -> float:
-        """Normalize complexity into [0, 1] for reporting."""
-        complexity_bins: tuple[ObservationBin, ...] | None = getattr(
-            cls, "complexity_bins", None
-        )
-        if complexity_bins is None:
-            raise AttributeError(f"{cls.__name__} does not define complexity_bins")
-        last_finite = next(b.high for b in reversed(complexity_bins) if b.high < inf)
-        denominator = max(1.0, last_finite)
-        return min(raw_complexity / denominator, 1.0)
-
-    @classmethod
-    def build_lattice(cls) -> EvaluationLattice:
-        """Build the evaluation lattice as a Heyting algebra."""
-        return EvaluationLattice.from_cover_relation(EvaluationLattice.DEFAULT_COVER)

@@ -2,7 +2,7 @@
 Assessment tool — compare current vs. proposed code on the lattice.
 
 This is the main tool for agent refactor loops. When ``filepath`` is provided,
-the baseline is evaluated against the cached ``DependencyGraph`` and the
+the baseline is evaluated against the cached ``ModuleDependencyGraph`` and the
 proposed AST is scored against that same graph (approximating coupling under
 the refactor). Anti-gaming guardrail: if scores moved meaningfully while AST
 edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
@@ -11,7 +11,7 @@ edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.logic.omega import SubobjectClassifier
+from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from ..evaluation import (
     classify_code_string,
     classify_morphism,
@@ -32,7 +32,7 @@ from ..security import (
     resolve_within_root,
 )
 from ..server import mcp
-from topos.functors.profunctors.distance import calculate_ast_distance
+from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 _READ_ONLY_ANN = {
     "title": "Topos Refactor Assessment",
@@ -56,7 +56,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     """Compare proposed code against the current baseline.
 
     **Preferred usage** — pass ``filepath`` (code loaded from disk + coupling
-    scored against the cached ``DependencyGraph``). The proposed code is
+    scored against the cached ``ModuleDependencyGraph``). The proposed code is
     parsed, but coupling is an approximation: it uses the *current* dep graph
     for the target file, so inbound edges from other files reflect the
     pre-refactor state. That's fine for tight iteration loops.
@@ -130,7 +130,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         similarity = 1.0 - dist.normalized_distance
 
     # ---- lattice movement ----
-    lattice = SubobjectClassifier().omega
+    lattice = CharacteristicMorphism().omega
     cur_summary = current_res.summary()
     prop_summary = proposed_res.summary()
     lattice_changed = cur_summary != prop_summary

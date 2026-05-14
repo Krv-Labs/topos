@@ -21,7 +21,7 @@ uv add tree-sitter-python tree-sitter-rust tree-sitter-javascript tree-sitter-cp
 From the repository root:
 
 ```bash
-uv run demos/binarytrees/get_asts.py
+uv run python demos/binarytrees/get_asts.py
 ```
 
 This will:
@@ -52,4 +52,4 @@ This builds a pairwise 4x4 structural comparison over the UAST representations a
 
 ## Purpose
 
-This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages. The comparison runner answers that question quantitatively via the UAST metrics module ([src/topos/metrics/uast/](../../src/topos/metrics/uast/)).
+This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages. The comparison runner answers that question quantitatively via the UAST profunctor module ([src/topos/functors/profunctors/uast/](../../src/topos/functors/profunctors/uast/)).

@@ -8,11 +8,8 @@ This demo setup evaluates source code from two versions of each popular library:
 - `networkx`: `2.8.8` vs `3.6.1`
 
 The runner downloads source archives, extracts them into a local cache, finds the
-library import directory (for example `sklearn` for `scikit-learn`), then runs:
-
-```bash
-topos evaluate <package_dir> -r --json
-```
+library import directory (for example `sklearn` for `scikit-learn`), then calls
+the current Topos classifier directly for every Python file.
 
 ## Install
 
@@ -56,10 +53,10 @@ This mode fails if the required archives are not already available under
 
 For each library/version pair, the runner reports:
 
-- `overall` lattice outcome from Topos
+- `overall` lattice outcome from the 8-element Topos lattice
 - `files` evaluated
-- average complexity score
-- average entropy score
-- count of files per evaluation level
+- average `simple`, `composable`, and `secure` generator scores when available
+- count of files per lattice element
+- default preference target, fallback target, progress, and next-step counts
 
 It also prints a delta line between the older and newer version for quick comparison.

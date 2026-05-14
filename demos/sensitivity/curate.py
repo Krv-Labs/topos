@@ -1,8 +1,8 @@
-"""Curate Self-Contained and Composable reference corpora from popular Python packages.
+"""Curate SIMPLE and COMPOSABLE reference corpora from popular Python packages.
 
 Downloads sdists/wheels from PyPI, extracts target files / package slices into
-``demos/sensitivity/corpus/``, scores each baseline with ``topos evaluate
---json``, and writes ``manifest.json`` describing what was pinned.
+``demos/sensitivity/corpus/``, scores each baseline with the current Topos
+classifier, and writes ``manifest.json`` describing what was pinned.
 
 Reuses the PyPI download helpers from ``demos/libraries/run_all.py``.
 """
@@ -26,9 +26,12 @@ from run_all import (  # type: ignore[import-not-found]  # noqa: E402
     extract_archive,
 )
 
+from topos.evaluation.policies.base import Priority  # noqa: E402
+from topos.mcp.evaluation import classify_file  # noqa: E402
+
 
 @dataclass(frozen=True)
-class SelfContainedCandidate:
+class SimpleCandidate:
     """A single source file pulled from a PyPI package."""
 
     name: str
@@ -57,22 +60,22 @@ _PARSE_PKG_SMOKE = (
 
 # Three baselines spanning a complexity gradient so we can observe lattice
 # transitions in both directions when noise is applied.
-SELF_CONTAINED_CANDIDATES: tuple[SelfContainedCandidate, ...] = (
-    SelfContainedCandidate(
+SIMPLE_CANDIDATES: tuple[SimpleCandidate, ...] = (
+    SimpleCandidate(
         name="toolz_recipes",
         package="toolz",
         version="0.12.1",
         relative_source="toolz/recipes.py",
         smoke_test=_PARSE_FILE_SMOKE,
     ),
-    SelfContainedCandidate(
+    SimpleCandidate(
         name="humanize_number",
         package="humanize",
         version="4.10.0",
         relative_source="src/humanize/number.py",
         smoke_test=_PARSE_FILE_SMOKE,
     ),
-    SelfContainedCandidate(
+    SimpleCandidate(
         name="tabulate_init",
         package="tabulate",
         version="0.9.0",
@@ -185,54 +188,39 @@ def run_topos_evaluate(
     recursive: bool,
     gitnexus_dir: Path | None = None,
 ) -> dict:
-    """Invoke ``topos evaluate --json`` and return the parsed payload."""
-    src_root = repo_root() / "src"
-    env = dict(os.environ)
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = (
-        str(src_root) if not existing else f"{src_root}{os.pathsep}{existing}"
-    )
-
-    command = [
-        sys.executable,
-        "-m",
-        "topos.main",
-        "evaluate",
-        str(target),
-        "--json",
-        "--priority",
-        priority,
-    ]
-    if recursive:
-        command.append("-r")
-    if gitnexus_dir is not None:
-        command += ["--gitnexus-dir", str(gitnexus_dir)]
-
-    proc = subprocess.run(
-        command, cwd=repo_root(), env=env, text=True, capture_output=True
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"topos evaluate failed for {target}\n"
-            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    """Run the current Topos classifier and return a CLI-shaped payload."""
+    profile = Priority(priority)
+    paths = sorted(target.rglob("*.py")) if recursive else [target]
+    results = []
+    for path in paths:
+        result, dep_graph = classify_file(path, profile, gitnexus_dir)
+        summary = result.summary()
+        results.append(
+            {
+                "file": str(path),
+                "lattice_element": summary.name,
+                "lattice_symbol": summary.symbol,
+                "dimensions": {
+                    dim: value.name for dim, value in result.dimensions.items()
+                },
+                "scores": {dim: score * 100.0 for dim, score in result.scores.items()},
+                "raw_metrics": dict(result.raw_metrics),
+                "priority": profile.value,
+                "coupling_available": dep_graph is not None,
+            }
         )
-
-    payload_text = proc.stdout
-    marker = "\n\nOverall:"
-    if marker in payload_text:
-        payload_text = payload_text.split(marker, maxsplit=1)[0]
-    return json.loads(payload_text.strip())
+    return {"results": results}
 
 
-def baseline_summary_self_contained(payload: dict) -> dict:
+def baseline_summary_simple(payload: dict) -> dict:
     results = payload.get("results", [])
     if not results:
-        return {"score": None, "lattice_element": "BROKEN"}
+        return {"score": None, "lattice_element": "SLOP"}
     result = results[0]
     return {
         "lattice_element": result.get("lattice_element"),
         "lattice_symbol": result.get("lattice_symbol"),
-        "structural_score": result.get("scores", {}).get("structural"),
+        "simple_score": result.get("scores", {}).get("simple"),
         "raw_metrics": result.get("raw_metrics", {}),
         "priority": result.get("priority"),
     }
@@ -245,7 +233,7 @@ def baseline_summary_composable(payload: dict) -> dict:
 
     per_file = []
     lattice_counts: dict[str, int] = {}
-    coupling_scores: list[float] = []
+    composable_scores: list[float] = []
     for result in results:
         per_file.append(
             {
@@ -255,19 +243,19 @@ def baseline_summary_composable(payload: dict) -> dict:
                 "raw_metrics": result.get("raw_metrics", {}),
             }
         )
-        lattice = result.get("lattice_element", "BROKEN")
+        lattice = result.get("lattice_element", "SLOP")
         lattice_counts[lattice] = lattice_counts.get(lattice, 0) + 1
-        coupling = result.get("scores", {}).get("coupling")
-        if isinstance(coupling, (int, float)):
-            coupling_scores.append(float(coupling))
+        composable = result.get("scores", {}).get("composable")
+        if isinstance(composable, (int, float)):
+            composable_scores.append(float(composable))
 
-    avg_coupling = (
-        sum(coupling_scores) / len(coupling_scores) if coupling_scores else None
+    avg_composable = (
+        sum(composable_scores) / len(composable_scores) if composable_scores else None
     )
     return {
         "per_file": per_file,
         "lattice_counts": lattice_counts,
-        "avg_coupling_score": avg_coupling,
+        "avg_composable_score": avg_composable,
         "n_files": len(results),
     }
 
@@ -324,15 +312,13 @@ def run_gitnexus_analyze(target_dir: Path) -> None:
         )
 
 
-def curate_self_contained() -> list[dict]:
+def curate_simple() -> list[dict]:
     out_root = sensitivity_dir() / "corpus" / "self_contained"
     out_root.mkdir(parents=True, exist_ok=True)
 
     entries: list[dict] = []
-    for cand in SELF_CONTAINED_CANDIDATES:
-        print(
-            f"[self-contained] preparing {cand.name} ({cand.package}=={cand.version})"
-        )
+    for cand in SIMPLE_CANDIDATES:
+        print(f"[simple] preparing {cand.name} ({cand.package}=={cand.version})")
         extracted = fetch_extracted(cand.package, cand.version)
         source = locate_source(extracted, cand.relative_source)
 
@@ -340,8 +326,8 @@ def curate_self_contained() -> list[dict]:
         shutil.copy2(source, dest)
 
         smoke_check(cand.smoke_test, src=dest)
-        payload = run_topos_evaluate(dest, priority="self_contained", recursive=False)
-        baseline = baseline_summary_self_contained(payload)
+        payload = run_topos_evaluate(dest, priority="simple", recursive=False)
+        baseline = baseline_summary_simple(payload)
 
         entries.append(
             {
@@ -356,7 +342,7 @@ def curate_self_contained() -> list[dict]:
         )
         print(
             f"  -> {baseline['lattice_element']} "
-            f"(score={baseline.get('structural_score')})"
+            f"(score={baseline.get('simple_score')})"
         )
 
     (out_root / "manifest.json").write_text(
@@ -430,7 +416,7 @@ def curate_composable() -> list[dict]:
         print(
             "  -> "
             + (
-                f"avg_coupling_score={baseline.get('avg_coupling_score')}"
+                f"avg_composable_score={baseline.get('avg_composable_score')}"
                 f" lattice_counts={baseline.get('lattice_counts')}"
                 if have_gitnexus and "error" not in baseline
                 else (
@@ -447,21 +433,21 @@ def curate_composable() -> list[dict]:
 
 
 def main() -> None:
-    print("Curating Self-Contained corpus...")
-    self_contained = curate_self_contained()
+    print("Curating SIMPLE corpus...")
+    simple = curate_simple()
     print()
     print("Curating Composable corpus...")
     composable = curate_composable()
 
     print()
     print("=" * 60)
-    print(f"Pinned {len(self_contained)} self-contained entries")
-    for entry in self_contained:
+    print(f"Pinned {len(simple)} SIMPLE entries")
+    for entry in simple:
         baseline = entry["baseline"]
         print(
             f"  {entry['name']:32} "
             f"{baseline.get('lattice_element', 'n/a'):16} "
-            f"score={baseline.get('structural_score')}"
+            f"score={baseline.get('simple_score')}"
         )
     print()
     print(f"Pinned {len(composable)} composable entries")
@@ -470,7 +456,7 @@ def main() -> None:
         print(
             f"  {entry['name']:32} "
             f"lattice_counts={baseline.get('lattice_counts', 'n/a')} "
-            f"avg_coupling={baseline.get('avg_coupling_score')}"
+            f"avg_composable={baseline.get('avg_composable_score')}"
         )
 
 

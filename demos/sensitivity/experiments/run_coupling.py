@@ -3,8 +3,9 @@
 For each curated baseline package and each transform in ``noise.coupling``,
 applies the transform at a grid of intensities, re-runs
 ``gitnexus analyze`` against an isolated git-init'd staging copy, runs
-``topos evaluate -r --json --priority composable --gitnexus-dir <…>``
-against the perturbed package, and records the resulting per-file metrics.
+the current Topos classifier with ``priority=composable`` and
+``gitnexus_dir=<…>`` against the perturbed package, and records the
+resulting per-file metrics.
 
 Writes:
 
@@ -76,48 +77,43 @@ def gitnexus_analyze(repo_dir: Path) -> None:
 
 
 def topos_evaluate(pkg_dir: Path, *, gitnexus_dir: Path) -> list[dict]:
-    """Run ``topos evaluate -r --json --priority composable`` and return results."""
-    command = [
-        sys.executable,
-        "-m",
-        "topos.main",
-        "evaluate",
-        str(pkg_dir),
-        "-r",
-        "--json",
-        "--priority",
-        "composable",
-        "--gitnexus-dir",
-        str(gitnexus_dir),
-    ]
-    proc = subprocess.run(
-        command, cwd=REPO_ROOT, env=topos_env(), text=True, capture_output=True
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"topos evaluate failed for {pkg_dir}\n"
-            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    """Run current Topos classification recursively and return per-file results."""
+    from topos.evaluation.policies.base import Priority
+    from topos.mcp.evaluation import classify_file
+
+    results: list[dict] = []
+    for path in sorted(pkg_dir.rglob("*.py")):
+        result, dep_graph = classify_file(path, Priority.COMPOSABLE, gitnexus_dir)
+        summary = result.summary()
+        results.append(
+            {
+                "file": str(path.relative_to(pkg_dir)),
+                "lattice_element": summary.name,
+                "lattice_symbol": summary.symbol,
+                "scores": {dim: score * 100.0 for dim, score in result.scores.items()},
+                "dimensions": {
+                    dim: value.name for dim, value in result.dimensions.items()
+                },
+                "raw_metrics": dict(result.raw_metrics),
+                "coupling_available": dep_graph is not None,
+                "priority": Priority.COMPOSABLE.value,
+            }
         )
-    text = proc.stdout
-    marker = "\n\nOverall:"
-    if marker in text:
-        text = text.split(marker, maxsplit=1)[0]
-    payload = json.loads(text.strip())
-    return payload.get("results", [])
+    return results
 
 
 def summarize_results(results: list[dict]) -> dict:
     """Aggregate per-file results into a single coupling summary."""
     lattice_counts: dict[str, int] = {}
-    coupling_scores: list[float] = []
+    composable_scores: list[float] = []
     raw_coupling: list[float] = []
     raw_instability: list[float] = []
     for r in results:
-        lattice = r.get("lattice_element", "BROKEN")
+        lattice = r.get("lattice_element", "SLOP")
         lattice_counts[lattice] = lattice_counts.get(lattice, 0) + 1
-        coupling = r.get("scores", {}).get("coupling")
-        if isinstance(coupling, (int, float)):
-            coupling_scores.append(float(coupling))
+        composable = r.get("scores", {}).get("composable")
+        if isinstance(composable, (int, float)):
+            composable_scores.append(float(composable))
         raw = r.get("raw_metrics", {})
         if isinstance(raw.get("mdg.coupling"), (int, float)):
             raw_coupling.append(float(raw["mdg.coupling"]))
@@ -130,7 +126,7 @@ def summarize_results(results: list[dict]) -> dict:
     return {
         "n_files": len(results),
         "lattice_counts": lattice_counts,
-        "avg_coupling_score": _mean(coupling_scores),
+        "avg_composable_score": _mean(composable_scores),
         "avg_raw_coupling": _mean(raw_coupling),
         "avg_raw_instability": _mean(raw_instability),
     }
@@ -185,7 +181,7 @@ def format_markdown(sweep: list[dict]) -> str:
         "",
         "Each table reports the package-level coupling summary under "
         "increasing intensity of a single coupling noise transform. Cells "
-        "show `avg_coupling_score / avg_raw_coupling / avg_raw_instability`. "
+        "show `avg_composable_score / avg_raw_coupling / avg_raw_instability`. "
         "Lattice counts and per-file detail are in the JSON artifact.",
         "",
     ]
@@ -212,7 +208,7 @@ def format_markdown(sweep: list[dict]) -> str:
                     cells.append("`error`")
                     continue
                 summary = cell.get("summary", {})
-                score = summary.get("avg_coupling_score")
+                score = summary.get("avg_composable_score")
                 coup = summary.get("avg_raw_coupling")
                 inst = summary.get("avg_raw_instability")
                 cells.append(

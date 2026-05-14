@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from tree_sitter import Node
 
-from topos.graphs.ast.uast.mapper_common import map_tree_sitter_to_uast
-from topos.graphs.ast.uast.models import UASTNode
+from topos.graphs.uast.mapper_common import map_tree_sitter_to_uast
+from topos.graphs.uast.models import UASTNode
 
 _DECLARATION_TYPES = {
     "function_definition": "FunctionDecl",

@@ -6,7 +6,7 @@ from typing import Any
 
 from topos.graphs.ast.providers.tree_sitter_provider import TreeSitterProvider
 from topos.graphs.ast.types import ParseResult, ParserProvenance
-from topos.graphs.ast.uast.mapper_common import parser_identity
+from topos.graphs.uast.mapper_common import parser_identity
 
 
 @dataclass

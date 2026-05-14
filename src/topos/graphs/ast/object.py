@@ -47,8 +47,8 @@ class ASTRepresentation:
         return "structural"
 
     def metrics(self) -> dict[str, float]:
-        from topos.metrics.ast.complexity import calculate_cyclomatic_complexity
-        from topos.metrics.ast.entropy import calculate_kolmogorov_proxy
+        from topos.functors.probes.ast.complexity import calculate_cyclomatic_complexity
+        from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
 
         return {
             "ast.complexity": float(

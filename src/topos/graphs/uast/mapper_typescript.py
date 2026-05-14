@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from tree_sitter import Node
 
-from topos.graphs.ast.uast.mapper_common import map_tree_sitter_to_uast
-from topos.graphs.ast.uast.mapper_javascript import (
+from topos.graphs.uast.mapper_common import map_tree_sitter_to_uast
+from topos.graphs.uast.mapper_javascript import (
     map_node_kind as map_javascript_node_kind,
 )
-from topos.graphs.ast.uast.models import UASTNode
+from topos.graphs.uast.models import UASTNode
 
 # Tree-sitter TypeScript grammar nodes not covered by the JavaScript mapper.
 _TS_EXTRA = {

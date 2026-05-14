@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from topos.graphs.ast.types import ParseResult, ParserProvenance
-from topos.graphs.ast.uast.mapper_common import parser_identity
-from topos.graphs.ast.uast.mapper_cpp import map_cpp_tree_to_uast
-from topos.graphs.ast.uast.mapper_javascript import map_javascript_tree_to_uast
-from topos.graphs.ast.uast.mapper_python import map_python_tree_to_uast
-from topos.graphs.ast.uast.mapper_rust import map_rust_tree_to_uast
-from topos.graphs.ast.uast.mapper_typescript import map_typescript_tree_to_uast
+from topos.graphs.uast.mapper_common import parser_identity
+from topos.graphs.uast.mapper_cpp import map_cpp_tree_to_uast
+from topos.graphs.uast.mapper_javascript import map_javascript_tree_to_uast
+from topos.graphs.uast.mapper_python import map_python_tree_to_uast
+from topos.graphs.uast.mapper_rust import map_rust_tree_to_uast
+from topos.graphs.uast.mapper_typescript import map_typescript_tree_to_uast
 from topos.utils.tree_sitter import (
     parse_cpp,
     parse_javascript,

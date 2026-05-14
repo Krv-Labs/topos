@@ -12,7 +12,6 @@ from topos.mcp.schemas import (
 )
 from topos.mcp.tools.assess import topos_assess_improvement
 
-
 _PREFS = UserPreferencesInput(
     ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
 )

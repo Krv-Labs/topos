@@ -155,8 +155,7 @@ def main() -> None:
                     r_rich.path_recall_kgram - r_thin.path_recall_kgram
                 ),
                 "mean_declaration_coverage_delta": (
-                    d_rich.mean_declaration_coverage
-                    - d_thin.mean_declaration_coverage
+                    d_rich.mean_declaration_coverage - d_thin.mean_declaration_coverage
                 ),
                 "declaration_f2_delta": d_rich.f2_score - d_thin.f2_score,
             }

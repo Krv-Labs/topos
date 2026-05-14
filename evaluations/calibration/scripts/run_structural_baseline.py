@@ -53,7 +53,6 @@ from run_all import (  # type: ignore[import-not-found]  # noqa: E402
     extract_archive,
 )
 
-
 # ---------------------------------------------------------------------------
 # PyPI version lookup
 # ---------------------------------------------------------------------------
@@ -72,9 +71,7 @@ def fetch_latest_version(package: str) -> str:
             f"PyPI lookup failed for {package}: HTTP {exc.code} {exc.reason}"
         ) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(
-            f"Network failure fetching {package}: {exc.reason}"
-        ) from exc
+        raise RuntimeError(f"Network failure fetching {package}: {exc.reason}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +155,9 @@ def run_topos_evaluate(path: Path) -> dict:
     env = dict(os.environ)
     src_path = str(REPO_ROOT / "src")
     existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = src_path if not existing else f"{src_path}{os.pathsep}{existing}"
+    env["PYTHONPATH"] = (
+        src_path if not existing else f"{src_path}{os.pathsep}{existing}"
+    )
 
     command = [
         sys.executable,

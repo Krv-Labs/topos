@@ -313,8 +313,7 @@ def print_evidence_analysis(
             quartile_deps[_quartile_label(score)].append(dep_count)
 
         print(
-            "\nMean direct_dep_count (or evidence proxy) per structural "
-            "score quartile:"
+            "\nMean direct_dep_count (or evidence proxy) per structural score quartile:"
         )
         for quartile_label in sorted(quartile_deps.keys()):
             dep_list = quartile_deps[quartile_label]
@@ -471,10 +470,7 @@ def main() -> None:
     if profiles:
         print(f"  Loaded {len(profiles)} usage labels from {args.profiles}")
     else:
-        print(
-            f"  No usage_profiles.csv at {args.profiles} — "
-            "skipping stratification"
-        )
+        print(f"  No usage_profiles.csv at {args.profiles} — skipping stratification")
 
     evidence = load_evidence(args.evidence)
     if evidence:

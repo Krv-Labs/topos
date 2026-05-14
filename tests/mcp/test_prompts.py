@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-from topos.mcp import mcp
+import topos.mcp.prompts
+import topos.mcp.resources
+import topos.mcp.tools
+
+
+
+from topos.mcp.server import mcp
 
 
 def test_refactor_prompt_registered() -> None:
@@ -16,8 +22,8 @@ def test_refactor_prompt_registered() -> None:
 def test_refactor_prompt_renders_with_filepath() -> None:
     prompt = asyncio.run(mcp.get_prompt("topos_refactor_until_sound"))
     assert prompt is not None
-    rendered = asyncio.run(prompt.render({"filepath": "src/topos/main.py"}))
+    rendered = asyncio.run(prompt.render({"filepath": "src/topos/__init__.py"}))
     text = " ".join(msg.content.text for msg in rendered.messages)
-    assert "src/topos/main.py" in text
+    assert "src/topos/__init__.py" in text
     assert "SUSPICIOUS_NO_STRUCTURAL_CHANGE" in text
     assert "topos://docs/workflows" in text

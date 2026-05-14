@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-from topos.mcp import mcp
+import topos.mcp.prompts
+import topos.mcp.resources
+import topos.mcp.tools
+
+
+
+from topos.mcp.server import mcp
 
 
 def test_all_four_docs_resources_registered() -> None:

@@ -1,16 +1,16 @@
 from topos.core.object import ProgramObject
-from topos.metrics.ast.complexity import (
+from topos.functors.probes.ast.complexity import (
     calculate_average_complexity,
     calculate_cyclomatic_complexity,
     calculate_function_complexities,
 )
-from topos.metrics.ast.entropy import (
+from topos.functors.probes.ast.entropy import (
     calculate_block_entropy,
     calculate_entropy_detailed,
     calculate_entropy_variance,
     calculate_kolmogorov_proxy,
 )
-from topos.metrics.distance import (
+from topos.functors.profunctors.distance import (
     are_clones,
     calculate_ast_distance,
     calculate_ghw_distance,
@@ -134,14 +134,14 @@ def test_distance_metrics():
 
 
 def test_distance_result_str():
-    from topos.metrics.distance import DistanceResult
+    from topos.functors.profunctors.distance import DistanceResult
 
     res = DistanceResult(raw_distance=2, normalized_distance=0.5, operations={})
     assert "Distance:" in str(res)
 
 
 def test_entropy_result_str():
-    from topos.metrics.ast.entropy import EntropyResult
+    from topos.functors.probes.ast.entropy import EntropyResult
 
     res = EntropyResult(
         ratio=0.5, compressed_size=10, original_size=20, interpretation="normal"
@@ -228,7 +228,7 @@ def test_ghw_converged():
 
 def test_ghw_result_str():
     """GHWDistanceResult.__str__ should mention 'GHW Distance'."""
-    from topos.metrics.distance import GHWDistanceResult
+    from topos.functors.profunctors.distance import GHWDistanceResult
 
     res = GHWDistanceResult(
         gw_distance=0.42,

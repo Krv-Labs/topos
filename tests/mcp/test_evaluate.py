@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+
+import topos.mcp.prompts
+import topos.mcp.resources
+import topos.mcp.tools
+
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -47,7 +53,7 @@ def test_evaluate_code_rejects_unsupported_language() -> None:
 
 
 def test_evaluate_file_reads_real_file() -> None:
-    r = topos_evaluate_file(EvaluateFileInput(filepath="src/topos/main.py"))
+    r = topos_evaluate_file(EvaluateFileInput(filepath="src/topos/__init__.py"))
     assert r.is_parseable
     assert r.coupling_available is False  # no .gitnexus/ in repo
     assert "structural" in r.scores
@@ -89,7 +95,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     ):
         r = topos_evaluate_file(
             EvaluateFileInput(
-                filepath="src/topos/main.py", gitnexus_dir="/fake/.gitnexus"
+                filepath="src/topos/__init__.py", gitnexus_dir="/fake/.gitnexus"
             )
         )
     mock_load.assert_called_once()
@@ -105,7 +111,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
 def test_evaluate_project_rolls_up_files() -> None:
     r = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(path="src/topos/metrics/ast", limit=10),
+            EvaluateProjectInput(path="src/topos/graphs", limit=10),
             _StubCtx(),
         )
     )

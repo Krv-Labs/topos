@@ -16,10 +16,10 @@ from pathlib import Path
 
 from topos.core.morphism import ProgramMorphism
 from topos.graphs.base import Representation
-from topos.graphs.depgraph.graph import DependencyGraph
+from topos.graphs.pdg.graph import DependencyGraph
 from topos.logic.omega import ClassificationResult, SubobjectClassifier
 from topos.logic.policies.base import Priority
-from topos.mcp.cache import dep_graph_for
+from .cache import dep_graph_for
 
 
 def resolve_gitnexus_dir(

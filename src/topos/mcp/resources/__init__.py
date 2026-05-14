@@ -1,3 +1,3 @@
 """Resources package — importing registers all ``@mcp.resource`` handlers."""
 
-from topos.mcp.resources import docs  # noqa: F401
+from . import docs  # noqa: F401

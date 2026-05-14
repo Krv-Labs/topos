@@ -1,3 +1,3 @@
 """Prompts package — importing registers all ``@mcp.prompt`` templates."""
 
-from topos.mcp.prompts import refactor  # noqa: F401
+from . import refactor  # noqa: F401

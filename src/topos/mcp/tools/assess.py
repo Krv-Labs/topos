@@ -12,27 +12,27 @@ from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
 from topos.logic.omega import SubobjectClassifier
-from topos.mcp.evaluation import (
+from ..evaluation import (
     classify_code_string,
     classify_morphism,
     load_dep_graph,
     resolve_gitnexus_dir,
 )
-from topos.mcp.formatting import to_evaluation_result
-from topos.mcp.schemas import (
+from ..formatting import to_evaluation_result
+from ..schemas import (
     AssessImprovementInput,
     AssessmentResult,
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
 )
-from topos.mcp.security import (
+from ..security import (
     read_safe_utf8_file,
     resolve_file_root,
     resolve_within_root,
 )
-from topos.mcp.server import mcp
-from topos.metrics.distance import calculate_ast_distance
+from ..server import mcp
+from topos.functors.profunctors.distance import calculate_ast_distance
 
 _READ_ONLY_ANN = {
     "title": "Topos Refactor Assessment",

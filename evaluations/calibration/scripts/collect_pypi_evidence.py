@@ -260,7 +260,10 @@ def main() -> None:
     if manual_labels:
         print(f"Loaded {len(manual_labels)} manual labels from {profiles_path}")
     else:
-        print(f"No usage_profiles.csv found at {profiles_path} — skipping cross-validation")
+        print(
+            f"No usage_profiles.csv found at {profiles_path} "
+            "— skipping cross-validation"
+        )
 
     disagreements: list[dict] = []
 
@@ -315,9 +318,9 @@ def main() -> None:
         print("No disagreements found between PyPI signals and manual labels.")
         return
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DISAGREEMENTS ({len(disagreements)} found):")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for d in disagreements:
         print(
             f"  {d['package']:<30} "

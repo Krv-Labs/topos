@@ -331,8 +331,7 @@ def evaluate_python_package(
         ),
         "composable": bool(results)
         and all(
-            r.get("dimensions", {}).get("composable")
-            == EvaluationValue.COMPOSABLE.name
+            r.get("dimensions", {}).get("composable") == EvaluationValue.COMPOSABLE.name
             for r in results
         ),
         "secure": bool(results)
@@ -435,8 +434,7 @@ def print_summary(summary: dict[str, list[VersionSummary]]) -> None:
             if not non_zero_counts:
                 non_zero_counts = "(none)"
             score_str = ", ".join(
-                f"{dim}={score:.1f}%"
-                for dim, score in item.avg_scores.items()
+                f"{dim}={score:.1f}%" for dim, score in item.avg_scores.items()
             )
             if not score_str:
                 score_str = "(no scores)"
@@ -462,9 +460,7 @@ def print_summary(summary: dict[str, list[VersionSummary]]) -> None:
             deltas = []
             for key in score_keys:
                 delta = new.avg_scores.get(key, 0.0) - old.avg_scores.get(key, 0.0)
-                deltas.append(
-                    f"{key}={delta:+.1f}%"
-                )
+                deltas.append(f"{key}={delta:+.1f}%")
             print("delta     " + ", ".join(deltas))
 
 

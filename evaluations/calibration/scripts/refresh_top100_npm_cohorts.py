@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Regenerate npm cohort lists using npms.io plus npm registry metadata."""
 
-
 from __future__ import annotations
 
 import json

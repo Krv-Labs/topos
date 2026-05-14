@@ -341,8 +341,7 @@ def curate_simple() -> list[dict]:
             }
         )
         print(
-            f"  -> {baseline['lattice_element']} "
-            f"(score={baseline.get('simple_score')})"
+            f"  -> {baseline['lattice_element']} (score={baseline.get('simple_score')})"
         )
 
     (out_root / "manifest.json").write_text(

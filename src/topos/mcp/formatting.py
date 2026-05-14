@@ -11,8 +11,9 @@ from __future__ import annotations
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
+from topos.evaluation.preferences import UserPreferences
 
-from .schemas import EvaluationResult, LatticeElement
+from .schemas import EvaluationResult, LatticeElement, PreferenceWalk
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
     EvaluationValue.SLOP: LatticeElement.SLOP,
@@ -26,8 +27,35 @@ _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
 }
 
 
+_STR_TO_LATTICE: dict[LatticeElement, EvaluationValue] = {
+    v: k for k, v in _LATTICE_TO_STR.items()
+}
+
+
 def lattice_to_str(value: EvaluationValue) -> LatticeElement:
     return _LATTICE_TO_STR[value]
+
+
+def str_to_lattice(value: LatticeElement) -> EvaluationValue:
+    return _STR_TO_LATTICE[value]
+
+
+def build_preference_walk(
+    prefs: UserPreferences, current: EvaluationValue
+) -> PreferenceWalk:
+    """Materialize a ``PreferenceWalk`` for the result schema."""
+    target = prefs.aspirational_target()
+    fallback = prefs.fallback_target()
+    walk = prefs.relaxation_walk(current)
+    nxt = prefs.next_step(current)
+    return PreferenceWalk(
+        ranking=list(prefs.ranking),
+        target=lattice_to_str(target),
+        fallback_target=lattice_to_str(fallback),
+        walk=[lattice_to_str(v) for v in walk],
+        next_step=lattice_to_str(nxt) if nxt is not None else None,
+        progress=round(prefs.progress(current), 3),
+    )
 
 
 def build_guidance(result: ClassificationResult) -> str:
@@ -62,41 +90,30 @@ def build_guidance(result: ClassificationResult) -> str:
                 "Reduce CFG cyclomatic complexity (split branches; lift "
                 "guard clauses) to satisfy SIMPLE."
             )
-        return (
-            "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach IDEAL."
-        )
+        return "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach IDEAL."
 
-    if priority == Priority.SECURE:
-        if secure_score is not None and secure_score < 0.6:
-            return (
-                "Eliminate dangerous-API calls and source→sink taint flows "
-                "to satisfy SECURE."
-            )
-        return (
-            "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators "
-            "to reach IDEAL."
-        )
-
-    # BALANCED
-    hints: list[str] = []
-    if simple_score is not None and simple_score < 0.6:
-        hints.append("reduce CFG cyclomatic complexity (SIMPLE)")
-    if composable_score is not None and composable_score < 0.6:
-        hints.append("reduce coupling (COMPOSABLE)")
-    if composable_score is None:
-        hints.append("provide gitnexus_dir to enable COMPOSABLE scoring")
+    # priority == Priority.SECURE  (only remaining case after exhaustive match)
     if secure_score is not None and secure_score < 0.6:
-        hints.append("eliminate dangerous-API calls / taint paths (SECURE)")
-    if hints:
-        return "To improve: " + " and ".join(hints) + "."
-    return "All three generators satisfied — code is at IDEAL."
+        return (
+            "Eliminate dangerous-API calls and source→sink taint flows "
+            "to satisfy SECURE."
+        )
+    return (
+        "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach IDEAL."
+    )
 
 
 def to_evaluation_result(
-    result: ClassificationResult, coupling_available: bool
+    result: ClassificationResult,
+    coupling_available: bool,
+    *,
+    preferences: UserPreferences | None = None,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model."""
     summary = result.summary()
+    walk = (
+        build_preference_walk(preferences, summary) if preferences is not None else None
+    )
     return EvaluationResult(
         is_parseable=result.is_parseable,
         lattice_element=lattice_to_str(summary),
@@ -109,6 +126,7 @@ def to_evaluation_result(
         coupling_available=coupling_available,
         raw_metrics=dict(result.raw_metrics),
         interpretation=dict(result.interpretation),
+        preference_walk=walk,
     )
 
 
@@ -143,6 +161,28 @@ def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
     lines.append("")
     lines.append(f"**Priority:** `{e.priority.value}`")
     lines.append(f"**Guidance:** {e.guidance}")
+
+    if e.preference_walk is not None:
+        pw = e.preference_walk
+        ranking = " ≻ ".join(g.value for g in pw.ranking)
+        lines.append("")
+        lines.append("## Preference Walk")
+        lines.append(f"- **Ranking:** {ranking}")
+        lines.append(
+            f"- **Target (aspirational):** {pw.target.value} "
+            f"({pw.progress * 100:.0f}% of the way)"
+        )
+        lines.append(
+            f"- **Fallback (ideal intersection):** {pw.fallback_target.value} "
+            "— divert here if IDEAL plateaus"
+        )
+        if pw.next_step is not None:
+            lines.append(f"- **Next step:** aim for `{pw.next_step.value}`")
+        if pw.walk:
+            walk_str = " → ".join(v.value for v in pw.walk)
+            lines.append(f"- **Walk:** {walk_str}")
+        else:
+            lines.append("- **Walk:** _at or beyond target — no further steps._")
 
     if e.raw_metrics:
         lines.append("")

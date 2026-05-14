@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastmcp import Context
 
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+
 from ..evaluation import (
     classify_code_string,
     classify_file,
@@ -75,7 +76,8 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
             coupling_available=False,
             error=str(exc),
         )
-    return to_evaluation_result(result, coupling_available=False)
+    prefs = params.preferences.to_preferences() if params.preferences else None
+    return to_evaluation_result(result, coupling_available=False, preferences=prefs)
 
 
 @mcp.tool(
@@ -142,7 +144,10 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             error=str(exc),
         )
 
-    return to_evaluation_result(result, coupling_available=dep_graph is not None)
+    prefs = params.preferences.to_preferences() if params.preferences else None
+    return to_evaluation_result(
+        result, coupling_available=dep_graph is not None, preferences=prefs
+    )
 
 
 @mcp.tool(

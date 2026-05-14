@@ -17,10 +17,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from topos.core.morphism import ProgramMorphism
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
+from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import ModuleDependencyGraph
-from topos.evaluation.characteristic_morphism import ClassificationResult, CharacteristicMorphism
-from topos.evaluation.policies.base import Priority
 
 from .cache import dep_graph_for
 
@@ -115,5 +118,3 @@ def classify_file(
     dep_graph = load_dep_graph(gitnexus_dir, str(path))
     result = classify_morphism(morphism, priority, dep_graph)
     return result, dep_graph
-
-

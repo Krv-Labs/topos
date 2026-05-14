@@ -35,12 +35,7 @@ def test_pdg_metrics_namespace():
 
 
 def test_pdg_emits_control_dependence_for_if_statement():
-    pdg = _pdg(
-        "def f(x):\n"
-        "    if x > 0:\n"
-        "        y = 1\n"
-        "    return y\n"
-    )
+    pdg = _pdg("def f(x):\n    if x > 0:\n        y = 1\n    return y\n")
     control_edges = [e for e in pdg.edges if e.kind is DependenceKind.CONTROL]
     assert len(control_edges) >= 1
 

@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from topos.graphs.ast.dispatch import parse_source
-from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 from topos.functors.probes.uast import (
     control_flow_profile,
     structural_summary,
@@ -15,6 +13,8 @@ from topos.functors.profunctors.uast import (
     uast_edit_distance,
     uast_kind_distance,
 )
+from topos.graphs.ast.dispatch import parse_source
+from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 
 
 def _parse(source: str, language: str):

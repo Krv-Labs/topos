@@ -4,7 +4,7 @@ CPG Models — Code Property Graph node & edge types per Yamaguchi et al.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 
 from topos.graphs.uast.models import UASTNode

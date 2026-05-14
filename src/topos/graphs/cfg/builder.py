@@ -45,9 +45,7 @@ class _LoopContext:
     break_target: int  # block id to jump to on `break`
 
 
-_DECISION_KINDS = frozenset(
-    {"IfStmt", "ForStmt", "WhileStmt", "MatchStmt"}
-)
+_DECISION_KINDS = frozenset({"IfStmt", "ForStmt", "WhileStmt", "MatchStmt"})
 _BRANCH_KINDS = frozenset({"BreakStmt", "ContinueStmt", "ReturnStmt", "ThrowStmt"})
 
 
@@ -73,9 +71,9 @@ class CFGBuildState:
         self.edges.append(CFGEdge(source=source, target=target, kind=kind))
 
 
-def build_cfg_from_uast(uast_root: UASTNode) -> tuple[
-    dict[int, BasicBlock], list[CFGEdge], int, int
-]:
+def build_cfg_from_uast(
+    uast_root: UASTNode,
+) -> tuple[dict[int, BasicBlock], list[CFGEdge], int, int]:
     """
     Build a CFG covering every callable reachable from ``uast_root``.
 
@@ -214,9 +212,7 @@ def _build_loop(state: CFGBuildState, stmt: UASTNode, current_id: int) -> int:
     state.loop_stack.append(
         _LoopContext(continue_target=header.id, break_target=after.id)
     )
-    body_tail = _build_block_sequence(
-        state, _loop_body(stmt), body_entry.id
-    )
+    body_tail = _build_block_sequence(state, _loop_body(stmt), body_entry.id)
     state.loop_stack.pop()
 
     if body_tail is not None:

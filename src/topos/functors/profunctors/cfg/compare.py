@@ -64,9 +64,7 @@ def edge_kind_histogram(cfg: ControlFlowGraph) -> dict[str, int]:
     return histogram
 
 
-def edge_kind_l1_distance(
-    source: ControlFlowGraph, target: ControlFlowGraph
-) -> float:
+def edge_kind_l1_distance(source: ControlFlowGraph, target: ControlFlowGraph) -> float:
     """
     L1 distance between the two edge-kind histograms, normalized to
     probability distributions.  Result lies in ``[0, 1]`` (half of the
@@ -81,18 +79,14 @@ def edge_kind_l1_distance(
     return l1 / 2.0
 
 
-def longest_path_delta(
-    source: ControlFlowGraph, target: ControlFlowGraph
-) -> int:
+def longest_path_delta(source: ControlFlowGraph, target: ControlFlowGraph) -> int:
     """Signed change in longest acyclic entry→exit path length."""
     from topos.functors.probes.cfg.paths import longest_acyclic_path
 
     return longest_acyclic_path(target) - longest_acyclic_path(source)
 
 
-def compare_cfg(
-    source: ControlFlowGraph, target: ControlFlowGraph
-) -> CFGComparison:
+def compare_cfg(source: ControlFlowGraph, target: ControlFlowGraph) -> CFGComparison:
     """Run the full CFG comparison suite for a single pair of graphs."""
     return CFGComparison(
         cyclomatic_delta=cyclomatic_delta(source, target),

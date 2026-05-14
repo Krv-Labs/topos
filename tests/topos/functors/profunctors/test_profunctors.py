@@ -19,7 +19,6 @@ from topos.graphs.mdg.object import (
     ModuleDependencyGraph,
 )
 
-
 # ---------------------------------------------------------------------------
 # CFG profunctor
 # ---------------------------------------------------------------------------
@@ -38,12 +37,7 @@ def test_cfg_compare_identical_is_zero():
 
 def test_cfg_compare_detects_added_branch():
     simpler = "def f(x):\n    return 0\n"
-    branchy = (
-        "def f(x):\n"
-        "    if x > 0:\n"
-        "        return 1\n"
-        "    return 0\n"
-    )
+    branchy = "def f(x):\n    if x > 0:\n        return 1\n    return 0\n"
     a = ProgramMorphism(source=simpler, language="python").build_cfg()
     b = ProgramMorphism(source=branchy, language="python").build_cfg()
     assert cyclomatic_delta(a, b) > 0
@@ -58,13 +52,7 @@ def test_cfg_compare_detects_added_branch():
 
 
 def test_pdg_compare_identical_is_full_jaccard():
-    src = (
-        "def f(x):\n"
-        "    y = x + 1\n"
-        "    if x > 0:\n"
-        "        y = y * 2\n"
-        "    return y\n"
-    )
+    src = "def f(x):\n    y = x + 1\n    if x > 0:\n        y = y * 2\n    return y\n"
     a = ProgramMorphism(source=src, language="python").build_pdg()
     b = ProgramMorphism(source=src, language="python").build_pdg()
     cmp = compare_pdg(a, b)
@@ -84,12 +72,7 @@ def test_pdg_data_dep_jaccard_is_well_defined():
 
 def test_pdg_control_dep_jaccard_drops_when_branch_added():
     flat = "def f(x):\n    return x\n"
-    branchy = (
-        "def f(x):\n"
-        "    if x > 0:\n"
-        "        return 1\n"
-        "    return 0\n"
-    )
+    branchy = "def f(x):\n    if x > 0:\n        return 1\n    return 0\n"
     a = ProgramMorphism(source=flat, language="python").build_pdg()
     b = ProgramMorphism(source=branchy, language="python").build_pdg()
     cmp = compare_pdg(a, b)
@@ -183,10 +166,13 @@ def test_cpg_compare_detects_added_dangerous_api():
     assert dangerous_delta(a, b) >= 1.0
 
 
-@pytest.mark.parametrize("language,src", [
-    ("python", "def f(): pass\n"),
-    ("javascript", "function f() { return 1; }\n"),
-])
+@pytest.mark.parametrize(
+    "language,src",
+    [
+        ("python", "def f(): pass\n"),
+        ("javascript", "function f() { return 1; }\n"),
+    ],
+)
 def test_cpg_compare_is_symmetric_for_identical(language, src):
     a = ProgramMorphism(source=src, language=language).build_cpg()
     b = ProgramMorphism(source=src, language=language).build_cpg()

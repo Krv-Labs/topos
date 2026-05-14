@@ -6,6 +6,9 @@ entropy breakdown.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
+from topos.functors.probes.ast.complexity import calculate_function_complexities
+from topos.functors.probes.ast.entropy import calculate_entropy_detailed
+
 from ..evaluation import classify_code_string
 from ..formatting import to_evaluation_result
 from ..schemas import (
@@ -15,8 +18,6 @@ from ..schemas import (
     LatticeElement,
 )
 from ..server import mcp
-from topos.functors.probes.ast.complexity import calculate_function_complexities
-from topos.functors.probes.ast.entropy import calculate_entropy_detailed
 
 _READ_ONLY_ANN = {
     "title": "Topos Detailed Inspection",

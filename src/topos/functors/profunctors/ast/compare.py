@@ -250,9 +250,7 @@ def are_clones(
     return result.normalized_distance <= threshold
 
 
-def structural_distance(
-    source: "ProgramMorphism", target: "ProgramMorphism"
-) -> float:
+def structural_distance(source: ProgramMorphism, target: ProgramMorphism) -> float:
     """
     Normalized AST edit distance between two program morphisms.
 

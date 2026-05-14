@@ -73,9 +73,7 @@ def instability_delta(
     return _delta(source, target, "mdg.instability")
 
 
-def fan_in_delta(
-    source: ModuleDependencyGraph, target: ModuleDependencyGraph
-) -> float:
+def fan_in_delta(source: ModuleDependencyGraph, target: ModuleDependencyGraph) -> float:
     """Signed change in incoming CALLS edges."""
     return _delta(source, target, "mdg.fan_in")
 
@@ -106,8 +104,7 @@ def compare_mdg(
         - src_metrics["mdg.instability"],
         fan_in_delta=tgt_metrics["mdg.fan_in"] - src_metrics["mdg.fan_in"],
         fan_out_delta=tgt_metrics["mdg.fan_out"] - src_metrics["mdg.fan_out"],
-        dep_depth_delta=tgt_metrics["mdg.dep_depth"]
-        - src_metrics["mdg.dep_depth"],
+        dep_depth_delta=tgt_metrics["mdg.dep_depth"] - src_metrics["mdg.dep_depth"],
         source_metrics=src_metrics,
         target_metrics=tgt_metrics,
     )

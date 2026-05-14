@@ -71,16 +71,8 @@ def data_dep_jaccard(
     source: ProgramDependenceGraph, target: ProgramDependenceGraph
 ) -> float:
     """Jaccard similarity over (def → use, var) data-dependence triples."""
-    a = {
-        _data_edge_key(e)
-        for e in source.edges
-        if e.kind is DependenceKind.DATA
-    }
-    b = {
-        _data_edge_key(e)
-        for e in target.edges
-        if e.kind is DependenceKind.DATA
-    }
+    a = {_data_edge_key(e) for e in source.edges if e.kind is DependenceKind.DATA}
+    b = {_data_edge_key(e) for e in target.edges if e.kind is DependenceKind.DATA}
     return _jaccard(a, b)
 
 
@@ -88,16 +80,8 @@ def control_dep_jaccard(
     source: ProgramDependenceGraph, target: ProgramDependenceGraph
 ) -> float:
     """Jaccard similarity over (predicate → executor) control-dependence pairs."""
-    a = {
-        _control_edge_key(e)
-        for e in source.edges
-        if e.kind is DependenceKind.CONTROL
-    }
-    b = {
-        _control_edge_key(e)
-        for e in target.edges
-        if e.kind is DependenceKind.CONTROL
-    }
+    a = {_control_edge_key(e) for e in source.edges if e.kind is DependenceKind.CONTROL}
+    b = {_control_edge_key(e) for e in target.edges if e.kind is DependenceKind.CONTROL}
     return _jaccard(a, b)
 
 

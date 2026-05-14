@@ -43,11 +43,7 @@ def test_cpg_flags_eval_as_dangerous():
 
 
 def test_cpg_flags_pickle_loads_as_dangerous():
-    cpg = _cpg(
-        "import pickle\n"
-        "def vuln(blob):\n"
-        "    pickle.loads(blob)\n"
-    )
+    cpg = _cpg("import pickle\ndef vuln(blob):\n    pickle.loads(blob)\n")
     assert cpg.metrics()["cpg.dangerous_calls"] >= 1
 
 

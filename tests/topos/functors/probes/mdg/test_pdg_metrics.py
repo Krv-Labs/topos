@@ -4,11 +4,6 @@ import json
 import tempfile
 from pathlib import Path
 
-from topos.graphs.mdg.object import (
-    ModuleDependencyGraph,
-    GraphNode,
-    GraphRelationship,
-)
 from topos.functors.probes.mdg.coupling import (
     CouplingResult,
     calculate_coupling,
@@ -17,6 +12,11 @@ from topos.functors.probes.mdg.coupling import (
     calculate_instability_from_result,
 )
 from topos.functors.probes.mdg.fan import FanResult, calculate_fan_in_out
+from topos.graphs.mdg.object import (
+    GraphNode,
+    GraphRelationship,
+    ModuleDependencyGraph,
+)
 
 
 def _graph_with_linear_chain() -> ModuleDependencyGraph:

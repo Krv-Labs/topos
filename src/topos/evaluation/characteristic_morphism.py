@@ -97,9 +97,7 @@ def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | No
 def _score_mdg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
     if "mdg.coupling" not in raw or "mdg.instability" not in raw:
         return None
-    return score_coupling(
-        raw["mdg.coupling"], raw["mdg.instability"], priority
-    )
+    return score_coupling(raw["mdg.coupling"], raw["mdg.instability"], priority)
 
 
 def _score_cpg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:

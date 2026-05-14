@@ -2,7 +2,6 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from topos.graphs.ast.dispatch import parse_source
 from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
     StructuralTestCoverageReport,
@@ -11,6 +10,7 @@ from topos.functors.profunctors.uast.structural_test_coverage import (
     merge_uast_kind_histograms,
     structural_test_coverage,
 )
+from topos.graphs.ast.dispatch import parse_source
 
 
 def _parse(source: str, language: str = "python"):

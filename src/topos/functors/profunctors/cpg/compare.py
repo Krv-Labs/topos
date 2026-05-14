@@ -55,9 +55,7 @@ def _jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b)
 
 
-def node_jaccard(
-    source: CodePropertyGraph, target: CodePropertyGraph
-) -> float:
+def node_jaccard(source: CodePropertyGraph, target: CodePropertyGraph) -> float:
     """Jaccard similarity over CPG node ids (stable UAST node hashes)."""
     return _jaccard(set(source.nodes), set(target.nodes))
 
@@ -76,23 +74,13 @@ def family_jaccards(
     """
     out: dict[str, float] = {}
     for kind in CPGEdgeKind:
-        a = {
-            (e.source, e.target, e.label)
-            for e in source.edges
-            if e.kind is kind
-        }
-        b = {
-            (e.source, e.target, e.label)
-            for e in target.edges
-            if e.kind is kind
-        }
+        a = {(e.source, e.target, e.label) for e in source.edges if e.kind is kind}
+        b = {(e.source, e.target, e.label) for e in target.edges if e.kind is kind}
         out[str(kind)] = _jaccard(a, b)
     return out
 
 
-def dangerous_delta(
-    source: CodePropertyGraph, target: CodePropertyGraph
-) -> float:
+def dangerous_delta(source: CodePropertyGraph, target: CodePropertyGraph) -> float:
     """Signed change in dangerous-API call-site count (target − source)."""
     return (
         target.metrics()["cpg.dangerous_calls"]
@@ -100,19 +88,12 @@ def dangerous_delta(
     )
 
 
-def taint_delta(
-    source: CodePropertyGraph, target: CodePropertyGraph
-) -> float:
+def taint_delta(source: CodePropertyGraph, target: CodePropertyGraph) -> float:
     """Signed change in source → sink taint-path count (target − source)."""
-    return (
-        target.metrics()["cpg.taint_flows"]
-        - source.metrics()["cpg.taint_flows"]
-    )
+    return target.metrics()["cpg.taint_flows"] - source.metrics()["cpg.taint_flows"]
 
 
-def compare_cpg(
-    source: CodePropertyGraph, target: CodePropertyGraph
-) -> CPGComparison:
+def compare_cpg(source: CodePropertyGraph, target: CodePropertyGraph) -> CPGComparison:
     """Run the full CPG comparison suite for a single pair of graphs."""
     return CPGComparison(
         family_jaccards=family_jaccards(source, target),

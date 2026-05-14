@@ -39,8 +39,16 @@ from topos.evaluation.characteristic_morphism import (
     CharacteristicMorphism,
     ClassificationResult,
 )
+from topos.evaluation.preferences import (
+    Generator,
+    UserPreferences,
+    default_preferences,
+)
 
 __all__ = [
     "CharacteristicMorphism",
     "ClassificationResult",
+    "Generator",
+    "UserPreferences",
+    "default_preferences",
 ]

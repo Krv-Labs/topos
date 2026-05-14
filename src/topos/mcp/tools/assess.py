@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.policies.base import Priority
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 from ..evaluation import (
@@ -82,11 +83,11 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, resolve_file_root())
         dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
         current_morph = ProgramMorphism(source=current_src, language=params.language)
-        current_res = classify_morphism(current_morph, params.priority, dep_graph)
+        current_res = classify_morphism(current_morph, Priority.SIMPLE, dep_graph)
         coupling_for_proposed = dep_graph is not None
     elif params.current_code:
         current_res = classify_code_string(
-            params.current_code, params.language, params.priority
+            params.current_code, params.language, Priority.SIMPLE
         )
         current_morph = ProgramMorphism(
             source=params.current_code, language=params.language
@@ -100,7 +101,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     proposed_morph = ProgramMorphism(
         source=params.proposed_code, language=params.language
     )
-    proposed_res = classify_morphism(proposed_morph, params.priority, dep_graph)
+    proposed_res = classify_morphism(proposed_morph, Priority.SIMPLE, dep_graph)
 
     prefs = params.preferences.to_preferences() if params.preferences else None
     current_eval = to_evaluation_result(
@@ -176,7 +177,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
 
     return AssessmentResult(
         status=status,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         current=current_eval,
         proposed=proposed_eval,
         score_deltas=score_deltas,
@@ -196,13 +197,13 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResul
         lattice_description="not evaluated",
         dimensions={},
         scores={},
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         guidance="",
         coupling_available=False,
     )
     return AssessmentResult(
         status=AssessmentStatus.LATERAL_MOVE,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         current=empty,
         proposed=empty,
         score_deltas={},

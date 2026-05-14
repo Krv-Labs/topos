@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastmcp import Context
 
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.policies.base import Priority
 
 from ..evaluation import (
     classify_code_string,
@@ -62,7 +63,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
         IDEAL (⊤)            All three generators satisfied.
     """
     try:
-        result = classify_code_string(params.code, params.language, params.priority)
+        result = classify_code_string(params.code, params.language, Priority.SIMPLE)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
@@ -71,7 +72,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
             lattice_description="Evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),
@@ -105,7 +106,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             lattice_description="Access denied / path error",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=(err or {}).get("error", "path error"),
@@ -119,7 +120,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             lattice_description="Not a file",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=f"Path is not a file: {resolved}",
@@ -129,7 +130,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
 
     try:
-        result, dep_graph = classify_file(resolved, params.priority, gitnexus_dir)
+        result, dep_graph = classify_file(resolved, Priority.SIMPLE, gitnexus_dir)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
@@ -138,7 +139,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             lattice_description="Evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),
@@ -190,7 +191,7 @@ async def topos_evaluate_project(
 
     for idx, path in enumerate(py_files, start=1):
         try:
-            result, _ = classify_file(path, params.priority, gitnexus_dir)
+            result, _ = classify_file(path, Priority.SIMPLE, gitnexus_dir)
         except Exception:
             parse_failures += 1
             continue
@@ -242,7 +243,7 @@ async def topos_evaluate_project(
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
         overall=overall,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         coupling_available=coupling_available,
         count=len(page),
         offset=params.offset,
@@ -272,7 +273,7 @@ def _empty_project_result(
         rolled_up_dimensions={},
         rolled_up_scores={},
         overall=LatticeElement.SLOP,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         coupling_available=False,
         count=0,
         offset=params.offset,

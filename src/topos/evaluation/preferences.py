@@ -232,13 +232,12 @@ class UserPreferences:
 
 
 def default_preferences() -> UserPreferences:
-    """Conservative default: ``SECURE ≻ SIMPLE ≻ COMPOSABLE``.
+    """Conservative default: ``SIMPLE ≻ COMPOSABLE ≻ SECURE``.
 
-    Security comes first (escalation-resistant), then simplicity (the
-    cheapest property to verify), then composability (the most
-    cross-cutting and the only one requiring an external dep graph).
-    Matches the rule of thumb in ``topos://docs/priority``.
+    Simplicity comes first (the cheapest property to verify and currently our
+    strongest measure), then composability (the most cross-cutting and the only
+    one requiring an external dep graph), then security.
     """
     return UserPreferences(
-        ranking=(Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE),
+        ranking=(Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE),
     )

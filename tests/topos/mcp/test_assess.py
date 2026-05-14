@@ -4,12 +4,24 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from topos.mcp.schemas import AssessImprovementInput, AssessmentStatus
+from topos.evaluation.preferences import Generator
+from topos.mcp.schemas import (
+    AssessImprovementInput,
+    AssessmentStatus,
+    UserPreferencesInput,
+)
 from topos.mcp.tools.assess import topos_assess_improvement
 
 
+_PREFS = UserPreferencesInput(
+    ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
+)
+
+
 def test_assess_requires_current_or_filepath() -> None:
-    r = topos_assess_improvement(AssessImprovementInput(proposed_code="x = 1"))
+    r = topos_assess_improvement(
+        AssessImprovementInput(proposed_code="x = 1", preferences=_PREFS)
+    )
     assert r.error is not None
 
 
@@ -34,7 +46,9 @@ def test_assess_emits_distance_and_deltas_on_real_change() -> None:
         "    return 'zero'\n"
     )
     r = topos_assess_improvement(
-        AssessImprovementInput(current_code=current, proposed_code=proposed)
+        AssessImprovementInput(
+            current_code=current, proposed_code=proposed, preferences=_PREFS
+        )
     )
     # Mechanics: distance is computed, deltas reported, status classified.
     assert r.error is None
@@ -77,7 +91,9 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
         ),
     ):
         r = topos_assess_improvement(
-            AssessImprovementInput(current_code=code, proposed_code=code)
+            AssessImprovementInput(
+                current_code=code, proposed_code=code, preferences=_PREFS
+            )
         )
     assert r.structural_distance is not None
     assert r.structural_distance < 0.02
@@ -93,6 +109,8 @@ def test_assess_filepath_path_validation() -> None:
         f.write(b"def x(): pass")
         bad = f.name
     r = topos_assess_improvement(
-        AssessImprovementInput(filepath=bad, proposed_code="def x(): return 1")
+        AssessImprovementInput(
+            filepath=bad, proposed_code="def x(): return 1", preferences=_PREFS
+        )
     )
     assert r.error is not None  # outside repo root

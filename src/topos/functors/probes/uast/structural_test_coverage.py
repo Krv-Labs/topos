@@ -12,7 +12,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from topos.metrics.uast.signature import (
+from topos.functors.probes.uast.signature import (
     CONTROL_FLOW_KINDS,
     control_flow_profile,
     uast_dfs_kind_sequence,

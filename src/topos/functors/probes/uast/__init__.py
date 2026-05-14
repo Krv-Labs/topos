@@ -4,13 +4,13 @@ UAST Metrics Module
 Cross-language structural metrics built on UAST `kind` values.
 """
 
-from topos.metrics.uast.compare import (
+from topos.functors.probes.uast.compare import (
     UASTComparison,
     compare_uast,
     uast_edit_distance,
     uast_kind_distance,
 )
-from topos.metrics.uast.signature import (
+from topos.functors.probes.uast.signature import (
     CONTROL_FLOW_KINDS,
     StructuralSummary,
     control_flow_profile,
@@ -18,7 +18,7 @@ from topos.metrics.uast.signature import (
     uast_dfs_kind_sequence,
     uast_kind_histogram,
 )
-from topos.metrics.uast.structural_test_coverage import (
+from topos.functors.probes.uast.structural_test_coverage import (
     DeclarationCoverageReport,
     StructuralTestCoverageReport,
     declaration_coverage,

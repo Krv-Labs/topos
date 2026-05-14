@@ -122,6 +122,6 @@ def test_progress_reaches_one_at_ideal():
 
 def test_default_preferences():
     prefs = default_preferences()
-    assert prefs.ranking[0] == Generator.SECURE
+    assert prefs.ranking[0] == Generator.SIMPLE
     assert prefs.aspirational_target() == EvaluationValue.IDEAL
-    assert prefs.fallback_target() == EvaluationValue.SIMPLE_SECURE
+    assert prefs.fallback_target() == EvaluationValue.SIMPLE_COMPOSABLE

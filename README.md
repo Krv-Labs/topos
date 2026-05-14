@@ -6,8 +6,9 @@ Topos lets you set and manage the quality target while coding agents handle the 
 
 Current priorities:
 
-- **Self-Contained:** Minimal external dependencies; functionality lives within the module.
-- **Composable:** Connects cleanly with other modules without creating fragile dependency chains.
+- **SIMPLE:** Minimal external dependencies; functionality lives within the module.
+- **COMPOSABLE:** Connects cleanly with other modules without creating fragile dependency chains.
+- **SECURE:** Surfaces and hardens risky patterns so agents can drive toward safer structure.
 
 More coming soon.
 
@@ -18,30 +19,72 @@ More coming soon.
 
 ### The Verdict
 
-Topos maps every file to a four-valued diamond lattice, so agents know exactly where they are and which direction to move:
+The Hasse diagram is drawn **bottom = best** (`SOUND`, meet of all three satisfied axes), **top = worst** (`SLOP`, no axis satisfied): edges cover **adding one more failure** (turning off one generator). Pair labels are literal **meets** of which generators still pass (for example your program at `COMPOSABLE ∧ SIMPLE`).
 
 ```mermaid
 graph BT
-    BROKEN["⊥ BROKEN<br/>Fails targets"]
+    SOUND["⊥ SOUND<br/>All targets met"]
+
+    CS["◑◐<br/>COMPOSABLE ∧ SIMPLE"]
+    CSEC["◑◇<br/>COMPOSABLE ∧ SECURE"]
+    SSEC["◐◇<br/>SIMPLE ∧ SECURE"]
+
     COMPOSABLE["◑ COMPOSABLE<br/>Good coupling"]
-    SELF_CONTAINED["◐ SELF_CONTAINED<br/>Good structure"]
-    SOUND["⊤ SOUND<br/>Both targets met"]
+    SIMPLE["◐ SIMPLE<br/>Minimal complexity"]
+    SECURE["◇ SECURE<br/>Good security"]
 
-    BROKEN --> COMPOSABLE
-    BROKEN --> SELF_CONTAINED
-    COMPOSABLE --> SOUND
-    SELF_CONTAINED --> SOUND
+    SLOP["⊤ SLOP<br/>Fails targets"]
 
-    style BROKEN         fill:#f8d7da,stroke:#842029,color:#000
+    SOUND --> CS
+    SOUND --> CSEC
+    SOUND --> SSEC
+
+    CS --> COMPOSABLE
+    CS --> SIMPLE
+    CSEC --> COMPOSABLE
+    CSEC --> SECURE
+    SSEC --> SIMPLE
+    SSEC --> SECURE
+
+    COMPOSABLE --> SLOP
+    SIMPLE --> SLOP
+    SECURE --> SLOP
+
+    style SLOP           fill:#f8d7da,stroke:#842029,color:#000
     style COMPOSABLE     fill:#d1ecf1,stroke:#0c5460,color:#000
-    style SELF_CONTAINED fill:#d4edda,stroke:#155724,color:#000
+    style SIMPLE         fill:#d4edda,stroke:#155724,color:#000
+    style SECURE         fill:#e2e3f3,stroke:#383d66,color:#000
+    style CS             fill:#cfe2ff,stroke:#084298,color:#000
+    style CSEC           fill:#cff4fc,stroke:#055160,color:#000
+    style SSEC           fill:#d3f9e8,stroke:#0f5132,color:#000
     style SOUND          fill:#fff3cd,stroke:#856404,color:#000
 ```
 
-`COMPOSABLE` and `SELF_CONTAINED` are **incomparable** — code can satisfy one without the other. `SOUND` is the join of both.
+The three base measures are **pairwise incomparable** — code can satisfy any one without the others. Along this order, **meet** is intersection of satisfied generators (closure under ∧); `SLOP` is the **top** (⊤) and `SOUND` the **bottom** (⊥).
+
+That diagram is the intrinsic **partial order** on satisfied subsets: one verdict is **below** another in the drawing when it satisfies a *superset* of the same generators (coordinate-wise implication toward `SOUND`). Many pairs of verdicts are still incomparable (for example `COMPOSABLE` versus `SIMPLE`).
+
+**Manager priority lists.** Whoever runs the agent picks a **strict total order on the generators** — which dimension matters most when trade-offs appear. That does not replace the partial order; it **ranks acceptable targets** so the run has a single walk when budgets bite.
+
+Treat the priority list as most important → least important. Write each verdict as a 3-bit pattern in that same order (1 = satisfied). Sort verdicts by the integer value of that bit pattern, **descending** (best targets first). `SLOP` (⊤ here) is always last in that relaxation list.
+
+Example priority list: **SECURE > COMPOSABLE > SIMPLE**. List each verdict as three bits in that same order (most significant bit = **SECURE**).
+
+ Verdict | Bits |
+| --- | --- |
+| `SOUND` | `111` |
+| `COMPOSABLE ∧ SECURE` | `110` |
+| `SIMPLE ∧ SECURE` | `101` |
+| `COMPOSABLE ∧ SIMPLE` | `011` |
+| `SECURE` | `100` |
+| `COMPOSABLE` | `010` |
+| `SIMPLE` | `001` |
+| `SLOP` | `000` |
+
+That is the **target relaxation walk**: aim for step 1, then if time or tokens force a compromise, treat step 2 as the next acceptable plateau, and so on, until the manager’s minimum bar is reached.
 
 > [!TIP]
-> Perfect code satisfies both — but agents operate under token and time budgets. A concrete priority gives them a formula to execute rather than an open-ended target.
+> Perfect code satisfies every target — but agents operate under token and time budgets. A concrete priority gives them a formula to execute rather than an open-ended target.
 
 ---
 
@@ -56,7 +99,7 @@ curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 #### CLI
 
 ```bash
-topos evaluate src/ -r --priority self_contained   # classify a directory
+topos evaluate src/ -r --priority SIMPLE   # classify a directory
 topos inspect module.py                             # detailed metrics
 topos compare before.py after.py                    # AST edit distance
 ```
@@ -64,10 +107,10 @@ topos compare before.py after.py                    # AST edit distance
 #### In an agent loop
 
 ```
-Agent iteration 1: structural: ⊥ BROKEN [41%]
+Agent iteration 1: structural: ⊤ SLOP [41%]
   → Reduce cyclomatic complexity and normalize entropy toward 0.5
 
-Agent iteration 2: structural: ◐ SELF_CONTAINED [72%]
+Agent iteration 2: structural: ◐ SIMPLE [72%]
   → ✓ Target achieved.
 ```
 

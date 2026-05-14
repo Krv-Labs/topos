@@ -12,6 +12,8 @@ node_modules/
 !.gemini/GEMINI.md
 topos-skill/
 *.skill
+maths.md
+
 
 # Python env
 uv.lock

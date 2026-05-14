@@ -36,13 +36,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --dev
+        run: uv sync --group dev --python 3.12
 
       - name: Build binary with PyInstaller
         run: |
@@ -54,7 +56,7 @@ jobs:
             --collect-all fastmcp \
             --collect-all real-ladybug \
             --copy-metadata fastmcp \
-            src/topos/main.py
+            src/topos/cli/main.py
 
       - name: Rename binary with platform suffix
         run: mv dist/topos dist/topos-${{ matrix.target }}

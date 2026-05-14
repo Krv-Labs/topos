@@ -22,16 +22,12 @@ Node labels and relationship types mirror GitNexus's shared schema::
     Edges:  CALLS, IMPORTS, INHERITS, CONTAINS, USES, ...
 
 Metrics produced (feed the COMPOSABLE generator of H(G_qual)):
-    - ``depgraph.coupling``   -- afferent + efferent coupling for a file
-    - ``depgraph.instability`` -- Ce / (Ca + Ce)  (Martin's metric)
-    - ``depgraph.fan_in``      -- incoming CALLS edges
-    - ``depgraph.fan_out``     -- outgoing CALLS edges
-    - ``depgraph.dep_depth``   -- longest IMPORTS chain from the file
+    - ``mdg.coupling``   -- afferent + efferent coupling for a file
+    - ``mdg.instability`` -- Ce / (Ca + Ce)  (Martin's metric)
+    - ``mdg.fan_in``      -- incoming CALLS edges
+    - ``mdg.fan_out``     -- outgoing CALLS edges
+    - ``mdg.dep_depth``   -- longest IMPORTS chain from the file
 
-The metric-namespace prefix remains ``depgraph.*`` for backward
-compatibility (downstream tooling reads these keys).  The class is
-``ModuleDependencyGraph``; ``DependencyGraph`` is kept as a deprecated
-alias for old import paths.
 """
 
 from __future__ import annotations
@@ -157,13 +153,11 @@ class ModuleDependencyGraph:
 
     @property
     def name(self) -> str:
-        return "depgraph"
+        return "mdg"
 
     @property
     def dimension(self) -> str:
-        # Feeds the COMPOSABLE generator of the free Heyting algebra
-        # H(G_qual). Renamed from "coupling" when the lattice expanded
-        # to three generators.
+        # Feeds the COMPOSABLE generator of H(G_qual).
         return "composable"
 
     # ------------------------------------------------------------------
@@ -175,7 +169,7 @@ class ModuleDependencyGraph:
         cls, gitnexus_dir: str | Path, target_file: str
     ) -> ModuleDependencyGraph:
         """
-        Build a DependencyGraph from a ``.gitnexus/`` directory.
+        Build a ModuleDependencyGraph from a ``.gitnexus/`` directory.
 
         Supports both the current LadybugDB binary format (``lbug`` file,
         produced by GitNexus ≥ 1.5) and the legacy JSON directory format.
@@ -365,11 +359,11 @@ class ModuleDependencyGraph:
         file_id = self.file_node_id()
         if file_id is None:
             return {
-                "depgraph.coupling": 0.0,
-                "depgraph.instability": 0.5,
-                "depgraph.fan_in": 0.0,
-                "depgraph.fan_out": 0.0,
-                "depgraph.dep_depth": 0.0,
+                "mdg.coupling": 0.0,
+                "mdg.instability": 0.5,
+                "mdg.fan_in": 0.0,
+                "mdg.fan_out": 0.0,
+                "mdg.dep_depth": 0.0,
             }
 
         symbol_ids = set(self.all_contained_symbols(file_id))
@@ -380,14 +374,9 @@ class ModuleDependencyGraph:
         dep_depth = calculate_dependency_depth(self, file_id)
 
         return {
-            "depgraph.coupling": float(coupling_result.total),
-            "depgraph.instability": instability,
-            "depgraph.fan_in": float(fan_result.fan_in),
-            "depgraph.fan_out": float(fan_result.fan_out),
-            "depgraph.dep_depth": float(dep_depth),
+            "mdg.coupling": float(coupling_result.total),
+            "mdg.instability": instability,
+            "mdg.fan_in": float(fan_result.fan_in),
+            "mdg.fan_out": float(fan_result.fan_out),
+            "mdg.dep_depth": float(dep_depth),
         }
-
-
-# Backward-compatible alias for the pre-split import path.
-# Prefer the new name ``ModuleDependencyGraph`` in new code.
-DependencyGraph = ModuleDependencyGraph

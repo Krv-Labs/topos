@@ -11,7 +11,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from topos.logic.policies.base import Priority
+from topos.evaluation.policies.base import Priority
 
 
 class ResponseFormat(StrEnum):
@@ -83,7 +83,7 @@ class EvaluateCodeInput(_StrictModel):
         default=Priority.BALANCED,
         description=(
             "Optimization priority shifting metric weights within each "
-            "dimension: 'balanced', 'composable', or 'self_contained'."
+            "generator: 'balanced', 'simple', 'composable', or 'secure'."
         ),
     )
     response_format: ResponseFormat = Field(
@@ -108,9 +108,9 @@ class EvaluateFileInput(_StrictModel):
         default=None,
         description=(
             "Path to a .gitnexus/ directory produced by `topos depgraph "
-            "generate`. When provided, enables coupling-dimension scoring so "
-            "COMPOSABLE/SOUND become reachable. Defaults to "
-            "<project_root>/.gitnexus if it exists."
+            "generate`. When provided, the ModuleDependencyGraph is "
+            "attached so the COMPOSABLE generator can be scored. "
+            "Defaults to <project_root>/.gitnexus if it exists."
         ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
@@ -165,8 +165,9 @@ class CompareFilesInput(_StrictModel):
 class AssessImprovementInput(_StrictModel):
     """Arguments for ``topos_assess_improvement``.
 
-    Provide EITHER ``filepath`` (preferred — enables coupling-dimension scoring
-    against the cached DependencyGraph) OR ``current_code`` (legacy, AST-only).
+    Provide EITHER ``filepath`` (preferred — scores the COMPOSABLE
+    generator against the cached ModuleDependencyGraph) OR
+    ``current_code`` (AST + CFG + CPG only; COMPOSABLE unreachable).
     """
 
     proposed_code: str = Field(
@@ -177,7 +178,7 @@ class AssessImprovementInput(_StrictModel):
         description=(
             "Path to the current file on disk. When provided, baseline is "
             "loaded from disk and coupling is scored against the cached "
-            "DependencyGraph. STRONGLY PREFERRED for real refactor loops."
+            "ModuleDependencyGraph. STRONGLY PREFERRED for real refactor loops."
         ),
     )
     current_code: str | None = Field(
@@ -232,8 +233,9 @@ class EvaluationResult(BaseModel):
     coupling_available: bool = Field(
         ...,
         description=(
-            "True only when a DependencyGraph was provided. When false, "
-            "COMPOSABLE/SOUND are unreachable for this evaluation."
+            "True only when a ModuleDependencyGraph was provided. When false, "
+            "any verdict containing COMPOSABLE (including IDEAL) is "
+            "unreachable for this evaluation."
         ),
     )
     raw_metrics: dict[str, float] = Field(default_factory=dict)

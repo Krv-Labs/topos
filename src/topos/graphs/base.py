@@ -28,7 +28,7 @@ class Representation(Protocol):
 
     Attributes:
         name: A unique identifier for this representation type
-              (e.g. ``"ast"``, ``"depgraph"``).
+              (e.g. ``"ast"``, ``"mdg"``).
     """
 
     @property
@@ -57,6 +57,6 @@ class Representation(Protocol):
         Returns:
             A dictionary mapping metric names to their raw float values.
             Metric names should be namespaced by representation
-            (e.g. ``"ast.complexity"``, ``"depgraph.coupling"``).
+            (e.g. ``"ast.complexity"``, ``"mdg.coupling"``).
         """
         ...

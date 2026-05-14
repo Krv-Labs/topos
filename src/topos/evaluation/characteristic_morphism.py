@@ -1,35 +1,40 @@
 """
-Omega Module — The Subobject Classifier Ω
------------------------------------------
+Characteristic Morphism χ_S : P → Ω
+===================================
 
-This module *is* the subobject classifier Ω of the Topos
-E = Set^(C x H^op).  Per the math spec §3, for every program P ∈ E and
-every subprogram S ↪ P there exists a unique characteristic morphism
+This module implements the **characteristic morphism** of the program
+topos.  Per the math spec §3, for every program ``P ∈ E`` and every
+subprogram ``S ↪ P`` there exists a unique natural transformation
 
-    χ_S : P -> Ω
+    χ_S : P → Ω
 
-mapping each structural component to an element of ℋ = H(G_qual), the
-free Heyting algebra on three quality generators (SIMPLE, COMPOSABLE,
-SECURE).
+mapping each structural component to an element of ``Ω``.  This file
+contains the *map*; the codomain ``Ω`` itself lives in
+:mod:`topos.core.omega`.
 
-The codomain ℋ has two distinguished elements:
+Categorical / Pythonic correspondence::
 
-    ⊤ = IDEAL = ⋀_{i} g_i   (meet of all generators — the ideal program)
-    ⊥ = SLOP                (unconstrained universe — no generator satisfied)
+    Math                   Python
+    ------------------     -----------------------------------------
+    Ω                      Omega                       (topos.core.omega)
+    elements of Ω          EvaluationValue              (topos.core.omega)
+    χ_S : P → Ω            CharacteristicMorphism       (this module)
+    image of χ_S(P)        ClassificationResult         (this module)
 
-The classifier:
+The characteristic morphism:
 
-1. Builds every available Representation (AST + CFG + DependencyGraph +
-   CPG) for the morphism.
+1. Builds every available Representation (AST + CFG + ModuleDependencyGraph
+   + CPG) for the morphism.
 2. Groups them by generator (each Representation declares its
    ``dimension`` ∈ {"simple", "composable", "secure"}).
 3. Runs the matching policy translator Φᵢ on the collected metrics
    (``simple`` → Φ_SIMPLE, etc.).
 4. Combines the three Boolean truth values via
-   ``lattice.verdict_from_generators`` into the final ℋ element.
+   :func:`topos.core.omega.verdict_from_generators` into the final Ω
+   element.
 
-Priority shifts metric weights within each Φᵢ but does *not* change which
-generators are pairwise incomparable — that is fixed by the math.
+``Priority`` shifts metric weights within each Φᵢ but does *not* change
+which generators are pairwise incomparable — that is fixed by the math.
 """
 
 from __future__ import annotations
@@ -39,15 +44,15 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from topos.logic.lattice import (
-    EvaluationLattice,
+from topos.core.omega import (
     EvaluationValue,
+    Omega,
     verdict_from_generators,
 )
-from topos.logic.policies import (
+from topos.evaluation.policies import (
     Priority,
     ScoredDecision,
-    build_evaluation_lattice,
+    build_omega,
     score_coupling,
     score_secure,
     score_simple,
@@ -66,12 +71,11 @@ if TYPE_CHECKING:
 
 
 def _score_cfg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    # The CFG dispatcher consumes cyclomatic complexity only.  When an AST
+    # representation is also attached to the SIMPLE dimension, the
+    # classifier mixes its entropy contribution in separately.
     if "cfg.cyclomatic" not in raw:
         return None
-    # Entropy is optional; if a parallel AST representation already
-    # supplied ``ast.entropy`` in the same "simple" dimension it gets
-    # mixed in by SubobjectClassifier (see classify_detailed's mixed
-    # path) — so cfg dispatcher itself only consumes cyclomatic.
     return score_simple(
         cyclomatic=raw["cfg.cyclomatic"],
         entropy=None,
@@ -80,9 +84,7 @@ def _score_cfg(raw: dict[str, float], priority: Priority) -> ScoredDecision | No
 
 
 def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
-    # Legacy AST contribution to SIMPLE: feeds entropy only.  Cyclomatic
-    # has moved to ``cfg.cyclomatic``.  Returning None when entropy is
-    # absent keeps the classifier from double-scoring AST.
+    # AST contribution to the SIMPLE generator: feeds ``ast.entropy``.
     if "ast.entropy" not in raw:
         return None
     return score_simple(
@@ -92,13 +94,11 @@ def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | No
     )
 
 
-def _score_depgraph(
-    raw: dict[str, float], priority: Priority
-) -> ScoredDecision | None:
-    if "depgraph.coupling" not in raw or "depgraph.instability" not in raw:
+def _score_mdg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    if "mdg.coupling" not in raw or "mdg.instability" not in raw:
         return None
     return score_coupling(
-        raw["depgraph.coupling"], raw["depgraph.instability"], priority
+        raw["mdg.coupling"], raw["mdg.instability"], priority
     )
 
 
@@ -116,9 +116,9 @@ _REPRESENTATION_SCORE_DISPATCHERS: dict[
     str,
     Callable[[dict[str, float], Priority], ScoredDecision | None],
 ] = {
+    "ast": _score_ast,
     "cfg": _score_cfg,
-    "ast": _score_ast,  # legacy: entropy contribution to SIMPLE
-    "depgraph": _score_depgraph,
+    "mdg": _score_mdg,
     "cpg": _score_cpg,
 }
 
@@ -139,15 +139,15 @@ _DIMENSION_GENERATOR: dict[str, EvaluationValue] = {
 @dataclass
 class ClassificationResult:
     """
-    The result of applying χ_S : P → Ω to a program morphism.
+    The image of one program morphism under χ_S : P → Ω.
 
     Attributes:
         is_parseable:    Whether the code parsed successfully.
-        dimensions:      Per-generator lattice value: the singleton generator
+        dimensions:      Per-generator value in Ω: the singleton generator
                          (SIMPLE/COMPOSABLE/SECURE) when satisfied, SLOP
                          otherwise.
         scores:          Per-generator normalized quality score in [0.0, 1.0].
-        lattice_element: Overall ℋ element — the join of the satisfied
+        lattice_element: Overall Ω element — the join of the satisfied
                          generators, encoded via ``verdict_from_generators``.
         priority:        The Priority profile used during classification.
         raw_metrics:     All raw metric floats, namespaced by representation.
@@ -163,7 +163,7 @@ class ClassificationResult:
     interpretation: dict[str, str] = field(default_factory=dict)
 
     def summary(self) -> EvaluationValue:
-        """The overall ℋ element."""
+        """The overall Ω element χ_S(P)."""
         return self.lattice_element
 
     def __str__(self) -> str:
@@ -184,26 +184,30 @@ class ClassificationResult:
 
 
 @dataclass
-class SubobjectClassifier:
+class CharacteristicMorphism:
     """
-    The Subobject Classifier Ω for the Topos of Programs.
+    χ_S : P → Ω — the characteristic morphism of the program topos.
 
-    Implements the characteristic map χ : Program → Ω whose codomain is
-    the free Heyting algebra ℋ = H(G_qual).  Each generator gᵢ is fed by
-    the Representation theory says is the correct lens for that quality:
+    For every program morphism ``P`` (and the canonical subprogram
+    ``S = P`` itself, in the absence of a finer subobject) this object
+    computes the natural-transformation image ``χ_S(P)`` as an
+    :class:`~topos.core.omega.EvaluationValue` in Ω.
+
+    Each generator ``gᵢ`` is fed by the Representation theory says is
+    the correct lens for that quality:
 
         SIMPLE      ← CFG cyclomatic complexity
-        COMPOSABLE  ← Dependency-graph coupling/instability
-        SECURE      ← Code Property Graph taint/danger probes
+        COMPOSABLE  ← ModuleDependencyGraph coupling / instability
+        SECURE      ← Code Property Graph taint / danger probes
 
     Attributes:
-        omega: The EvaluationLattice ℋ.
+        omega: The subobject classifier Ω (the value Heyting algebra).
     """
 
-    omega: EvaluationLattice = field(default_factory=build_evaluation_lattice)
+    omega: Omega = field(default_factory=build_omega)
 
     def classify(self, morphism: ProgramMorphism) -> EvaluationValue:
-        """Return ``classify_detailed(...).summary()`` — the overall ℋ element."""
+        """Return ``classify_detailed(...).summary()`` — the overall Ω element."""
         return self.classify_detailed(morphism).summary()
 
     def classify_detailed(
@@ -217,8 +221,8 @@ class SubobjectClassifier:
 
         An ``ASTRepresentation`` is always built from the morphism (it
         carries ``ast.entropy`` into the SIMPLE generator).  Any additional
-        *representations* (CFG, DependencyGraph, PDG, CPG) are grouped by
-        their ``dimension`` and scored independently.
+        *representations* (CFG, ModuleDependencyGraph, PDG, CPG) are
+        grouped by their ``dimension`` and scored independently.
 
         Parse failures collapse to ⊥ = SLOP.
         """
@@ -296,7 +300,7 @@ class SubobjectClassifier:
             generator = _DIMENSION_GENERATOR.get(dim, EvaluationValue.SLOP)
             dimensions[dim] = generator if decision.achieved else EvaluationValue.SLOP
 
-        # Assemble the overall ℋ element from the achieved generators.
+        # Assemble the overall Ω element from the achieved generators.
         lattice_element = verdict_from_generators(
             simple=dimensions.get("simple") == EvaluationValue.SIMPLE,
             composable=dimensions.get("composable") == EvaluationValue.COMPOSABLE,
@@ -314,7 +318,7 @@ class SubobjectClassifier:
         )
 
     def combine(self, *values: EvaluationValue) -> EvaluationValue:
-        """Combine multiple ℋ values via meet (∧)."""
+        """Combine multiple Ω values via meet (∧)."""
         return self.omega.combine(*values)
 
     def combine_dimensions(

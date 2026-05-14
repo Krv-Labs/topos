@@ -69,7 +69,7 @@ def test_program_morphism_from_file_and_classify(tmp_path):
     assert morphism.filepath == p
     assert morphism.name == "hello.py"
 
-    from topos.logic.lattice import EvaluationValue
+    from topos.core.omega import EvaluationValue
 
     eval_val = morphism.classify()
     assert isinstance(eval_val, EvaluationValue)

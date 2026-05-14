@@ -12,7 +12,7 @@ from ..schemas import (
 )
 from ..security import read_safe_utf8_file
 from ..server import mcp
-from topos.functors.profunctors.distance import calculate_ast_distance
+from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 _READ_ONLY_ANN = {
     "title": "Topos Structural Comparison",

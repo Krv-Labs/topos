@@ -29,7 +29,7 @@ def _read(name: str) -> str:
     mime_type="text/markdown",
 )
 def lattice_reference() -> str:
-    """The diamond lattice: BROKEN / COMPOSABLE / SELF_CONTAINED / SOUND, and why COMPOSABLE and SELF_CONTAINED are incomparable."""
+    """The 8-element 3-cube H(G_qual) over {SIMPLE, COMPOSABLE, SECURE}; bottom = SLOP, top = IDEAL."""
     return _read("lattice.md")
 
 
@@ -49,7 +49,7 @@ def metrics_reference() -> str:
     mime_type="text/markdown",
 )
 def priority_reference() -> str:
-    """Priority profiles (balanced / composable / self_contained) and when to use each."""
+    """Priority profiles (balanced / simple / composable / secure) and when to use each."""
     return _read("priority.md")
 
 

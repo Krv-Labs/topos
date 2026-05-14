@@ -4,7 +4,7 @@ from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import (
-    DependencyGraph,
+    ModuleDependencyGraph,
     GraphNode,
     GraphRelationship,
 )
@@ -24,7 +24,7 @@ def test_ast_representation_conforms_to_protocol():
 
 
 def test_dependency_graph_conforms_to_protocol():
-    graph = DependencyGraph(target_file="foo.py")
+    graph = ModuleDependencyGraph(target_file="foo.py")
     assert isinstance(graph, Representation)
 
 
@@ -55,13 +55,13 @@ def test_ast_representation_metrics():
 
 
 # ---------------------------------------------------------------------------
-# DependencyGraph construction and lookups
+# ModuleDependencyGraph construction and lookups
 # ---------------------------------------------------------------------------
 
 
-def _make_simple_graph() -> DependencyGraph:
+def _make_simple_graph() -> ModuleDependencyGraph:
     """Build a small in-memory dependency graph for testing."""
-    g = DependencyGraph(target_file="src/app.py")
+    g = ModuleDependencyGraph(target_file="src/app.py")
 
     g.add_node(
         GraphNode(
@@ -200,8 +200,8 @@ def _make_simple_graph() -> DependencyGraph:
 
 
 def test_depgraph_name():
-    g = DependencyGraph(target_file="foo.py")
-    assert g.name == "depgraph"
+    g = ModuleDependencyGraph(target_file="foo.py")
+    assert g.name == "mdg"
 
 
 def test_depgraph_node_lookups():
@@ -232,7 +232,7 @@ def test_depgraph_file_node_id():
     g = _make_simple_graph()
     assert g.file_node_id() == "File:src/app.py"
 
-    g2 = DependencyGraph(target_file="nonexistent.py")
+    g2 = ModuleDependencyGraph(target_file="nonexistent.py")
     assert g2.file_node_id() is None
 
 
@@ -245,20 +245,20 @@ def test_depgraph_contained_symbols():
 def test_depgraph_metrics():
     g = _make_simple_graph()
     m = g.metrics()
-    assert "depgraph.coupling" in m
-    assert "depgraph.instability" in m
-    assert "depgraph.fan_in" in m
-    assert "depgraph.fan_out" in m
-    assert "depgraph.dep_depth" in m
-    assert m["depgraph.coupling"] > 0
-    assert 0.0 <= m["depgraph.instability"] <= 1.0
+    assert "mdg.coupling" in m
+    assert "mdg.instability" in m
+    assert "mdg.fan_in" in m
+    assert "mdg.fan_out" in m
+    assert "mdg.dep_depth" in m
+    assert m["mdg.coupling"] > 0
+    assert 0.0 <= m["mdg.instability"] <= 1.0
 
 
 def test_depgraph_metrics_no_file_found():
-    g = DependencyGraph(target_file="nonexistent.py")
+    g = ModuleDependencyGraph(target_file="nonexistent.py")
     m = g.metrics()
-    assert m["depgraph.coupling"] == 0.0
-    assert m["depgraph.instability"] == 0.5
+    assert m["mdg.coupling"] == 0.0
+    assert m["mdg.instability"] == 0.5
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +270,7 @@ def test_ast_representation_dispatches_verdicts():
     """ASTRepresentation in representations must produce verdicts via the registry."""
     from topos.core.morphism import ProgramMorphism
     from topos.core.object import ProgramObject
-    from topos.logic.omega import SubobjectClassifier
+    from topos.evaluation.characteristic_morphism import CharacteristicMorphism
     from topos.utils.tree_sitter import parse_python
 
     source = "def foo():\n    if True:\n        pass\n    return 1\n"
@@ -279,7 +279,7 @@ def test_ast_representation_dispatches_verdicts():
     obj = ProgramObject(root=root, source=source)
     ast_rep = ASTRepresentation(program_object=obj, source=source)
 
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     result = classifier.classify_detailed(morphism, representations=[ast_rep])
 
     # Metrics must be stored in raw_metrics
@@ -295,8 +295,8 @@ def test_score_ast_produces_scored_decision():
     """_score_ast returns a ScoredDecision for the legacy ast.entropy path
     (folding into the SIMPLE generator).
     """
-    from topos.logic.omega import _score_ast
-    from topos.logic.policies.base import Priority, ScoredDecision
+    from topos.evaluation.characteristic_morphism import _score_ast
+    from topos.evaluation.policies.base import Priority, ScoredDecision
 
     decision = _score_ast(
         {"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.BALANCED
@@ -314,11 +314,11 @@ def test_score_ast_produces_scored_decision():
 
 def test_score_ast_returns_none_on_missing_keys():
     """_score_ast returns None when expected metric keys are absent."""
-    from topos.logic.omega import _score_ast
-    from topos.logic.policies.base import Priority
+    from topos.evaluation.characteristic_morphism import _score_ast
+    from topos.evaluation.policies.base import Priority
 
     assert _score_ast({}, Priority.BALANCED) is None
-    assert _score_ast({"depgraph.coupling": 3.0}, Priority.BALANCED) is None
+    assert _score_ast({"mdg.coupling": 3.0}, Priority.BALANCED) is None
 
 
 # ---------------------------------------------------------------------------
@@ -329,12 +329,12 @@ def test_score_ast_returns_none_on_missing_keys():
 def test_backward_compat_top_level_imports():
     from topos import (
         ASTRepresentation,
-        DependencyGraph,
+        ModuleDependencyGraph,
         Representation,
     )
 
     assert ASTRepresentation is not None
-    assert DependencyGraph is not None
+    assert ModuleDependencyGraph is not None
     assert Representation is not None
 
 
@@ -343,9 +343,9 @@ def test_backward_compat_top_level_imports():
 # ---------------------------------------------------------------------------
 
 
-def _graph_with_file(target_file: str, file_path_property: str) -> DependencyGraph:
+def _graph_with_file(target_file: str, file_path_property: str) -> ModuleDependencyGraph:
     """Minimal graph with one File node for path-matching tests."""
-    g = DependencyGraph(target_file=target_file)
+    g = ModuleDependencyGraph(target_file=target_file)
     g.add_node(
         GraphNode(
             id="File:node",

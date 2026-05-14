@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from topos.graphs.mdg.object import (
-    DependencyGraph,
+    ModuleDependencyGraph,
     GraphNode,
     GraphRelationship,
 )
@@ -19,9 +19,9 @@ from topos.functors.probes.mdg.coupling import (
 from topos.functors.probes.mdg.fan import FanResult, calculate_fan_in_out
 
 
-def _graph_with_linear_chain() -> DependencyGraph:
+def _graph_with_linear_chain() -> ModuleDependencyGraph:
     """A -> B -> C -> D linear import chain, target = A."""
-    g = DependencyGraph(target_file="a.py")
+    g = ModuleDependencyGraph(target_file="a.py")
     for name in ("a", "b", "c", "d"):
         g.add_node(
             GraphNode(
@@ -57,9 +57,9 @@ def _graph_with_linear_chain() -> DependencyGraph:
     return g
 
 
-def _graph_with_fan() -> DependencyGraph:
+def _graph_with_fan() -> ModuleDependencyGraph:
     """Hub file with many callers and callees."""
-    g = DependencyGraph(target_file="hub.py")
+    g = ModuleDependencyGraph(target_file="hub.py")
     g.add_node(
         GraphNode(
             id="File:hub.py",
@@ -156,7 +156,7 @@ def test_instability_all_efferent():
 
 
 def test_instability_zero_coupling():
-    g = DependencyGraph(target_file="isolated.py")
+    g = ModuleDependencyGraph(target_file="isolated.py")
     g.add_node(
         GraphNode(
             id="File:isolated.py",
@@ -186,7 +186,7 @@ def test_dependency_depth_linear():
 
 
 def test_dependency_depth_isolated():
-    g = DependencyGraph(target_file="lone.py")
+    g = ModuleDependencyGraph(target_file="lone.py")
     g.add_node(
         GraphNode(
             id="File:lone.py",
@@ -200,7 +200,7 @@ def test_dependency_depth_isolated():
 
 def test_dependency_depth_cycle():
     """Cycles should not cause infinite loops."""
-    g = DependencyGraph(target_file="x.py")
+    g = ModuleDependencyGraph(target_file="x.py")
     g.add_node(
         GraphNode(
             id="File:x.py",
@@ -249,7 +249,7 @@ def test_fan_in_out():
 
 
 def test_fan_isolated_file():
-    g = DependencyGraph(target_file="solo.py")
+    g = ModuleDependencyGraph(target_file="solo.py")
     g.add_node(
         GraphNode(
             id="File:solo.py",
@@ -269,12 +269,12 @@ def test_fan_isolated_file():
 
 def test_classifier_with_depgraph_representation():
     from topos.core.morphism import ProgramMorphism
-    from topos.logic.lattice import EvaluationValue
-    from topos.logic.omega import SubobjectClassifier
+    from topos.core.omega import EvaluationValue
+    from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 
     source = "def main(): return 1"
     morphism = ProgramMorphism(source=source)
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     g = _graph_with_linear_chain()
     result = classifier.classify_detailed(morphism, representations=[g])
@@ -282,16 +282,16 @@ def test_classifier_with_depgraph_representation():
     assert result.is_parseable
     assert isinstance(result.summary(), EvaluationValue)
     assert "composable" in result.dimensions
-    assert "depgraph.coupling" in result.raw_metrics
+    assert "mdg.coupling" in result.raw_metrics
 
 
 def test_classifier_without_representations_unchanged():
     from topos.core.morphism import ProgramMorphism
-    from topos.logic.omega import SubobjectClassifier
+    from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 
     source = "x = 1"
     morphism = ProgramMorphism(source=source)
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
 
     result_without = classifier.classify_detailed(morphism)
     result_with_none = classifier.classify_detailed(morphism, representations=None)
@@ -305,8 +305,8 @@ def test_classifier_without_representations_unchanged():
 
 
 def test_classification_result_str_with_representations():
-    from topos.logic.lattice import EvaluationValue
-    from topos.logic.omega import ClassificationResult
+    from topos.core.omega import EvaluationValue
+    from topos.evaluation.characteristic_morphism import ClassificationResult
 
     result = ClassificationResult(
         is_parseable=True,
@@ -314,8 +314,8 @@ def test_classification_result_str_with_representations():
         scores={"coupling": 0.75},
         lattice_element=EvaluationValue.COMPOSABLE,
         raw_metrics={
-            "depgraph.coupling": 3.0,
-            "depgraph.instability": 0.5,
+            "mdg.coupling": 3.0,
+            "mdg.instability": 0.5,
         },
     )
     text = str(result)
@@ -331,7 +331,7 @@ def test_owning_file_symbol_with_no_contains_parent():
     """A Function node that has no CONTAINS edge returns None from _owning_file."""
     from topos.functors.probes.mdg.coupling import _owning_file
 
-    g = DependencyGraph(target_file="orphan.py")
+    g = ModuleDependencyGraph(target_file="orphan.py")
     g.add_node(
         GraphNode(
             id="Func:orphan:stray",
@@ -347,7 +347,7 @@ def test_owning_file_unknown_node():
     """Asking for a node_id that doesn't exist in the graph returns None."""
     from topos.functors.probes.mdg.coupling import _owning_file
 
-    g = DependencyGraph(target_file="x.py")
+    g = ModuleDependencyGraph(target_file="x.py")
     assert _owning_file(g, "nonexistent-id") is None
 
 
@@ -355,7 +355,7 @@ def test_owning_file_via_contains_edge():
     """A Function reachable via a CONTAINS edge resolves to its File owner."""
     from topos.functors.probes.mdg.coupling import _owning_file
 
-    g = DependencyGraph(target_file="owner.py")
+    g = ModuleDependencyGraph(target_file="owner.py")
     g.add_node(
         GraphNode(
             id="File:owner.py",
@@ -403,13 +403,13 @@ def test_incoming_all_types():
 
 
 def test_outgoing_missing_node_returns_empty():
-    g = DependencyGraph(target_file="empty.py")
+    g = ModuleDependencyGraph(target_file="empty.py")
     assert g.outgoing("no-such-node") == []
     assert g.incoming("no-such-node") == []
 
 
 # ---------------------------------------------------------------------------
-# DependencyGraph.from_gitnexus_dir — list-format JSON
+# ModuleDependencyGraph.from_gitnexus_dir — list-format JSON
 # ---------------------------------------------------------------------------
 
 
@@ -444,7 +444,7 @@ def test_from_gitnexus_dir_list_format():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_lbug_dir(base, items)
-        g = DependencyGraph.from_gitnexus_dir(base, target_file="src/main.py")
+        g = ModuleDependencyGraph.from_gitnexus_dir(base, target_file="src/main.py")
 
     assert g.get_node("File:src/main.py") is not None
     assert g.get_node("File:src/lib.py") is not None
@@ -480,7 +480,7 @@ def test_from_gitnexus_dir_dict_format():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_lbug_dir(base, data)
-        g = DependencyGraph.from_gitnexus_dir(base, target_file="app.py")
+        g = ModuleDependencyGraph.from_gitnexus_dir(base, target_file="app.py")
 
     assert g.get_node("File:app.py") is not None
     assert len(g.relationships_of_type("IMPORTS")) == 1
@@ -497,7 +497,7 @@ def test_from_gitnexus_dir_missing_lbug_raises():
         tempfile.TemporaryDirectory() as tmp,
         pytest.raises(FileNotFoundError, match="LadybugDB"),
     ):
-        DependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
+        ModuleDependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
 
 
 def test_from_gitnexus_dir_list_format_auto_id():
@@ -514,7 +514,7 @@ def test_from_gitnexus_dir_list_format_auto_id():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_lbug_dir(base, items)
-        g = DependencyGraph.from_gitnexus_dir(base, target_file="a.py")
+        g = ModuleDependencyGraph.from_gitnexus_dir(base, target_file="a.py")
 
     assert len(g.relationships_of_type("IMPORTS")) == 1
 
@@ -525,8 +525,8 @@ def test_from_gitnexus_dir_list_format_auto_id():
 
 
 def test_dep_policies_score_coupling_perfect():
-    from topos.logic.policies.base import Priority
-    from topos.logic.policies.coupling import score_coupling
+    from topos.evaluation.policies.base import Priority
+    from topos.evaluation.policies.coupling import score_coupling
 
     # Low coupling, ideal instability → high score, target achieved
     d = score_coupling(0.0, 0.5, Priority.BALANCED)
@@ -535,8 +535,8 @@ def test_dep_policies_score_coupling_perfect():
 
 
 def test_dep_policies_score_coupling_pathological():
-    from topos.logic.policies.base import Priority
-    from topos.logic.policies.coupling import score_coupling
+    from topos.evaluation.policies.base import Priority
+    from topos.evaluation.policies.coupling import score_coupling
 
     # Max coupling, worst instability → low score, target not achieved
     d = score_coupling(35.0, 1.0, Priority.BALANCED)
@@ -545,8 +545,8 @@ def test_dep_policies_score_coupling_pathological():
 
 
 def test_dep_policies_score_coupling_priority_shifts_weight():
-    from topos.logic.policies.base import Priority
-    from topos.logic.policies.coupling import score_coupling
+    from topos.evaluation.policies.base import Priority
+    from topos.evaluation.policies.coupling import score_coupling
 
     # High coupling (bad), perfect instability (good)
     balanced = score_coupling(20.0, 0.5, Priority.BALANCED)
@@ -556,7 +556,7 @@ def test_dep_policies_score_coupling_priority_shifts_weight():
 
 
 def test_dep_policies_score_instability_optimal_range():
-    from topos.logic.policies.coupling import _instability_tent
+    from topos.evaluation.policies.coupling import _instability_tent
 
     # Instability in [0.3, 0.7] → quality = 1.0
     assert _instability_tent(0.5) == 1.0
@@ -569,36 +569,36 @@ def test_dep_policies_score_instability_optimal_range():
 
 
 def test_dep_policies_score_coupling_returns_scored_decision():
-    from topos.logic.policies.base import Priority, ScoredDecision
-    from topos.logic.policies.coupling import score_coupling
+    from topos.evaluation.policies.base import Priority, ScoredDecision
+    from topos.evaluation.policies.coupling import score_coupling
 
     decision = score_coupling(3.0, 0.5, Priority.BALANCED)
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
-    assert "depgraph.coupling" in decision.interpretation
-    assert "depgraph.instability" in decision.interpretation
+    assert "mdg.coupling" in decision.interpretation
+    assert "mdg.instability" in decision.interpretation
 
 
-def test_score_depgraph_routes_to_active_metrics():
-    from topos.logic.omega import _score_depgraph
-    from topos.logic.policies.base import Priority
+def test_score_mdg_routes_to_active_metrics():
+    from topos.evaluation.characteristic_morphism import _score_mdg
+    from topos.evaluation.policies.base import Priority
 
     # Extra metrics (fan_in, fan_out, dep_depth) are passed through raw_metrics
-    # but _score_depgraph only uses coupling and instability
-    decision = _score_depgraph(
+    # but _score_mdg only uses coupling and instability
+    decision = _score_mdg(
         {
-            "depgraph.coupling": 6.0,
-            "depgraph.instability": 0.5,
-            "depgraph.fan_in": 10.0,
-            "depgraph.fan_out": 8.0,
-            "depgraph.dep_depth": 3.0,
+            "mdg.coupling": 6.0,
+            "mdg.instability": 0.5,
+            "mdg.fan_in": 10.0,
+            "mdg.fan_out": 8.0,
+            "mdg.dep_depth": 3.0,
         },
         Priority.BALANCED,
     )
     assert decision is not None
     assert set(decision.interpretation.keys()) == {
-        "depgraph.coupling",
-        "depgraph.instability",
+        "mdg.coupling",
+        "mdg.instability",
     }
 
 
@@ -611,7 +611,7 @@ def test_owning_file_method_inside_class_inside_file():
     """Method → Class → File: _owning_file must walk both CONTAINS hops."""
     from topos.functors.probes.mdg.coupling import _owning_file
 
-    g = DependencyGraph(target_file="mod.py")
+    g = ModuleDependencyGraph(target_file="mod.py")
     g.add_node(
         GraphNode(id="File:mod.py", label="File", properties={"filePath": "mod.py"})
     )
@@ -642,7 +642,7 @@ def test_owning_file_contains_cycle_returns_none():
     """A CONTAINS cycle must not hang; _owning_file returns None."""
     from topos.functors.probes.mdg.coupling import _owning_file
 
-    g = DependencyGraph(target_file="x.py")
+    g = ModuleDependencyGraph(target_file="x.py")
     g.add_node(GraphNode(id="A", label="Class", properties={}))
     g.add_node(GraphNode(id="B", label="Class", properties={}))
     g.add_relationship(
@@ -658,7 +658,7 @@ def test_owning_file_contains_cycle_returns_none():
 
 def test_coupling_counts_nested_method_imports():
     """Efferent coupling via a Method nested in a Class should be counted."""
-    g = DependencyGraph(target_file="a.py")
+    g = ModuleDependencyGraph(target_file="a.py")
     g.add_node(GraphNode(id="File:a.py", label="File", properties={"filePath": "a.py"}))
     g.add_node(GraphNode(id="Class:a:A", label="Class", properties={}))
     g.add_node(GraphNode(id="Method:a:A:go", label="Method", properties={}))
@@ -705,7 +705,7 @@ def test_from_gitnexus_dir_malformed_json():
         (lbug / "bad.json").write_text("not valid json {")
 
         with pytest.raises(json.JSONDecodeError):
-            DependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+            ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
 
 
 # ---------------------------------------------------------------------------
@@ -715,7 +715,7 @@ def test_from_gitnexus_dir_malformed_json():
 
 def test_dependency_depth_diamond():
     """Diamond A→B, A→C, B→D, C→D: depth from A should be 2, D counted once."""
-    g = DependencyGraph(target_file="a.py")
+    g = ModuleDependencyGraph(target_file="a.py")
     for name in ("a", "b", "c", "d"):
         g.add_node(
             GraphNode(
@@ -768,18 +768,18 @@ def test_classify_detailed_interpretation_includes_depgraph():
     """Coupling/instability interpretation strings must appear in
     ClassificationResult."""
     from topos.core.morphism import ProgramMorphism
-    from topos.logic.omega import SubobjectClassifier
+    from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 
     source = "x = 1\n"
     morphism = ProgramMorphism(source=source)
 
-    g = DependencyGraph(target_file="x.py")
+    g = ModuleDependencyGraph(target_file="x.py")
     g.add_node(GraphNode(id="File:x.py", label="File", properties={"filePath": "x.py"}))
 
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     result = classifier.classify_detailed(morphism, representations=[g])
 
-    assert "depgraph.coupling" in result.interpretation
-    assert "depgraph.instability" in result.interpretation
-    assert result.interpretation["depgraph.coupling"] != ""
-    assert result.interpretation["depgraph.instability"] != ""
+    assert "mdg.coupling" in result.interpretation
+    assert "mdg.instability" in result.interpretation
+    assert result.interpretation["mdg.coupling"] != ""
+    assert result.interpretation["mdg.instability"] != ""

@@ -75,14 +75,14 @@ def test_evaluate_file_missing_file_errors() -> None:
 def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     """P0 regression guard — this test would have caught the original bug."""
     fake_graph = MagicMock()
-    fake_graph.name = "depgraph"
+    fake_graph.name = "mdg"
     fake_graph.dimension = "composable"
     fake_graph.metrics.return_value = {
-        "depgraph.coupling": 5.0,
-        "depgraph.instability": 0.5,
-        "depgraph.fan_in": 2.0,
-        "depgraph.fan_out": 3.0,
-        "depgraph.dep_depth": 1.0,
+        "mdg.coupling": 5.0,
+        "mdg.instability": 0.5,
+        "mdg.fan_in": 2.0,
+        "mdg.fan_out": 3.0,
+        "mdg.dep_depth": 1.0,
     }
     with (
         patch(
@@ -101,7 +101,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     mock_load.assert_called_once()
     assert r.coupling_available is True
     assert "composable" in r.scores, (
-        "composable dimension must be present when a DependencyGraph is attached"
+        "composable dimension must be present when a ModuleDependencyGraph is attached"
     )
 
 

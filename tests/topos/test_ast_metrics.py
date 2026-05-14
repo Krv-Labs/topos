@@ -10,7 +10,7 @@ from topos.functors.probes.ast.entropy import (
     calculate_entropy_variance,
     calculate_kolmogorov_proxy,
 )
-from topos.functors.profunctors.distance import (
+from topos.functors.profunctors.ast.compare import (
     are_clones,
     calculate_ast_distance,
     calculate_ghw_distance,
@@ -134,7 +134,7 @@ def test_distance_metrics():
 
 
 def test_distance_result_str():
-    from topos.functors.profunctors.distance import DistanceResult
+    from topos.functors.profunctors.ast.compare import DistanceResult
 
     res = DistanceResult(raw_distance=2, normalized_distance=0.5, operations={})
     assert "Distance:" in str(res)
@@ -228,7 +228,7 @@ def test_ghw_converged():
 
 def test_ghw_result_str():
     """GHWDistanceResult.__str__ should mention 'GHW Distance'."""
-    from topos.functors.profunctors.distance import GHWDistanceResult
+    from topos.functors.profunctors.ast.compare import GHWDistanceResult
 
     res = GHWDistanceResult(
         gw_distance=0.42,

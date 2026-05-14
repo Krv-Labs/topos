@@ -70,6 +70,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
+    from topos.core.morphism import ProgramMorphism
     from topos.core.object import ProgramObject
 
 
@@ -247,6 +248,21 @@ def are_clones(
     """
     result = calculate_ast_distance(source, target)
     return result.normalized_distance <= threshold
+
+
+def structural_distance(
+    source: "ProgramMorphism", target: "ProgramMorphism"
+) -> float:
+    """
+    Normalized AST edit distance between two program morphisms.
+
+    Convenience wrapper around :func:`calculate_ast_distance`: extracts
+    the AST from each morphism and returns the normalized result in
+    ``[0, 1]``.  Returns ``1.0`` if either morphism is unparseable.
+    """
+    if source.ast is None or target.ast is None:
+        return 1.0
+    return calculate_ast_distance(source.ast, target.ast).normalized_distance
 
 
 # ---------------------------------------------------------------------------

@@ -105,7 +105,7 @@ if still stuck:    follow `next_step` down through atoms
 
 ## Preferences vs. Priority
 
-- `priority` (`balanced` / `simple` / `composable` / `secure`) — knob on
+- `priority` (`simple` / `composable` / `secure`) — knob on
   the scorers `Φᵢ`. Changes how raw metrics combine into per-generator
   scores. **Does not** linearize Ω.
 - `preferences.ranking` — strict total order. Induces a total order on

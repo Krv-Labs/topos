@@ -102,11 +102,6 @@ The weights (``w_*``) are controlled by the **Priority**:
      - ``composable``
      - ``secure``
      - Effect
-   * - ``balanced``
-     - 0.33
-     - 0.33
-     - 0.33
-     - Equal emphasis on all three generators
    * - ``simple``
      - 0.7
      - 0.15

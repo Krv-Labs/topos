@@ -94,7 +94,7 @@ Consider if the abstraction is actually an improvement or just a shuffle.
 - Leaf module (few callers) → `simple`
 - Library surface (many importers) → `composable`
 - File handling untrusted input → `secure`
-- Unknown / general cleanup → `balanced`
+- Unknown / general cleanup → `secure` (default scorer emphasis)
 
 See `topos://docs/priority` for more.
 

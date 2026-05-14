@@ -28,7 +28,7 @@ def test_get_doc_returns_metrics() -> None:
 
 def test_get_doc_returns_priority() -> None:
     body = topos_get_doc(topic="priority")
-    assert "balanced" in body
+    assert "secure" in body
     assert "composable" in body
 
 

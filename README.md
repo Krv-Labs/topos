@@ -10,7 +10,7 @@ Three independent quality generators:
 - **COMPOSABLE:** Martin coupling and instability over the module dependency graph. Requires GitNexus.
 - **SECURE:** Dangerous-API reachability and source→sink taint over the Code Property Graph. Always evaluated.
 
-Set a priority (`simple`, `composable`, `secure`, or `balanced`) to guide the agent's iteration strategy.
+Set a priority (`simple`, `composable`, or `secure`) to guide the agent's iteration strategy.
 
 > [!NOTE]
 > We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs.

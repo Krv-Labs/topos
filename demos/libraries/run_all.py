@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
-import sys
 import tarfile
 import zipfile
 from collections import Counter
@@ -17,8 +14,13 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+from topos.core.omega import EvaluationValue
+from topos.evaluation.policies.base import Priority
+from topos.evaluation.preferences import UserPreferences, default_preferences
+from topos.mcp.evaluation import classify_file
+
 ARCHIVE_SUFFIXES = (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".zip", ".whl", ".tar")
-EVALUATION_ORDER = ("BROKEN", "COMPOSABLE", "SELF_CONTAINED", "SOUND")
+EVALUATION_ORDER = tuple(value.name for value in EvaluationValue)
 
 
 @dataclass(frozen=True)
@@ -36,8 +38,12 @@ class VersionSummary:
     files_evaluated: int
     overall: str
     counts: dict[str, int]
-    avg_complexity: float
-    avg_entropy: float
+    avg_scores: dict[str, float]
+    avg_raw_metrics: dict[str, float]
+    preference_target: str
+    preference_fallback_target: str
+    avg_preference_progress: float
+    next_step_counts: dict[str, int]
 
 
 VERSION_TARGETS: dict[str, LibraryTarget] = {
@@ -238,55 +244,109 @@ def download_distribution(url: str, destination: Path) -> None:
         ) from error
 
 
-def topos_env(root: Path) -> dict[str, str]:
-    env = dict(os.environ)
-    src = str(root / "src")
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = src if not existing else f"{src}{os.pathsep}{existing}"
-    return env
+def _result_to_record(
+    path: Path,
+    package_path: Path,
+    *,
+    priority: Priority,
+    preferences: UserPreferences,
+) -> dict[str, Any]:
+    result, dep_graph = classify_file(path, priority, gitnexus_dir=None)
+    current = result.summary()
+    next_step = preferences.next_step(current)
+    return {
+        "file": str(path.relative_to(package_path)),
+        "lattice_element": current.name,
+        "lattice_symbol": current.symbol,
+        "dimensions": {dim: value.name for dim, value in result.dimensions.items()},
+        "scores": {dim: score * 100.0 for dim, score in result.scores.items()},
+        "raw_metrics": dict(result.raw_metrics),
+        "is_parseable": result.is_parseable,
+        "coupling_available": dep_graph is not None,
+        "preference_walk": {
+            "ranking": [generator.value for generator in preferences.ranking],
+            "target": preferences.resolved_target().name,
+            "fallback_target": preferences.fallback_target().name,
+            "walk": [value.name for value in preferences.relaxation_walk(current)],
+            "next_step": next_step.name if next_step is not None else None,
+            "progress": preferences.progress(current),
+        },
+    }
 
 
-def run_topos_evaluate(path: Path, *, root: Path, env: dict[str, str]) -> str:
-    command = [
-        sys.executable,
-        "-m",
-        "topos.main",
-        "evaluate",
-        str(path),
-        "-r",
-        "--json",
-    ]
-    completed = subprocess.run(
-        command,
-        cwd=root,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"Topos evaluate failed for {path}\n"
-            f"stdout:\n{completed.stdout}\n"
-            f"stderr:\n{completed.stderr}"
-        )
-    return completed.stdout
+def evaluate_python_package(
+    package_path: Path,
+    *,
+    priority: Priority = Priority.SECURE,
+    preferences: UserPreferences | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    """Evaluate every Python file under ``package_path`` with current Topos APIs."""
+    prefs = preferences or default_preferences()
+    results: list[dict[str, Any]] = []
+    for path in sorted(package_path.rglob("*.py")):
+        try:
+            results.append(
+                _result_to_record(
+                    path,
+                    package_path,
+                    priority=priority,
+                    preferences=prefs,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - record per-file demo failures
+            results.append(
+                {
+                    "file": str(path.relative_to(package_path)),
+                    "lattice_element": EvaluationValue.SLOP.name,
+                    "lattice_symbol": EvaluationValue.SLOP.symbol,
+                    "dimensions": {},
+                    "scores": {},
+                    "raw_metrics": {},
+                    "is_parseable": False,
+                    "coupling_available": False,
+                    "error": str(exc),
+                    "preference_walk": {
+                        "ranking": [g.value for g in prefs.ranking],
+                        "target": prefs.resolved_target().name,
+                        "fallback_target": prefs.fallback_target().name,
+                        "walk": [
+                            value.name
+                            for value in prefs.relaxation_walk(EvaluationValue.SLOP)
+                        ],
+                        "next_step": (
+                            prefs.next_step(EvaluationValue.SLOP).name
+                            if prefs.next_step(EvaluationValue.SLOP) is not None
+                            else None
+                        ),
+                        "progress": prefs.progress(EvaluationValue.SLOP),
+                    },
+                }
+            )
 
+    achieved = {
+        "simple": bool(results)
+        and all(
+            r.get("dimensions", {}).get("simple") == EvaluationValue.SIMPLE.name
+            for r in results
+        ),
+        "composable": bool(results)
+        and all(
+            r.get("dimensions", {}).get("composable")
+            == EvaluationValue.COMPOSABLE.name
+            for r in results
+        ),
+        "secure": bool(results)
+        and all(
+            r.get("dimensions", {}).get("secure") == EvaluationValue.SECURE.name
+            for r in results
+        ),
+    }
+    overall = EvaluationValue.SLOP
+    from topos.core.omega import verdict_from_generators
 
-def parse_evaluate_output(output: str) -> tuple[list[dict[str, Any]], str]:
-    marker = "\n\nOverall:"
-    overall = "UNKNOWN"
-    json_text = output
-
-    if marker in output:
-        json_text, trailing = output.split(marker, maxsplit=1)
-        overall = trailing.strip()
-
-    payload = json.loads(json_text.strip())
-    results = payload.get("results", [])
-    if not isinstance(results, list):
-        raise ValueError("Unexpected topos JSON payload: results is not a list")
-    return results, overall
+    if results:
+        overall = verdict_from_generators(**achieved)
+    return results, overall.name
 
 
 def summarize_results(
@@ -297,48 +357,47 @@ def summarize_results(
     overall: str,
 ) -> VersionSummary:
     counts = Counter(
-        result.get("lattice_element") or result.get("summary", "BROKEN")
+        result.get("lattice_element") or EvaluationValue.SLOP.name
         for result in results
         if isinstance(result, dict)
     )
 
-    def _extract_complexity(result: dict[str, Any]) -> float | None:
-        raw_metrics = result.get("raw_metrics")
+    score_values: dict[str, list[float]] = {}
+    raw_values: dict[str, list[float]] = {}
+    progress_values: list[float] = []
+    next_steps: Counter[str] = Counter()
+    preference_target = default_preferences().resolved_target().name
+    preference_fallback_target = default_preferences().fallback_target().name
+
+    for result in results:
+        scores = result.get("scores", {})
+        if isinstance(scores, dict):
+            for key, value in scores.items():
+                if isinstance(value, (int, float)):
+                    score_values.setdefault(key, []).append(float(value))
+        raw_metrics = result.get("raw_metrics", {})
         if isinstance(raw_metrics, dict):
-            value = raw_metrics.get("ast.complexity")
-            if isinstance(value, (int, float)):
-                return float(value)
-        value = result.get("complexity")
-        if isinstance(value, (int, float)):
-            return float(value)
-        return None
+            for key, value in raw_metrics.items():
+                if isinstance(value, (int, float)):
+                    raw_values.setdefault(key, []).append(float(value))
+        walk = result.get("preference_walk", {})
+        if isinstance(walk, dict):
+            if isinstance(walk.get("progress"), (int, float)):
+                progress_values.append(float(walk["progress"]))
+            if isinstance(walk.get("target"), str):
+                preference_target = walk["target"]
+            if isinstance(walk.get("fallback_target"), str):
+                preference_fallback_target = walk["fallback_target"]
+            next_step = walk.get("next_step")
+            if isinstance(next_step, str):
+                next_steps[next_step] += 1
 
-    def _extract_entropy(result: dict[str, Any]) -> float | None:
-        raw_metrics = result.get("raw_metrics")
-        if isinstance(raw_metrics, dict):
-            value = raw_metrics.get("ast.entropy")
-            if isinstance(value, (int, float)):
-                return float(value)
-        value = result.get("entropy")
-        if isinstance(value, (int, float)):
-            return float(value)
-        return None
-
-    complexities = [
-        complexity
-        for result in results
-        if isinstance(result, dict)
-        and (complexity := _extract_complexity(result)) is not None
-    ]
-    entropies = [
-        entropy
-        for result in results
-        if isinstance(result, dict)
-        and (entropy := _extract_entropy(result)) is not None
-    ]
-
-    avg_complexity = sum(complexities) / len(complexities) if complexities else 0.0
-    avg_entropy = sum(entropies) / len(entropies) if entropies else 0.0
+    avg_scores = {
+        key: sum(values) / len(values) for key, values in sorted(score_values.items())
+    }
+    avg_raw_metrics = {
+        key: sum(values) / len(values) for key, values in sorted(raw_values.items())
+    }
 
     normalized_counts = {label: counts.get(label, 0) for label in EVALUATION_ORDER}
 
@@ -349,8 +408,14 @@ def summarize_results(
         files_evaluated=len(results),
         overall=overall,
         counts=normalized_counts,
-        avg_complexity=avg_complexity,
-        avg_entropy=avg_entropy,
+        avg_scores=avg_scores,
+        avg_raw_metrics=avg_raw_metrics,
+        preference_target=preference_target,
+        preference_fallback_target=preference_fallback_target,
+        avg_preference_progress=(
+            sum(progress_values) / len(progress_values) if progress_values else 0.0
+        ),
+        next_step_counts=dict(next_steps),
     )
 
 
@@ -369,23 +434,38 @@ def print_summary(summary: dict[str, list[VersionSummary]]) -> None:
             )
             if not non_zero_counts:
                 non_zero_counts = "(none)"
+            score_str = ", ".join(
+                f"{dim}={score:.1f}%"
+                for dim, score in item.avg_scores.items()
+            )
+            if not score_str:
+                score_str = "(no scores)"
+            next_steps = ", ".join(
+                f"{step}:{count}" for step, count in item.next_step_counts.items()
+            )
+            if not next_steps:
+                next_steps = "at-target"
             print(
                 f"{item.version:8} overall={item.overall:14} "
                 f"files={item.files_evaluated:<5} "
-                f"avg_complexity={item.avg_complexity:.3f} "
-                f"avg_entropy={item.avg_entropy:.3f}"
+                f"preference_progress={item.avg_preference_progress:.2f} "
+                f"target={item.preference_target} "
+                f"fallback={item.preference_fallback_target}"
             )
             print(f"          counts=[{non_zero_counts}]")
+            print(f"          avg_scores=[{score_str}]")
+            print(f"          next_steps=[{next_steps}]")
 
         if len(version_summaries) == 2:
             old, new = version_summaries
-            complexity_delta = new.avg_complexity - old.avg_complexity
-            entropy_delta = new.avg_entropy - old.avg_entropy
-            print(
-                "delta     "
-                f"avg_complexity={complexity_delta:+.3f} "
-                f"avg_entropy={entropy_delta:+.3f}"
-            )
+            score_keys = sorted(set(old.avg_scores) | set(new.avg_scores))
+            deltas = []
+            for key in score_keys:
+                delta = new.avg_scores.get(key, 0.0) - old.avg_scores.get(key, 0.0)
+                deltas.append(
+                    f"{key}={delta:+.1f}%"
+                )
+            print("delta     " + ", ".join(deltas))
 
 
 def write_json(
@@ -412,9 +492,7 @@ def evaluate_library_versions(
     library: str,
     target: LibraryTarget,
     *,
-    root: Path,
     cache_dir: Path,
-    env: dict[str, str],
     skip_download: bool,
 ) -> list[VersionSummary]:
     download_dir = cache_dir / "downloads"
@@ -435,8 +513,11 @@ def evaluate_library_versions(
 
         package_dir = locate_import_dir(extract_dir, target.import_dir)
         print(f"Evaluating {library} {version} from {package_dir} ...")
-        output = run_topos_evaluate(package_dir, root=root, env=env)
-        results, overall = parse_evaluate_output(output)
+        results, overall = evaluate_python_package(
+            package_dir,
+            priority=Priority.SECURE,
+            preferences=default_preferences(),
+        )
         summaries.append(
             summarize_results(
                 library=library,
@@ -452,8 +533,6 @@ def evaluate_library_versions(
 
 def main() -> None:
     args = parse_args()
-    root = repo_root()
-    env = topos_env(root)
     selected_libraries = args.library or list(VERSION_TARGETS.keys())
 
     summary: dict[str, list[VersionSummary]] = {}
@@ -461,9 +540,7 @@ def main() -> None:
         summary[library] = evaluate_library_versions(
             library,
             VERSION_TARGETS[library],
-            root=root,
             cache_dir=args.cache_dir,
-            env=env,
             skip_download=args.skip_download,
         )
 

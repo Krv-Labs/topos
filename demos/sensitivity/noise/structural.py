@@ -1,4 +1,4 @@
-"""I/O-preserving structural noise transforms for the Self-Contained axis.
+"""I/O-preserving structural noise transforms for the SIMPLE generator.
 
 Each transform parses the source, appends synthetic statements whose names do
 not collide with the originals, and unparses. By construction:
@@ -11,7 +11,7 @@ not collide with the originals, and unparses. By construction:
   "unparsed baseline" against which other intensities are compared.
 
 Expected effect on the structural metrics (per
-``topos.metrics.ast.complexity``):
+``topos.functors.probes.ast.complexity``):
 
 ==================================  ===================================
 Transform                            Δ complexity per unit intensity

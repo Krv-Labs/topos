@@ -1,8 +1,8 @@
-"""Sweep structural noise over the Self-Contained corpus.
+"""Sweep structural noise over the SIMPLE corpus.
 
 For each curated baseline file and each transform in ``noise.structural``,
-applies the transform at a grid of intensities, runs ``topos evaluate
---json --priority self_contained`` on the perturbed source, and records the
+applies the transform at a grid of intensities, runs the current Topos
+classifier with ``priority=simple`` on the perturbed source, and records the
 resulting score / lattice element / raw metrics. Also records the
 normalized AST edit distance from the intensity-zero baseline so the
 score-vs-edit-distance ratio can be inspected later.
@@ -17,8 +17,6 @@ from __future__ import annotations
 
 import ast
 import json
-import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -32,44 +30,22 @@ from noise import structural  # noqa: E402
 INTENSITIES: tuple[int, ...] = (0, 1, 2, 4, 8, 16)
 
 
-def topos_env() -> dict[str, str]:
-    env = dict(os.environ)
-    src_root = REPO_ROOT / "src"
-    existing = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = (
-        str(src_root) if not existing else f"{src_root}{os.pathsep}{existing}"
-    )
-    return env
-
-
 def evaluate(filepath: Path) -> dict:
-    """Run ``topos evaluate --json --priority self_contained`` on a single file."""
-    command = [
-        sys.executable,
-        "-m",
-        "topos.main",
-        "evaluate",
-        str(filepath),
-        "--json",
-        "--priority",
-        "self_contained",
-    ]
-    proc = subprocess.run(
-        command, cwd=REPO_ROOT, env=topos_env(), text=True, capture_output=True
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"topos evaluate failed for {filepath}\n"
-            f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
-        )
+    """Run the current classifier with ``priority=simple`` on a single file."""
+    from topos.evaluation.policies.base import Priority
+    from topos.mcp.evaluation import classify_file
 
-    text = proc.stdout
-    marker = "\n\nOverall:"
-    if marker in text:
-        text = text.split(marker, maxsplit=1)[0]
-    payload = json.loads(text.strip())
-    results = payload.get("results", [])
-    return results[0] if results else {}
+    result, dep_graph = classify_file(filepath, Priority.SIMPLE, gitnexus_dir=None)
+    summary = result.summary()
+    return {
+        "lattice_element": summary.name,
+        "lattice_symbol": summary.symbol,
+        "scores": {dim: score * 100.0 for dim, score in result.scores.items()},
+        "dimensions": {dim: value.name for dim, value in result.dimensions.items()},
+        "raw_metrics": dict(result.raw_metrics),
+        "coupling_available": dep_graph is not None,
+        "priority": Priority.SIMPLE.value,
+    }
 
 
 # Cap Wagner-Fischer DP at ~3k nodes (~36 MB int matrix) — above that we fall
@@ -104,7 +80,7 @@ def tree_drift(source_a: str, source_b: str) -> dict:
 
     if nodes_a <= MAX_AST_DISTANCE_NODES and nodes_b <= MAX_AST_DISTANCE_NODES:
         from topos.core.morphism import ProgramMorphism
-        from topos.metrics.distance import calculate_ast_distance
+        from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
         a = ProgramMorphism(source=source_a, language="python")
         b = ProgramMorphism(source=source_b, language="python")
@@ -181,7 +157,7 @@ def sweep_baseline(entry: dict) -> dict:
             else:
                 row["lattice_element"] = result.get("lattice_element")
                 row["lattice_symbol"] = result.get("lattice_symbol")
-                row["structural_score"] = result.get("scores", {}).get("structural")
+                row["simple_score"] = result.get("scores", {}).get("simple")
                 row["raw_metrics"] = result.get("raw_metrics", {})
                 row["drift"] = drift
             rows.append(row)
@@ -198,7 +174,7 @@ def sweep_baseline(entry: dict) -> dict:
 
 def format_markdown(sweep: list[dict]) -> str:
     lines: list[str] = [
-        "# Self-Contained Sensitivity Sweep",
+        "# SIMPLE Sensitivity Sweep",
         "",
         "Each table reports the score and lattice element of a baseline file "
         "under increasing intensity of a single structural noise transform. "
@@ -231,7 +207,7 @@ def format_markdown(sweep: list[dict]) -> str:
                 if "error" in cell:
                     row_cells.append("`error`")
                     continue
-                score = cell.get("structural_score")
+                score = cell.get("simple_score")
                 lattice = cell.get("lattice_symbol") or ""
                 drift = cell.get("drift", {}) or {}
                 delta_nodes = drift.get("nodes_delta")

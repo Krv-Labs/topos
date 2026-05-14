@@ -6,8 +6,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from topos.functors.profunctors.uast import compare_uast
 from topos.graphs.ast.dispatch import parse_source
-from topos.metrics.uast import compare_uast
 
 LANGUAGES = {
     "python": "binarytrees.py",

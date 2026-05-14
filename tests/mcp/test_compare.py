@@ -29,7 +29,7 @@ def test_compare_code_reports_distance() -> None:
 
 def test_compare_files_reads_from_disk() -> None:
     r = topos_compare_files(
-        CompareFilesInput(source="src/topos/main.py", target="src/topos/main.py")
+        CompareFilesInput(source="src/topos/__init__.py", target="src/topos/__init__.py")
     )
     assert r.error is None
     assert r.normalized_distance == 0.0
@@ -39,6 +39,6 @@ def test_compare_files_rejects_outside_root(tmp_path: Path) -> None:
     outside = tmp_path / "x.py"
     outside.write_text("x = 1")
     r = topos_compare_files(
-        CompareFilesInput(source=str(outside), target="src/topos/main.py")
+        CompareFilesInput(source=str(outside), target="src/topos/__init__.py")
     )
     assert r.error is not None

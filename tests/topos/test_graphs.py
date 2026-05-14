@@ -3,7 +3,7 @@
 from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
-from topos.graphs.depgraph.graph import (
+from topos.graphs.pdg.graph import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,
@@ -318,18 +318,6 @@ def test_score_ast_returns_none_on_missing_keys():
 # ---------------------------------------------------------------------------
 # Backward compatibility of metric imports
 # ---------------------------------------------------------------------------
-
-
-def test_backward_compat_metrics_imports():
-    from topos.metrics import (
-        calculate_ast_distance,
-        calculate_cyclomatic_complexity,
-        calculate_kolmogorov_proxy,
-    )
-
-    assert callable(calculate_cyclomatic_complexity)
-    assert callable(calculate_kolmogorov_proxy)
-    assert callable(calculate_ast_distance)
 
 
 def test_backward_compat_top_level_imports():

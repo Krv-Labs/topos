@@ -33,7 +33,7 @@ dependencies = [
 
 
 [project.scripts]
-topos = "topos.main:cli"
+topos = "topos.cli.main:cli"
 topos-mcp = "topos.mcp.server:main"
 
 [build-system]

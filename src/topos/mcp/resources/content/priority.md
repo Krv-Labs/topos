@@ -1,42 +1,55 @@
 # Priority Profiles
 
-The `priority` parameter on every Topos evaluation tool shifts metric weights
-within each dimension. It does **not** change the lattice structure or
-thresholds — COMPOSABLE and SELF_CONTAINED remain independent targets.
+The `priority` parameter on every Topos evaluation tool encodes the
+manager's **strict total order on the quality generators** `G_qual =
+{ SIMPLE, COMPOSABLE, SECURE }`.
+
+It shifts metric weights inside each policy translator `Φᵢ` and, when
+agents must trade off, defines the target-relaxation walk (highest
+bit = highest priority).  It does **not** change the lattice — the three
+generators remain pairwise incomparable in `H(G_qual)`.
 
 ## When to use which
 
 ### `balanced` (default)
 
-Equal weight on all metrics. Use when no specific axis matters more than
-the other — e.g., exploratory evaluation, initial baseline, or when the
-codebase will be consumed by many kinds of callers.
+Equal weight across SIMPLE / COMPOSABLE / SECURE.  Use for exploratory
+evaluation, initial baselines, or whenever no axis dominates.
+
+### `simple`
+
+Upweights the SIMPLE generator's metrics (CFG cyclomatic complexity).  Use
+when the file is a **leaf implementation** — concrete logic that few things
+depend on.  Minimizing internal branching matters more than how it composes
+or how cautiously it handles inputs.
 
 ### `composable`
 
-Upweights coupling metrics. Use when the file will be a **library surface**
-— imported by many consumers. Optimizing for composability means clean fan,
-balanced instability, and minimal internal complexity is secondary.
+Upweights the COMPOSABLE generator's metrics (Martin coupling / instability).
+Use when the file is a **library surface** — imported by many consumers.
+Clean fan-in/out and balanced instability dominate.
 
-### `self_contained`
+### `secure`
 
-Upweights structural metrics. Use when the file is a **leaf** — a concrete
-implementation that few things depend on. Minimizing internal complexity
-matters more than how it composes.
+Upweights the SECURE generator's metrics (CPG dangerous-API reachability,
+taint flows).  Use when the file handles **untrusted input** — request
+handlers, deserialization sinks, shell-out wrappers.
 
 ## Example
 
-Suppose `src/topos/server.py` (an MCP entry point): few callers, lots of
-internal orchestration. Use `self_contained` — the structural score
-reflects real quality for this kind of file.
+`src/topos/server.py` (MCP entry point, few callers, lots of internal
+orchestration): use `simple` — the SIMPLE generator reflects real quality.
 
-Suppose `src/topos/logic/omega.py` (the classifier, imported by every
-evaluation path): many callers. Use `composable` — coupling quality is
-what makes this file sound in context.
+`src/topos/logic/omega.py` (the classifier, imported by every evaluation
+path): use `composable` — coupling quality is the main lever here.
+
+`src/topos/utils/yaml_loader.py` (parses untrusted user config): use
+`secure` — `yaml.load` is a known footgun; the SECURE generator is the
+relevant target.
 
 ## Switching mid-loop
 
-Agents can change priority across evaluation calls. It's a hint to the
-scorer, not a contract — the same raw metrics will produce different
-verdicts under different priorities. Reporting both `balanced` + a
-priority-specific run can expose which dimension is the current bottleneck.
+Agents can change priority across evaluation calls.  It is a hint to the
+scorer, not a contract — the same raw metrics produce different verdicts
+under different priorities.  Reporting `balanced` plus a priority-specific
+run typically exposes which generator is the current bottleneck.

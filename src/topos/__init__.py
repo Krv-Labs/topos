@@ -14,7 +14,10 @@ from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
-from topos.graphs.pdg.graph import DependencyGraph
+from topos.graphs.cfg.object import ControlFlowGraph
+from topos.graphs.cpg.object import CodePropertyGraph
+from topos.graphs.mdg.object import DependencyGraph, ModuleDependencyGraph
+from topos.graphs.pdg.object import ProgramDependenceGraph
 from topos.logic.lattice import (
     EvaluationLattice,
     EvaluationValue,
@@ -31,5 +34,10 @@ __all__ = [
     "SubobjectClassifier",
     "Representation",
     "ASTRepresentation",
+    "ControlFlowGraph",
+    "ProgramDependenceGraph",
+    "ModuleDependencyGraph",
+    "CodePropertyGraph",
+    # Deprecated alias for ModuleDependencyGraph; remove in a future release.
     "DependencyGraph",
 ]

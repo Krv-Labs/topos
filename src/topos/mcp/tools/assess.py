@@ -189,7 +189,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
 def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResult:
     empty = EvaluationResult(
         is_parseable=False,
-        lattice_element=LatticeElement.BROKEN,
+        lattice_element=LatticeElement.SLOP,
         lattice_symbol="⊥",
         lattice_description="not evaluated",
         dimensions={},

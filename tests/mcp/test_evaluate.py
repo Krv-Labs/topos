@@ -40,7 +40,7 @@ def test_evaluate_code_happy_path() -> None:
     r = topos_evaluate_code(EvaluateCodeInput(code="def foo(): return 1"))
     assert r.is_parseable
     assert r.coupling_available is False
-    assert "structural" in r.scores
+    assert "simple" in r.scores
     assert r.error is None
 
 
@@ -56,7 +56,7 @@ def test_evaluate_file_reads_real_file() -> None:
     r = topos_evaluate_file(EvaluateFileInput(filepath="src/topos/__init__.py"))
     assert r.is_parseable
     assert r.coupling_available is False  # no .gitnexus/ in repo
-    assert "structural" in r.scores
+    assert "simple" in r.scores
 
 
 def test_evaluate_file_rejects_path_outside_root(tmp_path: Path) -> None:
@@ -76,7 +76,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     """P0 regression guard — this test would have caught the original bug."""
     fake_graph = MagicMock()
     fake_graph.name = "depgraph"
-    fake_graph.dimension = "coupling"
+    fake_graph.dimension = "composable"
     fake_graph.metrics.return_value = {
         "depgraph.coupling": 5.0,
         "depgraph.instability": 0.5,
@@ -100,8 +100,8 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
         )
     mock_load.assert_called_once()
     assert r.coupling_available is True
-    assert "coupling" in r.scores, (
-        "coupling dimension must be present when a DependencyGraph is attached"
+    assert "composable" in r.scores, (
+        "composable dimension must be present when a DependencyGraph is attached"
     )
 
 

@@ -37,6 +37,7 @@ _EXPRESSION_TYPES = {
     "boolean_operator": "BinaryExpr",
     "unary_expression": "UnaryExpr",
     "call_expression": "CallExpr",
+    "call": "CallExpr",  # Python tree-sitter grammar names it `call`
     "member_expression": "MemberExpr",
     "field_expression": "MemberExpr",
     "subscript": "MemberExpr",

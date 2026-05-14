@@ -1,16 +1,23 @@
 """
-Shared scoring infrastructure for evaluation sections.
+Shared scoring infrastructure for the policy translators Φᵢ: ℝ → ℋ.
 
-This module defines two layers:
+Following the math spec (§3 "Policy Translation"), each quality generator
+gᵢ ∈ G_qual has an associated policy translator Φᵢ that maps real-valued
+probe outputs (cyclomatic complexity, Martin instability, taint-flow counts,
+…) into the truth-value carrier ℋ.
 
-1. **New scoring layer** (Priority, WeightProfile, ScoredDecision):
-   The active production API.  Scorers produce a continuous normalized score
-   in [0, 1] and compare it against a threshold to determine whether a
-   lattice target (COMPOSABLE or SELF_CONTAINED) is achieved.
+This module defines the shared types used by every Φᵢ:
 
-2. **Legacy bin-walking layer** (ObservationBin, MetricDecision, BinClassifier):
-   Kept for reference; no longer used in production after the diamond-lattice
-   redesign.
+- ``Priority``       — the manager's strict total order on G_qual, lifted
+                       from ``README.md``.
+- ``WeightProfile``  — per-generator intra-dimension metric weights.
+- ``ScoredDecision`` — the output of a single Φᵢ.
+
+There is exactly one ``Φᵢ`` per generator:
+
+    Φ_SIMPLE      ↦ topos/logic/policies/simple.py::score_simple
+    Φ_COMPOSABLE  ↦ topos/logic/policies/coupling.py::score_coupling
+    Φ_SECURE      ↦ topos/logic/policies/secure.py::score_secure
 """
 
 from __future__ import annotations
@@ -22,70 +29,91 @@ from typing import NamedTuple
 
 from topos.logic.lattice import EvaluationLattice, EvaluationValue
 
-# ---------------------------------------------------------------------------
-# Scoring layer (active)
-# ---------------------------------------------------------------------------
-
 
 class Priority(StrEnum):
     """
-    Optimization priority that shifts metric weights within each dimension.
+    The manager's strict total order on the quality generators G_qual.
 
-    Agents select a priority to express which quality axis matters most for
-    the current task.  The priority controls internal weight profiles but does
-    not change the lattice structure — COMPOSABLE and SELF_CONTAINED remain
-    independent targets regardless of priority.
+    Selecting a priority *does not* change the lattice — the three
+    generators remain pairwise incomparable.  What it does is shift metric
+    weights within each generator's policy translator Φᵢ, plus determine
+    the order in which verdicts are walked during target-relaxation (see
+    the bit-table in ``README.md``).
 
-    Values:
-        BALANCED:       Equal weight on all metrics (default).
-        COMPOSABLE:     Upweights coupling metrics; optimizes for inter-module
-                        composition quality.
-        SELF_CONTAINED: Upweights structural metrics; optimizes for internal
-                        complexity and entropy.
+    Members align 1:1 with the generator set ``G_qual``:
+        BALANCED:    Equal weights across all dimensions (default).
+        SIMPLE:      Upweights the SIMPLE generator's metrics.
+        COMPOSABLE:  Upweights the COMPOSABLE generator's metrics.
+        SECURE:      Upweights the SECURE generator's metrics.
     """
 
     BALANCED = "balanced"
+    SIMPLE = "simple"
     COMPOSABLE = "composable"
-    SELF_CONTAINED = "self_contained"
+    SECURE = "secure"
 
 
 @dataclass(frozen=True)
 class WeightProfile:
     """
-    Per-dimension metric weights for a given Priority.
+    Per-generator metric weights for a given Priority.
+
+    Each weight controls the linear combination *within* one Φᵢ between
+    its two principal metrics.  The two weights inside a single
+    ``WeightProfile`` are independent across dimensions — they do not
+    sum to 1 across generators.
 
     Attributes:
-        w_complexity: Weight on complexity_quality within the structural score
-                      (vs entropy_quality, which gets 1 - w_complexity).
-        w_coupling:   Weight on coupling_quality within the coupling score
-                      (vs instability_quality, which gets 1 - w_coupling).
+        w_complexity:  Weight on cyclomatic_quality within Φ_SIMPLE.
+                       Entropy gets ``1 - w_complexity``.
+        w_coupling:    Weight on coupling_quality within Φ_COMPOSABLE.
+                       Instability gets ``1 - w_coupling``.
+        w_taint:       Weight on taint_quality within Φ_SECURE.
+                       Dangerous-API reachability gets ``1 - w_taint``.
     """
 
     w_complexity: float
     w_coupling: float
+    w_taint: float
 
 
 WEIGHT_PROFILES: dict[Priority, WeightProfile] = {
-    Priority.BALANCED: WeightProfile(w_complexity=0.5, w_coupling=0.5),
-    Priority.COMPOSABLE: WeightProfile(w_complexity=0.3, w_coupling=0.7),
-    Priority.SELF_CONTAINED: WeightProfile(w_complexity=0.7, w_coupling=0.3),
+    Priority.BALANCED: WeightProfile(
+        w_complexity=0.5, w_coupling=0.5, w_taint=0.5
+    ),
+    Priority.SIMPLE: WeightProfile(
+        w_complexity=0.7, w_coupling=0.3, w_taint=0.3
+    ),
+    Priority.COMPOSABLE: WeightProfile(
+        w_complexity=0.3, w_coupling=0.7, w_taint=0.3
+    ),
+    Priority.SECURE: WeightProfile(
+        w_complexity=0.3, w_coupling=0.3, w_taint=0.7
+    ),
 }
 
 
 @dataclass(frozen=True)
 class ScoredDecision:
     """
-    Result of scoring a quality dimension with a continuous normalized score.
+    Result of applying one policy translator Φᵢ: ℝ → ℋ.
 
     Attributes:
-        score:          Weighted quality score in [0.0, 1.0].  Higher is better.
-        achieved:       True when score >= threshold (lattice target is met).
-        interpretation: Per-metric human-readable strings keyed by metric name.
+        score:          Quality score in [0.0, 1.0]; higher is better.
+        achieved:       True when ``score >= threshold`` — i.e. the
+                        generator gᵢ is satisfied for this program.
+        interpretation: Per-metric human-readable strings keyed by
+                        metric name (e.g. ``cfg.cyclomatic``).
     """
 
     score: float
     achieved: bool
     interpretation: dict[str, str] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Legacy bin-walking layer (kept for back-compat with old metrics callers)
+# ---------------------------------------------------------------------------
 
 
 class ObservationBin(NamedTuple):
@@ -99,7 +127,7 @@ class ObservationBin(NamedTuple):
 
 @dataclass(frozen=True)
 class MetricDecision:
-    """Result of mapping a raw metric score through the evaluation section."""
+    """Result of mapping a raw metric score through a bin partition."""
 
     raw_score: float
     evaluation: EvaluationValue
@@ -108,12 +136,8 @@ class MetricDecision:
 
 class BinClassifier:
     """
-    Shared bin-walking machinery for evaluation sections.
-
-    Subclass this to build metric-specific classifiers.  Only the ``_classify``
-    method is provided here -- no bin definitions, no metric-specific methods.
-    Each subclass declares its own ``ClassVar`` bin tuples and exposes its own
-    named classify methods.
+    Shared bin-walking machinery for evaluation sections.  Legacy; no new
+    code should depend on this.
     """
 
     @classmethod
@@ -136,7 +160,6 @@ class BinClassifier:
     @classmethod
     def normalize_complexity(cls, raw_complexity: int) -> float:
         """Normalize complexity into [0, 1] for reporting."""
-        # Find the last finite boundary across any complexity bins on the subclass.
         complexity_bins: tuple[ObservationBin, ...] | None = getattr(
             cls, "complexity_bins", None
         )
@@ -148,5 +171,5 @@ class BinClassifier:
 
     @classmethod
     def build_lattice(cls) -> EvaluationLattice:
-        """Build the non-total evaluation lattice as a Heyting algebra."""
+        """Build the evaluation lattice as a Heyting algebra."""
         return EvaluationLattice.from_cover_relation(EvaluationLattice.DEFAULT_COVER)

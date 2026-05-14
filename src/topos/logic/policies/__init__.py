@@ -1,6 +1,12 @@
+"""
+Policy translators Φᵢ: ℝ → ℋ — one per quality generator.
+
+Each translator scores its dimension's metrics into ScoredDecision and
+threshold-classifies the result against ℋ = H(G_qual).
+"""
+
 from topos.logic.policies.base import (
     WEIGHT_PROFILES,
-    # Legacy (kept for compatibility during transition)
     BinClassifier,
     MetricDecision,
     ObservationBin,
@@ -9,7 +15,8 @@ from topos.logic.policies.base import (
     WeightProfile,
 )
 from topos.logic.policies.coupling import score_coupling
-from topos.logic.policies.structural import build_evaluation_lattice, score_structural
+from topos.logic.policies.secure import score_secure
+from topos.logic.policies.simple import build_evaluation_lattice, score_simple
 
 __all__ = [
     # Active scoring API
@@ -17,10 +24,11 @@ __all__ = [
     "WeightProfile",
     "WEIGHT_PROFILES",
     "ScoredDecision",
-    "score_structural",
+    "score_simple",
     "score_coupling",
+    "score_secure",
     "build_evaluation_lattice",
-    # Legacy (deprecated)
+    # Legacy (deprecated, kept for one release)
     "BinClassifier",
     "MetricDecision",
     "ObservationBin",

@@ -1,14 +1,25 @@
 """
-Program Dependency Graph Representation Sub-package
---------------------------------------------
-Parses GitNexus output into a :class:`DependencyGraph` that conforms
-to the :class:`~topos.graphs.base.Representation` protocol.
+Program Dependence Graph (PDG) representation — academic, intra-procedural.
+
+Implements the Ferrante/Ottenstein PDG: a graph over a single procedure's
+statement nodes with two edge families:
+
+    DDG : data-dependence edges  (def -> use)
+    CDG : control-dependence edges (predicate -> branch executor)
+
+This is **not** the inter-module dependency graph fed by GitNexus —
+that lives at :mod:`topos.graphs.mdg`.  The PDG is consumed primarily
+by the Code Property Graph builder.
 """
 
-from topos.graphs.pdg.graph import (
-    DependencyGraph,
-    GraphNode,
-    GraphRelationship,
+from topos.graphs.pdg.object import (
+    DependenceEdge,
+    DependenceKind,
+    ProgramDependenceGraph,
 )
 
-__all__ = ["DependencyGraph", "GraphNode", "GraphRelationship"]
+__all__ = [
+    "ProgramDependenceGraph",
+    "DependenceEdge",
+    "DependenceKind",
+]

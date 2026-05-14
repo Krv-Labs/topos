@@ -7,7 +7,12 @@ from topos.graphs.uast.models import UASTNode
 
 _DECLARATION_TYPES = {
     "function_definition": "FunctionDecl",
+    "function_declaration": "FunctionDecl",  # JS native name for top-level fn
+    "function": "FunctionDecl",
+    "function_expression": "FunctionDecl",
+    "arrow_function": "FunctionDecl",
     "class_definition": "TypeDecl",
+    "class_declaration": "TypeDecl",
     "struct_item": "TypeDecl",
     "enum_item": "TypeDecl",
     "impl_item": "TypeDecl",

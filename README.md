@@ -19,11 +19,11 @@ More coming soon.
 
 ### The Verdict
 
-The Hasse diagram is drawn **bottom = best** (`SOUND`, meet of all three satisfied axes), **top = worst** (`SLOP`, no axis satisfied): edges cover **adding one more failure** (turning off one generator). Pair labels are literal **meets** of which generators still pass (for example your program at `COMPOSABLE ∧ SIMPLE`).
+The Hasse diagram is drawn **bottom = best** (`IDEAL`, meet of all three satisfied axes), **top = worst** (`SLOP`, no axis satisfied): edges cover **adding one more failure** (turning off one generator). Pair labels are literal **meets** of which generators still pass (for example your program at `COMPOSABLE ∧ SIMPLE`).
 
 ```mermaid
 graph BT
-    SOUND["⊥ SOUND<br/>All targets met"]
+    IDEAL["⊥ IDEAL<br/>All targets met"]
 
     CS["◑◐<br/>COMPOSABLE ∧ SIMPLE"]
     CSEC["◑◇<br/>COMPOSABLE ∧ SECURE"]
@@ -35,9 +35,9 @@ graph BT
 
     SLOP["⊤ SLOP<br/>Fails targets"]
 
-    SOUND --> CS
-    SOUND --> CSEC
-    SOUND --> SSEC
+    IDEAL --> CS
+    IDEAL --> CSEC
+    IDEAL --> SSEC
 
     CS --> COMPOSABLE
     CS --> SIMPLE
@@ -57,12 +57,12 @@ graph BT
     style CS             fill:#cfe2ff,stroke:#084298,color:#000
     style CSEC           fill:#cff4fc,stroke:#055160,color:#000
     style SSEC           fill:#d3f9e8,stroke:#0f5132,color:#000
-    style SOUND          fill:#fff3cd,stroke:#856404,color:#000
+    style IDEAL          fill:#fff3cd,stroke:#856404,color:#000
 ```
 
-The three base measures are **pairwise incomparable** — code can satisfy any one without the others. Along this order, **meet** is intersection of satisfied generators (closure under ∧); `SLOP` is the **top** (⊤) and `SOUND` the **bottom** (⊥).
+The three base measures are **pairwise incomparable** — code can satisfy any one without the others. Along this order, **meet** is intersection of satisfied generators (closure under ∧); `SLOP` is the **top** (⊤) and `IDEAL` the **bottom** (⊥).
 
-That diagram is the intrinsic **partial order** on satisfied subsets: one verdict is **below** another in the drawing when it satisfies a *superset* of the same generators (coordinate-wise implication toward `SOUND`). Many pairs of verdicts are still incomparable (for example `COMPOSABLE` versus `SIMPLE`).
+That diagram is the intrinsic **partial order** on satisfied subsets: one verdict is **below** another in the drawing when it satisfies a *superset* of the same generators (coordinate-wise implication toward `IDEAL`). Many pairs of verdicts are still incomparable (for example `COMPOSABLE` versus `SIMPLE`).
 
 **Manager priority lists.** Whoever runs the agent picks a **strict total order on the generators** — which dimension matters most when trade-offs appear. That does not replace the partial order; it **ranks acceptable targets** so the run has a single walk when budgets bite.
 
@@ -72,7 +72,7 @@ Example priority list: **SECURE > COMPOSABLE > SIMPLE**. List each verdict as th
 
  Verdict | Bits |
 | --- | --- |
-| `SOUND` | `111` |
+| `IDEAL` | `111` |
 | `COMPOSABLE ∧ SECURE` | `110` |
 | `SIMPLE ∧ SECURE` | `101` |
 | `COMPOSABLE ∧ SIMPLE` | `011` |
@@ -107,10 +107,10 @@ topos compare before.py after.py                    # AST edit distance
 #### In an agent loop
 
 ```
-Agent iteration 1: structural: ⊤ SLOP [41%]
-  → Reduce cyclomatic complexity and normalize entropy toward 0.5
+Agent iteration 1: simple: ⊤ SLOP [41%]
+  → Reduce CFG cyclomatic complexity and normalize entropy toward 0.5
 
-Agent iteration 2: structural: ◐ SIMPLE [72%]
+Agent iteration 2: simple: ◐ SIMPLE [72%]
   → ✓ Target achieved.
 ```
 
@@ -128,7 +128,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 #### Step 1 — Build the dependency graph
 
 > [!IMPORTANT]
-> **Do this first.** Without a dependency graph, Topos scores the structural dimension only — `COMPOSABLE` and `SOUND` become unreachable.
+> **Do this first.** Without a dependency graph, Topos can score the SIMPLE and SECURE generators only — `COMPOSABLE` and any verdict containing it (including `IDEAL`) become unreachable.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine

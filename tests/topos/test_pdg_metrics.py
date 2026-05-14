@@ -4,19 +4,19 @@ import json
 import tempfile
 from pathlib import Path
 
-from topos.graphs.pdg.graph import (
+from topos.graphs.mdg.object import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,
 )
-from topos.functors.probes.pdg.coupling import (
+from topos.functors.probes.mdg.coupling import (
     CouplingResult,
     calculate_coupling,
     calculate_dependency_depth,
     calculate_instability,
     calculate_instability_from_result,
 )
-from topos.functors.probes.pdg.fan import FanResult, calculate_fan_in_out
+from topos.functors.probes.mdg.fan import FanResult, calculate_fan_in_out
 
 
 def _graph_with_linear_chain() -> DependencyGraph:
@@ -281,7 +281,7 @@ def test_classifier_with_depgraph_representation():
 
     assert result.is_parseable
     assert isinstance(result.summary(), EvaluationValue)
-    assert "coupling" in result.dimensions
+    assert "composable" in result.dimensions
     assert "depgraph.coupling" in result.raw_metrics
 
 
@@ -299,8 +299,9 @@ def test_classifier_without_representations_unchanged():
 
     assert result_without.summary() == result_with_none.summary()
     assert result_without.summary() == result_with_empty.summary()
-    # Without extra representations, only the structural dimension is present
-    assert set(result_without.dimensions.keys()) == {"structural"}
+    # Without extra representations, the AST representation alone feeds
+    # the SIMPLE generator.
+    assert set(result_without.dimensions.keys()) == {"simple"}
 
 
 def test_classification_result_str_with_representations():
@@ -328,7 +329,7 @@ def test_classification_result_str_with_representations():
 
 def test_owning_file_symbol_with_no_contains_parent():
     """A Function node that has no CONTAINS edge returns None from _owning_file."""
-    from topos.functors.probes.pdg.coupling import _owning_file
+    from topos.functors.probes.mdg.coupling import _owning_file
 
     g = DependencyGraph(target_file="orphan.py")
     g.add_node(
@@ -344,7 +345,7 @@ def test_owning_file_symbol_with_no_contains_parent():
 
 def test_owning_file_unknown_node():
     """Asking for a node_id that doesn't exist in the graph returns None."""
-    from topos.functors.probes.pdg.coupling import _owning_file
+    from topos.functors.probes.mdg.coupling import _owning_file
 
     g = DependencyGraph(target_file="x.py")
     assert _owning_file(g, "nonexistent-id") is None
@@ -352,7 +353,7 @@ def test_owning_file_unknown_node():
 
 def test_owning_file_via_contains_edge():
     """A Function reachable via a CONTAINS edge resolves to its File owner."""
-    from topos.functors.probes.pdg.coupling import _owning_file
+    from topos.functors.probes.mdg.coupling import _owning_file
 
     g = DependencyGraph(target_file="owner.py")
     g.add_node(
@@ -608,7 +609,7 @@ def test_score_depgraph_routes_to_active_metrics():
 
 def test_owning_file_method_inside_class_inside_file():
     """Method → Class → File: _owning_file must walk both CONTAINS hops."""
-    from topos.functors.probes.pdg.coupling import _owning_file
+    from topos.functors.probes.mdg.coupling import _owning_file
 
     g = DependencyGraph(target_file="mod.py")
     g.add_node(
@@ -639,7 +640,7 @@ def test_owning_file_method_inside_class_inside_file():
 
 def test_owning_file_contains_cycle_returns_none():
     """A CONTAINS cycle must not hang; _owning_file returns None."""
-    from topos.functors.probes.pdg.coupling import _owning_file
+    from topos.functors.probes.mdg.coupling import _owning_file
 
     g = DependencyGraph(target_file="x.py")
     g.add_node(GraphNode(id="A", label="Class", properties={}))

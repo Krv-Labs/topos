@@ -1,48 +1,90 @@
-# The Topos Diamond Lattice
+# The Topos Evaluation Lattice
 
 Topos does not reduce code quality to a single score. Code is classified
-on a **diamond lattice** with four elements:
+in the **free Heyting algebra** `H(G_qual)` on three quality generators
 
 ```
-           ⊤  SOUND         (both targets achieved)
-          / \
- COMPOSABLE   SELF_CONTAINED    (incomparable — neither ≤ the other)
-          \ /
-           ⊥  BROKEN        (neither achieved)
+G_qual = { SIMPLE, COMPOSABLE, SECURE }
 ```
 
-## The four values
+This is the codomain of the subobject classifier `Ω` in the Topos
+`E = Set^(C × H^op)`.  Every program morphism `P` has a unique
+characteristic morphism `χ_S : P → Ω` whose value records which
+generators the program satisfies.
+
+## The 8 verdicts (3-cube)
+
+Each verdict is a subset of `G_qual`; the lattice has `2³ = 8` elements.
+
+```
+                          IDEAL  ⊤   (all generators satisfied)
+                         /  |  \
+        SIMPLE_COMPOSABLE  SIMPLE_SECURE  COMPOSABLE_SECURE
+               |  \  /             \  /  |
+               |   \/               \/   |
+               |   /\               /\   |
+               |  /  \             /  \  |
+             SIMPLE   COMPOSABLE        SECURE
+                        \    |    /
+                         \   |   /
+                          \  |  /
+                           SLOP  ⊥   (no generator satisfied)
+```
 
 | Value | Symbol | Meaning |
 |---|---|---|
-| **BROKEN** | ⊥ | Fails both targets (or parse failure). |
-| **COMPOSABLE** | ◑ | Coupling target achieved: good fan-in/out, balanced instability. Composes cleanly with other modules. **Requires a DependencyGraph; unreachable from AST alone.** |
-| **SELF_CONTAINED** | ◐ | Structural target achieved: low cyclomatic complexity, balanced entropy. Stands alone cleanly. |
-| **SOUND** | ⊤ | Both targets achieved. |
+| **IDEAL** | ⊤ | All three generators satisfied; the ideal program state. |
+| **SIMPLE_COMPOSABLE** | ◐◑ | Both SIMPLE and COMPOSABLE satisfied; SECURE not yet. |
+| **SIMPLE_SECURE** | ◐◇ | Both SIMPLE and SECURE satisfied; COMPOSABLE not measured / not satisfied. |
+| **COMPOSABLE_SECURE** | ◑◇ | Both COMPOSABLE and SECURE satisfied; SIMPLE not satisfied. |
+| **SIMPLE** | ◐ | Only SIMPLE satisfied (low CFG cyclomatic complexity). |
+| **COMPOSABLE** | ◑ | Only COMPOSABLE satisfied (good coupling/instability). |
+| **SECURE** | ◇ | Only SECURE satisfied (no dangerous APIs / taint flows). |
+| **SLOP** | ⊥ | Fails every generator (or parse failure). |
 
-## Why COMPOSABLE and SELF_CONTAINED are incomparable
+The three single-generator verdicts are **pairwise incomparable**: neither
+SIMPLE ≤ COMPOSABLE nor the reverse. This is intuitionistic logic — partial
+evidence across orthogonal axes, no law of excluded middle.
 
-They measure orthogonal properties. A file can have pristine internal
-structure (SELF_CONTAINED) while coupling badly to the rest of the codebase
-(not COMPOSABLE), and vice versa. Neither subsumes the other. Their **meet**
-(greatest lower bound) is BROKEN; their **join** (least upper bound) is SOUND.
+## Where each generator comes from
 
-This is a Heyting algebra — the internal logic of a topos. It gives you
-intuitionistic reasoning: partial evidence across dimensions, no law of
-excluded middle.
+| Generator    | Translational functor (Representation) | Probes |
+|--------------|----------------------------------------|--------|
+| `SIMPLE`     | Control Flow Graph (CFG)               | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth` |
+| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `depgraph.coupling`, `depgraph.instability`, `depgraph.fan_in/out` |
+| `SECURE`     | Code Property Graph (CPG)              | `cpg.dangerous_calls`, `cpg.taint_flows` |
+
+The AST and UAST are substrate representations — every other graph is
+derived from them.  AST entropy still folds into the SIMPLE generator as
+a secondary signal.
 
 ## Reading an evaluation result
 
 A `ClassificationResult` has:
-- `lattice_element` — the overall verdict (one of the four above).
-- `dimensions` — per-axis verdict (`structural`, `coupling`). `coupling`
-  is only populated when a `DependencyGraph` was provided.
-- `scores` — continuous [0, 100] score per dimension. Threshold: 60%.
-- `coupling_available` — `false` if no `.gitnexus/` was found.
-  COMPOSABLE/SOUND are **unreachable** when this is false.
+- `lattice_element` — the overall verdict (one of the 8 above).
+- `dimensions` — per-generator verdict keyed by `simple` / `composable` / `secure`.
+- `scores` — continuous [0, 100] score per generator. Threshold: 60%.
+- `coupling_available` — `false` when no `.gitnexus/` was found.
+  `COMPOSABLE` (and any verdict that includes it, including `IDEAL`) is
+  **unreachable** when this is false.
+
+## Multi-file rollup
+
+Combining per-file verdicts is the **lattice meet** `⋀_f χ_S(f)` —
+pointwise per generator.  A generator is satisfied for the whole codebase
+iff it is satisfied for every file.
+
+## Convention note
+
+The mathematical specification states `IDEAL = g₁ ∧ g₂ ∧ ⋯ ∧ g_n` ("meet of
+all generators").  That is the informal "joint satisfaction" reading;
+`IDEAL` is the verdict in which all generators are satisfied together.  In
+the underlying algebra `IDEAL` is the top `⊤` of `H(G_qual)`, and the
+algebraic meet of two incomparable generators (e.g. `meet(SIMPLE,
+COMPOSABLE)`) is `SLOP`.
 
 ## Agent loop
 
-Treat the lattice as the **goal**, and dimension scores as the **gradient**.
-Move toward SOUND by improving whichever dimension is below 60%. See
-`topos://docs/workflows` for the canonical refactor loop.
+Treat the lattice as the **goal**, and the per-generator scores as the
+**gradient**.  Move toward IDEAL by improving whichever generator is below
+60%.  See `topos://docs/workflows` for the canonical refactor loop.

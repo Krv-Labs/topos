@@ -18,16 +18,28 @@ _DECLARATION_TYPES = {
 }
 
 _STATEMENT_TYPES = {
+    # Rust grammar exposes the control-flow primitives as expressions,
+    # not statements (e.g. `if_expression`).  Both spellings map here so
+    # the CFG builder picks them up uniformly across languages.
     "if_statement": "IfStmt",
+    "if_expression": "IfStmt",
     "for_statement": "ForStmt",
+    "for_expression": "ForStmt",
     "while_statement": "WhileStmt",
+    "while_expression": "WhileStmt",
+    "loop_expression": "WhileStmt",  # Rust `loop { ... }`
     "match_statement": "MatchStmt",
+    "match_expression": "MatchStmt",
     "return_statement": "ReturnStmt",
+    "return_expression": "ReturnStmt",
     "break_statement": "BreakStmt",
+    "break_expression": "BreakStmt",
     "continue_statement": "ContinueStmt",
+    "continue_expression": "ContinueStmt",
     "throw_statement": "ThrowStmt",
     "try_statement": "TryStmt",
     "expression_statement": "ExprStmt",
+    "let_declaration": "VarDecl",
 }
 
 _EXPRESSION_TYPES = {

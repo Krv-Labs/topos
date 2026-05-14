@@ -45,7 +45,7 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
     except Exception as exc:
         empty = EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="evaluation failed",
             dimensions={},

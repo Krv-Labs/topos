@@ -1,39 +1,35 @@
 """
-Omega Module (The Subobject Classifier)
----------------------------------------
-The 'Subobject Classifier' (Ω) is the soul of a Topos. It provides a
-characteristic map that assigns an evaluation value from our Heyting Algebra
-to any 'subobject' (piece of code).
+Omega Module — The Subobject Classifier Ω
+-----------------------------------------
 
-Mathematical Inspiration:
-    For every subobject 's' of 'X', there exists a unique morphism
-    χ: X → Ω. We use this to classify code by its structural quality.
+This module *is* the subobject classifier Ω of the Topos
+E = Set^(C x H^op).  Per the math spec §3, for every program P ∈ E and
+every subprogram S ↪ P there exists a unique characteristic morphism
 
-    In Set (the category of sets), Ω = {0, 1} and the characteristic
-    function is simply membership. In our Topos of Programs, Ω is the
-    EvaluationLattice (diamond), and the characteristic map evaluates code
-    quality along two independent *dimensions*.
+    χ_S : P -> Ω
 
-Diamond Lattice Evaluation Model:
-    Two dimensions measure orthogonal program qualities:
-        - "structural": AST metrics (complexity, entropy) → SELF_CONTAINED target
-        - "coupling":   Dep-graph metrics (coupling, instability) → COMPOSABLE target
+mapping each structural component to an element of ℋ = H(G_qual), the
+free Heyting algebra on three quality generators (SIMPLE, COMPOSABLE,
+SECURE).
 
-    Each dimension produces a normalized quality score in [0, 1].  A score
-    ≥ threshold means the lattice target for that dimension is achieved.
+The codomain ℋ has two distinguished elements:
 
-    The overall lattice element is determined by which targets are met:
-        Both achieved   → SOUND          (⊤)
-        Structural only → SELF_CONTAINED
-        Coupling only   → COMPOSABLE
-        Neither         → BROKEN         (⊥)
+    ⊤ = IDEAL = ⋀_{i} g_i   (meet of all generators — the ideal program)
+    ⊥ = SLOP                (unconstrained universe — no generator satisfied)
 
-    COMPOSABLE requires a DependencyGraph representation; it is unreachable
-    from AST metrics alone.
+The classifier:
 
-Priority:
-    An optional Priority parameter shifts metric weights within each dimension,
-    letting agents express which quality axis matters most for the current task.
+1. Builds every available Representation (AST + CFG + DependencyGraph +
+   CPG) for the morphism.
+2. Groups them by generator (each Representation declares its
+   ``dimension`` ∈ {"simple", "composable", "secure"}).
+3. Runs the matching policy translator Φᵢ on the collected metrics
+   (``simple`` → Φ_SIMPLE, etc.).
+4. Combines the three Boolean truth values via
+   ``lattice.verdict_from_generators`` into the final ℋ element.
+
+Priority shifts metric weights within each Φᵢ but does *not* change which
+generators are pairwise incomparable — that is fixed by the math.
 """
 
 from __future__ import annotations
@@ -43,13 +39,18 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from topos.logic.lattice import EvaluationLattice, EvaluationValue
+from topos.logic.lattice import (
+    EvaluationLattice,
+    EvaluationValue,
+    verdict_from_generators,
+)
 from topos.logic.policies import (
     Priority,
     ScoredDecision,
     build_evaluation_lattice,
     score_coupling,
-    score_structural,
+    score_secure,
+    score_simple,
 )
 
 if TYPE_CHECKING:
@@ -58,19 +59,42 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Score dispatchers
+# Score dispatchers — one per Representation name
 # ---------------------------------------------------------------------------
-# Maps representation *name* to a function that converts raw metric floats
-# into a ScoredDecision for that representation's dimension.
+# Each dispatcher reads the namespaced raw-metric floats and returns a
+# ScoredDecision via the matching policy translator Φᵢ.
+
+
+def _score_cfg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    if "cfg.cyclomatic" not in raw:
+        return None
+    # Entropy is optional; if a parallel AST representation already
+    # supplied ``ast.entropy`` in the same "simple" dimension it gets
+    # mixed in by SubobjectClassifier (see classify_detailed's mixed
+    # path) — so cfg dispatcher itself only consumes cyclomatic.
+    return score_simple(
+        cyclomatic=raw["cfg.cyclomatic"],
+        entropy=None,
+        priority=priority,
+    )
 
 
 def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
-    if "ast.complexity" not in raw or "ast.entropy" not in raw:
+    # Legacy AST contribution to SIMPLE: feeds entropy only.  Cyclomatic
+    # has moved to ``cfg.cyclomatic``.  Returning None when entropy is
+    # absent keeps the classifier from double-scoring AST.
+    if "ast.entropy" not in raw:
         return None
-    return score_structural(raw["ast.complexity"], raw["ast.entropy"], priority)
+    return score_simple(
+        cyclomatic=raw.get("ast.complexity", 0.0),
+        entropy=raw["ast.entropy"],
+        priority=priority,
+    )
 
 
-def _score_depgraph(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+def _score_depgraph(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
     if "depgraph.coupling" not in raw or "depgraph.instability" not in raw:
         return None
     return score_coupling(
@@ -78,18 +102,32 @@ def _score_depgraph(raw: dict[str, float], priority: Priority) -> ScoredDecision
     )
 
 
+def _score_cpg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
+        return None
+    return score_secure(
+        dangerous_calls=raw.get("cpg.dangerous_calls", 0.0),
+        taint_flows=raw.get("cpg.taint_flows", 0.0),
+        priority=priority,
+    )
+
+
 _REPRESENTATION_SCORE_DISPATCHERS: dict[
     str,
     Callable[[dict[str, float], Priority], ScoredDecision | None],
 ] = {
-    "ast": _score_ast,
+    "cfg": _score_cfg,
+    "ast": _score_ast,  # legacy: entropy contribution to SIMPLE
     "depgraph": _score_depgraph,
+    "cpg": _score_cpg,
 }
 
-# Map each representation name to its lattice target when achieved.
-_DIMENSION_TARGET: dict[str, EvaluationValue] = {
-    "structural": EvaluationValue.SELF_CONTAINED,
-    "coupling": EvaluationValue.COMPOSABLE,
+# Map each *dimension* name to the singleton generator value it produces
+# when satisfied.  These three generators are pairwise incomparable in ℋ.
+_DIMENSION_GENERATOR: dict[str, EvaluationValue] = {
+    "simple": EvaluationValue.SIMPLE,
+    "composable": EvaluationValue.COMPOSABLE,
+    "secure": EvaluationValue.SECURE,
 }
 
 
@@ -101,14 +139,16 @@ _DIMENSION_TARGET: dict[str, EvaluationValue] = {
 @dataclass
 class ClassificationResult:
     """
-    The result of classifying a program morphism.
+    The result of applying χ_S : P → Ω to a program morphism.
 
     Attributes:
         is_parseable:    Whether the code parsed successfully.
-        dimensions:      Per-axis lattice target: SELF_CONTAINED or COMPOSABLE
-                         when achieved, BROKEN otherwise.
-        scores:          Per-axis normalized quality score in [0.0, 1.0].
-        lattice_element: Overall lattice element combining all dimensions.
+        dimensions:      Per-generator lattice value: the singleton generator
+                         (SIMPLE/COMPOSABLE/SECURE) when satisfied, SLOP
+                         otherwise.
+        scores:          Per-generator normalized quality score in [0.0, 1.0].
+        lattice_element: Overall ℋ element — the join of the satisfied
+                         generators, encoded via ``verdict_from_generators``.
         priority:        The Priority profile used during classification.
         raw_metrics:     All raw metric floats, namespaced by representation.
         interpretation:  Per-metric interpretation strings.
@@ -117,29 +157,19 @@ class ClassificationResult:
     is_parseable: bool
     dimensions: dict[str, EvaluationValue] = field(default_factory=dict)
     scores: dict[str, float] = field(default_factory=dict)
-    lattice_element: EvaluationValue = field(default=EvaluationValue.BROKEN)
+    lattice_element: EvaluationValue = field(default=EvaluationValue.SLOP)
     priority: Priority = field(default=Priority.BALANCED)
     raw_metrics: dict[str, float] = field(default_factory=dict)
     interpretation: dict[str, str] = field(default_factory=dict)
 
-    # ------------------------------------------------------------------
-    # Convenience
-    # ------------------------------------------------------------------
-
     def summary(self) -> EvaluationValue:
-        """
-        The overall lattice element.
-
-        Use this when a single value is needed (e.g. multi-file rollup,
-        backward-compat API).  For per-dimension detail use ``dimensions``
-        and ``scores``.
-        """
+        """The overall ℋ element."""
         return self.lattice_element
 
     def __str__(self) -> str:
         if not self.is_parseable:
-            return "Classification: ⊥ BROKEN (parse failure)"
-        parts = []
+            return "Classification: ⊥ SLOP (parse failure)"
+        parts = [f"Classification: {self.lattice_element}"]
         for dim, val in self.dimensions.items():
             score_pct = f"{self.scores.get(dim, 0.0) * 100:.0f}%"
             parts.append(f"  {dim}: {val}  [{score_pct}]")
@@ -156,29 +186,24 @@ class ClassificationResult:
 @dataclass
 class SubobjectClassifier:
     """
-    The Subobject Classifier (Ω) for the category of Programs.
+    The Subobject Classifier Ω for the Topos of Programs.
 
-    This is the core evaluation engine of topos. It maps program
-    morphisms to evaluation values in the Heyting Algebra, implementing
-    the characteristic map χ: Program → Ω.
+    Implements the characteristic map χ : Program → Ω whose codomain is
+    the free Heyting algebra ℋ = H(G_qual).  Each generator gᵢ is fed by
+    the Representation theory says is the correct lens for that quality:
 
-    Each representation is scored independently and mapped to its lattice
-    target (SELF_CONTAINED for structural, COMPOSABLE for coupling).  The
-    overall lattice element is determined by which targets are achieved.
+        SIMPLE      ← CFG cyclomatic complexity
+        COMPOSABLE  ← Dependency-graph coupling/instability
+        SECURE      ← Code Property Graph taint/danger probes
 
     Attributes:
-        omega: The EvaluationLattice (our Ω).
+        omega: The EvaluationLattice ℋ.
     """
 
     omega: EvaluationLattice = field(default_factory=build_evaluation_lattice)
 
     def classify(self, morphism: ProgramMorphism) -> EvaluationValue:
-        """
-        Map a ProgramMorphism to an EvaluationValue.
-
-        Returns ``ClassificationResult.summary()`` — the overall lattice
-        element.  For per-dimension detail use ``classify_detailed``.
-        """
+        """Return ``classify_detailed(...).summary()`` — the overall ℋ element."""
         return self.classify_detailed(morphism).summary()
 
     def classify_detailed(
@@ -188,30 +213,19 @@ class SubobjectClassifier:
         priority: Priority = Priority.BALANCED,
     ) -> ClassificationResult:
         """
-        Perform detailed per-dimension classification.
+        Compute χ_S : P → Ω in full detail.
 
-        An ``ASTRepresentation`` is always built from the morphism and
-        contributes to the ``"structural"`` dimension.  Any additional
-        *representations* are grouped by their ``dimension`` property and
-        scored independently.
+        An ``ASTRepresentation`` is always built from the morphism (it
+        carries ``ast.entropy`` into the SIMPLE generator).  Any additional
+        *representations* (CFG, DependencyGraph, PDG, CPG) are grouped by
+        their ``dimension`` and scored independently.
 
-        Args:
-            morphism:        The program to classify.
-            representations: Optional extra representations (e.g. a
-                             ``DependencyGraph`` for the ``"coupling"`` dimension).
-            priority:        Weight profile shifting which metrics are
-                             emphasised within each dimension.
-
-        Returns:
-            A ``ClassificationResult`` with the overall lattice element,
-            per-dimension scores, and raw metrics.  When the code fails to
-            parse, ``is_parseable`` is ``False`` and ``lattice_element`` is
-            ``BROKEN``.
+        Parse failures collapse to ⊥ = SLOP.
         """
         if morphism.ast is None or not morphism.is_valid:
             return ClassificationResult(is_parseable=False, priority=priority)
 
-        # Always include an ASTRepresentation for the structural dimension.
+        # Always include an ASTRepresentation (entropy → SIMPLE).
         from topos.graphs.ast.object import ASTRepresentation
 
         ast_rep = ASTRepresentation(
@@ -222,7 +236,6 @@ class SubobjectClassifier:
         if representations:
             all_reps.extend(representations)
 
-        # Group representations by dimension.
         by_dimension: dict[str, list[Representation]] = defaultdict(list)
         for rep in all_reps:
             by_dimension[rep.dimension].append(rep)
@@ -233,7 +246,6 @@ class SubobjectClassifier:
         scores: dict[str, float] = {}
 
         for dim, reps in by_dimension.items():
-            # Collect all raw metrics for this dimension.
             dim_raw: dict[str, float] = {}
             for rep in reps:
                 dim_raw.update(rep.metrics())
@@ -242,64 +254,54 @@ class SubobjectClassifier:
             rep_names = {rep.name for rep in reps}
 
             if len(rep_names) == 1:
-                # Preserve the existing behavior when all representations in the
-                # dimension share the same type.
                 rep_name = reps[0].name
                 scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep_name)
                 if not scorer:
                     continue
-
                 decision = scorer(dim_raw, priority)
                 if decision is None:
                     continue
             else:
-                # Mixed representation types within one dimension must be scored
-                # independently so dispatcher selection does not depend on reps[0].
+                # Mixed representations within one dimension: score each
+                # independently and meet the truth values (= min score,
+                # AND on achieved).  This is how CFG (cyclomatic) and
+                # AST (entropy) jointly feed the SIMPLE generator.
                 mixed_scores: list[float] = []
-                mixed_interpretation: dict[str, str] = {}
+                mixed_interp: dict[str, str] = {}
                 mixed_achieved = True
+                any_scored = False
 
                 for rep in reps:
                     scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep.name)
                     if not scorer:
                         continue
-
                     rep_decision = scorer(rep.metrics(), priority)
                     if rep_decision is None:
                         continue
-
+                    any_scored = True
                     mixed_scores.append(rep_decision.score)
-                    mixed_interpretation.update(rep_decision.interpretation)
+                    mixed_interp.update(rep_decision.interpretation)
                     mixed_achieved = mixed_achieved and rep_decision.achieved
 
-                if not mixed_scores:
+                if not any_scored:
                     continue
-
                 decision = ScoredDecision(
                     score=min(mixed_scores),
                     achieved=mixed_achieved,
-                    interpretation=mixed_interpretation,
+                    interpretation=mixed_interp,
                 )
+
             scores[dim] = decision.score
             interpretation.update(decision.interpretation)
+            generator = _DIMENSION_GENERATOR.get(dim, EvaluationValue.SLOP)
+            dimensions[dim] = generator if decision.achieved else EvaluationValue.SLOP
 
-            target = _DIMENSION_TARGET.get(dim, EvaluationValue.BROKEN)
-            dimensions[dim] = target if decision.achieved else EvaluationValue.BROKEN
-
-        # Assemble the overall lattice element from achieved targets.
-        structural_achieved = (
-            dimensions.get("structural") == EvaluationValue.SELF_CONTAINED
+        # Assemble the overall ℋ element from the achieved generators.
+        lattice_element = verdict_from_generators(
+            simple=dimensions.get("simple") == EvaluationValue.SIMPLE,
+            composable=dimensions.get("composable") == EvaluationValue.COMPOSABLE,
+            secure=dimensions.get("secure") == EvaluationValue.SECURE,
         )
-        coupling_achieved = dimensions.get("coupling") == EvaluationValue.COMPOSABLE
-
-        if structural_achieved and coupling_achieved:
-            lattice_element = EvaluationValue.SOUND
-        elif structural_achieved:
-            lattice_element = EvaluationValue.SELF_CONTAINED
-        elif coupling_achieved:
-            lattice_element = EvaluationValue.COMPOSABLE
-        else:
-            lattice_element = EvaluationValue.BROKEN
 
         return ClassificationResult(
             is_parseable=True,
@@ -312,13 +314,7 @@ class SubobjectClassifier:
         )
 
     def combine(self, *values: EvaluationValue) -> EvaluationValue:
-        """
-        Combine multiple evaluation values using meet (∧).
-
-        When evaluating a codebase with multiple files (summary mode),
-        the overall evaluation is the meet of all individual evaluations.
-        Use ``combine_dimensions`` for dimension-aware multi-file rollup.
-        """
+        """Combine multiple ℋ values via meet (∧)."""
         return self.omega.combine(*values)
 
     def combine_dimensions(
@@ -327,35 +323,23 @@ class SubobjectClassifier:
         threshold: float = 0.6,
     ) -> dict[str, EvaluationValue]:
         """
-        Aggregate per-dimension verdicts across multiple files.
+        Pointwise multi-file meet ⋀_f χ_S(f).
 
-        Uses minimum score across files per dimension, then re-applies the
-        threshold to determine the lattice target.
-
-        Parse failures are treated as a failing structural signal
-        (score 0.0 for "structural") so syntactically invalid files always
-        affect aggregate results.
-
-        Args:
-            results:   Per-file ClassificationResult instances.
-            threshold: Score threshold for achieving a lattice target.
-
-        Returns:
-            A dict mapping dimension names to their combined lattice target.
+        A generator is satisfied across the codebase iff it is satisfied
+        for every file (minimum score across files ≥ threshold).  Parse
+        failures inject a zero score on the SIMPLE generator (since the
+        program failed even to compile, no other generator is reachable).
         """
         min_scores: dict[str, float] = {}
         for result in results:
             if not result.is_parseable:
-                min_scores["structural"] = min(
-                    min_scores.get("structural", 1.0),
-                    0.0,
-                )
+                min_scores["simple"] = min(min_scores.get("simple", 1.0), 0.0)
             for dim, score in result.scores.items():
                 if dim not in min_scores or score < min_scores[dim]:
                     min_scores[dim] = score
 
         combined: dict[str, EvaluationValue] = {}
         for dim, score in min_scores.items():
-            target = _DIMENSION_TARGET.get(dim, EvaluationValue.BROKEN)
-            combined[dim] = target if score >= threshold else EvaluationValue.BROKEN
+            generator = _DIMENSION_GENERATOR.get(dim, EvaluationValue.SLOP)
+            combined[dim] = generator if score >= threshold else EvaluationValue.SLOP
         return combined

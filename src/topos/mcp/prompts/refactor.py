@@ -14,7 +14,7 @@ user-facing prompt prose where soft-wrapping mid-sentence hurts readability.
 from __future__ import annotations
 
 from topos.logic.policies.base import Priority
-from topos.mcp.server import mcp
+from ..server import mcp
 
 
 @mcp.prompt(

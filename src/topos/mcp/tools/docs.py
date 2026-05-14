@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from topos.mcp.server import mcp
+from ..server import mcp
 
 _CONTENT_DIR = Path(__file__).parent.parent / "resources" / "content"
 

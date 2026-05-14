@@ -11,16 +11,16 @@ from __future__ import annotations
 from fastmcp import Context
 
 from topos.logic.omega import SubobjectClassifier
-from topos.mcp.evaluation import (
+from ..evaluation import (
     classify_code_string,
     classify_file,
     resolve_gitnexus_dir,
 )
-from topos.mcp.formatting import (
+from ..formatting import (
     lattice_to_str,
     to_evaluation_result,
 )
-from topos.mcp.schemas import (
+from ..schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
     EvaluateProjectInput,
@@ -29,8 +29,8 @@ from topos.mcp.schemas import (
     ProjectEvaluationResult,
     ProjectFileEntry,
 )
-from topos.mcp.security import resolve_file_root, resolve_within_root
-from topos.mcp.server import mcp
+from ..security import resolve_file_root, resolve_within_root
+from ..server import mcp
 
 _READ_ONLY_ANN = {
     "title": "Topos Code Evaluation",

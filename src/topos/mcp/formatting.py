@@ -11,7 +11,7 @@ from __future__ import annotations
 from topos.logic.lattice import EvaluationValue
 from topos.logic.omega import ClassificationResult
 from topos.logic.policies.base import Priority
-from topos.mcp.schemas import EvaluationResult, LatticeElement
+from .schemas import EvaluationResult, LatticeElement
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
     EvaluationValue.BROKEN: LatticeElement.BROKEN,

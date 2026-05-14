@@ -123,15 +123,6 @@ class EvaluateCodeInput(_StrictModel):
             "'python', 'rust', 'javascript', 'cpp'."
         ),
     )
-    priority: Priority = Field(
-        default=Priority.SECURE,
-        description=(
-            "Optimization priority — the top-ranked generator.  Shifts "
-            "metric weights within each policy translator Φᵢ.  One of "
-            "'simple', 'composable', or 'secure'.  For full strict "
-            "orderings, pass ``preferences.ranking`` instead."
-        ),
-    )
     response_format: ResponseFormat = Field(
         default=ResponseFormat.MARKDOWN,
         description=(
@@ -139,13 +130,12 @@ class EvaluateCodeInput(_StrictModel):
             "programmatic use."
         ),
     )
-    preferences: UserPreferencesInput | None = Field(
-        default=None,
+    preferences: UserPreferencesInput = Field(
+        ...,
         description=(
-            "Optional strict total order on the three generators. When "
-            "provided, the result includes a targeted relaxation walk "
-            "toward the 'ideal intersection' (meet of the top-two "
-            "ranked generators)."
+            "Strict total order on the three generators. The result includes "
+            "a targeted relaxation walk toward the 'ideal intersection' "
+            "(meet of the top-two ranked generators)."
         ),
     )
 
@@ -158,7 +148,6 @@ class EvaluateFileInput(_StrictModel):
         description="Path to the source file, relative to the project root.",
         min_length=1,
     )
-    priority: Priority = Field(default=Priority.SECURE, description="Priority.")
     gitnexus_dir: str | None = Field(
         default=None,
         description=(
@@ -169,10 +158,10 @@ class EvaluateFileInput(_StrictModel):
         ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
-    preferences: UserPreferencesInput | None = Field(
-        default=None,
+    preferences: UserPreferencesInput = Field(
+        ...,
         description=(
-            "Optional strict total order on the three generators; see "
+            "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
         ),
     )
@@ -188,11 +177,10 @@ class EvaluateProjectInput(_StrictModel):
         ),
         min_length=1,
     )
-    priority: Priority = Field(default=Priority.SECURE, description="Priority.")
-    preferences: UserPreferencesInput | None = Field(
-        default=None,
+    preferences: UserPreferencesInput = Field(
+        ...,
         description=(
-            "Optional strict total order on the three generators; see "
+            "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
         ),
     )
@@ -258,11 +246,10 @@ class AssessImprovementInput(_StrictModel):
         ),
     )
     language: str = Field(default="python")
-    priority: Priority = Field(default=Priority.SECURE)
-    preferences: UserPreferencesInput | None = Field(
-        default=None,
+    preferences: UserPreferencesInput = Field(
+        ...,
         description=(
-            "Optional strict total order on the three generators; see "
+            "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
         ),
     )
@@ -275,7 +262,6 @@ class InspectCodeInput(_StrictModel):
 
     code: str = Field(..., min_length=1)
     language: str = Field(default="python")
-    priority: Priority = Field(default=Priority.SECURE)
     top_n_functions: int = Field(
         default=10,
         ge=1,
@@ -300,7 +286,7 @@ class PreferenceWalkInput(_StrictModel):
         ...,
         description=(
             "Permutation of {simple, composable, secure}, most-preferred "
-            "first.  Required — there is no 'balanced' fallback."
+            "first.  Required — supply an explicit permutation (no implicit default)."
         ),
         min_length=3,
         max_length=3,

@@ -37,8 +37,8 @@ def topos_refactor_until_ideal(
 
     Args:
         filepath: Target file to refactor.
-        priority: Which generator to prioritize (``balanced``, ``simple``,
-                  ``composable``, or ``secure``).
+        priority: Which generator to prioritize (``simple``, ``composable``,
+                  or ``secure``; default ``secure``).
         max_iterations: Budget for iterations before stopping.
         preferences: Optional strict total order on the three generators
                      (e.g. ``["composable", "secure", "simple"]``).  When

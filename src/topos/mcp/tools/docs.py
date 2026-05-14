@@ -44,7 +44,7 @@ def topos_get_doc(topic: DocTopic) -> str:
     Topics:
         lattice    — the 8-element 3-cube H(G_qual); top = IDEAL, bottom = SLOP.
         metrics    — every metric key, thresholds, interpretation.
-        priority   — priority profiles (balanced/simple/composable/secure).
+        priority   — priority profiles (simple/composable/secure).
         workflows  — the canonical review→plan→refactor→re-measure loop.
                      **Read this first on every new refactor session.**
     """

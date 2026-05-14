@@ -134,7 +134,7 @@ def test_from_ranking_rejects_non_permutations():
 
 
 # ---------------------------------------------------------------------- #
-# Priority back-compat                                                    #
+# Priority enum                                                          #
 # ---------------------------------------------------------------------- #
 
 
@@ -144,8 +144,8 @@ def test_priority_top_generator():
     assert Priority.SECURE.top_generator() == Generator.SECURE
 
 
-def test_priority_has_no_balanced_mode():
-    """``BALANCED`` was the legacy escape hatch — gone now."""
+def test_priority_is_only_three_generators():
+    """Priority is exactly the three quality generators (no extra modes)."""
     assert "BALANCED" not in {p.name for p in Priority}
     assert {p.value for p in Priority} == {"simple", "composable", "secure"}
 

@@ -49,7 +49,7 @@ def metrics_reference() -> str:
     mime_type="text/markdown",
 )
 def priority_reference() -> str:
-    """Priority profiles (balanced / simple / composable / secure) and when to use each."""
+    """Priority profiles (simple / composable / secure) and when to use each."""
     return _read("priority.md")
 
 

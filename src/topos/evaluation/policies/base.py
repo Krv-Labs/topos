@@ -52,8 +52,8 @@ generator, and so on.
 
 Preferences, always
 ===================
-The manager **must** supply a preference.  There is no "balanced /
-no opinion" mode any more — every evaluation pins a generator (via
+The manager **must** supply a preference.  There is no catch-all
+"no opinion" mode any more — every evaluation pins a generator (via
 :class:`Priority`) or a full strict total order (via
 :class:`topos.evaluation.preferences.UserPreferences`).  ``Priority``
 captures only the top-ranked generator; ``UserPreferences`` captures
@@ -199,7 +199,7 @@ class WeightProfile:
         in ranking order::
 
             ranking[0] (top)    → primary-metric weight 0.7  (decisive)
-            ranking[1] (middle) → primary-metric weight 0.5  (balanced)
+            ranking[1] (middle) → primary-metric weight 0.5  (neutral)
             ranking[2] (bottom) → primary-metric weight 0.3  (conservative)
 
         This is the canonical path from a

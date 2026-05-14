@@ -11,10 +11,11 @@ generators remain pairwise incomparable in `H(G_qual)`.
 
 ## When to use which
 
-### `balanced` (default)
+### `secure` (default)
 
-Equal weight across SIMPLE / COMPOSABLE / SECURE.  Use for exploratory
-evaluation, initial baselines, or whenever no axis dominates.
+Conservative default: upweights SECURE metrics (`w_taint` highest within
+each `Φᵢ`).  Use when you want a single knob without tuning — especially
+mixed or unfamiliar codebases.
 
 ### `simple`
 
@@ -27,13 +28,7 @@ or how cautiously it handles inputs.
 
 Upweights the COMPOSABLE generator's metrics (Martin coupling / instability).
 Use when the file is a **library surface** — imported by many consumers.
-Clean fan-in/out and balanced instability dominate.
-
-### `secure`
-
-Upweights the SECURE generator's metrics (CPG dangerous-API reachability,
-taint flows).  Use when the file handles **untrusted input** — request
-handlers, deserialization sinks, shell-out wrappers.
+Clean fan-in/out and instability in the healthy band dominate.
 
 ## Example
 
@@ -51,5 +46,5 @@ relevant target.
 
 Agents can change priority across evaluation calls.  It is a hint to the
 scorer, not a contract — the same raw metrics produce different verdicts
-under different priorities.  Reporting `balanced` plus a priority-specific
-run typically exposes which generator is the current bottleneck.
+under different priorities.  Running the same file at e.g. `secure` then
+`composable` typically exposes which generator is the current bottleneck.

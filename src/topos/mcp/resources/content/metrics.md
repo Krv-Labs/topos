@@ -64,7 +64,6 @@ change the lattice structure.
 
 | Priority | `w_complexity` | `w_coupling` | `w_taint` |
 |---|---|---|---|
-| `balanced`   | 0.5 | 0.5 | 0.5 |
 | `simple`     | 0.7 | 0.3 | 0.3 |
 | `composable` | 0.3 | 0.7 | 0.3 |
 | `secure`     | 0.3 | 0.3 | 0.7 |

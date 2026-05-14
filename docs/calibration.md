@@ -21,7 +21,7 @@ quality inflection points.
 2. For each checkout, run project-level Topos evaluation:
 
    ```bash
-   topos evaluate /path/to/library -r --priority balanced --json
+   topos evaluate /path/to/library -r --priority secure --json
    ```
 
 3. Store each result as one JSON row with:
@@ -48,7 +48,7 @@ current defaults.
 
 ## Experiment 2 — Priority-profile A/B
 
-Goal: verify that `balanced`, `composable`, and `self_contained` produce
+Goal: verify that ``simple``, ``composable``, and ``secure`` produce
 meaningfully different rank ordering.
 
 ### Procedure
@@ -115,7 +115,7 @@ miscalibration; a distribution with mass near 0.55–0.65 is evidence of a tight
 threshold that could be adjusted.
 
 **H₃ (priority sensitivity by group):** `Δcoupling = score(priority=composable)
-− score(priority=self_contained)` should be larger for composable-labeled
+− score(priority=simple)` should be larger for composable-labeled
 packages than self-contained ones — weight shifts matter most when sub-metrics
 are near the decision boundary. If Δcoupling is uniformly near zero, the two
 sub-metrics (coupling_quality and instability_quality) are correlated and
@@ -156,7 +156,7 @@ installed.
 
 1. Run `python evaluations/calibration/scripts/run_structural_baseline.py`
    - Downloads and extracts each package from PyPI
-   - Runs `topos evaluate -r --json --priority balanced` on the primary source
+   - Runs `topos evaluate -r --json --priority secure` on the primary source
      directory
    - Writes per-file results to
      `evaluations/calibration/results/structural_scores.jsonl`
@@ -184,10 +184,10 @@ GitNexus (`npm install -g gitnexus`).
 1. For each package, run coupling evaluation:
    ```bash
    gitnexus analyze --force --skip-agents-md   # in the package root
-   topos evaluate <src_dir> -r --json --priority balanced --gitnexus-dir .gitnexus
+   topos evaluate <src_dir> -r --json --priority secure --gitnexus-dir .gitnexus
    ```
 2. For each file with both structural and coupling scores, compute:
-   `Δcoupling = score(priority=composable) − score(priority=self_contained)`
+   `Δcoupling = score(priority=composable) − score(priority=simple)`
 3. Group packages by `usage_classification` from `usage_profiles.csv`.
 4. Run Wilcoxon rank-sum on `mdg.instability` grouped by label (tests H₁).
 5. Plot coupling score ECDF for composable vs self_contained groups (tests H₂).

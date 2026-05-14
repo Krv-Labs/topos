@@ -41,12 +41,9 @@ rather than an open-ended target.
    * - ``composable``
      - *"Keep this module easy to integrate without fragile dependency chains."*
      - Clean inter-module coupling and balanced instability. Tolerates internal complexity.
-   * - ``secure``
+   * - ``secure`` (default)
      - *"Minimize dangerous operations and taint exposure."*
      - Reduced reachable dangerous calls and taint flows. Tolerates higher complexity or coupling.
-   * - ``balanced`` (default)
-     - *"Balance all three generators."*
-     - Equal weight on SIMPLE, COMPOSABLE, and SECURE.
 
 Perfect code achieves all three generators, but agents operate under token and time budgets.
 A concrete priority gives the agent a formula to execute instead of a vague goal.
@@ -145,7 +142,7 @@ MCP Tools
 ---------
 
 All evaluation tools accept an optional ``priority`` parameter
-(``"balanced"``, ``"simple"``, ``"composable"``, or ``"secure"``).
+(``"simple"``, ``"composable"``, or ``"secure"``).
 
 ``topos_evaluate_code(code, language, priority)``
    Classifies a code string and returns the full evaluation response (SIMPLE generator only).
@@ -207,4 +204,4 @@ Read these on the agent's first turn to orient it:
 - ``topos://docs/workflows`` — canonical review → plan → refactor → re-measure loop (stop condition: ``IDEAL``)
 - ``topos://docs/lattice`` — the 8-element lattice (SLOP / SIMPLE / COMPOSABLE / SECURE / SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE / IDEAL)
 - ``topos://docs/metrics`` — every metric key, generator, and threshold
-- ``topos://docs/priority`` — priority profiles (balanced / simple / composable / secure)
+- ``topos://docs/priority`` — priority profiles (simple / composable / secure)

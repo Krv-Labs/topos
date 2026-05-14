@@ -25,10 +25,11 @@ def test_all_four_docs_resources_registered() -> None:
 def test_lattice_resource_returns_markdown() -> None:
     blocks = asyncio.run(mcp.read_resource("topos://docs/lattice"))
     contents = "".join(b.content if hasattr(b, "content") else str(b) for b in blocks)
-    assert "Diamond Lattice" in contents
-    assert "SOUND" in contents
+    assert "Evaluation Lattice" in contents
+    assert "IDEAL" in contents
     assert "COMPOSABLE" in contents
-    assert "SELF_CONTAINED" in contents
+    assert "SIMPLE" in contents
+    assert "SECURE" in contents
 
 
 def test_workflows_resource_has_refactor_loop() -> None:

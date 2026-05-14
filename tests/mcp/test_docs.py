@@ -15,14 +15,15 @@ def test_get_doc_returns_workflows() -> None:
 
 def test_get_doc_returns_lattice() -> None:
     body = topos_get_doc(topic="lattice")
-    assert "Diamond Lattice" in body
-    assert "SOUND" in body
+    assert "Evaluation Lattice" in body
+    assert "IDEAL" in body
 
 
 def test_get_doc_returns_metrics() -> None:
     body = topos_get_doc(topic="metrics")
-    assert "ast.complexity" in body
+    assert "cfg.cyclomatic" in body
     assert "depgraph.coupling" in body
+    assert "cpg.dangerous_calls" in body
 
 
 def test_get_doc_returns_priority() -> None:

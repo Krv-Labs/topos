@@ -40,7 +40,7 @@ def test_assess_emits_distance_and_deltas_on_real_change() -> None:
     assert r.error is None
     assert r.structural_distance is not None
     assert r.structural_distance > 0.1
-    assert "structural" in r.score_deltas
+    assert "simple" in r.score_deltas
     # Status must be one of the valid enum members (any movement is fine).
     assert r.status in set(AssessmentStatus)
 
@@ -62,7 +62,9 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
         result = original(morph, priority, dep_graph)
         if call_count["n"] == 2:
             # Boost the "proposed" scores without changing the morphism.
-            result.scores = {"structural": result.scores.get("structural", 0.5) + 0.15}
+            # Only nudge SIMPLE — keep other dims so deltas don't show
+            # spurious regressions on unchanged generators.
+            result.scores["simple"] = result.scores.get("simple", 0.5) + 0.15
         return result
 
     code = "def f(x):\n    return x + 1\n"

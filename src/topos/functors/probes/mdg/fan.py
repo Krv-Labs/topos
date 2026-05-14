@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from topos.graphs.pdg.graph import DependencyGraph
+    from topos.graphs.mdg.object import DependencyGraph
 
 
 @dataclass

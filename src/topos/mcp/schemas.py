@@ -22,12 +22,20 @@ class ResponseFormat(StrEnum):
 
 
 class LatticeElement(StrEnum):
-    """String-valued mirror of ``EvaluationValue`` for MCP wire format."""
+    """String-valued mirror of ``EvaluationValue`` for MCP wire format.
 
-    BROKEN = "BROKEN"
+    These are the 8 elements of the free Heyting algebra H(G_qual) on the
+    three generators SIMPLE, COMPOSABLE, SECURE.  Top = IDEAL, bottom = SLOP.
+    """
+
+    SLOP = "SLOP"
+    SIMPLE = "SIMPLE"
     COMPOSABLE = "COMPOSABLE"
-    SELF_CONTAINED = "SELF_CONTAINED"
-    SOUND = "SOUND"
+    SECURE = "SECURE"
+    SIMPLE_COMPOSABLE = "SIMPLE_COMPOSABLE"
+    SIMPLE_SECURE = "SIMPLE_SECURE"
+    COMPOSABLE_SECURE = "COMPOSABLE_SECURE"
+    IDEAL = "IDEAL"
 
 
 class AssessmentStatus(StrEnum):

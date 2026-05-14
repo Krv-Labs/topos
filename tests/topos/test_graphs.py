@@ -3,7 +3,7 @@
 from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
-from topos.graphs.pdg.graph import (
+from topos.graphs.mdg.object import (
     DependencyGraph,
     GraphNode,
     GraphRelationship,
@@ -292,7 +292,9 @@ def test_ast_representation_dispatches_verdicts():
 
 
 def test_score_ast_produces_scored_decision():
-    """_score_ast returns a ScoredDecision for ast.complexity and ast.entropy."""
+    """_score_ast returns a ScoredDecision for the legacy ast.entropy path
+    (folding into the SIMPLE generator).
+    """
     from topos.logic.omega import _score_ast
     from topos.logic.policies.base import Priority, ScoredDecision
 
@@ -302,7 +304,11 @@ def test_score_ast_produces_scored_decision():
     assert decision is not None
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
-    assert set(decision.interpretation.keys()) == {"ast.complexity", "ast.entropy"}
+    # The legacy AST dispatcher feeds into Φ_SIMPLE which names its
+    # principal complexity metric `cfg.cyclomatic`.  Entropy is still in
+    # the interpretation map.
+    keys = set(decision.interpretation.keys())
+    assert "ast.entropy" in keys
     assert all(v != "" for v in decision.interpretation.values())
 
 

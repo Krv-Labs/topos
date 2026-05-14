@@ -44,7 +44,10 @@ class ASTRepresentation:
 
     @property
     def dimension(self) -> str:
-        return "structural"
+        # Feeds the SIMPLE generator (via ast.entropy).  Cyclomatic
+        # complexity has moved to the CFG representation; this AST
+        # representation still contributes entropy.
+        return "simple"
 
     def metrics(self) -> dict[str, float]:
         from topos.functors.probes.ast.complexity import calculate_cyclomatic_complexity

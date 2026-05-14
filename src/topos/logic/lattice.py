@@ -1,17 +1,59 @@
 """
-Lattice Module (Heyting Algebra)
---------------------------------
-Implements our configured evaluation lattice. In intuitionistic logic,
-evaluation is not merely binary {0, 1}, but can represent partial evidence
-across orthogonal dimensions.
+Lattice Module (Free Heyting Algebra on Quality Generators)
+-----------------------------------------------------------
 
-Mathematical Inspiration:
-    A Heyting Algebra is a bounded lattice that acts as the internal logic
-    of a Topos. It supports the 'implies' operation (internal hom) and
-    does not necessarily satisfy the Law of Excluded Middle (A ∨ ¬A).
+This module implements ``H = H(G_qual)``, the **free Heyting algebra** on the
+finite set of quality generators
 
-The lattice structure is intentionally non-total. In a lattice this means some
-evaluation values are incomparable until combined through meet/join.
+    G_qual = { SIMPLE, COMPOSABLE, SECURE }
+
+following the mathematical specification of Topos as a Grothendieck topos
+
+    E = Set^(C x H^op)
+
+where C is the standard graph index category (see ``graphs/base.py``) and H
+is the value Heyting algebra defined here.  The carrier of H is the 8-element
+poset of all subsets of G_qual:
+
+::
+
+                          IDEAL  (top, ⊤ = SIMPLE ∧ COMPOSABLE ∧ SECURE)
+                         /  |  \\
+                        /   |   \\
+                       /    |    \\
+        SIMPLE_COMPOSABLE  SIMPLE_SECURE  COMPOSABLE_SECURE
+              |  \\  /             \\  /  |
+              |   \\/               \\/   |
+              |   /\\               /\\   |
+              |  /  \\             /  \\  |
+            SIMPLE   COMPOSABLE         SECURE
+                       \\    |    /
+                        \\   |   /
+                         \\  |  /
+                          SLOP  (bottom, ⊥)
+
+The three generators are pairwise incomparable: ``leq(SIMPLE, COMPOSABLE)``
+is ``False`` in both directions.  Meets are intersections of the satisfied
+generator sets; ``meet(SIMPLE, COMPOSABLE) == SIMPLE_COMPOSABLE`` adds a
+generator; ``meet(SIMPLE_COMPOSABLE, SECURE) == IDEAL``.
+
+The ordering is the *partial* order of *satisfied-generator inclusion*: a
+verdict ``a`` is ≤ ``b`` iff the set of generators ``a`` satisfies is a
+*superset* of the set ``b`` satisfies.  Top (``IDEAL``) satisfies every
+generator; bottom (``SLOP``) satisfies none.  This is the order required by
+the math spec (section 1, "reverse metric/constraint inclusion"): adding a
+satisfied constraint moves the verdict *down* toward ``IDEAL``.
+
+The implementation uses an explicit cover relation rather than an integer
+ordering — singletons (``SIMPLE``, ``COMPOSABLE``, ``SECURE``) are pairwise
+incomparable, so the Hasse diagram is a 3-cube, not a chain.  ``meet`` /
+``join`` / ``implies`` / ``negation`` are computed generically from the
+cover, so this engine works for arbitrary finite Heyting algebras.
+
+Renaming note: this is the *expanded* lattice.  The earlier 4-element
+"diamond" called the top ``SOUND``; the new top is ``IDEAL`` — the meet of
+all generators, matching the math spec.  The bottom is ``SLOP``, the
+unconstrained universe.
 """
 
 from __future__ import annotations
@@ -24,42 +66,57 @@ from typing import ClassVar
 
 class EvaluationValue(IntEnum):
     """
-    The four evaluation targets of our Heyting Algebra (diamond lattice).
+    The eight elements of the free Heyting algebra H(G_qual) on three
+    quality generators (SIMPLE, COMPOSABLE, SECURE).
 
-    This enumeration defines the four evaluation values that form our lattice,
-    arranged as a diamond (partial order — not a total chain).
+    Each value corresponds to the subset of generators a program satisfies.
+    Ordering is by *superset of satisfied generators*: ``a ≤ b`` iff every
+    generator satisfied by ``b`` is also satisfied by ``a``.  Thus
+    ``IDEAL = ⊤`` (everything satisfied) and ``SLOP = ⊥`` (nothing
+    satisfied).
 
-    The two middle values are the **optimization targets** agents aim for.
-    They are incomparable: neither COMPOSABLE ≤ SELF_CONTAINED nor the reverse.
-    SOUND is the join of both; BROKEN is their meet.
+    Encoding (integer value = bitmask SIMPLE|COMPOSABLE|SECURE):
+        - bit 0 = SIMPLE satisfied
+        - bit 1 = COMPOSABLE satisfied
+        - bit 2 = SECURE satisfied
 
     Values:
-        BROKEN:         ⊥ - Fails both targets. Includes parse failures and code
-                        that does not meet the threshold on either quality axis.
-        COMPOSABLE:     Good coupling quality; composes well with other modules.
-                        Achieved when the coupling score ≥ threshold. Requires a
-                        DependencyGraph — unreachable from AST metrics alone.
-        SELF_CONTAINED: Good structural quality; stands alone cleanly.
-                        Achieved when the structural score ≥ threshold (low
-                        cyclomatic complexity, entropy near 0.5).
-        SOUND:          ⊤ - Both targets achieved. Clean, composable, and
-                        self-contained. Sometimes unachievable given finite
-                        resources; project managers set priorities accordingly.
+        SLOP:               ⊥ - no generator satisfied. The unconstrained
+                                universe; total structural chaos.
+        SIMPLE:             Only the SIMPLE generator is satisfied (low
+                                cyclomatic complexity on the CFG).
+        COMPOSABLE:         Only the COMPOSABLE generator is satisfied
+                                (good coupling/instability on the dep graph).
+        SIMPLE_COMPOSABLE:  Meet of SIMPLE and COMPOSABLE.
+        SECURE:             Only the SECURE generator is satisfied (no
+                                taint-flow / dangerous APIs on the CPG).
+        SIMPLE_SECURE:      Meet of SIMPLE and SECURE.
+        COMPOSABLE_SECURE:  Meet of COMPOSABLE and SECURE.
+        IDEAL:              ⊤ - all three generators satisfied. The meet
+                                of all generators: the ideal program state.
     """
 
-    BROKEN = 0  # ⊥ (Bottom)
-    COMPOSABLE = 1  # Good coupling; left branch of diamond
-    SELF_CONTAINED = 2  # Good structure; right branch of diamond
-    SOUND = 3  # ⊤ (Top)
+    SLOP = 0b000  # ⊥
+    SIMPLE = 0b001
+    COMPOSABLE = 0b010
+    SIMPLE_COMPOSABLE = 0b011
+    SECURE = 0b100
+    SIMPLE_SECURE = 0b101
+    COMPOSABLE_SECURE = 0b110
+    IDEAL = 0b111  # ⊤
 
     @property
     def symbol(self) -> str:
         """Unicode symbol representation."""
         symbols = {
-            EvaluationValue.BROKEN: "⊥",
+            EvaluationValue.SLOP: "⊥",
+            EvaluationValue.SIMPLE: "◐",
             EvaluationValue.COMPOSABLE: "◑",
-            EvaluationValue.SELF_CONTAINED: "◐",
-            EvaluationValue.SOUND: "⊤",
+            EvaluationValue.SECURE: "◇",
+            EvaluationValue.SIMPLE_COMPOSABLE: "◐◑",
+            EvaluationValue.SIMPLE_SECURE: "◐◇",
+            EvaluationValue.COMPOSABLE_SECURE: "◑◇",
+            EvaluationValue.IDEAL: "⊤",
         }
         return symbols[self]
 
@@ -67,14 +124,28 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.BROKEN: "Fails both targets; low quality or parse failure",
+            EvaluationValue.SLOP: (
+                "Fails every generator; unconstrained code"
+            ),
+            EvaluationValue.SIMPLE: "Low complexity; SIMPLE generator satisfied",
             EvaluationValue.COMPOSABLE: (
-                "Composes well with other modules; coupling quality achieved"
+                "Composes well with other modules; COMPOSABLE generator satisfied"
             ),
-            EvaluationValue.SELF_CONTAINED: (
-                "Stands alone cleanly; structural quality achieved"
+            EvaluationValue.SECURE: (
+                "Free of dangerous-API / taint patterns; SECURE generator satisfied"
             ),
-            EvaluationValue.SOUND: "Clean, composable, and self-contained",
+            EvaluationValue.SIMPLE_COMPOSABLE: (
+                "SIMPLE ∧ COMPOSABLE — clean structure and clean coupling"
+            ),
+            EvaluationValue.SIMPLE_SECURE: (
+                "SIMPLE ∧ SECURE — clean structure with no dangerous patterns"
+            ),
+            EvaluationValue.COMPOSABLE_SECURE: (
+                "COMPOSABLE ∧ SECURE — well-coupled with no dangerous patterns"
+            ),
+            EvaluationValue.IDEAL: (
+                "⊤ - meet of all generators; ideal program state"
+            ),
         }
         return descriptions[self]
 
@@ -82,32 +153,82 @@ class EvaluationValue(IntEnum):
         return f"{self.symbol} {self.name}"
 
 
+# ---------------------------------------------------------------------------
+# Cover relation for the 3-cube
+# ---------------------------------------------------------------------------
+# Each successor *adds* one satisfied generator (turns one bit on), which in
+# this order moves *down* toward IDEAL.  We list ``cover[a] = [b, ...]`` to
+# mean "b is an immediate successor of a (i.e. a is covered by b, a ≤ b)".
+
+_CUBE_COVER: dict[EvaluationValue, list[EvaluationValue]] = {
+    EvaluationValue.SLOP: [
+        EvaluationValue.SIMPLE,
+        EvaluationValue.COMPOSABLE,
+        EvaluationValue.SECURE,
+    ],
+    EvaluationValue.SIMPLE: [
+        EvaluationValue.SIMPLE_COMPOSABLE,
+        EvaluationValue.SIMPLE_SECURE,
+    ],
+    EvaluationValue.COMPOSABLE: [
+        EvaluationValue.SIMPLE_COMPOSABLE,
+        EvaluationValue.COMPOSABLE_SECURE,
+    ],
+    EvaluationValue.SECURE: [
+        EvaluationValue.SIMPLE_SECURE,
+        EvaluationValue.COMPOSABLE_SECURE,
+    ],
+    EvaluationValue.SIMPLE_COMPOSABLE: [EvaluationValue.IDEAL],
+    EvaluationValue.SIMPLE_SECURE: [EvaluationValue.IDEAL],
+    EvaluationValue.COMPOSABLE_SECURE: [EvaluationValue.IDEAL],
+    EvaluationValue.IDEAL: [],
+}
+
+
+def verdict_from_generators(
+    *, simple: bool, composable: bool, secure: bool
+) -> EvaluationValue:
+    """
+    Map a satisfied-generator triple to its free-algebra verdict.
+
+    This is the concrete encoding of the truth table from ``README.md``:
+    every subset of ``G_qual`` is a unique verdict.
+
+    Args:
+        simple:     True iff the SIMPLE generator is satisfied
+                    (CFG-based complexity score ≥ threshold).
+        composable: True iff the COMPOSABLE generator is satisfied
+                    (dependency-graph coupling score ≥ threshold).
+        secure:     True iff the SECURE generator is satisfied
+                    (CPG-based security score ≥ threshold).
+    """
+    bits = (
+        (0b001 if simple else 0)
+        | (0b010 if composable else 0)
+        | (0b100 if secure else 0)
+    )
+    return EvaluationValue(bits)
+
+
 @dataclass
 class EvaluationLattice:
     """
-    The Heyting Algebra of program evaluation.
+    The free Heyting algebra H(G_qual) on three quality generators.
 
-    This class implements lattice operations over EvaluationValue,
-    using an explicit partial order relation instead of assuming a total
-    chain.
+    Encodes the 3-cube Hasse diagram via an explicit cover relation.  All
+    lattice operations (meet, join, implies, negation) are computed
+    generically from the cover; no change is needed if the algebra is later
+    extended with additional generators or modified by quotient relations.
 
     Class Attributes:
-        BOTTOM: The least element (⊥ = BROKEN)
-        TOP: The greatest element (⊤ = SOUND)
+        BOTTOM: The least element (⊥ = SLOP)
+        TOP:    The greatest element (⊤ = IDEAL)
     """
 
-    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.BROKEN
-    TOP: ClassVar[EvaluationValue] = EvaluationValue.SOUND
+    BOTTOM: ClassVar[EvaluationValue] = EvaluationValue.SLOP
+    TOP: ClassVar[EvaluationValue] = EvaluationValue.IDEAL
 
-    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = {
-        EvaluationValue.BROKEN: [
-            EvaluationValue.COMPOSABLE,
-            EvaluationValue.SELF_CONTAINED,
-        ],
-        EvaluationValue.COMPOSABLE: [EvaluationValue.SOUND],
-        EvaluationValue.SELF_CONTAINED: [EvaluationValue.SOUND],
-        EvaluationValue.SOUND: [],
-    }
+    DEFAULT_COVER: ClassVar[dict[EvaluationValue, list[EvaluationValue]]] = _CUBE_COVER
 
     # Direct cover relations: value -> immediate successors.
     cover: dict[EvaluationValue, list[EvaluationValue]] = field(default_factory=dict)
@@ -143,11 +264,7 @@ class EvaluationLattice:
         return cls(cover=normalized_cover)
 
     def _set_default_cover(self) -> None:
-        """
-        Safe fallback when no cover is provided.
-
-        Uses DEFAULT_COVER so existing callers still get deterministic behavior.
-        """
+        """Safe fallback when no cover is provided."""
         self.cover = self.DEFAULT_COVER
 
     def _collect_dominates(self, value: EvaluationValue) -> set[EvaluationValue]:
@@ -164,17 +281,15 @@ class EvaluationLattice:
         return visited
 
     def leq(self, a: EvaluationValue, b: EvaluationValue) -> bool:
-        """
-        Lattice ordering: a ≤ b.
-        """
+        """Lattice ordering: a ≤ b."""
         return self._closure.get((a, b), False)
 
     def meet(self, a: EvaluationValue, b: EvaluationValue) -> EvaluationValue:
         """
         The 'And' operation (Greatest Lower Bound).
 
-        In the general lattice this is the greatest value that is below
-        both a and b.
+        For the free Heyting algebra on quality generators, this is the
+        intersection of satisfied-generator sets.
         """
         return self._resolve_bounds(a, b, maximize=False)
 
@@ -182,7 +297,9 @@ class EvaluationLattice:
         """
         The 'Or' operation (Least Upper Bound).
 
-        In the general lattice this is the least value above both a and b.
+        For the free Heyting algebra on quality generators, this is the
+        union of satisfied-generator sets (i.e. the most-specific verdict
+        that *both* a and b dominate).
         """
         return self._resolve_bounds(a, b, maximize=True)
 
@@ -191,7 +308,6 @@ class EvaluationLattice:
         Intuitionistic implication (→).
 
         a → b is the largest x such that a ∧ x ≤ b.
-        In total orders this simplifies, but here we compute it directly.
         """
         candidates = [x for x in EvaluationValue if self.leq(self.meet(a, x), b)]
         extrema = self._select_extrema(candidates, minimal=False)
@@ -208,11 +324,10 @@ class EvaluationLattice:
         metric_evaluations: Iterable[EvaluationValue] | Mapping[str, EvaluationValue],
     ) -> EvaluationValue:
         """
-        Aggregate evaluation values contributed by independent metrics.
+        Aggregate evaluation values via meet.
 
-        This keeps the lattice neutral to metric-specific thresholds:
-        each metric defines its own verdict; the lattice chooses the combined
-        verdict.
+        Multi-file rollup is exactly this meet: a generator is satisfied
+        across a codebase iff it is satisfied for every file.
         """
         values = (
             metric_evaluations.values()
@@ -230,12 +345,7 @@ class EvaluationLattice:
         return result
 
     def combine(self, *values: EvaluationValue) -> EvaluationValue:
-        """
-        Combine multiple evaluation values using meet (∧).
-
-        When evaluating a codebase with multiple files, the overall
-        evaluation is the meet of all individual evaluations.
-        """
+        """Combine multiple evaluation values using meet (∧)."""
         return self.aggregate(values)
 
     def equivalent(self, a: EvaluationValue, b: EvaluationValue) -> bool:
@@ -270,9 +380,7 @@ class EvaluationLattice:
     def _select_extrema(
         self, candidates: list[EvaluationValue], *, minimal: bool
     ) -> list[EvaluationValue]:
-        """
-        Select minimal or maximal elements from candidates under the partial order.
-        """
+        """Select minimal or maximal elements from candidates under the partial order."""
         if not candidates:
             return []
         return [

@@ -1,26 +1,37 @@
 """
-Dependency Graph Representation
--------------------------------
-Consumes the knowledge graph produced by `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_
-and lifts it into a :class:`~topos.graphs.base.Representation`.
+Module Dependency Graph (MDG) Representation
+============================================
+Consumes the knowledge graph produced by `GitNexus
+<https://github.com/abhigyanpatwari/GitNexus>`_ and lifts it into a
+:class:`~topos.graphs.base.Representation`.  This is the **inter-module**
+view of the program — it captures the import/call/inheritance structure
+across files, packages, and classes.  Compare this with the academic
+**intra-procedural Program Dependence Graph** at
+:mod:`topos.graphs.pdg.object`, which records control- and data-dependence
+edges *within* a single procedure.
 
 GitNexus runs ``gitnexus analyze`` on a repository and writes a
-``.gitnexus/`` directory containing a LadybugDB graph store.  This
-module parses that output into an in-memory graph of typed nodes
-and relationships, then computes dependency-level metrics that the
-AST alone cannot provide.
+``.gitnexus/`` directory containing a LadybugDB graph store.  This module
+parses that output into an in-memory graph of typed nodes and
+relationships, then computes dependency-level metrics that the AST alone
+cannot provide.
 
 Node labels and relationship types mirror GitNexus's shared schema::
 
     Nodes:  File, Module, Function, Class, Method, Import, ...
     Edges:  CALLS, IMPORTS, INHERITS, CONTAINS, USES, ...
 
-Metrics produced:
+Metrics produced (feed the COMPOSABLE generator of H(G_qual)):
     - ``depgraph.coupling``   -- afferent + efferent coupling for a file
-    - ``depgraph.instability`` -- Ce / (Ca + Ce)
+    - ``depgraph.instability`` -- Ce / (Ca + Ce)  (Martin's metric)
     - ``depgraph.fan_in``      -- incoming CALLS edges
     - ``depgraph.fan_out``     -- outgoing CALLS edges
     - ``depgraph.dep_depth``   -- longest IMPORTS chain from the file
+
+The metric-namespace prefix remains ``depgraph.*`` for backward
+compatibility (downstream tooling reads these keys).  The class is
+``ModuleDependencyGraph``; ``DependencyGraph`` is kept as a deprecated
+alias for old import paths.
 """
 
 from __future__ import annotations
@@ -116,12 +127,16 @@ def _parse_relationship(item: dict) -> GraphRelationship:
 
 
 @dataclass
-class DependencyGraph:
+class ModuleDependencyGraph:
     """
-    A dependency-graph representation parsed from GitNexus output.
+    Inter-module dependency-graph representation parsed from GitNexus output.
 
     Provides graph lookup methods and computes dependency-level
     metrics for a target file path within the graph.
+
+    This is the **module-level** dependency view (imports, calls, inheritance
+    across files).  It is distinct from the academic intra-procedural
+    Program Dependence Graph at :mod:`topos.graphs.pdg.object`.
 
     Attributes:
         target_file: The file path to compute metrics for.
@@ -146,7 +161,10 @@ class DependencyGraph:
 
     @property
     def dimension(self) -> str:
-        return "coupling"
+        # Feeds the COMPOSABLE generator of the free Heyting algebra
+        # H(G_qual). Renamed from "coupling" when the lattice expanded
+        # to three generators.
+        return "composable"
 
     # ------------------------------------------------------------------
     # Construction
@@ -155,7 +173,7 @@ class DependencyGraph:
     @classmethod
     def from_gitnexus_dir(
         cls, gitnexus_dir: str | Path, target_file: str
-    ) -> DependencyGraph:
+    ) -> ModuleDependencyGraph:
         """
         Build a DependencyGraph from a ``.gitnexus/`` directory.
 
@@ -186,7 +204,7 @@ class DependencyGraph:
         )
 
     @classmethod
-    def _from_ladybugdb(cls, lbug_path: Path, target_file: str) -> DependencyGraph:
+    def _from_ladybugdb(cls, lbug_path: Path, target_file: str) -> ModuleDependencyGraph:
         """Load from the binary LadybugDB format produced by GitNexus ≥ 1.5."""
         import real_ladybug as lb
 
@@ -238,7 +256,7 @@ class DependencyGraph:
         return graph
 
     @classmethod
-    def _from_json_dir(cls, lbug_dir: Path, target_file: str) -> DependencyGraph:
+    def _from_json_dir(cls, lbug_dir: Path, target_file: str) -> ModuleDependencyGraph:
         """Load from the legacy JSON directory format produced by GitNexus < 1.5."""
         graph = cls(target_file=target_file)
         for json_path in lbug_dir.glob("*.json"):
@@ -337,12 +355,12 @@ class DependencyGraph:
     # ------------------------------------------------------------------
 
     def metrics(self) -> dict[str, float]:
-        from topos.functors.probes.pdg.coupling import (
+        from topos.functors.probes.mdg.coupling import (
             calculate_coupling,
             calculate_dependency_depth,
             calculate_instability_from_result,
         )
-        from topos.functors.probes.pdg.fan import calculate_fan_in_out
+        from topos.functors.probes.mdg.fan import calculate_fan_in_out
 
         file_id = self.file_node_id()
         if file_id is None:
@@ -368,3 +386,8 @@ class DependencyGraph:
             "depgraph.fan_out": float(fan_result.fan_out),
             "depgraph.dep_depth": float(dep_depth),
         }
+
+
+# Backward-compatible alias for the pre-split import path.
+# Prefer the new name ``ModuleDependencyGraph`` in new code.
+DependencyGraph = ModuleDependencyGraph

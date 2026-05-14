@@ -19,7 +19,7 @@ import hashlib
 from functools import lru_cache
 from pathlib import Path
 
-from topos.graphs.pdg.graph import DependencyGraph
+from topos.graphs.mdg.object import DependencyGraph
 
 
 def _gitnexus_mtime(gitnexus_dir: Path) -> float:

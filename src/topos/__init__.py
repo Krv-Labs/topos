@@ -14,7 +14,7 @@ from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
-from topos.graphs.depgraph.graph import DependencyGraph
+from topos.graphs.pdg.graph import DependencyGraph
 from topos.logic.lattice import (
     EvaluationLattice,
     EvaluationValue,

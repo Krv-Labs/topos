@@ -114,14 +114,14 @@ Key property: **The three generators are pairwise incomparable.** Each can be ac
 
 | Generator | Representation | Metrics | Scoring |
 |-----------|---------------|---------|---------|
-| SIMPLE | `ControlFlowGraph` (+ `ASTRepresentation` entropy) | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth`, `cfg.longest_path`, `ast.entropy` | Weighted: `1 - cyclomatic/40` + entropy bell-curve (peak at 0.5). Threshold: 0.6. |
-| COMPOSABLE | `ModuleDependencyGraph` | `mdg.coupling`, `mdg.instability`, `mdg.fan_in`, `mdg.fan_out`, `mdg.dep_depth` | Weighted: `1 - coupling/35` + instability flat-top tent over [0.3, 0.7]. Threshold: 0.6. |
-| SECURE | `CodePropertyGraph` | `cpg.dangerous_calls`, `cpg.taint_flows` | Weighted exp-decay: `exp(-count / scale)` for each metric. Threshold: 0.6. |
+| SIMPLE | `ControlFlowGraph` (+ `ASTRepresentation` entropy) | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth`, `cfg.longest_path`, `ast.entropy` | Weighted: `1 - cyclomatic/40` + entropy bell-curve (peak at 0.5). Threshold: **0.60**. |
+| COMPOSABLE | `ModuleDependencyGraph` | `mdg.coupling`, `mdg.instability`, `mdg.fan_in`, `mdg.fan_out`, `mdg.dep_depth` | Weighted: `1 - coupling/35` + instability flat-top tent over [0.3, 0.7]. Threshold: **0.60**. |
+| SECURE | `CodePropertyGraph` | `cpg.dangerous_calls`, `cpg.taint_flows` | Weighted exp-decay: `exp(-count / scale)` for each metric. Threshold: **0.70** (higher — security false-negatives are asymmetrically costly). |
 
 **Diagnostic (not counted toward verdict):**
 - `ProgramDependenceGraph`: `pdg.data_deps`, `pdg.control_deps`, `pdg.density` — intra-procedural dependence analysis.
 
-**`--priority`** shifts metric weights *within* each generator (via `Priority` enum: `BALANCED`, `SIMPLE`, `COMPOSABLE`, `SECURE`). It does not change the lattice structure or which generators score.
+**`--priority`** shifts metric weights *within* each generator (via `Priority` enum: `SIMPLE`, `COMPOSABLE`, `SECURE`). It does not change the lattice structure or which generators score. `Priority` is the single-knob shorthand; for a full agent loop use `UserPreferences` (see [Priority & Preferences](#priority--preferences)).
 
 ### Key Non-Obvious Behaviors
 
@@ -131,6 +131,84 @@ Key property: **The three generators are pairwise incomparable.** Each can be ac
 - **Parse failures kill the verdict.** `is_parseable=False` → `lattice_element = SLOP`; in `combine_dimensions()` they inject a `0.0` score on SIMPLE, pulling multi-file aggregation down.
 - **Mixed representations within a generator** are scored independently and combined via `min()` (conservative).  E.g. AST entropy and CFG cyclomatic both feed SIMPLE; the generator passes iff both individual decisions pass.
 - **Three generators are orthogonal.** A file can be SIMPLE without being COMPOSABLE, COMPOSABLE without being SECURE, etc.  The 8-element Ω encodes every combination.
+
+## Priority & Preferences
+
+There are **two complementary knobs** for controlling how the scoring pipeline weights quality axes. Every evaluation call must supply at least one.
+
+### `Priority` — single-knob (top-generator emphasis)
+
+`Priority` is a `StrEnum` with three members: `SIMPLE`, `COMPOSABLE`, `SECURE`. It selects a `WeightProfile` that upweights the primary metric for that generator inside the matching `Φᵢ`:
+
+| Priority | `w_complexity` (Φ_SIMPLE) | `w_coupling` (Φ_COMPOSABLE) | `w_taint` (Φ_SECURE) |
+|---|---|---|---|
+| `simple` | 0.7 | 0.3 | 0.3 |
+| `composable` | 0.3 | 0.7 | 0.3 |
+| `secure` (default) | 0.3 | 0.3 | 0.7 |
+
+`Priority` is the CLI shorthand — use it when you only need to name the *top-ranked* generator. It does **not** produce a relaxation walk on Ω.
+
+**There is no `balanced` mode.** Every evaluation pins a priority; the codebase default is `Priority.SECURE` (most conservative).
+
+### `UserPreferences` — full strict ordering (agent loop)
+
+`UserPreferences` captures a **strict total order** over all three generators, e.g. `[COMPOSABLE, SECURE, SIMPLE]`. This induces a total order on all 8 Ω elements, enables two-stage targeting, and drives the relaxation walk.
+
+```python
+from topos.evaluation.preferences import UserPreferences, Generator
+
+prefs = UserPreferences(ranking=(Generator.COMPOSABLE, Generator.SECURE, Generator.SIMPLE))
+```
+
+#### How the induced order works
+
+Each verdict is scored by its satisfied-generator bitmask weighted 4 / 2 / 1 in preference order:
+
+```
+score(v) = 4·⟦g₁ satisfied⟧ + 2·⟦g₂ satisfied⟧ + 1·⟦g₃ satisfied⟧
+```
+
+For ranking `[COMPOSABLE, SECURE, SIMPLE]` this yields:
+`IDEAL (7) > COMPOSABLE_SECURE (6) > COMPOSABLE_SIMPLE (5) > COMPOSABLE (4) > SECURE_SIMPLE (3) > SECURE (2) > SIMPLE (1) > SLOP (0)`.
+
+#### Two-stage targeting
+
+| Stage | Target | Trigger to advance |
+|---|---|---|
+| 1 | `IDEAL` (aspirational) | Attempt for all iterations first |
+| 2 | `fallback_target` — meet of the top-two generators | When IDEAL plateaus (no lattice movement) |
+
+For ranking `[COMPOSABLE, SECURE, SIMPLE]` the fallback is `COMPOSABLE_SECURE`.
+
+#### Relaxation walk & next_step
+
+`prefs.relaxation_walk(current)` returns the descending verdict sequence from the aspirational target down to (but not including) `current`. `prefs.next_step(current)` is the **smallest** improvement above the current verdict — the safest immediate goal for the agent.
+
+#### `WeightProfile` from a full ranking
+
+When `UserPreferences` is supplied to the classifier, `WeightProfile.from_ranking(ranking)` is called to derive intra-policy weights. The top-ranked generator's `Φᵢ` is the most decisive (0.7), the middle is balanced (0.5), the bottom is conservative (0.3):
+
+```
+ranking[0] (top)    → primary-metric weight 0.7
+ranking[1] (middle) → primary-metric weight 0.5
+ranking[2] (bottom) → primary-metric weight 0.3
+```
+
+This means supplying a full `UserPreferences` ranking is strictly more informative than a bare `Priority`: it both linearizes Ω for the relaxation walk *and* sets a richer weight profile for all three policy translators simultaneously.
+
+#### MCP usage
+
+Pass `preferences` alongside `priority` to any evaluate or assess tool:
+
+```json
+{
+  "filepath": "src/server.py",
+  "priority": "composable",
+  "preferences": { "ranking": ["composable", "secure", "simple"] }
+}
+```
+
+The response includes a `preference_walk` block with `target`, `fallback_target`, `walk`, `next_step`, and `progress` (fraction from SLOP to IDEAL in [0, 1]). Use `topos_preference_walk` to get this walk without re-evaluating the file.
 
 ## Classification Result
 
@@ -168,7 +246,8 @@ result.raw_metrics   # {"cfg.cyclomatic": 8.0, "ast.entropy": 0.52, "cpg.dangero
 4. (Optional) Add pairwise comparison in `topos/functors/profunctors/<name>/compare.py` (`D : E × E^op → ℝ`).
 5. To introduce a new generator:
    - Extend `EvaluationValue` in `topos/core/omega.py` (the enum is a bitmask; widening it changes Ω's cardinality from `2^n`).
-   - Extend `verdict_from_generators()` and add a `WeightProfile` entry for the new priority.
+   - Extend `verdict_from_generators()` and add the new `Generator` member to `topos/evaluation/preferences.py`.
+   - Add a `WeightProfile` entry for the new `Priority` member in `policies/base.py::WEIGHT_PROFILES`, and extend `WeightProfile.from_ranking()` if it uses hard-coded positions.
    - Add a policy translator `Φ_NEW` in `topos/evaluation/policies/`.
    - Update MCP `LatticeElement` enum and docs.
 
@@ -178,19 +257,21 @@ Run with `topos-mcp` (stdio transport). Requires `TOPOS_MCP_FILE_ROOT` env var, 
 
 ### Tools
 
-- `topos_evaluate_code(code, language, priority, response_format)` — classify a string.  SIMPLE and SECURE are always scored; COMPOSABLE is unreachable from a bare string (no dependency graph).
-- `topos_evaluate_file(filepath, priority, gitnexus_dir, response_format)` — classify a file. **Pass `gitnexus_dir` to enable the COMPOSABLE generator.**
-- `topos_evaluate_project(path, priority, gitnexus_dir, limit, offset, response_format)` — project-wide rollup with `ctx.report_progress`. Returns worst-scoring files first. Scores are per-generator; lattice value is the meet across files.
+- `topos_evaluate_code(code, language, priority, preferences, response_format)` — classify a string.  SIMPLE and SECURE are always scored; COMPOSABLE is unreachable from a bare string (no dependency graph). Pass `preferences` to receive a `preference_walk` block in the result.
+- `topos_evaluate_file(filepath, priority, gitnexus_dir, preferences, response_format)` — classify a file. **Pass `gitnexus_dir` to enable the COMPOSABLE generator.** Pass `preferences` to receive a `preference_walk` block.
+- `topos_evaluate_project(path, priority, gitnexus_dir, preferences, limit, offset, response_format)` — project-wide rollup with `ctx.report_progress`. Returns worst-scoring files first. Scores are per-generator; lattice value is the meet across files.
 - `topos_compare_code(source_code, target_code, language, response_format)` — AST edit distance between two strings.
 - `topos_compare_files(source, target, response_format)` — AST edit distance between two files.
-- `topos_assess_improvement(proposed_code, filepath | current_code, priority, gitnexus_dir, response_format)` — agent refactor loop tool. Prefer `filepath` to enable COMPOSABLE scoring. Anti-gaming guardrail: returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when scores move but AST edit distance is near zero.
+- `topos_assess_improvement(proposed_code, filepath | current_code, priority, gitnexus_dir, preferences, response_format)` — agent refactor loop tool. Prefer `filepath` to enable COMPOSABLE scoring. Anti-gaming guardrail: returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when scores move but AST edit distance is near zero. Pass `preferences` to drive the walk.
 - `topos_inspect_code(code, language, priority, top_n_functions, response_format)` — detailed breakdown: top-N functions by CFG complexity, entropy details, full metric table.
+- `topos_preference_walk(ranking, current, target, response_format)` — compute the induced total order on Ω and the relaxation walk for a given ranking, **without** re-evaluating any file. Pass `current` to get `next_step` and `progress` relative to a known verdict.
 
 ### Resources
 
 - `topos://docs/lattice` — the 8-element lattice (SLOP / SIMPLE / COMPOSABLE / SECURE / SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE / IDEAL).
-- `topos://docs/metrics` — every metric key, generator, and threshold.
-- `topos://docs/priority` — priority profiles (balanced / simple / composable / secure).
+- `topos://docs/metrics` — every metric key, generator, threshold, and priority weight table.
+- `topos://docs/priority` — when to use `simple` vs `composable` vs `secure` priority.
+- `topos://docs/preferences` — full strict-ordering preferences: induced Ω order, two-stage targeting, relaxation walk, `UserPreferences` vs `Priority`. **Read before building an agent loop.**
 - `topos://docs/workflows` — canonical review→plan→refactor→re-measure agent loop. Verdict stop condition is `IDEAL`. Read first.
 
 ### Prompts

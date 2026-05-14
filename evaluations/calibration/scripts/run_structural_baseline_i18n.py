@@ -41,13 +41,13 @@ def run_topos_evaluate(path: Path, *, language: str) -> dict:
     command = [
         sys.executable,
         "-m",
-        "topos.main",
+        "topos.cli.main",
         "evaluate",
         str(path),
         "-r",
         "--json",
         "--priority",
-        "balanced",
+        "secure",
         "--language",
         language,
     ]

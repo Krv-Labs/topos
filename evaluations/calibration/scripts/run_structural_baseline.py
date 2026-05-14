@@ -2,7 +2,7 @@
 
 For each package in the cohort, fetches the latest version from PyPI,
 downloads and extracts the sdist/wheel, locates the primary Python source
-directory, runs ``topos evaluate -r --json --priority balanced``, and writes
+directory, runs ``topos evaluate -r --json --priority secure``, and writes
 per-file results to a JSONL file.
 
 Reuses the download helpers from ``demos/libraries/run_all.py``.
@@ -139,7 +139,7 @@ def find_source_dir(extracted_root: Path, package: str) -> Path:
 
 
 def run_topos_evaluate(path: Path) -> dict:
-    """Run ``topos evaluate <path> -r --json --priority balanced``.
+    """Run ``topos evaluate <path> -r --json --priority secure``.
 
     Sets PYTHONPATH to include ``{REPO_ROOT}/src`` so the installed editable
     package is found.  Strips the trailing ``"Overall:"`` line that the CLI
@@ -163,13 +163,13 @@ def run_topos_evaluate(path: Path) -> dict:
     command = [
         sys.executable,
         "-m",
-        "topos.main",
+        "topos.cli.main",
         "evaluate",
         str(path),
         "-r",
         "--json",
         "--priority",
-        "balanced",
+        "secure",
     ]
 
     completed = subprocess.run(

@@ -35,7 +35,7 @@ def _get_mcp():
                 "(works on any client) OR fetch `topos://docs/workflows` as a resource "
                 "(Claude Code, Cursor). "
                 "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
-                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/SOUND."
+                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL."
             ),
         )
     return _mcp_instance

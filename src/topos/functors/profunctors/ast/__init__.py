@@ -3,7 +3,6 @@
 from topos.functors.profunctors.ast.compare import (
     DistanceResult,
     GHWDistanceResult,
-    are_clones,
     calculate_ast_distance,
     calculate_ghw_distance,
     calculate_similarity,
@@ -13,7 +12,6 @@ from topos.functors.profunctors.ast.compare import (
 __all__ = [
     "DistanceResult",
     "GHWDistanceResult",
-    "are_clones",
     "calculate_ast_distance",
     "calculate_ghw_distance",
     "calculate_similarity",

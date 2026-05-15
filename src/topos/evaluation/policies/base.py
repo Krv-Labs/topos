@@ -1,63 +1,77 @@
 """
-Shared scoring infrastructure for the policy translators Φᵢ : ℝ → Ω.
+Shared types for the policy translators Φᵢ : ℝ → Ω.
 
 Following the math spec (§3 "Policy Translation"), each quality
-generator ``gᵢ ∈ G_qual`` has an associated policy translator ``Φᵢ`` that
-maps real-valued probe outputs (cyclomatic complexity, Martin
-instability, taint-flow counts, …) into the truth-value carrier of Ω.
+generator ``gᵢ ∈ G_qual`` has an associated policy translator ``Φᵢ``
+that maps probe outputs into a :class:`ScoredDecision`.  The
+characteristic morphism (:mod:`topos.evaluation.characteristic_morphism`)
+reads each decision's ``achieved`` flag and assembles the 8-element
+verdict in Ω via :func:`topos.core.omega.verdict_from_generators`.
 
-This module defines the shared types used by every Φᵢ:
+This module defines the shared types; the decisive thresholds live in
+each Φᵢ module:
 
-- :data:`THRESHOLDS`      — per-generator strict thresholds.
-- :class:`Priority`       — single-generator emphasis (legacy knob;
-                            see :class:`topos.evaluation.preferences.UserPreferences`
-                            for the full strict ordering).
-- :class:`WeightProfile`  — per-generator intra-dimension metric weights.
-- :class:`ScoredDecision` — the output of a single Φᵢ.
+- :class:`ScoredDecision` — output of one Φᵢ (score + achieved + text).
+- :class:`Priority`       — legacy single-generator emphasis (signature
+                            compatibility only; Φᵢ do not use it today).
+- :class:`WeightProfile`  — legacy intra-Φᵢ metric weights (same).
+- :data:`THRESHOLDS`      — optional score-floor helpers for tools that
+                            aggregate normalized scores without re-running
+                            a full Φᵢ.
 
 There is exactly one ``Φᵢ`` per generator::
 
-    Φ_SIMPLE      ↦ topos/evaluation/policies/simple.py::score_simple
-    Φ_COMPOSABLE  ↦ topos/evaluation/policies/coupling.py::score_coupling
-    Φ_SECURE      ↦ topos/evaluation/policies/secure.py::score_secure
+    Φ_SIMPLE      ↦ simple.py::score_simple
+    Φ_COMPOSABLE  ↦ composable.py::score_coupling
+    Φ_SECURE      ↦ secure.py::score_secure
 
-Decisive semantics: AND-of-thresholds
-=====================================
-Each generator gets a **single strict threshold**.  An evaluation
-either *is* SIMPLE or it is not — and similarly, independently, for
-COMPOSABLE and SECURE::
+Auxiliary policies (outside G_qual / Ω) live alongside these::
 
-    is_simple      = score_simple      ≥ THRESHOLDS[SIMPLE]
-    is_composable  = score_composable  ≥ THRESHOLDS[COMPOSABLE]
-    is_secure      = score_secure      ≥ THRESHOLDS[SECURE]
+    clone detection   ↦ clones.py::are_clones
+    test coverage     ↦ coverage.py::score_declaration_coverage
 
-The 8-element verdict in Ω is then the **independent AND** of those
-three checks — the lattice meets fall out for free::
+Decisive semantics: AND-of-raw-metric thresholds
+================================================
+Each ``Φᵢ`` owns **per-metric raw thresholds** (cyclomatic ≤ 15, zero
+taint flows, fan-in ≤ 15, …).  ``achieved`` is the independent AND
+of those checks — *not* ``score ≥ THRESHOLDS[g]``::
 
-    SIMPLE_COMPOSABLE  ⟺  is_simple ∧ is_composable                 (¬ is_secure)
-    SIMPLE_SECURE      ⟺  is_simple ∧ is_secure                    (¬ is_composable)
-    COMPOSABLE_SECURE  ⟺  is_composable ∧ is_secure                (¬ is_simple)
-    IDEAL              ⟺  is_simple ∧ is_composable ∧ is_secure
-    SLOP               ⟺  ¬ is_simple ∧ ¬ is_composable ∧ ¬ is_secure
+    achieved_simple     = score_simple(...).achieved
+    achieved_composable = score_coupling(...).achieved
+    achieved_secure     = score_secure(...).achieved
 
-Crucially the threshold checks are **independent**.  The changes
-needed to satisfy SIMPLE (split branches, lift guard clauses) are
-orthogonal to those needed for SECURE (eliminate taint paths) or
-COMPOSABLE (rebalance fan-in/fan-out).  Two of these may be cheap to
-fix on a given file while the third is structurally hard — which is
-exactly why agents *walk down the relaxation tree* (see
-:mod:`topos.evaluation.preferences`): aspire to IDEAL, then divert to
-the user-preferred pairwise meet, then to a single satisfied
-generator, and so on.
+The normalized ``score`` on :class:`ScoredDecision` is
+``min(per-metric qualities)`` for reporting and multi-file meets; it
+does not gate ``achieved``.
 
-Preferences, always
-===================
-The manager **must** supply a preference.  There is no catch-all
-"no opinion" mode any more — every evaluation pins a generator (via
-:class:`Priority`) or a full strict total order (via
-:class:`topos.evaluation.preferences.UserPreferences`).  ``Priority``
-captures only the top-ranked generator; ``UserPreferences`` captures
-the full ranking and drives the relaxation walk on Ω.
+The 8-element verdict in Ω is the **independent AND** of the three
+``achieved`` flags — lattice meets fall out for free::
+
+    SIMPLE_COMPOSABLE  ⟺  achieved_simple ∧ achieved_composable
+    IDEAL              ⟺  all three achieved
+    SLOP               ⟺  none achieved
+    …
+
+Generator checks are **orthogonal**: fixes for SIMPLE (split branches,
+lift guards) do not substitute for SECURE (eliminate taint) or
+COMPOSABLE (rebalance coupling).  Agents walk the relaxation tree in
+:mod:`topos.evaluation.preferences` when IDEAL is unreachable.
+
+Score-floor helpers (:data:`THRESHOLDS`, :func:`meet_satisfied`)
+================================================================
+:data:`THRESHOLDS` and :func:`is_satisfied` / :func:`meet_satisfied`
+implement an alternate **score-floor** gate (``score ≥ THRESHOLDS[g]``)
+for callers that already hold normalized scores.  The live
+:class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
+path does **not** use them — it trusts ``ScoredDecision.achieved`` from
+each ``Φᵢ``.
+
+Preferences
+===========
+Full strict orderings on generators live in
+:class:`topos.evaluation.preferences.UserPreferences` (relaxation walk,
+aspirational IDEAL vs pragmatic pairwise meet).  :class:`Priority` is the
+lower-resolution CLI shorthand for the top-ranked generator only.
 """
 
 from __future__ import annotations
@@ -68,25 +82,14 @@ from enum import StrEnum
 from topos.evaluation.preferences import Generator
 
 # ---------------------------------------------------------------------------
-# Thresholds — what counts as "this generator is satisfied"
+# Score-floor thresholds (alternate path — not used by Φᵢ translators)
 # ---------------------------------------------------------------------------
 #
-# These are *strict* per-generator thresholds: ``score ≥ THRESHOLDS[g]``
-# is the entire criterion.  The 8 lattice verdicts emerge from the
-# independent AND of the three checks.
+# Φᵢ modules gate ``achieved`` on raw probe values.  These normalized
+# score floors are for :func:`meet_satisfied` and other callers that
+# already aggregated scores without re-invoking a Φᵢ.
 #
-# Defaults chosen to be *reasonable but uncalibrated*:
-#   - SIMPLE      0.60   complexity is cheap to verify and noisy at the low
-#                        end; 60% is a comfortable mid-bar.
-#   - COMPOSABLE  0.60   coupling/instability are interpolated from Martin's
-#                        ratios — same bar as SIMPLE.
-#   - SECURE      0.70   taint reachability is structural and high-stakes;
-#                        the false-negative cost is asymmetrically bad.
-#                        Hold security to a tighter bar.
-#
-# NOTE: These will be re-calibrated against a corpus of known libraries
-# (CPython stdlib, requests, pydantic, …) once the calibration harness
-# lands.  Treat them as v0 placeholders, not hard constants.
+# Defaults are v0 placeholders pending corpus calibration.
 
 THRESHOLDS: dict[Generator, float] = {
     Generator.SIMPLE: 0.60,
@@ -96,29 +99,24 @@ THRESHOLDS: dict[Generator, float] = {
 
 
 def threshold(generator: Generator) -> float:
-    """The strict score threshold for one generator.
-
-    ``score ≥ threshold(g)`` ⟺ ``g`` is satisfied.
-    """
+    """Normalized score floor for one generator (score-floor path only)."""
     return THRESHOLDS[generator]
 
 
 def is_satisfied(generator: Generator, score: float) -> bool:
-    """Independent threshold check for one generator."""
+    """Whether a normalized score clears the score-floor for one generator."""
     return score >= THRESHOLDS[generator]
 
 
 def meet_satisfied(scores: dict[Generator, float]) -> dict[Generator, bool]:
-    """Apply the strict thresholds independently across all supplied scores.
+    """Score-floor AND across generators, for pre-aggregated normalized scores.
 
-    Returns a mapping ``{g: is_satisfied(g, scores[g])}``.  Callers
-    feed this directly into ``verdict_from_generators`` to land on the
-    matching element of Ω — meets are *literally* the AND of these
-    booleans, no fancy aggregation.
+    Returns ``{g: score[g] ≥ THRESHOLDS[g]}``.  Feed into
+    :func:`topos.core.omega.verdict_from_generators` for the Ω element.
 
-    This is the canonical place that encodes the orthogonality of the
-    three generators: each score gets its own independent yes/no, and
-    the lattice element is just the bitmask of those answers.
+    Prefer each ``Φᵢ``'s ``ScoredDecision.achieved`` when probe metrics are
+    available — that path applies raw-metric thresholds defined in
+    :mod:`topos.evaluation.policies.simple`, ``composable``, and ``secure``.
     """
     return {g: is_satisfied(g, scores.get(g, 0.0)) for g in Generator}
 
@@ -143,8 +141,8 @@ class Priority(StrEnum):
         COMPOSABLE:  The user's top-ranked generator is COMPOSABLE.
         SECURE:      The user's top-ranked generator is SECURE.
 
-    Default across the codebase is ``SIMPLE`` — the most conservative
-    single choice, matching :func:`topos.evaluation.preferences.default_preferences`.
+    Passed through the classify API for compatibility; current ``Φᵢ``
+    implementations do not change ``achieved`` based on priority.
     """
 
     SIMPLE = "simple"
@@ -163,12 +161,11 @@ class Priority(StrEnum):
 
 @dataclass(frozen=True)
 class WeightProfile:
-    """Per-generator metric weights for a given priority/ranking.
+    """Legacy per-generator metric weights for a priority/ranking.
 
-    Each weight controls the linear combination *within* one Φᵢ
-    between its two principal metrics.  The two weights inside a
-    single ``WeightProfile`` are independent across dimensions — they
-    do not sum to 1 across generators.
+    Retained for :meth:`from_ranking` / :data:`WEIGHT_PROFILES` and API
+    stability.  Current ``Φᵢ`` implementations use fixed AND-of-raw-thresholds
+    and do not read these weights.
 
     Attributes:
         w_complexity:  Weight on cyclomatic_quality within Φ_SIMPLE.
@@ -237,15 +234,16 @@ WEIGHT_PROFILES: dict[Priority, WeightProfile] = {
 
 @dataclass(frozen=True)
 class ScoredDecision:
-    """Result of applying one policy translator Φᵢ : ℝ → Ω.
+    """Result of applying one policy translator Φᵢ.
 
     Attributes:
-        score:          Quality score in [0.0, 1.0]; higher is better.
-        achieved:       True when ``score >= threshold`` — i.e. the
-                        generator gᵢ is satisfied for this program.
-                        This is the *only* fact the lattice combinator
-                        uses; meets in Ω are just the AND of these
-                        booleans across generators.
+        score:          Conservative ``min(per-metric qualities)`` in
+                        [0.0, 1.0] for display and multi-file aggregation.
+                        Does **not** gate ``achieved``.
+        achieved:       True when every supplied raw metric passes that
+                        Φᵢ's policy thresholds (AND semantics).  This is
+                        what :class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
+                        feeds into ``verdict_from_generators``.
         interpretation: Per-metric human-readable strings keyed by
                         metric name (e.g. ``cfg.cyclomatic``).
     """

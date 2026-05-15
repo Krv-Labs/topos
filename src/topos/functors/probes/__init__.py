@@ -12,12 +12,10 @@ For backward compatibility the most common AST metric functions are
 re-exported here so that ``from topos.metrics import ...`` keeps working.
 """
 
-from topos.functors.probes.ast.complexity import calculate_cyclomatic_complexity
 from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 __all__ = [
-    "calculate_cyclomatic_complexity",
     "calculate_ast_distance",
     "calculate_kolmogorov_proxy",
 ]

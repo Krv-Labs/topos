@@ -245,7 +245,7 @@ install_optional_dependencies() {
         return
     fi
 
-    echo -e "gitnexus is required for coupling metrics (COMPOSABLE/SOUND targets)."
+    echo -e "gitnexus is required for coupling metrics (COMPOSABLE/IDEAL targets)."
 
     local reply=""
     if [ -t 0 ]; then
@@ -367,15 +367,15 @@ verify_install() {
     echo ""
     echo "Get started:"
     echo ""
-    echo "  topos evaluate src/ -r --priority self_contained   # classify a directory"
-    echo "  topos inspect module.py                             # detailed metrics"
+    echo "  topos evaluate src/ -r --preferences simple,composable,secure   # classify a directory"
+    echo "  topos inspect module.py --preferences simple,composable,secure # detailed metrics"
     echo "  topos compare before.py after.py                    # AST edit distance"
     echo ""
-    echo "Lattice elements: BROKEN (⊥), COMPOSABLE (◑), SELF_CONTAINED (◐), SOUND (⊤)"
+    echo "Lattice elements: SLOP (⊥), SIMPLE, COMPOSABLE, SECURE ... IDEAL (⊤)"
     echo "Metrics: structural (complexity, entropy) + coupling (dependency graph via GitNexus)"
     echo ""
     echo "Next step for agent-led workflows (recommended):"
-    echo "  topos depgraph generate     # enable coupling metrics for COMPOSABLE/SOUND"
+    echo "  topos depgraph generate     # enable coupling metrics for COMPOSABLE/IDEAL"
     echo "  topos-mcp                   # verify MCP server, then register in your agent"
     echo ""
     echo "Docs: https://docs.krv.ai/topos"

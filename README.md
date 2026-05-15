@@ -2,35 +2,37 @@
 
 > **Structural code quality metrics your agents can act on.**
 
-Topos lets you set and manage the quality target while coding agents handle the iteration. Pick a priority and Topos measures program structure (not just syntax), giving agents concrete metrics to optimize toward on every pass.
+**Assume you passed the tests. How good is your solution?**
 
-Three independent quality generators:
+Topos fills the gap between _correctness_ (passing tests) and _quality_ (maintainable, secure, and well-structured code). It provides structural metrics that coding agents use to iteratively optimize code until it earns the highest possible **Code Quality Badge**.
 
-- **SIMPLE:** CFG cyclomatic complexity, nesting depth, and AST entropy. Always evaluated.
-- **COMPOSABLE:** Martin coupling and instability over the module dependency graph. Requires GitNexus.
-- **SECURE:** Dangerous-API reachability and source→sink taint over the Code Property Graph. Always evaluated.
+Three independent quality pillars:
 
-Set a priority (`simple`, `composable`, or `secure`) to guide the agent's iteration strategy.
+- **SIMPLE:** The code is readable and structurally predictable. Evaluates CFG complexity and AST entropy.
+- **COMPOSABLE:** The module is cleanly decoupled. Evaluates Martin coupling and instability (requires GitNexus).
+- **SECURE:** The data flow is safe. Evaluates dangerous-API reachability and taint paths.
+
+Set a **Preference Ranking** (e.g., `simple,composable,secure`) to define how an agent should prioritize these pillars when time or tokens are limited.
 
 > [!NOTE]
-> We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs.
+> We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs (correctness).
 
 ---
 
-### The Verdict
+### Badges for Coding Agents
 
-Topos maps every file to an **eight-valued Heyting algebra** — a free lattice on three independent generators. Agents always know exactly where they are:
+Topos maps every file to a **Code Quality Badge** on an eight-valued evaluation lattice. Agents always know exactly where they are:
 
 ```mermaid
 graph BT
-    SLOP["⊥ SLOP<br/>No generators met"]
-    SIMPLE["S<br/>Simple code"]
-    COMPOSABLE["C<br/>Composable<br/>(needs GitNexus)"]
+    SLOP["⊥ SLOP<br/> No badges met"]
+    SIMPLE["S<br/>Simple"]
+    COMPOSABLE["C<br/>Composable"]
     SECURE["Sc<br/>Secure"]
-    SC["S∧C<br/>Simple &<br/>Composable"]
-    SSc["S∧Sc<br/>Simple &<br/>Secure"]
-    CSc["C∧Sc<br/>Composable &<br/>Secure"]
-    IDEAL["⊤ IDEAL<br/>All three:<br/>Simple, Composable, Secure"]
+    SC["S∧C"]
+    SSc["S∧Sc"]
+    CSc["C∧Sc"]
+    IDEAL["⊤ IDEAL<br/> All three pillars achieved"]
 
     SLOP --> SIMPLE
     SLOP --> COMPOSABLE
@@ -48,17 +50,17 @@ graph BT
     style SLOP       fill:#f8d7da,stroke:#842029,color:#000
     style SIMPLE     fill:#d4edda,stroke:#155724,color:#000
     style COMPOSABLE fill:#d1ecf1,stroke:#0c5460,color:#000
-    style SECURE     fill:#d1f1dc,stroke:#155724,color:#000
+    style SECURE     fill:#d1f1dc,stroke:#0c5460,color:#000
     style SC         fill:#e2f5eb,stroke:#155724,color:#000
     style SSc        fill:#e2f5eb,stroke:#155724,color:#000
     style CSc        fill:#e2f5eb,stroke:#155724,color:#000
     style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
 ```
 
-**SIMPLE**, **COMPOSABLE**, and **SECURE** are **pairwise incomparable** — code can achieve any subset independently. **IDEAL** is the join of all three.
+**SIMPLE**, **COMPOSABLE**, and **SECURE** are **pairwise incomparable** — code can achieve any subset independently. **IDEAL** is the intersection of all three.
 
 > [!TIP]
-> Perfect code reaches **IDEAL** — but agents operate under token and time budgets. A concrete priority gives them a formula to execute. Set `--priority simple` to focus on complexity, `--priority composable` for clean interfaces, or `--priority secure` for data flow safety.
+> Perfect code reaches **IDEAL** — but agents operate under token and time budgets. As a manager, you set the **Preference Ranking** to tell the agent how to relax its goals if the ideal target is unfeasible. Set `--preferences simple,composable,secure` to prioritize simplicity first.
 
 ---
 
@@ -73,11 +75,11 @@ curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 #### CLI
 
 ```bash
-topos evaluate src/ -r --priority simple           # classify a directory
-topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable  # with coupling & security
-topos inspect module.py                             # detailed metrics
-topos structural-test-coverage src/ --language python  # measure test code coverage
-topos compare before.py after.py                    # AST edit distance
+topos evaluate src/ -r --preferences simple,composable,secure  # classify a directory
+topos evaluate src/ -r --gitnexus-dir .gitnexus --preferences simple,composable,secure  # with coupling & security
+topos inspect module.py --preferences simple,composable,secure # detailed metrics
+topos structural-test-coverage src/ --language python         # measure test code coverage
+topos compare before.py after.py                              # AST edit distance
 ```
 
 #### In an agent loop
@@ -87,10 +89,10 @@ Agent iteration 1: SLOP [simple: 41%, composable: -, secure: -]
   → Reduce cyclomatic complexity and normalize entropy toward 0.5
 
 Agent iteration 2: SIMPLE [simple: 72%, composable: -, secure: -]
-  → ✓ SIMPLE achieved.
+  → ✓ SIMPLE badge earned.
 
 Agent iteration 3: SIMPLE_COMPOSABLE [simple: 72%, composable: 65%, secure: -]
-  → ✓ Both SIMPLE and COMPOSABLE achieved. (With GitNexus enabled)
+  → ✓ SIMPLE_COMPOSABLE badge earned. (With GitNexus enabled)
 ```
 
 ---
@@ -107,7 +109,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 #### Step 1 — Build the dependency graph (optional but recommended)
 
 > [!IMPORTANT]
-> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable.  `SIMPLE` and `SECURE` always run.
+> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine

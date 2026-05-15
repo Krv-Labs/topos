@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from topos.functors.profunctors.uast.structural_test_coverage import (
+from topos.functors.probes.uast.structural_test_coverage import (
     DeclarationCoverageReport,
     StructuralTestCoverageReport,
     declaration_coverage,
@@ -114,10 +114,17 @@ def test_decl_coverage_identical_put_and_test_full_scores():
     root = _parse(src)
     rep = declaration_coverage([root], [root], k=3, include_unknown=False)
     assert rep.mean_declaration_coverage == pytest.approx(1.0)
-    assert rep.declaration_coverage_rate == pytest.approx(1.0)
+    assert rep.best_declaration_recall == (pytest.approx(1.0),)
     assert rep.stmt_recall == pytest.approx(1.0)
     assert rep.declaration_path_recall_kgram == pytest.approx(1.0)
-    assert len(rep.uncovered_declarations) == 0
+
+    from topos.evaluation.policies.coverage import score_declaration_coverage
+
+    decision = score_declaration_coverage(rep)
+    assert decision.achieved is True
+    assert decision.coverage_rate == pytest.approx(1.0)
+    assert decision.f2_score == pytest.approx(1.0)
+    assert len(decision.uncovered_declarations) == 0
 
 
 def test_decl_coverage_empty_tests_yield_zero():
@@ -127,10 +134,16 @@ def test_decl_coverage_empty_tests_yield_zero():
     put = _parse(src)
     rep = declaration_coverage([put], [], k=3)
     assert rep.mean_declaration_coverage == pytest.approx(0.0)
-    assert rep.declaration_coverage_rate == pytest.approx(0.0)
+    assert rep.best_declaration_recall == (pytest.approx(0.0),)
     assert rep.mean_test_precision == pytest.approx(0.0)
-    assert rep.f2_score == pytest.approx(0.0)
-    assert len(rep.uncovered_declarations) == rep.put_declaration_count
+
+    from topos.evaluation.policies.coverage import score_declaration_coverage
+
+    decision = score_declaration_coverage(rep)
+    assert decision.achieved is False
+    assert decision.coverage_rate == pytest.approx(0.0)
+    assert decision.f2_score == pytest.approx(0.0)
+    assert len(decision.uncovered_declarations) == rep.put_declaration_count
 
 
 def test_decl_coverage_unrelated_test_does_not_inflate():
@@ -218,10 +231,12 @@ def test_decl_coverage_f2_emphasizes_recall():
     put = _parse("def f():\n    for i in range(10):\n        pass\n    return 0\n")
     test_src = _parse("def t():\n    for i in range(10):\n        pass\n    return 0\n")
     rep = declaration_coverage([put], [test_src], k=3)
-    if rep.mean_test_precision > 0 and rep.mean_declaration_coverage > 0:
-        # F2 is at least as close to recall as to precision when recall > precision
-        # or equivalently f2 >= precision when beta=2
-        assert rep.f2_score >= rep.mean_test_precision * 0.9
+
+    from topos.evaluation.policies.coverage import score_declaration_coverage
+
+    decision = score_declaration_coverage(rep)
+    if decision.coverage_rate > 0 and rep.mean_test_precision > 0:
+        assert decision.f2_score >= rep.mean_test_precision * 0.9
 
 
 def test_decl_coverage_category_stratified_disjoint():
@@ -271,7 +286,12 @@ def test_decl_coverage_vacuous_empty_put():
     rep = declaration_coverage([put], [test_src], k=3)
     assert rep.put_declaration_count == 0
     assert rep.mean_declaration_coverage == pytest.approx(1.0)
-    assert rep.declaration_coverage_rate == pytest.approx(1.0)
+
+    from topos.evaluation.policies.coverage import score_declaration_coverage
+
+    decision = score_declaration_coverage(rep)
+    assert decision.achieved is True
+    assert decision.coverage_rate == pytest.approx(1.0)
 
 
 def test_decl_coverage_invalid_k_raises():

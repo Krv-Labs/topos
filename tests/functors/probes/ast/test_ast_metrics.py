@@ -1,60 +1,15 @@
 from topos.core.object import ProgramObject
-from topos.functors.probes.ast.complexity import (
-    calculate_average_complexity,
-    calculate_cyclomatic_complexity,
-    calculate_function_complexities,
-)
 from topos.functors.probes.ast.entropy import (
     calculate_block_entropy,
-    calculate_entropy_detailed,
     calculate_entropy_variance,
     calculate_kolmogorov_proxy,
 )
 from topos.functors.profunctors.ast.compare import (
-    are_clones,
     calculate_ast_distance,
     calculate_ghw_distance,
     calculate_similarity,
 )
 from topos.utils.tree_sitter import parse_python
-
-
-def test_cyclomatic_complexity_basic():
-    source = "def foo():\n    if True:\n        pass\n    else:\n        pass"
-    root = parse_python(source)
-    ast = ProgramObject(root=root, source=source)
-
-    # Base 1 + 1 for 'if' = 2
-    assert calculate_cyclomatic_complexity(ast) == 2
-
-
-def test_cyclomatic_complexity_loop():
-    source = (
-        "def foo():\n    for i in range(10):\n        while True:\n            break"
-    )
-    root = parse_python(source)
-    ast = ProgramObject(root=root, source=source)
-
-    # Base 1 + 1 for 'for' + 1 for 'while' = 3
-    assert calculate_cyclomatic_complexity(ast) == 3
-
-
-def test_function_complexities():
-    source = """
-def simple():
-    pass
-
-def complex_func():
-    if True:
-        pass
-"""
-    root = parse_python(source)
-    ast = ProgramObject(root=root, source=source)
-
-    complexities = calculate_function_complexities(ast)
-    assert complexities["simple"] == 1
-    assert complexities["complex_func"] == 2
-    assert calculate_average_complexity(ast) == 1.5
 
 
 def test_kolmogorov_proxy():
@@ -68,37 +23,8 @@ def test_kolmogorov_proxy():
     assert simple_entropy < complex_entropy
 
 
-def test_entropy_detailed():
-    source = "def hello():\n    print('world')"
-    result = calculate_entropy_detailed(source)
-
-    assert result.original_size > 0
-    assert result.compressed_size > 0
-    # On very small strings, compressed size can be slightly larger than original
-    assert 0 <= result.ratio <= 2.0
-    assert isinstance(result.interpretation, str)
-
-
-def test_complexity_boolean_operator():
-    source = "if a and b and c: pass"
-    root = parse_python(source)
-    ast = ProgramObject(root=root, source=source)
-    # base 1 + if 1 + and 1 + and 1 = 4
-    assert calculate_cyclomatic_complexity(ast) > 1
-
-
-def test_average_complexity_empty():
-    source = "x = 1"
-    root = parse_python(source)
-    ast = ProgramObject(root=root, source=source)
-    assert calculate_average_complexity(ast) == 1.0
-
-
 def test_entropy_empty_source():
     assert calculate_kolmogorov_proxy("") == 0.0
-    res = calculate_entropy_detailed("")
-    assert res.ratio == 0.0
-    assert res.interpretation == "empty"
 
 
 def test_block_entropy():
@@ -129,24 +55,12 @@ def test_distance_metrics():
     sim = calculate_similarity(ast1, ast1)
     assert sim == 1.0
 
-    assert are_clones(ast1, ast2, threshold=0.1) is True
-    assert are_clones(ast1, ast3, threshold=0.1) is False
-
 
 def test_distance_result_str():
     from topos.functors.profunctors.ast.compare import DistanceResult
 
     res = DistanceResult(raw_distance=2, normalized_distance=0.5, operations={})
     assert "Distance:" in str(res)
-
-
-def test_entropy_result_str():
-    from topos.functors.probes.ast.entropy import EntropyResult
-
-    res = EntropyResult(
-        ratio=0.5, compressed_size=10, original_size=20, interpretation="normal"
-    )
-    assert "Entropy:" in str(res)
 
 
 def test_distance_substitution():

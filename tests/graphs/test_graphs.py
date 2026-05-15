@@ -48,9 +48,7 @@ def test_ast_representation_metrics():
     rep = ASTRepresentation(program_object=obj, source=source)
 
     m = rep.metrics()
-    assert "ast.complexity" in m
     assert "ast.entropy" in m
-    assert m["ast.complexity"] >= 1.0
     assert 0.0 <= m["ast.entropy"] <= 2.0
 
 
@@ -283,7 +281,6 @@ def test_ast_representation_dispatches_verdicts():
     result = classifier.classify_detailed(morphism, representations=[ast_rep])
 
     # Metrics must be stored in raw_metrics
-    assert "ast.complexity" in result.raw_metrics
     assert "ast.entropy" in result.raw_metrics
 
     # Result must equal baseline (same data path; meet is idempotent)
@@ -298,7 +295,7 @@ def test_score_ast_produces_scored_decision():
     from topos.evaluation.characteristic_morphism import _score_ast
     from topos.evaluation.policies.base import Priority, ScoredDecision
 
-    decision = _score_ast({"ast.complexity": 2.0, "ast.entropy": 0.5}, Priority.SECURE)
+    decision = _score_ast({"ast.entropy": 0.5}, Priority.SECURE)
     assert decision is not None
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0

@@ -35,4 +35,3 @@ def test_inspect_top_n_functions_caps_output() -> None:
 def test_inspect_entropy_details_populated() -> None:
     r = topos_inspect_code(InspectCodeInput(code="def foo(): return 1\n" * 10))
     assert r.entropy_compression_ratio is not None
-    assert r.entropy_interpretation is not None

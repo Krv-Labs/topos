@@ -16,13 +16,20 @@ from topos.cli.evaluation import (
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from topos.evaluation.policies import Priority
-from topos.functors.probes.ast.complexity import calculate_function_complexities
-from topos.functors.probes.ast.entropy import calculate_entropy_detailed
+from topos.evaluation.policies.simple import describe_entropy_ratio
+from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, language_file_suffixes
 
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 _PRIORITY_CHOICE = click.Choice([p.value for p in Priority])
+_PRIORITY_HELP = (
+    "Which quality generator to emphasize in result metadata "
+    "(simple / composable / secure). Pass/fail uses fixed per-metric "
+    "thresholds in each policy; this flag does not change achieved flags. "
+    "For a full generator ranking and relaxation walk, use MCP evaluate "
+    "tools with preferences."
+)
 
 
 @click.command()
@@ -50,7 +57,7 @@ _PRIORITY_CHOICE = click.Choice([p.value for p in Priority])
     type=_PRIORITY_CHOICE,
     default=Priority.SECURE.value,
     show_default=True,
-    help="Policy emphasis for intra-generator metric weights.",
+    help=_PRIORITY_HELP,
 )
 @click.option(
     "--gitnexus-dir",
@@ -118,7 +125,7 @@ def evaluate(
     click.echo()
     click.echo("Overall:")
     if not overall:
-        click.echo("  structural: ⊥ BROKEN (no evaluable dimensions)")
+        click.echo("  structural: ⊥ SLOP (no evaluable dimensions)")
         return
     for dim, val in overall.items():
         click.echo(f"  {dim}: {val}")
@@ -175,7 +182,7 @@ def compare(source: str, target: str, verbose: bool) -> None:
     type=_PRIORITY_CHOICE,
     default=Priority.SECURE.value,
     show_default=True,
-    help="Policy emphasis for intra-generator metric weights.",
+    help=_PRIORITY_HELP,
 )
 def inspect(path: str, gitnexus_dir: str | None, priority: str) -> None:
     """Inspect detailed metrics for a single file."""
@@ -188,7 +195,7 @@ def inspect(path: str, gitnexus_dir: str | None, priority: str) -> None:
     click.echo("Classification")
     click.echo("-" * 40)
     if not result.is_parseable:
-        click.echo("⊥ BROKEN — parse failure")
+        click.echo("⊥ SLOP — parse failure")
         sys.exit(1)
 
     for dim, val in result.dimensions.items():
@@ -204,26 +211,15 @@ def inspect(path: str, gitnexus_dir: str | None, priority: str) -> None:
         click.echo(f"  {key}: {value:.3f}{suffix}")
 
     if morphism.ast:
-        click.echo()
-        click.echo("Function Complexities")
-        click.echo("-" * 40)
-        func_complexities = calculate_function_complexities(morphism.ast)
-        if func_complexities:
-            for func, complexity in sorted(
-                func_complexities.items(),
-                key=lambda x: x[1],
-                reverse=True,
-            ):
-                click.echo(f"  {func}: {complexity}")
-        else:
-            click.echo("  (no functions defined)")
+        pass
 
     click.echo()
     click.echo("Entropy Analysis")
     click.echo("-" * 40)
-    entropy = calculate_entropy_detailed(morphism.source)
-    click.echo(f"  Compression Ratio: {entropy.ratio:.3f}")
-    click.echo(f"  Interpretation: {entropy.interpretation}")
+    ratio = calculate_kolmogorov_proxy(morphism.source)
+    interp = describe_entropy_ratio(ratio)
+    click.echo(f"  Compression Ratio: {ratio:.3f}")
+    click.echo(f"  Interpretation: {interp}")
 
 
 def register_quality_commands(cli_group: click.Group) -> None:

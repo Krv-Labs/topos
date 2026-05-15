@@ -1,4 +1,4 @@
-"""Package-level noise transforms for the Composable axis.
+"""Package-level noise transforms for the COMPOSABLE pillar (module coupling).
 
 Each transform mutates the package directory in place. The caller is
 responsible for staging a fresh copy under an isolated git root before

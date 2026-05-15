@@ -1,16 +1,15 @@
-"""Sweep coupling noise over the Composable corpus.
+"""Sweep COMPOSABLE-pillar noise over the COMPOSABLE corpus.
 
-For each curated baseline package and each transform in ``noise.coupling``,
-applies the transform at a grid of intensities, re-runs
-``gitnexus analyze`` against an isolated git-init'd staging copy, runs
-the current Topos classifier with ``priority=composable`` and
-``gitnexus_dir=<…>`` against the perturbed package, and records the
-resulting per-file metrics.
+For each curated baseline package and each transform in ``noise.composable``,
+applies the transform at a grid of intensities, re-runs ``gitnexus analyze``
+against an isolated git-init'd staging copy, classifies with
+``priority=composable``, and records per-file lattice verdicts plus all three
+generator scores.
 
 Writes:
 
 - ``results/composable_sweep.json``: full machine-readable matrix.
-- ``results/composable_sweep.md``:  per-baseline markdown tables.
+- ``results/composable_sweep.md``: per-baseline markdown tables.
 """
 
 from __future__ import annotations
@@ -26,8 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SENSITIVITY_DIR = REPO_ROOT / "demos" / "sensitivity"
 sys.path.insert(0, str(SENSITIVITY_DIR))
 
-from noise import coupling  # noqa: E402
+from noise import composable  # noqa: E402
 
+PILLAR = "composable"
 INTENSITIES: tuple[int, ...] = (0, 1, 2, 4, 8)
 
 
@@ -46,7 +46,6 @@ def _run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def stage_in_git_repo(src_pkg: Path, dest_dir: Path) -> Path:
-    """Copy the canonical package into a fresh git-init'd ``dest_dir``."""
     if dest_dir.exists():
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True)
@@ -77,7 +76,6 @@ def gitnexus_analyze(repo_dir: Path) -> None:
 
 
 def topos_evaluate(pkg_dir: Path, *, gitnexus_dir: Path) -> list[dict]:
-    """Run current Topos classification recursively and return per-file results."""
     from topos.evaluation.policies.base import Priority
     from topos.mcp.evaluation import classify_file
 
@@ -103,17 +101,23 @@ def topos_evaluate(pkg_dir: Path, *, gitnexus_dir: Path) -> list[dict]:
 
 
 def summarize_results(results: list[dict]) -> dict:
-    """Aggregate per-file results into a single coupling summary."""
+    """Aggregate per-file results into package-level pillar summaries."""
     lattice_counts: dict[str, int] = {}
-    composable_scores: list[float] = []
+    pillar_scores: dict[str, list[float]] = {
+        "simple": [],
+        "composable": [],
+        "secure": [],
+    }
     raw_coupling: list[float] = []
     raw_instability: list[float] = []
     for r in results:
         lattice = r.get("lattice_element", "SLOP")
         lattice_counts[lattice] = lattice_counts.get(lattice, 0) + 1
-        composable = r.get("scores", {}).get("composable")
-        if isinstance(composable, (int, float)):
-            composable_scores.append(float(composable))
+        scores = r.get("scores", {})
+        for pillar in pillar_scores:
+            value = scores.get(pillar)
+            if isinstance(value, (int, float)):
+                pillar_scores[pillar].append(float(value))
         raw = r.get("raw_metrics", {})
         if isinstance(raw.get("mdg.coupling"), (int, float)):
             raw_coupling.append(float(raw["mdg.coupling"]))
@@ -126,7 +130,7 @@ def summarize_results(results: list[dict]) -> dict:
     return {
         "n_files": len(results),
         "lattice_counts": lattice_counts,
-        "avg_composable_score": _mean(composable_scores),
+        "avg_scores": {k: _mean(v) for k, v in pillar_scores.items()},
         "avg_raw_coupling": _mean(raw_coupling),
         "avg_raw_instability": _mean(raw_instability),
     }
@@ -136,7 +140,7 @@ def load_manifest() -> list[dict]:
     path = SENSITIVITY_DIR / "corpus" / "composable" / "manifest.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"Composable manifest not found at {path}. "
+            f"COMPOSABLE corpus manifest not found at {path}. "
             "Run demos/sensitivity/curate.py first."
         )
     return json.loads(path.read_text(encoding="utf-8"))["entries"]
@@ -147,7 +151,7 @@ def sweep_baseline(entry: dict, staging_root: Path) -> dict:
     canonical_pkg = REPO_ROOT / entry["package_dir"]
 
     per_transform: dict[str, list[dict]] = {}
-    for transform_name, transform_fn in coupling.TRANSFORMS.items():
+    for transform_name, transform_fn in composable.TRANSFORMS.items():
         rows: list[dict] = []
         for intensity in INTENSITIES:
             print(f"  {transform_name} @ intensity={intensity}", flush=True)
@@ -161,6 +165,7 @@ def sweep_baseline(entry: dict, staging_root: Path) -> dict:
                     staged_pkg, gitnexus_dir=staging_dir / ".gitnexus"
                 )
                 row["summary"] = summarize_results(results)
+                row["per_file"] = results
             except Exception as exc:  # noqa: BLE001
                 row["error"] = str(exc)
             rows.append(row)
@@ -171,18 +176,19 @@ def sweep_baseline(entry: dict, staging_root: Path) -> dict:
         "package_dir": entry["package_dir"],
         "package": entry.get("package"),
         "version": entry.get("version"),
+        "pillar": PILLAR,
         "transforms": per_transform,
     }
 
 
 def format_markdown(sweep: list[dict]) -> str:
     lines: list[str] = [
-        "# Composable Sensitivity Sweep",
+        "# COMPOSABLE pillar sensitivity sweep",
         "",
-        "Each table reports the package-level coupling summary under "
-        "increasing intensity of a single coupling noise transform. Cells "
-        "show `avg_composable_score / avg_raw_coupling / avg_raw_instability`. "
-        "Lattice counts and per-file detail are in the JSON artifact.",
+        "Each table reports package-level COMPOSABLE score and MDG raw metrics "
+        "under increasing intensity of a single noise transform. Cells show "
+        "`avg_composable / avg_raw_coupling / avg_raw_instability`. "
+        "Lattice counts and per-file pillar scores are in the JSON artifact.",
         "",
     ]
 
@@ -208,7 +214,8 @@ def format_markdown(sweep: list[dict]) -> str:
                     cells.append("`error`")
                     continue
                 summary = cell.get("summary", {})
-                score = summary.get("avg_composable_score")
+                avg_scores = summary.get("avg_scores", {})
+                score = avg_scores.get("composable")
                 coup = summary.get("avg_raw_coupling")
                 inst = summary.get("avg_raw_instability")
                 cells.append(
@@ -255,13 +262,18 @@ def main() -> None:
 
     sweep: list[dict] = []
     for entry in entries:
-        print(f"[coupling] sweeping {entry['name']}")
+        print(f"[composable] sweeping {entry['name']}")
         sweep.append(sweep_baseline(entry, staging_root))
 
     results_dir = SENSITIVITY_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "pillar": PILLAR,
+        "intensities": list(INTENSITIES),
+        "baselines": sweep,
+    }
     (results_dir / "composable_sweep.json").write_text(
-        json.dumps({"intensities": list(INTENSITIES), "baselines": sweep}, indent=2),
+        json.dumps(payload, indent=2),
         encoding="utf-8",
     )
     (results_dir / "composable_sweep.md").write_text(

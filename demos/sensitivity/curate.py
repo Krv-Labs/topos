@@ -215,12 +215,13 @@ def run_topos_evaluate(
 def baseline_summary_simple(payload: dict) -> dict:
     results = payload.get("results", [])
     if not results:
-        return {"score": None, "lattice_element": "SLOP"}
+        return {"lattice_element": "SLOP", "scores": {}, "dimensions": {}}
     result = results[0]
     return {
         "lattice_element": result.get("lattice_element"),
         "lattice_symbol": result.get("lattice_symbol"),
-        "simple_score": result.get("scores", {}).get("simple"),
+        "scores": result.get("scores", {}),
+        "dimensions": result.get("dimensions", {}),
         "raw_metrics": result.get("raw_metrics", {}),
         "priority": result.get("priority"),
     }
@@ -313,7 +314,7 @@ def run_gitnexus_analyze(target_dir: Path) -> None:
 
 
 def curate_simple() -> list[dict]:
-    out_root = sensitivity_dir() / "corpus" / "self_contained"
+    out_root = sensitivity_dir() / "corpus" / "simple"
     out_root.mkdir(parents=True, exist_ok=True)
 
     entries: list[dict] = []
@@ -340,9 +341,8 @@ def curate_simple() -> list[dict]:
                 "baseline": baseline,
             }
         )
-        print(
-            f"  -> {baseline['lattice_element']} (score={baseline.get('simple_score')})"
-        )
+        simple = (baseline.get("scores") or {}).get("simple")
+        print(f"  -> {baseline['lattice_element']} (simple={simple})")
 
     (out_root / "manifest.json").write_text(
         json.dumps({"entries": entries}, indent=2), encoding="utf-8"
@@ -443,10 +443,11 @@ def main() -> None:
     print(f"Pinned {len(simple)} SIMPLE entries")
     for entry in simple:
         baseline = entry["baseline"]
+        simple = (baseline.get("scores") or {}).get("simple")
         print(
             f"  {entry['name']:32} "
             f"{baseline.get('lattice_element', 'n/a'):16} "
-            f"score={baseline.get('simple_score')}"
+            f"simple={simple}"
         )
     print()
     print(f"Pinned {len(composable)} composable entries")

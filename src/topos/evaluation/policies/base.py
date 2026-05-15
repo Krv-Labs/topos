@@ -242,7 +242,8 @@ class ScoredDecision:
                         Does **not** gate ``achieved``.
         achieved:       True when every supplied raw metric passes that
                         Φᵢ's policy thresholds (AND semantics).  This is
-                        what :class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
+                        what
+                        :class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
                         feeds into ``verdict_from_generators``.
         interpretation: Per-metric human-readable strings keyed by
                         metric name (e.g. ``cfg.cyclomatic``).

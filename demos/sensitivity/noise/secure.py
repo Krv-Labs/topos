@@ -32,8 +32,10 @@ def add_dangerous_calls(source: str, intensity: int) -> str:
     if intensity <= 0:
         return ast.unparse(tree)
     for i in range(intensity):
-        # We need an assignment to ensure the AST behaves similarly and actually binds the eval if needed
-        # Or just a stand-alone expression. We'll do an assignment so it mimics real code structure better,
+        # We need an assignment to ensure the AST behaves similarly and
+        # actually binds the eval if needed
+        # Or just a stand-alone expression. We'll do an assignment so it mimics
+        # real code structure better,
         # but an Expr node works too. Let's stick with Expr.
         node = ast.If(
             test=ast.Constant(value=False),
@@ -42,11 +44,11 @@ def add_dangerous_calls(source: str, intensity: int) -> str:
                     value=ast.Call(
                         func=ast.Name(id="eval", ctx=ast.Load()),
                         args=[ast.Constant(value=str(i))],
-                        keywords=[]
+                        keywords=[],
                     )
                 )
             ],
-            orelse=[]
+            orelse=[],
         )
         ast.fix_missing_locations(node)
         tree.body.append(node)
@@ -65,20 +67,18 @@ def add_taint_flows(source: str, intensity: int) -> str:
                 ast.Assign(
                     targets=[ast.Name(id=f"_topos_taint_{i}", ctx=ast.Store())],
                     value=ast.Call(
-                        func=ast.Name(id="input", ctx=ast.Load()),
-                        args=[],
-                        keywords=[]
-                    )
+                        func=ast.Name(id="input", ctx=ast.Load()), args=[], keywords=[]
+                    ),
                 ),
                 ast.Expr(
                     value=ast.Call(
                         func=ast.Name(id="eval", ctx=ast.Load()),
                         args=[ast.Name(id=f"_topos_taint_{i}", ctx=ast.Load())],
-                        keywords=[]
+                        keywords=[],
                     )
-                )
+                ),
             ],
-            orelse=[]
+            orelse=[],
         )
         ast.fix_missing_locations(node)
         tree.body.append(node)

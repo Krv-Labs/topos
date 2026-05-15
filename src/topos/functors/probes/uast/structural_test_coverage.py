@@ -275,7 +275,7 @@ class DeclarationCoverageReport:
         return [
             loc
             for loc, recall in zip(
-                self.declaration_locations, self.best_declaration_recall
+                self.declaration_locations, self.best_declaration_recall, strict=False
             )
             if recall < 0.999  # Precision-safe 1.0
         ]

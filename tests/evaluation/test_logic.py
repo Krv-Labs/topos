@@ -139,7 +139,7 @@ def process_data(data):
     result = classifier.classify_detailed(morphism, representations=[cfg])
     assert result.is_parseable is True
     assert "simple" in result.dimensions
-    
+
     # Check that score is high enough
     score = result.scores.get("simple", 0.0)
     assert score > 0.5, f"Expected SIMPLE score > 0.5, got {score}"

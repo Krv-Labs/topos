@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from click.testing import CliRunner
+
 from topos.cli.main import cli
+
 
 def test_mcp_invokes_server():
     with patch("topos.mcp.server.main") as mock_mcp_main:
@@ -13,12 +15,14 @@ def test_mcp_invokes_server():
         assert result.exit_code == 0
         mock_mcp_main.assert_called_once()
 
+
 def test_depgraph_generate_no_gitnexus():
     with patch("shutil.which", return_value=None):
         runner = CliRunner()
         result = runner.invoke(cli, ["depgraph", "generate"])
         assert result.exit_code != 0
         assert "GitNexus not found" in result.output
+
 
 @patch("subprocess.run")
 @patch("shutil.which", return_value="/usr/local/bin/gitnexus")
@@ -30,6 +34,7 @@ def test_depgraph_generate_success(mock_which, mock_run):
     assert "Using GitNexus" in result.output
     mock_run.assert_called_once()
 
+
 def test_uninstall_package_manager():
     with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
         mock_detect.return_value = ("package-manager", None, "pip uninstall topos")
@@ -39,15 +44,13 @@ def test_uninstall_package_manager():
         assert "Detected package-manager installation." in result.output
         assert "pip uninstall topos" in result.output
 
+
 def test_uninstall_binary_dry_run(tmp_path: Path):
     binary = tmp_path / "topos"
     binary.touch()
-    
-    provenance = {
-        "install_method": "binary-installer",
-        "install_path": str(binary)
-    }
-    
+
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+
     with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
         mock_detect.return_value = ("binary-installer", provenance, None)
         runner = CliRunner()
@@ -56,15 +59,13 @@ def test_uninstall_binary_dry_run(tmp_path: Path):
         assert f"[dry-run] Would remove binary: {binary}" in result.output
         assert binary.exists()
 
+
 def test_uninstall_binary_confirm_no(tmp_path: Path):
     binary = tmp_path / "topos"
     binary.touch()
-    
-    provenance = {
-        "install_method": "binary-installer",
-        "install_path": str(binary)
-    }
-    
+
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+
     with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
         mock_detect.return_value = ("binary-installer", provenance, None)
         runner = CliRunner()
@@ -74,17 +75,17 @@ def test_uninstall_binary_confirm_no(tmp_path: Path):
         assert "Uninstall cancelled." in result.output
         assert binary.exists()
 
+
 def test_uninstall_binary_yes(tmp_path: Path):
     binary = tmp_path / "topos"
     binary.touch()
-    
-    provenance = {
-        "install_method": "binary-installer",
-        "install_path": str(binary)
-    }
-    
-    with patch("topos.cli.commands.system.detect_install_method") as mock_detect, \
-         patch("topos.cli.commands.system.remove_provenance_record") as mock_remove:
+
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+
+    with (
+        patch("topos.cli.commands.system.detect_install_method") as mock_detect,
+        patch("topos.cli.commands.system.remove_provenance_record") as mock_remove,
+    ):
         mock_detect.return_value = ("binary-installer", provenance, None)
         runner = CliRunner()
         result = runner.invoke(cli, ["uninstall", "--yes"])

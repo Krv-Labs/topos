@@ -326,17 +326,35 @@ def evaluate_python_package(
     achieved = {
         "simple": bool(results)
         and all(
-            r.get("dimensions", {}).get("simple") in (EvaluationValue.SIMPLE.name, EvaluationValue.SIMPLE_COMPOSABLE.name, EvaluationValue.SIMPLE_SECURE.name, EvaluationValue.IDEAL.name)
+            r.get("dimensions", {}).get("simple")
+            in (
+                EvaluationValue.SIMPLE.name,
+                EvaluationValue.SIMPLE_COMPOSABLE.name,
+                EvaluationValue.SIMPLE_SECURE.name,
+                EvaluationValue.IDEAL.name,
+            )
             for r in results
         ),
         "composable": bool(results)
         and all(
-            r.get("dimensions", {}).get("composable") in (EvaluationValue.COMPOSABLE.name, EvaluationValue.SIMPLE_COMPOSABLE.name, EvaluationValue.COMPOSABLE_SECURE.name, EvaluationValue.IDEAL.name)
+            r.get("dimensions", {}).get("composable")
+            in (
+                EvaluationValue.COMPOSABLE.name,
+                EvaluationValue.SIMPLE_COMPOSABLE.name,
+                EvaluationValue.COMPOSABLE_SECURE.name,
+                EvaluationValue.IDEAL.name,
+            )
             for r in results
         ),
         "secure": bool(results)
         and all(
-            r.get("dimensions", {}).get("secure") in (EvaluationValue.SECURE.name, EvaluationValue.SIMPLE_SECURE.name, EvaluationValue.COMPOSABLE_SECURE.name, EvaluationValue.IDEAL.name)
+            r.get("dimensions", {}).get("secure")
+            in (
+                EvaluationValue.SECURE.name,
+                EvaluationValue.SIMPLE_SECURE.name,
+                EvaluationValue.COMPOSABLE_SECURE.name,
+                EvaluationValue.IDEAL.name,
+            )
             for r in results
         ),
     }

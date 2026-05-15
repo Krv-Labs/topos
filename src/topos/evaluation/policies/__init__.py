@@ -19,12 +19,12 @@ from topos.evaluation.policies.base import (
     ScoredDecision,
     WeightProfile,
 )
+from topos.evaluation.policies.clones import are_clones
+from topos.evaluation.policies.composable import score_coupling
 from topos.evaluation.policies.coverage import (
     CoverageDecision,
     score_declaration_coverage,
 )
-from topos.evaluation.policies.clones import are_clones
-from topos.evaluation.policies.composable import score_coupling
 from topos.evaluation.policies.secure import score_secure
 from topos.evaluation.policies.simple import (
     build_omega,

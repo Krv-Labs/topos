@@ -49,7 +49,9 @@ class ASTRepresentation:
         return "simple"
 
     def metrics(self) -> dict[str, float]:
-        from topos.functors.probes.ast.complexity import calculate_max_function_complexity
+        from topos.functors.probes.ast.complexity import (
+            calculate_max_function_complexity,
+        )
         from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
 
         return {

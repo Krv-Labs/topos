@@ -1,3 +1,11 @@
 """Tool registration hub — importing this module attaches every tool to ``mcp``."""
 
-from . import assess, compare, coverage, docs, evaluate, inspect, preferences  # noqa: F401
+from . import (  # noqa: F401
+    assess,
+    compare,
+    coverage,
+    docs,
+    evaluate,
+    inspect,
+    preferences,
+)

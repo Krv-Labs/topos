@@ -23,10 +23,6 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-from topos.evaluation.policies.base import (
-    threshold as default_threshold,
-)
-from topos.evaluation.preferences import Generator
 
 # Normalization scales (for [0, 1] mapping via exponential decay)
 DANGER_SCALE: float = 3.0
@@ -92,11 +88,22 @@ def score_secure(
 
 def _danger_interpretation(count: float, quality: float) -> str:
     if count <= MAX_DANGEROUS_CALLS_THRESHOLD:
-        return f"no reachable dangerous-API calls ({count:.0f} <= {MAX_DANGEROUS_CALLS_THRESHOLD})"
-    return f"{int(count)} dangerous-API call site(s) exceeds threshold ({MAX_DANGEROUS_CALLS_THRESHOLD})"
+        return (
+            f"no reachable dangerous-API calls "
+            f"({count:.0f} <= {MAX_DANGEROUS_CALLS_THRESHOLD})"
+        )
+    return (
+        f"{int(count)} dangerous-API call site(s) exceeds threshold "
+        f"({MAX_DANGEROUS_CALLS_THRESHOLD})"
+    )
 
 
 def _taint_interpretation(count: float, quality: float) -> str:
     if count <= MAX_TAINT_FLOWS_THRESHOLD:
-        return f"no source→sink taint paths ({count:.0f} <= {MAX_TAINT_FLOWS_THRESHOLD})"
-    return f"{int(count)} taint flow path(s) exceeds threshold ({MAX_TAINT_FLOWS_THRESHOLD})"
+        return (
+            f"no source→sink taint paths ({count:.0f} <= {MAX_TAINT_FLOWS_THRESHOLD})"
+        )
+    return (
+        f"{int(count)} taint flow path(s) exceeds threshold "
+        f"({MAX_TAINT_FLOWS_THRESHOLD})"
+    )

@@ -20,7 +20,6 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-from topos.evaluation.preferences import Generator
 
 # Normalization caps (for [0, 1] mapping)
 MAX_CYCLOMATIC_CAP: float = 40.0
@@ -117,19 +116,34 @@ def describe_entropy_ratio(entropy: float) -> str:
 
 def _cyclomatic_interpretation(raw: float, quality: float) -> str:
     if raw <= MAX_CYCLOMATIC_THRESHOLD:
-        return f"cyclomatic complexity ({raw:.0f}) within threshold (<= {MAX_CYCLOMATIC_THRESHOLD})"
-    return f"cyclomatic complexity ({raw:.0f}) exceeds threshold (> {MAX_CYCLOMATIC_THRESHOLD})"
+        return (
+            f"cyclomatic complexity ({raw:.0f}) within threshold "
+            f"(<= {MAX_CYCLOMATIC_THRESHOLD})"
+        )
+    return (
+        f"cyclomatic complexity ({raw:.0f}) exceeds threshold "
+        f"(> {MAX_CYCLOMATIC_THRESHOLD})"
+    )
 
 
 def _max_func_interpretation(raw: float, quality: float) -> str:
     if raw <= MAX_FUNCTION_COMPLEXITY_THRESHOLD:
-        return f"max function complexity ({raw:.0f}) within threshold (<= {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
-    return f"max function complexity ({raw:.0f}) exceeds threshold (> {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
+        return (
+            f"max function complexity ({raw:.0f}) within threshold "
+            f"(<= {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
+        )
+    return (
+        f"max function complexity ({raw:.0f}) exceeds threshold "
+        f"(> {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
+    )
 
 
 def _entropy_interpretation(entropy: float, quality: float) -> str:
     if MIN_ENTROPY_THRESHOLD <= entropy <= MAX_ENTROPY_THRESHOLD:
-        return f"entropy ({entropy:.2f}) within structured range [{MIN_ENTROPY_THRESHOLD}, {MAX_ENTROPY_THRESHOLD}]"
+        return (
+            f"entropy ({entropy:.2f}) within structured range "
+            f"[{MIN_ENTROPY_THRESHOLD}, {MAX_ENTROPY_THRESHOLD}]"
+        )
     if entropy < MIN_ENTROPY_THRESHOLD:
         return f"entropy ({entropy:.2f}) is too low; code may be repetitive or trivial"
     return f"entropy ({entropy:.2f}) is too high; code may be unstructured"

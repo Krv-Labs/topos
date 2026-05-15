@@ -100,10 +100,10 @@ def structural_test_coverage_cmd(
         test_roots.append(result.uast_root)
 
     if use_v2:
+        from topos.evaluation.policies.coverage import score_declaration_coverage
         from topos.functors.profunctors.uast.structural_test_coverage import (
             declaration_coverage,
         )
-        from topos.evaluation.policies.coverage import score_declaration_coverage
 
         report_v2 = declaration_coverage(
             put_roots,

@@ -123,7 +123,8 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     all_metrics = set(current_res.raw_metrics) | set(proposed_res.raw_metrics)
     metric_deltas = {
         m: round(
-            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0), 3
+            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0),
+            3,
         )
         for m in all_metrics
     }

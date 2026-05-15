@@ -70,9 +70,12 @@ if TYPE_CHECKING:
 # ScoredDecision via the matching policy translator Φᵢ.
 
 
-def _score_simple_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+def _score_simple_dim(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
     # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
-    # We pass all available metrics to score_simple; it handles the independent thresholds.
+    # We pass all available metrics to score_simple; it handles the independent
+    # thresholds.
     if (
         "cfg.cyclomatic" not in raw
         and "ast.entropy" not in raw
@@ -88,7 +91,9 @@ def _score_simple_dim(raw: dict[str, float], priority: Priority) -> ScoredDecisi
     )
 
 
-def _score_composable_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+def _score_composable_dim(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
     if (
         "mdg.instability" not in raw
         and "mdg.fan_in" not in raw
@@ -103,7 +108,9 @@ def _score_composable_dim(raw: dict[str, float], priority: Priority) -> ScoredDe
     )
 
 
-def _score_secure_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+def _score_secure_dim(
+    raw: dict[str, float], priority: Priority
+) -> ScoredDecision | None:
     if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
         return None
     return score_secure(

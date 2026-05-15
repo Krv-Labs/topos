@@ -486,7 +486,9 @@ class PreferenceWalk(BaseModel):
 class PillarResult(BaseModel):
     """Detailed result for one quality pillar (generator)."""
 
-    achieved: bool = Field(..., description="Whether the generator's threshold was met.")
+    achieved: bool = Field(
+        ..., description="Whether the generator's threshold was met."
+    )
     score: float = Field(..., description="Normalized quality score in [0, 100].")
     metrics: dict[str, float] = Field(
         default_factory=dict, description="Raw metrics feeding this pillar."
@@ -508,7 +510,8 @@ class EvaluationResult(BaseModel):
         ..., description="Per-dimension normalized score in [0, 100]."
     )
     pillars: dict[str, PillarResult] = Field(
-        default_factory=dict, description="Per-pillar breakdown (simple, composable, secure)."
+        default_factory=dict,
+        description="Per-pillar breakdown (simple, composable, secure).",
     )
     priority: Priority
     guidance: str = Field(..., description="Next-step hint for the agent.")
@@ -586,7 +589,10 @@ class AssessmentResult(BaseModel):
     )
     metric_deltas: dict[str, float] = Field(
         default_factory=dict,
-        description="Change in raw metrics (proposed - current). Useful for tracking progress against specific thresholds.",
+        description=(
+            "Change in raw metrics (proposed - current). "
+            "Useful for tracking progress against specific thresholds."
+        ),
     )
     structural_distance: float | None = None
     similarity: float | None = None
@@ -631,9 +637,7 @@ class CoverageResult(BaseModel):
     mean_test_precision: float = Field(
         ..., description="[0, 1] average precision across test declarations."
     )
-    f2_score: float = Field(
-        ..., description="F2 score favoring recall over precision."
-    )
+    f2_score: float = Field(..., description="F2 score favoring recall over precision.")
     declaration_path_recall_kgram: float = Field(
         ..., description="[0, 1] kind n-gram path recall."
     )

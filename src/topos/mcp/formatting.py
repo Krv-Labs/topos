@@ -107,7 +107,8 @@ def build_pillars(
     """Build the per-pillar (simple, composable, secure) breakdown."""
     pillars: dict[str, PillarResult] = {}
     for dim in ("simple", "composable", "secure"):
-        # raw metrics namespaced by representation: cfg/ast -> simple, mdg -> composable, cpg -> secure
+        # raw metrics namespaced by representation: cfg/ast -> simple,
+        # mdg -> composable, cpg -> secure
         metric_prefixes = {
             "simple": ("cfg.", "ast."),
             "composable": ("mdg.",),

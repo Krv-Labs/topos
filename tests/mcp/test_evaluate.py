@@ -33,6 +33,7 @@ _PREFS = UserPreferencesInput(
     ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
 )
 
+
 def test_evaluate_code_pillars_breakdown() -> None:
     # Code that fails SIMPLE (high complexity) but satisfies SECURE (0 issues)
     bad_code = "def " + "f" * 100 + "():\n" + "    if True: pass\n" * 20

@@ -577,7 +577,9 @@ def test_dep_policies_score_coupling_returns_scored_decision():
     from topos.evaluation.policies.base import Priority, ScoredDecision
     from topos.evaluation.policies.composable import score_coupling
 
-    decision = score_coupling(instability=0.5, fan_in=3.0, fan_out=2.0, priority=Priority.SECURE)
+    decision = score_coupling(
+        instability=0.5, fan_in=3.0, fan_out=2.0, priority=Priority.SECURE
+    )
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
     assert "mdg.instability" in decision.interpretation

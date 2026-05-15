@@ -26,10 +26,6 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-from topos.evaluation.policies.base import (
-    threshold as default_threshold,
-)
-from topos.evaluation.preferences import Generator
 
 # Normalization caps (for [0, 1] mapping)
 MAX_FAN_IN_CAP: float = 40.0
@@ -126,10 +122,16 @@ def _instability_tent(instability: float) -> float:
 
 def _instability_interpretation(instability: float, quality: float) -> str:
     if INSTABILITY_LOW <= instability <= INSTABILITY_HIGH:
-        return f"instability ({instability:.2f}) within balanced range [{INSTABILITY_LOW}, {INSTABILITY_HIGH}]"
+        return (
+            f"instability ({instability:.2f}) within balanced range "
+            f"[{INSTABILITY_LOW}, {INSTABILITY_HIGH}]"
+        )
     if instability < INSTABILITY_LOW:
         return f"instability ({instability:.2f}) is too low (module is too stable)"
-    return f"instability ({instability:.2f}) is too high (module depends on too many things)"
+    return (
+        f"instability ({instability:.2f}) is too high "
+        "(module depends on too many things)"
+    )
 
 
 def _fan_interpretation(direction: str, raw: float, quality: float) -> str:

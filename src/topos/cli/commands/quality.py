@@ -61,7 +61,10 @@ _PRIORITY_HELP = (
 )
 @click.option(
     "--preferences",
-    help="A comma-separated ranking of quality pillars (e.g., 'simple,composable,secure').",
+    help=(
+        "A comma-separated ranking of quality pillars "
+        "(e.g., 'simple,composable,secure')."
+    ),
 )
 @click.option(
     "--gitnexus-dir",
@@ -198,7 +201,10 @@ def compare(source: str, target: str, verbose: bool) -> None:
 )
 @click.option(
     "--preferences",
-    help="A comma-separated ranking of quality pillars (e.g., 'simple,composable,secure').",
+    help=(
+        "A comma-separated ranking of quality pillars "
+        "(e.g., 'simple,composable,secure')."
+    ),
 )
 def inspect(
     path: str, gitnexus_dir: str | None, priority: str, preferences: str | None

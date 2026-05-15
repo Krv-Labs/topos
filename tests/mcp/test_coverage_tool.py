@@ -1,11 +1,10 @@
-
+from topos.mcp.schemas import CalculateCoverageInput
 from topos.mcp.tools.coverage import topos_calculate_coverage
-from topos.mcp.schemas import CalculateCoverageInput, ResponseFormat
 
 params = CalculateCoverageInput(
     put_files=["src/topos/core/object.py"],
     test_files=["tests/topos/core/test_core.py"],
-    language="python"
+    language="python",
 )
 
 result = topos_calculate_coverage(params)

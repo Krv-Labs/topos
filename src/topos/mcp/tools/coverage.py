@@ -5,7 +5,9 @@ Coverage tools — structural test coverage (UAST).
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.functors.profunctors.uast.structural_test_coverage import declaration_coverage
+from topos.functors.profunctors.uast.structural_test_coverage import (
+    declaration_coverage,
+)
 
 from ..schemas import CalculateCoverageInput, CoverageResult
 from ..security import resolve_within_root
@@ -48,7 +50,10 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
-                error=f"PUT file error: {(err or {}).get('error', 'path error')} for {path}",
+                error=(
+                    f"PUT file error: {(err or {}).get('error', 'path error')} "
+                    f"for {path}"
+                ),
             )
         try:
             morphism = ProgramMorphism.from_file(resolved, language=params.language)
@@ -86,7 +91,10 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
-                error=f"Test file error: {(err or {}).get('error', 'path error')} for {path}",
+                error=(
+                    f"Test file error: {(err or {}).get('error', 'path error')} "
+                    f"for {path}"
+                ),
             )
         try:
             morphism = ProgramMorphism.from_file(resolved, language=params.language)
@@ -200,7 +208,8 @@ def render_coverage_md(r: CoverageResult) -> str:
     else:
         lines.append("## ✅ 100% Structural Coverage")
         lines.append(
-            "All declarations in the PUT are structurally represented in the test suite."
+            "All declarations in the PUT are structurally represented in the test "
+            "suite."
         )
 
     return "\n".join(lines)

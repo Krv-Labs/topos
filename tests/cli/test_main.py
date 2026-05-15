@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
-from topos.cli.main import cli
+
 from topos import __version__
+from topos.cli.main import cli
+
 
 def test_cli_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
     assert f"topos, version {__version__}" in result.output
+
 
 def test_cli_help():
     runner = CliRunner()

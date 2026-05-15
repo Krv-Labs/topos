@@ -2,7 +2,8 @@
 Structural test-coverage policy (outside Ω).
 --------------------------------------------
 
-The UAST probe emits a raw :class:`~topos.functors.probes.uast.structural_test_coverage.DeclarationCoverageReport`;
+The UAST probe emits a raw
+:class:`~topos.functors.probes.uast.structural_test_coverage.DeclarationCoverageReport`;
 this module threshold-classifies it into a :class:`CoverageDecision`
 (mean recall, F2, uncovered declarations).  Independent of the three
 quality generators in Ω.
@@ -43,8 +44,8 @@ def score_declaration_coverage(
     best_recall = tuple(report.best_declaration_recall)
     if best_recall:
         mean_declaration_coverage = sum(best_recall) / len(best_recall)
-        coverage_rate = (
-            sum(1 for score in best_recall if score >= threshold) / len(best_recall)
+        coverage_rate = sum(1 for score in best_recall if score >= threshold) / len(
+            best_recall
         )
     else:
         mean_declaration_coverage = 1.0
@@ -57,7 +58,9 @@ def score_declaration_coverage(
 
     uncovered = tuple(
         (location, score)
-        for location, score in zip(report.declaration_locations, best_recall)
+        for location, score in zip(
+            report.declaration_locations, best_recall, strict=False
+        )
         if score < threshold
     )
 

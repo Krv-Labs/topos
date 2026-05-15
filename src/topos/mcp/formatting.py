@@ -13,7 +13,7 @@ from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
 
-from .schemas import EvaluationResult, LatticeElement, PreferenceWalk
+from .schemas import EvaluationResult, LatticeElement, PillarResult, PreferenceWalk
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
     EvaluationValue.SLOP: LatticeElement.SLOP,
@@ -64,41 +64,86 @@ def build_guidance(result: ClassificationResult) -> str:
     Phrased against the three free generators (SIMPLE, COMPOSABLE, SECURE).
     """
     priority = result.priority
-    simple_score = result.scores.get("simple")
-    composable_score = result.scores.get("composable")
-    secure_score = result.scores.get("secure")
+    simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
+    composable_ok = result.dimensions.get("composable") == EvaluationValue.COMPOSABLE
+    secure_ok = result.dimensions.get("secure") == EvaluationValue.SECURE
 
     if priority == Priority.COMPOSABLE:
-        if composable_score is None:
+        if "composable" not in result.dimensions:
             return (
                 "COMPOSABLE not measured — provide a ModuleDependencyGraph "
                 "(gitnexus_dir) to score the composable generator."
             )
-        if composable_score < 0.6:
+        if not composable_ok:
             return (
-                "Reduce coupling count and balance instability toward 0.3–0.7 "
-                "to satisfy COMPOSABLE."
+                "Balance instability (aim for 0.3–0.7) and reduce fan-in/fan-out "
+                "(aim for <= 15) to satisfy COMPOSABLE."
             )
         return (
-            "COMPOSABLE satisfied.  Reduce CFG cyclomatic complexity and "
+            "COMPOSABLE satisfied.  Simplify CFG/functions and "
             "address any CPG security findings to reach IDEAL."
         )
 
     if priority == Priority.SIMPLE:
-        if simple_score is not None and simple_score < 0.6:
+        if not simple_ok:
             return (
-                "Reduce CFG cyclomatic complexity (split branches; lift "
-                "guard clauses) to satisfy SIMPLE."
+                "Reduce CFG/function cyclomatic complexity (aim for <= 15/10) "
+                "and ensure AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
             )
         return "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach IDEAL."
 
     # priority == Priority.SECURE  (only remaining case after exhaustive match)
-    if secure_score is not None and secure_score < 0.6:
+    if not secure_ok:
         return (
-            "Eliminate dangerous-API calls and source→sink taint flows "
+            "Eliminate all dangerous-API calls and source→sink taint flows "
             "to satisfy SECURE."
         )
     return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach IDEAL."
+
+
+def build_pillars(
+    result: ClassificationResult, coupling_available: bool
+) -> dict[str, PillarResult]:
+    """Build the per-pillar (simple, composable, secure) breakdown."""
+    pillars: dict[str, PillarResult] = {}
+    for dim in ("simple", "composable", "secure"):
+        # raw metrics namespaced by representation: cfg/ast -> simple, mdg -> composable, cpg -> secure
+        metric_prefixes = {
+            "simple": ("cfg.", "ast."),
+            "composable": ("mdg.",),
+            "secure": ("cpg.",),
+        }[dim]
+
+        dim_metrics = {
+            k: v
+            for k, v in result.raw_metrics.items()
+            if any(k.startswith(p) for p in metric_prefixes)
+        }
+        dim_interp = {
+            k: v
+            for k, v in result.interpretation.items()
+            if any(k.startswith(p) for p in metric_prefixes)
+        }
+
+        # achieved = was the singleton generator for this dimension satisfied?
+        generator_val = {
+            "simple": EvaluationValue.SIMPLE,
+            "composable": EvaluationValue.COMPOSABLE,
+            "secure": EvaluationValue.SECURE,
+        }[dim]
+
+        achieved = result.dimensions.get(dim) == generator_val
+        score = result.scores.get(dim, 0.0)
+
+        # Only include pillars that were actually measured
+        if dim_metrics or dim == "composable" and not coupling_available:
+            pillars[dim] = PillarResult(
+                achieved=achieved,
+                score=round(score * 100.0, 1),
+                metrics=dim_metrics,
+                interpretation=dim_interp,
+            )
+    return pillars
 
 
 def to_evaluation_result(
@@ -112,6 +157,7 @@ def to_evaluation_result(
     walk = (
         build_preference_walk(preferences, summary) if preferences is not None else None
     )
+
     return EvaluationResult(
         is_parseable=result.is_parseable,
         lattice_element=lattice_to_str(summary),
@@ -119,6 +165,7 @@ def to_evaluation_result(
         lattice_description=summary.description,
         dimensions={dim: lattice_to_str(val) for dim, val in result.dimensions.items()},
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+        pillars=build_pillars(result, coupling_available),
         priority=result.priority,
         guidance=build_guidance(result),
         coupling_available=coupling_available,

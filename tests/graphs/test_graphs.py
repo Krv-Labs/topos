@@ -288,32 +288,30 @@ def test_ast_representation_dispatches_verdicts():
     assert result.summary() == baseline.summary()
 
 
-def test_score_ast_produces_scored_decision():
-    """_score_ast returns a ScoredDecision for the legacy ast.entropy path
-    (folding into the SIMPLE generator).
-    """
-    from topos.evaluation.characteristic_morphism import _score_ast
+def test_score_simple_dim_produces_scored_decision():
+    """_score_simple_dim returns a ScoredDecision for AST metrics."""
+    from topos.evaluation.characteristic_morphism import _score_simple_dim
     from topos.evaluation.policies.base import Priority, ScoredDecision
 
-    decision = _score_ast({"ast.entropy": 0.5}, Priority.SECURE)
+    decision = _score_simple_dim(
+        {"ast.entropy": 0.5, "ast.max_function_complexity": 5.0}, Priority.SECURE
+    )
     assert decision is not None
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
-    # The legacy AST dispatcher feeds into Φ_SIMPLE which names its
-    # principal complexity metric `cfg.cyclomatic`.  Entropy is still in
-    # the interpretation map.
     keys = set(decision.interpretation.keys())
     assert "ast.entropy" in keys
+    assert "ast.max_function_complexity" in keys
     assert all(v != "" for v in decision.interpretation.values())
 
 
-def test_score_ast_returns_none_on_missing_keys():
-    """_score_ast returns None when expected metric keys are absent."""
-    from topos.evaluation.characteristic_morphism import _score_ast
+def test_score_simple_dim_returns_none_on_missing_keys():
+    """_score_simple_dim returns None when expected metric keys are absent."""
+    from topos.evaluation.characteristic_morphism import _score_simple_dim
     from topos.evaluation.policies.base import Priority
 
-    assert _score_ast({}, Priority.SECURE) is None
-    assert _score_ast({"mdg.coupling": 3.0}, Priority.SECURE) is None
+    assert _score_simple_dim({}, Priority.SECURE) is None
+    assert _score_simple_dim({"mdg.coupling": 3.0}, Priority.SECURE) is None
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ Evaluation tools: code string, single file, whole project.
 
 The single-file tool is the P0 bug fix — the previous ``evaluate_file``
 delegated to ``evaluate_code`` and dropped the filepath, so ModuleDependencyGraph
-was never built and COMPOSABLE/SOUND were unreachable via MCP.
+was never built and COMPOSABLE/IDEAL were unreachable via MCP.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from ..evaluation import (
     resolve_gitnexus_dir,
 )
 from ..formatting import (
+    build_pillars,
     lattice_to_str,
     to_evaluation_result,
 )
@@ -203,6 +204,7 @@ async def topos_evaluate_project(
                 filepath=str(path.relative_to(resolved_root)),
                 lattice_element=lattice_to_str(result.summary()),
                 scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+                pillars=build_pillars(result, coupling_available),
                 raw_metrics=dict(result.raw_metrics),
                 is_parseable=result.is_parseable,
             )

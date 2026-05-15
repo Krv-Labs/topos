@@ -33,7 +33,23 @@ _PREFS = UserPreferencesInput(
     ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
 )
 
-# --- topos_evaluate_code ---
+def test_evaluate_code_pillars_breakdown() -> None:
+    # Code that fails SIMPLE (high complexity) but satisfies SECURE (0 issues)
+    bad_code = "def " + "f" * 100 + "():\n" + "    if True: pass\n" * 20
+    r = topos_evaluate_code(EvaluateCodeInput(code=bad_code, preferences=_PREFS))
+
+    assert "simple" in r.pillars
+    assert "secure" in r.pillars
+
+    # SECURE should be achieved (0 danger, 0 taint)
+    assert r.pillars["secure"].achieved is True
+    assert r.pillars["secure"].score == 100.0
+    assert r.pillars["secure"].metrics["cpg.dangerous_calls"] == 0.0
+
+    # SIMPLE should NOT be achieved (cyclomatic > 15)
+    assert r.pillars["simple"].achieved is False
+    assert r.pillars["simple"].metrics["cfg.cyclomatic"] > 15.0
+    assert "cfg.cyclomatic" in r.pillars["simple"].interpretation
 
 
 def test_evaluate_code_happy_path() -> None:

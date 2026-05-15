@@ -111,7 +111,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         proposed_res, coupling_available=coupling_for_proposed, preferences=prefs
     )
 
-    # ---- score deltas ----
+    # ---- score & metric deltas ----
     all_dims = set(current_eval.scores) | set(proposed_eval.scores)
     score_deltas = {
         dim: round(
@@ -120,9 +120,13 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         for dim in all_dims
     }
 
-    cur_complexity = current_res.raw_metrics.get("ast.complexity", 0.0)
-    prop_complexity = proposed_res.raw_metrics.get("ast.complexity", 0.0)
-    complexity_delta = prop_complexity - cur_complexity
+    all_metrics = set(current_res.raw_metrics) | set(proposed_res.raw_metrics)
+    metric_deltas = {
+        m: round(
+            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0), 3
+        )
+        for m in all_metrics
+    }
 
     # ---- structural distance ----
     distance = None
@@ -181,7 +185,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         current=current_eval,
         proposed=proposed_eval,
         score_deltas=score_deltas,
-        complexity_delta=complexity_delta,
+        metric_deltas=metric_deltas,
         structural_distance=distance,
         similarity=similarity,
         coupling_available_for_proposed=coupling_for_proposed,

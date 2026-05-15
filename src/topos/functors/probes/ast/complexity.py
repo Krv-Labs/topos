@@ -1,28 +1,10 @@
 """
-Complexity Module
------------------
-Quantifies the 'Density' of the morphism.
+Per-Function Complexity Analysis
+--------------------------------
 
-Mathematical Inspiration:
-    Cyclomatic complexity represents the number of linearly independent
-    paths through a program's control flow graph. In our Topos, this acts
-    as a measure of 'Logical Entropy'.
-
-    For a control flow graph G with:
-    - E edges
-    - N nodes
-    - P connected components
-
-    Cyclomatic Complexity M = E - N + 2P
-
-    Equivalently, M = (number of decision points) + 1
-
-    High complexity in commodity code suggests the morphism is
-    'logic-heavy' but 'quality-poor'—many paths, but questionable
-    structural integrity.
-
-    We compute this directly from the AST by counting decision nodes
-    (if, for, while, except, etc.) rather than constructing the full CFG.
+Provides a function-level breakdown of complexity using the AST.
+This is separate from the CFG-based module-level cyclomatic complexity used
+in the main program evaluation (SIMPLE generator).
 """
 
 from __future__ import annotations
@@ -60,29 +42,8 @@ DECISION_UAST_KINDS = frozenset(
 )
 
 
-def calculate_cyclomatic_complexity(ast: ProgramObject) -> int:
-    """
-    Measures the control-flow topology of the program.
-
-    Computes cyclomatic complexity by counting decision points in the AST.
-    Each decision point adds one to the base complexity of 1.
-
-    Args:
-        ast: The ProgramObject (parsed AST) to analyze.
-
-    Returns:
-        The cyclomatic complexity score (minimum 1).
-
-    Example:
-        A simple function with no branches: M = 1
-        A function with one if-else: M = 2
-        A function with nested if-else: M = 3+
-
-    Mathematical Note:
-        This is an approximation. True cyclomatic complexity requires
-        analyzing the control flow graph, but AST-based counting provides
-        a reasonable proxy for most Python code.
-    """
+def _calculate_node_complexity(ast: ProgramObject) -> int:
+    """Internal helper to calculate complexity of a specific node/sub-tree."""
     if ast.uast_root is not None:
         return _calculate_cyclomatic_complexity_uast(ast.uast_root)
 
@@ -117,12 +78,7 @@ def _calculate_cyclomatic_complexity_uast(root) -> int:
 
 
 def _count_boolean_operators(node) -> int:
-    """
-    Count chained boolean operators (and/or).
-
-    Each boolean operator in a chain adds a decision point:
-    `a and b and c` has 2 decision points.
-    """
+    """Count chained boolean operators (and/or)."""
     count = 1
     for child in node.children:
         if child.type == "boolean_operator":
@@ -160,25 +116,12 @@ def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
             source=ast.source,
             language=ast.language,
         )
-        complexities[func_name] = calculate_cyclomatic_complexity(func_ast)
+        complexities[func_name] = _calculate_node_complexity(func_ast)
 
     return complexities
 
 
-def calculate_average_complexity(ast: ProgramObject) -> float:
-    """
-    Calculate the average complexity across all functions.
-
-    Args:
-        ast: The ProgramObject to analyze.
-
-    Returns:
-        The mean cyclomatic complexity of all functions,
-        or 1.0 if no functions are defined.
-    """
+def calculate_max_function_complexity(ast: ProgramObject) -> int:
+    """Calculate the maximum cyclomatic complexity found in any function."""
     complexities = calculate_function_complexities(ast)
-
-    if not complexities:
-        return 1.0
-
-    return sum(complexities.values()) / len(complexities)
+    return max(complexities.values()) if complexities else 0

@@ -483,6 +483,19 @@ class PreferenceWalk(BaseModel):
     )
 
 
+class PillarResult(BaseModel):
+    """Detailed result for one quality pillar (generator)."""
+
+    achieved: bool = Field(..., description="Whether the generator's threshold was met.")
+    score: float = Field(..., description="Normalized quality score in [0, 100].")
+    metrics: dict[str, float] = Field(
+        default_factory=dict, description="Raw metrics feeding this pillar."
+    )
+    interpretation: dict[str, str] = Field(
+        default_factory=dict, description="Per-metric interpretation strings."
+    )
+
+
 class EvaluationResult(BaseModel):
     """Result of a single-unit evaluation."""
 
@@ -493,6 +506,9 @@ class EvaluationResult(BaseModel):
     dimensions: dict[str, LatticeElement]
     scores: dict[str, float] = Field(
         ..., description="Per-dimension normalized score in [0, 100]."
+    )
+    pillars: dict[str, PillarResult] = Field(
+        default_factory=dict, description="Per-pillar breakdown (simple, composable, secure)."
     )
     priority: Priority
     guidance: str = Field(..., description="Next-step hint for the agent.")
@@ -521,6 +537,7 @@ class ProjectFileEntry(BaseModel):
     filepath: str
     lattice_element: LatticeElement
     scores: dict[str, float]
+    pillars: dict[str, PillarResult] = Field(default_factory=dict)
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     is_parseable: bool = True
 
@@ -564,8 +581,13 @@ class AssessmentResult(BaseModel):
     priority: Priority
     current: EvaluationResult
     proposed: EvaluationResult
-    score_deltas: dict[str, float]
-    complexity_delta: float
+    score_deltas: dict[str, float] = Field(
+        ..., description="Change in pillar scores (proposed - current)."
+    )
+    metric_deltas: dict[str, float] = Field(
+        default_factory=dict,
+        description="Change in raw metrics (proposed - current). Useful for tracking progress against specific thresholds.",
+    )
     structural_distance: float | None = None
     similarity: float | None = None
     coupling_available_for_proposed: bool

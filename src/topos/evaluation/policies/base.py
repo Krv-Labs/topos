@@ -92,9 +92,9 @@ from topos.evaluation.preferences import Generator
 # Defaults are v0 placeholders pending corpus calibration.
 
 THRESHOLDS: dict[Generator, float] = {
-    Generator.SIMPLE: 0.60,
+    Generator.SIMPLE: 0.40,
     Generator.COMPOSABLE: 0.60,
-    Generator.SECURE: 0.70,
+    Generator.SECURE: 1.00,
 }
 
 

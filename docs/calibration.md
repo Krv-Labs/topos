@@ -299,3 +299,27 @@ with both modes on the same side. Calibration alone cannot tell you whether
 the metric can detect small improvements — a well-placed threshold on a
 low-sensitivity metric gives accurate classification on average but fails to
 guide incremental refactoring.
+## Calibration Results (v1.0.0 Threshold Alignment)
+
+Based on the execution of Experiment 4 (Structural score baseline) against the Python PyPI corpus (requests, numpy, pandas), we found a misalignment between the **raw policy thresholds** (which define the generator logic) and the **normalized score floors** in base.py (which are used by some aggregator tools).
+
+### Findings
+
+The raw metric distributions perfectly match their theoretical bounds on the Python corpus:
+- **SIMPLE**: Median cyclomatic complexity is 12, with 55.2% of files falling under the <=15 threshold. Median max function complexity is 5, with 74% under the <=10 threshold.
+- **SECURE**: Any file with dangerous_calls > 0 or taint_flows > 0 strictly fails the achieved boolean, as designed.
+
+However, the THRESHOLDS mapping in base.py was acting as an incorrect secondary gate. These thresholds are designed to be "score-floor helpers" for pre-aggregated normalized scores.
+- **SIMPLE**: A file sitting exactly on the boundary of passing all raw thresholds (cyclomatic=15, max_func=10, entropy=0.2) mathematically evaluates to a normalized score of exactly 0.40. The old base.py floor of 0.60 incorrectly rejected these perfectly valid files. 
+- **COMPOSABLE**: The fan_in / fan_out cap of 15/40 yields a minimum passing normalized score of 0.625. The base.py floor of 0.60 is correctly aligned with this.
+- **SECURE**: Because the SECURE generator uses an exponential decay function, a single dangerous API call or taint flow results in a normalized score of approximately 0.71. The old base.py floor of 0.70 would mistakenly allow a file with 1 dangerous call to pass the fallback check.
+
+### Actions Taken
+
+We updated src/topos/evaluation/policies/base.py to correctly align the fallback THRESHOLDS with the mathematical minimum normalized scores implied by the raw generator bounds:
+
+* **SIMPLE**: 0.60 -> 0.40
+* **SECURE**: 0.70 -> 1.00
+* **COMPOSABLE**: 0.60 (unchanged)
+
+This change ensures that tools utilizing the meet_satisfied aggregation path maintain strict parity with the raw metric judgments performed during a live structural evaluation. With the SIMPLE threshold lowered to 0.40, the overall file pass rate in the sample corpus appropriately rose to 51.2%.

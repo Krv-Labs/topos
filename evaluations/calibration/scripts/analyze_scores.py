@@ -78,7 +78,7 @@ def _extract_structural_score(record: dict) -> float | None:
     """
     scores = record.get("scores")
     if isinstance(scores, dict):
-        val = scores.get("structural")
+        val = scores.get("simple")
         if isinstance(val, (int, float)):
             return float(val)
     val = record.get("structural_score")

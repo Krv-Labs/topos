@@ -18,10 +18,9 @@ Mathematical Inspiration:
 
         entropy_proxy = len(compress(x)) / len(x)
 
-    This metric captures 'algorithmic debt'—code that is overly verbose
-    or unnecessarily complex will have distinctive entropy signatures.
-    In the world of commodity code, these signatures help identify
-    morphisms that lack intentional structural compression.
+    This module returns raw compression ratios and size data only.
+    Any thresholding, labeling, or qualitative interpretation lives in
+    the evaluation policies.
 """
 
 from __future__ import annotations
@@ -39,7 +38,7 @@ class EntropyResult:
         ratio: Compression ratio (compressed_size / original_size).
         compressed_size: Size after zlib compression.
         original_size: Original source size in bytes.
-        interpretation: Human-readable interpretation.
+        interpretation: Human-readable interpretation of the entropy ratio.
     """
 
     ratio: float
@@ -48,7 +47,11 @@ class EntropyResult:
     interpretation: str
 
     def __str__(self) -> str:
-        return f"Entropy: {self.ratio:.3f} ({self.interpretation})"
+        return (
+            f"Entropy: {self.ratio:.3f} "
+            f"(compressed={self.compressed_size}, original={self.original_size}, "
+            f"interpretation='{self.interpretation}')"
+        )
 
 
 def calculate_kolmogorov_proxy(source: str) -> float:
@@ -83,7 +86,7 @@ def calculate_entropy_detailed(source: str) -> EntropyResult:
         source: The source code as a string.
 
     Returns:
-        An EntropyResult with ratio and interpretation.
+        An EntropyResult with raw ratio and size data.
     """
     if not source:
         return EntropyResult(
@@ -99,21 +102,19 @@ def calculate_entropy_detailed(source: str) -> EntropyResult:
     ratio = len(compressed) / len(source_bytes)
 
     if ratio < 0.2:
-        interpretation = "highly_redundant"
-    elif ratio < 0.4:
-        interpretation = "repetitive"
-    elif ratio < 0.6:
-        interpretation = "normal"
+        interp = "extreme redundancy (possible boilerplate or repetitive data)"
+    elif ratio < 0.5:
+        interp = "low entropy (standard well-structured code)"
     elif ratio < 0.8:
-        interpretation = "dense"
+        interp = "moderate entropy (complex or dense logic)"
     else:
-        interpretation = "incompressible"
+        interp = "high entropy (low redundancy; possible noise or obfuscation)"
 
     return EntropyResult(
         ratio=ratio,
         compressed_size=len(compressed),
         original_size=len(source_bytes),
-        interpretation=interpretation,
+        interpretation=interp,
     )
 
 

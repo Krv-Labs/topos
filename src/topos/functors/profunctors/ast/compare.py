@@ -227,29 +227,6 @@ def calculate_similarity(
     return 1.0 - result.normalized_distance
 
 
-def are_clones(
-    source: ProgramObject,
-    target: ProgramObject,
-    threshold: float = 0.1,
-) -> bool:
-    """
-    Check if two programs are structural clones.
-
-    Programs are considered clones if their normalized distance
-    is below the threshold.
-
-    Args:
-        source: The source ProgramObject.
-        target: The target ProgramObject.
-        threshold: Maximum normalized distance for clone detection.
-
-    Returns:
-        True if the programs are clones.
-    """
-    result = calculate_ast_distance(source, target)
-    return result.normalized_distance <= threshold
-
-
 def structural_distance(source: ProgramMorphism, target: ProgramMorphism) -> float:
     """
     Normalized AST edit distance between two program morphisms.

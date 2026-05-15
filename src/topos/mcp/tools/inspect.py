@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.policies.base import Priority
-from topos.functors.probes.ast.complexity import calculate_function_complexities
-from topos.functors.probes.ast.entropy import calculate_entropy_detailed
+from topos.functors.probes.cfg.complexity import cyclomatic_complexity
+from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
+from topos.evaluation.policies.simple import describe_entropy_ratio
+from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
+from topos.graphs.cfg.object import ControlFlowGraph
 
 from ..evaluation import classify_code_string
 from ..formatting import to_evaluation_result
@@ -63,18 +66,38 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
 
     morphism = ProgramMorphism(source=params.code, language=params.language)
     all_funcs: dict[str, int] = {}
-    if morphism.ast:
-        all_funcs = dict(calculate_function_complexities(morphism.ast) or {})
+    if morphism.ast and morphism.ast.uast_root:
+        try:
+            callables = _collect_callables(morphism.ast.uast_root)
+            for c in callables:
+                name = c.attributes.get("name")
+                if not name:
+                    # Look for an Identifier child (common in most UAST mappings)
+                    for child in c.children:
+                        if child.kind == "Identifier":
+                            s = child.span
+                            name = morphism.source[s.start_byte:s.end_byte]
+                            break
+                if not name:
+                    name = c.attributes.get("scope") or "anonymous"
+
+                blocks, edges, entry_id, exit_id = build_cfg_from_uast(c)
+                cfg = ControlFlowGraph(blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id)
+                all_funcs[name] = cyclomatic_complexity(cfg)
+        except Exception:
+            pass
+
     top_funcs = dict(
         sorted(all_funcs.items(), key=lambda kv: -kv[1])[: params.top_n_functions]
     )
 
-    entropy_details = calculate_entropy_detailed(morphism.source)
+    ratio = calculate_kolmogorov_proxy(morphism.source)
+    interpretation = describe_entropy_ratio(ratio)
 
     return InspectionResult(
         evaluation=evaluation,
         functions=top_funcs,
         total_functions=len(all_funcs),
-        entropy_compression_ratio=entropy_details.ratio,
-        entropy_interpretation=entropy_details.interpretation,
+        entropy_compression_ratio=ratio,
+        entropy_interpretation=interpretation,
     )

@@ -328,10 +328,7 @@ def declaration_coverage(
         best = max((_multiset_recall(pf, tf) for tf in test_fps), default=0.0)
         best_recall.append(best)
 
-    if put_decls:
-        mean_decl_cov = sum(best_recall) / len(best_recall)
-    else:
-        mean_decl_cov = 1.0
+    mean_decl_cov = sum(best_recall) / len(best_recall) if put_decls else 1.0
 
     # Category-stratified recall — disjoint Stmt vs Expr subsets, no double-counting
     h_put = merge_uast_kind_histograms(put_roots, include_unknown=include_unknown)

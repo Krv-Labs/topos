@@ -15,6 +15,14 @@ topos-skill/
 maths.md
 
 
+# Calibration Data
+evaluations/calibrations/*.csv
+evaluations/calibrations/*.txt
+evaluations/calibrations/results/
+evaluations/calibrations/evidence/
+
+
+
 # Python env
 uv.lock
 .python-version

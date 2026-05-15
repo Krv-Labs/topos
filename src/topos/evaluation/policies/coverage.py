@@ -2,8 +2,8 @@
 Structural test-coverage policy (outside Ω).
 --------------------------------------------
 
-The UAST probe emits a raw
-:class:`~topos.functors.probes.uast.structural_test_coverage.DeclarationCoverageReport`;
+The UAST profunctor emits a raw
+:class:`~topos.functors.profunctors.uast.structural_test_coverage.DeclarationCoverageReport`;
 this module threshold-classifies it into a :class:`CoverageDecision`
 (mean recall, F2, uncovered declarations).  Independent of the three
 quality generators in Ω.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from topos.functors.probes.uast.structural_test_coverage import (
+from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
 )
 

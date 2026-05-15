@@ -27,9 +27,9 @@ first encounter with the server.
 
 - Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — `gitnexus_dir`
   is required for the COMPOSABLE generator.  Without it, any verdict
-  containing COMPOSABLE (including IDEAL) is unreachable.
+  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.
 - Whole project: `topos_evaluate_project(path, gitnexus_dir)` — rollup +
-  worst-N file list. Start here to pick a target.
+  worst-N file list. Start here to pick a target and "Go for Gold".
 
 ### 2. Plan
 
@@ -49,9 +49,9 @@ Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
 
 `topos_assess_improvement` returns one of:
 
-- `IMPROVEMENT` — lattice moved up (e.g. SLOP → SIMPLE, or SIMPLE → SIMPLE_COMPOSABLE). Commit.
+- `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Commit.
 - `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.
-  Progress, but not a verdict jump yet.
+  Progress, but not a medal jump yet.
 - `LATERAL_MOVE` — neither improved nor regressed. Try a different angle.
 - `REGRESSION` / `REGRESSION_SCORE` — revert and re-plan.
 - **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** — ⚠️ scores moved but AST barely
@@ -61,7 +61,7 @@ Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
 ### 5. Decide
 
 Stop when:
-- Verdict = `IDEAL` (all three generators satisfied), OR
+- Verdict = 🥇 **GOLD** (all three generators satisfied), OR
 - Priority-specific generator satisfied (`simple` → SIMPLE bit set,
   `composable` → COMPOSABLE bit set, `secure` → SECURE bit set), OR
 - `max_iterations` exhausted — report partial progress honestly rather than
@@ -106,18 +106,17 @@ not just an upweighted generator — pass `preferences` alongside
 "simple"]` induces a total order on Ω and produces a **two-stage**
 target:
 
-1. **`target`** — aspirational, default `IDEAL`. Try to beat the
+1. **`target`** — aspirational, default 🥇 **GOLD**. Try to beat the
    thresholds for all three generators first.
 2. **`fallback_target`** — the **"ideal intersection"**, i.e. the meet
-   of the top-two ranked generators (`COMPOSABLE_SECURE` in the
-   example above). When IDEAL plateaus, divert here.
+   of the top-two ranked generators (🥈 **SILVER**). When 🥇 **GOLD** plateaus, divert here.
 
-The result also returns a **`walk`** (descending verdicts from IDEAL
+The result also returns a **`walk`** (descending verdicts from GOLD
 down) and a **`next_step`** (the smallest improvement above the
 current verdict).
 
-Concretely: aim for IDEAL for the first few iterations; if the lattice
-verdict won't move, switch to `fallback_target` and try to satisfy
+Concretely: aim for 🥇 **GOLD** for the first few iterations; if the lattice
+verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and try to satisfy
 only the top-two generators. See `topos://docs/preferences`.
 
 ## What Topos does NOT measure

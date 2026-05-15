@@ -1,10 +1,10 @@
 # Topos
 
-> **Structural code quality metrics your agents can act on.**
+> **Structural code quality metrics your agents can compete on.**
 
 **Assume you passed the tests. How good is your solution?**
 
-Topos fills the gap between _correctness_ (passing tests) and _quality_ (maintainable, secure, and well-structured code). It provides structural metrics that coding agents use to iteratively optimize code until it earns the highest possible **Code Quality Badge**.
+Topos fills the gap between _correctness_ (passing tests) and _quality_ (maintainable, secure, and well-structured code). It provides structural metrics that coding agents use to iteratively optimize code until it earns the highest possible **Code Quality Medal**.
 
 Three independent quality pillars:
 
@@ -19,20 +19,20 @@ Set a **Preference Ranking** (e.g., `simple,composable,secure`) to define how an
 
 ---
 
-### Badges for Coding Agents
+### The Medal Podium
 
-Topos maps every file to a **Code Quality Badge** on an eight-valued evaluation lattice. Agents always know exactly where they are:
+Topos maps every file to a **Code Quality Medal** on an eight-valued evaluation lattice. Compete to get Gold on every file in your repository:
 
 ```mermaid
 graph BT
-    SLOP["⊥ SLOP<br/> No badges met"]
-    SIMPLE["S<br/>Simple"]
-    COMPOSABLE["C<br/>Composable"]
-    SECURE["Sc<br/>Secure"]
-    SC["S∧C"]
-    SSc["S∧Sc"]
-    CSc["C∧Sc"]
-    IDEAL["⊤ IDEAL<br/> All three pillars achieved"]
+    SLOP["❌ SLOP<br/>No Medal"]
+    SIMPLE["🥉 BRONZE<br/>Simple"]
+    COMPOSABLE["🥉 BRONZE<br/>Composable"]
+    SECURE["🥉 BRONZE<br/>Secure"]
+    SC["🥈 SILVER<br/>S ∧ C"]
+    SSc["🥈 SILVER<br/>S ∧ Sc"]
+    CSc["🥈 SILVER<br/>C ∧ Sc"]
+    IDEAL["🥇 GOLD<br/>The Ideal Morphism"]
 
     SLOP --> SIMPLE
     SLOP --> COMPOSABLE
@@ -48,19 +48,19 @@ graph BT
     CSc --> IDEAL
 
     style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-    style SIMPLE     fill:#d4edda,stroke:#155724,color:#000
-    style COMPOSABLE fill:#d1ecf1,stroke:#0c5460,color:#000
-    style SECURE     fill:#d1f1dc,stroke:#0c5460,color:#000
-    style SC         fill:#e2f5eb,stroke:#155724,color:#000
-    style SSc        fill:#e2f5eb,stroke:#155724,color:#000
-    style CSc        fill:#e2f5eb,stroke:#155724,color:#000
-    style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
+    style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style IDEAL      fill:#ffd700,stroke:#856404,color:#000
 ```
 
-**SIMPLE**, **COMPOSABLE**, and **SECURE** are **pairwise incomparable** — code can achieve any subset independently. **IDEAL** is the intersection of all three.
+**SIMPLE**, **COMPOSABLE**, and **SECURE** are **pairwise incomparable** — code can achieve any subset independently. **🥇 GOLD** is the intersection of all three.
 
 > [!TIP]
-> Perfect code reaches **IDEAL** — but agents operate under token and time budgets. As a manager, you set the **Preference Ranking** to tell the agent how to relax its goals if the ideal target is unfeasible. Set `--preferences simple,composable,secure` to prioritize simplicity first.
+> Perfect code reaches **🥇 GOLD** — but agents operate under token and time budgets. As a manager, you set the **Preference Ranking** to tell the agent how to relax its goals if the ideal target is unfeasible. Set `--preferences simple,composable,secure` to prioritize simplicity first.
 
 ---
 
@@ -89,10 +89,13 @@ Agent iteration 1: SLOP [simple: 41%, composable: -, secure: -]
   → Reduce cyclomatic complexity and normalize entropy toward 0.5
 
 Agent iteration 2: SIMPLE [simple: 72%, composable: -, secure: -]
-  → ✓ SIMPLE badge earned.
+  → ✓ 🥉 BRONZE medal earned.
 
 Agent iteration 3: SIMPLE_COMPOSABLE [simple: 72%, composable: 65%, secure: -]
-  → ✓ SIMPLE_COMPOSABLE badge earned. (With GitNexus enabled)
+  → ✓ 🥈 SILVER medal earned. (With GitNexus enabled)
+
+Agent iteration 4: IDEAL [simple: 75%, composable: 72%, secure: 95%]
+  → ✓ 🥇 GOLD medal earned. The morphsim is Ideal.
 ```
 
 ---

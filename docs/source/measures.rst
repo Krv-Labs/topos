@@ -5,7 +5,7 @@ Measures
 ========
 
 .. tip::
-   Every program evaluated by Topos is measured along three independent **Quality Pillars**. These pillars are the generators for the **Quality Badges** you can earn. Topos never collapses these into a single number — you always see which pillar is the problem.
+   Every program evaluated by Topos is measured along three independent **Quality Pillars**. These pillars are the generators for the **Quality Medals** you can earn. Topos never collapses these into a single number — you always see which pillar is the problem.
 
 1. The SIMPLE Pillar (Code Complexity)
 ------------------------------------------
@@ -101,16 +101,16 @@ within each generator's scoring function.
 Verdicts
 --------
 
-The per-pillar scores map to an 8-valued Heyting algebra (free lattice on 3 generators), representing the **Quality Badges**:
+The per-pillar scores map to an 8-valued Heyting algebra (free lattice on 3 generators), representing the **Quality Medals**:
 
-* ``SLOP`` (⊥): No pillars achieved (all scores below threshold) or syntax error.
-* ``SIMPLE``: Only SIMPLE achieved.
-* ``COMPOSABLE``: Only COMPOSABLE achieved (requires GitNexus; unreachable from SIMPLE alone).
-* ``SECURE``: Only SECURE achieved.
-* ``SIMPLE_COMPOSABLE``: Both SIMPLE and COMPOSABLE achieved.
-* ``SIMPLE_SECURE``: Both SIMPLE and SECURE achieved.
-* ``COMPOSABLE_SECURE``: Both COMPOSABLE and SECURE achieved.
-* ``IDEAL`` (⊤): All three pillars achieved. Perfectly simple, composable, and secure.
+* ``SLOP`` (❌): No pillars achieved (all scores below threshold) or syntax error. No medal awarded.
+* ``SIMPLE``: Only SIMPLE achieved (🥉 BRONZE).
+* ``COMPOSABLE``: Only COMPOSABLE achieved (🥉 BRONZE; requires GitNexus; unreachable from SIMPLE alone).
+* ``SECURE``: Only SECURE achieved (🥉 BRONZE).
+* ``SIMPLE_COMPOSABLE``: Both SIMPLE and COMPOSABLE achieved (🥈 SILVER).
+* ``SIMPLE_SECURE``: Both SIMPLE and SECURE achieved (🥈 SILVER).
+* ``COMPOSABLE_SECURE``: Both COMPOSABLE and SECURE achieved (🥈 SILVER).
+* ``IDEAL`` (🥇): All three pillars achieved. Perfectly simple, composable, and secure. GOLD medal awarded.
 
 The three pillars ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are **pairwise incomparable** — a
 file can achieve any subset of them independently. The overall ``lattice_element`` in the

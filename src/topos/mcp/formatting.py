@@ -81,7 +81,7 @@ def build_guidance(result: ClassificationResult) -> str:
             )
         return (
             "COMPOSABLE satisfied.  Simplify CFG/functions and "
-            "address any CPG security findings to reach IDEAL."
+            "address any CPG security findings to reach GOLD."
         )
 
     if priority == Priority.SIMPLE:
@@ -90,7 +90,7 @@ def build_guidance(result: ClassificationResult) -> str:
                 "Reduce CFG/function cyclomatic complexity (aim for <= 15/10) "
                 "and ensure AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
             )
-        return "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach IDEAL."
+        return "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach GOLD."
 
     # priority == Priority.SECURE  (only remaining case after exhaustive match)
     if not secure_ok:
@@ -98,7 +98,7 @@ def build_guidance(result: ClassificationResult) -> str:
             "Eliminate all dangerous-API calls and source→sink taint flows "
             "to satisfy SECURE."
         )
-    return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach IDEAL."
+    return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD."
 
 
 def build_pillars(

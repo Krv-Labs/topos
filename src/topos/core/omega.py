@@ -119,14 +119,14 @@ class EvaluationValue(IntEnum):
     def symbol(self) -> str:
         """Unicode symbol representation."""
         symbols = {
-            EvaluationValue.SLOP: "⊥",
-            EvaluationValue.SIMPLE: "◐",
-            EvaluationValue.COMPOSABLE: "◑",
-            EvaluationValue.SECURE: "◇",
-            EvaluationValue.SIMPLE_COMPOSABLE: "◐◑",
-            EvaluationValue.SIMPLE_SECURE: "◐◇",
-            EvaluationValue.COMPOSABLE_SECURE: "◑◇",
-            EvaluationValue.IDEAL: "⊤",
+            EvaluationValue.SLOP: "❌",
+            EvaluationValue.SIMPLE: "🥉",
+            EvaluationValue.COMPOSABLE: "🥉",
+            EvaluationValue.SECURE: "🥉",
+            EvaluationValue.SIMPLE_COMPOSABLE: "🥈",
+            EvaluationValue.SIMPLE_SECURE: "🥈",
+            EvaluationValue.COMPOSABLE_SECURE: "🥈",
+            EvaluationValue.IDEAL: "🥇",
         }
         return symbols[self]
 
@@ -134,24 +134,24 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.SLOP: ("Fails every generator; unconstrained code"),
-            EvaluationValue.SIMPLE: "Low complexity; SIMPLE generator satisfied",
+            EvaluationValue.SLOP: "❌ NO MEDAL - Fails every generator; unconstrained code",
+            EvaluationValue.SIMPLE: "🥉 BRONZE - Low complexity; SIMPLE generator satisfied",
             EvaluationValue.COMPOSABLE: (
-                "Composes well with other modules; COMPOSABLE generator satisfied"
+                "🥉 BRONZE - Composes well; COMPOSABLE generator satisfied"
             ),
             EvaluationValue.SECURE: (
-                "Free of dangerous-API / taint patterns; SECURE generator satisfied"
+                "🥉 BRONZE - Safe data flow; SECURE generator satisfied"
             ),
             EvaluationValue.SIMPLE_COMPOSABLE: (
-                "SIMPLE ∧ COMPOSABLE — clean structure and clean coupling"
+                "🥈 SILVER - SIMPLE ∧ COMPOSABLE — clean structure and clean coupling"
             ),
             EvaluationValue.SIMPLE_SECURE: (
-                "SIMPLE ∧ SECURE — clean structure with no dangerous patterns"
+                "🥈 SILVER - SIMPLE ∧ SECURE — clean structure and safe patterns"
             ),
             EvaluationValue.COMPOSABLE_SECURE: (
-                "COMPOSABLE ∧ SECURE — well-coupled with no dangerous patterns"
+                "🥈 SILVER - COMPOSABLE ∧ SECURE — well-coupled and safe patterns"
             ),
-            EvaluationValue.IDEAL: ("⊤ - meet of all generators; ideal program state"),
+            EvaluationValue.IDEAL: ("🥇 GOLD - Joint satisfaction of all three quality pillars"),
         }
         return descriptions[self]
 

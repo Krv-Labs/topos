@@ -9,7 +9,7 @@ This page provides the mathematical foundations of Topos. It explains how we use
 Topos Evaluations: The Quality Pillars
 --------------------------------------
 
-Topos classifies code against an eight-valued **Quality Badge** lattice (technically a free Heyting algebra on three generators). This captures *degrees of independent quality* rather than a single pass/fail score.
+Topos classifies code against an eight-valued **Quality Medal** lattice (technically a free Heyting algebra on three generators). This captures *degrees of independent quality* rather than a single pass/fail score.
 
 The three generators—**SIMPLE**, **COMPOSABLE**, and **SECURE**—represent the three **Quality Pillars** of software quality in Topos. They are *pairwise incomparable*, meaning a program can excel in one while failing in another:
 
@@ -17,7 +17,7 @@ The three generators—**SIMPLE**, **COMPOSABLE**, and **SECURE**—represent th
 *   **COMPOSABLE** (Module Coupling): Evaluates how a module relates to the rest of the system.
 *   **SECURE** (Data Flow Safety): Evaluates the absence of dangerous operations and taint flows.
 
-A program can earn any combination of these pillars, unlocking different **Quality Badges** (e.g., the ``SIMPLE_COMPOSABLE`` badge, or the ultimate ``IDEAL`` badge). This preserves nuances: Topos never collapses a security failure into a complexity score.
+A program can earn any combination of these pillars, unlocking different **Quality Medals** (e.g., a ``SILVER`` medal, or the ultimate ``GOLD`` medal). This preserves nuances: Topos never collapses a security failure into a complexity score.
 
 Code Quality as a Characteristic Morphism
 -----------------------------------------
@@ -64,11 +64,11 @@ User Preferences and the Relaxation Walk
 While the lattice :math:`\Omega` is only partially ordered, users often have specific quality goals. Topos uses **User Preferences** — a strict total order (permutation) of the three pillars — to linearize the lattice and guide agent iteration.
 
 **The Induced Total Order**
-   A preference ranking like ``(SIMPLE, COMPOSABLE, SECURE)`` induces a total order on the 8 Quality Badges. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied.
+   A preference ranking like ``(SIMPLE, COMPOSABLE, SECURE)`` induces a total order on the 8 Quality Medals. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied.
 
 **Aspirational vs. Pragmatic Targets**
-   - **Aspirational Target**: Usually ``IDEAL`` (⊤). The agent first attempts to satisfy all three quality pillars.
-   - **Pragmatic Target (The "Ideal Intersection")**: The meet (∧) of the top-two ranked pillars. If the agent plateaus while aiming for ``IDEAL``, it naturally diverts to this fallback.
+   - **Aspirational Target**: Usually ``GOLD`` (🥇). The agent first attempts to satisfy all three quality pillars.
+   - **Pragmatic Target (The "Ideal Intersection")**: The meet (∧) of the top-two ranked pillars, representing a ``SILVER`` (🥈) medal. If the agent plateaus while aiming for ``GOLD``, it naturally diverts to this fallback.
 
 **The Relaxation Walk**
-   Given a preference ranking and a current verdict, Topos calculates a **relaxation walk** — the descending sequence of Quality Badges from the target down to the current state. Agents use this walk to identify the "next step" improvement, ensuring that every refactor iteration moves the codebase closer to the user's intent.
+   Given a preference ranking and a current verdict, Topos calculates a **relaxation walk** — the descending sequence of Quality Medals from the target down to the current state. Agents use this walk to identify the "next step" improvement, ensuring that every refactor iteration moves the codebase closer to the user's intent.

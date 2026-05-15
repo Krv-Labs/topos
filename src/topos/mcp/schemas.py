@@ -26,7 +26,8 @@ class LatticeElement(StrEnum):
     """String-valued mirror of ``EvaluationValue`` for MCP wire format.
 
     These are the 8 elements of the free Heyting algebra H(G_qual) on the
-    three generators SIMPLE, COMPOSABLE, SECURE.  Top = IDEAL, bottom = SLOP.
+    three generators SIMPLE, COMPOSABLE, SECURE.  Mapped to the Medal Podium:
+    IDEAL = 🥇 GOLD, SLOP = ❌ No Medal.
     """
 
     SLOP = "SLOP"
@@ -71,9 +72,9 @@ class UserPreferencesInput(_StrictModel):
     Stronger than ``priority`` (which only upweights one generator):
     this is a full ranking that induces a total order on the 8-element
     lattice Ω.  Agents use the induced order to pick a *targeted
-    relaxation walk* — by convention IDEAL is treated as infeasible
+    relaxation walk* — by convention 🥇 GOLD (IDEAL) is treated as infeasible
     and the default target becomes the meet of the top-two ranked
-    generators (the "ideal intersection", e.g. ``SIMPLE_SECURE``).
+    generators (the 🥈 SILVER "ideal intersection", e.g. ``SIMPLE_SECURE``).
 
     Example:
         ``ranking=["secure", "simple", "composable"]`` ⟹ default
@@ -426,14 +427,14 @@ class PreferenceWalk(BaseModel):
 
     Two-stage strategy:
 
-    1. **Aim for IDEAL** (``target``) — try to beat the policy
+    1. **Aim for 🥇 GOLD** (``target``) — try to beat the policy
        thresholds for all three generators.
-    2. **Divert to the "ideal intersection"** (``fallback_target``)
-       when IDEAL plateaus — the meet of the top-two ranked
+    2. **Divert to the 🥈 SILVER "ideal intersection"** (``fallback_target``)
+       when 🥇 GOLD plateaus — the meet of the top-two ranked
        generators per the preference ordering.
 
-    Beyond the fallback the walk continues down through atoms toward
-    ``SLOP``, in descending preference order.
+    Beyond the fallback the walk continues down through 🥉 BRONZE atoms toward
+    ❌ ``SLOP``, in descending preference order.
     """
 
     ranking: list[Generator] = Field(
@@ -499,7 +500,7 @@ class PillarResult(BaseModel):
 
 
 class EvaluationResult(BaseModel):
-    """Result of a single-unit evaluation."""
+    """Result of a single-unit evaluation on the Medal Podium."""
 
     is_parseable: bool
     lattice_element: LatticeElement

@@ -176,13 +176,13 @@ def test_classifier_aggregation():
 
 
 def test_evaluation_value_properties():
-    assert EvaluationValue.IDEAL.symbol == "⊤"
-    assert EvaluationValue.SLOP.symbol == "⊥"
-    assert EvaluationValue.SIMPLE.symbol == "◐"
-    assert EvaluationValue.COMPOSABLE.symbol == "◑"
-    assert EvaluationValue.SECURE.symbol == "◇"
+    assert EvaluationValue.IDEAL.symbol == "🥇"
+    assert EvaluationValue.SLOP.symbol == "❌"
+    assert EvaluationValue.SIMPLE.symbol == "🥉"
+    assert EvaluationValue.COMPOSABLE.symbol == "🥉"
+    assert EvaluationValue.SECURE.symbol == "🥉"
 
-    assert "ideal" in EvaluationValue.IDEAL.description.lower()
+    assert "gold" in EvaluationValue.IDEAL.description.lower()
     assert (
         "composable" in EvaluationValue.COMPOSABLE.description.lower()
         or "coupling" in EvaluationValue.COMPOSABLE.description.lower()

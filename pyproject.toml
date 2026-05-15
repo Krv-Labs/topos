@@ -1,7 +1,7 @@
 [project]
 name = "topos"
 version = "0.2.0"
-description = "Treating programs as morphisms in a world of commodity code. Building the subobject classifier for rigorous program evaluations."
+description = "Code quality badges for coding agents based on structural program analysis."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }

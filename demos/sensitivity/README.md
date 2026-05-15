@@ -34,13 +34,16 @@ demos/sensitivity/
 │   └── composable/             # 2 multi-module slices (generated)
 ├── noise/
 │   ├── simple.py               # 4 single-file transforms
-│   └── composable.py           # 4 package-level transforms
+│   ├── composable.py           # 4 package-level transforms
+│   └── secure.py               # 2 single-file transforms (vulnerability injection)
 ├── experiments/
 │   ├── run_simple.py           # sweep + score SIMPLE pillar
-│   └── run_composable.py       # sweep + score COMPOSABLE pillar
+│   ├── run_composable.py       # sweep + score COMPOSABLE pillar
+│   └── run_secure.py           # sweep + score SECURE pillar
 └── results/                    # gitignored sweep artifacts
     ├── simple_sweep.json/.md
     ├── composable_sweep.json/.md
+    ├── secure_sweep.json/.md
     └── regularization_notes.md
 ```
 
@@ -68,6 +71,9 @@ uv run python demos/sensitivity/experiments/run_simple.py
 
 # 3. Sweep COMPOSABLE-pillar noise
 uv run python demos/sensitivity/experiments/run_composable.py
+
+# 4. Sweep SECURE-pillar noise
+uv run python demos/sensitivity/experiments/run_secure.py
 ```
 
 Each runner writes a JSON artifact and a markdown matrix into `results/`.

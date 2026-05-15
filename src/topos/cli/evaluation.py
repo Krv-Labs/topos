@@ -79,7 +79,7 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
             score_str = f"  [{score:.0f}%]" if score is not None else ""
             click.echo(f"  {dim}: {sym} {name}{score_str}")
         if not dimensions:
-            click.echo("  ⊥ BROKEN (parse failure)")
+            click.echo("  ⊥ SLOP (parse failure)")
 
         if verbose:
             for key, value in result["raw_metrics"].items():

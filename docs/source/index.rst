@@ -59,23 +59,23 @@ Current code evaluations focus heavily on *correctness* — does the code pass t
 
 Topos fills this gap by measuring structural quality, ensuring that your code isn't just correct, but built to last. It provides the objective "truth values" that agents need to move beyond mere correctness and toward high-quality, maintainable software.
 
-The Badge Metaphor
-------------------
+The Medal Podium
+----------------
 
-Topos measures code along three independent quality pillars. Think of these as generators for **Code Quality Badges**:
+Topos measures code along three independent quality pillars. Think of these as generators for **Code Quality Medals**:
 
 - **SIMPLE** — The code is readable and structurally predictable.
 - **COMPOSABLE** — The module is cleanly decoupled from the rest of the system.
 - **SECURE** — The data flow is safe from dangerous operations and taint.
 
-A program can earn any combination of these badges (e.g., earning just ``SIMPLE``, or earning ``SIMPLE_COMPOSABLE``). The ultimate badge is ``IDEAL``, where all three pillars are achieved.
+A program can earn any combination of these medals (e.g., earning just a ``BRONZE`` medal, or a ``SILVER`` medal). The ultimate medal is ``🥇 GOLD``, where all three pillars are achieved.
 
 Manager Priorities & Agent Iteration
 ------------------------------------
 
-In a perfect world, every file would earn the ``IDEAL`` badge. In reality, managers and developers have a finite budget of time and tokens. 
+In a perfect world, every file would earn a ``🥇 GOLD`` medal. In reality, managers and developers have a finite budget of time and tokens. 
 
-Topos allows you to set **Preferences** — an ordering of these badges based on your immediate priorities. Coding agents use this ranking to aim for ``IDEAL``. If achieving ``IDEAL`` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality badge aligned with your priorities.
+Topos allows you to set **Preferences** — an ordering of these medals based on your immediate priorities. Coding agents use this ranking to aim for ``🥇 GOLD``. If achieving ``🥇 GOLD`` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality medal aligned with your priorities.
 
 Quick look
 ----------
@@ -103,14 +103,14 @@ Topos measures code along the three independent quality generators and maps them
 .. mermaid::
 
    graph BT
-       SLOP["⊥ SLOP<br/>No badges met"]
-       SIMPLE["S<br/>Simple"]
-       COMPOSABLE["C<br/>Composable"]
-       SECURE["Sc<br/>Secure"]
-       SC["S∧C"]
-       SSc["S∧Sc"]
-       CSc["C∧Sc"]
-       IDEAL["⊤ IDEAL<br/>All three"]
+       SLOP["❌ SLOP<br/>No Medal"]
+       SIMPLE["🥉 BRONZE<br/>Simple"]
+       COMPOSABLE["🥉 BRONZE<br/>Composable"]
+       SECURE["🥉 BRONZE<br/>Secure"]
+       SC["🥈 SILVER<br/>S ∧ C"]
+       SSc["🥈 SILVER<br/>S ∧ Sc"]
+       CSc["🥈 SILVER<br/>C ∧ Sc"]
+       IDEAL["🥇 GOLD<br/>The Ideal Morphism"]
 
        SLOP --> SIMPLE
        SLOP --> COMPOSABLE
@@ -126,19 +126,19 @@ Topos measures code along the three independent quality generators and maps them
        CSc --> IDEAL
 
        style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-       style SIMPLE     fill:#d4edda,stroke:#155724,color:#000
-       style COMPOSABLE fill:#d1ecf1,stroke:#0c5460,color:#000
-       style SECURE     fill:#d1f1dc,stroke:#0c5460,color:#000
-       style SC         fill:#e2f5eb,stroke:#155724,color:#000
-       style SSc        fill:#e2f5eb,stroke:#155724,color:#000
-       style CSc        fill:#e2f5eb,stroke:#155724,color:#000
-       style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
+       style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+       style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
+       style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+       style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
+       style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+       style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+       style IDEAL      fill:#ffd700,stroke:#856404,color:#000
 
 .. hint::
    **Three Independent Pillars:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
    **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently.
-   ``IDEAL`` is the intersection of all three. The **Preferences** (ranking) determine the order
-   in which an agent traverses through the lattice, attempting to earn the highest possible badge.
+   ``🥇 GOLD`` is the intersection of all three. The **Preferences** (ranking) determine the order
+   in which an agent traverses through the lattice, attempting to earn the highest possible medal.
 
 .. toctree::
    :maxdepth: 1

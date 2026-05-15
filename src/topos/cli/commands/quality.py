@@ -60,6 +60,10 @@ _PRIORITY_HELP = (
     help=_PRIORITY_HELP,
 )
 @click.option(
+    "--preferences",
+    help="A comma-separated ranking of quality pillars (e.g., 'simple,composable,secure').",
+)
+@click.option(
     "--gitnexus-dir",
     type=click.Path(exists=True, file_okay=False),
     default=None,
@@ -82,6 +86,7 @@ def evaluate(
     verbose: bool,
     output_json_flag: bool,
     priority: str,
+    preferences: str | None,
     gitnexus_dir: str | None,
     language: str,
 ) -> None:
@@ -89,6 +94,13 @@ def evaluate(
     if not paths:
         click.echo("Error: No paths provided.", err=True)
         sys.exit(1)
+
+    # Use the first preference as the priority for CLI output
+    if preferences:
+        priority = preferences.split(",")[0].strip().lower()
+        if priority not in [p.value for p in Priority]:
+            click.echo(f"Error: Invalid preference '{priority}'", err=True)
+            sys.exit(1)
 
     files = collect_files(paths, recursive, language)
     if not files:
@@ -184,8 +196,21 @@ def compare(source: str, target: str, verbose: bool) -> None:
     show_default=True,
     help=_PRIORITY_HELP,
 )
-def inspect(path: str, gitnexus_dir: str | None, priority: str) -> None:
+@click.option(
+    "--preferences",
+    help="A comma-separated ranking of quality pillars (e.g., 'simple,composable,secure').",
+)
+def inspect(
+    path: str, gitnexus_dir: str | None, priority: str, preferences: str | None
+) -> None:
     """Inspect detailed metrics for a single file."""
+    # Use the first preference as the priority for CLI output
+    if preferences:
+        priority = preferences.split(",")[0].strip().lower()
+        if priority not in [p.value for p in Priority]:
+            click.echo(f"Error: Invalid preference '{priority}'", err=True)
+            sys.exit(1)
+
     morphism = ProgramMorphism.from_file(path)
     result = run_classify_file(Path(path), priority=priority, gitnexus_dir=gitnexus_dir)
 

@@ -103,22 +103,25 @@ def structural_test_coverage_cmd(
         from topos.functors.profunctors.uast.structural_test_coverage import (
             declaration_coverage,
         )
+        from topos.evaluation.policies.coverage import score_declaration_coverage
 
         report_v2 = declaration_coverage(
             put_roots,
             test_roots,
             k=kgram_length,
             include_unknown=include_unknown,
-            coverage_threshold=coverage_threshold,
         )
+        decision = score_declaration_coverage(report_v2, threshold=coverage_threshold)
+
         if output_json_flag:
             payload = asdict(report_v2)
+            payload.update(asdict(decision))
             payload["language"] = language
             payload["put_paths"] = list(put_paths)
             payload["test_paths"] = list(test_paths)
             click.echo(json.dumps(payload, indent=2))
             return
-        _print_v2_report(report_v2, put_paths, test_paths, language)
+        _print_v2_report(report_v2, decision, put_paths, test_paths, language)
         return
 
     from topos.functors.profunctors.uast.structural_test_coverage import (
@@ -164,6 +167,7 @@ def structural_test_coverage_cmd(
 
 def _print_v2_report(
     report: object,
+    decision: object,
     put_paths: tuple[str, ...],
     test_paths: tuple[str, ...],
     language: str,
@@ -176,8 +180,8 @@ def _print_v2_report(
     click.echo("Declaration Coverage")
     click.echo("-" * 52)
     click.echo(f"  Mean declaration coverage:  {report.mean_declaration_coverage:.4f}")  # type: ignore[attr-defined]
-    click.echo(f"  Declaration coverage rate:  {report.declaration_coverage_rate:.4f}")  # type: ignore[attr-defined]
-    click.echo(f"  Coverage threshold:         {report.coverage_threshold:.2f}")  # type: ignore[attr-defined]
+    click.echo(f"  Declaration coverage rate:  {decision.coverage_rate:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  Coverage threshold:         {decision.threshold:.2f}")  # type: ignore[attr-defined]
     click.echo(f"  PUT declarations:           {report.put_declaration_count}")  # type: ignore[attr-defined]
     click.echo(f"  Test declarations:          {report.test_declaration_count}")  # type: ignore[attr-defined]
     click.echo()
@@ -189,16 +193,16 @@ def _print_v2_report(
     click.echo("Precision and F-score")
     click.echo("-" * 52)
     click.echo(f"  Mean test precision:        {report.mean_test_precision:.4f}")  # type: ignore[attr-defined]
-    click.echo(f"  F2 score (beta=2):          {report.f2_score:.4f}")  # type: ignore[attr-defined]
+    click.echo(f"  F2 score (beta=2):          {decision.f2_score:.4f}")  # type: ignore[attr-defined]
     click.echo()
     click.echo(f"Path Recall (declaration-scoped k={report.k} grams)")  # type: ignore[attr-defined]
     click.echo("-" * 52)
     path_recall = report.declaration_path_recall_kgram  # type: ignore[attr-defined]
     click.echo(f"  Decl path recall:           {path_recall:.4f}")
-    uncovered = report.uncovered_declarations  # type: ignore[attr-defined]
+    uncovered = decision.uncovered_declarations  # type: ignore[attr-defined]
     if uncovered:
         click.echo()
-        threshold_pct = f"{report.coverage_threshold:.0%}"  # type: ignore[attr-defined]
+        threshold_pct = f"{decision.threshold:.0%}"  # type: ignore[attr-defined]
         click.echo(f"Uncovered PUT declarations (below {threshold_pct})")
         click.echo("-" * 52)
         for loc, score in uncovered:

@@ -57,11 +57,9 @@ def _print_declaration_block(title: str, report: object) -> None:
     d = asdict(report)
     for key in (
         "mean_declaration_coverage",
-        "declaration_coverage_rate",
         "stmt_recall",
         "expr_recall",
         "mean_test_precision",
-        "f2_score",
         "declaration_path_recall_kgram",
         "put_declaration_count",
         "test_declaration_count",
@@ -71,10 +69,11 @@ def _print_declaration_block(title: str, report: object) -> None:
             print(f"  {key}: {val:.4f}")
         else:
             print(f"  {key}: {val}")
-    if d["uncovered_declarations"]:
+    uncovered = report.uncovered_declarations
+    if uncovered:
         print("  uncovered_declarations:")
-        for location, score in d["uncovered_declarations"]:
-            print(f"    {location}: {score:.4f}")
+        for location in uncovered:
+            print(f"    {location}")
     print()
 
 

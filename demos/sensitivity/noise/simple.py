@@ -1,4 +1,4 @@
-"""I/O-preserving structural noise transforms for the SIMPLE generator.
+"""I/O-preserving noise transforms for the SIMPLE pillar (code complexity).
 
 Each transform parses the source, appends synthetic statements whose names do
 not collide with the originals, and unparses. By construction:

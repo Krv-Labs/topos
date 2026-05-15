@@ -27,7 +27,7 @@ uv run python demos/binarytrees/get_asts.py
 This will:
 1. Load the source files from `demos/binarytrees/src/`.
 2. Parse them through the multi-backend AST dispatch pipeline.
-3. Save conformance artifacts under `demos/binarytrees/asts/`:
+3. Save conformance artifacts under `demos/binarytrees/asts/` (gitignored; regenerate locally):
    - `treesitter/*.ast.txt` (CST S-expressions)
    - `uast/*.uast.json` (normalized UAST)
    - `native/*.native.txt` (native AST dump when available)

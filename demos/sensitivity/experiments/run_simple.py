@@ -1,16 +1,14 @@
-"""Sweep structural noise over the SIMPLE corpus.
+"""Sweep SIMPLE-pillar noise over the SIMPLE corpus.
 
-For each curated baseline file and each transform in ``noise.structural``,
-applies the transform at a grid of intensities, runs the current Topos
-classifier with ``priority=simple`` on the perturbed source, and records the
-resulting score / lattice element / raw metrics. Also records the
-normalized AST edit distance from the intensity-zero baseline so the
-score-vs-edit-distance ratio can be inspected later.
+For each curated baseline file and each transform in ``noise.simple``,
+applies the transform at a grid of intensities, runs the Topos classifier
+with ``priority=simple``, and records lattice verdicts plus all three
+generator scores (SIMPLE, COMPOSABLE, SECURE).
 
 Writes:
 
-- ``results/self_contained_sweep.json``: full machine-readable matrix.
-- ``results/self_contained_sweep.md``:  per-baseline markdown tables.
+- ``results/simple_sweep.json``: full machine-readable matrix.
+- ``results/simple_sweep.md``: per-baseline markdown tables.
 """
 
 from __future__ import annotations
@@ -25,13 +23,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SENSITIVITY_DIR = REPO_ROOT / "demos" / "sensitivity"
 sys.path.insert(0, str(SENSITIVITY_DIR))
 
-from noise import structural  # noqa: E402
+from noise import simple  # noqa: E402
 
+PILLAR = "simple"
 INTENSITIES: tuple[int, ...] = (0, 1, 2, 4, 8, 16)
 
 
 def evaluate(filepath: Path) -> dict:
-    """Run the current classifier with ``priority=simple`` on a single file."""
+    """Classify a single file; return all three pillar scores and dimensions."""
     from topos.evaluation.policies.base import Priority
     from topos.mcp.evaluation import classify_file
 
@@ -48,9 +47,6 @@ def evaluate(filepath: Path) -> dict:
     }
 
 
-# Cap Wagner-Fischer DP at ~3k nodes (~36 MB int matrix) — above that we fall
-# back to the cheap node-count delta proxy. This keeps the structural sweep
-# affordable on the large baselines (tabulate has ~25k AST nodes).
 MAX_AST_DISTANCE_NODES = 3_000
 
 
@@ -62,14 +58,7 @@ def _count_ast_nodes(source: str) -> int:
 
 
 def tree_drift(source_a: str, source_b: str) -> dict:
-    """Return a cheap structural drift summary between two source strings.
-
-    Always reports node-count delta. When both trees are small (≤
-    ``MAX_AST_DISTANCE_NODES`` nodes) also computes the normalized
-    Wagner-Fischer AST edit distance. Anti-gaming inspection only needs
-    "did the tree change?", which the cheap delta answers reliably for
-    every cell.
-    """
+    """Cheap structural drift summary between two source strings."""
     nodes_a = _count_ast_nodes(source_a)
     nodes_b = _count_ast_nodes(source_b)
     drift = {
@@ -93,10 +82,10 @@ def tree_drift(source_a: str, source_b: str) -> dict:
 
 
 def load_manifest() -> list[dict]:
-    path = SENSITIVITY_DIR / "corpus" / "self_contained" / "manifest.json"
+    path = SENSITIVITY_DIR / "corpus" / "simple" / "manifest.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"Self-contained manifest not found at {path}. "
+            f"SIMPLE corpus manifest not found at {path}. "
             "Run demos/sensitivity/curate.py first."
         )
     return json.loads(path.read_text(encoding="utf-8"))["entries"]
@@ -105,13 +94,9 @@ def load_manifest() -> list[dict]:
 def run_cell(
     *, baseline_source: str, transform_fn, intensity: int
 ) -> tuple[dict | None, dict | None, str | None]:
-    """Apply transform, write to a tmp file, evaluate. Return result + drift.
-
-    Returns ``(None, None, error_message)`` if the transform fails.
-    """
     try:
         perturbed = transform_fn(baseline_source, intensity)
-    except Exception as exc:  # noqa: BLE001 — surface in matrix
+    except Exception as exc:  # noqa: BLE001
         return None, None, f"transform error: {exc}"
 
     try:
@@ -139,10 +124,10 @@ def run_cell(
 def sweep_baseline(entry: dict) -> dict:
     source_path = REPO_ROOT / entry["source"]
     raw_source = source_path.read_text(encoding="utf-8")
-    baseline_source = structural.baseline(raw_source)
+    baseline_source = simple.baseline(raw_source)
 
     per_transform: dict[str, list[dict]] = {}
-    for transform_name, transform_fn in structural.TRANSFORMS.items():
+    for transform_name, transform_fn in simple.TRANSFORMS.items():
         rows: list[dict] = []
         for intensity in INTENSITIES:
             print(f"  {transform_name} @ intensity={intensity}", flush=True)
@@ -157,7 +142,8 @@ def sweep_baseline(entry: dict) -> dict:
             else:
                 row["lattice_element"] = result.get("lattice_element")
                 row["lattice_symbol"] = result.get("lattice_symbol")
-                row["simple_score"] = result.get("scores", {}).get("simple")
+                row["scores"] = result.get("scores", {})
+                row["dimensions"] = result.get("dimensions", {})
                 row["raw_metrics"] = result.get("raw_metrics", {})
                 row["drift"] = drift
             rows.append(row)
@@ -168,20 +154,19 @@ def sweep_baseline(entry: dict) -> dict:
         "source": entry["source"],
         "package": entry.get("package"),
         "version": entry.get("version"),
+        "pillar": PILLAR,
         "transforms": per_transform,
     }
 
 
 def format_markdown(sweep: list[dict]) -> str:
     lines: list[str] = [
-        "# SIMPLE Sensitivity Sweep",
+        "# SIMPLE pillar sensitivity sweep",
         "",
-        "Each table reports the score and lattice element of a baseline file "
-        "under increasing intensity of a single structural noise transform. "
-        "`Δn` is the AST-node delta from the intensity-0 baseline — the "
-        "cheap anti-gaming proxy described in the runner. Normalized "
-        "Wagner-Fischer edit distance is also recorded in the JSON artifact "
-        "for baselines under 3,000 nodes.",
+        "Each table reports SIMPLE generator score and overall lattice verdict "
+        "under increasing intensity of a single noise transform. "
+        "`Δn` is the AST-node delta from the intensity-0 baseline. "
+        "JSON artifacts also record COMPOSABLE and SECURE scores per cell.",
         "",
     ]
 
@@ -207,7 +192,8 @@ def format_markdown(sweep: list[dict]) -> str:
                 if "error" in cell:
                     row_cells.append("`error`")
                     continue
-                score = cell.get("simple_score")
+                scores = cell.get("scores", {}) or {}
+                score = scores.get("simple")
                 lattice = cell.get("lattice_symbol") or ""
                 drift = cell.get("drift", {}) or {}
                 delta_nodes = drift.get("nodes_delta")
@@ -227,21 +213,26 @@ def main() -> None:
     entries = load_manifest()
     sweep: list[dict] = []
     for entry in entries:
-        print(f"[structural] sweeping {entry['name']}")
+        print(f"[simple] sweeping {entry['name']}")
         sweep.append(sweep_baseline(entry))
 
     results_dir = SENSITIVITY_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
-    (results_dir / "self_contained_sweep.json").write_text(
-        json.dumps({"intensities": list(INTENSITIES), "baselines": sweep}, indent=2),
+    payload = {
+        "pillar": PILLAR,
+        "intensities": list(INTENSITIES),
+        "baselines": sweep,
+    }
+    (results_dir / "simple_sweep.json").write_text(
+        json.dumps(payload, indent=2),
         encoding="utf-8",
     )
-    (results_dir / "self_contained_sweep.md").write_text(
+    (results_dir / "simple_sweep.md").write_text(
         format_markdown(sweep), encoding="utf-8"
     )
     print()
-    print(f"Wrote {results_dir / 'self_contained_sweep.json'}")
-    print(f"Wrote {results_dir / 'self_contained_sweep.md'}")
+    print(f"Wrote {results_dir / 'simple_sweep.json'}")
+    print(f"Wrote {results_dir / 'simple_sweep.md'}")
 
 
 if __name__ == "__main__":

@@ -15,9 +15,9 @@ Generates and compares ASTs for the Binary Trees benchmark across multiple langu
 - **Runner:** `uv run python demos/binarytrees/get_asts.py`
 
 ### 3. [Measure Sensitivity Benchmark](./sensitivity/README.md)
-Curates SIMPLE and COMPOSABLE reference programs from popular packages, then applies generator-specific I/O-preserving noise to characterize how Topos scores respond. Outputs feed into regularization analysis.
+Curates SIMPLE and COMPOSABLE reference programs from popular PyPI packages (downloaded at run time, not vendored in git), then applies pillar-specific I/O-preserving noise. Outputs feed into regularization analysis.
 - **Location:** `demos/sensitivity/`
-- **Runners:** `uv run python demos/sensitivity/curate.py` → `experiments/run_structural.py` → `experiments/run_coupling.py`
+- **Runners:** `uv run python demos/sensitivity/curate.py` → `experiments/run_simple.py` → `experiments/run_composable.py`
 
 ### 4. [Structural Test Coverage](./structural_test_coverage/EVALUATION.md)
 Compares program-under-test UAST structure against test UAST structure, including declaration-level coverage.

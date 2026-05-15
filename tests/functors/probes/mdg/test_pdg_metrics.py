@@ -526,38 +526,42 @@ def test_from_gitnexus_dir_list_format_auto_id():
 
 def test_dep_policies_score_coupling_perfect():
     from topos.evaluation.policies.base import Priority
-    from topos.evaluation.policies.coupling import score_coupling
+    from topos.evaluation.policies.composable import score_coupling
 
-    # Low coupling, ideal instability → high score, target achieved
-    d = score_coupling(0.0, 0.5, Priority.SECURE)
-    assert d.score >= 0.9
+    # Ideal instability, low fan-in/out → high score, target achieved
+    d = score_coupling(instability=0.5, fan_in=0, fan_out=0, priority=Priority.SECURE)
+    assert d.score == 1.0
     assert d.achieved is True
 
 
 def test_dep_policies_score_coupling_pathological():
     from topos.evaluation.policies.base import Priority
-    from topos.evaluation.policies.coupling import score_coupling
+    from topos.evaluation.policies.composable import score_coupling
 
-    # Max coupling, worst instability → low score, target not achieved
-    d = score_coupling(35.0, 1.0, Priority.SECURE)
-    assert d.score < 0.6
+    # Worst instability, high fan-in/out → low score, target not achieved
+    d = score_coupling(instability=1.0, fan_in=40, fan_out=40, priority=Priority.SECURE)
+    assert d.score == 0.0
     assert d.achieved is False
 
 
-def test_dep_policies_score_coupling_priority_shifts_weight():
-    from topos.evaluation.policies.base import Priority
-    from topos.evaluation.policies.coupling import score_coupling
+def test_dep_policies_score_coupling_independent_thresholds():
+    from topos.evaluation.policies.composable import score_coupling
 
-    # High coupling (bad), perfect instability (good).
-    # COMPOSABLE upweights coupling_quality (which is bad here)
-    # ⇒ COMPOSABLE-priority score < non-COMPOSABLE priority score.
-    when_composable = score_coupling(20.0, 0.5, Priority.COMPOSABLE)
-    when_secure = score_coupling(20.0, 0.5, Priority.SECURE)
-    assert when_composable.score < when_secure.score
+    # Pass all
+    assert score_coupling(instability=0.5, fan_in=10, fan_out=10).achieved is True
+
+    # Fail instability
+    assert score_coupling(instability=0.1, fan_in=10, fan_out=10).achieved is False
+
+    # Fail fan-in
+    assert score_coupling(instability=0.5, fan_in=16, fan_out=10).achieved is False
+
+    # Fail fan-out
+    assert score_coupling(instability=0.5, fan_in=10, fan_out=16).achieved is False
 
 
 def test_dep_policies_score_instability_optimal_range():
-    from topos.evaluation.policies.coupling import _instability_tent
+    from topos.evaluation.policies.composable import _instability_tent
 
     # Instability in [0.3, 0.7] → quality = 1.0
     assert _instability_tent(0.5) == 1.0
@@ -565,28 +569,29 @@ def test_dep_policies_score_instability_optimal_range():
     assert _instability_tent(0.7) == 1.0
 
     # Outside optimal range → quality < 1.0
-    assert _instability_tent(0.0) < 1.0
+    assert _instability_tent(0.0) == 0.0
     assert _instability_tent(1.0) == 0.0
 
 
 def test_dep_policies_score_coupling_returns_scored_decision():
     from topos.evaluation.policies.base import Priority, ScoredDecision
-    from topos.evaluation.policies.coupling import score_coupling
+    from topos.evaluation.policies.composable import score_coupling
 
-    decision = score_coupling(3.0, 0.5, Priority.SECURE)
+    decision = score_coupling(instability=0.5, fan_in=3.0, fan_out=2.0, priority=Priority.SECURE)
     assert isinstance(decision, ScoredDecision)
     assert 0.0 <= decision.score <= 1.0
-    assert "mdg.coupling" in decision.interpretation
     assert "mdg.instability" in decision.interpretation
+    assert "mdg.fan_in" in decision.interpretation
+    assert "mdg.fan_out" in decision.interpretation
 
 
 def test_score_mdg_routes_to_active_metrics():
-    from topos.evaluation.characteristic_morphism import _score_mdg
+    from topos.evaluation.characteristic_morphism import _score_composable_dim
     from topos.evaluation.policies.base import Priority
 
-    # Extra metrics (fan_in, fan_out, dep_depth) are passed through raw_metrics
-    # but _score_mdg only uses coupling and instability
-    decision = _score_mdg(
+    # Extra metrics (coupling, dep_depth) are passed through raw_metrics
+    # but _score_composable_dim uses instability, fan_in, fan_out
+    decision = _score_composable_dim(
         {
             "mdg.coupling": 6.0,
             "mdg.instability": 0.5,
@@ -598,8 +603,9 @@ def test_score_mdg_routes_to_active_metrics():
     )
     assert decision is not None
     assert set(decision.interpretation.keys()) == {
-        "mdg.coupling",
         "mdg.instability",
+        "mdg.fan_in",
+        "mdg.fan_out",
     }
 
 
@@ -780,7 +786,9 @@ def test_classify_detailed_interpretation_includes_depgraph():
     classifier = CharacteristicMorphism()
     result = classifier.classify_detailed(morphism, representations=[g])
 
-    assert "mdg.coupling" in result.interpretation
     assert "mdg.instability" in result.interpretation
-    assert result.interpretation["mdg.coupling"] != ""
+    assert "mdg.fan_in" in result.interpretation
+    assert "mdg.fan_out" in result.interpretation
     assert result.interpretation["mdg.instability"] != ""
+    assert result.interpretation["mdg.fan_in"] != ""
+    assert result.interpretation["mdg.fan_out"] != ""

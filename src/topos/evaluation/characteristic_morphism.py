@@ -33,8 +33,8 @@ The characteristic morphism:
    :func:`topos.core.omega.verdict_from_generators` into the final Ω
    element.
 
-``Priority`` shifts metric weights within each Φᵢ but does *not* change
-which generators are pairwise incomparable — that is fixed by the math.
+``Priority`` is recorded on results and steers agent guidance; it does
+*not* change per-metric pass/fail thresholds inside each Φᵢ.
 """
 
 from __future__ import annotations
@@ -70,37 +70,40 @@ if TYPE_CHECKING:
 # ScoredDecision via the matching policy translator Φᵢ.
 
 
-def _score_cfg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
-    # The CFG dispatcher consumes cyclomatic complexity only.  When an AST
-    # representation is also attached to the SIMPLE dimension, the
-    # classifier mixes its entropy contribution in separately.
-    if "cfg.cyclomatic" not in raw:
+def _score_simple_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
+    # We pass all available metrics to score_simple; it handles the independent thresholds.
+    if (
+        "cfg.cyclomatic" not in raw
+        and "ast.entropy" not in raw
+        and "ast.max_function_complexity" not in raw
+    ):
         return None
+
     return score_simple(
-        cyclomatic=raw["cfg.cyclomatic"],
-        entropy=None,
+        cyclomatic=raw.get("cfg.cyclomatic"),
+        entropy=raw.get("ast.entropy"),
+        max_function_complexity=raw.get("ast.max_function_complexity"),
         priority=priority,
     )
 
 
-def _score_ast(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
-    # AST contribution to the SIMPLE generator: feeds ``ast.entropy``.
-    if "ast.entropy" not in raw:
+def _score_composable_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+    if (
+        "mdg.instability" not in raw
+        and "mdg.fan_in" not in raw
+        and "mdg.fan_out" not in raw
+    ):
         return None
-    return score_simple(
-        cyclomatic=raw.get("ast.complexity", 0.0),
-        entropy=raw["ast.entropy"],
+    return score_coupling(
+        instability=raw.get("mdg.instability"),
+        fan_in=raw.get("mdg.fan_in"),
+        fan_out=raw.get("mdg.fan_out"),
         priority=priority,
     )
 
 
-def _score_mdg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
-    if "mdg.coupling" not in raw or "mdg.instability" not in raw:
-        return None
-    return score_coupling(raw["mdg.coupling"], raw["mdg.instability"], priority)
-
-
-def _score_cpg(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
+def _score_secure_dim(raw: dict[str, float], priority: Priority) -> ScoredDecision | None:
     if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
         return None
     return score_secure(
@@ -110,14 +113,13 @@ def _score_cpg(raw: dict[str, float], priority: Priority) -> ScoredDecision | No
     )
 
 
-_REPRESENTATION_SCORE_DISPATCHERS: dict[
+_DIMENSION_SCORE_DISPATCHERS: dict[
     str,
     Callable[[dict[str, float], Priority], ScoredDecision | None],
 ] = {
-    "ast": _score_ast,
-    "cfg": _score_cfg,
-    "mdg": _score_mdg,
-    "cpg": _score_cpg,
+    "simple": _score_simple_dim,
+    "composable": _score_composable_dim,
+    "secure": _score_secure_dim,
 }
 
 # Map each *dimension* name to the singleton generator value it produces
@@ -147,7 +149,7 @@ class ClassificationResult:
         scores:          Per-generator normalized quality score in [0.0, 1.0].
         lattice_element: Overall Ω element — the join of the satisfied
                          generators, encoded via ``verdict_from_generators``.
-        priority:        The Priority profile used during classification.
+        priority:        Generator emphasis label (metadata / guidance).
         raw_metrics:     All raw metric floats, namespaced by representation.
         interpretation:  Per-metric interpretation strings.
     """
@@ -253,45 +255,13 @@ class CharacteristicMorphism:
                 dim_raw.update(rep.metrics())
             raw_metrics.update(dim_raw)
 
-            rep_names = {rep.name for rep in reps}
+            scorer = _DIMENSION_SCORE_DISPATCHERS.get(dim)
+            if not scorer:
+                continue
 
-            if len(rep_names) == 1:
-                rep_name = reps[0].name
-                scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep_name)
-                if not scorer:
-                    continue
-                decision = scorer(dim_raw, priority)
-                if decision is None:
-                    continue
-            else:
-                # Mixed representations within one dimension: score each
-                # independently and meet the truth values (= min score,
-                # AND on achieved).  This is how CFG (cyclomatic) and
-                # AST (entropy) jointly feed the SIMPLE generator.
-                mixed_scores: list[float] = []
-                mixed_interp: dict[str, str] = {}
-                mixed_achieved = True
-                any_scored = False
-
-                for rep in reps:
-                    scorer = _REPRESENTATION_SCORE_DISPATCHERS.get(rep.name)
-                    if not scorer:
-                        continue
-                    rep_decision = scorer(rep.metrics(), priority)
-                    if rep_decision is None:
-                        continue
-                    any_scored = True
-                    mixed_scores.append(rep_decision.score)
-                    mixed_interp.update(rep_decision.interpretation)
-                    mixed_achieved = mixed_achieved and rep_decision.achieved
-
-                if not any_scored:
-                    continue
-                decision = ScoredDecision(
-                    score=min(mixed_scores),
-                    achieved=mixed_achieved,
-                    interpretation=mixed_interp,
-                )
+            decision = scorer(dim_raw, priority)
+            if decision is None:
+                continue
 
             scores[dim] = decision.score
             interpretation.update(decision.interpretation)

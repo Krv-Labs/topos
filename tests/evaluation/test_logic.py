@@ -223,8 +223,8 @@ def test_priority_weight_profiles():
 def test_score_simple_perfect_code():
     from topos.evaluation.policies.simple import score_simple
 
-    # Ideal: cyclomatic=0, entropy=0.5 — score is 1.0 regardless of priority
-    result = score_simple(0, 0.5, Priority.SECURE)
+    # Ideal: cyclomatic=0, entropy=0.5, max_func=0 — score is 1.0
+    result = score_simple(0, 0.5, 0, Priority.SECURE)
     assert result.score == 1.0
     assert result.achieved is True
 
@@ -232,26 +232,36 @@ def test_score_simple_perfect_code():
 def test_score_simple_pathological_code():
     from topos.evaluation.policies.simple import score_simple
 
-    # Worst case: cyclomatic=40, entropy=1.0 — score is 0.0 regardless of priority
-    result = score_simple(40, 1.0, Priority.SECURE)
-    assert result.score < 0.6
+    # Worst case: cyclomatic=40, entropy=1.0, max_func=20 — score is 0.0
+    result = score_simple(40, 1.0, 20, Priority.SECURE)
+    assert result.score == 0.0
     assert result.achieved is False
 
 
-def test_score_simple_priority_shifts():
+def test_score_simple_independent_thresholds():
     from topos.evaluation.policies.simple import score_simple
 
-    # Code with bad entropy but reasonable complexity: SIMPLE priority
-    # (w_complexity=0.7) weights cyclomatic-good more than SECURE
-    # priority (w_complexity=0.3).
-    when_secure = score_simple(5, 0.95, Priority.SECURE)
-    when_simple = score_simple(5, 0.95, Priority.SIMPLE)
-    assert when_simple.score > when_secure.score
+    # Pass all 3
+    result = score_simple(10, 0.5, 5)
+    assert result.achieved is True
+
+    # Fail cyclomatic
+    result = score_simple(16, 0.5, 5)
+    assert result.achieved is False
+
+    # Fail entropy
+    result = score_simple(10, 0.9, 5)
+    assert result.achieved is False
+
+    # Fail max func
+    result = score_simple(10, 0.5, 11)
+    assert result.achieved is False
 
 
 def test_score_secure_clean_code():
     from topos.evaluation.policies.secure import score_secure
 
+    # Ideal case: 0 danger, 0 taint → score is 1.0
     result = score_secure(dangerous_calls=0, taint_flows=0)
     assert result.score == 1.0
     assert result.achieved is True
@@ -260,9 +270,23 @@ def test_score_secure_clean_code():
 def test_score_secure_dangerous_code():
     from topos.evaluation.policies.secure import score_secure
 
+    # Pathological case: many issues → low score, not achieved
     result = score_secure(dangerous_calls=20, taint_flows=20)
-    assert result.score < 0.6
+    assert result.score < 0.1
     assert result.achieved is False
+
+
+def test_score_secure_independent_thresholds():
+    from topos.evaluation.policies.secure import score_secure
+
+    # Pass both
+    assert score_secure(dangerous_calls=0, taint_flows=0).achieved is True
+
+    # Fail danger
+    assert score_secure(dangerous_calls=1, taint_flows=0).achieved is False
+
+    # Fail taint
+    assert score_secure(dangerous_calls=0, taint_flows=1).achieved is False
 
 
 def test_classify_detailed_priority_parameter():

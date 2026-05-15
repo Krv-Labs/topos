@@ -14,6 +14,38 @@ from topos.cli.installation import (
 )
 
 
+def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
+    """Helper to handle binary removal logic."""
+    if dry_run:
+        if path.exists():
+            click.echo(f"[dry-run] Would remove binary: {path}")
+        else:
+            click.echo(f"[dry-run] Binary already removed: {path}")
+        return True
+
+    if not yes:
+        confirmed = click.confirm(f"Remove binary at {path}?", default=False)
+        if not confirmed:
+            click.echo("Uninstall cancelled.")
+            return False
+
+    if path.exists():
+        if not (path.is_file() or path.is_symlink()):
+            click.echo(f"Refusing to remove non-file path: {path}", err=True)
+            sys.exit(1)
+
+        try:
+            path.unlink()
+        except OSError as exc:
+            click.echo(f"Failed to remove binary {path}: {exc}", err=True)
+            sys.exit(1)
+        else:
+            click.echo(f"Removed binary: {path}")
+    else:
+        click.echo(f"Binary already removed: {path}")
+    return True
+
+
 @click.command()
 @click.option(
     "--dry-run",
@@ -55,33 +87,8 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
         sys.exit(1)
 
     path = Path(install_path).expanduser()
-
-    if dry_run:
-        if path.exists():
-            click.echo(f"[dry-run] Would remove binary: {path}")
-        else:
-            click.echo(f"[dry-run] Binary already removed: {path}")
-    else:
-        if not yes:
-            confirmed = click.confirm(f"Remove binary at {path}?", default=False)
-            if not confirmed:
-                click.echo("Uninstall cancelled.")
-                return
-
-        if path.exists():
-            if not (path.is_file() or path.is_symlink()):
-                click.echo(f"Refusing to remove non-file path: {path}", err=True)
-                sys.exit(1)
-
-            try:
-                path.unlink()
-            except OSError as exc:
-                click.echo(f"Failed to remove binary {path}: {exc}", err=True)
-                sys.exit(1)
-            else:
-                click.echo(f"Removed binary: {path}")
-        else:
-            click.echo(f"Binary already removed: {path}")
+    if not _handle_binary_removal(path, dry_run, yes):
+        return
 
     if not dry_run:
         remove_provenance_record()

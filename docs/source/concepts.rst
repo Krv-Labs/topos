@@ -4,102 +4,71 @@
 Concepts
 ========
 
-This page is optional deeper reading — you don't need it to use Topos. It explains the mathematical inspiration behind the design and where the category-theoretic vocabulary comes from. For a practical breakdown of what we actually measure, see :doc:`measures`.
+This page provides the mathematical foundations of Topos. It explains how we use category theory—specifically topos theory—to model code quality as a structural property of programs. For a practical breakdown of the metrics we use, see :doc:`measures`.
 
-The Evaluation Lattice
-----------------------
+Topos Evaluations: The Quality Pillars
+--------------------------------------
 
-Topos classifies code against an eight-valued **free Heyting algebra** (on three generators) — a partial
-order that captures *degrees of independent quality* rather than a single
-pass/fail score. Each label describes what the metrics detect, not an
-abstract quality judgment.
+Topos classifies code against an eight-valued **Quality Badge** lattice (technically a free Heyting algebra on three generators). This captures *degrees of independent quality* rather than a single pass/fail score.
 
-The three generators — ``SIMPLE`` (code complexity), ``COMPOSABLE`` (module coupling), and ``SECURE`` (data flow safety) — are *pairwise incomparable*. A program can achieve any subset of {S, C, Sc}:
+The three generators—**SIMPLE**, **COMPOSABLE**, and **SECURE**—represent the three **Quality Pillars** of software quality in Topos. They are *pairwise incomparable*, meaning a program can excel in one while failing in another:
 
-- ``SIMPLE`` only: low complexity but high coupling or security risk
-- ``COMPOSABLE`` only: good module design but high complexity or taint exposure
-- ``SECURE`` only: minimal dangerous operations but hard to understand or integrate
-- ``SIMPLE`` + ``COMPOSABLE``: both structure and coupling good, but vulnerable
-- ``SIMPLE`` + ``SECURE``: simple and secure, but tightly coupled
-- ``COMPOSABLE`` + ``SECURE``: well-designed and secure, but complex
-- ``IDEAL``: all three achieved
+*   **SIMPLE** (Code Complexity): Evaluates internal readability and logic flow.
+*   **COMPOSABLE** (Module Coupling): Evaluates how a module relates to the rest of the system.
+*   **SECURE** (Data Flow Safety): Evaluates the absence of dangerous operations and taint flows.
 
-The partial order preserves these distinctions — Topos never collapses different failure modes without reason.
+A program can earn any combination of these pillars, unlocking different **Quality Badges** (e.g., the ``SIMPLE_COMPOSABLE`` badge, or the ultimate ``IDEAL`` badge). This preserves nuances: Topos never collapses a security failure into a complexity score.
 
-Metric verdicts within a generator are combined via **meet** — the greatest lower bound.
-The overall verdict is determined by which generators scored ≥ 0.6. Policy thresholds and scoring live in ``topos.evaluation.policies``.
+Code Quality as a Characteristic Morphism
+-----------------------------------------
 
-Programs as Morphisms
----------------------
+In Topos, we treat programs as mathematical objects that can be classified based on their structure.
 
-In category theory, a **morphism** is an arrow ``f: A -> B``. Topos models
-source code the same way: a program is a morphism that transforms inputs
-into outputs.
+**Programs as Graphs**
+   We model programs as graphs (or systems of graphs) within the **Category of Graphs**. A program isn't just a text file; it is a Control Flow Graph (CFG), a Code Property Graph (CPG), and a node in a Module Dependency Graph (MDG).
 
-.. code-block:: python
+**The Subobject Classifier ( :math:`\Omega` )**
+   In topos theory, a **topos** is a category that behaves like the category of sets, specifically one that possesses a **subobject classifier**. The subobject classifier, denoted :math:`\Omega`, is an object that represents "truth values." While a standard topos (like Set) has :math:`\Omega = \{True, False\}`, Topos introduces a custom :math:`\Omega`—the eight-valued Heyting algebra of our quality pillars.
 
-   from topos import ProgramMorphism
+**The Characteristic Morphism ( :math:`\chi` )**
+   The "quality" of a program is defined by its **characteristic morphism**. This is a mapping:
 
-   morphism = ProgramMorphism.from_file("transform.py")
+   .. math::
 
-Two programs may compute the same function but have dramatically different
-internal structure. By modeling programs as morphisms and analyzing their
-ASTs, Topos can reason about *structural invariants* that input-output
-testing cannot reveal.
+      \chi: \text{Program} \to \Omega
 
-The Subobject Classifier
-------------------------
+   This map classifies a program by sending it to a specific element in the lattice :math:`\Omega`. This classification is decided based on structural descriptions of the program's graph representations. For the specific metrics that determine this map, see :doc:`measures`.
 
-The **subobject classifier** answers membership questions: for any
-subobject ``S`` of ``X`` there is a characteristic map into the lattice.
-In Topos, that lattice is the eight-valued free Heyting algebra on three generators, and the map
-sends any program to its quality class — determining if it meets its targets per generator.
+Representations, Probes, and Profunctors
+------------------------------------------
 
-.. code-block:: python
+The characteristic morphism is computed through three levels of abstraction:
 
-   from topos import CharacteristicMorphism, ModuleDependencyGraph, ProgramMorphism
+**Representations**
+   Internal graph structures built from the source code (CFG, CPG, MDG). These capture the raw structural data of the program.
 
-   morphism = ProgramMorphism.from_file("module.py")
-   mdg = ModuleDependencyGraph.from_gitnexus_dir(".gitnexus", "module.py")
-   # CFG / PDG / CPG are derived intrinsically from the morphism's UAST:
-   cfg = morphism.build_cfg()
-   cpg = morphism.build_cpg()
-   result = CharacteristicMorphism().classify_detailed(morphism, [cfg, cpg, mdg])
-   print(result.dimensions)   # {"simple": SIMPLE, "composable": COMPOSABLE, "secure": SLOP}
-   print(result.summary())    # SIMPLE_COMPOSABLE (both S and C achieved, not Sc)
+**Probes**
+   Functions that map a representation to a real-valued metric :math:`f: \text{Rep} \to \mathbb{R}`. For example, a probe on the CFG calculates cyclomatic complexity. Probes are the "sensors" that feed the characteristic morphism.
 
-Generators are never automatically collapsed — call ``result.summary()``
-to get the combined 8-element lattice verdict. Use
-``CharacteristicMorphism.combine_dimensions(results)`` to fold a
-directory scan into a per-generator overall verdict.
+**Profunctors**
+   Relational tools that operate *between* two programs (or a program and its tests). They compute structural distances or correspondences:
+   
+   - **AST Distance**: Measures the topological drift between two programs using UAST edit distance.
+   - **Structural Coverage**: Estimates how much of a program's structure is "covered" by a test suite.
 
-Representations
----------------
+Profunctors operate outside the main three-generator lattice but provide essential signals for agent workflows, such as detecting if a refactor was purely cosmetic or structurally significant.
 
-Topos evaluates programs through pluggable **representations**, each
-contributing metrics to a named generator.
+User Preferences and the Relaxation Walk
+-----------------------------------------
 
-**ControlFlowGraph** (``simple`` generator)
-   Built automatically from the AST via tree-sitter. Computes cyclomatic complexity, essential complexity,
-   nesting depth, longest path, and entropy. Targets the ``SIMPLE`` evaluation value. Always available.
+While the lattice :math:`\Omega` is only partially ordered, users often have specific quality goals. Topos uses **User Preferences** — a strict total order (permutation) of the three pillars — to linearize the lattice and guide agent iteration.
 
-**ModuleDependencyGraph** (``composable`` generator)
-   Built from GitNexus output. Computes coupling, instability,
-   fan-in/out, and dependency depth for the target file against the
-   repository dependency graph. Supplied via ``--gitnexus-dir`` on the
-   CLI, or passed directly to ``classify_detailed``. Targets the
-   ``COMPOSABLE`` evaluation value. Requires a ``.gitnexus/``
-   directory.
+**The Induced Total Order**
+   A preference ranking like ``(SIMPLE, COMPOSABLE, SECURE)`` induces a total order on the 8 Quality Badges. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied.
 
-**CodePropertyGraph** (``secure`` generator)
-   Fuses AST ∪ CFG ∪ DDG ∪ CDG into a single labeled multigraph
-   (Yamaguchi et al., arxiv:1909.03496).  Built intrinsically from the
-   UAST — no external tooling required.  Computes dangerous-API
-   reachability and source→sink taint paths.  Targets the ``SECURE``
-   evaluation value.  Always available.
+**Aspirational vs. Pragmatic Targets**
+   - **Aspirational Target**: Usually ``IDEAL`` (⊤). The agent first attempts to satisfy all three quality pillars.
+   - **Pragmatic Target (The "Ideal Intersection")**: The meet (∧) of the top-two ranked pillars. If the agent plateaus while aiming for ``IDEAL``, it naturally diverts to this fallback.
 
-**ProgramDependenceGraph** (diagnostic only)
-   Intra-procedural control and data dependence graph. Computes dependence density. Not counted toward verdict.
-
-Representations on the same generator are aggregated via meet (greatest lower bound);
-representations on different generators produce independent verdicts.
+**The Relaxation Walk**
+   Given a preference ranking and a current verdict, Topos calculates a **relaxation walk** — the descending sequence of Quality Badges from the target down to the current state. Agents use this walk to identify the "next step" improvement, ensuring that every refactor iteration moves the codebase closer to the user's intent.

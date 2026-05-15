@@ -13,8 +13,15 @@ Topos
       :class-header: sd-bg-light sd-text-black sd-font-weight-bold
 
       **Topos** gives you structural code quality metrics your agents can act on.
-      Pick a priority and Topos measures program structure — not just syntax — giving agents
+      Pick a preference ranking and Topos measures program structure — not just syntax — giving agents
       concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
+
+.. admonition:: Philosophy: Quality over Correctness
+   :class: philosophy-box
+
+   Passing unit tests only proves that your code does what it says. It doesn't prove it's good code. 
+   Topos provides the structural "truth values" that agents need to move beyond mere correctness
+   and toward high-quality, maintainable software.
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -43,39 +50,61 @@ Topos
 
       Optional deeper reading: the category-theoretic ideas behind the lattice and why it's structured this way.
 
+Beyond Correctness
+------------------
+
+**Assume you passed the tests. How good is your solution?**
+
+Current code evaluations focus heavily on *correctness* — does the code pass the unit tests we created? But passing tests doesn't guarantee that you've written good, secure, or maintainable code. 
+
+Topos fills this gap by measuring structural quality, ensuring that your code isn't just correct, but built to last. It provides the objective "truth values" that agents need to move beyond mere correctness and toward high-quality, maintainable software.
+
+The Badge Metaphor
+------------------
+
+Topos measures code along three independent quality pillars. Think of these as generators for **Code Quality Badges**:
+
+- **SIMPLE** — The code is readable and structurally predictable.
+- **COMPOSABLE** — The module is cleanly decoupled from the rest of the system.
+- **SECURE** — The data flow is safe from dangerous operations and taint.
+
+A program can earn any combination of these badges (e.g., earning just ``SIMPLE``, or earning ``SIMPLE_COMPOSABLE``). The ultimate badge is ``IDEAL``, where all three pillars are achieved.
+
+Manager Priorities & Agent Iteration
+------------------------------------
+
+In a perfect world, every file would earn the ``IDEAL`` badge. In reality, managers and developers have a finite budget of time and tokens. 
+
+Topos allows you to set **Preferences** — an ordering of these badges based on your immediate priorities. Coding agents use this ranking to aim for ``IDEAL``. If achieving ``IDEAL`` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality badge aligned with your priorities.
+
 Quick look
 ----------
 
-Pick a priority, then let your agent evaluate and iterate on its own output.
+Pick a preference ranking, then let your agent evaluate and iterate on its own output.
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --priority simple           # classify a directory
-   topos inspect module.py                             # detailed metrics
-   topos structural-test-coverage src/ --language python  # measure test code coverage
-   topos compare before.py after.py                    # AST edit distance
+   topos evaluate src/ -r --preferences simple,composable,secure  # classify a directory
+   topos inspect module.py --preferences simple,composable,secure # detailed metrics
+   topos structural-test-coverage src/ --language python          # measure test code coverage
+   topos compare before.py after.py                               # AST edit distance
 
-Each file gets a verdict per quality generator — **simple** (complexity,
-entropy), **composable** (dependency graph, requires GitNexus), and
-**secure** (taint and dangerous-API analysis on the CPG, always
-available).  You always see which generator is the problem, not a
-single blended number.
+Each file gets a verdict per quality generator. You always see which generator is the problem, not a single blended number.
 
 How it works
 ------------
 
-Topos measures code along three independent quality generators and maps them to an 8-element evaluation lattice:
+Topos measures code along the three independent quality generators and maps them to an 8-element evaluation lattice:
 
-- **SIMPLE** — how many decision paths run through the code (cyclomatic complexity) and how
-  predictable its pattern is (entropy). Built from control flow graph.
-- **COMPOSABLE** — how tightly the file is wired to the rest of the codebase (optional, requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_). Built from module dependency graph.
-- **SECURE** — whether the code flow can reach dangerous operations or untrusted data. Built from the Code Property Graph (AST ∪ CFG ∪ DDG ∪ CDG); always available, no external tooling required.
+- **SIMPLE** — Built from the control flow graph (cyclomatic complexity, entropy).
+- **COMPOSABLE** — Built from the module dependency graph (requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_).
+- **SECURE** — Built from the Code Property Graph (AST ∪ CFG ∪ DDG ∪ CDG); always available, no external tooling required.
 
 .. mermaid::
 
    graph BT
-       SLOP["⊥ SLOP<br/>No generators met"]
-       SIMPLE["S<br/>Simple code"]
+       SLOP["⊥ SLOP<br/>No badges met"]
+       SIMPLE["S<br/>Simple"]
        COMPOSABLE["C<br/>Composable"]
        SECURE["Sc<br/>Secure"]
        SC["S∧C"]
@@ -106,9 +135,10 @@ Topos measures code along three independent quality generators and maps them to 
        style IDEAL      fill:#fff3cd,stroke:#856404,color:#000
 
 .. hint::
-   **Three Independent Generators:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
+   **Three Independent Pillars:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
    **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently.
-   ``IDEAL`` is the join of all three. The 8 possible combinations form a free Heyting algebra.
+   ``IDEAL`` is the intersection of all three. The **Preferences** (ranking) determine the order
+   in which an agent traverses through the lattice, attempting to earn the highest possible badge.
 
 .. toctree::
    :maxdepth: 1

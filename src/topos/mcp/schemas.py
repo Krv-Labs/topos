@@ -274,6 +274,35 @@ class InspectCodeInput(_StrictModel):
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
+class CalculateCoverageInput(_StrictModel):
+    """Arguments for ``topos_calculate_coverage``."""
+
+    put_files: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Paths to the program-under-test files (relative to project root).",
+    )
+    test_files: list[str] = Field(
+        ...,
+        min_length=0,
+        description="Paths to the test suite files (relative to project root).",
+    )
+    language: str = Field(
+        default="python",
+        description="Programming language (for parsing).",
+    )
+    k: int = Field(
+        default=3,
+        ge=1,
+        description="Length of kind n-grams for path recall.",
+    )
+    include_unknown: bool = Field(
+        default=False,
+        description="Whether to include Unknown UAST nodes in the analysis.",
+    )
+    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+
+
 class PreferenceWalkInput(_StrictModel):
     """Arguments for ``topos_preference_walk``.
 
@@ -556,4 +585,39 @@ class InspectionResult(BaseModel):
     total_functions: int
     entropy_compression_ratio: float | None = None
     entropy_interpretation: str | None = None
+    error: str | None = None
+
+
+class CoverageResult(BaseModel):
+    """Structural test coverage report (v2)."""
+
+    mean_declaration_coverage: float = Field(
+        ..., description="[0, 1] average recall across PUT declarations."
+    )
+    best_declaration_recall: list[float] = Field(
+        ..., description="Recall per declaration in the PUT."
+    )
+    declaration_locations: list[str] = Field(
+        ..., description="Source location (file:line) for each declaration."
+    )
+    stmt_recall: float = Field(
+        ..., description="[0, 1] multiset recall of Statement kinds."
+    )
+    expr_recall: float = Field(
+        ..., description="[0, 1] multiset recall of Expression kinds."
+    )
+    mean_test_precision: float = Field(
+        ..., description="[0, 1] average precision across test declarations."
+    )
+    f2_score: float = Field(
+        ..., description="F2 score favoring recall over precision."
+    )
+    declaration_path_recall_kgram: float = Field(
+        ..., description="[0, 1] kind n-gram path recall."
+    )
+    uncovered_declarations: list[str] = Field(
+        ..., description="Locations of declarations with incomplete test coverage."
+    )
+    put_declaration_count: int
+    test_declaration_count: int
     error: str | None = None

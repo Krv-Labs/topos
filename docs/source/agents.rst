@@ -4,10 +4,13 @@
 For Agents
 ==========
 
-Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of
-Topos verdicts so it can evaluate and iterate on its own output.
+.. admonition:: The Agent Loop
+   :class: philosophy-box
 
-Topos lets you set and manage the quality target while your agent handles the iteration.
+   Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of
+   Topos verdicts so it can evaluate and iterate on its own output.
+   
+   Topos lets you set and manage the quality target while your agent handles the iteration.
 
 .. code-block:: text
 
@@ -15,47 +18,45 @@ Topos lets you set and manage the quality target while your agent handles the it
      → Reduce cyclomatic complexity and normalize entropy toward 0.5
 
    Agent iteration 2: SIMPLE [simple: 72%, composable: -, secure: -]
-     → ✓ SIMPLE target achieved.
+     → ✓ SIMPLE badge earned.
 
    Agent iteration 3: SIMPLE_COMPOSABLE [simple: 72%, composable: 65%, secure: -] (with GitNexus)
-     → ✓ Both SIMPLE and COMPOSABLE achieved.
+     → ✓ SIMPLE_COMPOSABLE badge earned.
 
 
-Setting a Priority
-------------------
+Setting Preferences
+-------------------
 
-A Priority is the quality target you set while the agent handles the iteration.
-It shifts internal metric weights so each pass optimizes toward a concrete objective
-rather than an open-ended target.
+A **Preference Ranking** is the quality target you set while the agent handles the iteration.
+It is a strict total order (permutation) of the three quality pillars. Topos uses this
+ranking to guide the agent along a **relaxation walk** — a sequence of achievable 
+**Quality Badges** that move toward your ideal target.
+
+This allows a **Manager** to set priorities based on a finite budget of time and tokens,
+while the **Agent** works autonomously to earn the highest possible badge within those constraints.
 
 .. list-table::
    :widths: 15 35 50
    :header-rows: 1
 
-   * - Priority
-     - Directive
+   * - Rank
+     - Primary Focus
      - Optimizes toward
-   * - ``simple`` (default)
-     - *"Keep this module simple and easy to understand."*
-     - Lower cyclomatic complexity, nesting depth, and entropy near 0.5. Tolerates higher coupling.
-   * - ``composable``
-     - *"Keep this module easy to integrate without fragile dependency chains."*
-     - Clean inter-module coupling and balanced instability. Tolerates internal complexity.
-   * - ``secure``
-     - *"Minimize dangerous operations and taint exposure."*
-     - Reduced reachable dangerous calls and taint flows. Tolerates higher complexity or coupling.
+   * - 1 (Top)
+     - Mandatory
+     - The property that must be achieved first.
+   * - 2 (Middle)
+     - Aspirational
+     - The secondary goal; forms the "ideal intersection" with Rank 1.
+   * - 3 (Bottom)
+     - Pragmatic
+     - The final property needed to reach ``IDEAL``.
 
-Perfect code achieves all three generators, but agents operate under token and time budgets.
-A concrete priority gives the agent a formula to execute instead of a vague goal.
+Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
 
-When an agent evaluates code with a priority set, it receives:
-
-- A **lattice element** — one of the 8 values in Ω: ``SLOP``, ``SIMPLE``,
-  ``COMPOSABLE``, ``SECURE``, ``SIMPLE_COMPOSABLE``, ``SIMPLE_SECURE``,
-  ``COMPOSABLE_SECURE``, or ``IDEAL``
-- A **per-generator score** (0–100%) showing how close it is to each generator's threshold
-- A **guidance hint** explaining what to change to improve
-
+1. **Aspirational Target**: The agent first tries to reach ``IDEAL`` (all three badges achieved).
+2. **Pragmatic Fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE`` 
+   (the intersection of the top two).
 
 MCP Setup
 ---------
@@ -64,8 +65,8 @@ Step 1 — Build the dependency graph (optional but recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. important::
-   **Recommended.** Without a dependency graph, Topos scores only the SIMPLE generator —
-   ``COMPOSABLE`` and ``SECURE`` become unreachable, and only ``SIMPLE`` or ``SLOP`` are possible verdicts.
+   **Recommended.** Without a dependency graph, Topos cannot score the COMPOSABLE pillar —
+   any badge requiring it (including ``IDEAL``) becomes unreachable.
 
    .. code-block:: bash
 
@@ -141,53 +142,40 @@ If every response shows only ``{simple: ...}`` and no composable/secure, go back
 MCP Tools
 ---------
 
-All evaluation tools accept an optional ``priority`` parameter
-(``"simple"``, ``"composable"``, or ``"secure"``).
+All evaluation tools accept an optional ``preferences`` parameter which includes a ``ranking`` 
+(e.g., ``["simple", "composable", "secure"]``).
 
-``topos_evaluate_code(code, language, priority)``
-   Classifies a code string and returns the full evaluation response (SIMPLE generator only).
+``topos_evaluate_code(code, language, preferences)``
+   Classifies a code string and returns the full evaluation response (SIMPLE and SECURE).
 
-   Example response:
-
-   .. code-block:: json
-
-      {
-        "is_parseable": true,
-        "lattice_element": "SIMPLE",
-        "lattice_symbol": "S",
-        "lattice_description": "Simple code; structural quality achieved",
-        "dimensions": { "simple": true, "composable": null, "secure": null },
-        "scores": { "simple": 72.0, "composable": null, "secure": null },
-        "priority": "simple",
-        "guidance": "SIMPLE target achieved. Pass gitnexus_dir to evaluate COMPOSABLE and SECURE.",
-        "raw_metrics": { "cfg.cyclomatic": 8.0, "ast.entropy": 0.48 }
-      }
-
-``topos_evaluate_file(filepath, priority, gitnexus_dir)``
+``topos_evaluate_file(filepath, preferences, gitnexus_dir)``
    Same as ``topos_evaluate_code`` but reads from a file path. Pass ``gitnexus_dir`` to
-   enable COMPOSABLE and SECURE generators and reach higher lattice values like ``IDEAL``.
+   enable the COMPOSABLE pillar and reach higher badges like ``IDEAL``.
 
-``topos_assess_improvement(proposed_code, filepath, priority, gitnexus_dir)``
-   Compares a proposed version against the current file. Returns ``IMPROVEMENT``,
-   ``REGRESSION``, or ``LATERAL_MOVE``, plus per-generator score deltas. Prefer
-   ``filepath`` over ``current_code`` to enable COMPOSABLE/SECURE scoring.
+``topos_assess_improvement(proposed_code, filepath, preferences, gitnexus_dir)``
+   Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
+   if the quality badge or scores have improved according to the preferences.
 
-   Example response:
+   Anti-gaming check: if scores improved but AST edit distance is near zero, it returns 
+   ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 
-   .. code-block:: json
+``topos_preference_walk(ranking, target, current)``
+   Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
+   follow to reach the target from its current state.
 
-      {
-        "status": "IMPROVEMENT",
-        "current":  { "lattice_element": "SLOP",    "scores": { "simple": 41.0, "composable": null, "secure": null } },
-        "proposed": { "lattice_element": "SIMPLE",  "scores": { "simple": 72.0, "composable": null, "secure": null } },
-        "analysis": { "score_deltas": { "simple": 31.0 }, "evaluation_improved": true }
-      }
+``topos_calculate_coverage(put_files, test_files, k)``
+   Calculates structural test coverage using UAST k-gram path recall.
 
-``topos_evaluate_project(path, priority, gitnexus_dir, limit, offset)``
+``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset)``
    Project-wide rollup. Returns worst-scoring files first.
 
-``topos_inspect_code(code, language, priority, top_n_functions)``
-   Detailed metric breakdown: top-N functions by complexity, entropy details, full metric table.
+``topos_inspect_code(code, language, preferences, top_n_functions)``
+   Detailed metric breakdown: top-N functions by complexity, entropy details, and full 
+   metric table.
+
+``topos_get_doc(topic)``
+   Retrieves Topos documentation (``workflows``, ``lattice``, ``metrics``, or ``priority``) 
+   as Markdown. Useful for agents in environments where MCP resources are not directly accessible.
 
 ``topos_compare_code(source_code, target_code, language)``
    AST edit distance (topological drift) between two code strings.
@@ -202,6 +190,6 @@ MCP Resources
 Read these on the agent's first turn to orient it:
 
 - ``topos://docs/workflows`` — canonical review → plan → refactor → re-measure loop (stop condition: ``IDEAL``)
-- ``topos://docs/lattice`` — the 8-element lattice (SLOP / SIMPLE / COMPOSABLE / SECURE / SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE / IDEAL)
-- ``topos://docs/metrics`` — every metric key, generator, and threshold
+- ``topos://docs/lattice`` — the 8-element Quality Badge lattice
+- ``topos://docs/metrics`` — every metric key, pillar, and threshold
 - ``topos://docs/priority`` — priority profiles (simple / composable / secure)

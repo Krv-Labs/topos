@@ -16,13 +16,10 @@ Topos
       Pick a preference ranking and Topos measures program structure — not just syntax — giving agents
       concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
 
-.. admonition:: Philosophy: Quality over Correctness
+.. admonition:: Philosophy: Correctness is expected. Quality is the new currency.
    :class: philosophy-box
 
-   Passing unit tests only proves that your code does what it says. It doesn't prove it's good code. 
-   Topos provides the structural "truth values" that agents need to move beyond mere correctness
-   and toward high-quality, maintainable software.
-
+   Passing unit tests only proves that your code is a solution to a finite set of requirements. Agents have proved to be exceptional at this and will continue to improve. We believe the new currency is the quality of these solutions. Topos provides the structural evaluations that empower coding agents to find higher quality solutions.
 .. grid:: 1 1 2 2
    :gutter: 3
 
@@ -51,24 +48,44 @@ Topos
       Optional deeper reading: the category-theoretic ideas behind the lattice and why it's structured this way.
 
 Beyond Correctness
-------------------
+-------------------
 
 **Assume you passed the tests. How good is your solution?**
 
 Current code evaluations focus heavily on *correctness* — does the code pass the unit tests we created? But passing tests doesn't guarantee that you've written good, secure, or maintainable code. 
 
-Topos fills this gap by measuring structural quality, ensuring that your code isn't just correct, but built to last. It provides the objective "truth values" that agents need to move beyond mere correctness and toward high-quality, maintainable software.
+Topos fills this gap by measuring structural quality, ensuring that your code isn't just correct, but built to last. It provides well-principled evaluations of a programs structure that agents can use to find better solutions.
 
 The Medal Podium
 ----------------
 
-Topos measures code along three independent quality pillars. Think of these as generators for **Code Quality Medals**:
+Topos measures each file along three independent quality pillars. Each pillar is pass or fail on its own:
 
-- **SIMPLE** — The code is readable and structurally predictable.
-- **COMPOSABLE** — The module is cleanly decoupled from the rest of the system.
-- **SECURE** — The data flow is safe from dangerous operations and taint.
+- **SIMPLE** — The code avoids unnecessary complexity.
+- **COMPOSABLE** — The module is cleanly decoupled from other modules.
+- **SECURE** — The code is free of operations that are known to expose security vulnerabilities.
 
-A program can earn any combination of these medals (e.g., earning just a ``BRONZE`` medal, or a ``SILVER`` medal). The ultimate medal is ``🥇 GOLD``, where all three pillars are achieved.
+Run ``topos evaluate`` or ``topos inspect`` on a file; Topos checks all three pillars and awards a **Code Quality Medal** from how many you pass. *Which* pillars you pass matters for diagnosis; the medal tier depends only on the count:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 18 44
+
+   * - Pillars passed
+     - Medal
+     - Example (any combination with this count)
+   * - **3 of 3**
+     - 🥇 **GOLD**
+     - SIMPLE + COMPOSABLE + SECURE
+   * - **2 of 3**
+     - 🥈 **SILVER**
+     - e.g. SIMPLE + SECURE, or COMPOSABLE + SECURE
+   * - **1 of 3**
+     - 🥉 **BRONZE**
+     - e.g. SIMPLE only, or SECURE only
+   * - **0 of 3**
+     - ❌ **NONE**
+     - Fails every pillar (or the file could not be parsed)
 
 Manager Priorities & Agent Iteration
 ------------------------------------
@@ -96,9 +113,9 @@ How it works
 
 Topos measures code along the three independent quality generators and maps them to an 8-element evaluation lattice:
 
-- **SIMPLE** — Built from the control flow graph (cyclomatic complexity, entropy).
-- **COMPOSABLE** — Built from the module dependency graph (requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_).
-- **SECURE** — Built from the Code Property Graph (AST ∪ CFG ∪ DDG ∪ CDG); always available, no external tooling required.
+- **SIMPLE** — Built from the `abstract syntax tree <https://en.wikipedia.org/wiki/Abstract_syntax_tree>`_ (AST) and `control-flow graph <https://en.wikipedia.org/wiki/Control-flow_graph>`_ (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
+- **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, to capture inter-module dependencies. This is slightly different than the usual `program dependence graph <https://en.wikipedia.org/wiki/Program_dependence_graph>`_ (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
+- **SECURE** — Built from the `code property graph <https://en.wikipedia.org/wiki/Code_property_graph>`_ (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
 
 .. mermaid::
 

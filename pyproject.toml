@@ -1,7 +1,7 @@
 [project]
 name = "topos"
 version = "1.0.0"
-description = "Code quality badges for coding agents based on structural program analysis."
+description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }

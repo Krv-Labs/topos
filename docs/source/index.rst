@@ -127,7 +127,7 @@ Topos measures code along the three independent quality generators and maps them
        SC["🥈 SILVER<br/>S ∧ C"]
        SSc["🥈 SILVER<br/>S ∧ Sc"]
        CSc["🥈 SILVER<br/>C ∧ Sc"]
-       IDEAL["🥇 GOLD<br/>The Ideal Morphism"]
+       IDEAL["🥇 GOLD<br/>Quality Code"]
 
        SLOP --> SIMPLE
        SLOP --> COMPOSABLE

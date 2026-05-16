@@ -299,16 +299,26 @@ class CharacteristicMorphism:
     def combine_dimensions(
         self,
         results: Iterable[ClassificationResult],
-        threshold: float = 0.6,
+        thresholds: dict[str, float] | None = None,
     ) -> dict[str, EvaluationValue]:
         """
         Pointwise multi-file meet ⋀_f χ_S(f).
 
         A generator is satisfied across the codebase iff it is satisfied
-        for every file (minimum score across files ≥ threshold).  Parse
-        failures inject a zero score on the SIMPLE generator (since the
-        program failed even to compile, no other generator is reachable).
+        for every file (minimum score across files ≥ its calibrated
+        threshold).  Parse failures inject a zero score on the SIMPLE
+        generator (since the program failed even to compile, no other
+        generator is reachable).
         """
+        if thresholds is None:
+            from topos.evaluation.policies.base import THRESHOLDS, Generator
+
+            thresholds = {
+                "simple": THRESHOLDS[Generator.SIMPLE],
+                "composable": THRESHOLDS[Generator.COMPOSABLE],
+                "secure": THRESHOLDS[Generator.SECURE],
+            }
+
         min_scores: dict[str, float] = {}
         for result in results:
             if not result.is_parseable:
@@ -320,5 +330,6 @@ class CharacteristicMorphism:
         combined: dict[str, EvaluationValue] = {}
         for dim, score in min_scores.items():
             generator = _DIMENSION_GENERATOR.get(dim, EvaluationValue.SLOP)
-            combined[dim] = generator if score >= threshold else EvaluationValue.SLOP
+            t = thresholds.get(dim, 0.6)
+            combined[dim] = generator if score >= t else EvaluationValue.SLOP
         return combined

@@ -322,6 +322,7 @@ def test_combine_dimensions_uses_min_score():
     # Min score = 0.3, below calibrated threshold 0.40 → SLOP for SIMPLE
     assert combined["simple"] == EvaluationValue.SLOP
 
+
 def test_combine_dimensions_counts_parse_failures_as_simple_slop():
     classifier = CharacteristicMorphism()
 

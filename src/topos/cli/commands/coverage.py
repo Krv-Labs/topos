@@ -139,8 +139,10 @@ def structural_test_coverage_cmd(
     click.echo()
     click.echo(f"Path Recall (declaration-scoped k={report.k} grams)")
     click.echo("-" * 52)
-    click.echo(f"  Decl path recall:           {report.declaration_path_recall_kgram:.4f}")
-    
+    click.echo(
+        f"  Decl path recall:           {report.declaration_path_recall_kgram:.4f}"
+    )
+
     uncovered = decision.uncovered_declarations
     if uncovered:
         click.echo()

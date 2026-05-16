@@ -35,7 +35,15 @@ def test_coverage_threshold(tmp_path: Path):
 
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["structural-test-coverage", "--coverage-threshold", "0.2", "--tests", str(test), str(put)]
+        cli,
+        [
+            "structural-test-coverage",
+            "--coverage-threshold",
+            "0.2",
+            "--tests",
+            str(test),
+            str(put),
+        ],
     )
     assert result.exit_code == 0
     assert "Coverage threshold:         0.20" in result.output

@@ -134,8 +134,12 @@ class EvaluationValue(IntEnum):
     def description(self) -> str:
         """Human-readable description of this evaluation value."""
         descriptions = {
-            EvaluationValue.SLOP: "❌ NO MEDAL - Fails every generator; unconstrained code",
-            EvaluationValue.SIMPLE: "🥉 BRONZE - Low complexity; SIMPLE generator satisfied",
+            EvaluationValue.SLOP: (
+                "❌ NO MEDAL - Fails every generator; unconstrained code"
+            ),
+            EvaluationValue.SIMPLE: (
+                "🥉 BRONZE - Low complexity; SIMPLE generator satisfied"
+            ),
             EvaluationValue.COMPOSABLE: (
                 "🥉 BRONZE - Composes well; COMPOSABLE generator satisfied"
             ),
@@ -151,7 +155,9 @@ class EvaluationValue(IntEnum):
             EvaluationValue.COMPOSABLE_SECURE: (
                 "🥈 SILVER - COMPOSABLE ∧ SECURE — well-coupled and safe patterns"
             ),
-            EvaluationValue.IDEAL: ("🥇 GOLD - Joint satisfaction of all three quality pillars"),
+            EvaluationValue.IDEAL: (
+                "🥇 GOLD - Joint satisfaction of all three quality pillars"
+            ),
         }
         return descriptions[self]
 

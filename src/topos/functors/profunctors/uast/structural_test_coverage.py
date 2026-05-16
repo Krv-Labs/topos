@@ -122,79 +122,8 @@ def _kgram_recall(
     return num / denom
 
 
-@dataclass(frozen=True)
-class StructuralTestCoverageReport:
-    """Structural overlap from aggregated tests toward the PUT."""
-
-    kind_recall: float
-    control_flow_recall: float
-    composite_v0: float
-    path_recall_kgram: float
-    k: int
-    include_unknown: bool
-    put_kind_nodes: int
-    test_kind_nodes: int
-    put_cf_nodes: int
-    test_cf_nodes: int
-    put_kgram_mass: int
-    test_kgram_mass: int
-
-
-def structural_test_coverage(
-    put_roots: Sequence[object],
-    test_roots: Sequence[object],
-    *,
-    k: int = 3,
-    include_unknown: bool = False,
-) -> StructuralTestCoverageReport:
-    """
-    Compute v0 (kind + control-flow recall) and v1 (k-gram path recall).
-
-    Args:
-        put_roots: One or more UAST roots for the program-under-test.
-        test_roots: Zero or more UAST roots for tests (histograms merged).
-        k: Length of each kind n-gram for ``path_recall_kgram``.
-        include_unknown: Passed through to histograms and DFS sequences.
-
-    Returns:
-        Recall scores in ``[0, 1]``. Vacuous PUT (no counted kinds / no CF /
-        no k-grams) yields 1.0 for the corresponding component.
-    """
-    if k < 1:
-        msg = f"k must be >= 1, got {k}"
-        raise ValueError(msg)
-
-    h_put = merge_uast_kind_histograms(put_roots, include_unknown=include_unknown)
-    h_test = merge_uast_kind_histograms(test_roots, include_unknown=include_unknown)
-    cf_put = merge_control_flow_profiles(put_roots)
-    cf_test = merge_control_flow_profiles(test_roots)
-
-    kind_recall = _multiset_recall(h_put, h_test)
-    control_flow_recall = _multiset_recall(cf_put, cf_test)
-    composite_v0 = 0.5 * kind_recall + 0.5 * control_flow_recall
-
-    kg_put = merge_kgram_counters(put_roots, k=k, include_unknown=include_unknown)
-    kg_test = merge_kgram_counters(test_roots, k=k, include_unknown=include_unknown)
-    path_recall_kgram = _kgram_recall(kg_put, kg_test)
-
-    return StructuralTestCoverageReport(
-        kind_recall=kind_recall,
-        control_flow_recall=control_flow_recall,
-        composite_v0=composite_v0,
-        path_recall_kgram=path_recall_kgram,
-        k=k,
-        include_unknown=include_unknown,
-        put_kind_nodes=sum(h_put.values()),
-        test_kind_nodes=sum(h_test.values()),
-        put_cf_nodes=sum(cf_put.values()),
-        test_cf_nodes=sum(cf_test.values()),
-        put_kgram_mass=sum(kg_put.values()),
-        test_kgram_mass=sum(kg_test.values()),
-    )
-
-
 # ---------------------------------------------------------------------------
-# v2: Declaration-level bipartite coverage
+# Declaration-level bipartite coverage
 # ---------------------------------------------------------------------------
 
 
@@ -236,7 +165,7 @@ def _location_str(node: object) -> str:
 
 @dataclass(frozen=True)
 class DeclarationCoverageReport:
-    """Declaration-level bipartite structural coverage (v2).
+    """Declaration-level bipartite structural coverage.
 
     Each FunctionDecl/MethodDecl in the PUT is matched against the test
     suite's declarations via greedy best-match recall. Scores are not
@@ -289,11 +218,11 @@ def declaration_coverage(
     include_unknown: bool = False,
 ) -> DeclarationCoverageReport:
     """
-    Declaration-level bipartite structural coverage (v2).
+    Declaration-level bipartite structural coverage.
 
     For each FunctionDecl/MethodDecl in the PUT, finds the best-matching
     test declaration by multiset recall of body kind histograms. Addresses
-    the five weaknesses of v0/v1:
+    the five weaknesses of earlier metrics:
 
     - Pooled histograms replaced by per-declaration matching (localizable gaps)
     - CF/kind double-counting replaced by disjoint stmt/expr category recall

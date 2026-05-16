@@ -169,7 +169,7 @@ Topos supports several relational metrics across its different graph representat
 Structural Test Coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Topos uses **Declaration-level Bipartite Coverage (v2)** to estimate how much of a
+Topos uses **Declaration-level Bipartite Coverage** to estimate how much of a
 **program-under-test (PUT)** appears in a **test suite** at the level of
 normalized UAST structure.
 
@@ -181,9 +181,9 @@ The CLI command is:
 
 .. code-block:: bash
 
-   topos structural-test-coverage --v2 --tests tests/test_mod.py src/mod.py
+   topos structural-test-coverage --tests tests/test_mod.py src/mod.py
 
-**How it works (v2)**
+**How it works**
 
 1. **Extraction:** Every ``FunctionDecl`` and ``MethodDecl`` is extracted from
    both the PUT and the test suite.
@@ -200,25 +200,8 @@ The CLI command is:
    - **Uncovered Declarations:** The tool identifies specific locations in the
      source code that lack corresponding structural representation in the tests.
 
-**Definitions (v0/v1 legacy)**
-
-Legacy pooled-histogram coverage is still available via the default CLI path (without ``--v2``).
-
-Let :math:`n_P(k)` and :math:`n_T(k)` be raw counts of UAST kind :math:`k` in the PUT and in the aggregated test corpus.
-
-*   **Kind recall:**
-    .. math::
-
-       R_{\text{kind}} = \frac{\sum_k \min\bigl(n_P(k), n_T(k)\bigr)}{\sum_k n_P(k)}
-
-*   **Path recall (v1):** DFS pre-order sequence of kinds mapped to length-:math:`k` consecutive kind tuples (*k-grams*).
-
-    .. math::
-
-       R_{\text{path}} = \frac{\sum_g \min\bigl(c_P(g), c_T(g)\bigr)}{\sum_g c_P(g)}
-
 **Interpretation**
 
-- Higher recalls mean more of the PUT’s counted structure is *also present* in tests.
-- A **low** score suggests tests may be missing classes of syntax.
-- A **high** score is **not** sufficient for quality: boilerplate, fixtures, or framework-heavy tests can overlap kinds without exercising semantics. v2 addresses this by penalizing low precision.
+- Higher mean coverage indicates more of the PUT’s structural declarations have matches in the test suite.
+- An F2 score significantly lower than mean coverage indicates a bloated test suite.
+- A **low** score suggests tests may be missing classes of syntax present in the PUT.

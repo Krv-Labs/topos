@@ -4,11 +4,9 @@ import pytest
 
 from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
-    StructuralTestCoverageReport,
     declaration_coverage,
     extract_declarations,
     merge_uast_kind_histograms,
-    structural_test_coverage,
 )
 from topos.graphs.ast.dispatch import parse_source
 
@@ -17,85 +15,12 @@ def _parse(source: str, language: str = "python"):
     return parse_source(source=source, language=language).uast_root
 
 
-def test_identical_put_and_test_full_recall():
-    src = (
-        "def f(n):\n"
-        "    for i in range(n):\n"
-        "        if i % 2:\n"
-        "            pass\n"
-        "    return n\n"
-    )
-    put = _parse(src)
-    rep = structural_test_coverage([put], [put], k=3, include_unknown=False)
-    assert rep.kind_recall == pytest.approx(1.0)
-    assert rep.control_flow_recall == pytest.approx(1.0)
-    assert rep.composite_v0 == pytest.approx(1.0)
-    assert rep.path_recall_kgram == pytest.approx(1.0)
-
-
-def test_empty_tests_yield_zero_kind_recall_when_put_nonempty():
-    put = _parse("def g():\n    while True:\n        break\n")
-    rep = structural_test_coverage([put], [], k=3, include_unknown=False)
-    assert rep.kind_recall == pytest.approx(0.0)
-    assert rep.control_flow_recall == pytest.approx(0.0)
-    assert rep.composite_v0 == pytest.approx(0.0)
-    assert rep.path_recall_kgram == pytest.approx(0.0)
-
-
-def test_tests_with_loop_improve_recall_vs_minimal_tests():
-    put = _parse(
-        "def total(xs):\n"
-        "    s = 0\n"
-        "    for x in xs:\n"
-        "        if x > 0:\n"
-        "            s += x\n"
-        "    return s\n"
-    )
-    minimal_tests = _parse("def test_const():\n    assert 1 == 1\n")
-    richer_tests = _parse(
-        "def test_sum():\n"
-        "    acc = 0\n"
-        "    for y in [1, 2]:\n"
-        "        if y > 0:\n"
-        "            acc += y\n"
-        "    assert acc == 3\n"
-    )
-    low = structural_test_coverage([put], [minimal_tests], k=3, include_unknown=False)
-    high = structural_test_coverage([put], [richer_tests], k=3, include_unknown=False)
-    assert high.kind_recall >= low.kind_recall
-    assert high.control_flow_recall > low.control_flow_recall
-    assert high.path_recall_kgram >= low.path_recall_kgram
-
-
-def test_path_recall_moves_with_shared_kgrams():
-    put = _parse("def a():\n    if True:\n        return 1\n")
-    disjoint = _parse("def t():\n    x = 1\n    y = 2\n    return x + y\n")
-    aligned = _parse("def t():\n    if True:\n        return 2\n")
-    low = structural_test_coverage([put], [disjoint], k=3, include_unknown=False)
-    high = structural_test_coverage([put], [aligned], k=3, include_unknown=False)
-    assert high.path_recall_kgram > low.path_recall_kgram
-
-
-def test_invalid_k_raises():
-    put = _parse("def f(): return 0\n")
-    with pytest.raises(ValueError, match="k must be"):
-        structural_test_coverage([put], [put], k=0)
-
-
 def test_merge_histograms_two_roots():
     a = _parse("def a(): pass\n")
     b = _parse("def b(): return 1\n")
     merged = merge_uast_kind_histograms([a, b], include_unknown=False)
     single = merge_uast_kind_histograms([a], include_unknown=False)
     assert sum(merged.values()) > sum(single.values())
-
-
-def test_report_is_frozen_dataclass():
-    put = _parse("pass\n")
-    rep = structural_test_coverage([put], [put], k=2)
-    assert isinstance(rep, StructuralTestCoverageReport)
-    with pytest.raises(FrozenInstanceError):
-        rep.kind_recall = 0.0  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------

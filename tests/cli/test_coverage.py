@@ -16,17 +16,16 @@ def test_coverage_basic(tmp_path: Path):
     )
 
     runner = CliRunner()
-    # Note: structural-test-coverage expects put_paths as arguments and
-    # test_paths via --tests
     result = runner.invoke(
         cli, ["structural-test-coverage", "--tests", str(test), str(put)]
     )
     assert result.exit_code == 0
-    assert "Structural test coverage (UAST)" in result.output
-    assert "Kind recall" in result.output
+    assert "Structural test coverage (declaration-level bipartite)" in result.output
+    assert "Mean declaration coverage" in result.output
+    assert "F2 score (beta=2)" in result.output
 
 
-def test_coverage_v2(tmp_path: Path):
+def test_coverage_threshold(tmp_path: Path):
     put = tmp_path / "put.py"
     put.write_text("def add(a, b): return a + b\n", encoding="utf-8")
     test = tmp_path / "test.py"
@@ -36,11 +35,10 @@ def test_coverage_v2(tmp_path: Path):
 
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["structural-test-coverage", "--v2", "--tests", str(test), str(put)]
+        cli, ["structural-test-coverage", "--coverage-threshold", "0.2", "--tests", str(test), str(put)]
     )
     assert result.exit_code == 0
-    assert "Structural test coverage v2" in result.output
-    assert "Mean declaration coverage" in result.output
+    assert "Coverage threshold:         0.20" in result.output
 
 
 def test_coverage_json(tmp_path: Path):
@@ -59,7 +57,8 @@ def test_coverage_json(tmp_path: Path):
     import json
 
     data = json.loads(result.output)
-    assert "kind_recall" in data
+    assert "mean_declaration_coverage" in data
+    assert "f2_score" in data
     assert data["language"] == "python"
 
 

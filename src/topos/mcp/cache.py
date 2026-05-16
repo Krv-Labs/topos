@@ -2,7 +2,7 @@
 LRU caches for the Topos MCP server.
 
 Two caches:
-- ``dep_graph_for``: parsed ``DependencyGraph``, keyed by (gitnexus_dir,
+- ``dep_graph_for``: parsed ``ModuleDependencyGraph``, keyed by (gitnexus_dir,
   target_file, mtime). mtime invalidates automatically when gitnexus re-runs.
 - ``baseline_result_for``: ``ClassificationResult`` for a file's current on-disk
   state, keyed by (filepath, content sha256, priority, gitnexus_mtime).
@@ -19,7 +19,7 @@ import hashlib
 from functools import lru_cache
 from pathlib import Path
 
-from topos.graphs.depgraph.graph import DependencyGraph
+from topos.graphs.mdg.object import ModuleDependencyGraph
 
 
 def _gitnexus_mtime(gitnexus_dir: Path) -> float:
@@ -42,14 +42,14 @@ def _file_sha256(path: Path) -> str:
 @lru_cache(maxsize=32)
 def _cached_dep_graph(
     gitnexus_dir_str: str, target_file: str, _mtime_for_key: float
-) -> DependencyGraph:
+) -> ModuleDependencyGraph:
     """Inner cached loader. ``_mtime_for_key`` is part of the cache key only."""
     del _mtime_for_key  # in key for invalidation; not used in body
-    return DependencyGraph.from_gitnexus_dir(gitnexus_dir_str, target_file)
+    return ModuleDependencyGraph.from_gitnexus_dir(gitnexus_dir_str, target_file)
 
 
-def dep_graph_for(gitnexus_dir: Path, target_file: str) -> DependencyGraph:
-    """Return a cached ``DependencyGraph`` for the given gitnexus dir + file."""
+def dep_graph_for(gitnexus_dir: Path, target_file: str) -> ModuleDependencyGraph:
+    """Return a cached ``ModuleDependencyGraph`` for the given gitnexus dir + file."""
     gitnexus_dir = Path(gitnexus_dir).resolve()
     mtime = _gitnexus_mtime(gitnexus_dir)
     return _cached_dep_graph(str(gitnexus_dir), target_file, mtime)

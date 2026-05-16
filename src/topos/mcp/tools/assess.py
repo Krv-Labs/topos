@@ -2,7 +2,7 @@
 Assessment tool — compare current vs. proposed code on the lattice.
 
 This is the main tool for agent refactor loops. When ``filepath`` is provided,
-the baseline is evaluated against the cached ``DependencyGraph`` and the
+the baseline is evaluated against the cached ``ModuleDependencyGraph`` and the
 proposed AST is scored against that same graph (approximating coupling under
 the refactor). Anti-gaming guardrail: if scores moved meaningfully while AST
 edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
@@ -11,28 +11,30 @@ edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.logic.omega import SubobjectClassifier
-from topos.mcp.evaluation import (
+from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.policies.base import Priority
+from topos.functors.profunctors.ast.compare import calculate_ast_distance
+
+from ..evaluation import (
     classify_code_string,
     classify_morphism,
     load_dep_graph,
     resolve_gitnexus_dir,
 )
-from topos.mcp.formatting import to_evaluation_result
-from topos.mcp.schemas import (
+from ..formatting import to_evaluation_result
+from ..schemas import (
     AssessImprovementInput,
     AssessmentResult,
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
 )
-from topos.mcp.security import (
+from ..security import (
     read_safe_utf8_file,
     resolve_file_root,
     resolve_within_root,
 )
-from topos.mcp.server import mcp
-from topos.metrics.distance import calculate_ast_distance
+from ..server import mcp
 
 _READ_ONLY_ANN = {
     "title": "Topos Refactor Assessment",
@@ -56,7 +58,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     """Compare proposed code against the current baseline.
 
     **Preferred usage** — pass ``filepath`` (code loaded from disk + coupling
-    scored against the cached ``DependencyGraph``). The proposed code is
+    scored against the cached ``ModuleDependencyGraph``). The proposed code is
     parsed, but coupling is an approximation: it uses the *current* dep graph
     for the target file, so inbound edges from other files reflect the
     pre-refactor state. That's fine for tight iteration loops.
@@ -81,11 +83,11 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, resolve_file_root())
         dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
         current_morph = ProgramMorphism(source=current_src, language=params.language)
-        current_res = classify_morphism(current_morph, params.priority, dep_graph)
+        current_res = classify_morphism(current_morph, Priority.SIMPLE, dep_graph)
         coupling_for_proposed = dep_graph is not None
     elif params.current_code:
         current_res = classify_code_string(
-            params.current_code, params.language, params.priority
+            params.current_code, params.language, Priority.SIMPLE
         )
         current_morph = ProgramMorphism(
             source=params.current_code, language=params.language
@@ -99,16 +101,17 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     proposed_morph = ProgramMorphism(
         source=params.proposed_code, language=params.language
     )
-    proposed_res = classify_morphism(proposed_morph, params.priority, dep_graph)
+    proposed_res = classify_morphism(proposed_morph, Priority.SIMPLE, dep_graph)
 
+    prefs = params.preferences.to_preferences() if params.preferences else None
     current_eval = to_evaluation_result(
-        current_res, coupling_available=dep_graph is not None
+        current_res, coupling_available=dep_graph is not None, preferences=prefs
     )
     proposed_eval = to_evaluation_result(
-        proposed_res, coupling_available=coupling_for_proposed
+        proposed_res, coupling_available=coupling_for_proposed, preferences=prefs
     )
 
-    # ---- score deltas ----
+    # ---- score & metric deltas ----
     all_dims = set(current_eval.scores) | set(proposed_eval.scores)
     score_deltas = {
         dim: round(
@@ -117,9 +120,14 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         for dim in all_dims
     }
 
-    cur_complexity = current_res.raw_metrics.get("ast.complexity", 0.0)
-    prop_complexity = proposed_res.raw_metrics.get("ast.complexity", 0.0)
-    complexity_delta = prop_complexity - cur_complexity
+    all_metrics = set(current_res.raw_metrics) | set(proposed_res.raw_metrics)
+    metric_deltas = {
+        m: round(
+            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0),
+            3,
+        )
+        for m in all_metrics
+    }
 
     # ---- structural distance ----
     distance = None
@@ -130,7 +138,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         similarity = 1.0 - dist.normalized_distance
 
     # ---- lattice movement ----
-    lattice = SubobjectClassifier().omega
+    lattice = CharacteristicMorphism().omega
     cur_summary = current_res.summary()
     prop_summary = proposed_res.summary()
     lattice_changed = cur_summary != prop_summary
@@ -174,11 +182,11 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
 
     return AssessmentResult(
         status=status,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         current=current_eval,
         proposed=proposed_eval,
         score_deltas=score_deltas,
-        complexity_delta=complexity_delta,
+        metric_deltas=metric_deltas,
         structural_distance=distance,
         similarity=similarity,
         coupling_available_for_proposed=coupling_for_proposed,
@@ -189,18 +197,18 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
 def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResult:
     empty = EvaluationResult(
         is_parseable=False,
-        lattice_element=LatticeElement.BROKEN,
+        lattice_element=LatticeElement.SLOP,
         lattice_symbol="⊥",
         lattice_description="not evaluated",
         dimensions={},
         scores={},
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         guidance="",
         coupling_available=False,
     )
     return AssessmentResult(
         status=AssessmentStatus.LATERAL_MOVE,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         current=empty,
         proposed=empty,
         score_deltas={},

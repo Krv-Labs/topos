@@ -1,7 +1,7 @@
 [project]
 name = "topos"
-version = "0.2.0"
-description = "Treating programs as morphisms in a world of commodity code. Building the subobject classifier for rigorous program evaluations."
+version = "1.0.0"
+description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSD-3-Clause" }
@@ -20,6 +20,10 @@ classifiers = [
 dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
+    "tree-sitter-rust>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-cpp>=0.23",
+    "tree-sitter-typescript>=0.23",
     "click>=8.1",
     "fastmcp>=3.0.0",
     "numpy>=1.24",
@@ -29,8 +33,7 @@ dependencies = [
 
 
 [project.scripts]
-topos = "topos.main:cli"
-topos-mcp = "topos.mcp.server:main"
+topos = "topos.cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]
@@ -45,6 +48,11 @@ packages = ["src/topos"]
 [tool.ruff]
 src = ["src"]
 line-length = 88
+extend-exclude = [
+    "demos/binarytrees/src",
+    "demos/sensitivity/corpus",
+    "demos/sensitivity/.cache",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

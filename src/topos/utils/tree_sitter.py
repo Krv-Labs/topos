@@ -35,7 +35,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+import tree_sitter_cpp as ts_cpp
+import tree_sitter_javascript as ts_javascript
 import tree_sitter_python as ts_python
+import tree_sitter_rust as ts_rust
+import tree_sitter_typescript as ts_typescript
 from tree_sitter import Language, Node, Parser
 
 
@@ -106,7 +110,82 @@ class PythonParser:
         return tree.root_node
 
 
+@dataclass
+class RustParser:
+    """Parser for Rust source code using tree-sitter."""
+
+    language: str = "rust"
+
+    def __post_init__(self) -> None:
+        self._language = Language(ts_rust.language())
+        self._parser = Parser(self._language)
+
+    def parse(self, source: str) -> Node:
+        source_bytes = source.encode("utf-8")
+        tree = self._parser.parse(source_bytes)
+        return tree.root_node
+
+
+@dataclass
+class JavaScriptParser:
+    """Parser for JavaScript source code using tree-sitter."""
+
+    language: str = "javascript"
+
+    def __post_init__(self) -> None:
+        self._language = Language(ts_javascript.language())
+        self._parser = Parser(self._language)
+
+    def parse(self, source: str) -> Node:
+        source_bytes = source.encode("utf-8")
+        tree = self._parser.parse(source_bytes)
+        return tree.root_node
+
+
+@dataclass
+class TypeScriptParser:
+    """Parser for TypeScript / TSX using tree-sitter-typescript / tree-sitter-tsx."""
+
+    language: str = "typescript"
+    _is_tsx: bool = False
+
+    def __post_init__(self) -> None:
+        lang_fn = (
+            ts_typescript.language_tsx
+            if self._is_tsx
+            else ts_typescript.language_typescript
+        )
+        self._language = Language(lang_fn())
+        self._parser = Parser(self._language)
+
+    def parse(self, source: str) -> Node:
+        source_bytes = source.encode("utf-8")
+        tree = self._parser.parse(source_bytes)
+        return tree.root_node
+
+
+@dataclass
+class CppParser:
+    """Parser for C++ source code using tree-sitter."""
+
+    language: str = "cpp"
+
+    def __post_init__(self) -> None:
+        self._language = Language(ts_cpp.language())
+        self._parser = Parser(self._language)
+
+    def parse(self, source: str) -> Node:
+        source_bytes = source.encode("utf-8")
+        tree = self._parser.parse(source_bytes)
+        return tree.root_node
+
+
 _default_python_parser: PythonParser | None = None
+_default_rust_parser: RustParser | None = None
+_default_javascript_parser: JavaScriptParser | None = None
+_default_cpp_parser: CppParser | None = None
+_default_typescript_parser: TypeScriptParser | None = None
+_default_tsx_parser: TypeScriptParser | None = None
 
 
 def get_python_parser() -> PythonParser:
@@ -123,6 +202,48 @@ def get_python_parser() -> PythonParser:
     if _default_python_parser is None:
         _default_python_parser = PythonParser()
     return _default_python_parser
+
+
+def get_rust_parser() -> RustParser:
+    """Get the shared Rust parser instance."""
+    global _default_rust_parser
+    if _default_rust_parser is None:
+        _default_rust_parser = RustParser()
+    return _default_rust_parser
+
+
+def get_javascript_parser() -> JavaScriptParser:
+    """Get the shared JavaScript parser instance."""
+    global _default_javascript_parser
+    if _default_javascript_parser is None:
+        _default_javascript_parser = JavaScriptParser()
+    return _default_javascript_parser
+
+
+def get_tsx_parser() -> TypeScriptParser:
+    """Shared parser for ``.tsx`` (JSX) sources."""
+    global _default_tsx_parser
+    if _default_tsx_parser is None:
+        _default_tsx_parser = TypeScriptParser(language="typescript", _is_tsx=True)
+    return _default_tsx_parser
+
+
+def get_typescript_parser() -> TypeScriptParser:
+    """Shared parser for ``.ts`` sources (non-TSX grammar)."""
+    global _default_typescript_parser
+    if _default_typescript_parser is None:
+        _default_typescript_parser = TypeScriptParser(
+            language="typescript", _is_tsx=False
+        )
+    return _default_typescript_parser
+
+
+def get_cpp_parser() -> CppParser:
+    """Get the shared C++ parser instance."""
+    global _default_cpp_parser
+    if _default_cpp_parser is None:
+        _default_cpp_parser = CppParser()
+    return _default_cpp_parser
 
 
 def parse_python(source: str) -> Node:
@@ -143,6 +264,31 @@ def parse_python(source: str) -> Node:
     """
     parser = get_python_parser()
     return parser.parse(source)
+
+
+def parse_rust(source: str) -> Node:
+    """Parse Rust source code into an AST."""
+    return get_rust_parser().parse(source)
+
+
+def parse_javascript(source: str) -> Node:
+    """Parse JavaScript source code into an AST."""
+    return get_javascript_parser().parse(source)
+
+
+def parse_typescript(source: str, file: str | None = None) -> Node:
+    """Parse TypeScript or TSX; uses the TSX grammar when *file* ends with ``.tsx``."""
+    parser = (
+        get_tsx_parser()
+        if file and str(file).endswith(".tsx")
+        else get_typescript_parser()
+    )
+    return parser.parse(source)
+
+
+def parse_cpp(source: str) -> Node:
+    """Parse C++ source code into an AST."""
+    return get_cpp_parser().parse(source)
 
 
 def node_text(node: Node, source: str) -> str:

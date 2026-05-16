@@ -15,19 +15,20 @@ def test_get_doc_returns_workflows() -> None:
 
 def test_get_doc_returns_lattice() -> None:
     body = topos_get_doc(topic="lattice")
-    assert "Diamond Lattice" in body
-    assert "SOUND" in body
+    assert "Evaluation Lattice" in body
+    assert "IDEAL" in body
 
 
 def test_get_doc_returns_metrics() -> None:
     body = topos_get_doc(topic="metrics")
-    assert "ast.complexity" in body
-    assert "depgraph.coupling" in body
+    assert "cfg.cyclomatic" in body
+    assert "mdg.coupling" in body
+    assert "cpg.dangerous_calls" in body
 
 
 def test_get_doc_returns_priority() -> None:
     body = topos_get_doc(topic="priority")
-    assert "balanced" in body
+    assert "secure" in body
     assert "composable" in body
 
 
@@ -35,7 +36,10 @@ def test_get_doc_matches_resource_content() -> None:
     """Same source file; tool and resource must return byte-identical content."""
     import asyncio
 
-    from topos.mcp import mcp
+    import topos.mcp.prompts  # noqa: F401
+    import topos.mcp.resources  # noqa: F401
+    import topos.mcp.tools  # noqa: F401
+    from topos.mcp.server import mcp
 
     for topic in ("lattice", "metrics", "priority", "workflows"):
         via_tool = topos_get_doc(topic=topic)

@@ -3,23 +3,29 @@ Shared evaluation helpers used by the evaluate / assess / inspect tools.
 
 Keeps the core pipeline in one place:
 1. Build a ``ProgramMorphism``.
-2. Optionally attach a ``DependencyGraph`` (this is what was missing before —
-   ``evaluate_file`` delegated to ``evaluate_code`` and dropped the filepath,
-   so coupling never ran).
-3. Call ``SubobjectClassifier.classify_detailed``.
+2. Attach CFG / academic PDG / CPG (always — they're derived from the
+   morphism itself and require no external tooling).
+3. Optionally attach a module-level ``ModuleDependencyGraph`` from GitNexus.
+4. Call ``CharacteristicMorphism.classify_detailed``.
+
+The classifier then assembles χ_S : P → Ω over the three generators
+SIMPLE (← CFG), COMPOSABLE (← ModuleDependencyGraph), SECURE (← CPG).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from pathlib import Path
 
 from topos.core.morphism import ProgramMorphism
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
+from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
-from topos.graphs.depgraph.graph import DependencyGraph
-from topos.logic.omega import ClassificationResult, SubobjectClassifier
-from topos.logic.policies.base import Priority
-from topos.mcp.cache import dep_graph_for
+from topos.graphs.mdg.object import ModuleDependencyGraph
+
+from .cache import dep_graph_for
 
 
 def resolve_gitnexus_dir(
@@ -38,35 +44,62 @@ def resolve_gitnexus_dir(
 
 def load_dep_graph(
     gitnexus_dir: Path | None, target_file: str
-) -> DependencyGraph | None:
+) -> ModuleDependencyGraph | None:
     """Load the cached dep graph for a file, or None if not available."""
     if gitnexus_dir is None:
         return None
     try:
         return dep_graph_for(gitnexus_dir, target_file)
     except (FileNotFoundError, ImportError, OSError):
-        # Silently degrade to AST-only evaluation when gitnexus can't load.
+        # Silently degrade when gitnexus can't load — CFG and CPG still run.
         return None
+
+
+def _intrinsic_representations(
+    morphism: ProgramMorphism,
+) -> list[Representation]:
+    """
+    Build the three intrinsic representations derived from the UAST: CFG,
+    academic PDG, CPG.  These require no external tooling so they are
+    always attached.  Missing UAST (parse failure) yields an empty list.
+    """
+    reps: list[Representation] = []
+    cfg = morphism.build_cfg()
+    if cfg is not None:
+        reps.append(cfg)
+    pdg = morphism.build_pdg()
+    if pdg is not None:
+        reps.append(pdg)
+    cpg = morphism.build_cpg()
+    if cpg is not None:
+        reps.append(cpg)
+    return reps
 
 
 def classify_morphism(
     morphism: ProgramMorphism,
     priority: Priority,
-    dep_graph: DependencyGraph | None = None,
+    dep_graph: ModuleDependencyGraph | None = None,
 ) -> ClassificationResult:
-    """Run the classifier with an optional DependencyGraph attached."""
-    reps: Sequence[Representation] | None
-    reps = [dep_graph] if dep_graph is not None else None
-    classifier = SubobjectClassifier()
+    """Run the classifier with CFG/PDG/CPG plus an optional ModuleDependencyGraph."""
+    reps: list[Representation] = _intrinsic_representations(morphism)
+    if dep_graph is not None:
+        reps.append(dep_graph)
+    classifier = CharacteristicMorphism()
     return classifier.classify_detailed(
-        morphism, representations=reps, priority=priority
+        morphism,
+        representations=reps if reps else None,
+        priority=priority,
     )
 
 
 def classify_code_string(
     code: str, language: str, priority: Priority
 ) -> ClassificationResult:
-    """Classify raw source (structural dimension only)."""
+    """
+    Classify raw source.  CFG / PDG / CPG always run; the COMPOSABLE
+    generator is unreachable without a ModuleDependencyGraph.
+    """
     morphism = ProgramMorphism(source=code, language=language)
     return classify_morphism(morphism, priority)
 
@@ -75,15 +108,13 @@ def classify_file(
     path: Path,
     priority: Priority,
     gitnexus_dir: Path | None,
-) -> tuple[ClassificationResult, DependencyGraph | None]:
-    """Classify a file, attaching a DependencyGraph when available.
+) -> tuple[ClassificationResult, ModuleDependencyGraph | None]:
+    """Classify a file, attaching every available representation.
 
-    Returns (result, dep_graph) so callers can cache the dep graph for
-    subsequent proposed-code evaluations.
+    Returns ``(result, dep_graph)`` so callers can cache the dep graph
+    for subsequent proposed-code evaluations.
     """
     morphism = ProgramMorphism.from_file(path)
-    # DependencyGraph matches on filepath; use the relative path as the target
-    # so it lines up with what gitnexus indexed.
     dep_graph = load_dep_graph(gitnexus_dir, str(path))
     result = classify_morphism(morphism, priority, dep_graph)
     return result, dep_graph

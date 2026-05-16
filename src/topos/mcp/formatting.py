@@ -2,22 +2,33 @@
 Response formatters for the Topos MCP server.
 
 Converts ``ClassificationResult`` and distance results into the Pydantic
-return models defined in ``schemas.py``. Also provides the Markdown flavor
-used when ``response_format="markdown"``.
+return models defined in ``schemas.py``.  Also provides the Markdown
+flavor used when ``response_format="markdown"``.
 """
 
 from __future__ import annotations
 
-from topos.logic.lattice import EvaluationValue
-from topos.logic.omega import ClassificationResult
-from topos.logic.policies.base import Priority
-from topos.mcp.schemas import EvaluationResult, LatticeElement
+from topos.core.omega import EvaluationValue
+from topos.evaluation.characteristic_morphism import ClassificationResult
+from topos.evaluation.policies.base import Priority
+from topos.evaluation.preferences import UserPreferences
+
+from .schemas import EvaluationResult, LatticeElement, PillarResult, PreferenceWalk
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
-    EvaluationValue.BROKEN: LatticeElement.BROKEN,
+    EvaluationValue.SLOP: LatticeElement.SLOP,
+    EvaluationValue.SIMPLE: LatticeElement.SIMPLE,
     EvaluationValue.COMPOSABLE: LatticeElement.COMPOSABLE,
-    EvaluationValue.SELF_CONTAINED: LatticeElement.SELF_CONTAINED,
-    EvaluationValue.SOUND: LatticeElement.SOUND,
+    EvaluationValue.SECURE: LatticeElement.SECURE,
+    EvaluationValue.SIMPLE_COMPOSABLE: LatticeElement.SIMPLE_COMPOSABLE,
+    EvaluationValue.SIMPLE_SECURE: LatticeElement.SIMPLE_SECURE,
+    EvaluationValue.COMPOSABLE_SECURE: LatticeElement.COMPOSABLE_SECURE,
+    EvaluationValue.IDEAL: LatticeElement.IDEAL,
+}
+
+
+_STR_TO_LATTICE: dict[LatticeElement, EvaluationValue] = {
+    v: k for k, v in _LATTICE_TO_STR.items()
 }
 
 
@@ -25,57 +36,129 @@ def lattice_to_str(value: EvaluationValue) -> LatticeElement:
     return _LATTICE_TO_STR[value]
 
 
+def str_to_lattice(value: LatticeElement) -> EvaluationValue:
+    return _STR_TO_LATTICE[value]
+
+
+def build_preference_walk(
+    prefs: UserPreferences, current: EvaluationValue
+) -> PreferenceWalk:
+    """Materialize a ``PreferenceWalk`` for the result schema."""
+    target = prefs.aspirational_target()
+    fallback = prefs.fallback_target()
+    walk = prefs.relaxation_walk(current)
+    nxt = prefs.next_step(current)
+    return PreferenceWalk(
+        ranking=list(prefs.ranking),
+        target=lattice_to_str(target),
+        fallback_target=lattice_to_str(fallback),
+        walk=[lattice_to_str(v) for v in walk],
+        next_step=lattice_to_str(nxt) if nxt is not None else None,
+        progress=round(prefs.progress(current), 3),
+    )
+
+
 def build_guidance(result: ClassificationResult) -> str:
-    """Priority-aware next-step hint for agents."""
+    """Priority-aware next-step hint for agents.
+
+    Phrased against the three free generators (SIMPLE, COMPOSABLE, SECURE).
+    """
     priority = result.priority
-    s_score = result.scores.get("structural")
-    c_score = result.scores.get("coupling")
+    simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
+    composable_ok = result.dimensions.get("composable") == EvaluationValue.COMPOSABLE
+    secure_ok = result.dimensions.get("secure") == EvaluationValue.SECURE
 
     if priority == Priority.COMPOSABLE:
-        if c_score is None:
+        if "composable" not in result.dimensions:
             return (
-                "Coupling not measured — provide a DependencyGraph "
-                "(gitnexus_dir) for COMPOSABLE evaluation."
+                "COMPOSABLE not measured — provide a ModuleDependencyGraph "
+                "(gitnexus_dir) to score the composable generator."
             )
-        if c_score < 0.6:
+        if not composable_ok:
             return (
-                "Reduce coupling count and balance instability toward 0.3–0.7 "
-                "to achieve COMPOSABLE."
-            )
-        return (
-            "COMPOSABLE target achieved. Improve structural metrics "
-            "(complexity, entropy) to reach SOUND."
-        )
-
-    if priority == Priority.SELF_CONTAINED:
-        if s_score is not None and s_score < 0.6:
-            return (
-                "Reduce cyclomatic complexity and normalize entropy toward 0.5 "
-                "to achieve SELF_CONTAINED."
+                "Balance instability (aim for 0.3–0.7) and reduce fan-in/fan-out "
+                "(aim for <= 15) to satisfy COMPOSABLE."
             )
         return (
-            "SELF_CONTAINED target achieved. Improve coupling "
-            "(dependencies, instability) to reach SOUND."
+            "COMPOSABLE satisfied.  Simplify CFG/functions and "
+            "address any CPG security findings to reach GOLD."
         )
 
-    # BALANCED
-    hints: list[str] = []
-    if s_score is not None and s_score < 0.6:
-        hints.append("reduce complexity/entropy (structural)")
-    if c_score is not None and c_score < 0.6:
-        hints.append("reduce coupling (composability)")
-    if c_score is None:
-        hints.append("provide gitnexus_dir to enable coupling scoring")
-    if hints:
-        return "To improve: " + " and ".join(hints) + "."
-    return "Code meets balanced quality targets."
+    if priority == Priority.SIMPLE:
+        if not simple_ok:
+            return (
+                "Reduce CFG/function cyclomatic complexity (aim for <= 15/10) "
+                "and ensure AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
+            )
+        return "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach GOLD."
+
+    # priority == Priority.SECURE  (only remaining case after exhaustive match)
+    if not secure_ok:
+        return (
+            "Eliminate all dangerous-API calls and source→sink taint flows "
+            "to satisfy SECURE."
+        )
+    return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD."
+
+
+def build_pillars(
+    result: ClassificationResult, coupling_available: bool
+) -> dict[str, PillarResult]:
+    """Build the per-pillar (simple, composable, secure) breakdown."""
+    pillars: dict[str, PillarResult] = {}
+    for dim in ("simple", "composable", "secure"):
+        # raw metrics namespaced by representation: cfg/ast -> simple,
+        # mdg -> composable, cpg -> secure
+        metric_prefixes = {
+            "simple": ("cfg.", "ast."),
+            "composable": ("mdg.",),
+            "secure": ("cpg.",),
+        }[dim]
+
+        dim_metrics = {
+            k: v
+            for k, v in result.raw_metrics.items()
+            if any(k.startswith(p) for p in metric_prefixes)
+        }
+        dim_interp = {
+            k: v
+            for k, v in result.interpretation.items()
+            if any(k.startswith(p) for p in metric_prefixes)
+        }
+
+        # achieved = was the singleton generator for this dimension satisfied?
+        generator_val = {
+            "simple": EvaluationValue.SIMPLE,
+            "composable": EvaluationValue.COMPOSABLE,
+            "secure": EvaluationValue.SECURE,
+        }[dim]
+
+        achieved = result.dimensions.get(dim) == generator_val
+        score = result.scores.get(dim, 0.0)
+
+        # Only include pillars that were actually measured
+        if dim_metrics or dim == "composable" and not coupling_available:
+            pillars[dim] = PillarResult(
+                achieved=achieved,
+                score=round(score * 100.0, 1),
+                metrics=dim_metrics,
+                interpretation=dim_interp,
+            )
+    return pillars
 
 
 def to_evaluation_result(
-    result: ClassificationResult, coupling_available: bool
+    result: ClassificationResult,
+    coupling_available: bool,
+    *,
+    preferences: UserPreferences | None = None,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model."""
     summary = result.summary()
+    walk = (
+        build_preference_walk(preferences, summary) if preferences is not None else None
+    )
+
     return EvaluationResult(
         is_parseable=result.is_parseable,
         lattice_element=lattice_to_str(summary),
@@ -83,11 +166,13 @@ def to_evaluation_result(
         lattice_description=summary.description,
         dimensions={dim: lattice_to_str(val) for dim, val in result.dimensions.items()},
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+        pillars=build_pillars(result, coupling_available),
         priority=result.priority,
         guidance=build_guidance(result),
         coupling_available=coupling_available,
         raw_metrics=dict(result.raw_metrics),
         interpretation=dict(result.interpretation),
+        preference_walk=walk,
     )
 
 
@@ -109,19 +194,41 @@ def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
         return "\n".join(lines)
 
     lines.append("")
-    lines.append("## Dimensions")
+    lines.append("## Generators")
     for dim, val in e.dimensions.items():
         score = e.scores.get(dim, 0.0)
         lines.append(f"- **{dim}**: {val.value} ({score:.1f}%)")
     if not e.coupling_available:
         lines.append(
-            "- _coupling: not measured (no DependencyGraph available — "
-            "COMPOSABLE/SOUND unreachable)._"
+            "- _composable: not measured (no ModuleDependencyGraph available — "
+            "COMPOSABLE / IDEAL unreachable)._"
         )
 
     lines.append("")
     lines.append(f"**Priority:** `{e.priority.value}`")
     lines.append(f"**Guidance:** {e.guidance}")
+
+    if e.preference_walk is not None:
+        pw = e.preference_walk
+        ranking = " ≻ ".join(g.value for g in pw.ranking)
+        lines.append("")
+        lines.append("## Preference Walk")
+        lines.append(f"- **Ranking:** {ranking}")
+        lines.append(
+            f"- **Target (aspirational):** {pw.target.value} "
+            f"({pw.progress * 100:.0f}% of the way)"
+        )
+        lines.append(
+            f"- **Fallback (ideal intersection):** {pw.fallback_target.value} "
+            "— divert here if IDEAL plateaus"
+        )
+        if pw.next_step is not None:
+            lines.append(f"- **Next step:** aim for `{pw.next_step.value}`")
+        if pw.walk:
+            walk_str = " → ".join(v.value for v in pw.walk)
+            lines.append(f"- **Walk:** {walk_str}")
+        else:
+            lines.append("- **Walk:** _at or beyond target — no further steps._")
 
     if e.raw_metrics:
         lines.append("")

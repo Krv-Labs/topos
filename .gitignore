@@ -5,6 +5,8 @@ node_modules/
 .DS_Store
 
 # Agents
+.agents/*
+!.agents/AGENTS.md
 .cursor/
 .claude/
 !.claude/CLAUDE.md
@@ -12,6 +14,16 @@ node_modules/
 !.gemini/GEMINI.md
 topos-skill/
 *.skill
+maths.md
+
+
+# Calibration Data
+evaluations/calibration/*.csv
+evaluations/calibration/*.txt
+evaluations/calibration/results/
+evaluations/calibration/evidence/
+
+
 
 # Python env
 uv.lock

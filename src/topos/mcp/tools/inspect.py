@@ -6,17 +6,22 @@ entropy breakdown.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.mcp.evaluation import classify_code_string
-from topos.mcp.formatting import to_evaluation_result
-from topos.mcp.schemas import (
+from topos.evaluation.policies.base import Priority
+from topos.evaluation.policies.simple import describe_entropy_ratio
+from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
+from topos.functors.probes.cfg.complexity import cyclomatic_complexity
+from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
+from topos.graphs.cfg.object import ControlFlowGraph
+
+from ..evaluation import classify_code_string
+from ..formatting import to_evaluation_result
+from ..schemas import (
     EvaluationResult,
     InspectCodeInput,
     InspectionResult,
     LatticeElement,
 )
-from topos.mcp.server import mcp
-from topos.metrics.ast.complexity import calculate_function_complexities
-from topos.metrics.ast.entropy import calculate_entropy_detailed
+from ..server import mcp
 
 _READ_ONLY_ANN = {
     "title": "Topos Detailed Inspection",
@@ -41,16 +46,16 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
     functions and blowing out agent context.
     """
     try:
-        result = classify_code_string(params.code, params.language, params.priority)
+        result = classify_code_string(params.code, params.language, Priority.SIMPLE)
     except Exception as exc:
         empty = EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),
@@ -61,18 +66,40 @@ def topos_inspect_code(params: InspectCodeInput) -> InspectionResult:
 
     morphism = ProgramMorphism(source=params.code, language=params.language)
     all_funcs: dict[str, int] = {}
-    if morphism.ast:
-        all_funcs = dict(calculate_function_complexities(morphism.ast) or {})
+    if morphism.ast and morphism.ast.uast_root:
+        try:
+            callables = _collect_callables(morphism.ast.uast_root)
+            for c in callables:
+                name = c.attributes.get("name")
+                if not name:
+                    # Look for an Identifier child (common in most UAST mappings)
+                    for child in c.children:
+                        if child.kind == "Identifier":
+                            s = child.span
+                            name = morphism.source[s.start_byte : s.end_byte]
+                            break
+                if not name:
+                    name = c.attributes.get("scope") or "anonymous"
+
+                blocks, edges, entry_id, exit_id = build_cfg_from_uast(c)
+                cfg = ControlFlowGraph(
+                    blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id
+                )
+                all_funcs[name] = cyclomatic_complexity(cfg)
+        except Exception:
+            pass
+
     top_funcs = dict(
         sorted(all_funcs.items(), key=lambda kv: -kv[1])[: params.top_n_functions]
     )
 
-    entropy_details = calculate_entropy_detailed(morphism.source)
+    ratio = calculate_kolmogorov_proxy(morphism.source)
+    interpretation = describe_entropy_ratio(ratio)
 
     return InspectionResult(
         evaluation=evaluation,
         functions=top_funcs,
         total_functions=len(all_funcs),
-        entropy_compression_ratio=entropy_details.ratio,
-        entropy_interpretation=entropy_details.interpretation,
+        entropy_compression_ratio=ratio,
+        entropy_interpretation=interpretation,
     )

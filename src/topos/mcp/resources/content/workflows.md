@@ -25,10 +25,11 @@ first encounter with the server.
 
 ### 1. Measure
 
-- Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — REQUIRES
-  `gitnexus_dir` for coupling. Without it, COMPOSABLE/SOUND cannot happen.
+- Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — `gitnexus_dir`
+  is required for the COMPOSABLE generator.  Without it, any verdict
+  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.
 - Whole project: `topos_evaluate_project(path, gitnexus_dir)` — rollup +
-  worst-N file list. Start here to pick a target.
+  worst-N file list. Start here to pick a target and "Go for Gold".
 
 ### 2. Plan
 
@@ -48,9 +49,9 @@ Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
 
 `topos_assess_improvement` returns one of:
 
-- `IMPROVEMENT` — lattice moved up (e.g. BROKEN → SELF_CONTAINED). Commit.
+- `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Commit.
 - `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.
-  Progress, but not a verdict jump yet.
+  Progress, but not a medal jump yet.
 - `LATERAL_MOVE` — neither improved nor regressed. Try a different angle.
 - `REGRESSION` / `REGRESSION_SCORE` — revert and re-plan.
 - **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** — ⚠️ scores moved but AST barely
@@ -60,15 +61,15 @@ Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
 ### 5. Decide
 
 Stop when:
-- Status = `SOUND` (both targets achieved), OR
-- Priority-specific target reached (`self_contained` → SELF_CONTAINED,
-  `composable` → COMPOSABLE), OR
+- Verdict = 🥇 **GOLD** (all three generators satisfied), OR
+- Priority-specific generator satisfied (`simple` → SIMPLE bit set,
+  `composable` → COMPOSABLE bit set, `secure` → SECURE bit set), OR
 - `max_iterations` exhausted — report partial progress honestly rather than
   gaming one more iteration.
 
 ## Escape hatches — when the loop stalls
 
-### Stall #1: Both dimensions plateau below 60%
+### Stall #1: Every generator score plateaus below 60%
 
 Often a sign the file needs to be **split**, not refactored. Use
 `topos_inspect_code` to find the top-complexity functions; consider
@@ -81,7 +82,7 @@ You're iterating on presentation. Step back: what is the *structural*
 problem? Rename → not a refactor. Whitespace → not a refactor. Loop
 unrolling, extracted helpers, collapsed conditionals → real refactors.
 
-### Stall #3: Structural improves, coupling regresses
+### Stall #3: SIMPLE improves, COMPOSABLE regresses
 
 Classic "moved complexity elsewhere" anti-pattern. Re-run
 `topos_evaluate_project` — did the other file's score drop? If so, the
@@ -90,11 +91,33 @@ Consider if the abstraction is actually an improvement or just a shuffle.
 
 ## Priority selection cheat sheet
 
-- Leaf module (few callers) → `self_contained`
+- Leaf module (few callers) → `simple`
 - Library surface (many importers) → `composable`
-- Unknown / general cleanup → `balanced`
+- File handling untrusted input → `secure`
+- Unknown / general cleanup → `secure` (default scorer emphasis)
 
 See `topos://docs/priority` for more.
+
+## Preference-driven targeting
+
+For agent loops that need a concrete *next-best* verdict to aim for —
+not just an upweighted generator — pass `preferences` alongside
+`priority`. A `preferences.ranking` like `["composable", "secure",
+"simple"]` induces a total order on Ω and produces a **two-stage**
+target:
+
+1. **`target`** — aspirational, default 🥇 **GOLD**. Try to beat the
+   thresholds for all three generators first.
+2. **`fallback_target`** — the **"ideal intersection"**, i.e. the meet
+   of the top-two ranked generators (🥈 **SILVER**). When 🥇 **GOLD** plateaus, divert here.
+
+The result also returns a **`walk`** (descending verdicts from GOLD
+down) and a **`next_step`** (the smallest improvement above the
+current verdict).
+
+Concretely: aim for 🥇 **GOLD** for the first few iterations; if the lattice
+verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and try to satisfy
+only the top-two generators. See `topos://docs/preferences`.
 
 ## What Topos does NOT measure
 
@@ -103,7 +126,11 @@ See `topos://docs/priority` for more.
 - **Functional correctness.** AST edit distance measures *change*, not
   *preservation of behavior*. Always verify behavior with tests.
 - **Runtime performance.** Orthogonal to all Topos metrics.
-- **Security.** Separate concern.
+- **Beyond-syntactic security.** The SECURE generator catches obvious
+  footguns (dangerous-API call sites, source→sink taint paths) via
+  textual / structural pattern matching on the CPG.  It is not a full
+  SAST / pen-test — pair with dedicated security tooling for high-stakes
+  code.
 
 Topos is one signal in a multi-signal loop. Pair it with test coverage and
 type checks for the full picture.

@@ -5,14 +5,15 @@ Structural comparison tools: AST edit distance between two programs.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.mcp.schemas import (
+from topos.functors.profunctors.ast.compare import calculate_ast_distance
+
+from ..schemas import (
     CompareCodeInput,
     CompareFilesInput,
     ComparisonResult,
 )
-from topos.mcp.security import read_safe_utf8_file
-from topos.mcp.server import mcp
-from topos.metrics.distance import calculate_ast_distance
+from ..security import read_safe_utf8_file
+from ..server import mcp
 
 _READ_ONLY_ANN = {
     "title": "Topos Structural Comparison",

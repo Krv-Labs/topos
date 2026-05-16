@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from topos.mcp.server import mcp
+from ..server import mcp
 
 _CONTENT_DIR = Path(__file__).parent / "content"
 
@@ -29,7 +29,7 @@ def _read(name: str) -> str:
     mime_type="text/markdown",
 )
 def lattice_reference() -> str:
-    """The diamond lattice: BROKEN / COMPOSABLE / SELF_CONTAINED / SOUND, and why COMPOSABLE and SELF_CONTAINED are incomparable."""
+    """The 8-element 3-cube H(G_qual) over {SIMPLE, COMPOSABLE, SECURE}; bottom = SLOP, top = IDEAL."""
     return _read("lattice.md")
 
 
@@ -49,8 +49,18 @@ def metrics_reference() -> str:
     mime_type="text/markdown",
 )
 def priority_reference() -> str:
-    """Priority profiles (balanced / composable / self_contained) and when to use each."""
+    """Priority profiles (simple / composable / secure) and when to use each."""
     return _read("priority.md")
+
+
+@mcp.resource(
+    "topos://docs/preferences",
+    name="topos_preferences_reference",
+    mime_type="text/markdown",
+)
+def preferences_reference() -> str:
+    """User preferences over G_qual: induced total order on Ω and the targeted relaxation walk toward the ideal intersection."""
+    return _read("preferences.md")
 
 
 @mcp.resource(

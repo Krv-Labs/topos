@@ -25,10 +25,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from topos.core.object import ProgramObject
+from topos.graphs.ast.dispatch import AstBackend, parse_source
 
 if TYPE_CHECKING:
+    from topos.core.omega import EvaluationValue
     from topos.graphs.base import Representation
-    from topos.logic.lattice import EvaluationValue
+    from topos.graphs.cfg.object import ControlFlowGraph
+    from topos.graphs.cpg.object import CodePropertyGraph
+    from topos.graphs.pdg.object import ProgramDependenceGraph
 
 
 @dataclass
@@ -58,9 +62,13 @@ class ProgramMorphism:
 
     source: str
     language: str = "python"
+    parser_backend: AstBackend = "hybrid"
     filepath: Path | None = None
     ast: ProgramObject | None = field(default=None, repr=False)
     representations: list[Representation] = field(default_factory=list, repr=False)
+    _cfg: ControlFlowGraph | None = field(default=None, repr=False, compare=False)
+    _pdg: ProgramDependenceGraph | None = field(default=None, repr=False, compare=False)
+    _cpg: CodePropertyGraph | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Parse the source code into an AST if not provided."""
@@ -77,17 +85,29 @@ class ProgramMorphism:
         Raises:
             ValueError: If the language is not supported.
         """
-        from topos.utils.tree_sitter import parse_python
-
-        if self.language != "python":
-            raise ValueError(f"Language '{self.language}' not yet supported")
-
-        root = parse_python(self.source)
-        return ProgramObject(root=root, source=self.source, language=self.language)
+        parse_result = parse_source(
+            source=self.source,
+            language=self.language,
+            backend=self.parser_backend,
+            file=str(self.filepath) if self.filepath else None,
+        )
+        return ProgramObject(
+            root=parse_result.root,
+            source=self.source,
+            language=self.language,
+            native_ast=parse_result.native_ast,
+            uast_root=parse_result.uast_root,
+            parser_name=parse_result.provenance.parser,
+            parser_version=parse_result.provenance.parser_version,
+            native_node_kind=parse_result.provenance.node_kind,
+        )
 
     @classmethod
     def from_file(
-        cls, filepath: str | Path, language: str = "python"
+        cls,
+        filepath: str | Path,
+        language: str = "python",
+        parser_backend: AstBackend = "hybrid",
     ) -> ProgramMorphism:
         """
         Create a ProgramMorphism from a source file.
@@ -101,12 +121,57 @@ class ProgramMorphism:
         """
         path = Path(filepath)
         source = path.read_text(encoding="utf-8")
-        return cls(source=source, language=language, filepath=path)
+        return cls(
+            source=source,
+            language=language,
+            parser_backend=parser_backend,
+            filepath=path,
+        )
 
     @property
     def is_valid(self) -> bool:
         """Check if the morphism represents syntactically valid code."""
         return self.ast is not None and self.ast.is_valid
+
+    # ------------------------------------------------------------------
+    # Translational-functor factory methods
+    # ------------------------------------------------------------------
+    # Each method builds (and caches) one of the structural representations
+    # R: Lang → E required by the math spec.  All three are derived from
+    # the UAST built during parsing.
+
+    def build_cfg(self) -> ControlFlowGraph | None:
+        """Build (and cache) the Control Flow Graph representation."""
+        if self._cfg is not None:
+            return self._cfg
+        if self.ast is None or self.ast.uast_root is None:
+            return None
+        from topos.graphs.cfg.object import ControlFlowGraph
+
+        self._cfg = ControlFlowGraph.from_uast(self.ast.uast_root)
+        return self._cfg
+
+    def build_pdg(self) -> ProgramDependenceGraph | None:
+        """Build (and cache) the academic Program Dependence Graph."""
+        if self._pdg is not None:
+            return self._pdg
+        if self.ast is None or self.ast.uast_root is None:
+            return None
+        from topos.graphs.pdg.object import ProgramDependenceGraph
+
+        self._pdg = ProgramDependenceGraph.from_uast(self.ast.uast_root)
+        return self._pdg
+
+    def build_cpg(self) -> CodePropertyGraph | None:
+        """Build (and cache) the Code Property Graph."""
+        if self._cpg is not None:
+            return self._cpg
+        if self.ast is None or self.ast.uast_root is None:
+            return None
+        from topos.graphs.cpg.object import CodePropertyGraph
+
+        self._cpg = CodePropertyGraph.from_uast(self.ast.uast_root, source=self.source)
+        return self._cpg
 
     @property
     def name(self) -> str:
@@ -126,9 +191,9 @@ class ProgramMorphism:
             An EvaluationValue from the Heyting Algebra representing the
             code's position in the evaluation lattice.
         """
-        from topos.logic.omega import SubobjectClassifier
+        from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 
-        classifier = SubobjectClassifier()
+        classifier = CharacteristicMorphism()
         result = classifier.classify_detailed(
             self,
             representations=self.representations or None,

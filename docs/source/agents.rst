@@ -4,63 +4,58 @@
 For Agents
 ==========
 
-Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of
-Topos verdicts so it can evaluate and iterate on its own output.
+.. admonition:: The Agent Loop
+   :class: philosophy-box
 
-Topos lets you set and manage the quality target while your agent handles the iteration.
-
-.. code-block:: text
-
-   Agent iteration 1: structural: ⊥ BROKEN [41%]
-     → Reduce cyclomatic complexity and normalize entropy toward 0.5
-
-   Agent iteration 2: structural: ◐ SELF_CONTAINED [72%]
-     → ✓ Target achieved.
+   Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of
+   Topos verdicts so it can evaluate and iterate on its own output.
+   
+   Topos lets you set and manage the quality target while your agent handles the iteration.
 
 
-Setting a Priority
-------------------
+Setting Preferences
+-------------------
 
-A Priority is the quality target you set while the agent handles the iteration.
-It shifts internal metric weights so each pass optimizes toward a concrete objective
-rather than an open-ended target.
+A **Preference Ranking** is the quality target you set while the agent handles the iteration.
+It is a strict total order (permutation) of the three quality pillars. Topos uses this
+ranking to guide the agent along a **relaxation walk** — a sequence of achievable 
+**Quality Badges** that move toward your ideal target.
+
+This allows a **Manager** to set priorities based on a finite budget of time and tokens,
+while the **Agent** works autonomously to earn the highest possible badge within those constraints.
 
 .. list-table::
-   :widths: 20 40 40
+   :widths: 15 35 50
    :header-rows: 1
 
-   * - Priority
-     - Directive
+   * - Rank
+     - Primary Focus
      - Optimizes toward
-   * - ``self_contained``
-     - *"Keep this module self-contained and dependency-light."*
-     - Lower cyclomatic complexity and entropy, with minimal external dependencies
-   * - ``composable``
-     - *"Keep this module easy to integrate without fragile dependency chains."*
-     - Clean inter-module coupling and balanced instability, with more tolerance for internal path complexity or lower compressibility when integration improves
-   * - ``balanced``
-     - *"Balance structure and coupling."* (default)
-     - Equal weight on all metrics
+   * - 1 (Top)
+     - Mandatory
+     - The property that must be achieved first.
+   * - 2 (Middle)
+     - Aspirational
+     - The secondary goal; forms the "ideal intersection" with Rank 1.
+   * - 3 (Bottom)
+     - Pragmatic
+     - The final property needed to reach ``IDEAL``.
 
-Perfect code satisfies both targets, but agents operate under token and time budgets.
-A concrete priority gives the agent a formula to execute instead of a vague goal.
+Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
 
-When an agent evaluates code with a priority set, it receives:
-
-- A **lattice element** (``BROKEN``, ``COMPOSABLE``, ``SELF_CONTAINED``, or ``SOUND``)
-- A **per-dimension score** (0–100%) showing how close it is to each target
-- A **guidance hint** explaining what to change to improve
-
+1. **Aspirational Target**: The agent first tries to reach ``IDEAL`` (all three badges achieved).
+2. **Pragmatic Fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE`` 
+   (the intersection of the top two).
 
 MCP Setup
 ---------
 
-Step 1 — Build the dependency graph
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 1 — Build the dependency graph (optional but recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. important::
-   **Do this first.** Without a dependency graph, Topos scores the structural dimension only —
-   ``COMPOSABLE`` and ``SOUND`` become unreachable.
+   **Recommended.** Without a dependency graph, Topos cannot score the COMPOSABLE pillar —
+   any badge requiring it (including ``IDEAL``) becomes unreachable.
 
    .. code-block:: bash
 
@@ -75,7 +70,7 @@ Step 1 — Build the dependency graph
 
    .. code-block:: bash
 
-      topos-mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
+      topos mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
 
 Step 2 — Register with your agent
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,25 +78,35 @@ Step 2 — Register with your agent
 Run from your project root — Topos auto-detects its file-access root by walking up for
 ``.git`` or ``pyproject.toml``.
 
-**Claude Code:**
+.. dropdown:: Claude Code
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   claude mcp add topos topos-mcp
+      claude mcp add topos topos mcp
 
-**Gemini CLI:**
+.. dropdown:: Gemini CLI
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   gemini mcp add topos topos-mcp
+      gemini mcp add topos topos mcp
 
-**Cursor** — `➕ Install topos in Cursor <cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9>`_
+.. dropdown:: Cursor
 
-For Cursor (``.cursor/mcp.json``), Windsurf, and most other MCP clients, use:
+   `➕ Install topos in Cursor <cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zIG1jcCJ9>`_
 
-.. code-block:: json
+   Or edit ``.cursor/mcp.json``:
 
-   { "mcpServers": { "topos": { "command": "topos-mcp" } } }
+   .. code-block:: json
+
+      { "mcpServers": { "topos": { "command": "topos mcp" } } }
+
+.. dropdown:: Windsurf and others
+
+   For most other MCP clients, use:
+
+   .. code-block:: json
+
+      { "mcpServers": { "topos": { "command": "topos mcp" } } }
 
 Step 3 — Launch from the project root
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -113,7 +118,7 @@ Step 3 — Launch from the project root
    .. code-block:: json
 
       {
-        "command": "topos-mcp",
+        "command": "topos mcp",
         "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
       }
 
@@ -122,73 +127,72 @@ Step 3 — Launch from the project root
 
       "Fetch ``topos://docs/workflows`` and follow the Topos refactor loop."
 
-   Or invoke the prompt directly: ``topos_refactor_until_sound(filepath="path/to/file.py")``.
+   Or invoke the prompt directly: ``topos_refactor_until_ideal(filepath="path/to/file.py")``.
 
 Smoke test
 ~~~~~~~~~~
 
    "Use topos to find the worst-scoring file in ``src/``, propose a refactor, and verify with ``topos_assess_improvement``."
 
-A healthy response has ``coupling_available: true``. If every response shows
-``coupling_available: false``, go back to Step 1.
+A healthy response with GitNexus installed has ``generators: {simple: 72%, composable: 65%, secure: 45%}``.
+If every response shows only ``{simple: ...}`` and no composable/secure, go back to Step 1.
 
 
 MCP Tools
 ---------
 
-All evaluation tools accept an optional ``priority`` parameter
-(``"balanced"``, ``"composable"``, or ``"self_contained"``).
+All evaluation tools accept an optional ``preferences`` parameter which includes a ``ranking`` 
+(e.g., ``["simple", "composable", "secure"]``).
 
-``topos_evaluate_code(code, language, priority)``
-   Classifies a code string and returns the full evaluation response.
+Core Evaluation
+~~~~~~~~~~~~~~~
 
-   Example response:
+``topos_evaluate_file(filepath, preferences, gitnexus_dir)``
+   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and 
+   reach higher badges like ``IDEAL``.
 
-   .. code-block:: json
+``topos_evaluate_code(code, language, preferences)``
+   Classifies a raw code string (SIMPLE and SECURE only).
 
-      {
-        "is_parseable": true,
-        "lattice_element": "SELF_CONTAINED",
-        "lattice_symbol": "◐",
-        "lattice_description": "Stands alone cleanly; structural quality achieved",
-        "dimensions": { "structural": "SELF_CONTAINED" },
-        "scores": { "structural": 72.0 },
-        "priority": "self_contained",
-        "guidance": "SELF_CONTAINED target achieved. Consider coupling improvements to reach SOUND.",
-        "raw_metrics": { "ast.complexity": 8.0, "ast.entropy": 0.48 }
-      }
-
-``topos_evaluate_file(filepath, priority, gitnexus_dir)``
-   Same as ``topos_evaluate_code`` but reads from a file path. Pass ``gitnexus_dir`` to
-   enable coupling scoring and reach ``COMPOSABLE`` or ``SOUND``.
-
-``topos_assess_improvement(proposed_code, filepath, priority)``
-   Compares a proposed version against the current file. Returns ``IMPROVEMENT``,
-   ``REGRESSION``, or ``LATERAL_MOVE``, plus per-dimension score deltas. Prefer
-   ``filepath`` over ``current_code`` to enable coupling scoring.
-
-   Example response:
-
-   .. code-block:: json
-
-      {
-        "status": "IMPROVEMENT",
-        "current":  { "lattice_element": "BROKEN",         "scores": { "structural": 41.0 } },
-        "proposed": { "lattice_element": "SELF_CONTAINED", "scores": { "structural": 72.0 } },
-        "analysis": { "score_deltas": { "structural": 31.0 }, "evaluation_improved": true }
-      }
-
-``topos_evaluate_project(path, priority, gitnexus_dir, limit, offset)``
+``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset)``
    Project-wide rollup. Returns worst-scoring files first.
 
-``topos_inspect_code(code, language, priority, top_n_functions)``
-   Detailed metric breakdown: top-N functions by complexity, entropy details, full metric table.
+``topos_inspect_code(code, language, preferences, top_n_functions)``
+   Detailed metric breakdown: top-N functions by complexity, entropy details, and full 
+   metric table.
+
+Refactor & Iterate
+~~~~~~~~~~~~~~~~~~
+
+``topos_assess_improvement(proposed_code, filepath, preferences, gitnexus_dir)``
+   Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
+   if the quality badge or scores have improved according to the preferences.
+
+   Anti-gaming check: if scores improved but AST edit distance is near zero, it returns 
+   ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
+
+``topos_preference_walk(ranking, target, current)``
+   Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
+   follow to reach the target from its current state.
+
+Structure & Coverage
+~~~~~~~~~~~~~~~~~~~~
+
+``topos_compare_files(source, target)``
+   AST edit distance (topological drift) between two files on disk.
 
 ``topos_compare_code(source_code, target_code, language)``
    AST edit distance (topological drift) between two code strings.
 
-``topos_compare_files(source, target)``
-   Same as ``topos_compare_code`` but reads from file paths.
+``topos_calculate_coverage(put_files, test_files, k)``
+   Calculates structural test coverage using UAST k-gram path recall.
+
+Agent Knowledge
+~~~~~~~~~~~~~~~
+
+``topos_get_doc(topic)``
+   Retrieves Topos documentation (``workflows``, ``lattice``, ``metrics``, or ``priority``) 
+   as Markdown. Useful for agents in environments where MCP resources are not directly accessible.
 
 
 MCP Resources
@@ -196,7 +200,7 @@ MCP Resources
 
 Read these on the agent's first turn to orient it:
 
-- ``topos://docs/workflows`` — canonical review → plan → refactor → re-measure loop
-- ``topos://docs/lattice`` — the diamond lattice (BROKEN / COMPOSABLE / SELF_CONTAINED / SOUND)
-- ``topos://docs/metrics`` — every metric key and threshold
-- ``topos://docs/priority`` — priority profiles (balanced / composable / self_contained)
+- ``topos://docs/workflows`` — canonical review → plan → refactor → re-measure loop (stop condition: ``IDEAL``)
+- ``topos://docs/lattice`` — the 8-element Quality Badge lattice
+- ``topos://docs/metrics`` — every metric key, pillar, and threshold
+- ``topos://docs/priority`` — priority profiles (simple / composable / secure)

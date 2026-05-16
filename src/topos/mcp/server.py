@@ -10,26 +10,49 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-from fastmcp import FastMCP
-
 try:
     __version__ = version("topos")
 except PackageNotFoundError:
     __version__ = "dev"
 
 
-mcp = FastMCP(
-    "topos_mcp",
-    version=__version__,
-    instructions=(
-        "Topos evaluates Python code quality on a diamond lattice. "
-        'FIRST: load the workflow guide — call `topos_get_doc(topic="workflows")` '
-        "(works on any client) OR fetch `topos://docs/workflows` as a resource "
-        "(Claude Code, Cursor). "
-        "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
-        "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/SOUND."
-    ),
-)
+_mcp_instance = None
+
+
+def _get_mcp():
+    """Lazily instantiate FastMCP to avoid circular import with external mcp library."""
+    global _mcp_instance
+    if _mcp_instance is None:
+        from fastmcp import FastMCP
+
+        _mcp_instance = FastMCP(
+            "mcp",
+            version=__version__,
+            instructions=(
+                "Topos evaluates Python code quality on a diamond lattice. "
+                "FIRST: load the workflow guide — call "
+                '`topos_get_doc(topic="workflows")` '
+                "(works on any client) OR fetch `topos://docs/workflows` as a resource "
+                "(Claude Code, Cursor). "
+                "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
+                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL."
+            ),
+        )
+    return _mcp_instance
+
+
+# Export lazy accessor as 'mcp' for backward compatibility with existing code
+class _MCPProxy:
+    """Proxy to lazily initialize FastMCP."""
+
+    def __getattr__(self, name):
+        return getattr(_get_mcp(), name)
+
+    def __call__(self, *args, **kwargs):
+        return _get_mcp()(*args, **kwargs)
+
+
+mcp = _MCPProxy()
 
 
 def main() -> None:
@@ -41,7 +64,7 @@ def main() -> None:
         tools,  # noqa: F401
     )
 
-    mcp.run()
+    _get_mcp().run()
 
 
 if __name__ == "__main__":

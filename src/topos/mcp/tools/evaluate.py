@@ -2,25 +2,28 @@
 Evaluation tools: code string, single file, whole project.
 
 The single-file tool is the P0 bug fix — the previous ``evaluate_file``
-delegated to ``evaluate_code`` and dropped the filepath, so DependencyGraph
-was never built and COMPOSABLE/SOUND were unreachable via MCP.
+delegated to ``evaluate_code`` and dropped the filepath, so ModuleDependencyGraph
+was never built and COMPOSABLE/IDEAL were unreachable via MCP.
 """
 
 from __future__ import annotations
 
 from fastmcp import Context
 
-from topos.logic.omega import SubobjectClassifier
-from topos.mcp.evaluation import (
+from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.policies.base import Priority
+
+from ..evaluation import (
     classify_code_string,
     classify_file,
     resolve_gitnexus_dir,
 )
-from topos.mcp.formatting import (
+from ..formatting import (
+    build_pillars,
     lattice_to_str,
     to_evaluation_result,
 )
-from topos.mcp.schemas import (
+from ..schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
     EvaluateProjectInput,
@@ -29,8 +32,8 @@ from topos.mcp.schemas import (
     ProjectEvaluationResult,
     ProjectFileEntry,
 )
-from topos.mcp.security import resolve_file_root, resolve_within_root
-from topos.mcp.server import mcp
+from ..security import resolve_file_root, resolve_within_root
+from ..server import mcp
 
 _READ_ONLY_ANN = {
     "title": "Topos Code Evaluation",
@@ -47,34 +50,36 @@ _READ_ONLY_ANN = {
     annotations=_READ_ONLY_ANN,
 )
 def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
-    """Classify a raw code string on the diamond evaluation lattice.
+    """Classify a raw code string on the free Heyting algebra H(G_qual).
 
-    Structural dimension only — COMPOSABLE/SOUND are unreachable from a bare
-    string since coupling requires a ``DependencyGraph``. To reach those, use
-    ``topos_evaluate_file`` with ``gitnexus_dir``.
+    SIMPLE and SECURE generators are scored from CFG / CPG built on the
+    source.  COMPOSABLE requires a ``ModuleDependencyGraph`` (and is therefore
+    unreachable from a bare string); use ``topos_evaluate_file`` with
+    ``gitnexus_dir`` to enable it.
 
-    Lattice values:
-        BROKEN (⊥)         Fails both quality targets (or parse failure).
-        SELF_CONTAINED     Structural target achieved (complexity + entropy).
-        COMPOSABLE         Coupling target achieved (not reachable from strings).
-        SOUND (⊤)          Both targets achieved.
+    Lattice values are the 8 elements of the 3-cube H(G_qual):
+        SLOP (⊥)             No generator satisfied.
+        SIMPLE / COMPOSABLE / SECURE     One generator satisfied.
+        SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE  Two satisfied.
+        IDEAL (⊤)            All three generators satisfied.
     """
     try:
-        result = classify_code_string(params.code, params.language, params.priority)
+        result = classify_code_string(params.code, params.language, Priority.SIMPLE)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="Evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),
         )
-    return to_evaluation_result(result, coupling_available=False)
+    prefs = params.preferences.to_preferences() if params.preferences else None
+    return to_evaluation_result(result, coupling_available=False, preferences=prefs)
 
 
 @mcp.tool(
@@ -83,12 +88,12 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
     annotations=_READ_ONLY_ANN,
 )
 def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
-    """Evaluate a file on disk. **Enables coupling-dimension scoring.**
+    """Evaluate a file on disk. **Enables the COMPOSABLE generator.**
 
     When ``gitnexus_dir`` is provided (or auto-detected at
-    ``<project_root>/.gitnexus``), a ``DependencyGraph`` is attached to the
-    classifier and COMPOSABLE / SOUND become reachable verdicts. Without it,
-    only the structural dimension is scored.
+    ``<project_root>/.gitnexus``), a ``ModuleDependencyGraph`` is attached to
+    the classifier so the COMPOSABLE generator can be scored.  CFG and
+    CPG (SIMPLE and SECURE generators) always run.
 
     Generate a ``.gitnexus/`` directory with ``topos depgraph generate`` first
     (requires ``npm install -g gitnexus``).
@@ -97,12 +102,12 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     if err or resolved is None:
         return EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="Access denied / path error",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=(err or {}).get("error", "path error"),
@@ -111,12 +116,12 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     if not resolved.is_file():
         return EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="Not a file",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=f"Path is not a file: {resolved}",
@@ -126,22 +131,25 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
 
     try:
-        result, dep_graph = classify_file(resolved, params.priority, gitnexus_dir)
+        result, dep_graph = classify_file(resolved, Priority.SIMPLE, gitnexus_dir)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
-            lattice_element=LatticeElement.BROKEN,
+            lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
             lattice_description="Evaluation failed",
             dimensions={},
             scores={},
-            priority=params.priority,
+            priority=Priority.SIMPLE,
             guidance="",
             coupling_available=False,
             error=str(exc),
         )
 
-    return to_evaluation_result(result, coupling_available=dep_graph is not None)
+    prefs = params.preferences.to_preferences() if params.preferences else None
+    return to_evaluation_result(
+        result, coupling_available=dep_graph is not None, preferences=prefs
+    )
 
 
 @mcp.tool(
@@ -156,7 +164,7 @@ async def topos_evaluate_project(
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
     a live bar during long walks. Rolls up per-dimension scores using the
-    project-wide minimum (``SubobjectClassifier.combine_dimensions``).
+    project-wide minimum (``CharacteristicMorphism.combine_dimensions``).
 
     Returns a paginated per-file table plus the overall rollup. Use ``limit``
     / ``offset`` to page through large codebases.
@@ -184,7 +192,7 @@ async def topos_evaluate_project(
 
     for idx, path in enumerate(py_files, start=1):
         try:
-            result, _ = classify_file(path, params.priority, gitnexus_dir)
+            result, _ = classify_file(path, Priority.SIMPLE, gitnexus_dir)
         except Exception:
             parse_failures += 1
             continue
@@ -196,6 +204,7 @@ async def topos_evaluate_project(
                 filepath=str(path.relative_to(resolved_root)),
                 lattice_element=lattice_to_str(result.summary()),
                 scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+                pillars=build_pillars(result, coupling_available),
                 raw_metrics=dict(result.raw_metrics),
                 is_parseable=result.is_parseable,
             )
@@ -203,22 +212,24 @@ async def topos_evaluate_project(
         if idx % max(1, total_files // 20) == 0 or idx == total_files:
             await ctx.report_progress(progress=idx, total=total_files)
 
-    classifier = SubobjectClassifier()
+    classifier = CharacteristicMorphism()
     rolled = classifier.combine_dimensions(per_file_results)
     rolled_scores = _minimum_scores_by_dim(per_file_results)
 
-    structural_ok = (
-        rolled.get("structural") and rolled["structural"].name == "SELF_CONTAINED"
+    # Combine the three rolled-up generator verdicts into a single ℋ
+    # element via the free-algebra encoding.
+    from topos.core.omega import (
+        EvaluationValue,
+        verdict_from_generators,
     )
-    coupling_ok = rolled.get("coupling") and rolled["coupling"].name == "COMPOSABLE"
-    if structural_ok and coupling_ok:
-        overall = LatticeElement.SOUND
-    elif structural_ok:
-        overall = LatticeElement.SELF_CONTAINED
-    elif coupling_ok:
-        overall = LatticeElement.COMPOSABLE
-    else:
-        overall = LatticeElement.BROKEN
+
+    simple_ok = rolled.get("simple") == EvaluationValue.SIMPLE
+    composable_ok = rolled.get("composable") == EvaluationValue.COMPOSABLE
+    secure_ok = rolled.get("secure") == EvaluationValue.SECURE
+    overall_value = verdict_from_generators(
+        simple=simple_ok, composable=composable_ok, secure=secure_ok
+    )
+    overall = lattice_to_str(overall_value)
 
     # Sort entries: lowest overall score first (worst files surfaced).
     entries.sort(key=lambda e: min(e.scores.values()) if e.scores else 0.0)
@@ -234,7 +245,7 @@ async def topos_evaluate_project(
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
         overall=overall,
-        priority=params.priority,
+        priority=Priority.SIMPLE,
         coupling_available=coupling_available,
         count=len(page),
         offset=params.offset,
@@ -242,6 +253,7 @@ async def topos_evaluate_project(
         has_more=has_more,
         next_offset=next_offset,
         files=page,
+        verbose=params.verbose,
     )
 
 
@@ -263,8 +275,8 @@ def _empty_project_result(
         parse_failures=0,
         rolled_up_dimensions={},
         rolled_up_scores={},
-        overall=LatticeElement.BROKEN,
-        priority=params.priority,
+        overall=LatticeElement.SLOP,
+        priority=Priority.SIMPLE,
         coupling_available=False,
         count=0,
         offset=params.offset,
@@ -272,6 +284,7 @@ def _empty_project_result(
         has_more=False,
         next_offset=None,
         files=[],
+        verbose=params.verbose,
         error=error,
     )
 
@@ -302,6 +315,9 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
     for entry in r.files:
         s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
         lines.append(f"- `{entry.filepath}` — {entry.lattice_element.value} ({s_str})")
+        if r.verbose and entry.raw_metrics:
+            for k, v in sorted(entry.raw_metrics.items()):
+                lines.append(f"  - `{k}`: {v:.3f}")
     if r.has_more:
         lines.append(
             f"\n_more files available: pass offset={r.next_offset} to continue._"

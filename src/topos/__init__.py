@@ -6,30 +6,48 @@ Treating programs as morphisms in a world of commodity code.
 Building the subobject classifier for rigorous program evaluations.
 
 This library applies concepts from Topos theory to evaluate code quality,
-moving beyond simple numeric metrics to a Heyting Algebra of evaluation values
-that can express partial confidence about program quality and maintainability.
+moving beyond simple numeric metrics to a Heyting Algebra of evaluation
+values that can express partial confidence about program quality and
+maintainability.
 """
 
+from topos.core.category import ProgramCategory
 from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
+from topos.core.omega import (
+    EvaluationValue,
+    Omega,
+    verdict_from_generators,
+)
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
-from topos.graphs.depgraph.graph import DependencyGraph
-from topos.logic.lattice import (
-    EvaluationLattice,
-    EvaluationValue,
-)
-from topos.logic.omega import SubobjectClassifier
+from topos.graphs.cfg.object import ControlFlowGraph
+from topos.graphs.cpg.object import CodePropertyGraph
+from topos.graphs.mdg.object import ModuleDependencyGraph
+from topos.graphs.pdg.object import ProgramDependenceGraph
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
+    # Categorical primitives
+    "ProgramCategory",
     "ProgramMorphism",
     "ProgramObject",
-    "EvaluationLattice",
+    # Internal logic of the topos
+    "Omega",
     "EvaluationValue",
-    "SubobjectClassifier",
+    "verdict_from_generators",
+    "CharacteristicMorphism",
+    "ClassificationResult",
+    # Translational functors (representations)
     "Representation",
     "ASTRepresentation",
-    "DependencyGraph",
+    "ControlFlowGraph",
+    "ProgramDependenceGraph",
+    "ModuleDependencyGraph",
+    "CodePropertyGraph",
 ]

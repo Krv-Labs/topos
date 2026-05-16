@@ -1,47 +1,29 @@
 # Topos
 
-> **Structural code quality metrics your agents can act on.**
+> **Structural code quality metrics for agent-written programs.**
 
-Topos lets you set and manage the quality target while coding agents handle the iteration. Pick a priority and Topos measures program structure (not just syntax), giving agents concrete metrics to optimize toward on every pass.
+**Topos** gives you structural code quality metrics your agents can act on. Passing unit tests proves your code works, but Topos proves it's built to last. It measures program structure — not just syntax — giving agents concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
 
-Current priorities:
+### The Quality Pillars
 
-- **Self-Contained:** Minimal external dependencies; functionality lives within the module.
-- **Composable:** Connects cleanly with other modules without creating fragile dependency chains.
+Topos evaluates code along three independent pillars:
 
-More coming soon.
+- **SIMPLE** — Avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity).
+- **COMPOSABLE** — Cleanly decoupled from other modules (MDG Martin instability via GitNexus).
+- **SECURE** — Free of dangerous API reachability and taint paths (CPG analysis).
 
-> [!NOTE]
-> We model programs as maps (morphisms) on graphs. This lets us evaluate design properties that go beyond preserving inputs and outputs.
+### The Medal Podium
 
----
+Topos checks all three pillars and awards a **Code Quality Medal** based on how many pass:
 
-### The Verdict
+| Medal | Criteria |
+| :--- | :--- |
+| 🥇 **GOLD** | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
+| 🥈 **SILVER** | Passes 2 of 3 |
+| 🥉 **BRONZE** | Passes 1 of 3 |
+| ❌ **SLOP** | Passes 0 (or fails to parse) |
 
-Topos maps every file to a four-valued diamond lattice, so agents know exactly where they are and which direction to move:
-
-```mermaid
-graph BT
-    BROKEN["⊥ BROKEN<br/>Fails targets"]
-    COMPOSABLE["◑ COMPOSABLE<br/>Good coupling"]
-    SELF_CONTAINED["◐ SELF_CONTAINED<br/>Good structure"]
-    SOUND["⊤ SOUND<br/>Both targets met"]
-
-    BROKEN --> COMPOSABLE
-    BROKEN --> SELF_CONTAINED
-    COMPOSABLE --> SOUND
-    SELF_CONTAINED --> SOUND
-
-    style BROKEN         fill:#f8d7da,stroke:#842029,color:#000
-    style COMPOSABLE     fill:#d1ecf1,stroke:#0c5460,color:#000
-    style SELF_CONTAINED fill:#d4edda,stroke:#155724,color:#000
-    style SOUND          fill:#fff3cd,stroke:#856404,color:#000
-```
-
-`COMPOSABLE` and `SELF_CONTAINED` are **incomparable** — code can satisfy one without the other. `SOUND` is the join of both.
-
-> [!TIP]
-> Perfect code satisfies both — but agents operate under token and time budgets. A concrete priority gives them a formula to execute rather than an open-ended target.
+Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding agent which pillars to prioritize when aiming for Gold under token and time budgets.
 
 ---
 
@@ -50,25 +32,15 @@ graph BT
 #### Install
 
 ```bash
+# Install CLI
 curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
 ```
 
-#### CLI
+#### Using Topos
 
 ```bash
-topos evaluate src/ -r --priority self_contained   # classify a directory
-topos inspect module.py                             # detailed metrics
-topos compare before.py after.py                    # AST edit distance
-```
-
-#### In an agent loop
-
-```
-Agent iteration 1: structural: ⊥ BROKEN [41%]
-  → Reduce cyclomatic complexity and normalize entropy toward 0.5
-
-Agent iteration 2: structural: ◐ SELF_CONTAINED [72%]
-  → ✓ Target achieved.
+# Preferences are how you prioritize the evaluation pillars
+topos evaluate src/ -r --preferences simple,composable,secure  # classify each file in a directory
 ```
 
 ---
@@ -78,14 +50,14 @@ Agent iteration 2: structural: ◐ SELF_CONTAINED [72%]
 Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
 <details>
-<summary><b>Set up <code>topos-mcp</code> in your agent</b></summary>
+<summary><b>Set up <code>topos mcp</code> in your agent</b></summary>
 
 &nbsp;
 
-#### Step 1 — Build the dependency graph
+#### Step 1 — Build the dependency graph (optional but recommended)
 
 > [!IMPORTANT]
-> **Do this first.** Without a dependency graph, Topos scores the structural dimension only — `COMPOSABLE` and `SOUND` become unreachable.
+> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine
@@ -99,7 +71,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 > Verify the binary before wiring it into editors:
 >
 > ```bash
-> topos-mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
+> topos mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
 > ```
 
 #### Step 2 — Register with your agent
@@ -109,29 +81,29 @@ Run from your project root — Topos auto-detects its file-access root by walkin
 ##### Claude Code
 
 ```bash
-claude mcp add topos topos-mcp
+claude mcp add topos topos mcp
 ```
 
 ##### Gemini CLI
 
 ```bash
-gemini mcp add topos topos-mcp
+gemini mcp add topos topos mcp
 ```
 
 ##### Cursor
 
-<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9">**➕ Install `topos` in Cursor**</a>
+<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zIG1jcCJ9">**➕ Install `topos` in Cursor**</a>
 
 Or edit `.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+{ "mcpServers": { "topos": { "command": "topos mcp" } } }
 ```
 
 ##### Windsurf and everything else
 
 ```json
-{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+{ "mcpServers": { "topos": { "command": "topos mcp" } } }
 ```
 
 #### Step 3 — Launch from the project root
@@ -141,7 +113,7 @@ Or edit `.cursor/mcp.json`:
 >
 > ```json
 > {
->   "command": "topos-mcp",
+>   "command": "topos mcp",
 >   "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
 > }
 > ```
@@ -151,15 +123,70 @@ Or edit `.cursor/mcp.json`:
 >
 > > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."
 >
-> Or invoke the prompt directly: `topos_refactor_until_sound(filepath="path/to/file.py")`.
+> Or invoke the prompt directly: `topos_refactor_until_ideal(filepath="path/to/file.py")`.
 
 #### Smoke test
 
 > "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify with `topos_assess_improvement`."
 
-A healthy response has `coupling_available: true`. If every response shows `coupling_available: false`, go back to Step 1.
+A healthy response shows `{simple: 72%, composable: 65%, secure: 95%}` when GitNexus is configured. If the response is missing `composable`, go back to Step 1.
 
 </details>
+
+---
+
+### How it works
+
+Topos measures code along the three independent quality generators and maps them to an 8-element evaluation lattice:
+
+- **SIMPLE** — Built from the [abstract syntax tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) (AST) and [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph) (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
+- **COMPOSABLE** — Built from the [module dependency graph](https://en.wikipedia.org/wiki/Module_dependency_graph) (MDG) using [GitNexus](https://github.com/abhigyanpatwari/GitNexus), to capture inter-module dependencies. This is slightly different than the usual [program dependence graph](https://en.wikipedia.org/wiki/Program_dependence_graph) (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
+- **SECURE** — Built from the [code property graph](https://en.wikipedia.org/wiki/Code_property_graph) (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
+
+```mermaid
+graph BT
+    SLOP["❌ SLOP<br/>No Medal"]
+    SIMPLE["🥉 BRONZE<br/>Simple"]
+    COMPOSABLE["🥉 BRONZE<br/>Composable"]
+    SECURE["🥉 BRONZE<br/>Secure"]
+    SC["🥈 SILVER<br/>S ∧ C"]
+    SSc["🥈 SILVER<br/>S ∧ Sc"]
+    CSc["🥈 SILVER<br/>C ∧ Sc"]
+    IDEAL["🥇 GOLD<br/>The Ideal Morphism"]
+
+    SLOP --> SIMPLE
+    SLOP --> COMPOSABLE
+    SLOP --> SECURE
+    SIMPLE --> SC
+    SIMPLE --> SSc
+    COMPOSABLE --> SC
+    COMPOSABLE --> CSc
+    SECURE --> SSc
+    SECURE --> CSc
+    SC --> IDEAL
+    SSc --> IDEAL
+    CSc --> IDEAL
+
+    style SLOP       fill:#f8d7da,stroke:#842029,color:#000
+    style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style IDEAL      fill:#ffd700,stroke:#856404,color:#000
+```
+
+> [!TIP]
+> **Three Independent Pillars:** `SIMPLE`, `COMPOSABLE`, and `SECURE` are **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently. `🥇 GOLD` is the intersection of all three. 
+
+#### Manager Priorities & Agent Iteration
+
+In a perfect world, every file would earn a `🥇 GOLD` medal. In reality, managers and developers have a finite budget of time and tokens. 
+
+Topos allows you to set **Preferences** — an ordering of these medals based on your immediate priorities. Coding agents use this ranking to aim for `🥇 GOLD`. If achieving `🥇 GOLD` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality medal aligned with your priorities.
+
+
 
 ---
 

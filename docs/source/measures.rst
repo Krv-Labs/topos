@@ -64,8 +64,31 @@ Scoring and Manager Priorities
 ------------------------------
 
 Topos produces a continuous normalized score ``[0.0, 1.0]`` for each pillar.
-A pillar is **achieved** if its score is at or above the threshold (default **0.6**).
+A pillar is **achieved** if its score meets or exceeds its **calibrated threshold**.
+These thresholds are tuned against real-world corpora (Experiment 4) to ensure
+the "Quality Medals" reflect empirical software engineering standards.
+
+.. list-table::
+   :widths: 20 20 60
+   :header-rows: 1
+
+   * - Pillar
+     - Threshold
+     - Raw Requirement (Policy Φᵢ)
+   * - **SIMPLE**
+     - ``0.40``
+     - ``cyclomatic <= 15`` AND ``max_func <= 10`` AND ``entropy in [0.2, 0.8]``
+   * - **COMPOSABLE**
+     - ``0.60``
+     - ``instability in [0.3, 0.7]`` AND ``fan_in <= 15`` AND ``fan_out <= 15``
+   * - **SECURE**
+     - ``1.00``
+     - Zero ``dangerous_calls`` AND zero ``taint_flows``
+
 Scores are reported as percentages (0–100%) in all CLI and MCP output.
+Note that while the thresholds are used for score-floor aggregation, the
+authoritative achievement of a pillar is determined by the independent
+AND of the raw metric requirements defined in each generator's policy.
 
 The weights (``w_*``) for each pillar's internal components are controlled by the **Priority** (part of the **Preference Ranking**):
 
@@ -114,7 +137,7 @@ The per-pillar scores map to an 8-valued Heyting algebra (free lattice on 3 gene
 
 The three pillars ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are **pairwise incomparable** — a
 file can achieve any subset of them independently. The overall ``lattice_element`` in the
-response is determined by which combination of pillars scored ≥ 0.6:
+response is determined by which combination of pillars scored ≥ their calibrated thresholds:
 
 .. code-block:: text
 
@@ -146,17 +169,40 @@ Topos supports several relational metrics across its different graph representat
 Structural Test Coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Topos can also use these comparative techniques to estimate how much of a **program-under-test (PUT)** appears in a **test suite** at the level of normalized UAST ``kind`` structure.
+Topos uses **Declaration-level Bipartite Coverage (v2)** to estimate how much of a
+**program-under-test (PUT)** appears in a **test suite** at the level of
+normalized UAST structure.
 
-This is not line or branch coverage and does not prove that tests call production code; it answers a narrower question: *does the test code contain similar structural shapes (kinds, control-flow nodes, short kind paths) as the PUT?*
+Unlike line or branch coverage, this method does not require code execution.
+It answers: *does the test code contain similar structural shapes (kinds,
+control-flow nodes, kind paths) as the declarations in the PUT?*
 
 The CLI command is:
 
 .. code-block:: bash
 
-   topos structural-test-coverage --tests tests/test_mod.py src/mod.py
+   topos structural-test-coverage --v2 --tests tests/test_mod.py src/mod.py
 
-**Definitions (v0)**
+**How it works (v2)**
+
+1. **Extraction:** Every ``FunctionDecl`` and ``MethodDecl`` is extracted from
+   both the PUT and the test suite.
+2. **Fingerprinting:** Each declaration is fingerprinted by the multiset of
+   UAST kinds (excluding the root declaration kind itself) in its body.
+3. **Bipartite Matching:** Each PUT declaration is matched against the
+   best-matching declaration in the test suite using multiset recall.
+4. **Scoring:**
+   - **Mean Declaration Coverage:** The average best-match recall across all
+     PUT declarations.
+   - **F2 Score:** A harmonic mean that combines declaration recall with
+     **test precision**, biased heavily toward recall (F2). This penalizes
+     bloated test suites that contain large amounts of code unrelated to the PUT.
+   - **Uncovered Declarations:** The tool identifies specific locations in the
+     source code that lack corresponding structural representation in the tests.
+
+**Definitions (v0/v1 legacy)**
+
+Legacy pooled-histogram coverage is still available via the default CLI path (without ``--v2``).
 
 Let :math:`n_P(k)` and :math:`n_T(k)` be raw counts of UAST kind :math:`k` in the PUT and in the aggregated test corpus.
 
@@ -165,20 +211,8 @@ Let :math:`n_P(k)` and :math:`n_T(k)` be raw counts of UAST kind :math:`k` in th
 
        R_{\text{kind}} = \frac{\sum_k \min\bigl(n_P(k), n_T(k)\bigr)}{\sum_k n_P(k)}
 
-*   **Control-flow recall:** The same multiset recall formula is applied to the vector of counts returned by ``control_flow_profile``.
+*   **Path recall (v1):** DFS pre-order sequence of kinds mapped to length-:math:`k` consecutive kind tuples (*k-grams*).
 
-*   **Composite v0:**
-    .. math::
-
-       C_0 = \tfrac{1}{2} R_{\text{kind}} + \tfrac{1}{2} R_{\text{cf}}
-
-**Definition (v1) — path recall**
-
-For each source file, take the DFS pre-order sequence of kinds (same order as UAST edit distance). Build the multiset of length-:math:`k` consecutive kind tuples (*k-grams*).
-
-Let :math:`c_P(g)` and :math:`c_T(g)` be counts of k-gram :math:`g` in PUT and tests.
-
-*   **Path recall:**
     .. math::
 
        R_{\text{path}} = \frac{\sum_g \min\bigl(c_P(g), c_T(g)\bigr)}{\sum_g c_P(g)}
@@ -187,4 +221,4 @@ Let :math:`c_P(g)` and :math:`c_T(g)` be counts of k-gram :math:`g` in PUT and t
 
 - Higher recalls mean more of the PUT’s counted structure is *also present* in tests.
 - A **low** score suggests tests may be missing classes of syntax.
-- A **high** score is **not** sufficient for quality: boilerplate, fixtures, or framework-heavy tests can overlap kinds without exercising semantics.
+- A **high** score is **not** sufficient for quality: boilerplate, fixtures, or framework-heavy tests can overlap kinds without exercising semantics. v2 addresses this by penalizing low precision.

@@ -314,14 +314,13 @@ def test_combine_dimensions_uses_min_score():
     r2 = ClassificationResult(
         is_parseable=True,
         dimensions={"simple": EvaluationValue.SLOP},
-        scores={"simple": 0.4},
+        scores={"simple": 0.3},
         lattice_element=EvaluationValue.SLOP,
     )
 
     combined = classifier.combine_dimensions([r1, r2])
-    # Min score = 0.4, below threshold 0.6 → SLOP for SIMPLE
+    # Min score = 0.3, below calibrated threshold 0.40 → SLOP for SIMPLE
     assert combined["simple"] == EvaluationValue.SLOP
-
 
 def test_combine_dimensions_counts_parse_failures_as_simple_slop():
     classifier = CharacteristicMorphism()

@@ -200,6 +200,10 @@ class EvaluateProjectInput(_StrictModel):
         ge=0,
         description="Number of per-file entries to skip (pagination).",
     )
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
+    )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
@@ -563,6 +567,7 @@ class ProjectEvaluationResult(BaseModel):
     has_more: bool
     next_offset: int | None
     files: list[ProjectFileEntry]
+    verbose: bool = False
     error: str | None = None
 
 

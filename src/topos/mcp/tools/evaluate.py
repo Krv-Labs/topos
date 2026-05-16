@@ -253,6 +253,7 @@ async def topos_evaluate_project(
         has_more=has_more,
         next_offset=next_offset,
         files=page,
+        verbose=params.verbose,
     )
 
 
@@ -283,6 +284,7 @@ def _empty_project_result(
         has_more=False,
         next_offset=None,
         files=[],
+        verbose=params.verbose,
         error=error,
     )
 
@@ -313,6 +315,9 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
     for entry in r.files:
         s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
         lines.append(f"- `{entry.filepath}` — {entry.lattice_element.value} ({s_str})")
+        if r.verbose and entry.raw_metrics:
+            for k, v in sorted(entry.raw_metrics.items()):
+                lines.append(f"  - `{k}`: {v:.3f}")
     if r.has_more:
         lines.append(
             f"\n_more files available: pass offset={r.next_offset} to continue._"

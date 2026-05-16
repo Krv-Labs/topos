@@ -201,12 +201,9 @@ def verdict_from_generators(
     every subset of ``G_qual`` is a unique verdict.
 
     Args:
-        simple:     True iff the SIMPLE generator is satisfied
-                    (CFG-based complexity score ≥ threshold).
-        composable: True iff the COMPOSABLE generator is satisfied
-                    (dependency-graph coupling score ≥ threshold).
-        secure:     True iff the SECURE generator is satisfied
-                    (CPG-based security score ≥ threshold).
+        simple:     True iff the SIMPLE generator is satisfied.
+        composable: True iff the COMPOSABLE generator is satisfied.
+        secure:     True iff the SECURE generator is satisfied.
     """
     bits = (
         (0b001 if simple else 0)

@@ -34,7 +34,6 @@ dependencies = [
 
 [project.scripts]
 topos = "topos.cli.main:cli"
-topos-mcp = "topos.mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

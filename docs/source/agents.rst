@@ -12,17 +12,6 @@ For Agents
    
    Topos lets you set and manage the quality target while your agent handles the iteration.
 
-.. code-block:: text
-
-   Agent iteration 1: SLOP [simple: 41%, composable: -, secure: -]
-     → Reduce cyclomatic complexity and normalize entropy toward 0.5
-
-   Agent iteration 2: SIMPLE [simple: 72%, composable: -, secure: -]
-     → ✓ SIMPLE badge earned.
-
-   Agent iteration 3: SIMPLE_COMPOSABLE [simple: 72%, composable: 65%, secure: -] (with GitNexus)
-     → ✓ SIMPLE_COMPOSABLE badge earned.
-
 
 Setting Preferences
 -------------------
@@ -81,7 +70,7 @@ Step 1 — Build the dependency graph (optional but recommended)
 
    .. code-block:: bash
 
-      topos-mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
+      topos mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
 
 Step 2 — Register with your agent
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,25 +78,35 @@ Step 2 — Register with your agent
 Run from your project root — Topos auto-detects its file-access root by walking up for
 ``.git`` or ``pyproject.toml``.
 
-**Claude Code:**
+.. dropdown:: Claude Code
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   claude mcp add topos topos-mcp
+      claude mcp add topos topos mcp
 
-**Gemini CLI:**
+.. dropdown:: Gemini CLI
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   gemini mcp add topos topos-mcp
+      gemini mcp add topos topos mcp
 
-**Cursor** — `➕ Install topos in Cursor <cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9>`_
+.. dropdown:: Cursor
 
-For Cursor (``.cursor/mcp.json``), Windsurf, and most other MCP clients, use:
+   `➕ Install topos in Cursor <cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zIG1jcCJ9>`_
 
-.. code-block:: json
+   Or edit ``.cursor/mcp.json``:
 
-   { "mcpServers": { "topos": { "command": "topos-mcp" } } }
+   .. code-block:: json
+
+      { "mcpServers": { "topos": { "command": "topos mcp" } } }
+
+.. dropdown:: Windsurf and others
+
+   For most other MCP clients, use:
+
+   .. code-block:: json
+
+      { "mcpServers": { "topos": { "command": "topos mcp" } } }
 
 Step 3 — Launch from the project root
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -119,7 +118,7 @@ Step 3 — Launch from the project root
    .. code-block:: json
 
       {
-        "command": "topos-mcp",
+        "command": "topos mcp",
         "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
       }
 
@@ -145,12 +144,25 @@ MCP Tools
 All evaluation tools accept an optional ``preferences`` parameter which includes a ``ranking`` 
 (e.g., ``["simple", "composable", "secure"]``).
 
-``topos_evaluate_code(code, language, preferences)``
-   Classifies a code string and returns the full evaluation response (SIMPLE and SECURE).
+Core Evaluation
+~~~~~~~~~~~~~~~
 
 ``topos_evaluate_file(filepath, preferences, gitnexus_dir)``
-   Same as ``topos_evaluate_code`` but reads from a file path. Pass ``gitnexus_dir`` to
-   enable the COMPOSABLE pillar and reach higher badges like ``IDEAL``.
+   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and 
+   reach higher badges like ``IDEAL``.
+
+``topos_evaluate_code(code, language, preferences)``
+   Classifies a raw code string (SIMPLE and SECURE only).
+
+``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset)``
+   Project-wide rollup. Returns worst-scoring files first.
+
+``topos_inspect_code(code, language, preferences, top_n_functions)``
+   Detailed metric breakdown: top-N functions by complexity, entropy details, and full 
+   metric table.
+
+Refactor & Iterate
+~~~~~~~~~~~~~~~~~~
 
 ``topos_assess_improvement(proposed_code, filepath, preferences, gitnexus_dir)``
    Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
@@ -163,25 +175,24 @@ All evaluation tools accept an optional ``preferences`` parameter which includes
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
    follow to reach the target from its current state.
 
-``topos_calculate_coverage(put_files, test_files, k)``
-   Calculates structural test coverage using UAST k-gram path recall.
+Structure & Coverage
+~~~~~~~~~~~~~~~~~~~~
 
-``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset)``
-   Project-wide rollup. Returns worst-scoring files first.
-
-``topos_inspect_code(code, language, preferences, top_n_functions)``
-   Detailed metric breakdown: top-N functions by complexity, entropy details, and full 
-   metric table.
-
-``topos_get_doc(topic)``
-   Retrieves Topos documentation (``workflows``, ``lattice``, ``metrics``, or ``priority``) 
-   as Markdown. Useful for agents in environments where MCP resources are not directly accessible.
+``topos_compare_files(source, target)``
+   AST edit distance (topological drift) between two files on disk.
 
 ``topos_compare_code(source_code, target_code, language)``
    AST edit distance (topological drift) between two code strings.
 
-``topos_compare_files(source, target)``
-   Same as ``topos_compare_code`` but reads from file paths.
+``topos_calculate_coverage(put_files, test_files, k)``
+   Calculates structural test coverage using UAST k-gram path recall.
+
+Agent Knowledge
+~~~~~~~~~~~~~~~
+
+``topos_get_doc(topic)``
+   Retrieves Topos documentation (``workflows``, ``lattice``, ``metrics``, or ``priority``) 
+   as Markdown. Useful for agents in environments where MCP resources are not directly accessible.
 
 
 MCP Resources

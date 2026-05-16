@@ -50,7 +50,7 @@ topos evaluate src/ -r --preferences simple,composable,secure  # classify each f
 Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
 <details>
-<summary><b>Set up <code>topos-mcp</code> in your agent</b></summary>
+<summary><b>Set up <code>topos mcp</code> in your agent</b></summary>
 
 &nbsp;
 
@@ -71,7 +71,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 > Verify the binary before wiring it into editors:
 >
 > ```bash
-> topos-mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
+> topos mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
 > ```
 
 #### Step 2 — Register with your agent
@@ -81,29 +81,29 @@ Run from your project root — Topos auto-detects its file-access root by walkin
 ##### Claude Code
 
 ```bash
-claude mcp add topos topos-mcp
+claude mcp add topos topos mcp
 ```
 
 ##### Gemini CLI
 
 ```bash
-gemini mcp add topos topos-mcp
+gemini mcp add topos topos mcp
 ```
 
 ##### Cursor
 
-<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zLW1jcCJ9">**➕ Install `topos` in Cursor**</a>
+<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zIG1jcCJ9">**➕ Install `topos` in Cursor**</a>
 
 Or edit `.cursor/mcp.json`:
 
 ```json
-{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+{ "mcpServers": { "topos": { "command": "topos mcp" } } }
 ```
 
 ##### Windsurf and everything else
 
 ```json
-{ "mcpServers": { "topos": { "command": "topos-mcp" } } }
+{ "mcpServers": { "topos": { "command": "topos mcp" } } }
 ```
 
 #### Step 3 — Launch from the project root
@@ -113,7 +113,7 @@ Or edit `.cursor/mcp.json`:
 >
 > ```json
 > {
->   "command": "topos-mcp",
+>   "command": "topos mcp",
 >   "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
 > }
 > ```

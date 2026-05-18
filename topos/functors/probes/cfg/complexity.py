@@ -16,6 +16,9 @@ if TYPE_CHECKING:
 
 
 def _get_rust_cfg(cfg: ControlFlowGraph):
+    if hasattr(cfg, "_rust_cfg") and cfg._rust_cfg is not None:
+        return cfg._rust_cfg
+
     from topos.topos_functors import (
         BasicBlock as RustBasicBlock,
     )
@@ -91,12 +94,15 @@ def _get_rust_cfg(cfg: ControlFlowGraph):
         for edge in cfg.edges
     ]
 
-    return RustCFG(
+    rust_cfg = RustCFG(
         blocks=rust_blocks,
         edges=rust_edges,
         entry_id=cfg.entry_id,
         exit_id=cfg.exit_id,
     )
+    # Cache for subsequent calls
+    cfg._rust_cfg = rust_cfg
+    return rust_cfg
 
 
 def cyclomatic_complexity(cfg: ControlFlowGraph) -> int:

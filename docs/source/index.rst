@@ -1,8 +1,19 @@
 .. _index:
 
+.. rst-class:: topos-sphinx-title
+
 =====
 Topos
 =====
+
+.. raw:: html
+
+   <div class="topos-docs-hero">
+     <h1 class="topos-docs-heading">
+       <img src="_static/topos-logo.svg" alt="" aria-hidden="true" />
+       <span>Topos</span>
+     </h1>
+   </div>
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -20,6 +31,8 @@ Topos
    :class: philosophy-box
 
    Passing unit tests only proves that your code is a solution to a finite set of requirements. Agents have proved to be exceptional at this and will continue to improve. We believe the new currency is the quality of these solutions. Topos provides the structural evaluations that empower coding agents to find higher quality solutions.
+   `View Topos on GitHub <https://github.com/Krv-Labs/topos>`_.
+
 .. grid:: 1 1 2 2
    :gutter: 3
 

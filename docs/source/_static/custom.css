@@ -14,11 +14,37 @@
   --topos-math-border: #e2e8f0;
 }
 
+.topos-sphinx-title > h1 {
+  display: none;
+}
+
+.topos-docs-hero {
+  margin: 0 0 1.5rem;
+}
+
+.topos-docs-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.topos-docs-heading img {
+  display: block;
+  width: 130px;
+  max-width: 55%;
+  height: auto;
+}
+
 .intro-card {
   padding: 1.2rem;
   border-radius: 8px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   text-align: center;
   border-top: 3px solid var(--topos-primary);
 }

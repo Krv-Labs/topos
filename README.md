@@ -58,8 +58,8 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 
 #### Step 1 — Build the dependency graph (optional but recommended)
 
-> [!IMPORTANT]
-> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
+> **_⚠️ Recommended:_**
+> Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine

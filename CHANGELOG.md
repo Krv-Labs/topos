@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-05-18
+
+### Added
+
+- **Rust Backend (`topos-functors`)**: Migrated performance-critical graph construction and metric probes to a high-performance Rust core using PyO3 and Maturin.
+- **Benchmarking Suite**: Added `benchmarks/` directory with side-by-side comparison scripts between Python and Rust implementations.
+- **Parity Tests**: Added `tests/parity/` to continuously monitor implementation equivalence between the Rust core and the v1.0.0 Python baseline.
+
+### Changed
+
+- **Hybrid Architecture**: Reorganized project structure into a hybrid Rust/Python package. Performance-heavy logic (CFG, AST entropy, edit distance) now runs at native speed while maintaining readable Python wrappers.
+- **Directory Restructuring**: Moved Python source from `src/topos` to the repository root as `topos/` and repurposed `src/` for the Rust backend.
+- **Build System**: Switched from `hatchling` to `maturin` to support native extension compilation.
+- **Performance**: Achieved significant speedups (approx. 6-8x) for evaluation tasks on standard codebases.
+- **Categorical Documentation**: Updated `topos.graphs` to explicitly define graph construction as a **Functor** $R: \text{Lang} \to \mathcal{E}$.
+
 ## [1.0.0] - 2026-05-16
 
 v1.0.0 changes live on the `refactor/3-pillars` branch and will land on `main` via [PR #39](https://github.com/Krv-Labs/topos/pull/39).

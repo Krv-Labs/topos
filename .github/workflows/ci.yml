@@ -50,8 +50,8 @@ jobs:
 
       - name: Run Ruff lint checks
         if: matrix.python-version == '3.13'
-        run: uv run ruff check src tests
+        run: uv run ruff check topos tests
 
       - name: Run Ruff formatting checks
         if: matrix.python-version == '3.13'
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check topos tests

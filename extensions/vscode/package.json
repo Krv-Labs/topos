@@ -1,0 +1,50 @@
+{
+  "name": "topos-vscode",
+  "displayName": "Topos Code Quality",
+  "description": "Structural code quality metrics for agentic workflows.",
+  "version": "0.1.0",
+  "publisher": "krv-labs",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "topos-mcp",
+        "label": "Topos Code Quality"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm run check-types && npm run lint && node esbuild.js --watch",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.14.1",
+    "@typescript-eslint/parser": "^7.14.1",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.4.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5"
+    },
+    "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "diff": "^9.0.0"
+    }
+    }
+

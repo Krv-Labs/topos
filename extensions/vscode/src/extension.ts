@@ -47,7 +47,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register MCP Server Provider
     const providerId = 'topos-mcp';
     const provider: any = {
-        provideMcpServerDefinitions: (token: vscode.CancellationToken) => {
+        provideMcpServerDefinitions: (_token: vscode.CancellationToken) => {
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
             const env: Record<string, string> = {};
             

@@ -11,7 +11,11 @@ Installation
 Topos is designed to be accessible as either a standalone binary or by building from source. 
 
 .. hint::
-   **Prerequisites:** Topos requires **Python 3.11+** for core evaluation. If you use the Binary installation, the embedded Python environment is managed for you.
+   **Prerequisites:** 
+   
+   * **Python 3.11+** is required for core evaluation. 
+   * **Rust toolchain (Cargo)** is required if building from source.
+   * If you use the Binary installation, the embedded Python/Rust environments are managed for you.
 
 .. tab-set::
 
@@ -48,6 +52,18 @@ Topos is designed to be accessible as either a standalone binary or by building 
          git clone https://github.com/Krv-Labs/topos.git
          cd topos
          pip install -e .
+
+      **Running Tests**
+
+      To verify the Python and Rust components:
+
+      .. code-block:: bash
+
+         # Run Python tests
+         pytest
+
+         # Run Rust unit tests
+         cargo test
 
 .. grid:: 1 1 2 2
    :gutter: 3

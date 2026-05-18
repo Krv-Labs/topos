@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rust Backend (`topos-functors`)**: Migrated performance-critical graph construction and metric probes to a high-performance Rust core using PyO3 and Maturin.
 - **Benchmarking Suite**: Added `benchmarks/` directory with side-by-side comparison scripts between Python and Rust implementations.
 - **Parity Tests**: Added `tests/parity/` to continuously monitor implementation equivalence between the Rust core and the v1.0.0 Python baseline.
+- **CLI Reference docs**: Added `docs/source/cli.rst` with command-by-command reference for evaluate, inspect, compare, structural test coverage, dependency graphs, and MCP; linked from the docs index.
 
 ### Changed
 

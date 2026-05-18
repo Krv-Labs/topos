@@ -316,7 +316,7 @@ However, the THRESHOLDS mapping in base.py was acting as an incorrect secondary 
 
 ### Actions Taken
 
-We updated src/topos/evaluation/policies/base.py to correctly align the fallback THRESHOLDS with the mathematical minimum normalized scores implied by the raw generator bounds:
+We updated topos/evaluation/policies/base.py to correctly align the fallback THRESHOLDS with the mathematical minimum normalized scores implied by the raw generator bounds:
 
 * **SIMPLE**: 0.60 -> 0.40
 * **SECURE**: 0.70 -> 1.00

@@ -52,4 +52,4 @@ This builds a pairwise 4x4 structural comparison over the UAST representations a
 
 ## Purpose
 
-This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages. The comparison runner answers that question quantitatively via the UAST profunctor module ([src/topos/functors/profunctors/uast/](../../src/topos/functors/profunctors/uast/)).
+This is an experimental setup for **Issue #12: Compare AST from different languages**. The goal is to determine if structural or logic differences can be detected between implementations of the same algorithm across different programming languages. The comparison runner answers that question quantitatively via the UAST profunctor module ([topos/functors/profunctors/uast/](../../topos/functors/profunctors/uast/)).

@@ -47,7 +47,7 @@ For detailed instructions on running multi-language calibrations (Rust, npm, vcp
 
 The initial Python calibration run revealed that the raw metric thresholds (`cyclomatic <= 15`, `max_func <= 10`, `entropy in [0.2, 0.8]`, `dangerous_calls == 0`, `taint_flows == 0`) are well-calibrated to the empirical distribution of the corpus. 
 
-However, the fallback normalized score floors in `src/topos/evaluation/policies/base.py` required adjustment to mathematically align with the raw policy bounds:
+However, the fallback normalized score floors in `topos/evaluation/policies/base.py` required adjustment to mathematically align with the raw policy bounds:
 *   **SIMPLE:** Adjusted to `0.40` (the exact score yielded by a file sitting on the raw `cyclomatic=15`, `max_func=10`, `entropy=0.2` boundary).
 *   **SECURE:** Adjusted to `1.00` (to enforce the strict `count == 0` policy, as a single finding yields ~0.71 due to exponential decay).
 *   **COMPOSABLE:** Remains `0.60` (aligns with the `fan_in / fan_out` cap of 15/40, which yields `0.625`).

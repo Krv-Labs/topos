@@ -69,7 +69,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 >
 > Re-run when imports change (new modules, renames, restructures). The cache keys on `.gitnexus/` mtime and invalidates itself.
 
-> [!TIP]
+> **_💡 Tip:_**
 > Verify the binary before wiring it into editors:
 >
 > ```bash

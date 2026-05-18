@@ -1,5 +1,5 @@
-<p align="left">
-  <img src="topos-logo.svg" alt="Topos" width="500">
+<p align="center">
+  <img src="topos-logo.svg" alt="Topos" width="400">
 </p>
 
 > **Structural code quality metrics for agent-written programs.**

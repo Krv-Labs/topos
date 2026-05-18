@@ -276,10 +276,11 @@ Code lives under `topos/mcp/`:
 - `resources/docs.py` + `resources/content/*.md` — static documentation.
 - `prompts/refactor.py` — the refactor prompt template.
 
-### Evaluation harness
+### Calibration & Benchmarking
 
-`evaluations/topos_mcp.xml` — 10 Q/A pairs per the mcp-builder skill Phase 4.
-\n\n
+- **Calibration Suite**: Located in `benchmarks/calibration/`. Contains infrastructure and data for validating Topos metric thresholds against real-world codebases. See `docs/calibration.md` for methodology.
+- **Performance Benchmarks**: Located in `benchmarks/`. Side-by-side comparison scripts between Python and Rust implementations to verify speedups and algorithmic parity.
+
 # Topos Agent Workflows
 
 Per CodeScene's 2026 best-practice research ("agent-first tools need

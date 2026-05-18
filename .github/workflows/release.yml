@@ -56,10 +56,15 @@ jobs:
             --clean \
             --collect-all tree_sitter \
             --collect-all tree_sitter_python \
+            --collect-all tree_sitter_rust \
+            --collect-all tree_sitter_javascript \
+            --collect-all tree_sitter_cpp \
+            --collect-all tree_sitter_typescript \
+            --collect-all topos \
             --collect-all fastmcp \
             --collect-all real-ladybug \
             --copy-metadata fastmcp \
-            src/topos/cli/main.py
+            topos/cli/main.py
 
       - name: Rename binary with platform suffix
         run: mv dist/topos dist/topos-${{ matrix.target }}

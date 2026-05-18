@@ -32,13 +32,13 @@ Clean fan-in/out and instability in the healthy band dominate.
 
 ## Example
 
-`src/topos/server.py` (MCP entry point, few callers, lots of internal
+`topos/server.py` (MCP entry point, few callers, lots of internal
 orchestration): use `simple` — the SIMPLE generator reflects real quality.
 
-`src/topos/evaluation/omega.py` (the classifier, imported by every evaluation
+`topos/evaluation/omega.py` (the classifier, imported by every evaluation
 path): use `composable` — coupling quality is the main lever here.
 
-`src/topos/utils/yaml_loader.py` (parses untrusted user config): use
+`topos/utils/yaml_loader.py` (parses untrusted user config): use
 `secure` — `yaml.load` is a known footgun; the SECURE generator is the
 relevant target.
 

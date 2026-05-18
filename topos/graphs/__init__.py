@@ -6,6 +6,13 @@ Program representations: distinct structural views of the same code.
 Each sub-package implements one translational functor ``R: Lang -> E`` and
 conforms to the :class:`Representation` protocol.
 
+In our categorical framework, building a graph from a program is not just a
+transformation—it is a **functor**. Specifically, it is a mapping from the
+category of source programs (and their morphisms) to the category of
+structured representations (the Topos **E**). This functorial property
+guarantees that structural relationships in the source code are faithfully
+preserved in the resulting graph-based representations.
+
 Currently shipped:
     ``ast``  — concrete syntax (per-language tree-sitter parsers)
     ``uast`` — language-independent normalized AST

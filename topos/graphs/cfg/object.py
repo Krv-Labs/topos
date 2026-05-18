@@ -72,6 +72,8 @@ class ControlFlowGraph:
         )
         from topos.functors.probes.cfg.paths import longest_acyclic_path
 
+        # We delegate cyclomatic complexity to Rust for performance.
+        # Other probes are still in Python for now.
         return {
             "cfg.cyclomatic": float(cyclomatic_complexity(self)),
             "cfg.essential": float(essential_complexity(self)),

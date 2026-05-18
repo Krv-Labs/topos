@@ -40,6 +40,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Set up Python
         run: uv python install 3.12
 

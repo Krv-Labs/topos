@@ -21,50 +21,35 @@ The project consists of:
 
 ```bash
 uv pip install -e ".[dev]"              # Install with dev dependencies
+uv run maturin develop                  # Build Rust backend in development mode
 
 pytest                                   # Run all tests
+pytest tests/parity/                    # Run implementation parity tests
 pytest tests/test_file.py::test_name    # Run a specific test
-pytest -v --tb=short                    # Verbose with short tracebacks
 
-ruff check src/ --fix && ruff format src/   # Lint and format
+ruff check topos/ --fix && ruff format topos/   # Lint and format
 ```
 
 ## CLI Usage
 
 ```bash
 topos evaluate path/to/code.py
-topos evaluate src/ -r --priority simple
-topos evaluate src/ -r --gitnexus-dir .gitnexus --priority composable
-topos evaluate src/ -r --gitnexus-dir .gitnexus --priority secure
-topos compare file1.py file2.py -v
-topos inspect module.py --gitnexus-dir .gitnexus
-topos structural-test-coverage path/to/code.py --language python
-topos depgraph generate                 # Wraps 'gitnexus analyze' (requires npm install -g gitnexus)
-topos-mcp                               # Run the FastMCP server
+topos evaluate topos/ -r --priority simple
+topos evaluate topos/ -r --gitnexus-dir .gitnexus --priority composable
+topos evaluate topos/ -r --gitnexus-dir .gitnexus --priority secure
+...
 ```
 
 ## Architecture
 
-### Three-layer model: topos primitives, representations, decision layer
+### Hybrid Rust/Python Model
+Topos uses a high-performance hybrid architecture. Performance-critical logic is implemented in Rust (`topos-functors`), while orchestration and evaluation policies remain in Python for readability.
 
-The codebase mirrors the math spec:
-
-- **`topos.core/`** — the program topos's defining structure.
-  - `ProgramObject`, `ProgramMorphism`, `ProgramCategory` — objects and morphisms.
-  - `Omega` (in `core/omega.py`) — the subobject classifier and value Heyting algebra.  Holds `EvaluationValue` (8 elements: `SLOP`, `SIMPLE`, `COMPOSABLE`, `SECURE`, the three pair meets, and `IDEAL`) plus `meet`/`join`/`implies`/`negation`.
-- **`topos.graphs/`** — translational functors `R : Lang → E`.  One subpackage per representation, each conforming to the `Representation` protocol:
-  - `ast` — concrete syntax via tree-sitter.
-  - `uast` — language-independent normalized AST (substrate for the rest).
-  - `cfg` — intra-procedural control flow graph (feeds SIMPLE).
-  - `pdg` — academic Program Dependence Graph (intra-procedural; consumed by CPG).
-  - `mdg` — module dependency graph parsed from GitNexus (feeds COMPOSABLE).
-  - `cpg` — Code Property Graph fusing AST ∪ CFG ∪ DDG ∪ CDG (feeds SECURE).
-- **`topos.evaluation/`** — the decision layer: how raw measurements become Ω verdicts.
-  - `characteristic_morphism.py` — `CharacteristicMorphism` (χ_S : P → Ω) and `ClassificationResult`.
-  - `policies/` — policy translators `Φᵢ : ℝ → Ω`, one per generator (`score_simple`, `score_coupling`, `score_secure`).
-- **`topos.functors/`** — probes and profunctors over representations.
-  - `probes/<rep>/` — single-program measurements `P : E → ℝ` (e.g. `probes.cfg.cyclomatic_complexity`).
-  - `profunctors/<rep>/` — pairwise comparisons `D : E × E^op → ℝ` (e.g. `profunctors.cpg.compare_cpg`).
+- **`topos/core/`** — the program topos's defining structure.
+- **`topos/graphs/`** — translational functors `R : Lang → E`. Documented Python wrappers that delegate graph construction to the Rust backend.
+- **`topos/evaluation/`** — the decision layer: how raw measurements become Ω verdicts.
+- **`topos/functors/`** — probes and profunctors. Documented wrappers delegating heavy metrics (CFG, entropy, edit distance) to Rust.
+- **`src/`** — houses the Rust `topos-functors` core.
 
 The `Representation` protocol (`graphs/base.py`) requires:
 - `name: str` — identifies the representation type (e.g. `"ast"`, `"cfg"`, `"mdg"`, `"cpg"`).
@@ -280,7 +265,7 @@ Run with `topos-mcp` (stdio transport). Requires `TOPOS_MCP_FILE_ROOT` env var, 
 
 ### Package layout
 
-Code lives under `src/topos/mcp/`:
+Code lives under `topos/mcp/`:
 - `server.py` — FastMCP instance + stdio entry point.
 - `schemas.py` — Pydantic input + structured return models.
 - `security.py` — fail-closed file-root resolution.

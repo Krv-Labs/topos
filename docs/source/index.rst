@@ -23,29 +23,32 @@ Topos
 .. grid:: 1 1 2 2
    :gutter: 3
 
-   .. grid-item-card:: 🤖 For Agents
-      :link: agents
-      :link-type: doc
-
-      How AI coding agents use Topos to iteratively optimize code and hit quality targets.
-
-   .. grid-item-card:: 📐 Measures
-      :link: measures
-      :link-type: doc
-
-      A breakdown of the structural and coupling metrics used to evaluate morphisms.
-
    .. grid-item-card:: 🚀 Installation
       :link: installation
       :link-type: doc
 
       Get started with the CLI, MCP server, or build from source.
 
-   .. grid-item-card:: 🧠 Concepts
-      :link: concepts
+   .. grid-item-card:: 🤖 For Agents
+      :link: agents
       :link-type: doc
 
-      Optional deeper reading: the category-theoretic ideas behind the lattice and why it's structured this way.
+      How AI coding agents use Topos to iteratively optimize code and hit quality targets.
+
+   .. grid-item-card:: 💻 CLI Reference
+      :link: cli
+      :link-type: doc
+
+      Detailed overview of the Topos command-line interface and available tools.
+
+   .. grid-item-card:: 📐 Measures
+      :link: measures
+      :link-type: doc
+
+      A breakdown of the structural and coupling metrics used to evaluate code quality.
+
+.. hint::
+   **The scary maths are optional.** Topos is grounded in some very abstract fields (category & topos theory). Don't be alarmed! It's not required to understand (or appreciate) the maths to evaluate code quality with Topos. We find the formalism elegant, but know this isn't everyone's cup of tea. If you're curious about what we're building under the hood, check out :doc:`concepts`.
 
 Beyond Correctness
 -------------------
@@ -163,6 +166,7 @@ Topos measures code along the three independent quality generators and maps them
    :hidden:
 
    installation
+   cli
    For Agents <agents>
    Measures <measures>
    concepts

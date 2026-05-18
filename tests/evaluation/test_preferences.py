@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from topos.core.omega import EvaluationValue
 from topos.evaluation.preferences import (
     Generator,

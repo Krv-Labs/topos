@@ -2,7 +2,7 @@
 
 This document describes the **structural test coverage** measure implemented in Topos. It is a prototype metric: it estimates how much of a **program-under-test (PUT)** appears in a **test suite** at the level of normalized **Universal AST (UAST) structure**. It does **not** replace line or branch coverage, and it does **not** establish that tests invoke specific production functions unless you add separate call-linkage analysis.
 
-The implementation lives in `src/topos/functors/profunctors/uast/structural_test_coverage.py`. The CLI entry point is `topos structural-test-coverage`. Formal definitions also appear in Sphinx as `docs/source/measures.rst`.
+The implementation lives in `topos/functors/profunctors/uast/structural_test_coverage.py`. The CLI entry point is `topos structural-test-coverage`. Formal definitions also appear in Sphinx as `docs/source/measures.rst`.
 
 ---
 

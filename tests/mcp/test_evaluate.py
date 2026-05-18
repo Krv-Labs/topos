@@ -75,7 +75,7 @@ def test_evaluate_code_rejects_unsupported_language() -> None:
 
 def test_evaluate_file_reads_real_file() -> None:
     r = topos_evaluate_file(
-        EvaluateFileInput(filepath="src/topos/__init__.py", preferences=_PREFS)
+        EvaluateFileInput(filepath="topos/__init__.py", preferences=_PREFS)
     )
     assert r.is_parseable
     assert r.coupling_available is False  # no .gitnexus/ in repo
@@ -94,7 +94,7 @@ def test_evaluate_file_rejects_path_outside_root(tmp_path: Path) -> None:
 
 def test_evaluate_file_missing_file_errors() -> None:
     r = topos_evaluate_file(
-        EvaluateFileInput(filepath="src/topos/does_not_exist.py", preferences=_PREFS)
+        EvaluateFileInput(filepath="topos/does_not_exist.py", preferences=_PREFS)
     )
     assert r.error is not None
 
@@ -122,7 +122,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     ):
         r = topos_evaluate_file(
             EvaluateFileInput(
-                filepath="src/topos/__init__.py",
+                filepath="topos/__init__.py",
                 gitnexus_dir="/fake/.gitnexus",
                 preferences=_PREFS,
             )
@@ -140,7 +140,7 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
 def test_evaluate_project_rolls_up_files() -> None:
     r = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(path="src/topos/graphs", limit=10, preferences=_PREFS),
+            EvaluateProjectInput(path="topos/graphs", limit=10, preferences=_PREFS),
             _StubCtx(),
         )
     )
@@ -153,17 +153,13 @@ def test_evaluate_project_rolls_up_files() -> None:
 def test_evaluate_project_paginates() -> None:
     full = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(
-                path="src/topos", limit=5, offset=0, preferences=_PREFS
-            ),
+            EvaluateProjectInput(path="topos", limit=5, offset=0, preferences=_PREFS),
             _StubCtx(),
         )
     )
     page2 = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(
-                path="src/topos", limit=5, offset=5, preferences=_PREFS
-            ),
+            EvaluateProjectInput(path="topos", limit=5, offset=5, preferences=_PREFS),
             _StubCtx(),
         )
     )

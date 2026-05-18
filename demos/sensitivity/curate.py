@@ -25,7 +25,6 @@ from run_all import (  # type: ignore[import-not-found]  # noqa: E402
     ensure_archive,
     extract_archive,
 )
-
 from topos.evaluation.policies.base import Priority  # noqa: E402
 from topos.mcp.evaluation import classify_file  # noqa: E402
 

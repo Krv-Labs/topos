@@ -1,6 +1,6 @@
 # Structural test coverage — evaluation notes
 
-This document accompanies `run_evaluation.py` and the UAST structural test coverage profunctor in `src/topos/functors/profunctors/uast/structural_test_coverage.py`.
+This document accompanies `run_evaluation.py` and the UAST structural test coverage profunctor in `topos/functors/profunctors/uast/structural_test_coverage.py`.
 
 It records what the prototype measures well, where it is noisy, and what to iterate next.
 

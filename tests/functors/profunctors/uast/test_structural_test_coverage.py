@@ -1,7 +1,6 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
-
 from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
     declaration_coverage,

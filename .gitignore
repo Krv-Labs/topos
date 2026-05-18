@@ -2,7 +2,11 @@
 package-lock.json
 package.json
 node_modules/
-.DS_Store
+
+# Rust
+Cargo.lock
+/target/
+**/*.rs.bk
 
 # Agents
 .agents/*
@@ -17,12 +21,19 @@ topos-skill/
 maths.md
 
 
-# Calibration Data
-evaluations/calibration/*.csv
-evaluations/calibration/*.txt
-evaluations/calibration/results/
-evaluations/calibration/evidence/
+# Benchmarks
+benchmarks/calibration/*.csv
+benchmarks/calibration/*.txt
+benchmarks/calibration/results/
+benchmarks/calibration/evidence/
 
+/benchmarks/bin/*
+!/benchmarks/bin/.gitkeep
+
+
+
+# Other
+.DS_Store
 
 
 # Python env
@@ -106,7 +117,6 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -243,3 +253,5 @@ __marimo__/
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
+
+

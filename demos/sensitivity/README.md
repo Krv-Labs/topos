@@ -4,7 +4,7 @@ Issue [#13](https://github.com/Krv-Labs/topos/issues/13). Measures how Topos
 generators respond to controlled, I/O-preserving perturbations of reference
 code. The output is data + observations to inform whether the score
 normalization constants in
-[`topos.evaluation.policies`](../../src/topos/evaluation/policies/) need regularizing.
+[`topos.evaluation.policies`](../../topos/evaluation/policies/) need regularizing.
 
 ## What gets measured
 
@@ -90,6 +90,6 @@ A transform that crashes the smoke test for a given intensity is marked `--`
 and excluded from analysis.
 
 The AST drift guardrail uses
-[`topos.functors.profunctors.ast.compare.calculate_ast_distance`](../../src/topos/functors/profunctors/ast/compare.py)
+[`topos.functors.profunctors.ast.compare.calculate_ast_distance`](../../topos/functors/profunctors/ast/compare.py)
 alongside each SIMPLE sweep cell: large score moves with tiny edit distances
 indicate the metric is over-responsive to surface changes.

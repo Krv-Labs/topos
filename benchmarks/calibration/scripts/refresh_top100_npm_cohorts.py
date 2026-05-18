@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CAL = REPO_ROOT / "evaluations" / "calibration"
+CAL = REPO_ROOT / "benchmarks" / "calibration"
 OUT_JS = CAL / "top100_npm_js.txt"
 OUT_TS = CAL / "top100_npm_ts.txt"
 USER_AGENT = "topos-calibration (https://github.com/krv-ai/topos; contact@krv.ai)"

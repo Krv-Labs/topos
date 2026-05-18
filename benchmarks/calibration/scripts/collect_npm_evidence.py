@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_DIR = REPO_ROOT / "evaluations" / "calibration"
+CALIBRATION_DIR = REPO_ROOT / "benchmarks" / "calibration"
 USER_AGENT = "topos-calibration (https://github.com/krv-ai/topos; contact@krv.ai)"
 
 

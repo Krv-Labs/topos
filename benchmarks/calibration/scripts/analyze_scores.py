@@ -4,13 +4,13 @@ For each package in the JSONL, computes per-package summary statistics,
 sweeps thresholds, optionally stratifies by usage label (usage_profiles.csv),
 and optionally cross-joins with an evidence JSONL (PyPI, crates.io, npm, vcpkg).
 
-Writes a JSON summary to ``evaluations/calibration/results/score_analysis.json``.
+Writes a JSON summary to ``benchmarks/calibration/results/score_analysis.json``.
 
 Run:
-    python evaluations/calibration/scripts/analyze_scores.py
-    python evaluations/calibration/scripts/analyze_scores.py \\
-        --scores evaluations/calibration/results/structural_scores_rust.jsonl \\
-        --evidence evaluations/calibration/evidence/crates_evidence.jsonl \\
+    python benchmarks/calibration/scripts/analyze_scores.py
+    python benchmarks/calibration/scripts/analyze_scores.py \\
+        --scores benchmarks/calibration/results/structural_scores_rust.jsonl \\
+        --evidence benchmarks/calibration/evidence/crates_evidence.jsonl \\
         --ecosystem rust --language rust
 """
 
@@ -29,7 +29,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_DIR = REPO_ROOT / "evaluations" / "calibration"
+CALIBRATION_DIR = REPO_ROOT / "benchmarks" / "calibration"
 RESULTS_DIR = CALIBRATION_DIR / "results"
 
 THRESHOLD_SWEEP = [0.40, 0.50, 0.55, 0.60, 0.65, 0.70]
@@ -414,21 +414,21 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=RESULTS_DIR / "structural_scores.jsonl",
         help="Path to structural_scores.jsonl. "
-        "Default: evaluations/calibration/results/structural_scores.jsonl",
+        "Default: benchmarks/calibration/results/structural_scores.jsonl",
     )
     parser.add_argument(
         "--profiles",
         type=Path,
         default=CALIBRATION_DIR / "usage_profiles.csv",
         help="Path to usage_profiles.csv. "
-        "Default: evaluations/calibration/usage_profiles.csv",
+        "Default: benchmarks/calibration/usage_profiles.csv",
     )
     parser.add_argument(
         "--evidence",
         type=Path,
         default=CALIBRATION_DIR / "evidence" / "pypi_evidence.jsonl",
         help="Path to evidence JSONL (PyPI, crates.io, npm, or vcpkg format). "
-        "Default: evaluations/calibration/evidence/pypi_evidence.jsonl",
+        "Default: benchmarks/calibration/evidence/pypi_evidence.jsonl",
     )
     parser.add_argument(
         "--ecosystem",
@@ -445,7 +445,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=RESULTS_DIR / "score_analysis.json",
         help="Path for JSON summary output. "
-        "Default: evaluations/calibration/results/score_analysis.json",
+        "Default: benchmarks/calibration/results/score_analysis.json",
     )
     return parser
 

@@ -7,8 +7,8 @@ dependency counts.  Writes one JSONL record per package and prints any
 disagreements with the manual labels in ``usage_profiles.csv``.
 
 Run:
-    python evaluations/calibration/scripts/collect_pypi_evidence.py
-    python evaluations/calibration/scripts/collect_pypi_evidence.py \\
+    python benchmarks/calibration/scripts/collect_pypi_evidence.py
+    python benchmarks/calibration/scripts/collect_pypi_evidence.py \\
         --package requests --package httpx
 """
 
@@ -211,16 +211,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cohort",
         type=Path,
-        default=Path("evaluations/calibration/top100_pypi.txt"),
+        default=Path("benchmarks/calibration/top100_pypi.txt"),
         help="Path to the package list (one name per line). "
-        "Default: evaluations/calibration/top100_pypi.txt",
+        "Default: benchmarks/calibration/top100_pypi.txt",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("evaluations/calibration/evidence/pypi_evidence.jsonl"),
+        default=Path("benchmarks/calibration/evidence/pypi_evidence.jsonl"),
         help="Output JSONL path. "
-        "Default: evaluations/calibration/evidence/pypi_evidence.jsonl",
+        "Default: benchmarks/calibration/evidence/pypi_evidence.jsonl",
     )
     parser.add_argument(
         "--delay",

@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_DIR = REPO_ROOT / "evaluations" / "calibration"
+CALIBRATION_DIR = REPO_ROOT / "benchmarks" / "calibration"
 RESULTS_DIR = CALIBRATION_DIR / "results"
 CACHE_DIR = CALIBRATION_DIR / ".cache" / "i18n"
 

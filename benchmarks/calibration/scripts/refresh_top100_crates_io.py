@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-OUT = REPO_ROOT / "evaluations" / "calibration" / "top100_crates_io.txt"
+OUT = REPO_ROOT / "benchmarks" / "calibration" / "top100_crates_io.txt"
 USER_AGENT = "topos-calibration (https://github.com/krv-ai/topos; contact@krv.ai)"
 
 

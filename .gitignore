@@ -4,6 +4,7 @@ package.json
 node_modules/
 
 # Rust
+Cargo.lock
 /target/
 **/*.rs.bk
 
@@ -20,18 +21,15 @@ topos-skill/
 maths.md
 
 
-# Calibration Data
-evaluations/calibration/*.csv
-evaluations/calibration/*.txt
-evaluations/calibration/results/
-evaluations/calibration/evidence/
-
-
-
 # Benchmarks
+benchmarks/calibration/*.csv
+benchmarks/calibration/*.txt
+benchmarks/calibration/results/
+benchmarks/calibration/evidence/
+
 /benchmarks/bin/*
 !/benchmarks/bin/.gitkeep
-Cargo.lock
+
 
 
 # Other

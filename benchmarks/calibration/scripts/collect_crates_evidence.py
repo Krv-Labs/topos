@@ -1,12 +1,12 @@
 """Collect lightweight registry metadata for Rust crates (crates.io).
 
-Writes ``evaluations/calibration/evidence/crates_evidence.jsonl`` with fields
+Writes ``benchmarks/calibration/evidence/crates_evidence.jsonl`` with fields
 compatible with ``analyze_scores.py`` (``signal_classification``,
 ``signal_confidence``, ``direct_dep_count`` proxy).
 
 Run:
-    python evaluations/calibration/scripts/collect_crates_evidence.py
-    python evaluations/calibration/scripts/collect_crates_evidence.py --crate serde
+    python benchmarks/calibration/scripts/collect_crates_evidence.py
+    python benchmarks/calibration/scripts/collect_crates_evidence.py --crate serde
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_DIR = REPO_ROOT / "evaluations" / "calibration"
+CALIBRATION_DIR = REPO_ROOT / "benchmarks" / "calibration"
 USER_AGENT = "topos-calibration (https://github.com/krv-ai/topos; contact@krv.ai)"
 
 

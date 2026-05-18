@@ -8,10 +8,10 @@ per-file results to a JSONL file.
 Reuses the download helpers from ``demos/libraries/run_all.py``.
 
 Run:
-    python evaluations/calibration/scripts/run_structural_baseline.py
-    python evaluations/calibration/scripts/run_structural_baseline.py \\
+    python benchmarks/calibration/scripts/run_structural_baseline.py
+    python benchmarks/calibration/scripts/run_structural_baseline.py \\
         --package requests --package httpx
-    python evaluations/calibration/scripts/run_structural_baseline.py --limit 10
+    python benchmarks/calibration/scripts/run_structural_baseline.py --limit 10
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_DIR = REPO_ROOT / "evaluations" / "calibration"
+CALIBRATION_DIR = REPO_ROOT / "benchmarks" / "calibration"
 RESULTS_DIR = CALIBRATION_DIR / "results"
 CACHE_DIR = CALIBRATION_DIR / ".cache"
 
@@ -273,14 +273,14 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=CALIBRATION_DIR / "top100_pypi.txt",
         help="Path to the package list (one name per line). "
-        "Default: evaluations/calibration/top100_pypi.txt",
+        "Default: benchmarks/calibration/top100_pypi.txt",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=RESULTS_DIR / "structural_scores.jsonl",
         help="Output JSONL path. "
-        "Default: evaluations/calibration/results/structural_scores.jsonl",
+        "Default: benchmarks/calibration/results/structural_scores.jsonl",
     )
     parser.add_argument(
         "--limit",

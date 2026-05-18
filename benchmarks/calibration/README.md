@@ -28,18 +28,18 @@ To run the full suite for a given ecosystem (e.g., Python):
 
 1.  **Gather Evidence (Optional):** Cross-validate usage labels against registry metadata.
     ```bash
-    python evaluations/calibration/scripts/collect_pypi_evidence.py
+    python benchmarks/calibration/scripts/collect_pypi_evidence.py
     ```
 2.  **Run Structural Baseline:** Evaluate the corpus.
     ```bash
-    python evaluations/calibration/scripts/run_structural_baseline.py
+    python benchmarks/calibration/scripts/run_structural_baseline.py
     ```
-    This generates `evaluations/calibration/results/structural_scores.jsonl`.
+    This generates `benchmarks/calibration/results/structural_scores.jsonl`.
 3.  **Analyze Scores:** Compute threshold statistics and pass rates.
     ```bash
-    python evaluations/calibration/scripts/analyze_scores.py --scores evaluations/calibration/results/structural_scores.jsonl
+    python benchmarks/calibration/scripts/analyze_scores.py --scores benchmarks/calibration/results/structural_scores.jsonl
     ```
-    This prints a summary and generates `evaluations/calibration/results/score_analysis.json`.
+    This prints a summary and generates `benchmarks/calibration/results/score_analysis.json`.
 
 For detailed instructions on running multi-language calibrations (Rust, npm, vcpkg), refer to `docs/calibration.md`.
 

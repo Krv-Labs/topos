@@ -18,11 +18,11 @@ pub fn compute_sequence_distance(
 
     let mut dp = vec![vec![0; n + 1]; m + 1];
 
-    for i in 0..=m {
-        dp[i][0] = i;
+    for (i, row) in dp.iter_mut().enumerate() {
+        row[0] = i;
     }
-    for j in 0..=n {
-        dp[0][j] = j;
+    for (j, cell) in dp[0].iter_mut().enumerate() {
+        *cell = j;
     }
 
     for i in 1..=m {
@@ -57,12 +57,8 @@ pub fn compute_sequence_distance(
             i -= 1;
         } else {
             // Should not happen with Wagner-Fischer
-            if i > 0 {
-                i -= 1;
-            }
-            if j > 0 {
-                j -= 1;
-            }
+            i = i.saturating_sub(1);
+            j = j.saturating_sub(1);
         }
     }
 

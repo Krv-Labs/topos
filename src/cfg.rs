@@ -209,3 +209,93 @@ impl ControlFlowGraph {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies cyclomatic complexity calculation (E - N + 2P) for a linear graph with no branches (returns 1).
+    #[test]
+    fn test_cyclomatic_complexity_linear() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "exit".to_string()));
+        
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL),
+        ];
+        
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 1);
+        assert_eq!(cfg.cyclomatic_complexity(), 1);
+    }
+
+    /// Verifies cyclomatic complexity for a branching structure (IF-ELSE) representing multiple execution paths (returns 2).
+    #[test]
+    fn test_cyclomatic_complexity_if() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "if".to_string()));
+        blocks.insert(2, BasicBlock::new(2, None, "else".to_string()));
+        blocks.insert(3, BasicBlock::new(3, None, "exit".to_string()));
+        
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::TRUE),
+            CFGEdge::new(0, 2, EdgeKind::FALSE),
+            CFGEdge::new(1, 3, EdgeKind::UNCONDITIONAL),
+            CFGEdge::new(2, 3, EdgeKind::UNCONDITIONAL),
+        ];
+        
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 3);
+        // E = 4, N = 4, P = 1 => 4 - 4 + 2*1 = 2
+        assert_eq!(cfg.cyclomatic_complexity(), 2);
+    }
+
+    /// Tests essential complexity logic, ensuring that unstructured control flow (like RETURN) correctly increments the complexity.
+    #[test]
+    fn test_essential_complexity() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "exit".to_string()));
+        
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::RETURN),
+        ];
+        
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 1);
+        assert_eq!(cfg.essential_complexity(), 2);
+    }
+
+    /// Checks the maximum nesting depth calculation by traversing sequential nested TRUE branches.
+    #[test]
+    fn test_max_nesting_depth() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "inner".to_string()));
+        blocks.insert(2, BasicBlock::new(2, None, "exit".to_string()));
+        
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::TRUE),
+            CFGEdge::new(1, 2, EdgeKind::TRUE),
+        ];
+        
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
+        assert_eq!(cfg.max_nesting_depth(), 2);
+    }
+
+    /// Tests the DFS-based longest acyclic path calculation on a straightforward forward-flowing graph.
+    #[test]
+    fn test_longest_acyclic_path() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "b1".to_string()));
+        blocks.insert(2, BasicBlock::new(2, None, "exit".to_string()));
+        
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL),
+            CFGEdge::new(1, 2, EdgeKind::UNCONDITIONAL),
+        ];
+        
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
+        assert_eq!(cfg.longest_acyclic_path(), 2);
+    }
+}

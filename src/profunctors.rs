@@ -69,3 +69,61 @@ pub fn compute_sequence_distance(
 
     (dp[m][n], operations)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that two identical sequences result in an edit distance of 0 and no edit operations.
+    #[test]
+    fn test_sequence_distance_identity() {
+        let s = vec!["a".to_string(), "b".to_string()];
+        let t = vec!["a".to_string(), "b".to_string()];
+        let (dist, ops) = compute_sequence_distance(s, t);
+        assert_eq!(dist, 0);
+        assert_eq!(*ops.get("insertions").unwrap(), 0);
+        assert_eq!(*ops.get("deletions").unwrap(), 0);
+        assert_eq!(*ops.get("substitutions").unwrap(), 0);
+    }
+
+    /// Tests distance calculation when a single token is substituted, expecting exactly 1 substitution operation.
+    #[test]
+    fn test_sequence_distance_substitution() {
+        let s = vec!["a".to_string(), "b".to_string()];
+        let t = vec!["a".to_string(), "c".to_string()];
+        let (dist, ops) = compute_sequence_distance(s, t);
+        assert_eq!(dist, 1);
+        assert_eq!(*ops.get("substitutions").unwrap(), 1);
+    }
+
+    /// Tests distance calculation when a single token is inserted into the target, expecting 1 insertion operation.
+    #[test]
+    fn test_sequence_distance_insertion() {
+        let s = vec!["a".to_string()];
+        let t = vec!["a".to_string(), "b".to_string()];
+        let (dist, ops) = compute_sequence_distance(s, t);
+        assert_eq!(dist, 1);
+        assert_eq!(*ops.get("insertions").unwrap(), 1);
+    }
+
+    /// Tests distance calculation when a single token is deleted from the source, expecting 1 deletion operation.
+    #[test]
+    fn test_sequence_distance_deletion() {
+        let s = vec!["a".to_string(), "b".to_string()];
+        let t = vec!["a".to_string()];
+        let (dist, ops) = compute_sequence_distance(s, t);
+        assert_eq!(dist, 1);
+        assert_eq!(*ops.get("deletions").unwrap(), 1);
+    }
+
+    /// Tests the distance between two token sequences (treating whole words as single tokens).
+    #[test]
+    fn test_sequence_distance_complex() {
+        let s = vec!["kitten".to_string()];
+        let t = vec!["sitting".to_string()];
+        // Note: compute_sequence_distance works on Vec<String>, not characters.
+        // So this is 1 substitution if we treat them as single tokens.
+        let (dist, _ops) = compute_sequence_distance(s, t);
+        assert_eq!(dist, 1);
+    }
+}

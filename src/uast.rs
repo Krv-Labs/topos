@@ -18,7 +18,7 @@ pub struct SourceSpan {
 impl SourceSpan {
     #[new]
     #[pyo3(signature = (file, start_byte, end_byte, start_line, start_column, end_line, end_column))]
-    fn new(
+    pub fn new(
         file: Option<String>,
         start_byte: usize,
         end_byte: usize,
@@ -50,7 +50,7 @@ pub struct NativeRef {
 #[pymethods]
 impl NativeRef {
     #[new]
-    fn new(parser: String, parser_version: String, node_kind: String) -> Self {
+    pub fn new(parser: String, parser_version: String, node_kind: String) -> Self {
         Self {
             parser,
             parser_version,
@@ -75,7 +75,7 @@ pub struct UASTNode {
 impl UASTNode {
     #[new]
     #[pyo3(signature = (kind, lang, span, native, attributes=None, children=None, id=String::new()))]
-    fn new(
+    pub fn new(
         kind: String,
         lang: String,
         span: SourceSpan,
@@ -93,5 +93,55 @@ impl UASTNode {
             children: children.unwrap_or_default(),
             id,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that a `SourceSpan` is correctly initialized with the provided start and end coordinates.
+    #[test]
+    fn test_source_span_creation() {
+        let span = SourceSpan::new(
+            Some("test.py".to_string()),
+            0, 10,
+            1, 0,
+            1, 10
+        );
+        assert_eq!(span.file, Some("test.py".to_string()));
+        assert_eq!(span.start_byte, 0);
+        assert_eq!(span.end_byte, 10);
+    }
+
+    /// Verifies that a `NativeRef` correctly stores parser version and node type information.
+    #[test]
+    fn test_native_ref_creation() {
+        let native = NativeRef::new(
+            "tree-sitter".to_string(),
+            "0.20.0".to_string(),
+            "function_definition".to_string()
+        );
+        assert_eq!(native.parser, "tree-sitter");
+        assert_eq!(native.node_kind, "function_definition");
+    }
+
+    /// Tests the successful instantiation of a basic `UASTNode` with default empty child and attribute collections.
+    #[test]
+    fn test_uast_node_creation() {
+        let span = SourceSpan::new(None, 0, 0, 0, 0, 0, 0);
+        let native = NativeRef::new("p".to_string(), "v".to_string(), "k".to_string());
+        let node = UASTNode::new(
+            "module".to_string(),
+            "python".to_string(),
+            span,
+            native,
+            None,
+            None,
+            "root".to_string()
+        );
+        assert_eq!(node.kind, "module");
+        assert_eq!(node.id, "root");
+        assert_eq!(node.children.len(), 0);
     }
 }

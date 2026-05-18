@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use std::collections::HashMap;
 
 #[pyfunction]
 pub fn calculate_kolmogorov_proxy(source: &str) -> f64 {
@@ -7,7 +6,8 @@ pub fn calculate_kolmogorov_proxy(source: &str) -> f64 {
         return 0.0;
     }
 
-    let source_bytes = source.replace("\r\n", "\n").as_bytes();
+    let binding = source.replace("\r\n", "\n");
+    let source_bytes = binding.as_bytes();
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
     use std::io::Write;
     encoder.write_all(source_bytes).unwrap();
@@ -35,7 +35,8 @@ pub fn calculate_entropy_detailed(source: &str) -> EntropyResult {
         };
     }
 
-    let source_bytes = source.replace("\r\n", "\n").as_bytes();
+    let binding = source.replace("\r\n", "\n");
+    let source_bytes = binding.as_bytes();
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
     use std::io::Write;
     encoder.write_all(source_bytes).unwrap();
@@ -70,7 +71,6 @@ pub fn calculate_block_entropy(source: &str, block_size: usize) -> Vec<f64> {
     let mut results = Vec::new();
     let mut start = 0;
     while start < source.len() {
-        let end = (start + block_size).min(source.len());
         // Need to be careful with UTF-8 boundaries if block_size is in chars, 
         // but the Python version used slicing which is also tricky.
         // For simplicity, we'll follow Python's slicing behavior (chars).
@@ -95,4 +95,48 @@ pub fn calculate_entropy_variance(source: &str, block_size: usize) -> f64 {
     let variance: f64 = block_entropies.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / n;
 
     variance
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ensures that an empty string returns a baseline Kolmogorov complexity proxy (compression ratio) of 0.0.
+    #[test]
+    fn test_kolmogorov_proxy_empty() {
+        assert_eq!(calculate_kolmogorov_proxy(""), 0.0);
+    }
+
+    /// Verifies that highly repetitive text compresses extremely well, leading to a very low compression ratio.
+    #[test]
+    fn test_kolmogorov_proxy_redundant() {
+        let s = "a".repeat(1000);
+        let ratio = calculate_kolmogorov_proxy(&s);
+        assert!(ratio < 0.1); // High redundancy should lead to low ratio
+    }
+
+    /// Checks that the detailed entropy function properly extracts file sizes and produces an interpretation message.
+    #[test]
+    fn test_entropy_detailed() {
+        let result = calculate_entropy_detailed("def foo():\n    return 42");
+        assert!(result.ratio > 0.0);
+        assert!(result.original_size > 0);
+        assert!(!result.interpretation.is_empty());
+    }
+
+    /// Validates that text is correctly partitioned into chunks and individual chunk entropies are calculated.
+    #[test]
+    fn test_block_entropy() {
+        let s = "abcdefghijklmnopqrstuvwxyz";
+        let blocks = calculate_block_entropy(s, 10);
+        assert_eq!(blocks.len(), 3); // 10, 10, 6
+    }
+
+    /// Ensures the variance of block entropies is computed properly and does not fail on mixed-pattern strings.
+    #[test]
+    fn test_entropy_variance() {
+        let s = "a".repeat(10) + &"b".repeat(10);
+        let variance = calculate_entropy_variance(&s, 5);
+        assert!(variance >= 0.0);
+    }
 }

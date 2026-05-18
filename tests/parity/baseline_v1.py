@@ -4,6 +4,7 @@ Used for implementation parity monitoring against the Rust backend.
 """
 
 from __future__ import annotations
+
 import zlib
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from topos.graphs.cfg.object import ControlFlowGraph
 
 # --- CFG Probes (v1.0.0) ---
+
 
 def _connected_components(cfg: ControlFlowGraph) -> int:
     parent: dict[int, int] = {bid: bid for bid in cfg.blocks}
@@ -33,22 +35,27 @@ def _connected_components(cfg: ControlFlowGraph) -> int:
     roots = {find(b) for b in parent}
     return len(roots) or 1
 
+
 def cyclomatic_complexity_v1(cfg: ControlFlowGraph) -> int:
     n = len(cfg.blocks)
     e = len(cfg.edges)
     p = _connected_components(cfg)
     return max(1, e - n + 2 * p)
 
+
 def essential_complexity_v1(cfg: ControlFlowGraph) -> int:
     from topos.graphs.cfg.models import EdgeKind
+
     unstructured = 0
     for edge in cfg.edges:
         if edge.kind in {EdgeKind.BREAK, EdgeKind.CONTINUE, EdgeKind.RETURN}:
             unstructured += 1
     return max(1, unstructured + 1)
 
+
 def max_nesting_depth_v1(cfg: ControlFlowGraph) -> int:
     from topos.graphs.cfg.models import EdgeKind
+
     nesting_edge_kinds = {EdgeKind.TRUE, EdgeKind.SWITCH_CASE}
     depth: dict[int, int] = {cfg.entry_id: 0}
     changed = True
@@ -66,8 +73,10 @@ def max_nesting_depth_v1(cfg: ControlFlowGraph) -> int:
         iterations += 1
     return max(depth.values()) if depth else 0
 
+
 def longest_acyclic_path_v1(cfg: ControlFlowGraph) -> int:
     from topos.graphs.cfg.models import EdgeKind
+
     adj: dict[int, list[int]] = {bid: [] for bid in cfg.blocks}
     for edge in cfg.edges:
         if edge.kind is EdgeKind.LOOP_BACK:
@@ -94,7 +103,9 @@ def longest_acyclic_path_v1(cfg: ControlFlowGraph) -> int:
     dfs(cfg.entry_id, 0, {cfg.entry_id})
     return best
 
+
 # --- AST Probes (v1.0.0) ---
+
 
 def calculate_kolmogorov_proxy_v1(source: str) -> float:
     if not source:
@@ -103,9 +114,13 @@ def calculate_kolmogorov_proxy_v1(source: str) -> float:
     compressed = zlib.compress(source_bytes, level=9)
     return len(compressed) / len(source_bytes)
 
+
 # --- Profunctors (v1.0.0) ---
 
-def compute_sequence_distance_v1(source: list[str], target: list[str]) -> tuple[int, dict[str, int]]:
+
+def compute_sequence_distance_v1(
+    source: list[str], target: list[str]
+) -> tuple[int, dict[str, int]]:
     m, n = len(source), len(target)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
     for i in range(m + 1):
@@ -138,4 +153,8 @@ def compute_sequence_distance_v1(source: list[str], target: list[str]) -> tuple[
             i -= 1
         else:
             break
-    return dp[m][n], {"insertions": insertions, "deletions": deletions, "substitutions": substitutions}
+    return dp[m][n], {
+        "insertions": insertions,
+        "deletions": deletions,
+        "substitutions": substitutions,
+    }

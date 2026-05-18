@@ -8,7 +8,6 @@ Representation) and returns a structured delta / divergence.
 from __future__ import annotations
 
 import pytest
-
 from topos.core.morphism import ProgramMorphism
 from topos.functors.profunctors.cfg import compare_cfg, cyclomatic_delta
 from topos.functors.profunctors.cpg import compare_cpg

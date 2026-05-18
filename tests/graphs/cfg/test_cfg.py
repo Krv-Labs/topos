@@ -13,7 +13,6 @@ on UAST.  These tests verify:
 from __future__ import annotations
 
 import pytest
-
 from topos.core.morphism import ProgramMorphism
 from topos.graphs.base import Representation
 from topos.graphs.cfg.models import EdgeKind

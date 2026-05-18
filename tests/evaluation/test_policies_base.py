@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from topos.core.omega import EvaluationValue, verdict_from_generators
 from topos.evaluation.policies.base import (
     THRESHOLDS,

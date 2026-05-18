@@ -1,7 +1,7 @@
-pub mod uast;
 pub mod cfg;
 pub mod probes_ast;
 pub mod profunctors;
+pub mod uast;
 
 use pyo3::prelude::*;
 
@@ -10,7 +10,7 @@ fn topos_functors(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<uast::SourceSpan>()?;
     m.add_class::<uast::NativeRef>()?;
     m.add_class::<uast::UASTNode>()?;
-    
+
     m.add_class::<cfg::EdgeKind>()?;
     m.add_class::<cfg::BasicBlock>()?;
     m.add_class::<cfg::CFGEdge>()?;

@@ -33,6 +33,7 @@ def calculate_kolmogorov_proxy(source: str) -> float:
     Estimate Kolmogorov complexity via compression ratio.
     """
     from topos.topos_functors import calculate_kolmogorov_proxy as rust_calc
+
     return rust_calc(source)
 
 
@@ -41,6 +42,7 @@ def calculate_entropy_detailed(source: str) -> EntropyResult:
     Perform detailed entropy analysis with interpretation.
     """
     from topos.topos_functors import calculate_entropy_detailed as rust_calc
+
     res = rust_calc(source)
     return EntropyResult(
         ratio=res.ratio,
@@ -55,6 +57,7 @@ def calculate_block_entropy(source: str, block_size: int = 100) -> list[float]:
     Calculate entropy for each block of the source.
     """
     from topos.topos_functors import calculate_block_entropy as rust_calc
+
     return rust_calc(source, block_size)
 
 
@@ -63,4 +66,5 @@ def calculate_entropy_variance(source: str, block_size: int = 100) -> float:
     Calculate variance in entropy across code blocks.
     """
     from topos.topos_functors import calculate_entropy_variance as rust_calc
+
     return rust_calc(source, block_size)

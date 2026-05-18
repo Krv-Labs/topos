@@ -1,7 +1,7 @@
-use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
 use crate::uast::UASTNode;
 use petgraph::prelude::*;
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[pyclass(eq, eq_int)]
@@ -155,7 +155,14 @@ impl ControlFlowGraph {
         let mut visited = std::collections::HashSet::new();
         visited.insert(self.entry_id);
 
-        self.dfs_internal(self.entry_id, 0, &mut visited, &adj, &mut best, sys_block_count);
+        self.dfs_internal(
+            self.entry_id,
+            0,
+            &mut visited,
+            &adj,
+            &mut best,
+            sys_block_count,
+        );
         best
     }
 
@@ -220,11 +227,9 @@ mod tests {
         let mut blocks = HashMap::new();
         blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
         blocks.insert(1, BasicBlock::new(1, None, "exit".to_string()));
-        
-        let edges = vec![
-            CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL),
-        ];
-        
+
+        let edges = vec![CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL)];
+
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 1);
         assert_eq!(cfg.cyclomatic_complexity(), 1);
     }
@@ -237,14 +242,14 @@ mod tests {
         blocks.insert(1, BasicBlock::new(1, None, "if".to_string()));
         blocks.insert(2, BasicBlock::new(2, None, "else".to_string()));
         blocks.insert(3, BasicBlock::new(3, None, "exit".to_string()));
-        
+
         let edges = vec![
             CFGEdge::new(0, 1, EdgeKind::TRUE),
             CFGEdge::new(0, 2, EdgeKind::FALSE),
             CFGEdge::new(1, 3, EdgeKind::UNCONDITIONAL),
             CFGEdge::new(2, 3, EdgeKind::UNCONDITIONAL),
         ];
-        
+
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 3);
         // E = 4, N = 4, P = 1 => 4 - 4 + 2*1 = 2
         assert_eq!(cfg.cyclomatic_complexity(), 2);
@@ -256,11 +261,9 @@ mod tests {
         let mut blocks = HashMap::new();
         blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
         blocks.insert(1, BasicBlock::new(1, None, "exit".to_string()));
-        
-        let edges = vec![
-            CFGEdge::new(0, 1, EdgeKind::RETURN),
-        ];
-        
+
+        let edges = vec![CFGEdge::new(0, 1, EdgeKind::RETURN)];
+
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 1);
         assert_eq!(cfg.essential_complexity(), 2);
     }
@@ -272,12 +275,12 @@ mod tests {
         blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
         blocks.insert(1, BasicBlock::new(1, None, "inner".to_string()));
         blocks.insert(2, BasicBlock::new(2, None, "exit".to_string()));
-        
+
         let edges = vec![
             CFGEdge::new(0, 1, EdgeKind::TRUE),
             CFGEdge::new(1, 2, EdgeKind::TRUE),
         ];
-        
+
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
         assert_eq!(cfg.max_nesting_depth(), 2);
     }
@@ -289,12 +292,12 @@ mod tests {
         blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
         blocks.insert(1, BasicBlock::new(1, None, "b1".to_string()));
         blocks.insert(2, BasicBlock::new(2, None, "exit".to_string()));
-        
+
         let edges = vec![
             CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL),
             CFGEdge::new(1, 2, EdgeKind::UNCONDITIONAL),
         ];
-        
+
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
         assert_eq!(cfg.longest_acyclic_path(), 2);
     }

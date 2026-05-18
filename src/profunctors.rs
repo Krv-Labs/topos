@@ -57,8 +57,12 @@ pub fn compute_sequence_distance(
             i -= 1;
         } else {
             // Should not happen with Wagner-Fischer
-            if i > 0 { i -= 1; }
-            if j > 0 { j -= 1; }
+            if i > 0 {
+                i -= 1;
+            }
+            if j > 0 {
+                j -= 1;
+            }
         }
     }
 

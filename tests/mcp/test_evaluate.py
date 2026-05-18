@@ -153,17 +153,13 @@ def test_evaluate_project_rolls_up_files() -> None:
 def test_evaluate_project_paginates() -> None:
     full = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(
-                path="topos", limit=5, offset=0, preferences=_PREFS
-            ),
+            EvaluateProjectInput(path="topos", limit=5, offset=0, preferences=_PREFS),
             _StubCtx(),
         )
     )
     page2 = asyncio.run(
         topos_evaluate_project(
-            EvaluateProjectInput(
-                path="topos", limit=5, offset=5, preferences=_PREFS
-            ),
+            EvaluateProjectInput(path="topos", limit=5, offset=5, preferences=_PREFS),
             _StubCtx(),
         )
     )

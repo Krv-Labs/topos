@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from topos.mcp.tools.docs import topos_get_doc
 
 

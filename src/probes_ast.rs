@@ -71,11 +71,13 @@ pub fn calculate_block_entropy(source: &str, block_size: usize) -> Vec<f64> {
     let mut results = Vec::new();
     let mut start = 0;
     while start < source.len() {
-        // Need to be careful with UTF-8 boundaries if block_size is in chars, 
+        // Need to be careful with UTF-8 boundaries if block_size is in chars,
         // but the Python version used slicing which is also tricky.
         // For simplicity, we'll follow Python's slicing behavior (chars).
         let block: String = source.chars().skip(start).take(block_size).collect();
-        if block.is_empty() { break; }
+        if block.is_empty() {
+            break;
+        }
         results.push(calculate_kolmogorov_proxy(&block));
         start += block_size;
     }
@@ -92,7 +94,11 @@ pub fn calculate_entropy_variance(source: &str, block_size: usize) -> f64 {
 
     let n = block_entropies.len() as f64;
     let mean: f64 = block_entropies.iter().sum::<f64>() / n;
-    let variance: f64 = block_entropies.iter().map(|&e| (e - mean).powi(2)).sum::<f64>() / n;
+    let variance: f64 = block_entropies
+        .iter()
+        .map(|&e| (e - mean).powi(2))
+        .sum::<f64>()
+        / n;
 
     variance
 }

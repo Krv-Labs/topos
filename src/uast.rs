@@ -103,12 +103,7 @@ mod tests {
     /// Verifies that a `SourceSpan` is correctly initialized with the provided start and end coordinates.
     #[test]
     fn test_source_span_creation() {
-        let span = SourceSpan::new(
-            Some("test.py".to_string()),
-            0, 10,
-            1, 0,
-            1, 10
-        );
+        let span = SourceSpan::new(Some("test.py".to_string()), 0, 10, 1, 0, 1, 10);
         assert_eq!(span.file, Some("test.py".to_string()));
         assert_eq!(span.start_byte, 0);
         assert_eq!(span.end_byte, 10);
@@ -120,7 +115,7 @@ mod tests {
         let native = NativeRef::new(
             "tree-sitter".to_string(),
             "0.20.0".to_string(),
-            "function_definition".to_string()
+            "function_definition".to_string(),
         );
         assert_eq!(native.parser, "tree-sitter");
         assert_eq!(native.node_kind, "function_definition");
@@ -138,7 +133,7 @@ mod tests {
             native,
             None,
             None,
-            "root".to_string()
+            "root".to_string(),
         );
         assert_eq!(node.kind, "module");
         assert_eq!(node.id, "root");

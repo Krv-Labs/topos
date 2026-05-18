@@ -159,6 +159,7 @@ def _compute_sequence_distance(
         Tuple of (distance, operation_counts).
     """
     from topos.topos_functors import compute_sequence_distance as rust_calc
+
     return rust_calc(source, target)
 
 

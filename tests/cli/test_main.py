@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
-
 from topos import __version__
 from topos.cli.main import cli
 

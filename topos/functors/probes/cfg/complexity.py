@@ -18,11 +18,23 @@ if TYPE_CHECKING:
 def _get_rust_cfg(cfg: ControlFlowGraph):
     from topos.topos_functors import (
         BasicBlock as RustBasicBlock,
+    )
+    from topos.topos_functors import (
         CFGEdge as RustCFGEdge,
+    )
+    from topos.topos_functors import (
         ControlFlowGraph as RustCFG,
+    )
+    from topos.topos_functors import (
         EdgeKind as RustEdgeKind,
+    )
+    from topos.topos_functors import (
         NativeRef as RustNativeRef,
+    )
+    from topos.topos_functors import (
         SourceSpan as RustSourceSpan,
+    )
+    from topos.topos_functors import (
         UASTNode as RustUASTNode,
     )
 

@@ -1,16 +1,13 @@
-import time
-import subprocess
 import json
 import os
 import re
-from pathlib import Path
+import subprocess
+import time
 
 # Paths
 V1_BIN = "./benchmarks/bin/topos-v1.0.0"
 CUR_CMD = ["uv", "run", "topos"]
-TEST_FILE = (
-    "topos/evaluation/characteristic_morphism.py"  # A reasonably complex file
-)
+TEST_FILE = "topos/evaluation/characteristic_morphism.py"  # A reasonably complex file
 
 
 def run_bench(cmd_base, label):
@@ -69,9 +66,7 @@ def run_bulk_bench(cmd_base, path, label):
 
         # Calculate some basic stats
         slop_count = sum(1 for r in results if r.get("lattice_element") == "SLOP")
-        ideal_count = sum(
-            1 for r in results if r.get("lattice_element") == "IDEAL"
-        )
+        ideal_count = sum(1 for r in results if r.get("lattice_element") == "IDEAL")
 
         stats = {
             "SLOP": slop_count,
@@ -90,7 +85,9 @@ def run_bulk_bench(cmd_base, path, label):
     print(f"Evaluated {num_files} files.")
     if stats:
         print(
-            f"Stats: SLOP={stats['SLOP']}, IDEAL={stats['IDEAL']}, Parseable={stats['Parseable']}"
+            f"Stats: SLOP={stats['SLOP']}, "
+            f"IDEAL={stats['IDEAL']}, "
+            f"Parseable={stats['Parseable']}"
         )
     return duration, num_files, stats
 
@@ -102,9 +99,7 @@ def main():
 
     # Warmup
     subprocess.run([V1_BIN, "evaluate", TEST_FILE, "--json"], capture_output=True)
-    subprocess.run(
-        CUR_CMD + ["evaluate", TEST_FILE, "--json"], capture_output=True
-    )
+    subprocess.run(CUR_CMD + ["evaluate", TEST_FILE, "--json"], capture_output=True)
 
     v1_time, v1_metrics = run_bench([V1_BIN], "v1.0.0 (Python-only binary)")
     cur_time, cur_metrics = run_bench(CUR_CMD, "Current (Rust Hybrid)")
@@ -125,15 +120,18 @@ def main():
                 mismatches.append(f"Missing key in current: {key}")
             else:
                 diff = abs(v1_val - cur_val)
-                # Entropy might differ slightly due to library implementation (zlib vs flate2)
+                # Entropy might differ slightly due to library implementation
+                # (zlib vs flate2)
                 tolerance = 1e-2 if "entropy" in key else 1e-6
                 if diff > tolerance:
                     mismatches.append(
-                        f"Value mismatch for {key}: v1={v1_val}, cur={cur_val} (diff={diff:.6f})"
+                        f"Value mismatch for {key}: v1={v1_val}, "
+                        f"cur={cur_val} (diff={diff:.6f})"
                     )
                 elif diff > 0:
                     print(
-                        f"INFO: Minor variation in {key}: diff={diff:.6e} (within tolerance)"
+                        f"INFO: Minor variation in {key}: "
+                        f"diff={diff:.6e} (within tolerance)"
                     )
 
         if not mismatches:

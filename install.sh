@@ -5,7 +5,7 @@
 # Install Topos - structural code quality metrics for AI coding agents
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | bash
+#   curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 #
 # Options (via environment variables):
 #   TOPOS_VERSION   - Specific version to install (default: latest)

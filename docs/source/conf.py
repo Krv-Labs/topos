@@ -54,6 +54,7 @@ intersphinx_mapping = {
 
 html_theme = "furo"
 html_static_path = ["_static"]
+html_extra_path = ["../../install.sh"]
 html_title = "Topos Documentation"
 html_css_files = ["custom.css"]
 

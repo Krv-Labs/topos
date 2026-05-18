@@ -33,7 +33,7 @@ Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding 
 
 ```bash
 # Install CLI
-curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
+curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 ```
 
 #### Using Topos

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Directory Restructuring**: Moved Python source from `src/topos` to the repository root as `topos/` and repurposed `src/` for the Rust backend.
 - **Build System**: Switched from `hatchling` to `maturin` to support native extension compilation.
 - **Performance**: Achieved significant speedups (approx. 6-8x) for evaluation tasks on standard codebases.
+- **Calibration Experiments**: Moved calibration suite and threshold findings infrastructure from `evaluations/calibration/` into the `benchmarks/` folder as `benchmarks/calibration/`.
 - **Categorical Documentation**: Updated `topos.graphs` to explicitly define graph construction as a **Functor** $R: \text{Lang} \to \mathcal{E}$.
 
 ## [1.0.0] - 2026-05-16

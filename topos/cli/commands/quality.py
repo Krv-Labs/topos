@@ -118,9 +118,7 @@ def evaluate(
     classifier = CharacteristicMorphism()
     results: list[dict[str, object]] = []
     progress_stream = click.get_text_stream("stderr")
-    show_progress = (
-        not output_json_flag and len(files) > 1 and progress_stream.isatty()
-    )
+    show_progress = not output_json_flag and len(files) > 1 and progress_stream.isatty()
 
     if show_progress:
         click.echo(file=progress_stream)

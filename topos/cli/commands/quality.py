@@ -9,6 +9,7 @@ from topos.cli.commands.coverage import structural_test_coverage_cmd
 from topos.cli.evaluation import (
     collect_files,
     output_json,
+    output_overall,
     output_text,
     result_to_row,
     run_classify_file,
@@ -116,18 +117,43 @@ def evaluate(
 
     classifier = CharacteristicMorphism()
     results: list[dict[str, object]] = []
+    progress_stream = click.get_text_stream("stderr")
+    show_progress = (
+        not output_json_flag and len(files) > 1 and progress_stream.isatty()
+    )
 
-    for filepath in files:
+    if show_progress:
+        click.echo(file=progress_stream)
+    with click.progressbar(
+        files,
+        label="Evaluating",
+        file=progress_stream,
+        hidden=not show_progress,
+        show_percent=False,
+        show_pos=True,
+        show_eta=False,
+        fill_char="█",
+        empty_char="░",
+        width=24,
+        bar_template="%(label)s  %(bar)s  %(info)s",
+    ) as progress_files:
         try:
-            cr = run_classify_file(
-                filepath,
-                priority=priority,
-                gitnexus_dir=gitnexus_dir,
-            )
-        except (OSError, ValueError) as exc:
-            click.echo(f"Error: {exc}", err=True)
-            sys.exit(1)
-        results.append(result_to_row(filepath, cr))
+            for filepath in progress_files:
+                try:
+                    cr = run_classify_file(
+                        filepath,
+                        priority=priority,
+                        gitnexus_dir=gitnexus_dir,
+                    )
+                except (OSError, ValueError) as exc:
+                    click.echo(f"Error: {exc}", err=True)
+                    sys.exit(1)
+                results.append(result_to_row(filepath, cr))
+        except KeyboardInterrupt:
+            click.echo("Interrupted. Exiting.", err=True)
+            sys.exit(130)
+    if show_progress:
+        click.echo(file=progress_stream)
 
     if output_json_flag:
         output_json(results)
@@ -136,14 +162,7 @@ def evaluate(
 
     classification_results = [r["_result"] for r in results]
     overall = classifier.combine_dimensions(classification_results)
-
-    click.echo()
-    click.echo("Overall:")
-    if not overall:
-        click.echo("  structural: ⊥ SLOP (no evaluable dimensions)")
-        return
-    for dim, val in overall.items():
-        click.echo(f"  {dim}: {val}")
+    output_overall(overall)
 
 
 @click.command()

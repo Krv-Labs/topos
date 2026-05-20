@@ -122,9 +122,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         )
 
     # ---- evaluate proposed ----
-    proposed_morph = ProgramMorphism(
-        source=proposed_src, language=params.language
-    )
+    proposed_morph = ProgramMorphism(source=proposed_src, language=params.language)
     proposed_res = classify_morphism(proposed_morph, priority, dep_graph)
 
     prefs = params.preferences.to_preferences() if params.preferences else None

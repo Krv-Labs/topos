@@ -12,12 +12,12 @@ from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
-from topos.evaluation.policies.base import Priority
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 from ..evaluation import (
     classify_code_string,
     classify_morphism,
+    gitnexus_warnings,
     load_dep_graph,
     resolve_gitnexus_dir,
 )
@@ -28,12 +28,15 @@ from ..schemas import (
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
+    ResponseFormat,
+    resolve_priority,
 )
 from ..security import (
     read_safe_utf8_file,
     resolve_file_root,
     resolve_within_root,
 )
+from ..security_findings import security_findings
 from ..server import mcp
 
 _READ_ONLY_ANN = {
@@ -70,6 +73,9 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE`` and
     ``suspicion_reason`` is populated.
     """
+    priority, priority_source = resolve_priority(params.preferences)
+    response_warnings = _response_format_warnings(params.response_format)
+
     # ---- load baseline ----
     if params.filepath:
         resolved, err = resolve_within_root(params.filepath)
@@ -80,35 +86,70 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         current_src, read_err = read_safe_utf8_file(resolved)
         if read_err or current_src is None:
             return _err_assessment(params, (read_err or {}).get("error", "read error"))
-        gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, resolve_file_root())
+        project_root = resolve_file_root()
+        gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
         dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
         current_morph = ProgramMorphism(source=current_src, language=params.language)
-        current_res = classify_morphism(current_morph, Priority.SIMPLE, dep_graph)
+        current_res = classify_morphism(current_morph, priority, dep_graph)
         coupling_for_proposed = dep_graph is not None
+        warnings = gitnexus_warnings(
+            params.gitnexus_dir,
+            project_root,
+            gitnexus_dir,
+            dep_graph_loaded=dep_graph is not None,
+        )
     elif params.current_code:
         current_res = classify_code_string(
-            params.current_code, params.language, Priority.SIMPLE
+            params.current_code, params.language, priority
         )
         current_morph = ProgramMorphism(
             source=params.current_code, language=params.language
         )
         dep_graph = None
         coupling_for_proposed = False
+        warnings = [
+            "COMPOSABLE not scored — current_code mode has no filepath or "
+            "ModuleDependencyGraph context."
+        ]
     else:
         return _err_assessment(params, "Provide either `filepath` or `current_code`.")
+    warnings.extend(response_warnings)
+
+    proposed_src, proposed_err = _load_proposed_source(params)
+    if proposed_err or proposed_src is None:
+        return _err_assessment(
+            params, proposed_err or "Unable to load proposed source."
+        )
 
     # ---- evaluate proposed ----
     proposed_morph = ProgramMorphism(
-        source=params.proposed_code, language=params.language
+        source=proposed_src, language=params.language
     )
-    proposed_res = classify_morphism(proposed_morph, Priority.SIMPLE, dep_graph)
+    proposed_res = classify_morphism(proposed_morph, priority, dep_graph)
 
     prefs = params.preferences.to_preferences() if params.preferences else None
+    current_findings = []
+    proposed_findings = []
+    if params.include_security_findings:
+        if _secure_failed(current_res):
+            current_findings = security_findings(current_morph.build_cpg())
+        if _secure_failed(proposed_res):
+            proposed_findings = security_findings(proposed_morph.build_cpg())
     current_eval = to_evaluation_result(
-        current_res, coupling_available=dep_graph is not None, preferences=prefs
+        current_res,
+        coupling_available=dep_graph is not None,
+        preferences=prefs,
+        priority_source=priority_source,
+        warnings=warnings,
+        security_findings=current_findings,
     )
     proposed_eval = to_evaluation_result(
-        proposed_res, coupling_available=coupling_for_proposed, preferences=prefs
+        proposed_res,
+        coupling_available=coupling_for_proposed,
+        preferences=prefs,
+        priority_source=priority_source,
+        warnings=warnings,
+        security_findings=proposed_findings,
     )
 
     # ---- score & metric deltas ----
@@ -182,7 +223,8 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
 
     return AssessmentResult(
         status=status,
-        priority=Priority.SIMPLE,
+        priority=priority,
+        priority_source=priority_source,
         current=current_eval,
         proposed=proposed_eval,
         score_deltas=score_deltas,
@@ -190,11 +232,13 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         structural_distance=distance,
         similarity=similarity,
         coupling_available_for_proposed=coupling_for_proposed,
+        warnings=warnings,
         suspicion_reason=suspicion,
     )
 
 
 def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResult:
+    priority, priority_source = resolve_priority(params.preferences)
     empty = EvaluationResult(
         is_parseable=False,
         lattice_element=LatticeElement.SLOP,
@@ -202,19 +246,51 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResul
         lattice_description="not evaluated",
         dimensions={},
         scores={},
-        priority=Priority.SIMPLE,
+        priority=priority,
+        priority_source=priority_source,
         guidance="",
         coupling_available=False,
+        warnings=_response_format_warnings(params.response_format),
     )
     return AssessmentResult(
         status=AssessmentStatus.LATERAL_MOVE,
-        priority=Priority.SIMPLE,
+        priority=priority,
+        priority_source=priority_source,
         current=empty,
         proposed=empty,
         score_deltas={},
-        complexity_delta=0.0,
         structural_distance=None,
         similarity=None,
         coupling_available_for_proposed=False,
+        warnings=_response_format_warnings(params.response_format),
         error=msg,
     )
+
+
+def _load_proposed_source(
+    params: AssessImprovementInput,
+) -> tuple[str | None, str | None]:
+    if params.proposed_code is not None:
+        return params.proposed_code, None
+    if params.proposed_filepath is None:
+        return None, "Provide exactly one of `proposed_code` or `proposed_filepath`."
+    source, err = read_safe_utf8_file(params.proposed_filepath)
+    if err:
+        return None, err["error"]
+    return source, None
+
+
+def _secure_failed(result) -> bool:
+    return bool(
+        result.raw_metrics.get("cpg.dangerous_calls", 0.0) > 0
+        or result.raw_metrics.get("cpg.taint_flows", 0.0) > 0
+    )
+
+
+def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
+    if response_format == ResponseFormat.MARKDOWN:
+        return []
+    return [
+        "response_format is deprecated/no-op for MCP structured output; tools return "
+        "structured content regardless of this value."
+    ]

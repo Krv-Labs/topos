@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from fastmcp import Context
 
+from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from topos.evaluation.policies.base import Priority
 
 from ..evaluation import (
     classify_code_string,
     classify_file,
+    gitnexus_warnings,
     resolve_gitnexus_dir,
 )
 from ..formatting import (
@@ -31,8 +33,11 @@ from ..schemas import (
     LatticeElement,
     ProjectEvaluationResult,
     ProjectFileEntry,
+    ResponseFormat,
+    resolve_priority,
 )
 from ..security import resolve_file_root, resolve_within_root
+from ..security_findings import security_findings
 from ..server import mcp
 
 _READ_ONLY_ANN = {
@@ -64,7 +69,8 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
         IDEAL (⊤)            All three generators satisfied.
     """
     try:
-        result = classify_code_string(params.code, params.language, Priority.SIMPLE)
+        priority, priority_source = resolve_priority(params.preferences)
+        result = classify_code_string(params.code, params.language, priority)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
@@ -79,7 +85,14 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
             error=str(exc),
         )
     prefs = params.preferences.to_preferences() if params.preferences else None
-    return to_evaluation_result(result, coupling_available=False, preferences=prefs)
+    warnings = _response_format_warnings(params.response_format)
+    return to_evaluation_result(
+        result,
+        coupling_available=False,
+        preferences=prefs,
+        priority_source=priority_source,
+        warnings=warnings,
+    )
 
 
 @mcp.tool(
@@ -129,9 +142,10 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
 
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
+    priority, priority_source = resolve_priority(params.preferences)
 
     try:
-        result, dep_graph = classify_file(resolved, Priority.SIMPLE, gitnexus_dir)
+        result, dep_graph = classify_file(resolved, priority, gitnexus_dir)
     except Exception as exc:
         return EvaluationResult(
             is_parseable=False,
@@ -147,8 +161,24 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
         )
 
     prefs = params.preferences.to_preferences() if params.preferences else None
+    warnings = gitnexus_warnings(
+        params.gitnexus_dir,
+        project_root,
+        gitnexus_dir,
+        dep_graph_loaded=dep_graph is not None,
+    )
+    warnings.extend(_response_format_warnings(params.response_format))
+    findings = []
+    if params.include_security_findings and _secure_failed(result):
+        morphism = ProgramMorphism.from_file(resolved)
+        findings = security_findings(morphism.build_cpg())
     return to_evaluation_result(
-        result, coupling_available=dep_graph is not None, preferences=prefs
+        result,
+        coupling_available=dep_graph is not None,
+        preferences=prefs,
+        priority_source=priority_source,
+        warnings=warnings,
+        security_findings=findings,
     )
 
 
@@ -183,8 +213,11 @@ async def topos_evaluate_project(
     if total_files == 0:
         return _empty_project_result(params, error="No .py files found.")
 
-    gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, resolve_file_root())
+    project_root = resolve_file_root()
+    gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
+    priority, priority_source = resolve_priority(params.preferences)
     coupling_available = gitnexus_dir is not None
+    any_dep_graph_loaded = False
 
     per_file_results = []
     entries: list[ProjectFileEntry] = []
@@ -192,20 +225,28 @@ async def topos_evaluate_project(
 
     for idx, path in enumerate(py_files, start=1):
         try:
-            result, _ = classify_file(path, Priority.SIMPLE, gitnexus_dir)
+            result, dep_graph = classify_file(path, priority, gitnexus_dir)
         except Exception:
             parse_failures += 1
             continue
+        any_dep_graph_loaded = any_dep_graph_loaded or dep_graph is not None
         if not result.is_parseable:
             parse_failures += 1
+        warnings = []
+        findings = []
+        if params.include_security_findings and _secure_failed(result):
+            morphism = ProgramMorphism.from_file(path)
+            findings = security_findings(morphism.build_cpg())
         per_file_results.append(result)
         entries.append(
             ProjectFileEntry(
                 filepath=str(path.relative_to(resolved_root)),
                 lattice_element=lattice_to_str(result.summary()),
                 scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-                pillars=build_pillars(result, coupling_available),
+                pillars=build_pillars(result, dep_graph is not None),
                 raw_metrics=dict(result.raw_metrics),
+                warnings=warnings,
+                security_findings=findings,
                 is_parseable=result.is_parseable,
             )
         )
@@ -230,13 +271,25 @@ async def topos_evaluate_project(
         simple=simple_ok, composable=composable_ok, secure=secure_ok
     )
     overall = lattice_to_str(overall_value)
+    aggregate_explanation = _aggregate_explanation(rolled, rolled_scores, entries)
 
     # Sort entries: lowest overall score first (worst files surfaced).
     entries.sort(key=lambda e: min(e.scores.values()) if e.scores else 0.0)
+    worst_files = entries[: min(3, len(entries))]
+    worst_file_verdict = worst_files[0].lattice_element if worst_files else None
+    guidance = _project_guidance(worst_files)
 
     page = entries[params.offset : params.offset + params.limit]
     has_more = params.offset + len(page) < len(entries)
     next_offset = params.offset + len(page) if has_more else None
+
+    project_warnings = gitnexus_warnings(
+        params.gitnexus_dir,
+        project_root,
+        gitnexus_dir,
+        dep_graph_loaded=any_dep_graph_loaded,
+    )
+    project_warnings.extend(_response_format_warnings(params.response_format))
 
     return ProjectEvaluationResult(
         root=str(resolved_root),
@@ -245,8 +298,15 @@ async def topos_evaluate_project(
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
         overall=overall,
-        priority=Priority.SIMPLE,
+        aggregate_floor_verdict=overall,
+        aggregate_explanation=aggregate_explanation,
+        worst_file_verdict=worst_file_verdict,
+        worst_files=worst_files,
+        guidance=guidance,
+        priority=priority,
+        priority_source=priority_source,
         coupling_available=coupling_available,
+        warnings=project_warnings,
         count=len(page),
         offset=params.offset,
         total=len(entries),
@@ -269,6 +329,7 @@ def _minimum_scores_by_dim(results) -> dict[str, float]:
 def _empty_project_result(
     params: EvaluateProjectInput, error: str | None
 ) -> ProjectEvaluationResult:
+    priority, priority_source = resolve_priority(params.preferences)
     return ProjectEvaluationResult(
         root=params.path,
         file_count=0,
@@ -276,8 +337,17 @@ def _empty_project_result(
         rolled_up_dimensions={},
         rolled_up_scores={},
         overall=LatticeElement.SLOP,
-        priority=Priority.SIMPLE,
+        aggregate_floor_verdict=LatticeElement.SLOP,
+        aggregate_explanation=(
+            "No files were evaluated, so the aggregate floor is SLOP."
+        ),
+        worst_file_verdict=None,
+        worst_files=[],
+        guidance=error or "No project guidance available.",
+        priority=priority,
+        priority_source=priority_source,
         coupling_available=False,
+        warnings=_response_format_warnings(params.response_format),
         count=0,
         offset=params.offset,
         total=0,
@@ -287,6 +357,60 @@ def _empty_project_result(
         verbose=params.verbose,
         error=error,
     )
+
+
+def _secure_failed(result) -> bool:
+    return bool(
+        result.raw_metrics.get("cpg.dangerous_calls", 0.0) > 0
+        or result.raw_metrics.get("cpg.taint_flows", 0.0) > 0
+    )
+
+
+def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
+    if response_format == ResponseFormat.MARKDOWN:
+        return []
+    return [
+        "response_format is deprecated/no-op for MCP structured output; tools return "
+        "structured content regardless of this value."
+    ]
+
+
+def _aggregate_explanation(
+    rolled: dict[str, object],
+    rolled_scores: dict[str, float],
+    entries: list[ProjectFileEntry],
+) -> str:
+    if not entries:
+        return "No files were evaluated, so the aggregate floor is SLOP."
+    failed = [
+        dim for dim, val in rolled.items() if lattice_to_str(val) == LatticeElement.SLOP
+    ]
+    worst = min(entries, key=lambda e: min(e.scores.values()) if e.scores else 0.0)
+    if failed:
+        dim = min(failed, key=lambda name: rolled_scores.get(name, 100.0))
+        score = rolled_scores.get(dim)
+        score_text = f" ({score:.1f}%)" if score is not None else ""
+        return (
+            "Aggregate floor is SLOP because at least one file fails "
+            f"{dim}{score_text}; "
+            f"worst current target is {worst.filepath} ({worst.lattice_element.value})."
+        )
+    return (
+        "Aggregate floor satisfies every measured generator; worst current target is "
+        f"{worst.filepath} ({worst.lattice_element.value})."
+    )
+
+
+def _project_guidance(worst_files: list[ProjectFileEntry]) -> str:
+    if not worst_files:
+        return "No files were evaluated."
+    worst = worst_files[0]
+    if worst.warnings:
+        return f"Start with `{worst.filepath}`: {worst.warnings[0]}"
+    if worst.scores:
+        dim = min(worst.scores, key=worst.scores.get)
+        return f"Start with `{worst.filepath}`; weakest measured generator is {dim}."
+    return f"Start with `{worst.filepath}`; inspect parseability and raw metrics."
 
 
 # ---------------------------------------------------------------------------

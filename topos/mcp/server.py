@@ -26,7 +26,7 @@ def _get_mcp():
         from fastmcp import FastMCP
 
         _mcp_instance = FastMCP(
-            "mcp",
+            "topos_mcp",
             version=__version__,
             instructions=(
                 "Topos evaluates Python code quality on a diamond lattice. "

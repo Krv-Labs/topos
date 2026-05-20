@@ -45,6 +45,9 @@ arxiv:1909.03496).  Always available.
 | `cpg.taint_flows`     | DDG paths from any taint source (e.g. `input`, `request.args`) to any dangerous-API sink. |
 
 `Φ_SECURE` decays exponentially in both counts.  Threshold: **0.6**.
+File-level MCP tools also surface `security_findings` with `kind`, `callee`,
+`line`, and `snippet` when SECURE fails.  Project scans keep this off by default
+unless `include_security_findings=true`.
 
 ## Diagnostic-only metrics (academic PDG)
 

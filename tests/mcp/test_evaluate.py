@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from topos.evaluation.preferences import Generator
 from topos.mcp.schemas import (
     EvaluateCodeInput,
@@ -63,6 +64,20 @@ def test_evaluate_code_happy_path() -> None:
     assert r.error is None
 
 
+def test_evaluate_code_defaults_to_legacy_simple_priority() -> None:
+    r = topos_evaluate_code(EvaluateCodeInput(code="def foo(): return 1"))
+    assert r.priority.value == "simple"
+    assert r.priority_source.value == "default"
+
+
+def test_evaluate_code_infers_priority_from_preferences() -> None:
+    r = topos_evaluate_code(
+        EvaluateCodeInput(code="def foo(): return 1", preferences=_PREFS)
+    )
+    assert r.priority.value == "secure"
+    assert r.priority_source.value == "preferences"
+
+
 def test_evaluate_code_rejects_unsupported_language() -> None:
     r = topos_evaluate_code(
         EvaluateCodeInput(code="x = 1", language="ruby", preferences=_PREFS)
@@ -78,8 +93,41 @@ def test_evaluate_file_reads_real_file() -> None:
         EvaluateFileInput(filepath="topos/__init__.py", preferences=_PREFS)
     )
     assert r.is_parseable
-    assert r.coupling_available is False  # no .gitnexus/ in repo
     assert "simple" in r.scores
+
+
+def test_evaluate_file_warns_without_gitnexus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "module.py"
+    path.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    r = topos_evaluate_file(EvaluateFileInput(filepath="module.py", preferences=_PREFS))
+
+    assert r.coupling_available is False
+    assert r.warnings
+    assert "mdg.unavailable" in r.pillars["composable"].interpretation
+
+
+def test_evaluate_file_reports_security_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "danger.py"
+    path.write_text("def f(expr):\n    return eval(expr)\n", encoding="utf-8")
+
+    r = topos_evaluate_file(EvaluateFileInput(filepath="danger.py", preferences=_PREFS))
+
+    assert r.security_findings
+    assert r.security_findings[0].callee == "eval"
+    assert r.security_findings[0].line == 2
 
 
 def test_evaluate_file_rejects_path_outside_root(tmp_path: Path) -> None:
@@ -148,6 +196,9 @@ def test_evaluate_project_rolls_up_files() -> None:
     assert r.overall in list(LatticeElement)
     assert r.count <= r.total
     assert r.files, "expected at least one per-file entry"
+    assert r.aggregate_floor_verdict == r.overall
+    assert r.aggregate_explanation
+    assert r.guidance
 
 
 def test_evaluate_project_paginates() -> None:

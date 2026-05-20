@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="topos-logo.svg" alt="Topos" width="400">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/topos-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="topos-logo.svg">
+    <img src="topos-logo.svg" alt="Topos" width="400">
+  </picture>
 </p>
 
 > **Structural code quality metrics for agent-written programs.**

@@ -9,7 +9,7 @@ from topos.functors.profunctors.uast.structural_test_coverage import (
     declaration_coverage,
 )
 
-from ..schemas import CalculateCoverageInput, CoverageResult
+from ..schemas import CalculateCoverageInput, CoverageResult, ResponseFormat
 from ..security import resolve_within_root
 from ..server import mcp
 
@@ -34,6 +34,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
     recall scoped to declarations. Addresses weaknesses of pooled metrics
     by using bipartite matching between PUT and test declarations.
     """
+    warnings = _response_format_warnings(params.response_format)
     put_roots = []
     for path in params.put_files:
         resolved, err = resolve_within_root(path)
@@ -50,6 +51,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
+                warnings=warnings,
                 error=(
                     f"PUT file error: {(err or {}).get('error', 'path error')} "
                     f"for {path}"
@@ -72,6 +74,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
+                warnings=warnings,
                 error=f"Failed to parse PUT file {path}: {exc}",
             )
 
@@ -91,6 +94,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
+                warnings=warnings,
                 error=(
                     f"Test file error: {(err or {}).get('error', 'path error')} "
                     f"for {path}"
@@ -113,6 +117,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 uncovered_declarations=[],
                 put_declaration_count=0,
                 test_declaration_count=0,
+                warnings=warnings,
                 error=f"Failed to parse test file {path}: {exc}",
             )
 
@@ -129,6 +134,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
             uncovered_declarations=[],
             put_declaration_count=0,
             test_declaration_count=0,
+            warnings=warnings,
             error="No valid PUT roots found (parsing failed or files empty).",
         )
 
@@ -151,6 +157,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
             uncovered_declarations=report.uncovered_declarations,
             put_declaration_count=report.put_declaration_count,
             test_declaration_count=report.test_declaration_count,
+            warnings=warnings,
         )
     except Exception as exc:
         return CoverageResult(
@@ -165,6 +172,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
             uncovered_declarations=[],
             put_declaration_count=0,
             test_declaration_count=0,
+            warnings=warnings,
             error=f"Coverage calculation failed: {exc}",
         )
 
@@ -213,3 +221,12 @@ def render_coverage_md(r: CoverageResult) -> str:
         )
 
     return "\n".join(lines)
+
+
+def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
+    if response_format == ResponseFormat.MARKDOWN:
+        return []
+    return [
+        "response_format is deprecated/no-op for MCP structured output; tools return "
+        "structured content regardless of this value."
+    ]

@@ -20,6 +20,10 @@ topos-skill/
 *.skill
 maths.md
 
+# Data
+artifacts/
+data/
+
 
 # Benchmarks
 benchmarks/calibration/*.csv

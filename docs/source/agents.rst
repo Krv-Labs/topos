@@ -147,29 +147,37 @@ All evaluation tools accept an optional ``preferences`` parameter which includes
 Core Evaluation
 ~~~~~~~~~~~~~~~
 
-``topos_evaluate_file(filepath, preferences, gitnexus_dir)``
+``topos_evaluate_file(filepath, preferences, gitnexus_dir, include_security_findings)``
    Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and 
-   reach higher badges like ``IDEAL``.
+   reach higher badges like ``IDEAL``. Missing or rejected GitNexus configuration is
+   reported in ``warnings`` and in the COMPOSABLE pillar interpretation.
 
 ``topos_evaluate_code(code, language, preferences)``
    Classifies a raw code string (SIMPLE and SECURE only).
 
-``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset)``
-   Project-wide rollup. Returns worst-scoring files first.
+``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset, include_security_findings)``
+   Project-wide rollup. Returns worst-scoring files first. Use
+   ``aggregate_floor_verdict`` for the codebase floor and ``worst_files`` /
+   ``guidance`` for the next action.
 
-``topos_inspect_code(code, language, preferences, top_n_functions)``
-   Detailed metric breakdown: top-N functions by complexity, entropy details, and full 
-   metric table.
+``topos_inspect_code(code, filepath, language, preferences, top_n_functions)``
+   Detailed metric breakdown: top-N functions by complexity and line number,
+   entropy details, and full metric table. Provide exactly one of ``code`` or
+   ``filepath``.
 
 Refactor & Iterate
 ~~~~~~~~~~~~~~~~~~
 
-``topos_assess_improvement(proposed_code, filepath, preferences, gitnexus_dir)``
+``topos_assess_improvement(proposed_code, proposed_filepath, filepath, preferences, gitnexus_dir)``
    Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
-   if the quality badge or scores have improved according to the preferences.
+   if the quality badge or scores have improved according to the preferences. Provide
+   exactly one of ``proposed_code`` or ``proposed_filepath``.
 
    Anti-gaming check: if scores improved but AST edit distance is near zero, it returns 
    ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
+
+   When SECURE fails, file-level assessment includes ``security_findings`` with the
+   dangerous callee, line, and source snippet.
 
 ``topos_preference_walk(ranking, target, current)``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should

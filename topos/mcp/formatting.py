@@ -13,7 +13,14 @@ from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
 
-from .schemas import EvaluationResult, LatticeElement, PillarResult, PreferenceWalk
+from .schemas import (
+    EvaluationResult,
+    LatticeElement,
+    PillarResult,
+    PreferenceWalk,
+    PrioritySource,
+    SecurityFinding,
+)
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
     EvaluationValue.SLOP: LatticeElement.SLOP,
@@ -102,7 +109,10 @@ def build_guidance(result: ClassificationResult) -> str:
 
 
 def build_pillars(
-    result: ClassificationResult, coupling_available: bool
+    result: ClassificationResult,
+    coupling_available: bool,
+    *,
+    warnings: list[str] | None = None,
 ) -> dict[str, PillarResult]:
     """Build the per-pillar (simple, composable, secure) breakdown."""
     pillars: dict[str, PillarResult] = {}
@@ -125,6 +135,14 @@ def build_pillars(
             for k, v in result.interpretation.items()
             if any(k.startswith(p) for p in metric_prefixes)
         }
+        if dim == "composable" and not coupling_available:
+            message = (
+                (warnings or [None])[0]
+                or "unavailable — no ModuleDependencyGraph; run "
+                "'topos depgraph generate' "
+                "to score COMPOSABLE."
+            )
+            dim_interp.setdefault("mdg.unavailable", message)
 
         # achieved = was the singleton generator for this dimension satisfied?
         generator_val = {
@@ -152,6 +170,9 @@ def to_evaluation_result(
     coupling_available: bool,
     *,
     preferences: UserPreferences | None = None,
+    priority_source: PrioritySource = PrioritySource.DEFAULT,
+    warnings: list[str] | None = None,
+    security_findings: list[SecurityFinding] | None = None,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model."""
     summary = result.summary()
@@ -166,12 +187,15 @@ def to_evaluation_result(
         lattice_description=summary.description,
         dimensions={dim: lattice_to_str(val) for dim, val in result.dimensions.items()},
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-        pillars=build_pillars(result, coupling_available),
+        pillars=build_pillars(result, coupling_available, warnings=warnings),
         priority=result.priority,
+        priority_source=priority_source,
         guidance=build_guidance(result),
         coupling_available=coupling_available,
         raw_metrics=dict(result.raw_metrics),
         interpretation=dict(result.interpretation),
+        warnings=warnings or [],
+        security_findings=security_findings or [],
         preference_walk=walk,
     )
 

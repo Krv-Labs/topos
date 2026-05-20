@@ -27,9 +27,12 @@ first encounter with the server.
 
 - Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — `gitnexus_dir`
   is required for the COMPOSABLE generator.  Without it, any verdict
-  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.
+  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.  When missing,
+  the result includes both top-level `warnings` and a COMPOSABLE-pillar
+  `mdg.unavailable` interpretation.
 - Whole project: `topos_evaluate_project(path, gitnexus_dir)` — rollup +
-  worst-N file list. Start here to pick a target and "Go for Gold".
+  worst-N file list.  Treat `aggregate_floor_verdict` as the codebase floor;
+  use `worst_files` and `guidance` to pick the next action.
 
 ### 2. Plan
 
@@ -37,13 +40,16 @@ Read the `guidance` field of the evaluation result. It's priority-aware and
 tells you which dimension to work on. If `guidance` says "provide
 gitnexus_dir" you must run `topos depgraph generate` first.
 
-For deep analysis of a specific file, call `topos_inspect_code` — it returns
-top-N functions by complexity, entropy details, and the full metric table.
+For deep analysis of a specific file, call `topos_inspect_code` with either
+`filepath` or `code` — it returns top-N functions by complexity, source line,
+entropy details, and the full metric table.
 
 ### 3. Propose
 
 Write a refactor. Keep the change focused on one dimension at a time.
-Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
+Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`, or use
+`proposed_filepath` when the proposed version is already written inside the
+configured file root.
 
 ### 4. Verify
 
@@ -57,6 +63,10 @@ Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`.
 - **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** — ⚠️ scores moved but AST barely
   changed. The refactor is probably cosmetic (whitespace / comments /
   renames). Make a structural change, not a textual one. **Do not commit.**
+
+When SECURE fails, file-level evaluation and assessment include
+`security_findings` by default.  Start with `callee`, `line`, and `snippet`;
+these are the actionable fields an agent needs before guessing at fixes.
 
 ### 5. Decide
 
@@ -134,3 +144,12 @@ only the top-two generators. See `topos://docs/preferences`.
 
 Topos is one signal in a multi-signal loop. Pair it with test coverage and
 type checks for the full picture.
+
+## Compatibility notes
+
+- `response_format` is deprecated/no-op for MCP structured output.  Tools return
+  structured content regardless of this value and emit a warning when callers
+  pass a non-default value.
+- `overall` on project evaluation is retained as a compatibility alias for
+  `aggregate_floor_verdict`; prefer the newer aggregate/worst-file fields for
+  agent planning.

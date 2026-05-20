@@ -11,6 +11,7 @@ from ..schemas import (
     CompareCodeInput,
     CompareFilesInput,
     ComparisonResult,
+    ResponseFormat,
 )
 from ..security import read_safe_utf8_file
 from ..server import mcp
@@ -49,6 +50,7 @@ def topos_compare_code(params: CompareCodeInput) -> ComparisonResult:
             operations={},
             source_valid=False,
             target_valid=False,
+            warnings=_response_format_warnings(params.response_format),
             error=str(exc),
         )
 
@@ -60,6 +62,7 @@ def topos_compare_code(params: CompareCodeInput) -> ComparisonResult:
             operations={},
             source_valid=src.is_valid,
             target_valid=tgt.is_valid,
+            warnings=_response_format_warnings(params.response_format),
             error="Failed to parse one or both code snippets.",
         )
 
@@ -71,6 +74,7 @@ def topos_compare_code(params: CompareCodeInput) -> ComparisonResult:
         operations=dict(result.operations),
         source_valid=True,
         target_valid=True,
+        warnings=_response_format_warnings(params.response_format),
     )
 
 
@@ -90,6 +94,7 @@ def topos_compare_files(params: CompareFilesInput) -> ComparisonResult:
             operations={},
             source_valid=False,
             target_valid=False,
+            warnings=_response_format_warnings(params.response_format),
             error=f"Source file error: {source_err['error']}",
         )
     target_text, target_err = read_safe_utf8_file(params.target)
@@ -101,6 +106,7 @@ def topos_compare_files(params: CompareFilesInput) -> ComparisonResult:
             operations={},
             source_valid=True,
             target_valid=False,
+            warnings=_response_format_warnings(params.response_format),
             error=f"Target file error: {target_err['error']}",
         )
     return topos_compare_code(
@@ -110,3 +116,12 @@ def topos_compare_files(params: CompareFilesInput) -> ComparisonResult:
             response_format=params.response_format,
         )
     )
+
+
+def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
+    if response_format == ResponseFormat.MARKDOWN:
+        return []
+    return [
+        "response_format is deprecated/no-op for MCP structured output; tools return "
+        "structured content regardless of this value."
+    ]

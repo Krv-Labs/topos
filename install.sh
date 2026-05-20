@@ -24,27 +24,32 @@ PATH_HINT_BEGIN="# BEGIN TOPOS INSTALLER PATH"
 PATH_HINT_END="# END TOPOS INSTALLER PATH"
 PATH_HINT_FILE=""
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
 info() {
-    echo -e "${BLUE}[info]${NC} $1"
+    printf '> %s\n' "$1"
 }
 
 success() {
-    echo -e "${GREEN}[ok]${NC} $1"
+    if [ -t 1 ]; then
+        printf '\033[32m✓\033[0m %s\n' "$1"
+    else
+        printf '✓ %s\n' "$1"
+    fi
 }
 
 warn() {
-    echo -e "${YELLOW}[warn]${NC} $1"
+    if [ -t 2 ]; then
+        printf '\033[33m!\033[0m %s\n' "$1"
+    else
+        printf '! %s\n' "$1"
+    fi
 }
 
 error() {
-    echo -e "${RED}[error]${NC} $1" >&2
+    if [ -t 2 ]; then
+        printf '\033[31mx\033[0m %s\n' "$1" >&2
+    else
+        printf 'x %s\n' "$1" >&2
+    fi
 }
 
 cleanup() {
@@ -113,6 +118,103 @@ calculate_sha256() {
     exit 1
 }
 
+print_header() {
+    if [ -t 1 ]; then
+        printf '\n\n'
+        printf '%b\n' '  ⣀⣤⣄⡀        ⢀⣤⣤⣀        ⢀⣠⣤⣀'
+        printf '%b\n' ' ⢰⠃  ⢻⣶⣶⣶⣶⣶⣶⣶⣶⡟  ⢸⣶⣶⣶⣶⣶⣶⣶⣶⣾  ⠈'
+        printf '%b\n' ' ⠈⠳⣤⡴⠿⣍⠉⠉⠉⠉⠉⠉⣩⠿⣦⣤⠾⣍⡉⠉⠉⠉⠉⠉\033[38;2;182;90;34m⣩⣿\033[0m⣦⣤⠴'
+        printf '%b\n' '      ⠈⠳⣤⣀⣀⣤⠞⠁ ⣿⣿ ⠈⠛⢦⣀⣠\033[38;2;182;90;34m⣴⡿⠟⠁\033[0m'
+        printf '%b\n' '        ⠸⡁⢈⡇   ⣿⣿\033[38;2;182;90;34m⣤⣤⣶⣾\033[0m⣇⢀⡏           █▄'
+        printf '%b\n' '         ⠈⠁⠙⢦\033[38;2;182;90;34m⣴⣾⣿⣿⠉⢉\033[0m⣴⠟⠉⠉           ▄██▄'
+        printf '%b\n' '           \033[38;2;182;90;34m⢠⣿⠟\033[0m⣶⠟⠻⢶⡟⠁               ██ ▄███▄ ████▄ ▄███▄ ▄██▀█'
+        printf '%b\n' '           \033[38;2;182;90;34m⣿⡏\033[0m⠐⣇  ⢠⠇                ██ ██ ██ ██ ██ ██ ██ ▀███▄'
+        printf '%b\n' '          \033[38;2;182;90;34m⠰⣿⡇\033[0m ⠈⣿⣿⠋                ▄██▄▀███▀▄████▀▄▀███▀█▄▄██▀'
+        printf '%b\n' '           \033[38;2;182;90;34m⣿⣇\033[0m  ⣿⣿                           ██'
+        printf '%b\n' '           \033[38;2;182;90;34m⠘⣿⡄\033[0m ⣿⣿                           ▀'
+        printf '%b\n' '            \033[38;2;182;90;34m⠘⣿⣆\033[0m⣿⣿'
+        printf '%b\n' '             \033[38;2;182;90;34m⢈\033[0m⡟⠉⠉⠹⡄'
+        printf '%b\n' '              ⢧⣀⣀⡴⠃'
+        printf '%b\n' '               ⠈⠁'
+        printf '\n\n'
+        return
+    fi
+
+    cat <<'EOF'
+
+
+  ⣀⣤⣄⡀        ⢀⣤⣤⣀        ⢀⣠⣤⣀
+ ⢰⠃  ⢻⣶⣶⣶⣶⣶⣶⣶⣶⡟  ⢸⣶⣶⣶⣶⣶⣶⣶⣶⣾  ⠈
+ ⠈⠳⣤⡴⠿⣍⠉⠉⠉⠉⠉⠉⣩⠿⣦⣤⠾⣍⡉⠉⠉⠉⠉⠉⣩⣿⣦⣤⠴
+      ⠈⠳⣤⣀⣀⣤⠞⠁ ⣿⣿ ⠈⠛⢦⣀⣠⣴⡿⠟⠁
+        ⠸⡁⢈⡇   ⣿⣿⣤⣤⣶⣾⣇⢀⡏           █▄
+         ⠈⠁⠙⢦⣴⣾⣿⣿⠉⢉⣴⠟⠉⠉           ▄██▄
+           ⢠⣿⠟⣶⠟⠻⢶⡟⠁               ██ ▄███▄ ████▄ ▄███▄ ▄██▀█
+           ⣿⡏⠐⣇  ⢠⠇                ██ ██ ██ ██ ██ ██ ██ ▀███▄
+          ⠰⣿⡇ ⠈⣿⣿⠋                ▄██▄▀███▀▄████▀▄▀███▀█▄▄██▀
+           ⣿⣇  ⣿⣿                           ██
+           ⠘⣿⡄ ⣿⣿                           ▀
+            ⠘⣿⣆⣿⣿
+             ⢈⡟⠉⠉⠹⡄
+              ⢧⣀⣀⡴⠃
+               ⠈⠁
+
+
+EOF
+}
+
+run_with_spinner() {
+    local label="$1" status_file pid status i frame_count
+    shift
+
+    if [ ! -t 2 ]; then
+        info "${label}"
+        "$@"
+        status=$?
+        if [ "${status}" -eq 0 ]; then
+            success "${label}"
+        fi
+        return "${status}"
+    fi
+
+    local frames=( "⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏" )
+    frame_count=${#frames[@]}
+    status_file=$(mktemp "${TMPDIR:-/tmp}/topos-spinner.XXXXXX")
+    rm -f "${status_file}"
+
+    (
+        set +e
+        "$@"
+        printf '%s' "$?" > "${status_file}"
+    ) &
+    pid=$!
+
+    i=0
+    while [ ! -f "${status_file}" ]; do
+        printf '\r  %s %s' "${frames[$i]}" "${label}" >&2
+        i=$(((i + 1) % frame_count))
+        sleep 0.08
+    done
+
+    wait "${pid}" 2>/dev/null || true
+    status=$(cat "${status_file}")
+    rm -f "${status_file}"
+
+    if [ "${status}" -eq 0 ]; then
+        printf '\r  \033[32m✓\033[0m %s\n' "${label}" >&2
+    else
+        printf '\r  \033[31mx\033[0m %s\n' "${label}" >&2
+    fi
+
+    return "${status}"
+}
+
+download_file() {
+    local label="$1" url="$2" output="$3"
+
+    run_with_spinner "${label}" curl --fail -sSL -o "${output}" "${url}"
+}
+
 # Detect platform
 detect_platform() {
     local os arch
@@ -158,7 +260,7 @@ install_topos() {
     local expected_checksum actual_checksum expected_checksum_normalized actual_checksum_normalized
 
     platform=$(detect_platform)
-    info "Detected platform: ${platform}"
+    info "Platform ${platform}"
 
     if [ "$VERSION" = "latest" ]; then
         version=$(get_latest_version)
@@ -166,10 +268,10 @@ install_topos() {
             error "Could not determine latest version"
             exit 1
         fi
-        info "Latest version: ${version}"
+        info "Version ${version}"
     else
         version="$VERSION"
-        info "Installing version: ${version}"
+        info "Version ${version}"
     fi
 
     asset_name="topos-${platform}"
@@ -180,8 +282,8 @@ install_topos() {
     tmp_binary="${TMP_DIR}/topos"
     checksums_file="${TMP_DIR}/checksums.txt"
 
-    info "Downloading ${download_url}..."
-    if ! curl --fail -sSL -o "${tmp_binary}" "$download_url"; then
+    echo ""
+    if ! download_file "Downloading ${asset_name}" "${download_url}" "${tmp_binary}"; then
         error "Download failed. The release asset may not exist for this platform."
         echo ""
         echo "Alternative installation methods:"
@@ -199,11 +301,12 @@ install_topos() {
     fi
 
     checksums_url="https://github.com/${REPO}/releases/download/${version}/checksums.txt"
-    info "Verifying checksum..."
-    if ! curl --fail -sSL -o "${checksums_file}" "${checksums_url}"; then
+    if ! download_file "Fetching checksums" "${checksums_url}" "${checksums_file}"; then
         error "Failed to download checksums.txt for ${version}"
         exit 1
     fi
+
+    echo ""
 
     expected_checksum=$(
         grep -E "[[:space:]]${asset_name}$" "${checksums_file}" \
@@ -228,31 +331,31 @@ install_topos() {
     mkdir -p "$INSTALL_DIR"
 
     # Install the binary
-    info "Installing to ${INSTALL_DIR}/topos..."
+    info "Install ${INSTALL_DIR}/topos"
     mv "${tmp_binary}" "${INSTALL_DIR}/topos"
     chmod +x "${INSTALL_DIR}/topos"
 
-    success "Topos ${version} installed successfully!"
+    success "Installed Topos ${version}"
 }
 
 # Install optional dependencies
 install_optional_dependencies() {
     echo ""
-    info "Optional Dependencies"
+    info "Dependencies"
 
     if command -v gitnexus >/dev/null 2>&1; then
         success "gitnexus is already installed."
         return
     fi
 
-    echo -e "gitnexus is required for coupling metrics (COMPOSABLE/IDEAL targets)."
+    echo "gitnexus is required for coupling metrics (COMPOSABLE/IDEAL targets)."
 
     local reply=""
     if [ -t 0 ]; then
-        echo -n -e "${BLUE}[?]${NC} Do you want to install gitnexus via npm? [Y/n] "
+        printf '? Do you want to install gitnexus via npm? [Y/n] '
         read -r reply
     elif [ -c /dev/tty ]; then
-        echo -n -e "${BLUE}[?]${NC} Do you want to install gitnexus via npm? [Y/n] "
+        printf '? Do you want to install gitnexus via npm? [Y/n] '
         read -r reply < /dev/tty
     fi
 
@@ -365,34 +468,28 @@ verify_install() {
     fi
 
     echo ""
-    echo "Get started:"
+    if [ -t 1 ]; then
+        printf '\033[1mRecommended (agents)\033[0m\n'
+        printf '  \033[1mclaude mcp add topos topos mcp\033[0m\n'
+    else
+        echo "Recommended (agents):"
+        echo "  claude mcp add topos topos mcp"
+    fi
     echo ""
-    echo "  topos evaluate src/ -r --preferences simple,composable,secure   # classify a directory"
-    echo "  topos inspect module.py --preferences simple,composable,secure # detailed metrics"
-    echo "  topos compare before.py after.py                    # AST edit distance"
+    echo "Direct CLI:"
+    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,secure"
     echo ""
-    echo "Lattice elements: SLOP (⊥), SIMPLE, COMPOSABLE, SECURE ... IDEAL (⊤)"
-    echo "Metrics: structural (complexity, entropy) + coupling (dependency graph via GitNexus)"
-    echo ""
-    echo "Next step for agent-led workflows (recommended):"
-    echo "  topos depgraph generate     # enable coupling metrics for COMPOSABLE/IDEAL"
-    echo "  topos-mcp                   # verify MCP server, then register in your agent"
+    echo "Composability:"
+    echo "  cd <YOUR_REPO_HERE>"
+    echo "  topos depgraph generate"
+    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,composable,secure --gitnexus-dir .gitnexus"
     echo ""
     echo "Docs: https://docs.krv.ai/topos"
-    echo "MCP setup: https://docs.krv.ai/topos/agents"
 }
 
 # Main
 main() {
-    echo ""
-    echo "  ╔════════════════════════════════════════════════════════════╗"
-    echo "  ║                          Topos                             ║"
-    echo "  ║                                                            ║"
-    echo "  ║   Topos translates your quality priorities into            ║"
-    echo "  ║   measurable targets for AI coding agents.                ║"
-    echo "  ║                                                            ║"
-    echo "  ╚════════════════════════════════════════════════════════════╝"
-    echo ""
+    print_header
 
     check_dependencies
     validate_install_dir

@@ -30,7 +30,9 @@ def test_evaluate_file(tmp_path: Path):
     assert result.exit_code == 0
     assert str(f) in result.output
     assert "Files" in result.output
-    assert "Overall" in result.output
+    assert f"{f} [" in result.output
+    assert "Directory Average Score" in result.output
+    assert "Directory Floor Verdict" in result.output
 
 
 def test_evaluate_recursive(tmp_path: Path):
@@ -47,6 +49,8 @@ def test_evaluate_recursive(tmp_path: Path):
     assert "Pillars" not in result.output
     assert "a.py" in result.output
     assert "b.py" in result.output
+    assert "Directory Average Score" in result.output
+    assert "Directory Floor Verdict" in result.output
 
 
 def test_evaluate_large_recursive_uses_summary(tmp_path: Path):
@@ -64,6 +68,8 @@ def test_evaluate_large_recursive_uses_summary(tmp_path: Path):
     assert "Needs attention" in result.output
     assert "Best file" in result.output
     assert "Files" not in result.output
+    assert "Directory Average Score" in result.output
+    assert "Directory Floor Verdict" in result.output
 
 
 def test_evaluate_json(tmp_path: Path):
@@ -75,22 +81,11 @@ def test_evaluate_json(tmp_path: Path):
     assert result.exit_code == 0
     import json
 
-    # The output might contain additional text after the JSON.
-    # Find the end of the JSON string (which should be the outermost brace).
-    output = result.output
-    try:
-        # Assuming the JSON object is at the beginning.
-        # find the end of the JSON object by counting braces or simply taking the
-        # string until the matching '}'
-        # A simpler way since it outputs a dict:
-        json_str = output[: output.rfind("}") + 1]
-        data = json.loads(json_str)
-    except json.JSONDecodeError:
-        # Fallback if the above heuristic fails
-        data = json.loads(output.split("\n\n")[0])
+    data = json.loads(result.output)
 
     assert "results" in data
     assert data["results"][0]["file"] == str(f)
+    assert "Directory Floor Verdict" not in result.output
 
 
 def test_evaluate_progress_bar_for_interactive_text(tmp_path: Path, monkeypatch):
@@ -113,7 +108,7 @@ def test_evaluate_progress_bar_for_interactive_text(tmp_path: Path, monkeypatch)
     result = runner.invoke(cli, ["evaluate", str(d), "-r"])
 
     assert result.exit_code == 0
-    assert "Overall" in result.output
+    assert "Directory Floor Verdict" in result.output
     progress_output = progress_stream.getvalue()
     assert progress_output.startswith("\n")
     assert progress_output.endswith("\n\n")

@@ -8,6 +8,7 @@ import click
 from topos.cli.commands.coverage import structural_test_coverage_cmd
 from topos.cli.evaluation import (
     collect_files,
+    output_directory_average,
     output_json,
     output_overall,
     output_text,
@@ -155,11 +156,13 @@ def evaluate(
 
     if output_json_flag:
         output_json(results)
+        return
     else:
         output_text(results, verbose)
 
     classification_results = [r["_result"] for r in results]
     overall = classifier.combine_dimensions(classification_results)
+    output_directory_average(results)
     output_overall(overall)
 
 

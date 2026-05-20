@@ -96,12 +96,19 @@ def _format_file_summary(result: dict[str, object]) -> str:
     if isinstance(scores, dict):
         score_parts = [f"{dim} {float(score):.0f}" for dim, score in scores.items()]
     score_text = "  " + "  ".join(score_parts) if score_parts else ""
-    return f"{result['file']}  {_display_score(result):.0f}%{score_text}"
+    medal = _format_medal(result)
+    return f"{result['file']} {medal}  {_display_score(result):.0f}%{score_text}"
+
+
+def _format_medal(result: dict[str, object]) -> str:
+    symbol = result.get("lattice_symbol", "")
+    element = result.get("lattice_element", "SLOP")
+    return f"[{symbol} {element}]"
 
 
 def _output_file_details(results: list[dict[str, object]], verbose: bool) -> None:
     for result in results:
-        click.echo(result["file"])
+        click.echo(f"{result['file']} {_format_medal(result)}")
         dimensions = result["dimensions"]
         for dim, name in dimensions.items():
             sym = result["dimension_symbols"].get(dim, "")
@@ -118,10 +125,39 @@ def _output_file_details(results: list[dict[str, object]], verbose: bool) -> Non
                 click.echo(f"    Error: {result['error']}")
 
 
-def output_overall(overall: dict[str, object]) -> None:
-    """Output the rolled-up pillar verdicts."""
+def output_directory_average(results: list[dict[str, object]]) -> None:
+    """Output average file scores so the floor verdict is not mistaken for average."""
     click.echo()
-    click.echo("Overall")
+    click.echo("Directory Average Score")
+    if not results:
+        click.echo("  ⊥ no evaluable files")
+        return
+
+    average = sum(_display_score(result) for result in results) / len(results)
+    click.echo(f"  mean file score {average:.0f}%  {_score_bar(average, 3)}")
+
+    pillars: set[str] = set()
+    for result in results:
+        scores = result["scores"]
+        if isinstance(scores, dict):
+            pillars.update(str(dim) for dim in scores)
+
+    for pillar in _pillar_order(pillars):
+        pillar_scores = [
+            float(result["scores"][pillar])
+            for result in results
+            if isinstance(result["scores"], dict) and pillar in result["scores"]
+        ]
+        if not pillar_scores:
+            continue
+        avg_score = sum(pillar_scores) / len(pillar_scores)
+        click.echo(f"  {pillar:<10} avg {avg_score:>3.0f}%  {_score_bar(avg_score, 3)}")
+
+
+def output_overall(overall: dict[str, object]) -> None:
+    """Output the rolled-up floor pillar verdicts."""
+    click.echo()
+    click.echo("Directory Floor Verdict")
     if not overall:
         click.echo("  ⊥ no evaluable dimensions")
         return

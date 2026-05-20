@@ -147,7 +147,7 @@ class EvaluateCodeInput(_StrictModel):
         default="python",
         description=(
             "Programming language of the source. Supported via tree-sitter: "
-            "'python', 'rust', 'javascript', 'cpp'."
+            "'python', 'rust', 'javascript', 'typescript', 'cpp'."
         ),
     )
     response_format: ResponseFormat = Field(

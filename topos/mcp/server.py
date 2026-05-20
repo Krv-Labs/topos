@@ -2,8 +2,8 @@
 Topos MCP server — FastMCP instance + entry point.
 
 Server name follows the ``{service}_mcp`` convention (MCP best-practices, Nov
-2025 spec). Transport is stdio by default; the ``main()`` entry point is wired
-to ``topos-mcp`` in ``pyproject.toml``.
+2025 spec). Transport is stdio by default; the ``main()`` entry point is launched
+by the ``topos mcp`` CLI command.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def _get_mcp():
             "topos_mcp",
             version=__version__,
             instructions=(
-                "Topos evaluates Python code quality on a diamond lattice. "
+                "Topos evaluates structural code quality on a diamond lattice. "
                 "FIRST: load the workflow guide — call "
                 '`topos_get_doc(topic="workflows")` '
                 "(works on any client) OR fetch `topos://docs/workflows` as a resource "
@@ -56,7 +56,7 @@ mcp = _MCPProxy()
 
 
 def main() -> None:
-    """stdio entry point wired to the ``topos-mcp`` console script."""
+    """stdio entry point launched by the ``topos mcp`` CLI command."""
     # Import side-effect registers tools / resources / prompts.
     from topos.mcp import (
         prompts,  # noqa: F401

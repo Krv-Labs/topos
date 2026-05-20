@@ -114,7 +114,7 @@ Or edit `.cursor/mcp.json`:
 
 #### Step 3 — Launch from the project root
 
-> [!IMPORTANT]
+> *:warning: IMPORTANT*
 > Topos refuses to read files outside a trusted root. If you must launch from elsewhere, set it explicitly:
 >
 > ```json
@@ -124,7 +124,7 @@ Or edit `.cursor/mcp.json`:
 > }
 > ```
 
-> [!TIP]
+> ***:bulb: TIP***
 > On the agent's first turn, point it at the workflow doc:
 >
 > > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."

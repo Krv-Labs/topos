@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="topos-logo.svg" alt="Topos" width="400">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/topos-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="topos-logo.svg">
+    <img src="topos-logo.svg" alt="Topos" width="400">
+  </picture>
 </p>
 
 > **Structural code quality metrics for agent-written programs.**
@@ -110,7 +114,7 @@ Or edit `.cursor/mcp.json`:
 
 #### Step 3 — Launch from the project root
 
-> [!IMPORTANT]
+> *:warning: IMPORTANT*
 > Topos refuses to read files outside a trusted root. If you must launch from elsewhere, set it explicitly:
 >
 > ```json
@@ -120,7 +124,7 @@ Or edit `.cursor/mcp.json`:
 > }
 > ```
 
-> [!TIP]
+> ***:bulb: TIP***
 > On the agent's first turn, point it at the workflow doc:
 >
 > > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."

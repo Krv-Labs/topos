@@ -26,6 +26,28 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Check package version matches __init__
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+          import tomllib
+
+          pyproject_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          init_text = Path("topos/__init__.py").read_text()
+          init_version = re.search(r'^__version__ = "([^"]+)"$', init_text, re.MULTILINE)
+
+          if init_version is None:
+              sys.exit("Could not find __version__ in topos/__init__.py")
+
+          if pyproject_version != init_version.group(1):
+              sys.exit(
+                  f"Version mismatch: pyproject.toml has {pyproject_version}, "
+                  f"topos/__init__.py has {init_version.group(1)}"
+              )
+          PY
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

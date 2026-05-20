@@ -207,7 +207,7 @@ def classify_file(
     for subsequent proposed-code evaluations.
     """
     from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
-    
+
     language = "python"
     for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
         if path.suffix in suffixes:

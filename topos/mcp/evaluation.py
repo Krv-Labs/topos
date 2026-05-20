@@ -206,7 +206,15 @@ def classify_file(
     Returns ``(result, dep_graph)`` so callers can cache the dep graph
     for subsequent proposed-code evaluations.
     """
-    morphism = ProgramMorphism.from_file(path)
+    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+    
+    language = "python"
+    for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
+        if path.suffix in suffixes:
+            language = lang
+            break
+
+    morphism = ProgramMorphism.from_file(path, language=language)
     dep_graph = load_dep_graph(gitnexus_dir, str(path))
     result = classify_morphism(morphism, priority, dep_graph)
     return result, dep_graph

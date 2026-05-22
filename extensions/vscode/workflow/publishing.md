@@ -2,6 +2,9 @@
 
 This guide covers local testing, VSIX packaging, Marketplace setup, GitHub secrets, release publishing, and the runtime design for the Topos VS Code MCP extension.
 
+> [!IMPORTANT]
+> The production install goal is "install the VS Code extension and the MCP tools work." Users should not have to install the Topos CLI manually on supported platforms.
+
 Extension root:
 
 ```bash
@@ -27,6 +30,12 @@ VS Code Marketplace selects the VSIX matching the user's platform.
 
 Native Windows is not currently supported. Windows users should use VS Code Remote - WSL and install the Linux extension host package.
 
+> [!NOTE]
+> Platform-specific VSIXs are intentional. A single universal package would either omit the runtime or bundle every runtime, making the package larger and more brittle.
+
+> [!WARNING]
+> macOS packages are only production-grade when the bundled binary is signed and notarized. The workflow can continue without Apple credentials, but macOS users may hit Gatekeeper warnings or blocked execution.
+
 ## Runtime Resolution
 
 At activation time, the extension registers a VS Code MCP server definition provider. When VS Code resolves the MCP server, the extension resolves the Topos runtime in this order:
@@ -41,6 +50,17 @@ At activation time, the extension registers a VS Code MCP server definition prov
 The intended user experience is: install the VS Code extension, open a workspace, and the MCP tools are available to VS Code agents.
 
 The PATH/Python/download paths are compatibility fallbacks, not the primary production path.
+
+<details>
+<summary>Why this fallback order exists</summary>
+
+- `topos.executablePath` lets power users override everything.
+- The bundled runtime is the normal Marketplace path.
+- The verified cache avoids repeated downloads.
+- `PATH` and Python environments support developers who already have Topos installed.
+- Manifest download is last because users with a valid local runtime should not trigger network work.
+
+</details>
 
 ## Local Verification
 
@@ -62,6 +82,9 @@ What these do:
 - `test`: verifies binary staging behavior.
 - `package`: production esbuild bundle into `dist/extension.js`.
 
+> [!TIP]
+> Run these checks before packaging a local VSIX. They catch the common failure modes faster than installing into VS Code.
+
 ## Local Install Without Bundled Runtime
 
 This tests extension registration and fallback behavior, but does not test the target VSIX bundled-runtime path.
@@ -80,6 +103,9 @@ Developer: Reload Window
 MCP: List Servers
 Output: Topos Code Quality
 ```
+
+> [!NOTE]
+> This path is useful for extension-host smoke testing, but it is not the production Marketplace path because the VSIX does not include `extension/bin/topos`.
 
 ## Local Install With Bundled Runtime
 
@@ -161,6 +187,25 @@ Using bundled Topos runtime: .../extension/bin/topos
 Resolved MCP server command: .../extension/bin/topos mcp
 ```
 
+<details>
+<summary>Quick bundled-runtime verification</summary>
+
+Check the VSIX contents:
+
+```bash
+unzip -l topos-vscode-darwin-arm64.vsix | rg "extension/bin/topos|extension/dist/extension.js|extension/package.json"
+```
+
+Expected:
+
+```text
+extension/bin/topos
+extension/dist/extension.js
+extension/package.json
+```
+
+</details>
+
 ## VS Code Marketplace Setup
 
 Marketplace publishing uses `vsce`.
@@ -187,6 +232,9 @@ KrvLabs.topos-vscode
 ```
 
 If the publisher ID is wrong, fix `publisher` in `extensions/vscode/package.json` before publishing. Publisher/name identity is user-facing and hard to unwind after first publish.
+
+> [!IMPORTANT]
+> Verify the publisher ID before the first public publish. The extension identity is `<publisher>.<name>`, currently `KrvLabs.topos-vscode`.
 
 ## Required GitHub Secrets
 
@@ -224,6 +272,9 @@ Settings -> Environments -> New environment -> vscode-marketplace
 Settings -> Environments -> vscode-marketplace -> Required reviewers
 ```
 
+> [!CAUTION]
+> `VSCE_PAT` should be an Azure DevOps PAT with only `Marketplace: Manage`. Do not use a broad GitHub PAT, and do not grant source-code or build scopes.
+
 ### Apple Signing Secrets
 
 These are optional for the workflow to complete, but required for production-quality macOS distribution.
@@ -255,6 +306,20 @@ Current behavior if missing:
 
 Linux builds are unaffected.
 
+<details>
+<summary>Apple credential status during early releases</summary>
+
+Until Apple credentials are configured:
+
+- release jobs continue
+- GitHub Actions emits warnings
+- Linux packages are unaffected
+- macOS packages may install but fail to execute the bundled runtime under Gatekeeper
+
+Once Apple credentials are configured, the same workflow signs and notarizes macOS binaries automatically.
+
+</details>
+
 ## GitHub Actions Flow
 
 Workflow:
@@ -284,6 +349,9 @@ Purpose:
 
 - Validate that the extension can build and package before merge.
 
+> [!NOTE]
+> PRs validate build and package behavior only. They do not publish to Marketplace and do not create GitHub Releases.
+
 ### Tag Releases
 
 Triggered by tags:
@@ -308,6 +376,9 @@ What runs:
 5. Create GitHub Release with binaries, VSIXs, and checksums.
 6. Publish all platform VSIXs to VS Code Marketplace using `VSCE_PAT`.
 
+> [!IMPORTANT]
+> Tag releases are the normal production path. The tag version should match `extensions/vscode/package.json`.
+
 ### Manual Releases
 
 Triggered through GitHub Actions `workflow_dispatch`.
@@ -319,6 +390,9 @@ version: v0.1.1
 ```
 
 Use this only when intentionally publishing a release outside the tag-push path.
+
+> [!WARNING]
+> Manual releases still publish to Marketplace when `VSCE_PAT` is configured and the `vscode-marketplace` environment is approved.
 
 ## Publishing A New Version
 
@@ -359,6 +433,16 @@ Use the version that matches `extensions/vscode/package.json`.
 
 Do not publish the same extension version twice. Marketplace will reject duplicate versions.
 
+<details>
+<summary>Versioning checklist</summary>
+
+- Bump `extensions/vscode/package.json`.
+- Commit the matching `package-lock.json` update.
+- Use a release tag that matches the extension version, for example `v0.1.1`.
+- Never reuse a Marketplace version.
+
+</details>
+
 ## Manual Marketplace Publish
 
 Use this only for recovery or first-time testing.
@@ -380,6 +464,9 @@ npx --yes @vscode/vsce publish --packagePath topos-vscode-linux-x64.vsix
 ```
 
 Preferred path remains GitHub Actions.
+
+> [!CAUTION]
+> Manual publishing can bypass the GitHub release checklist. Prefer Actions unless recovering from a failed publish.
 
 ## File Inclusion Rules
 
@@ -405,6 +492,15 @@ extensions/vscode/bin/topos
 
 Then it is removed after packaging.
 
+<details>
+<summary>Why `bin/topos` is not ignored</summary>
+
+The staging script writes the platform runtime to `extensions/vscode/bin/topos` immediately before `vsce package`.
+
+If `.vscodeignore` excludes `bin/**`, the Marketplace package installs successfully but the MCP server cannot use the bundled runtime.
+
+</details>
+
 ## Size Gate
 
 The release workflow checks each VSIX using:
@@ -427,9 +523,13 @@ TOPOS_VSIX_SIZE_LIMIT_BYTES=<bytes> node scripts/check-vsix-size.js <vsix>
 
 If platform binaries grow too large, the VSIX size gate should fail before Marketplace publish.
 
+> [!NOTE]
+> The size gate is a release safety check, not an optimization target. If a binary crosses the limit, inspect the PyInstaller build before raising the threshold.
+
 ## Troubleshooting
 
-### Marketplace publish fails with 401 or 403
+<details open>
+<summary>Marketplace publish fails with 401 or 403</summary>
 
 Check:
 
@@ -440,7 +540,10 @@ Check:
 - PAT owner can publish to the `KrvLabs` publisher.
 - `package.json` publisher matches the Marketplace publisher ID exactly.
 
-### Marketplace publish fails with duplicate version
+</details>
+
+<details>
+<summary>Marketplace publish fails with duplicate version</summary>
 
 Bump:
 
@@ -451,7 +554,10 @@ npm version patch --no-git-tag-version
 
 Commit and release again with a matching new tag.
 
-### macOS extension installs but Topos will not run
+</details>
+
+<details>
+<summary>macOS extension installs but Topos will not run</summary>
 
 Check the workflow logs for:
 
@@ -462,7 +568,10 @@ Unnotarized macOS binary
 
 If present, Apple signing/notarization secrets were missing. Add them and republish a new version.
 
-### MCP server does not appear
+</details>
+
+<details>
+<summary>MCP server does not appear</summary>
 
 In VS Code:
 
@@ -474,7 +583,10 @@ Output: Topos Code Quality
 
 The output channel should show the runtime resolution trace.
 
-### Bundled runtime was not used
+</details>
+
+<details>
+<summary>Bundled runtime was not used</summary>
 
 Check the target VSIX contents:
 
@@ -491,6 +603,8 @@ extension/package.json
 ```
 
 If `extension/bin/topos` is missing, the staging step did not run or `.vscodeignore` excluded the binary.
+
+</details>
 
 ## Release Checklist
 

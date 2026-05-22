@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from topos.cli.commands.coverage import structural_test_coverage_cmd
+from topos.cli.commands.coverage import coverage_cmd
 from topos.cli.evaluation import (
     collect_files,
     output_directory_average,
@@ -277,5 +277,5 @@ def register_quality_commands(cli_group: click.Group) -> None:
     """Attach quality-analysis commands to the root CLI group."""
     cli_group.add_command(evaluate)
     cli_group.add_command(compare)
-    cli_group.add_command(structural_test_coverage_cmd)
+    cli_group.add_command(coverage_cmd)
     cli_group.add_command(inspect)

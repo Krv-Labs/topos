@@ -12,7 +12,7 @@ from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, parse_source
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 
 
-@click.command("structural-test-coverage")
+@click.command("coverage")
 @click.option(
     "--language",
     default="python",
@@ -52,7 +52,7 @@ _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
     default=0.5,
     show_default=True,
     type=float,
-    help="Minimum best-match recall to count a PUT declaration as covered.",
+    help="Minimum threshold for coverage policies to pass.",
 )
 @click.argument(
     "put_paths",
@@ -60,7 +60,7 @@ _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
     type=click.Path(exists=True, dir_okay=False),
     required=True,
 )
-def structural_test_coverage_cmd(
+def coverage_cmd(
     put_paths: tuple[str, ...],
     test_paths: tuple[str, ...],
     language: str,
@@ -69,7 +69,7 @@ def structural_test_coverage_cmd(
     output_json_flag: bool,
     coverage_threshold: float,
 ) -> None:
-    """Structural overlap of tests toward the program-under-test (UAST)."""
+    """Measure structural (UAST) and semantic (CPG Topological) test coverage."""
     if kgram_length < 1:
         click.echo("Error: --k must be >= 1.", err=True)
         sys.exit(1)
@@ -92,6 +92,7 @@ def structural_test_coverage_cmd(
             sys.exit(1)
         test_roots.append(result.uast_root)
 
+    # 1. Existing UAST declaration bipartite coverage
     from topos.evaluation.policies.coverage import score_declaration_coverage
     from topos.functors.profunctors.uast.structural_test_coverage import (
         declaration_coverage,
@@ -105,21 +106,80 @@ def structural_test_coverage_cmd(
     )
     decision = score_declaration_coverage(report, threshold=coverage_threshold)
 
+    # 2. New CPG Topological ECT coverage
+    from topos.graphs.cpg.object import CodePropertyGraph
+    from topos.functors.profunctors.cpg.topological_coverage import (
+        calculate_topological_coverage,
+    )
+    from topos.evaluation.policies.coverage import score_topological_coverage
+
+    # Build and merge CodePropertyGraphs
+    put_cpgs = []
+    for path in put_paths:
+        source = Path(path).read_text(encoding="utf-8")
+        result = parse_source(source=source, language=language, file=str(path))
+        if result.uast_root is not None:
+            put_cpgs.append(CodePropertyGraph.from_uast(result.uast_root, source=source))
+
+    test_cpgs = []
+    for path in test_paths:
+        source = Path(path).read_text(encoding="utf-8")
+        result = parse_source(source=source, language=language, file=str(path))
+        if result.uast_root is not None:
+            test_cpgs.append(CodePropertyGraph.from_uast(result.uast_root, source=source))
+
+    def merge_cpgs(cpgs: list[CodePropertyGraph]) -> CodePropertyGraph:
+        if not cpgs:
+            return CodePropertyGraph()
+        merged_nodes = {}
+        merged_edges = []
+        sources = []
+        for c in cpgs:
+            merged_nodes.update(c.nodes)
+            merged_edges.extend(c.edges)
+            if c.source:
+                sources.append(c.source)
+        return CodePropertyGraph(
+            nodes=merged_nodes,
+            edges=merged_edges,
+            language=cpgs[0].language,
+            source="\n".join(sources),
+        )
+
+    put_cpg = merge_cpgs(put_cpgs)
+    test_cpg = merge_cpgs(test_cpgs)
+
+    topo_report = calculate_topological_coverage(put_cpg, test_cpg)
+    topo_decision = score_topological_coverage(topo_report, threshold=coverage_threshold)
+
     if output_json_flag:
         payload = asdict(report)
         payload.update(asdict(decision))
+        payload["topological_coverage"] = {
+            "distance": topo_report.topological_distance,
+            "coverage_score": topo_report.topological_coverage_score,
+            "tested_functions": list(topo_report.tested_functions),
+            "untested_functions": list(topo_report.untested_functions),
+            "put_node_count": topo_report.put_node_count,
+            "test_node_count": topo_report.test_node_count,
+            "scoped_node_count": topo_report.scoped_node_count,
+            "achieved": topo_decision.achieved,
+            "threshold": topo_decision.threshold,
+            "interpretation": topo_decision.interpretation,
+        }
         payload["language"] = language
         payload["put_paths"] = list(put_paths)
         payload["test_paths"] = list(test_paths)
         click.echo(json.dumps(payload, indent=2))
         return
 
-    click.echo("Structural test coverage (declaration-level bipartite)")
+    # Human-readable CLI formatting
+    click.echo("Topos Structural & Semantic Test Coverage")
     click.echo(f"Language: {language}")
     click.echo(f"PUT files ({len(put_paths)}): {', '.join(put_paths)}")
     click.echo(f"Test files ({len(test_paths)}): {', '.join(test_paths)}")
     click.echo()
-    click.echo("Declaration Coverage")
+    click.echo("UAST Declaration-Level Coverage")
     click.echo("-" * 52)
     click.echo(f"  Mean declaration coverage:  {report.mean_declaration_coverage:.4f}")
     click.echo(f"  Declaration coverage rate:  {decision.coverage_rate:.4f}")
@@ -150,3 +210,28 @@ def structural_test_coverage_cmd(
         click.echo("-" * 52)
         for loc, score in uncovered:
             click.echo(f"  {loc}  (best score: {score:.3f})")
+
+    click.echo()
+    click.echo("Topological CPG Semantic Coverage")
+    click.echo("-" * 52)
+    click.echo(f"  Topological coverage score: {topo_report.topological_coverage_score:.4f}")
+    click.echo(f"  Topological ECT distance:   {topo_report.topological_distance:.4f}")
+    click.echo(f"  Topological threshold:      {topo_decision.threshold:.2f}")
+    click.echo(f"  Topological target met:     {str(topo_decision.achieved)}")
+    click.echo(f"  PUT CPG node count:         {topo_report.put_node_count}")
+    click.echo(f"  Test CPG node count:        {topo_report.test_node_count}")
+    click.echo(f"  Scoped PUT nodes (reach):   {topo_report.scoped_node_count}")
+
+    if topo_report.tested_functions:
+        click.echo()
+        click.echo(f"Tested PUT Functions ({len(topo_report.tested_functions)})")
+        click.echo("-" * 52)
+        for func in topo_report.tested_functions:
+            click.echo(f"  {func}")
+
+    if topo_report.untested_functions:
+        click.echo()
+        click.echo(f"Untested PUT Functions ({len(topo_report.untested_functions)})")
+        click.echo("-" * 52)
+        for func in topo_report.untested_functions:
+            click.echo(f"  {func}")

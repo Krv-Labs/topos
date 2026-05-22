@@ -11,7 +11,20 @@ Extension root:
 cd <your-local-topos-repo>/extensions/vscode
 ```
 
-## Current Publishing Model
+- [Runtime Resolution](#runtime-resolution)
+- [Local Verification](#local-verification)
+- [Local Install Without Bundled Runtime](#local-install-without-bundled-runtime)
+- [Local Install With Bundled Runtime](#local-install-with-bundled-runtime)
+- [VS Code Marketplace Setup](#vs-code-marketplace-setup)
+- [Required GitHub Secrets](#required-github-secrets)
+- [GitHub Actions Flow](#github-actions-flow)
+- [Publishing A New Version](#publishing-a-new-version)
+- [Manual Marketplace Publish](#manual-marketplace-publish)
+- [File Inclusion Rules](#file-inclusion-rules)
+- [Size Gate](#size-gate)
+- [Troubleshooting](#troubleshooting)
+- [Release Checklist](#release-checklist)
+
 
 The extension is published as platform-specific VSIX packages:
 

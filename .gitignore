@@ -28,7 +28,6 @@ data/
 
 # Scratch
 scratch/
-
 # Benchmarks
 benchmarks/calibration/*.csv
 benchmarks/calibration/*.txt

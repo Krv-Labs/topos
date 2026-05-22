@@ -29,7 +29,7 @@ dependencies = [
     "numpy>=1.24",
     "ladybug>=0.17.0,<0.18",
     "fastembed",
-    "trailed @ git+https://github.com/Krv-Labs/trailed.git@feat/edge-index-tabular-api",
+    "trailed>=0.1.2",
 ]
 
 

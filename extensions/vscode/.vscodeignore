@@ -1,0 +1,12 @@
+node_modules/**
+src/**
+scripts/**
+.github/**
+.vscode/**
+.gitignore
+*.ts
+tsconfig.json
+.eslintrc.json
+esbuild.js
+package-lock.json
+*.vsix

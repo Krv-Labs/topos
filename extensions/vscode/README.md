@@ -1,29 +1,49 @@
 # Topos Code Quality for VS Code
 
-Bring structural code quality metrics (Simple, Composable, Secure) directly into your agentic coding sessions.
+Install Topos code-quality tools for VS Code agent mode through Model Context Protocol (MCP). On supported platforms, no separate Topos CLI install is required.
 
 ## Features
 
-- **Automated MCP Server Registration:** Topos automatically registers its MCP server with VS Code, making its tools and resources available to Copilot Chat and other agents.
-- **Agentic Quality Loops:** Allow your coding agents to query Topos metrics (AST entropy, Martin instability, etc.) to optimize your code structure on every iteration.
-- **Zero Configuration:** Simply install the extension. If the Topos CLI is missing, the extension will help you install it with one click.
+- **MCP server registration:** The extension registers the Topos MCP server with VS Code so Copilot Chat agent mode can discover its tools.
+- **Agentic quality loops:** Agents can evaluate Simple, Composable, and Secure quality signals while iterating on code.
+- **Bundled runtime:** Platform-specific Marketplace packages include the Topos runtime used by the MCP server.
+- **Workspace-aware paths:** The extension passes the active workspace root to Topos for repo-relative file evaluation.
 
-## Prerequisites
+## Supported Platforms
 
-- **Topos CLI:** This extension requires the `topos` CLI. If not found, you will be prompted to install it.
-- **VS Code 1.90.0+**: Uses the native Model Context Protocol (MCP) support.
+- macOS Apple Silicon (`darwin-arm64`)
+- macOS Intel (`darwin-x64`)
+- Linux x64 (`linux-x64`)
+- Linux arm64 (`linux-arm64`)
+
+Native Windows is not supported yet. Use WSL and install the Linux extension host package through VS Code Remote - WSL.
+
+VS Code 1.120.0 or newer is required for the stable MCP server definition provider APIs.
 
 ## Quick Start
 
 1. Install the extension.
-2. If prompted, click **Install Topos** to set up the CLI.
-3. Open a workspace.
-4. Ask Copilot Chat: *"Use Topos to evaluate the code quality of this project."*
+2. Open a workspace in VS Code.
+3. Run **MCP: List Servers** and start **Topos Code Quality** if needed.
+4. Ask Copilot Chat agent mode: "Use Topos to evaluate the code quality of this project."
 
-## Metrics Included
+## Settings
 
-- **🥇 GOLD**: Ideal code (Simple + Composable + Secure)
-- **🥈 SILVER**: High quality (2 of 3 pillars)
-- **🥉 BRONZE**: Solid foundation (1 of 3 pillars)
+- `topos.executablePath`: Optional custom path to a Topos executable. This overrides the bundled runtime.
+- `topos.autoDiscover`: Use the active Python environment when it can run `python -m topos.cli`. This is a compatibility fallback.
+- `topos.autoDownload`: Download a verified standalone binary if no bundled, cached, or local runtime is available.
 
-For more information, visit [topos.ai](https://topos.ai) or the [GitHub repository](https://github.com/Krv-Labs/topos).
+## Runtime Resolution
+
+The extension starts Topos in this order:
+
+1. explicit `topos.executablePath`
+2. bundled platform runtime
+3. verified cached runtime
+4. `topos` on `PATH`
+5. active Python environment
+6. verified manifest download fallback
+
+If startup fails, open the **Topos Code Quality** output channel for the exact resolution trace.
+
+For more information, visit the [Topos GitHub repository](https://github.com/Krv-Labs/topos).

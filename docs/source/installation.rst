@@ -25,7 +25,7 @@ Topos is designed to be accessible as either a standalone binary or by building 
 
       .. code-block:: bash
 
-         curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
+         curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 
       .. card:: **What happens during installation?**
 
@@ -41,7 +41,7 @@ Topos is designed to be accessible as either a standalone binary or by building 
       .. code-block:: bash
 
          topos --version
-         topos-mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
+         topos mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
 
    .. tab-item:: 🐍 Building from Source
 

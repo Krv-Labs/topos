@@ -81,6 +81,14 @@ Evaluate code quality for one or more files or directories. This is the primary 
 
    topos evaluate src/ -r --preferences simple,composable,secure --gitnexus-dir .gitnexus/
 
+Text output prints each file with its resolved medal, for example
+``src/audit/_ingest.py [🥈 COMPOSABLE_SECURE]``.  Directory summaries separate
+two different concepts:
+
+- ``Directory Average Score`` is the mean file score across the evaluated files.
+- ``Directory Floor Verdict`` is the aggregate floor: a pillar passes only if it
+  passes across the evaluated set.
+
 .. important::
    Without ``--gitnexus-dir``, Topos still scores **SIMPLE** and **SECURE**, but **COMPOSABLE** (and any medal requiring it) stays unreachable. Generate the graph once per repo with ``topos depgraph generate``.
 

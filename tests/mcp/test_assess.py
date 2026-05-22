@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from topos.evaluation.preferences import Generator
 from topos.mcp.schemas import (
     AssessImprovementInput,
@@ -18,10 +20,47 @@ _PREFS = UserPreferencesInput(
 
 
 def test_assess_requires_current_or_filepath() -> None:
-    r = topos_assess_improvement(
+    with pytest.raises(ValueError, match="filepath.*current_code"):
         AssessImprovementInput(proposed_code="x = 1", preferences=_PREFS)
+
+
+def test_assess_accepts_proposed_filepath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    current = tmp_path / "current.py"
+    proposed = tmp_path / "proposed.py"
+    current.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
+    proposed.write_text("def f(x):\n    return x + 2\n", encoding="utf-8")
+
+    r = topos_assess_improvement(
+        AssessImprovementInput(
+            filepath="current.py", proposed_filepath="proposed.py", preferences=_PREFS
+        )
     )
-    assert r.error is not None
+
+    assert r.error is None
+    assert r.structural_distance is not None
+
+
+def test_assess_reports_security_findings() -> None:
+    current = "def f(expr):\n    return eval(expr)\n"
+    r = topos_assess_improvement(
+        AssessImprovementInput(
+            current_code=current,
+            proposed_code=current,
+            preferences=_PREFS,
+        )
+    )
+
+    assert r.current.security_findings
+    finding = r.current.security_findings[0]
+    assert finding.kind == "dangerous_call"
+    assert finding.line == 2
+    assert finding.callee == "eval"
 
 
 def test_assess_emits_distance_and_deltas_on_real_change() -> None:

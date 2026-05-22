@@ -81,12 +81,13 @@ def read_safe_utf8_file(
     Returns ``(source, None)`` on success or ``(None, {"error": "..."})`` when
     the file cannot be read safely.
     """
-    path = Path(filepath)
-
     try:
         root = resolve_file_root()
     except FileRootNotConfiguredError as exc:
         return None, {"error": str(exc)}
+    path = Path(filepath)
+    if not path.is_absolute():
+        path = root / path
 
     try:
         resolved_path = path.resolve(strict=False)
@@ -121,7 +122,10 @@ def resolve_within_root(
     except FileRootNotConfiguredError as exc:
         return None, {"error": str(exc)}
 
-    resolved = Path(filepath).resolve(strict=False)
+    path = Path(filepath)
+    if not path.is_absolute():
+        path = root / path
+    resolved = path.resolve(strict=False)
     if not is_within_root(resolved, root):
         return None, {
             "error": (f"Access denied: path must be inside {root}. Got: {resolved}")

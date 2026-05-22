@@ -47,18 +47,19 @@ def topos_refactor_until_ideal(
                      **then divert** to the ideal intersection (meet of
                      the top-two ranked generators) if IDEAL plateaus.
     """
-    pref_block = ""
-    pref_args = ""
-    if preferences:
-        ranking_str = " ≻ ".join(preferences)
-        pref_args = f', preferences={{"ranking": {preferences!r}}}'
-        pref_block = (
-            f"\n**Preference order:** `{ranking_str}` — Two-stage strategy: "
-            "aim for `preference_walk.target` (IDEAL) first; if it stalls "
-            "after a few iterations, divert to `preference_walk.fallback_target` "
-            "(the meet of your top-two ranked generators). `next_step` is "
-            "always your immediate goal.\n"
-        )
+    ranking = preferences or [
+        priority.value,
+        *[p.value for p in Priority if p.value != priority.value],
+    ]
+    ranking_str = " ≻ ".join(ranking)
+    pref_args = f', preferences={{"ranking": {ranking!r}}}'
+    pref_block = (
+        f"\n**Preference order:** `{ranking_str}` — Two-stage strategy: "
+        "aim for `preference_walk.target` (IDEAL) first; if it stalls "
+        "after a few iterations, divert to `preference_walk.fallback_target` "
+        "(the meet of your top-two ranked generators). `next_step` is "
+        "always your immediate goal.\n"
+    )
     return f"""Refactor `{filepath}` using the Topos closed-loop method. Priority: **{priority.value}**. Budget: **{max_iterations} iterations**.{pref_block}
 
 **Before you start**, read `topos://docs/workflows` — it's the orchestration guide.
@@ -66,17 +67,17 @@ def topos_refactor_until_ideal(
 ---
 
 ### Step 1 — Measure baseline
-Call `topos_evaluate_file(filepath="{filepath}", priority="{priority.value}"{pref_args})`.
+Call `topos_evaluate_file(filepath="{filepath}"{pref_args})`.
 If `coupling_available: false` in the response, run `topos depgraph generate` first; any verdict containing COMPOSABLE (including IDEAL) is unreachable without it.
 
 ### Step 2 — Inspect
-Read the file. Call `topos_inspect_code(code=<contents>, priority="{priority.value}")` to find the highest-complexity functions.
+Call `topos_inspect_code(filepath="{filepath}"{pref_args})` to find the highest-complexity functions and their line numbers.
 
 ### Step 3 — Propose
 Make ONE focused change targeting the lowest-scoring generator. Do not shuffle complexity between generators; reduce it.
 
 ### Step 4 — Verify
-Call `topos_assess_improvement(filepath="{filepath}", proposed_code=<new code>, priority="{priority.value}"{pref_args})`.
+Call `topos_assess_improvement(filepath="{filepath}", proposed_code=<new code>{pref_args})`.
 
 Read the `status` field:
 - `IMPROVEMENT` → apply the change, record progress, return to step 1 if not IDEAL.

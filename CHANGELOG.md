@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-20
+
+### Added
+
+- **CLI Progress Bar**: Added real-time progress tracking to `topos eval` for better feedback on large codebases.
+- **MCP Diagnostics**: Surfaced agentic evaluation metadata and diagnostics in MCP tool responses.
+- **Language Detection**: Enhanced `classify_file` to automatically detect programming languages from file suffixes.
+
+### Changed
+
+- **CLI Formatting**: Clarified evaluation medals and summaries in CLI output for improved readability.
+
+### Fixed
+
+- **Documentation**: Corrected MCP launch instructions and configuration examples.
+
 ## [1.1.0] - 2026-05-18
 
 ### Added

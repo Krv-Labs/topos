@@ -1,4 +1,10 @@
-# Topos
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/topos-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="topos-logo.svg">
+    <img src="topos-logo.svg" alt="Topos" width="400">
+  </picture>
+</p>
 
 > **Structural code quality metrics for agent-written programs.**
 
@@ -33,7 +39,7 @@ Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding 
 
 ```bash
 # Install CLI
-curl -sSL https://raw.githubusercontent.com/Krv-Labs/topos/main/install.sh | sh
+curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 ```
 
 #### Using Topos
@@ -56,8 +62,8 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 
 #### Step 1 — Build the dependency graph (optional but recommended)
 
-> [!IMPORTANT]
-> **Recommended.** Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
+> **_⚠️ Recommended:_**
+> Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
 >
 > ```bash
 > npm install -g gitnexus        # one-time per machine
@@ -67,7 +73,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 >
 > Re-run when imports change (new modules, renames, restructures). The cache keys on `.gitnexus/` mtime and invalidates itself.
 
-> [!TIP]
+> **_💡 Tip:_**
 > Verify the binary before wiring it into editors:
 >
 > ```bash
@@ -108,7 +114,7 @@ Or edit `.cursor/mcp.json`:
 
 #### Step 3 — Launch from the project root
 
-> [!IMPORTANT]
+> *:warning: IMPORTANT*
 > Topos refuses to read files outside a trusted root. If you must launch from elsewhere, set it explicitly:
 >
 > ```json
@@ -118,7 +124,7 @@ Or edit `.cursor/mcp.json`:
 > }
 > ```
 
-> [!TIP]
+> ***:bulb: TIP***
 > On the agent's first turn, point it at the workflow doc:
 >
 > > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."

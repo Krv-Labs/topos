@@ -22,6 +22,7 @@ from ..schemas import (
     LatticeElement,
     PreferenceWalkInput,
     PreferenceWalkResult,
+    ResponseFormat,
     WalkStep,
 )
 from ..server import mcp
@@ -94,6 +95,7 @@ def topos_preference_walk(params: PreferenceWalkInput) -> PreferenceWalkResult:
             progress=0.0,
             walk=[],
             induced_order=[],
+            warnings=_response_format_warnings(params.response_format),
             error=str(exc),
         )
 
@@ -115,6 +117,7 @@ def topos_preference_walk(params: PreferenceWalkInput) -> PreferenceWalkResult:
         progress=progress,
         walk=[_to_step(prefs, v) for v in walk_values],
         induced_order=[_to_step(prefs, v) for v in prefs.induced_total_order()],
+        warnings=_response_format_warnings(params.response_format),
     )
 
 
@@ -151,3 +154,12 @@ def render_preference_walk_md(r: PreferenceWalkResult) -> str:
     if r.error:
         lines.append(f"\n> error: {r.error}")
     return "\n".join(lines)
+
+
+def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
+    if response_format == ResponseFormat.MARKDOWN:
+        return []
+    return [
+        "response_format is deprecated/no-op for MCP structured output; tools return "
+        "structured content regardless of this value."
+    ]

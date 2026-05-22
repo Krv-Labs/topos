@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import Generator, UserPreferences
@@ -51,6 +51,14 @@ class AssessmentStatus(StrEnum):
     # Anti-gaming flag (CodeScene 2026): scores moved meaningfully while the
     # AST barely changed — suspicious unless the agent explains why.
     SUSPICIOUS_NO_STRUCTURAL_CHANGE = "SUSPICIOUS_NO_STRUCTURAL_CHANGE"
+
+
+class PrioritySource(StrEnum):
+    """How the MCP layer selected the scorer priority."""
+
+    DEFAULT = "default"
+    PREFERENCES = "preferences"
+    EXPLICIT = "explicit"
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +116,24 @@ class UserPreferencesInput(_StrictModel):
         target_value = str_to_lattice(self.target) if self.target is not None else None
         return UserPreferences.from_iterable(self.ranking, target=target_value)
 
+    def to_priority(self) -> Priority:
+        """Use the top-ranked generator as the scorer priority."""
+        first = self.ranking[0]
+        return {
+            Generator.SIMPLE: Priority.SIMPLE,
+            Generator.COMPOSABLE: Priority.COMPOSABLE,
+            Generator.SECURE: Priority.SECURE,
+        }[first]
+
+
+def resolve_priority(
+    preferences: UserPreferencesInput | None,
+) -> tuple[Priority, PrioritySource]:
+    """Resolve MCP preference input to the legacy scorer priority."""
+    if preferences is None:
+        return Priority.SIMPLE, PrioritySource.DEFAULT
+    return preferences.to_priority(), PrioritySource.PREFERENCES
+
 
 class EvaluateCodeInput(_StrictModel):
     """Arguments for ``topos_evaluate_code``."""
@@ -121,7 +147,7 @@ class EvaluateCodeInput(_StrictModel):
         default="python",
         description=(
             "Programming language of the source. Supported via tree-sitter: "
-            "'python', 'rust', 'javascript', 'cpp'."
+            "'python', 'rust', 'javascript', 'typescript', 'cpp'."
         ),
     )
     response_format: ResponseFormat = Field(
@@ -131,8 +157,8 @@ class EvaluateCodeInput(_StrictModel):
             "programmatic use."
         ),
     )
-    preferences: UserPreferencesInput = Field(
-        ...,
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
         description=(
             "Strict total order on the three generators. The result includes "
             "a targeted relaxation walk toward the 'ideal intersection' "
@@ -159,11 +185,18 @@ class EvaluateFileInput(_StrictModel):
         ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
-    preferences: UserPreferencesInput = Field(
-        ...,
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
         description=(
             "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
+        ),
+    )
+    include_security_findings: bool = Field(
+        default=True,
+        description=(
+            "Include line/snippet diagnostics for dangerous API calls when "
+            "SECURE fails."
         ),
     )
 
@@ -178,8 +211,8 @@ class EvaluateProjectInput(_StrictModel):
         ),
         min_length=1,
     )
-    preferences: UserPreferencesInput = Field(
-        ...,
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
         description=(
             "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
@@ -203,6 +236,13 @@ class EvaluateProjectInput(_StrictModel):
     verbose: bool = Field(
         default=False,
         description="Include raw probe metric floats under each file in the response.",
+    )
+    include_security_findings: bool = Field(
+        default=False,
+        description=(
+            "Include line/snippet diagnostics for SECURE failures in per-file entries. "
+            "Defaults off for project scans to keep responses compact."
+        ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
@@ -232,8 +272,16 @@ class AssessImprovementInput(_StrictModel):
     ``current_code`` (AST + CFG + CPG only; COMPOSABLE unreachable).
     """
 
-    proposed_code: str = Field(
-        ..., min_length=1, description="The refactored / proposed source."
+    proposed_code: str | None = Field(
+        default=None, min_length=1, description="The refactored / proposed source."
+    )
+    proposed_filepath: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Path to a proposed version inside the project root. Use this to avoid "
+            "sending full source text for large files."
+        ),
     )
     filepath: str | None = Field(
         default=None,
@@ -251,22 +299,60 @@ class AssessImprovementInput(_StrictModel):
         ),
     )
     language: str = Field(default="python")
-    preferences: UserPreferencesInput = Field(
-        ...,
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
         description=(
             "Strict total order on the three generators; see "
             "``topos://docs/preferences``."
         ),
     )
     gitnexus_dir: str | None = Field(default=None)
+    include_security_findings: bool = Field(
+        default=True,
+        description=(
+            "Include line/snippet diagnostics for dangerous API calls when "
+            "SECURE fails."
+        ),
+    )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+
+    @model_validator(mode="after")
+    def validate_inputs(self) -> AssessImprovementInput:
+        proposed_count = sum(
+            value is not None for value in (self.proposed_code, self.proposed_filepath)
+        )
+        if proposed_count != 1:
+            raise ValueError(
+                "Provide exactly one of `proposed_code` or `proposed_filepath`."
+            )
+        baseline_count = sum(
+            value is not None for value in (self.filepath, self.current_code)
+        )
+        if baseline_count != 1:
+            raise ValueError("Provide exactly one of `filepath` or `current_code`.")
+        return self
 
 
 class InspectCodeInput(_StrictModel):
     """Arguments for ``topos_inspect_code``."""
 
-    code: str = Field(..., min_length=1)
+    code: str | None = Field(default=None, min_length=1)
+    filepath: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Path to the source file inside the project root. Prefer this for "
+            "large files."
+        ),
+    )
     language: str = Field(default="python")
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
+        description=(
+            "Strict total order on the three generators; see "
+            "``topos://docs/preferences``."
+        ),
+    )
     top_n_functions: int = Field(
         default=10,
         ge=1,
@@ -277,6 +363,13 @@ class InspectCodeInput(_StrictModel):
         ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> InspectCodeInput:
+        source_count = sum(value is not None for value in (self.code, self.filepath))
+        if source_count != 1:
+            raise ValueError("Provide exactly one of `code` or `filepath`.")
+        return self
 
 
 class CalculateCoverageInput(_StrictModel):
@@ -423,6 +516,7 @@ class PreferenceWalkResult(BaseModel):
             "user-preferred order rather than just the walk."
         ),
     )
+    warnings: list[str] = Field(default_factory=list)
     error: str | None = None
 
 
@@ -503,6 +597,25 @@ class PillarResult(BaseModel):
     )
 
 
+class SecurityFinding(BaseModel):
+    """Actionable SECURE diagnostic for an agent."""
+
+    kind: str = Field(..., description="Finding kind, e.g. dangerous_call.")
+    line: int = Field(..., ge=1, description="1-based source line.")
+    snippet: str = Field(..., description="Source snippet for the finding.")
+    callee: str | None = Field(default=None, description="Detected dangerous callee.")
+    source: str | None = Field(default=None, description="Taint source snippet.")
+    sink: str | None = Field(default=None, description="Taint sink snippet.")
+
+
+class FunctionEntry(BaseModel):
+    """Function-level complexity diagnostic."""
+
+    name: str
+    line: int = Field(..., ge=1)
+    complexity: int
+
+
 class EvaluationResult(BaseModel):
     """Result of a single-unit evaluation on the Medal Podium."""
 
@@ -519,6 +632,12 @@ class EvaluationResult(BaseModel):
         description="Per-pillar breakdown (simple, composable, secure).",
     )
     priority: Priority
+    priority_source: PrioritySource = Field(
+        default=PrioritySource.DEFAULT,
+        description=(
+            "Whether priority was defaulted, inferred from preferences, or explicit."
+        ),
+    )
     guidance: str = Field(..., description="Next-step hint for the agent.")
     coupling_available: bool = Field(
         ...,
@@ -530,6 +649,8 @@ class EvaluationResult(BaseModel):
     )
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     interpretation: dict[str, str] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    security_findings: list[SecurityFinding] = Field(default_factory=list)
     preference_walk: PreferenceWalk | None = Field(
         default=None,
         description=(
@@ -547,6 +668,8 @@ class ProjectFileEntry(BaseModel):
     scores: dict[str, float]
     pillars: dict[str, PillarResult] = Field(default_factory=dict)
     raw_metrics: dict[str, float] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    security_findings: list[SecurityFinding] = Field(default_factory=list)
     is_parseable: bool = True
 
 
@@ -559,8 +682,20 @@ class ProjectEvaluationResult(BaseModel):
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
     overall: LatticeElement
+    aggregate_floor_verdict: LatticeElement
+    aggregate_explanation: str
+    worst_file_verdict: LatticeElement | None = None
+    worst_files: list[ProjectFileEntry] = Field(default_factory=list)
+    guidance: str = ""
+    overall_note: str = (
+        "`overall` is a deprecated alias for aggregate_floor_verdict; use "
+        "aggregate_floor_verdict plus worst_file_verdict/worst_files for agent "
+        "planning."
+    )
     priority: Priority
+    priority_source: PrioritySource = PrioritySource.DEFAULT
     coupling_available: bool
+    warnings: list[str] = Field(default_factory=list)
     count: int = Field(..., description="Entries in this page.")
     offset: int
     total: int
@@ -580,6 +715,7 @@ class ComparisonResult(BaseModel):
     operations: dict[str, int]
     source_valid: bool
     target_valid: bool
+    warnings: list[str] = Field(default_factory=list)
     error: str | None = None
 
 
@@ -588,6 +724,7 @@ class AssessmentResult(BaseModel):
 
     status: AssessmentStatus
     priority: Priority
+    priority_source: PrioritySource = PrioritySource.DEFAULT
     current: EvaluationResult
     proposed: EvaluationResult
     score_deltas: dict[str, float] = Field(
@@ -603,6 +740,7 @@ class AssessmentResult(BaseModel):
     structural_distance: float | None = None
     similarity: float | None = None
     coupling_available_for_proposed: bool
+    warnings: list[str] = Field(default_factory=list)
     # Anti-gaming: populated when scores moved but the tree barely changed.
     suspicion_reason: str | None = None
     error: str | None = None
@@ -614,7 +752,11 @@ class InspectionResult(BaseModel):
     evaluation: EvaluationResult
     functions: dict[str, int] = Field(
         default_factory=dict,
-        description="function_name -> cyclomatic_complexity (top N only).",
+        description="Deprecated: function_name -> cyclomatic_complexity (top N only).",
+    )
+    function_entries: list[FunctionEntry] = Field(
+        default_factory=list,
+        description="Top-N functions with line numbers and cyclomatic complexity.",
     )
     total_functions: int
     entropy_compression_ratio: float | None = None
@@ -652,4 +794,5 @@ class CoverageResult(BaseModel):
     )
     put_declaration_count: int
     test_declaration_count: int
+    warnings: list[str] = Field(default_factory=list)
     error: str | None = None

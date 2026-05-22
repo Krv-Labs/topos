@@ -35,11 +35,103 @@ def resolve_gitnexus_dir(
 
     Preference: explicit override > ``<project_root>/.gitnexus`` if it exists.
     """
+    project_root = project_root.resolve()
     if override:
-        path = Path(override).expanduser()
+        path = Path(override).expanduser().resolve()
+        try:
+            path.relative_to(project_root)
+        except ValueError:
+            return None
         return path if path.exists() else None
     default = project_root / ".gitnexus"
     return default if default.exists() else None
+
+
+def gitnexus_warnings(
+    override: str | Path | None,
+    project_root: Path,
+    gitnexus_dir: Path | None,
+    *,
+    dep_graph_loaded: bool,
+) -> list[str]:
+    """Explain why COMPOSABLE is unavailable or risky."""
+    project_root = project_root.resolve()
+    warnings: list[str] = []
+    if override:
+        override_path = Path(override).expanduser().resolve()
+        try:
+            override_path.relative_to(project_root)
+        except ValueError:
+            return [
+                "gitnexus_dir rejected — override must be inside TOPOS_MCP_FILE_ROOT. "
+                f"Got: {override_path}"
+            ]
+        if not override_path.exists():
+            return [
+                "gitnexus_dir unavailable — override path does not exist. "
+                f"Got: {override_path}"
+            ]
+    elif gitnexus_dir is None:
+        return [
+            "COMPOSABLE not scored — no .gitnexus directory found; run "
+            "'topos depgraph generate' to score this generator."
+        ]
+
+    if gitnexus_dir is not None and not dep_graph_loaded:
+        warnings.append(
+            "COMPOSABLE not scored — .gitnexus exists but the dependency graph could "
+            "not be loaded; re-run 'topos depgraph generate' and ensure GitNexus "
+            "dependencies are installed."
+        )
+    if gitnexus_dir is not None:
+        stale = _stale_gitnexus_warning(project_root, gitnexus_dir)
+        if stale:
+            warnings.append(stale)
+    return warnings
+
+
+def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | None:
+    graph_mtime = _gitnexus_mtime(gitnexus_dir)
+    if graph_mtime <= 0:
+        return None
+    head_mtime = _git_head_mtime(project_root)
+    if head_mtime is None:
+        return None
+    if graph_mtime < head_mtime:
+        return (
+            "gitnexus index may be stale — .gitnexus is older than the latest "
+            "git commit; run 'topos depgraph generate' before trusting COMPOSABLE."
+        )
+    return None
+
+
+def _git_head_mtime(project_root: Path) -> float | None:
+    git_dir = project_root / ".git"
+    head = git_dir / "HEAD"
+    try:
+        head_text = head.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if head_text.startswith("ref: "):
+        ref_path = git_dir / head_text.removeprefix("ref: ").strip()
+        try:
+            return ref_path.stat().st_mtime
+        except OSError:
+            return None
+    try:
+        return head.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _gitnexus_mtime(gitnexus_dir: Path) -> float:
+    lbug = gitnexus_dir / "lbug"
+    try:
+        if lbug.exists():
+            return lbug.stat().st_mtime
+        return gitnexus_dir.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def load_dep_graph(
@@ -114,7 +206,15 @@ def classify_file(
     Returns ``(result, dep_graph)`` so callers can cache the dep graph
     for subsequent proposed-code evaluations.
     """
-    morphism = ProgramMorphism.from_file(path)
+    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+
+    language = "python"
+    for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
+        if path.suffix in suffixes:
+            language = lang
+            break
+
+    morphism = ProgramMorphism.from_file(path, language=language)
     dep_graph = load_dep_graph(gitnexus_dir, str(path))
     result = classify_morphism(morphism, priority, dep_graph)
     return result, dep_graph

@@ -2,7 +2,7 @@
   "name": "topos-vscode",
   "displayName": "Topos Code Quality",
   "description": "Install Topos MCP code-quality tools for VS Code agent mode.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "KrvLabs",
   "icon": "icon.png",
   "license": "SEE LICENSE IN LICENSE",

@@ -16,6 +16,7 @@ Cargo.lock
 !.claude/CLAUDE.md
 .gemini/
 !.gemini/GEMINI.md
+.antigravitycli/
 topos-skill/
 *.skill
 maths.md
@@ -118,6 +119,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+_build/
 
 # PyBuilder
 .pybuilder/

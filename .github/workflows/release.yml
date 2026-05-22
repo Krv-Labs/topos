@@ -206,3 +206,35 @@ jobs:
             dist/topos-vscode-*
             dist/checksums.txt
           generate_release_notes: true
+
+  publish-vscode-marketplace:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - package-vscode
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download VSIX artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: topos-vscode-*
+          merge-multiple: true
+
+      - name: Publish VS Code Marketplace packages
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is required to publish VS Code Marketplace packages."
+            exit 1
+          fi
+
+          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-arm64.vsix
+          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-x64.vsix
+          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-arm64.vsix
+          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-x64.vsix

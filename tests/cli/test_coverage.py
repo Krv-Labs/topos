@@ -16,9 +16,7 @@ def test_coverage_basic(tmp_path: Path):
     )
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["coverage", "--tests", str(test), str(put)]
-    )
+    result = runner.invoke(cli, ["coverage", "--tests", str(test), str(put)])
     assert result.exit_code == 0
     assert "Topos Structural & Semantic Test Coverage" in result.output
     assert "Mean declaration coverage" in result.output
@@ -61,9 +59,7 @@ def test_coverage_json(tmp_path: Path):
     )
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["coverage", "--json", "--tests", str(test), str(put)]
-    )
+    result = runner.invoke(cli, ["coverage", "--json", "--tests", str(test), str(put)])
     assert result.exit_code == 0
 
     data = json.loads(result.output)

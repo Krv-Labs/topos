@@ -119,14 +119,18 @@ def coverage_cmd(
         source = Path(path).read_text(encoding="utf-8")
         result = parse_source(source=source, language=language, file=str(path))
         if result.uast_root is not None:
-            put_cpgs.append(CodePropertyGraph.from_uast(result.uast_root, source=source))
+            put_cpgs.append(
+                CodePropertyGraph.from_uast(result.uast_root, source=source)
+            )
 
     test_cpgs = []
     for path in test_paths:
         source = Path(path).read_text(encoding="utf-8")
         result = parse_source(source=source, language=language, file=str(path))
         if result.uast_root is not None:
-            test_cpgs.append(CodePropertyGraph.from_uast(result.uast_root, source=source))
+            test_cpgs.append(
+                CodePropertyGraph.from_uast(result.uast_root, source=source)
+            )
 
     def merge_cpgs(cpgs: list[CodePropertyGraph]) -> CodePropertyGraph:
         if not cpgs:
@@ -150,7 +154,9 @@ def coverage_cmd(
     test_cpg = merge_cpgs(test_cpgs)
 
     topo_report = calculate_topological_coverage(put_cpg, test_cpg)
-    topo_decision = score_topological_coverage(topo_report, threshold=coverage_threshold)
+    topo_decision = score_topological_coverage(
+        topo_report, threshold=coverage_threshold
+    )
 
     if output_json_flag:
         payload = asdict(report)
@@ -214,7 +220,9 @@ def coverage_cmd(
     click.echo()
     click.echo("Topological CPG Semantic Coverage")
     click.echo("-" * 52)
-    click.echo(f"  Topological coverage score: {topo_report.topological_coverage_score:.4f}")
+    click.echo(
+        f"  Topological coverage score: {topo_report.topological_coverage_score:.4f}"
+    )
     click.echo(f"  Topological ECT distance:   {topo_report.topological_distance:.4f}")
     click.echo(f"  Topological threshold:      {topo_decision.threshold:.2f}")
     click.echo(f"  Topological target met:     {str(topo_decision.achieved)}")

@@ -153,4 +153,3 @@ def _topological_coverage_interpretation(score: float, threshold: float) -> str:
     if score >= threshold * 0.5:
         return "topological coverage is partial"
     return "topological coverage is weak"
-

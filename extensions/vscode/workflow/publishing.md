@@ -5,7 +5,7 @@ This guide covers local testing, VSIX packaging, Marketplace setup, GitHub secre
 Extension root:
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 ```
 
 ## Current Publishing Model
@@ -47,7 +47,7 @@ The PATH/Python/download paths are compatibility fallbacks, not the primary prod
 Run the extension checks:
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 npm install
 npm run check-types
 npm run lint
@@ -67,10 +67,10 @@ What these do:
 This tests extension registration and fallback behavior, but does not test the target VSIX bundled-runtime path.
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 npx --yes @vscode/vsce package --out topos-vscode-local.vsix
 code --install-extension topos-vscode-local.vsix --force
-code /Users/gathrid/Repos/topos
+code <your-local-topos-repo>
 ```
 
 Then in VS Code:
@@ -86,7 +86,7 @@ Output: Topos Code Quality
 Build a local Topos binary from repo root:
 
 ```bash
-cd /Users/gathrid/Repos/topos
+cd <your-local-topos-repo>
 
 uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
   --collect-all tree_sitter \
@@ -121,7 +121,7 @@ mv dist/topos dist/topos-linux-arm64
 Package and install the matching target:
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 
 # Apple Silicon macOS
 npm run package:darwin-arm64
@@ -143,7 +143,7 @@ code --install-extension topos-vscode-linux-arm64.vsix --force
 After install:
 
 ```bash
-code /Users/gathrid/Repos/topos
+code <your-local-topos-repo>
 ```
 
 Then in VS Code:
@@ -325,14 +325,14 @@ Use this only when intentionally publishing a release outside the tag-push path.
 From a clean branch:
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 npm version patch --no-git-tag-version
 ```
 
 Then from repo root:
 
 ```bash
-cd /Users/gathrid/Repos/topos
+cd <your-local-topos-repo>
 git add extensions/vscode/package.json extensions/vscode/package-lock.json
 git commit -m "Bump VS Code extension version"
 git push origin <branch>
@@ -366,7 +366,7 @@ Use this only for recovery or first-time testing.
 Login:
 
 ```bash
-cd /Users/gathrid/Repos/topos/extensions/vscode
+cd <your-local-topos-repo>/extensions/vscode
 npx --yes @vscode/vsce login KrvLabs
 ```
 

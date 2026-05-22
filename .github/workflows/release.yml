@@ -77,8 +77,8 @@ jobs:
           CODESIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_IDENTITY }}
         run: |
           if [ -z "$CERTIFICATE_P12_BASE64" ] || [ -z "$CERTIFICATE_PASSWORD" ] || [ -z "$CODESIGN_IDENTITY" ]; then
-            echo "Apple signing secrets are required for macOS release binaries."
-            exit 1
+            echo "::warning title=Unsigned macOS binary::Apple signing secrets are missing. Continuing with an unsigned macOS binary; Gatekeeper may block it for users."
+            exit 0
           fi
 
           KEYCHAIN_PATH="$RUNNER_TEMP/topos-signing.keychain-db"
@@ -100,8 +100,8 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
-            echo "Apple notarization secrets are required for macOS release binaries."
-            exit 1
+            echo "::warning title=Unnotarized macOS binary::Apple notarization secrets are missing. Continuing without notarization; Gatekeeper may block it for users."
+            exit 0
           fi
 
           ditto -c -k --keepParent "dist/topos-${{ matrix.target }}" "$RUNNER_TEMP/topos-${{ matrix.target }}.zip"

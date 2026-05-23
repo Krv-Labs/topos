@@ -185,9 +185,11 @@ def _format_file_row(
                 bracket_left = click.style("[", dim=True)
                 bracket_right = click.style("]", dim=True)
 
-                pillar_parts.append(
-                    f"{label_str}{score_percent_str} {bracket_left}{gauge}{bracket_right}"
+                gauge_str = (
+                    f"{label_str}{score_percent_str} "
+                    f"{bracket_left}{gauge}{bracket_right}"
                 )
+                pillar_parts.append(gauge_str)
 
     pillar_col = "  ".join(pillar_parts)
 
@@ -210,9 +212,8 @@ def _output_file_details(results: list[dict[str, object]], verbose: bool) -> Non
             medal_styled = click.style(medal_text, fg="red", dim=True)
 
         avg_score = _display_score(result)
-        click.echo(
-            f"  {result['file']}  {medal_styled}  {click.style(f'{avg_score:.0f}%', bold=True)}"
-        )
+        score_styled = click.style(f"{avg_score:.0f}%", bold=True)
+        click.echo(f"  {result['file']}  {medal_styled}  {score_styled}")
 
         scores = result.get("scores", {})
         dimensions = result.get("dimensions", {})
@@ -238,7 +239,8 @@ def _output_file_details(results: list[dict[str, object]], verbose: bool) -> Non
                     req_str = click.style(f"(Req: {threshold:.0f}%)", dim=True)
 
                     click.echo(
-                        f"{dim_label} {bracket_l}{gauge}{bracket_r}  {score_str}  {req_str}  {status_styled}"
+                        f"{dim_label} {bracket_l}{gauge}{bracket_r}  "
+                        f"{score_str}  {req_str}  {status_styled}"
                     )
 
         if not dimensions:
@@ -294,9 +296,17 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
             click.echo()
             click.echo(click.style("Pillars", fg="cyan", bold=True))
 
-            header_line = f"  {'Pillar':<12} {'Status':<8} {'Avg Score':<11} {'Min Score':<11} {'Failures':<10} {'Progress vs Threshold (│)':<25}"
+            header_line = (
+                f"  {'Pillar':<12} {'Status':<8} {'Avg Score':<11} "
+                f"{'Min Score':<11} {'Failures':<10} "
+                f"{'Progress vs Threshold (│)':<25}"
+            )
             click.echo(click.style(header_line, bold=True))
-            divider = f"  {'──────':<12} {'──────':<8} {'─────────':<11} {'─────────':<11} {'────────':<10} {'─────────────────────────':<25}"
+            divider = (
+                f"  {'──────':<12} {'──────':<8} {'─────────':<11} "
+                f"{'─────────':<11} {'────────':<10} "
+                f"{'─────────────────────────':<25}"
+            )
             click.echo(click.style(divider, dim=True))
 
             for pillar in _pillar_order(pillars):
@@ -335,10 +345,8 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
                 )
 
     average = sum(_display_score(result) for result in results) / len(results)
-    click.echo()
-    click.echo(
-        f"  Directory Average Score: {click.style(f'{average:.0f}%', bold=True)} (Mean across all files)"
-    )
+    avg_styled = click.style(f"{average:.0f}%", bold=True)
+    click.echo(f"  Directory Average Score: {avg_styled} (Mean across all files)")
 
     from topos.core.omega import EvaluationValue
 
@@ -359,7 +367,8 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
     click.echo(f"  Directory Floor Verdict: {meet_styled} (Pointwise lattice meet)")
     click.echo(
         click.style(
-            f"  [INFO] The Floor Verdict is the minimum category-theoretic level achieved across all files.",
+            "  [INFO] The Floor Verdict is the minimum category-theoretic level "
+            "achieved across all files.",
             dim=True,
         )
     )
@@ -371,15 +380,25 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
         )
         click.echo()
         click.echo(click.style("Needs attention", fg="cyan", bold=True))
-        header_files = f"  {'Rank':<4}  {'File':<42}  {'Verdict':<16}   {'Score':<5}    {'Pillar Scores'}"
+        header_files = (
+            f"  {'Rank':<4}  {'File':<42}  {'Verdict':<16}   "
+            f"{'Score':<5}    {'Pillar Scores'}"
+        )
         click.echo(click.style(header_files, bold=True))
-        divider_files = f"  {'────':<4}  {'──────────────────────────────────────────':<42}  {'───────':<16}   {'─────':<5}    {'─────────────'}"
+        divider_files = (
+            f"  {'────':<4}  "
+            f"{'──────────────────────────────────────────':<42}  "
+            f"{'───────':<16}   {'─────':<5}    {'─────────────'}"
+        )
         click.echo(click.style(divider_files, dim=True))
 
         for idx, result in enumerate(ranked[:5], start=1):
             click.echo(_format_file_row(f"{idx}.", result["file"], result))
 
-        best = max(results, key=lambda result: (_display_score(result), result["file"]))
+        best = max(
+            results,
+            key=lambda result: (_display_score(result), result["file"]),
+        )
         click.echo()
         click.echo(click.style("Best file", fg="cyan", bold=True))
         click.echo(click.style(header_files, bold=True))

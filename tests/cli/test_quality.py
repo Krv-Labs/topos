@@ -30,7 +30,10 @@ def test_evaluate_file(tmp_path: Path):
     assert result.exit_code == 0
     assert str(f) in result.output
     assert "Files" in result.output
-    assert f"{f} [" in result.output
+    
+    import re
+    clean_output = re.sub(r'\x1b\[[0-9;]*m', '', result.output)
+    assert f"{f}  [" in clean_output
     assert "Directory Average Score" in result.output
     assert "Directory Floor Verdict" in result.output
 

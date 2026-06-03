@@ -26,10 +26,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Check package version matches __init__
+      - name: Check package version matches __init__ and VS Code extension
         run: |
           python - <<'PY'
           from pathlib import Path
+          import json
           import re
           import sys
           import tomllib
@@ -45,6 +46,14 @@ jobs:
               sys.exit(
                   f"Version mismatch: pyproject.toml has {pyproject_version}, "
                   f"topos/__init__.py has {init_version.group(1)}"
+              )
+
+          extension_version = json.loads(Path("extensions/vscode/package.json").read_text())["version"]
+          if pyproject_version != extension_version:
+              sys.exit(
+                  f"Version mismatch: pyproject.toml has {pyproject_version}, "
+                  f"extensions/vscode/package.json has {extension_version}. "
+                  "The VS Code extension version is locked to the Topos version."
               )
           PY
 
@@ -77,3 +86,30 @@ jobs:
       - name: Run Ruff formatting checks
         if: matrix.python-version == '3.13'
         run: uv run ruff format --check topos tests
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: extensions/vscode
+        run: npm ci
+
+      - name: Type-check
+        working-directory: extensions/vscode
+        run: npm run check-types
+
+      - name: Lint
+        working-directory: extensions/vscode
+        run: npm run lint
+
+      - name: Unit tests
+        working-directory: extensions/vscode
+        run: npm run test:unit

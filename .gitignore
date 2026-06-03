@@ -26,15 +26,6 @@ artifacts/
 data/
 
 
-# Benchmarks
-benchmarks/calibration/*.csv
-benchmarks/calibration/*.txt
-benchmarks/calibration/results/
-benchmarks/calibration/evidence/
-
-/benchmarks/bin/*
-!/benchmarks/bin/.gitkeep
-
 
 
 # Other

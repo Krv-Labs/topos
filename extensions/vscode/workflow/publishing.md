@@ -15,6 +15,7 @@ cd <your-local-topos-repo>/extensions/vscode
 - [Local Verification](#local-verification)
 - [Local Install Without Bundled Runtime](#local-install-without-bundled-runtime)
 - [Local Install With Bundled Runtime](#local-install-with-bundled-runtime)
+- [Cursor Compatibility](#cursor-compatibility)
 - [VS Code Marketplace Setup](#vs-code-marketplace-setup)
 - [Required GitHub Secrets](#required-github-secrets)
 - [GitHub Actions Flow](#github-actions-flow)
@@ -92,8 +93,14 @@ What these do:
 
 - `check-types`: TypeScript API/type validation.
 - `lint`: ESLint pass over extension source.
-- `test`: verifies binary staging behavior.
+- `test`: binary staging behavior plus `test:unit` (pure runtime logic — platform mapping, path resolution, SHA-256, manifest selection, redirect/timeout handling, MCP API detection).
 - `package`: production esbuild bundle into `dist/extension.js`.
+
+To run the VS Code integration smoke tests (downloads a full VS Code build, so it is local-first / opt-in):
+
+```bash
+npm run test:integration
+```
 
 > [!TIP]
 > Run these checks before packaging a local VSIX. They catch the common failure modes faster than installing into VS Code.
@@ -114,7 +121,7 @@ Then in VS Code:
 ```text
 Developer: Reload Window
 MCP: List Servers
-Output: Topos Code Quality
+Output: Topos
 ```
 
 > [!NOTE]
@@ -190,7 +197,7 @@ Then in VS Code:
 ```text
 Developer: Reload Window
 MCP: List Servers
-Output: Topos Code Quality
+Output: Topos
 ```
 
 Expected log signal:
@@ -218,6 +225,44 @@ extension/package.json
 ```
 
 </details>
+
+## Cursor Compatibility
+
+Cursor is built on a VS Code base that can lag the upstream API. The extension is written to fail safe there: if the host does not expose the MCP API, activation does not throw — it logs to the **Topos** output channel and shows a single actionable warning. Use this checklist to verify Cursor before ticking the PR's "Cursor Compatibility" boxes.
+
+Install the matching platform VSIX into Cursor:
+
+```bash
+cursor --install-extension topos-vscode-darwin-arm64.vsix --force
+```
+
+> [!NOTE]
+> If the `cursor` CLI is not on `PATH`, install via the Cursor UI: Extensions view -> `...` menu -> **Install from VSIX**.
+
+### 1. Cursor loads the extension from the `.vsix`
+
+- After install, open the Extensions view and confirm **Topos: Code Quality Targets for Agents** is listed and enabled.
+- Open the **Topos** output channel (Output panel -> "Topos" in the dropdown).
+- Expected: `Topos extension activating...`. No activation error notification.
+
+### 2. MCP server registration works (`registerMcpServerDefinitionProvider`)
+
+- Expected output-channel line: `Topos MCP Server Provider registered successfully.`
+- If instead you see `This host does not expose the MCP server definition API`, the Cursor build predates the MCP provider API. This is the expected fail-safe path — the extension warns and does not crash. Note the Cursor version and stop here; the remaining boxes require an MCP-capable host.
+
+### 3. CLI resolution / install flow works
+
+- Trigger MCP server resolution (open the MCP servers panel and start **Topos**, or invoke a Topos tool from the agent).
+- Expected output-channel trace ends with `Resolved MCP server command: .../bin/topos mcp` (bundled runtime) or another resolved step.
+- For the GitNexus path, run **Topos: Generate Dependency Graph** from the Command Palette and confirm the guided-install prompt appears when `gitnexus` is absent, and that a `.gitnexus/` store is written when it is present.
+
+### 4. Cursor agent can discover and use the MCP tools
+
+- In the Cursor agent, ask: "Use Topos to evaluate the code quality of this file."
+- Expected: the agent lists/invokes Topos tools and returns a verdict (e.g. `{simple, secure}`, plus `composable` once a dependency graph exists).
+
+> [!TIP]
+> The output channel is the source of truth. Every resolution step and every fail-safe branch is logged there, which makes Cursor-specific behavior easy to confirm without a debugger.
 
 ## VS Code Marketplace Setup
 
@@ -376,8 +421,8 @@ v*
 Example:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 What runs:
@@ -390,7 +435,7 @@ What runs:
 6. Publish all platform VSIXs to VS Code Marketplace using `VSCE_PAT`.
 
 > [!IMPORTANT]
-> Tag releases are the normal production path. The tag version should match `extensions/vscode/package.json`.
+> Tag releases are the normal production path. The tag version must match `pyproject.toml`, `topos/__init__.py`, and `extensions/vscode/package.json` (CI enforces these are equal).
 
 ### Manual Releases
 
@@ -399,7 +444,7 @@ Triggered through GitHub Actions `workflow_dispatch`.
 Input:
 
 ```text
-version: v0.1.1
+version: v0.3.0
 ```
 
 Use this only when intentionally publishing a release outside the tag-push path.
@@ -409,26 +454,30 @@ Use this only when intentionally publishing a release outside the tag-push path.
 
 ## Publishing A New Version
 
-From a clean branch:
+> [!IMPORTANT]
+> The VS Code extension version is locked to the Topos version. `pyproject.toml`, `topos/__init__.py`, and `extensions/vscode/package.json` must all carry the same version, and CI fails the build if they diverge. A single release tag `vX.Y.Z` drives both the Topos binary and the VSIX.
+
+Bump all three to the same version. From repo root:
 
 ```bash
-cd <your-local-topos-repo>/extensions/vscode
-npm version patch --no-git-tag-version
+# 1. Topos (pyproject.toml + topos/__init__.py) -> set to X.Y.Z
+# 2. VS Code extension package.json + lockfile
+cd extensions/vscode
+npm version X.Y.Z --no-git-tag-version
+cd ../..
 ```
 
-Then from repo root:
+Then commit and open a PR to `main`:
 
 ```bash
-cd <your-local-topos-repo>
-git add extensions/vscode/package.json extensions/vscode/package-lock.json
-git commit -m "Bump VS Code extension version"
+git add pyproject.toml topos/__init__.py extensions/vscode/package.json extensions/vscode/package-lock.json
+git commit -m "Bump version to X.Y.Z"
 git push origin <branch>
 ```
 
-Open a PR to `main`.
-
 Wait for CI:
 
+- version-consistency check passes (pyproject == __init__ == extension package.json)
 - binary builds pass
 - target VSIX packaging passes
 - size checks pass
@@ -438,20 +487,20 @@ After merge:
 ```bash
 git checkout main
 git pull
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-Use the version that matches `extensions/vscode/package.json`.
+Use the version that matches `pyproject.toml` (and therefore `extensions/vscode/package.json`).
 
 Do not publish the same extension version twice. Marketplace will reject duplicate versions.
 
 <details>
 <summary>Versioning checklist</summary>
 
-- Bump `extensions/vscode/package.json`.
+- Bump `pyproject.toml`, `topos/__init__.py`, and `extensions/vscode/package.json` to the same version.
 - Commit the matching `package-lock.json` update.
-- Use a release tag that matches the extension version, for example `v0.1.1`.
+- Use a release tag that matches that version, for example `v0.3.0`.
 - Never reuse a Marketplace version.
 
 </details>
@@ -558,14 +607,14 @@ Check:
 <details>
 <summary>Marketplace publish fails with duplicate version</summary>
 
-Bump:
+Bump all three version sources to the same new value (`pyproject.toml`, `topos/__init__.py`, and the extension):
 
 ```bash
 cd extensions/vscode
 npm version patch --no-git-tag-version
 ```
 
-Commit and release again with a matching new tag.
+Commit and release again with a matching new tag. CI will reject the PR if the three versions diverge.
 
 </details>
 
@@ -591,7 +640,7 @@ In VS Code:
 ```text
 Developer: Reload Window
 MCP: List Servers
-Output: Topos Code Quality
+Output: Topos
 ```
 
 The output channel should show the runtime resolution trace.
@@ -645,4 +694,4 @@ After release:
 - Confirm Marketplace page shows the new version.
 - Install from Marketplace on at least one supported platform.
 - Run `MCP: List Servers`.
-- Check `Output: Topos Code Quality`.
+- Check `Output: Topos`.

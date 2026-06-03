@@ -1,31 +1,67 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
-import * as https from 'https';
-import * as url from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import {
+    getPlatformKey,
+    resolveHomePath,
+    computeFileSha256,
+    fetchJson,
+    downloadFile,
+    selectBinaryFromManifest,
+    isMcpApiAvailable,
+    buildServerInvocation,
+    buildCliInvocation,
+    resolveEvaluateLanguages,
+    TOPOS_SUPPORTED_LANGUAGES,
+} from './runtime';
 
 const execFileAsync = promisify(execFile);
+
+// User-facing product name (Marketplace title). The agent-facing MCP server label
+// is kept short (see MCP_SERVER_LABEL) so tool listings stay clean.
+const OUTPUT_CHANNEL_NAME = "Topos";
+const MCP_SERVER_LABEL = "Topos";
 
 // The official, static release manifest URL where we publish compatible binaries and checksums.
 const MANIFEST_URL = "https://raw.githubusercontent.com/Krv-Labs/topos/main/releases.json";
 const BUNDLED_BINARY_RELATIVE_PATH = path.join('bin', 'topos');
 
+const GITNEXUS_INSTALL_COMMAND = "npm install -g gitnexus";
+const GITNEXUS_REPO_URL = "https://github.com/abhigyanpatwari/GitNexus";
+const GITNEXUS_PROMPT_DISMISSED_KEY = "gitnexusPromptDismissed";
+
 export async function activate(context: vscode.ExtensionContext) {
-    const outputChannel = vscode.window.createOutputChannel("Topos Code Quality");
-    outputChannel.appendLine("Topos Code Quality extension activating...");
+    const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    context.subscriptions.push(outputChannel);
+    outputChannel.appendLine("Topos extension activating...");
 
     // 1. Guard native Windows environments (binaries are macOS/Linux/WSL only)
     if (process.platform === 'win32') {
         outputChannel.appendLine("Native Windows detected. Showing block warning.");
         vscode.window.showWarningMessage(
-            "Topos Code Quality does not currently support native Windows. Please open your workspace inside WSL (Windows Subsystem for Linux), or install the CLI manually via 'pip install topos'.",
+            "Topos does not currently support native Windows. Please open your workspace inside WSL (Windows Subsystem for Linux), or install the CLI manually via 'pip install topos'.",
             "Open WSL Guide"
         ).then(selection => {
             if (selection === "Open WSL Guide") {
                 vscode.env.openExternal(vscode.Uri.parse("https://code.visualstudio.com/docs/remote/wsl"));
+            }
+        });
+        return;
+    }
+
+    // 2. Feature-detect the MCP API before using it. Hosts that track an older VS Code
+    //    base (e.g. some Cursor builds) may not expose vscode.lm / McpStdioServerDefinition.
+    //    Fail safe with an actionable message instead of throwing during activation.
+    if (!isMcpApiAvailable(vscode)) {
+        outputChannel.appendLine("ERROR: This host does not expose the MCP server definition API (vscode.lm / McpStdioServerDefinition).");
+        vscode.window.showWarningMessage(
+            "Topos requires an MCP-capable host (VS Code 1.120 or newer, or a compatible editor). The Topos MCP server was not registered.",
+            "View Documentation"
+        ).then(selection => {
+            if (selection === "View Documentation") {
+                vscode.env.openExternal(vscode.Uri.parse("https://docs.krv.ai/topos"));
             }
         });
         return;
@@ -40,7 +76,7 @@ export async function activate(context: vscode.ExtensionContext) {
             const env = getWorkspaceEnv();
             return [
                 new vscode.McpStdioServerDefinition(
-                    "Topos Code Quality",
+                    MCP_SERVER_LABEL,
                     "topos",
                     ["mcp"],
                     env,
@@ -55,7 +91,7 @@ export async function activate(context: vscode.ExtensionContext) {
             if (!resolvedBinaryPath) {
                 outputChannel.appendLine("ERROR: Topos executable could not be resolved.");
                 vscode.window.showErrorMessage(
-                    "Topos Code Quality could not start because no bundled, cached, local, or downloadable Topos runtime was available.",
+                    "Topos could not start because no bundled, cached, local, or downloadable Topos runtime was available.",
                     "View Documentation"
                 ).then(selection => {
                     if (selection === "View Documentation") {
@@ -65,14 +101,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 return undefined;
             }
 
-            let command = resolvedBinaryPath;
-            let args = ["mcp"];
-
-            if (resolvedBinaryPath.endsWith("python") || resolvedBinaryPath.endsWith("python3")) {
-                command = resolvedBinaryPath;
-                args = ["-m", "topos.cli", "mcp"];
-            }
-
+            const { command, args } = buildServerInvocation(resolvedBinaryPath);
             server.command = command;
             server.args = args;
             server.env = getWorkspaceEnv();
@@ -84,7 +113,17 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     context.subscriptions.push(vscode.lm.registerMcpServerDefinitionProvider(providerId, provider));
-    outputChannel.appendLine("Topos MCP Server Provider registered successfully with VS Code.");
+    outputChannel.appendLine("Topos MCP Server Provider registered successfully.");
+
+    // 3. Command Palette workflows (dependency graph + project evaluation).
+    context.subscriptions.push(
+        vscode.commands.registerCommand('topos.generateDependencyGraph', () => generateDependencyGraph(context, outputChannel)),
+        vscode.commands.registerCommand('topos.evaluateProject', () => evaluateProject(context, outputChannel))
+    );
+
+    // 4. COMPOSABLE requires GitNexus. Detect it; if absent, surface a non-blocking,
+    //    dismissible prompt. SIMPLE and SECURE keep working regardless.
+    void checkGitNexusAvailability(context, outputChannel);
 }
 
 export function deactivate() {}
@@ -197,7 +236,7 @@ async function resolveToposExecutable(context: vscode.ExtensionContext, output: 
                 return undefined;
             }
 
-            const binaryInfo = manifest.binaries?.[platformKey];
+            const binaryInfo = selectBinaryFromManifest(manifest, platformKey);
             if (!binaryInfo) {
                 output.appendLine(`No standalone binary listed in manifest for platform: ${platformKey}`);
                 return undefined;
@@ -235,7 +274,7 @@ async function resolveToposExecutable(context: vscode.ExtensionContext, output: 
             // Fresh download under a progress notification bar
             const success = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
-                title: `Downloading Topos Code Quality CLI (v${latestVersion})...`,
+                title: `Downloading Topos CLI (v${latestVersion})...`,
                 cancellable: false
             }, async (progress) => {
                 let lastPercent = 0;
@@ -282,17 +321,6 @@ async function resolveToposExecutable(context: vscode.ExtensionContext, output: 
     }
 
     return undefined;
-}
-
-/**
- * Resolves paths starting with tilde (~) to the user's home directory.
- */
-function resolveHomePath(filePath: string): string {
-    if (filePath.startsWith('~')) {
-        const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-        return path.join(homeDir, filePath.slice(1));
-    }
-    return path.resolve(filePath);
 }
 
 async function ensureExecutable(filePath: string, output: vscode.OutputChannel): Promise<void> {
@@ -356,119 +384,238 @@ async function testToposExecutable(executablePath: string): Promise<boolean> {
 }
 
 /**
- * Map Node.js platform and architecture fields to the remote manifest platform keys.
+ * Detects whether the GitNexus CLI is available on PATH. COMPOSABLE scoring
+ * depends on it; SIMPLE and SECURE do not.
  */
-function getPlatformKey(): string | undefined {
-    const platform = process.platform;
-    const arch = process.arch;
-
-    if (platform === 'darwin') {
-        return arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-    } else if (platform === 'linux') {
-        return arch === 'arm64' ? 'linux-arm64' : 'linux-x64';
+async function isGitNexusOnPath(): Promise<boolean> {
+    try {
+        await execFileAsync('gitnexus', ['--version']);
+        return true;
+    } catch {
+        return false;
     }
-    return undefined;
 }
 
 /**
- * Fetches JSON payload from a remote URL, recursively following HTTP/HTTPS redirects.
+ * Non-blocking GitNexus availability check. Logs status and, when absent, shows a
+ * dismissible prompt offering a guided install. Never blocks activation.
  */
-function fetchJson(targetUrl: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-        https.get(targetUrl, (response) => {
-            const statusCode = response.statusCode ?? 0;
+async function checkGitNexusAvailability(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+    if (await isGitNexusOnPath()) {
+        output.appendLine("GitNexus detected on PATH. The COMPOSABLE pillar is available.");
+        return;
+    }
 
-            // Follow redirects recursively
-            if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-                const nextUrl = url.resolve(targetUrl, response.headers.location);
-                fetchJson(nextUrl).then(resolve).catch(reject);
-                return;
-            }
+    output.appendLine(
+        "GitNexus was not found on PATH. SIMPLE and SECURE work normally, but the COMPOSABLE pillar " +
+        `is unavailable until GitNexus is installed (${GITNEXUS_INSTALL_COMMAND}) and a dependency graph is generated.`
+    );
 
-            if (statusCode !== 200) {
-                reject(new Error(`Failed to fetch JSON: status code ${statusCode}`));
-                return;
-            }
+    if (context.globalState.get<boolean>(GITNEXUS_PROMPT_DISMISSED_KEY)) {
+        return;
+    }
 
-            let body = '';
-            response.on('data', chunk => body += chunk);
-            response.on('end', () => {
-                try {
-                    resolve(JSON.parse(body));
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        }).on('error', err => reject(err));
+    const selection = await vscode.window.showInformationMessage(
+        "Topos: install GitNexus to enable the COMPOSABLE code-quality pillar. SIMPLE and SECURE work without it.",
+        "Install GitNexus",
+        "Learn More",
+        "Don't Show Again"
+    );
+
+    if (selection === "Install GitNexus") {
+        installGitNexus(output);
+    } else if (selection === "Learn More") {
+        vscode.env.openExternal(vscode.Uri.parse(GITNEXUS_REPO_URL));
+    } else if (selection === "Don't Show Again") {
+        await context.globalState.update(GITNEXUS_PROMPT_DISMISSED_KEY, true);
+    }
+}
+
+/**
+ * Launches the GitNexus install in a visible terminal so the user can review output.
+ */
+function installGitNexus(output: vscode.OutputChannel): void {
+    output.appendLine(`Launching GitNexus install: ${GITNEXUS_INSTALL_COMMAND}`);
+    const terminal = vscode.window.createTerminal("Install GitNexus");
+    terminal.show();
+    terminal.sendText(GITNEXUS_INSTALL_COMMAND);
+}
+
+/**
+ * Command handler: generates the dependency graph by running `topos depgraph generate`
+ * in a terminal at the workspace root. This produces the `.gitnexus/` store the
+ * COMPOSABLE pillar reads from.
+ */
+async function generateDependencyGraph(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+        vscode.window.showErrorMessage("Topos: open a workspace folder before generating a dependency graph.");
+        return;
+    }
+
+    if (!await isGitNexusOnPath()) {
+        const selection = await vscode.window.showWarningMessage(
+            "Topos: GitNexus is required to generate a dependency graph but was not found on PATH.",
+            "Install GitNexus",
+            "Learn More"
+        );
+        if (selection === "Install GitNexus") {
+            installGitNexus(output);
+        } else if (selection === "Learn More") {
+            vscode.env.openExternal(vscode.Uri.parse(GITNEXUS_REPO_URL));
+        }
+        return;
+    }
+
+    await runToposCliInTerminal(context, output, {
+        terminalName: "Topos: Generate Dependency Graph",
+        cwd: workspaceRoot,
+        cliArgs: ["depgraph", "generate"],
+        failureMessage: "Topos: could not resolve the Topos executable to generate a dependency graph.",
     });
 }
 
 /**
- * Downloads a file from a URL to a local destination path, recursively following redirects.
+ * Command handler: runs `topos evaluate <path> -r` with verbose per-file output in a
+ * terminal. Defaults to `src/` when present, otherwise the workspace root.
  */
-function downloadFile(targetUrl: string, destPath: string, onProgress?: (fraction: number) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
+async function evaluateProject(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<void> {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+        vscode.window.showErrorMessage("Topos: open a workspace folder before evaluating the project.");
+        return;
+    }
 
-        https.get(targetUrl, (response) => {
-            const statusCode = response.statusCode ?? 0;
+    const config = vscode.workspace.getConfiguration("topos");
+    const evaluatePath = pickEvaluatePath(workspaceRoot, config.get<string>("evaluatePath", ""));
+    const scanRoot = path.isAbsolute(evaluatePath)
+        ? evaluatePath
+        : path.join(workspaceRoot, evaluatePath);
+    const configuredLanguage = config.get<string>("evaluateLanguage", "auto");
+    const preferences = config.get<string>("evaluatePreferences", "").trim();
+    const verbose = config.get<boolean>("evaluateVerbose", true);
 
-            // Follow redirects recursively
-            if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-                file.close();
-                fs.unlink(destPath, () => {});
-                const nextUrl = url.resolve(targetUrl, response.headers.location);
-                downloadFile(nextUrl, destPath, onProgress).then(resolve).catch(reject);
-                return;
-            }
+    output.appendLine(`Scanning for source languages under ${evaluatePath}...`);
+    const languages = resolveEvaluateLanguages(scanRoot, configuredLanguage);
+    if (languages.length === 0) {
+        const hint = configuredLanguage.trim().toLowerCase() === "auto"
+            ? `No supported source files found under ${evaluatePath}. Topos supports: ${TOPOS_SUPPORTED_LANGUAGES.join(", ")}.`
+            : `Invalid or unsupported topos.evaluateLanguage "${configuredLanguage}". Use auto or one of: ${TOPOS_SUPPORTED_LANGUAGES.join(", ")}.`;
+        vscode.window.showErrorMessage(`Topos: ${hint}`);
+        output.appendLine(hint);
+        return;
+    }
 
-            if (statusCode !== 200) {
-                file.close();
-                fs.unlink(destPath, () => {});
-                reject(new Error(`Failed to download: status code ${statusCode}`));
-                return;
-            }
+    output.appendLine(`Detected languages: ${languages.join(", ")}`);
 
-            const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
-            let downloadedBytes = 0;
+    const hasGitnexus = fs.existsSync(path.join(workspaceRoot, ".gitnexus"));
+    if (!hasGitnexus) {
+        output.appendLine(
+            "No .gitnexus/ directory in workspace. SIMPLE and SECURE will run; " +
+            "COMPOSABLE needs **Topos: Generate Dependency Graph** first."
+        );
+    }
 
-            response.on('data', (chunk) => {
-                downloadedBytes += chunk.length;
-                if (totalBytes > 0 && onProgress) {
-                    onProgress(downloadedBytes / totalBytes);
-                }
-            });
+    const cliArgSequences = languages.map((language) =>
+        buildEvaluateCliArgs(evaluatePath, language, { verbose, preferences, hasGitnexus })
+    );
 
-            response.pipe(file);
-
-            file.on('finish', () => {
-                file.close();
-                resolve();
-            });
-
-            file.on('error', (err) => {
-                file.close();
-                fs.unlink(destPath, () => {});
-                reject(err);
-            });
-        }).on('error', (err) => {
-            file.close();
-            fs.unlink(destPath, () => {});
-            reject(err);
-        });
+    await runToposCliInTerminal(context, output, {
+        terminalName: "Topos: Evaluate Project",
+        cwd: workspaceRoot,
+        cliArgs: cliArgSequences[0],
+        cliArgSequences: cliArgSequences.length > 1 ? cliArgSequences.slice(1) : undefined,
+        preambleLines: languages.length > 1
+            ? [`echo "Topos: evaluating ${languages.join(", ")} under ${evaluatePath}"`]
+            : undefined,
+        failureMessage: "Topos: could not resolve the Topos executable to evaluate the project.",
     });
 }
 
-/**
- * Computes the SHA-256 hash of a local file.
- */
-function computeFileSha256(filePath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const hash = crypto.createHash('sha256');
-        const stream = fs.createReadStream(filePath);
+function buildEvaluateCliArgs(
+    evaluatePath: string,
+    language: string,
+    options: { verbose: boolean; preferences: string; hasGitnexus: boolean }
+): string[] {
+    const cliArgs = ["evaluate", evaluatePath, "-r", "--language", language];
+    if (options.verbose) {
+        cliArgs.push("-v");
+    }
+    if (options.preferences) {
+        cliArgs.push("--preferences", options.preferences);
+    }
+    if (options.hasGitnexus) {
+        cliArgs.push("--gitnexus-dir", ".gitnexus");
+    }
+    return cliArgs;
+}
 
-        stream.on('error', err => reject(err));
-        stream.on('data', chunk => hash.update(chunk));
-        stream.on('end', () => resolve(hash.digest('hex')));
-    });
+/**
+ * Chooses the directory passed to `topos evaluate`: explicit setting, else `src/` if it
+ * exists, else `.` (workspace root).
+ */
+function pickEvaluatePath(workspaceRoot: string, configuredPath: string): string {
+    const trimmed = configuredPath.trim();
+    if (trimmed) {
+        return trimmed;
+    }
+    const srcDir = path.join(workspaceRoot, "src");
+    if (fs.existsSync(srcDir) && fs.statSync(srcDir).isDirectory()) {
+        return "src";
+    }
+    return ".";
+}
+
+async function runToposCliInTerminal(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    options: {
+        terminalName: string;
+        cwd: string;
+        cliArgs: string[];
+        /** Additional evaluate (or other) invocations run in the same terminal after the first. */
+        cliArgSequences?: string[][];
+        preambleLines?: string[];
+        failureMessage: string;
+    }
+): Promise<void> {
+    const source = new vscode.CancellationTokenSource();
+    try {
+        const resolvedBinaryPath = await resolveToposExecutable(context, output, source.token);
+        if (!resolvedBinaryPath) {
+            vscode.window.showErrorMessage(options.failureMessage);
+            return;
+        }
+
+        const sequences = [options.cliArgs, ...(options.cliArgSequences ?? [])];
+        const terminal = vscode.window.createTerminal({ name: options.terminalName, cwd: options.cwd });
+        terminal.show();
+
+        const shellLines: string[] = [...(options.preambleLines ?? [])];
+        for (let i = 0; i < sequences.length; i += 1) {
+            const { command, args } = buildCliInvocation(resolvedBinaryPath, sequences[i]);
+            output.appendLine(`Running: ${command} ${args.join(" ")}`);
+            if (sequences.length > 1) {
+                const langFlag = sequences[i].indexOf("--language");
+                const lang = langFlag >= 0 ? sequences[i][langFlag + 1] : "";
+                shellLines.push(`echo ""`, `echo "=== Topos evaluate (${lang}) ==="`);
+            }
+            const quotedArgs = args.map(quoteArg).join(" ");
+            shellLines.push(`${quoteArg(command)} ${quotedArgs}`);
+        }
+
+        terminal.sendText(shellLines.join("\n"));
+    } finally {
+        source.dispose();
+    }
+}
+
+/**
+ * Minimal POSIX shell quoting for terminal command construction.
+ */
+function quoteArg(arg: string): string {
+    if (/^[A-Za-z0-9_\-./]+$/.test(arg)) {
+        return arg;
+    }
+    return `'${arg.replace(/'/g, `'\\''`)}'`;
 }

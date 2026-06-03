@@ -16,7 +16,11 @@ const esbuildProblemMatcherPlugin = {
 		build.onEnd((result) => {
 			result.errors.forEach(({ text, location }) => {
 				console.error(`✘ [ERROR] ${text}`);
-				console.error(`    ${location.file}:${location.line}:${location.column}`);
+				if (location) {
+					console.error(`    ${location.file}:${location.line}:${location.column}`);
+				} else {
+					console.error("    <no location available>");
+				}
 			});
 			console.log("[watch] build finished");
 		});

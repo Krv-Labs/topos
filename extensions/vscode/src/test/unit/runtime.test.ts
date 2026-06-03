@@ -48,7 +48,8 @@ test('resolveHomePath expands a leading tilde to the home directory', () => {
     const previous = process.env.HOME;
     process.env.HOME = '/home/tester';
     try {
-        assert.equal(resolveHomePath('~/bin/topos'), path.join('/home/tester', '/bin/topos'));
+        assert.equal(resolveHomePath('~/bin/topos'), '/home/tester/bin/topos');
+        assert.equal(resolveHomePath('~'), '/home/tester');
     } finally {
         if (previous === undefined) delete process.env.HOME; else process.env.HOME = previous;
     }

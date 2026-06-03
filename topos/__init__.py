@@ -30,7 +30,7 @@ from topos.graphs.cpg.object import CodePropertyGraph
 from topos.graphs.mdg.object import ModuleDependencyGraph
 from topos.graphs.pdg.object import ProgramDependenceGraph
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 __all__ = [
     # Categorical primitives

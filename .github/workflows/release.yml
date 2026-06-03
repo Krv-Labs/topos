@@ -88,7 +88,7 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
           security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
           codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "dist/topos-${{ matrix.target }}"
           codesign --verify --strict --verbose=2 "dist/topos-${{ matrix.target }}"
 

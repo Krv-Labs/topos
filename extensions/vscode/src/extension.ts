@@ -531,9 +531,6 @@ async function evaluateProject(context: vscode.ExtensionContext, output: vscode.
         cwd: workspaceRoot,
         cliArgs: cliArgSequences[0],
         cliArgSequences: cliArgSequences.length > 1 ? cliArgSequences.slice(1) : undefined,
-        preambleLines: languages.length > 1
-            ? [`echo "Topos: evaluating ${languages.join(", ")} under ${evaluatePath}"`]
-            : undefined,
         failureMessage: "Topos: could not resolve the Topos executable to evaluate the project.",
     });
 }
@@ -579,9 +576,8 @@ async function runToposCliInTerminal(
         terminalName: string;
         cwd: string;
         cliArgs: string[];
-        /** Additional evaluate (or other) invocations run in the same terminal after the first. */
+        /** Additional invocations run in the same terminal after the first (one sendText per sequence). */
         cliArgSequences?: string[][];
-        preambleLines?: string[];
         failureMessage: string;
     }
 ): Promise<void> {
@@ -597,20 +593,12 @@ async function runToposCliInTerminal(
         const terminal = vscode.window.createTerminal({ name: options.terminalName, cwd: options.cwd });
         terminal.show();
 
-        const shellLines: string[] = [...(options.preambleLines ?? [])];
-        for (let i = 0; i < sequences.length; i += 1) {
-            const { command, args } = buildCliInvocation(resolvedBinaryPath, sequences[i]);
+        for (const sequence of sequences) {
+            const { command, args } = buildCliInvocation(resolvedBinaryPath, sequence);
             output.appendLine(`Running: ${command} ${args.join(" ")}`);
-            if (sequences.length > 1) {
-                const langFlag = sequences[i].indexOf("--language");
-                const lang = langFlag >= 0 ? sequences[i][langFlag + 1] : "";
-                shellLines.push(`echo ""`, `echo "=== Topos evaluate (${lang}) ==="`);
-            }
             const quotedArgs = args.map(quoteArg).join(" ");
-            shellLines.push(`${quoteArg(command)} ${quotedArgs}`);
+            terminal.sendText(`${quoteArg(command)} ${quotedArgs}`);
         }
-
-        terminal.sendText(shellLines.join("\n"));
     } finally {
         source.dispose();
     }

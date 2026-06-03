@@ -13,6 +13,7 @@ from fastmcp import Context
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from topos.evaluation.policies.base import Priority
+from topos.utils.discovery import collect_source_files
 
 from ..evaluation import (
     classify_code_string,
@@ -208,7 +209,11 @@ async def topos_evaluate_project(
             params, error=f"Path is not a directory: {resolved_root}"
         )
 
-    py_files = sorted(resolved_root.rglob("*.py"))
+    py_files = collect_source_files(
+        (str(resolved_root),),
+        suffixes=(".py",),
+        recursive=True,
+    )
     total_files = len(py_files)
     if total_files == 0:
         return _empty_project_result(params, error="No .py files found.")

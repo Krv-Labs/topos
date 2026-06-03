@@ -1,0 +1,17 @@
+node_modules/**
+src/**
+scripts/**
+workflow/**
+out/**
+.vscode-test/**
+.vscode-test.mjs
+.github/**
+.vscode/**
+.gitignore
+*.ts
+tsconfig.json
+tsconfig.test.json
+.eslintrc.json
+esbuild.js
+package-lock.json
+*.vsix

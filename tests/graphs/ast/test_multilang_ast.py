@@ -126,7 +126,7 @@ def test_parse_result_has_errors_is_true_for_invalid_source():
 
 
 def test_binarytrees_sources_produce_minimum_uast_invariants():
-    src_dir = Path("demos/binarytrees/src")
+    src_dir = Path("tests/fixtures/binarytrees")
     extension_map = {
         ".py": "python",
         ".js": "javascript",

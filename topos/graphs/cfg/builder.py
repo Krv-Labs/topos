@@ -126,6 +126,9 @@ def _build_block_sequence(
     the sequence.
     """
     for stmt in statements:
+        if current_id is None:
+            return None
+
         if stmt.kind == "IfStmt":
             current_id = _build_if(state, stmt, current_id)
         elif stmt.kind in {"ForStmt", "WhileStmt"}:
@@ -162,12 +165,16 @@ def _build_block_sequence(
             # surfaced — comprehensions are intentionally not unfolded).
             inner = _children_with_control_flow(stmt)
             if inner:
-                current_id = _build_block_sequence(state, inner, current_id)
+                # Nested callables (arrow fns, object methods) get their own
+                # entry block so an inner `return` does not terminate the enclosing
+                # function's fall-through block.
+                nested_entry = state.new_block("nested")
+                state.add_edge(current_id, nested_entry.id)
+                inner_tail = _build_block_sequence(state, inner, nested_entry.id)
+                if inner_tail is not None:
+                    current_id = inner_tail
             else:
                 state.blocks[current_id].statements.append(stmt)
-
-        if current_id == -1:
-            return None
 
     return current_id
 

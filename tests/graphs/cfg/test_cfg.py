@@ -86,6 +86,25 @@ def test_while_loop_generates_back_edge():
     assert EdgeKind.LOOP_BACK in kinds
 
 
+def test_nested_callable_return_does_not_poison_outer_sequence():
+    """Return inside a nested arrow/object method must not leave current_id=None for later stmts."""
+    src = """
+function f() {
+  const provider = {
+    resolve: async () => {
+      if (!x) {
+        return undefined;
+      }
+      return server;
+    }
+  };
+  doSomething(provider);
+}
+"""
+    cfg = _cfg(src, language="typescript")
+    assert cfg.metrics()["cfg.cyclomatic"] >= 1.0
+
+
 def test_break_continue_resolve_to_loop_targets():
     cfg = _cfg(
         "def f(xs):\n"

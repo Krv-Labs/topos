@@ -36,6 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
     context.subscriptions.push(outputChannel);
     outputChannel.appendLine("Topos extension activating...");
+    outputChannel.appendLine(`Host: ${vscode.env.appName} ${vscode.version}`);
 
     // 1. Guard native Windows environments (binaries are macOS/Linux/WSL only)
     if (process.platform === 'win32') {
@@ -55,7 +56,11 @@ export async function activate(context: vscode.ExtensionContext) {
     //    base (e.g. some Cursor builds) may not expose vscode.lm / McpStdioServerDefinition.
     //    Fail safe with an actionable message instead of throwing during activation.
     if (!isMcpApiAvailable(vscode)) {
-        outputChannel.appendLine("ERROR: This host does not expose the MCP server definition API (vscode.lm / McpStdioServerDefinition).");
+        const hasLm = typeof (vscode as { lm?: unknown }).lm !== 'undefined';
+        const hasStdioDef = typeof (vscode as { McpStdioServerDefinition?: unknown }).McpStdioServerDefinition === 'function';
+        outputChannel.appendLine(
+            `ERROR: This host does not expose the MCP server definition API (vscode.lm: ${hasLm}, McpStdioServerDefinition: ${hasStdioDef}).`
+        );
         vscode.window.showWarningMessage(
             "Topos requires an MCP-capable host (VS Code 1.120 or newer, or a compatible editor). The Topos MCP server was not registered.",
             "View Documentation"
@@ -69,6 +74,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const providerId = 'topos-mcp';
     const didChangeEmitter = new vscode.EventEmitter<void>();
+    context.subscriptions.push(didChangeEmitter);
 
     const provider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> = {
         onDidChangeMcpServerDefinitions: didChangeEmitter.event,

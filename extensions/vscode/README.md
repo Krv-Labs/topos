@@ -56,7 +56,17 @@ COMPOSABLE additionally needs a dependency graph produced by [GitNexus](https://
 
 ## Requirements
 
-An MCP-capable host: **VS Code 1.120.0 or newer**, or a compatible editor. If the host doesn't expose the MCP API, the extension says so in the **Topos** output channel rather than failing silently.
+Install and MCP are separate requirements. The extension checks MCP at runtime (not via `engines.vscode`).
+
+| Requirement | VS Code | Cursor |
+| :--- | :--- | :--- |
+| **Install** (`engines.vscode`) | 1.105+ | 2.1+ (About reports VS Code API 1.105.1+) |
+| **MCP tools** (agent mode) | 1.120+ | 2.1+ **and** **Topos** output shows `Topos MCP Server Provider registered successfully` |
+| **Install method** | Marketplace | Marketplace or platform VSIX from [releases](https://github.com/Krv-Labs/topos/releases) |
+
+**Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`; if not, the extension logs the missing surfaces in the **Topos** output channel and shows a warning instead of failing silently.
+
+Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine and is unsupported.
 
 **Supported platforms** (the runtime is bundled on each):
 

@@ -85,11 +85,12 @@ def _load_ignore_patterns(ignore_file: Path) -> list[str]:
 def _matches_ignore_pattern(rel_posix: str, pattern: str) -> bool:
     """Best-effort gitignore-style match for common project patterns."""
     if pattern.startswith("/"):
-        return fnmatch.fnmatch(rel_posix, pattern.lstrip("/")) or rel_posix == pattern.lstrip(
-            "/"
-        )
+        p = pattern.lstrip("/")
+        return fnmatch.fnmatch(rel_posix, p) or rel_posix == p
     if "/" in pattern:
-        return fnmatch.fnmatch(rel_posix, pattern) or rel_posix.startswith(f"{pattern}/")
+        return fnmatch.fnmatch(rel_posix, pattern) or rel_posix.startswith(
+            f"{pattern}/"
+        )
     name = rel_posix.rsplit("/", 1)[-1]
     if fnmatch.fnmatch(name, pattern):
         return True

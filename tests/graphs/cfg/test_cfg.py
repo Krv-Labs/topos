@@ -87,7 +87,10 @@ def test_while_loop_generates_back_edge():
 
 
 def test_nested_callable_return_does_not_poison_outer_sequence():
-    """Return inside a nested arrow/object method must not leave current_id=None for later stmts."""
+    """
+    Return inside a nested arrow/object method must not leave current_id=None
+    for later stmts.
+    """
     src = """
 function f() {
   const provider = {

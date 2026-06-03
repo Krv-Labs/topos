@@ -13,6 +13,7 @@ from fastmcp import Context
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from topos.evaluation.policies.base import Priority
+from topos.utils.discovery import collect_source_files
 
 from ..evaluation import (
     classify_code_string,
@@ -36,8 +37,6 @@ from ..schemas import (
     ResponseFormat,
     resolve_priority,
 )
-from topos.utils.discovery import collect_source_files
-
 from ..security import resolve_file_root, resolve_within_root
 from ..security_findings import security_findings
 from ..server import mcp

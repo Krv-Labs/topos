@@ -19,6 +19,7 @@ Cargo.lock
 topos-skill/
 *.skill
 maths.md
+.firecrawl/
 
 # Data
 artifacts/

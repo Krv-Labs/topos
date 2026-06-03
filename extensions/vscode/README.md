@@ -8,11 +8,12 @@ On supported platforms the extension bundles the Topos runtime, so there's nothi
 
 ## Try it in 60 seconds
 
-1. **Install** this extension.
-2. **Open** a workspace (Python, Rust, JavaScript, TypeScript, or C++).
-3. **Ask agent mode:** *"Use Topos to evaluate the code quality of this project."*
+1. Install and open a workspace.
+2. `⌘⇧P` → **MCP: List Servers** → **Topos** → Start.
+3. `⌘⇧P` → **Topos: Generate Dependency Graph** *(optional; required for GOLD)*.
+4. `⌘⇧I` → **Agent mode:** *"Use Topos to evaluate the code quality of this project."*
 
-That's it. The agent discovers the Topos tools automatically and reports a quality medal per file. To run it yourself instead, open the Command Palette and pick **Topos: Evaluate Project**.
+No MCP needed for **Topos: Evaluate Project** in the Command Palette.
 
 ## How scoring works
 
@@ -65,6 +66,8 @@ Install and MCP are separate requirements. The extension checks MCP at runtime (
 | **Install method** | Marketplace | Marketplace or platform VSIX from [releases](https://github.com/Krv-Labs/topos/releases) |
 
 **Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`; if not, the extension logs the missing surfaces in the **Topos** output channel and shows a warning instead of failing silently.
+
+Before agent mode can call Topos tools, start the MCP server: Command Palette → **MCP: List Servers** → **Topos** → Start. You need to do this once per session (or after reloading the window). For COMPOSABLE scoring (and GOLD medals), also run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
 
 Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine and is unsupported.
 

@@ -75,7 +75,8 @@ export function getPlatformKey(platform: NodeJS.Platform = process.platform, arc
 export function resolveHomePath(filePath: string): string {
     if (filePath.startsWith('~')) {
         const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-        return path.join(homeDir, filePath.slice(1));
+        const relative = filePath === '~' ? '' : filePath.startsWith('~/') ? filePath.slice(2) : filePath.slice(1);
+        return relative ? path.join(homeDir, relative) : homeDir;
     }
     return path.resolve(filePath);
 }

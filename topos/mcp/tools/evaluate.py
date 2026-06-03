@@ -36,6 +36,8 @@ from ..schemas import (
     ResponseFormat,
     resolve_priority,
 )
+from topos.utils.discovery import collect_source_files
+
 from ..security import resolve_file_root, resolve_within_root
 from ..security_findings import security_findings
 from ..server import mcp
@@ -208,7 +210,11 @@ async def topos_evaluate_project(
             params, error=f"Path is not a directory: {resolved_root}"
         )
 
-    py_files = sorted(resolved_root.rglob("*.py"))
+    py_files = collect_source_files(
+        (str(resolved_root),),
+        suffixes=(".py",),
+        recursive=True,
+    )
     total_files = len(py_files)
     if total_files == 0:
         return _empty_project_result(params, error="No .py files found.")

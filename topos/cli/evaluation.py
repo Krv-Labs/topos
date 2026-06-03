@@ -11,27 +11,15 @@ from topos import __version__
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.graphs.ast.dispatch import language_file_suffixes
 from topos.mcp.evaluation import classify_file
+from topos.utils.discovery import collect_source_files
 
 _DETAIL_FILE_LIMIT = 5
 
 
 def collect_files(paths: tuple[str, ...], recursive: bool, language: str) -> list[Path]:
     """Collect source files for *language* from *paths* (files or directories)."""
-    suffixes = language_file_suffixes(language)
-    files: set[Path] = set()
-
-    for path_str in paths:
-        path = Path(path_str)
-
-        if path.is_file():
-            if path.suffix in suffixes:
-                files.add(path)
-        elif path.is_dir():
-            for suffix in suffixes:
-                pattern = f"**/*{suffix}" if recursive else f"*{suffix}"
-                files.update(path.glob(pattern))
-
-    return sorted(files)
+    suffixes = tuple(language_file_suffixes(language))
+    return collect_source_files(paths, suffixes=suffixes, recursive=recursive)
 
 
 def run_classify_file(

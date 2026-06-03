@@ -144,12 +144,8 @@ def _git_check_ignore_checker(git_root: Path) -> Callable[[Path], bool] | None:
 def build_path_skip_checker(scan_root: Path) -> Callable[[Path], bool]:
     """Compose hard-coded, ``.toposignore``, and git ignore checks for *scan_root*."""
     git_root = find_git_root(scan_root)
-    checkers: list[Callable[[Path], bool]] = []
 
     topos = _toposignore_checker(scan_root)
-    if topos is not None:
-        checkers.append(topos)
-
     if git_root is not None:
         git_check = _git_check_ignore_checker(git_root)
 

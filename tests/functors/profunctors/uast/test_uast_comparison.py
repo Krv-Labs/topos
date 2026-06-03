@@ -36,8 +36,8 @@ def test_identical_uast_has_zero_distance():
 
 
 def test_python_vs_rust_binarytrees_differ():
-    py_source = Path("demos/binarytrees/src/binarytrees.py").read_text()
-    rs_source = Path("demos/binarytrees/src/binarytrees.rs").read_text()
+    py_source = Path("tests/fixtures/binarytrees/binarytrees.py").read_text()
+    rs_source = Path("tests/fixtures/binarytrees/binarytrees.rs").read_text()
 
     py_root = _parse(py_source, language="python")
     rs_root = _parse(rs_source, language="rust")
@@ -113,7 +113,7 @@ def test_uast_node_id_is_deterministic():
 
 
 def test_uast_node_id_is_unique_within_tree():
-    source = Path("demos/binarytrees/src/binarytrees.py").read_text()
+    source = Path("tests/fixtures/binarytrees/binarytrees.py").read_text()
     root = _parse(source, language="python")
 
     ids = _collect_ids(root)

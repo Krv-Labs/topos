@@ -226,6 +226,21 @@ extension/package.json
 
 </details>
 
+## Host version policy
+
+The extension uses two independent gates:
+
+| Gate | Value | Purpose |
+| --- | --- | --- |
+| **`engines.vscode`** | `^1.105.0` | Marketplace / host install floor. Matches Cursor 2.1+ (About: VS Code API 1.105.1+). |
+| **MCP runtime** | `isMcpApiAvailable()` | Agent MCP tools. Upstream API ships in VS Code 1.120; Cursor may backport it while still reporting 1.105.x. |
+
+Do **not** bump `engines.vscode` to ^1.120 to satisfy Copilot-style reviews: that blocks Cursor installs where the reported API level is 1.105.x even when `vscode.lm` is present.
+
+**Cursor 2.0.x** (reports 1.99.x) is out of scope for Marketplace install. Forcing a VSIX install will activate with a runtime MCP warning.
+
+**PR reply template (Copilot / reviewers):** We keep `engines.vscode` at ^1.105.0 so Cursor 2.1+ can install; MCP is gated at runtime via `isMcpApiAvailable()` because the MCP provider API landed in VS Code 1.120 while Cursor reports 1.105.x. README documents the split. Adopted: `resolveHomePath` fix, `didChangeEmitter` disposal, host logging in the output channel.
+
 ## Cursor Compatibility
 
 Cursor is built on a VS Code base that can lag the upstream API. The extension is written to fail safe there: if the host does not expose the MCP API, activation does not throw — it logs to the **Topos** output channel and shows a single actionable warning. Use this checklist to verify Cursor before ticking the PR's "Cursor Compatibility" boxes.
@@ -243,12 +258,12 @@ cursor --install-extension topos-vscode-darwin-arm64.vsix --force
 
 - After install, open the Extensions view and confirm **Topos: Code Quality Targets for Agents** is listed and enabled.
 - Open the **Topos** output channel (Output panel -> "Topos" in the dropdown).
-- Expected: `Topos extension activating...`. No activation error notification.
+- Expected: `Topos extension activating...` and `Host: Cursor <version>` (or similar). No activation error notification.
 
 ### 2. MCP server registration works (`registerMcpServerDefinitionProvider`)
 
 - Expected output-channel line: `Topos MCP Server Provider registered successfully.`
-- If instead you see `This host does not expose the MCP server definition API`, the Cursor build predates the MCP provider API. This is the expected fail-safe path — the extension warns and does not crash. Note the Cursor version and stop here; the remaining boxes require an MCP-capable host.
+- If instead you see `This host does not expose the MCP server definition API` with `vscode.lm` / `McpStdioServerDefinition` flags, the Cursor build lacks the MCP provider API. This is the expected fail-safe path — the extension warns and does not crash. Note the `Host:` line and Cursor version and stop here; the remaining boxes require an MCP-capable host.
 
 ### 3. CLI resolution / install flow works
 

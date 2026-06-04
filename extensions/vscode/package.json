@@ -27,22 +27,33 @@
     "model-context-protocol",
     "copilot",
     "agents",
+    "ai-tools",
+    "agentic",
     "code-quality",
     "static-analysis",
     "topos"
   ],
   "categories": [
+    "AI",
     "Linters",
     "Machine Learning",
     "Other"
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onMcpServerRequested:topos-mcp",
     "onCommand:topos.generateDependencyGraph",
     "onCommand:topos.evaluateProject"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "mcpServers": [
+      {
+        "id": "topos-mcp",
+        "label": "Topos",
+        "description": "Exposes code structure and quality metrics to AI agents via MCP."
+      }
+    ],
     "mcpServerDefinitionProviders": [
       {
         "id": "topos-mcp",

@@ -12,7 +12,7 @@ On supported platforms the extension bundles the Topos runtime, so there's nothi
 2. `⌘⇧I` → **Agent mode:** *"Use Topos to evaluate the code quality of this project."*
 3. `⌘⇧P` → **Topos: Generate Dependency Graph** *(optional; required for GOLD)*.
 
-Topos MCP tools are lazy-loaded and will auto-start when requested by an agent. No MCP is needed for **Topos: Evaluate Project** in the Command Palette.
+Topos registers an MCP server with VS Code and can start on demand when an agent requests its tools. VS Code may ask you to trust the local server the first time it starts. No MCP is needed for **Topos: Evaluate Project** in the Command Palette.
 
 ## How scoring works
 
@@ -59,7 +59,8 @@ COMPOSABLE additionally needs a dependency graph produced by [GitNexus](https://
 To pass the Marketplace's automated Agentic Risk Assessment, Topos declares the following requirements for its MCP tools:
 
 - **Filesystem Read Access:** Topos requires read access to your workspace files to perform static analysis (AST and Control-Flow Graph construction) and to build dependency graphs via GitNexus.
-- **No Network Egress:** The Topos MCP server runs entirely locally and does not transmit code or metadata to external servers.
+- **Local Analysis:** The Topos MCP server runs locally and does not transmit analyzed source code or project metadata to external services.
+- **Controlled Network Use:** If no bundled, cached, or local Topos runtime is available and `topos.autoDownload` is enabled, the extension can fetch the signed release manifest and download a SHA-256-verified runtime. If GitNexus is missing, the extension can launch `npm install -g gitnexus` in a visible terminal only after you choose that action.
 
 ## Requirements
 
@@ -73,7 +74,7 @@ Install and MCP are separate requirements. The extension checks MCP at runtime (
 
 **Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`.
 
-Topos MCP tools will auto-start on demand. For COMPOSABLE scoring (and GOLD medals), run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
+Topos MCP tools can start on demand after VS Code trusts the local server. For COMPOSABLE scoring (and GOLD medals), run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
 
 Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine and is unsupported.
 

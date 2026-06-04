@@ -391,6 +391,8 @@ Until Apple credentials are configured:
 
 Once Apple credentials are configured, the same workflow signs and notarizes macOS binaries automatically.
 
+For PyInstaller `onefile` builds, macOS signing must happen **during** collection (`--codesign-identity` / `--osx-entitlements-file`), not only on the outer executable afterward. Post-hoc signing of the wrapper alone leaves embedded `libpython` adhoc-signed and causes runtime `different Team IDs` errors under hardened runtime.
+
 </details>
 
 ## GitHub Actions Flow

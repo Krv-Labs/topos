@@ -43,6 +43,9 @@ Topos is designed to be accessible as either a standalone binary or by building 
          topos --version
          topos mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
 
+      .. note::
+         **macOS ``different Team IDs`` error (v0.3.1 and earlier):** If ``topos --version`` fails with a PyInstaller error about ``libpython3.12.dylib`` and mismatched Team IDs, upgrade to **v0.3.2** or later via ``install.sh``, or use the **Building from Source** tab. See `issue #55 <https://github.com/Krv-Labs/topos/issues/55>`_ for details.
+
    .. tab-item:: 🐍 Building from Source
 
       If you want to contribute, use the latest development version, or integrate Topos into your Python pipelines:

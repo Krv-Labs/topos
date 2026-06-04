@@ -1,6 +1,6 @@
 [project]
 name = "topos"
-version = "0.3.1"
+version = "0.3.2"
 description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"

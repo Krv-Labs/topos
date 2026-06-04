@@ -49,27 +49,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --python 3.12
 
-      - name: Build binary with PyInstaller
-        run: |
-          uv run --with pyinstaller pyinstaller --name topos \
-            --onefile \
-            --clean \
-            --collect-all tree_sitter \
-            --collect-all tree_sitter_python \
-            --collect-all tree_sitter_rust \
-            --collect-all tree_sitter_javascript \
-            --collect-all tree_sitter_cpp \
-            --collect-all tree_sitter_typescript \
-            --collect-all topos \
-            --collect-all fastmcp \
-            --collect-all real-ladybug \
-            --copy-metadata fastmcp \
-            topos/cli/main.py
-
-      - name: Rename binary with platform suffix
-        run: mv dist/topos dist/topos-${{ matrix.target }}
-
-      - name: Sign macOS binary
+      - name: Prepare macOS code signing keychain
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
         env:
           CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
@@ -89,7 +69,54 @@ jobs:
           security unlock-keychain -p "" "$KEYCHAIN_PATH"
           security import "$CERTIFICATE_PATH" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
-          codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "dist/topos-${{ matrix.target }}"
+          echo "CODESIGN_IDENTITY=${CODESIGN_IDENTITY}" >> "$GITHUB_ENV"
+
+      - name: Build binary with PyInstaller
+        env:
+          CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
+        run: |
+          PYINSTALLER_ARGS=(
+            --name topos
+            --onefile
+            --clean
+            --collect-all tree_sitter
+            --collect-all tree_sitter_python
+            --collect-all tree_sitter_rust
+            --collect-all tree_sitter_javascript
+            --collect-all tree_sitter_cpp
+            --collect-all tree_sitter_typescript
+            --collect-all topos
+            --collect-all fastmcp
+            --collect-all real-ladybug
+            --copy-metadata fastmcp
+          )
+
+          # onefile embeds dylibs in the archive; they must be signed during
+          # collection with the same Developer ID as the outer executable.
+          if [ "$(uname -s)" = "Darwin" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
+            PYINSTALLER_ARGS+=(
+              --codesign-identity "${CODESIGN_IDENTITY}"
+              --osx-entitlements-file packaging/macos-entitlements.plist
+            )
+          fi
+
+          uv run --with pyinstaller pyinstaller "${PYINSTALLER_ARGS[@]}" topos/cli/main.py
+
+      - name: Rename binary with platform suffix
+        run: mv dist/topos dist/topos-${{ matrix.target }}
+
+      - name: Sign macOS binary
+        if: runner.os == 'macOS' && github.event_name != 'pull_request'
+        env:
+          CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
+        run: |
+          if [ -z "${CODESIGN_IDENTITY:-}" ]; then
+            exit 0
+          fi
+
+          codesign --force --options runtime --timestamp \
+            --entitlements packaging/macos-entitlements.plist \
+            --sign "$CODESIGN_IDENTITY" "dist/topos-${{ matrix.target }}"
           codesign --verify --strict --verbose=2 "dist/topos-${{ matrix.target }}"
 
       - name: Notarize macOS binary archive

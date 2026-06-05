@@ -3,51 +3,73 @@
 Every metric key, the graph it lives on, and how it rolls into a generator
 of `H(G_qual) = { SIMPLE, COMPOSABLE, SECURE }`.
 
+**Calibration source of truth:** `topos/evaluation/policies/calibration.py`.
+Edit that file when tuning gates or normalization from experimental data.
+
 ## SIMPLE generator (← CFG + AST entropy)
 
 Computed from the Control Flow Graph built on UAST.  Always available.
 
-| Key | Source | What it measures | Good range |
+| Key | Source | What it measures | Gate / good range |
 |---|---|---|---|
-| `cfg.cyclomatic`   | CFG | McCabe complexity `E - N + 2P`.        | ≤ 40 per file |
-| `cfg.essential`    | CFG | Cabe 1989 essential complexity.        | Low |
-| `cfg.nesting_depth`| CFG | Max static nesting depth.              | ≤ 4 |
-| `cfg.longest_path` | CFG | Longest acyclic entry-to-exit path.    | — |
-| `ast.entropy`      | AST | Source-text compression ratio.         | around 0.5 |
+| `cfg.cyclomatic`   | CFG | McCabe complexity `E - N + 2P`.        | **≤ 15** (achieved gate) |
+| `cfg.essential`    | CFG | Cabe 1989 essential complexity.        | Diagnostic |
+| `cfg.nesting_depth`| CFG | Max static nesting depth.              | Diagnostic |
+| `cfg.longest_path` | CFG | Longest acyclic entry-to-exit path.    | Diagnostic |
+| `ast.entropy`      | AST | Source-text compression ratio.         | **[0.2, 0.8]** (achieved gate) |
+| `ast.max_function_complexity` | AST | Max McCabe of any single function. | **≤ 10** (achieved gate) |
 
-`Φ_SIMPLE` = weighted average of `1 - cyclomatic/40` and the entropy bell
-curve (peak at 0.5).  Threshold to satisfy SIMPLE: **0.6**.
+`Φ_SIMPLE` maps metrics to `[0, 1]` quality scores (cyclomatic cap 40,
+max-function cap 20, entropy bell peak at 0.5). **`achieved`** is the AND
+of the raw gates above — not a single score floor.
 
 ## COMPOSABLE generator (← Dependency Graph)
 
 Requires a `ModuleDependencyGraph` parsed from `.gitnexus/`.  Only populated when
 `gitnexus_dir` is provided or auto-detected.
 
-| Key | What it measures | Good range |
+| Key | What it measures | Gate / good range |
 |---|---|---|
-| `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | ≤ 35 |
-| `mdg.instability` | `Ce / (Ca + Ce)`.                        | 0.3 – 0.7 |
-| `mdg.fan_in`      | Incoming `CALLS` edges.                  | — |
-| `mdg.fan_out`     | Outgoing `CALLS` edges.                  | — |
-| `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | — |
+| `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | Diagnostic |
+| `mdg.instability` | `Ce / (Ca + Ce)`.                        | **[0.3, 0.7]** (achieved gate) |
+| `mdg.fan_in`      | Incoming `CALLS` edges.                  | **≤ 15** (achieved gate) |
+| `mdg.fan_out`     | Outgoing `CALLS` edges.                  | **≤ 15** (achieved gate) |
+| `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | Diagnostic |
 
-`Φ_COMPOSABLE` = weighted average of `1 - coupling/35` and the instability
-tent over `[0.3, 0.7]`.  Threshold: **0.6**.
+`Φ_COMPOSABLE` uses fan caps of 40 for score normalization. **`achieved`**
+is the AND of instability band + fan-in + fan-out gates.
 
 ## SECURE generator (← Code Property Graph)
 
 Computed from a CPG fused over AST + CFG + DDG + CDG (Yamaguchi et al.,
 arxiv:1909.03496).  Always available.
 
-| Key | What it measures |
-|---|---|
-| `cpg.dangerous_calls` | Count of reachable call sites whose callee matches the per-language dangerous-API registry (Python: `eval`, `exec`, `pickle.loads`, `subprocess.*(shell=True)`, ...; C++: `gets`, `strcpy`, ...). |
-| `cpg.taint_flows`     | DDG paths from any taint source (e.g. `input`, `request.args`) to any dangerous-API sink. |
+| Key | What it measures | Gate |
+|---|---|---|
+| `cpg.dangerous_calls` | Count of reachable call sites whose callee matches the per-language dangerous-API registry (Python: `eval`, `exec`, `pickle.loads`, `subprocess.*(shell=True)`, ...; C++: `gets`, `strcpy`, ...). | **0** (strict) |
+| `cpg.taint_flows`     | DDG paths from any taint source (e.g. `input`, `request.args`) to any dangerous-API sink. | **0** (strict) |
 
-`Φ_SECURE` decays exponentially in both counts.  Threshold: **0.6**.
+`Φ_SECURE` decays exponentially in both counts (scale 3.0 each) for the
+reported score. **`achieved`** requires zero dangerous calls and zero taint flows.
+
 File-level MCP tools also surface `security_findings` with `kind`, `callee`,
 `line`, and `snippet` when SECURE fails.  Project scans keep this off by default
 unless `include_security_findings=true`.
+
+## Score floors (alternate path)
+
+When callers already hold normalized scores without re-running a `Φᵢ`, the
+score-floor dict in `calibration.py` (`SCORE_FLOORS`, re-exported as
+`THRESHOLDS` from `policies.base`) applies:
+
+| Generator | Floor |
+|---|---|
+| SIMPLE | 0.40 |
+| COMPOSABLE | 0.60 |
+| SECURE | 1.00 |
+
+The live `CharacteristicMorphism` path uses each `Φᵢ`'s `ScoredDecision.achieved`
+(raw-metric AND gates), not these floors.
 
 ## Diagnostic-only metrics (academic PDG)
 

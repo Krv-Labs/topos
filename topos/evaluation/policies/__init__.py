@@ -3,9 +3,9 @@ Policy translators and auxiliary decision helpers.
 
 **Quality generators (Ω):** ``score_simple``, ``score_coupling``, and
 ``score_secure`` each map probe metrics to a :class:`ScoredDecision`.
-``achieved`` is the AND of per-metric **raw** thresholds defined in those
-modules; the characteristic morphism combines the three booleans into
-an element of Ω = H(G_qual).
+``achieved`` is the AND of per-metric **raw** gates from
+:mod:`topos.evaluation.policies.calibration`; the characteristic morphism
+combines the three booleans into an element of Ω = H(G_qual).
 
 **Outside Ω:** ``are_clones`` (pairwise AST distance) and
 ``score_declaration_coverage`` (structural test coverage) apply the same
@@ -31,6 +31,14 @@ from topos.evaluation.policies.simple import (
     describe_entropy_ratio,
     score_simple,
 )
+from topos.evaluation.policies.calibration import (
+    CLONE,
+    COMPOSABLE,
+    COVERAGE,
+    SCORE_FLOORS,
+    SECURE,
+    SIMPLE,
+)
 
 __all__ = [
     "Priority",
@@ -45,4 +53,10 @@ __all__ = [
     "score_secure",
     "describe_entropy_ratio",
     "build_omega",
+    "SIMPLE",
+    "COMPOSABLE",
+    "SECURE",
+    "COVERAGE",
+    "CLONE",
+    "SCORE_FLOORS",
 ]

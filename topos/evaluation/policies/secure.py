@@ -8,11 +8,12 @@ Maps CPG-based security observations into a
 ``score`` is ``min(per-metric qualities)`` for reporting only.
 
 Quality functions:
-    danger_quality = exp(-dangerous_calls / DANGER_SCALE)
-    taint_quality  = exp(-taint_flows / TAINT_SCALE)
+    danger_quality = exp(-dangerous_calls / danger_scale)
+    taint_quality  = exp(-taint_flows / taint_scale)
 
 The SECURE badge is achieved if and only if there are zero dangerous calls
-and zero taint flows (strict security).
+and zero taint flows (strict security). Thresholds live in
+:mod:`topos.evaluation.policies.calibration`.
 """
 
 from __future__ import annotations
@@ -23,14 +24,7 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-
-# Normalization scales (for [0, 1] mapping via exponential decay)
-DANGER_SCALE: float = 3.0
-TAINT_SCALE: float = 3.0
-
-# Independent Raw Thresholds (Policy Decisions)
-MAX_DANGEROUS_CALLS_THRESHOLD: float = 0.0
-MAX_TAINT_FLOWS_THRESHOLD: float = 0.0
+from topos.evaluation.policies.calibration import SECURE
 
 
 def score_secure(
@@ -58,17 +52,17 @@ def score_secure(
 
     # 1. Dangerous API Calls
     if dangerous_calls is not None:
-        quality = exp(-max(dangerous_calls, 0.0) / DANGER_SCALE)
+        quality = exp(-max(dangerous_calls, 0.0) / SECURE.danger_scale)
         qualities.append(quality)
-        if dangerous_calls > MAX_DANGEROUS_CALLS_THRESHOLD:
+        if dangerous_calls > SECURE.max_dangerous_calls:
             achieved = False
         interp["cpg.dangerous_calls"] = _danger_interpretation(dangerous_calls, quality)
 
     # 2. Taint Flows
     if taint_flows is not None:
-        quality = exp(-max(taint_flows, 0.0) / TAINT_SCALE)
+        quality = exp(-max(taint_flows, 0.0) / SECURE.taint_scale)
         qualities.append(quality)
-        if taint_flows > MAX_TAINT_FLOWS_THRESHOLD:
+        if taint_flows > SECURE.max_taint_flows:
             achieved = False
         interp["cpg.taint_flows"] = _taint_interpretation(taint_flows, quality)
 
@@ -87,23 +81,23 @@ def score_secure(
 
 
 def _danger_interpretation(count: float, quality: float) -> str:
-    if count <= MAX_DANGEROUS_CALLS_THRESHOLD:
+    if count <= SECURE.max_dangerous_calls:
         return (
             f"no reachable dangerous-API calls "
-            f"({count:.0f} <= {MAX_DANGEROUS_CALLS_THRESHOLD})"
+            f"({count:.0f} <= {SECURE.max_dangerous_calls})"
         )
     return (
         f"{int(count)} dangerous-API call site(s) exceeds threshold "
-        f"({MAX_DANGEROUS_CALLS_THRESHOLD})"
+        f"({SECURE.max_dangerous_calls})"
     )
 
 
 def _taint_interpretation(count: float, quality: float) -> str:
-    if count <= MAX_TAINT_FLOWS_THRESHOLD:
+    if count <= SECURE.max_taint_flows:
         return (
-            f"no source→sink taint paths ({count:.0f} <= {MAX_TAINT_FLOWS_THRESHOLD})"
+            f"no source→sink taint paths ({count:.0f} <= {SECURE.max_taint_flows})"
         )
     return (
         f"{int(count)} taint flow path(s) exceeds threshold "
-        f"({MAX_TAINT_FLOWS_THRESHOLD})"
+        f"({SECURE.max_taint_flows})"
     )

@@ -8,16 +8,17 @@ fan-in, fan-out) into a :class:`~topos.evaluation.policies.base.ScoredDecision`.
 ``score`` is ``min(per-metric qualities)`` for reporting only.
 
 Quality functions:
-    instability_quality = piecewise flat-top tent over [0.3, 0.7]:
-                            instability in [0.3, 0.7] → 1.0 (optimal range)
-                            instability < 0.3           → linear from 0.0 to 1.0
-                            instability > 0.7           → linear from 1.0 to 0.0
+    instability_quality = piecewise flat-top tent over [low, high]:
+                            instability in band → 1.0 (optimal range)
+                            instability < low   → linear from 0.0 to 1.0
+                            instability > high  → linear from 1.0 to 0.0
 
-    fan_quality         = 1 - min(fan / MAX_FAN_CAP, 1.0)
+    fan_quality         = 1 - min(fan / cap, 1.0)
                           Linear fall from 1.0 to 0.0 at the cap.
 
 The COMPOSABLE badge is achieved if all three metrics pass their
-independent thresholds (AND logic).
+independent thresholds (AND logic). Thresholds live in
+:mod:`topos.evaluation.policies.calibration`.
 """
 
 from __future__ import annotations
@@ -26,16 +27,7 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-
-# Normalization caps (for [0, 1] mapping)
-MAX_FAN_IN_CAP: float = 40.0
-MAX_FAN_OUT_CAP: float = 40.0
-
-# Independent Raw Thresholds (Policy Decisions)
-INSTABILITY_LOW: float = 0.3
-INSTABILITY_HIGH: float = 0.7
-MAX_FAN_IN_THRESHOLD: float = 15.0
-MAX_FAN_OUT_THRESHOLD: float = 15.0
+from topos.evaluation.policies.calibration import COMPOSABLE
 
 
 def score_coupling(
@@ -67,23 +59,23 @@ def score_coupling(
     if instability is not None:
         quality = _instability_tent(instability)
         qualities.append(quality)
-        if not (INSTABILITY_LOW <= instability <= INSTABILITY_HIGH):
+        if not (COMPOSABLE.instability_low <= instability <= COMPOSABLE.instability_high):
             achieved = False
         interp["mdg.instability"] = _instability_interpretation(instability, quality)
 
     # 2. Fan-In
     if fan_in is not None:
-        quality = 1.0 - min(fan_in / MAX_FAN_IN_CAP, 1.0)
+        quality = 1.0 - min(fan_in / COMPOSABLE.max_fan_in_cap, 1.0)
         qualities.append(quality)
-        if fan_in > MAX_FAN_IN_THRESHOLD:
+        if fan_in > COMPOSABLE.max_fan_in:
             achieved = False
         interp["mdg.fan_in"] = _fan_interpretation("in", fan_in, quality)
 
     # 3. Fan-Out
     if fan_out is not None:
-        quality = 1.0 - min(fan_out / MAX_FAN_OUT_CAP, 1.0)
+        quality = 1.0 - min(fan_out / COMPOSABLE.max_fan_out_cap, 1.0)
         qualities.append(quality)
-        if fan_out > MAX_FAN_OUT_THRESHOLD:
+        if fan_out > COMPOSABLE.max_fan_out:
             achieved = False
         interp["mdg.fan_out"] = _fan_interpretation("out", fan_out, quality)
 
@@ -108,25 +100,29 @@ def score_coupling(
 
 def _instability_tent(instability: float) -> float:
     """
-    Flat-top tent function over [INSTABILITY_LOW, INSTABILITY_HIGH].
+    Flat-top tent function over [instability_low, instability_high].
 
     Returns 1.0 in the optimal range and falls linearly to 0.0 outside it.
     """
-    if INSTABILITY_LOW <= instability <= INSTABILITY_HIGH:
+    low = COMPOSABLE.instability_low
+    high = COMPOSABLE.instability_high
+    if low <= instability <= high:
         return 1.0
-    if instability < INSTABILITY_LOW:
-        return instability / INSTABILITY_LOW
-    # instability > INSTABILITY_HIGH
-    return max(0.0, (1.0 - instability) / (1.0 - INSTABILITY_HIGH))
+    if instability < low:
+        return instability / low
+    # instability > high
+    return max(0.0, (1.0 - instability) / (1.0 - high))
 
 
 def _instability_interpretation(instability: float, quality: float) -> str:
-    if INSTABILITY_LOW <= instability <= INSTABILITY_HIGH:
+    low = COMPOSABLE.instability_low
+    high = COMPOSABLE.instability_high
+    if low <= instability <= high:
         return (
             f"instability ({instability:.2f}) within balanced range "
-            f"[{INSTABILITY_LOW}, {INSTABILITY_HIGH}]"
+            f"[{low}, {high}]"
         )
-    if instability < INSTABILITY_LOW:
+    if instability < low:
         return f"instability ({instability:.2f}) is too low (module is too stable)"
     return (
         f"instability ({instability:.2f}) is too high "
@@ -135,7 +131,7 @@ def _instability_interpretation(instability: float, quality: float) -> str:
 
 
 def _fan_interpretation(direction: str, raw: float, quality: float) -> str:
-    threshold = MAX_FAN_IN_THRESHOLD if direction == "in" else MAX_FAN_OUT_THRESHOLD
-    if raw <= threshold:
-        return f"fan-{direction} ({raw:.0f}) within threshold (<= {threshold})"
-    return f"fan-{direction} ({raw:.0f}) exceeds threshold (> {threshold})"
+    gate = COMPOSABLE.max_fan_in if direction == "in" else COMPOSABLE.max_fan_out
+    if raw <= gate:
+        return f"fan-{direction} ({raw:.0f}) within threshold (<= {gate})"
+    return f"fan-{direction} ({raw:.0f}) exceeds threshold (> {gate})"

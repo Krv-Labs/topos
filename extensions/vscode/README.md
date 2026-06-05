@@ -9,11 +9,10 @@ On supported platforms the extension bundles the Topos runtime, so there's nothi
 ## Try it in 60 seconds
 
 1. Install and open a workspace.
-2. `⌘⇧P` → **MCP: List Servers** → **Topos** → Start.
+2. `⌘⇧I` → **Agent mode:** *"Use Topos to evaluate the code quality of this project."*
 3. `⌘⇧P` → **Topos: Generate Dependency Graph** *(optional; required for GOLD)*.
-4. `⌘⇧I` → **Agent mode:** *"Use Topos to evaluate the code quality of this project."*
 
-No MCP needed for **Topos: Evaluate Project** in the Command Palette.
+Topos registers an MCP server with VS Code and can start on demand when an agent requests its tools. VS Code may ask you to trust the local server the first time it starts. No MCP is needed for **Topos: Evaluate Project** in the Command Palette.
 
 ## How scoring works
 
@@ -55,6 +54,14 @@ COMPOSABLE additionally needs a dependency graph produced by [GitNexus](https://
 2. Run **Topos: Generate Dependency Graph** to build the `.gitnexus/` store for your workspace.
 3. Re-run it when imports change (new modules, renames, restructures).
 
+## Agentic Security & Permissions
+
+To pass the Marketplace's automated Agentic Risk Assessment, Topos declares the following requirements for its MCP tools:
+
+- **Filesystem Read Access:** Topos requires read access to your workspace files to perform static analysis (AST and Control-Flow Graph construction) and to build dependency graphs via GitNexus.
+- **Local Analysis:** The Topos MCP server runs locally and does not transmit analyzed source code or project metadata to external services.
+- **Controlled Network Use:** If no bundled, cached, or local Topos runtime is available and `topos.autoDownload` is enabled, the extension can fetch the signed release manifest and download a SHA-256-verified runtime. If GitNexus is missing, the extension can launch `npm install -g gitnexus` in a visible terminal only after you choose that action.
+
 ## Requirements
 
 Install and MCP are separate requirements. The extension checks MCP at runtime (not via `engines.vscode`).
@@ -65,9 +72,9 @@ Install and MCP are separate requirements. The extension checks MCP at runtime (
 | **MCP tools** (agent mode) | 1.120+ | 2.1+ **and** **Topos** output shows `Topos MCP Server Provider registered successfully` |
 | **Install method** | Marketplace | Marketplace or platform VSIX from [releases](https://github.com/Krv-Labs/topos/releases) |
 
-**Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`; if not, the extension logs the missing surfaces in the **Topos** output channel and shows a warning instead of failing silently.
+**Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`.
 
-Before agent mode can call Topos tools, start the MCP server: Command Palette → **MCP: List Servers** → **Topos** → Start. You need to do this once per session (or after reloading the window). For COMPOSABLE scoring (and GOLD medals), also run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
+Topos MCP tools can start on demand after VS Code trusts the local server. For COMPOSABLE scoring (and GOLD medals), run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
 
 Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine and is unsupported.
 

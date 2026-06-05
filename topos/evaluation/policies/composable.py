@@ -59,7 +59,8 @@ def score_coupling(
     if instability is not None:
         quality = _instability_tent(instability)
         qualities.append(quality)
-        if not (COMPOSABLE.instability_low <= instability <= COMPOSABLE.instability_high):
+        low, high = COMPOSABLE.instability_low, COMPOSABLE.instability_high
+        if not (low <= instability <= high):
             achieved = False
         interp["mdg.instability"] = _instability_interpretation(instability, quality)
 
@@ -118,10 +119,7 @@ def _instability_interpretation(instability: float, quality: float) -> str:
     low = COMPOSABLE.instability_low
     high = COMPOSABLE.instability_high
     if low <= instability <= high:
-        return (
-            f"instability ({instability:.2f}) within balanced range "
-            f"[{low}, {high}]"
-        )
+        return f"instability ({instability:.2f}) within balanced range [{low}, {high}]"
     if instability < low:
         return f"instability ({instability:.2f}) is too low (module is too stable)"
     return (

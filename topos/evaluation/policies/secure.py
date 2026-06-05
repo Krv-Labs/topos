@@ -94,10 +94,7 @@ def _danger_interpretation(count: float, quality: float) -> str:
 
 def _taint_interpretation(count: float, quality: float) -> str:
     if count <= SECURE.max_taint_flows:
-        return (
-            f"no source→sink taint paths ({count:.0f} <= {SECURE.max_taint_flows})"
-        )
+        return f"no source→sink taint paths ({count:.0f} <= {SECURE.max_taint_flows})"
     return (
-        f"{int(count)} taint flow path(s) exceeds threshold "
-        f"({SECURE.max_taint_flows})"
+        f"{int(count)} taint flow path(s) exceeds threshold ({SECURE.max_taint_flows})"
     )

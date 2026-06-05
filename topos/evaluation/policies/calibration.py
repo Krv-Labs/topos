@@ -15,8 +15,9 @@ pass/fail criteria for the three quality generators in Ω.
 **Normalization caps/scales** — map raw metrics to ``[0, 1]`` quality scores
 for reporting and multi-file aggregation. They do **not** gate ``achieved``.
 
-**Score floors** — alternate path via :func:`~topos.evaluation.policies.base.meet_satisfied`
-and multi-file :class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
+**Score floors** — alternate path via
+:func:`~topos.evaluation.policies.base.meet_satisfied` and multi-file
+:class:`~topos.evaluation.characteristic_morphism.CharacteristicMorphism`
 meets. Live ``Φᵢ`` translators do not use these for ``achieved``.
 
 **Auxiliary** — clone detection and declaration-coverage defaults (outside Ω).

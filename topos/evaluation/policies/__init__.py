@@ -19,6 +19,14 @@ from topos.evaluation.policies.base import (
     ScoredDecision,
     WeightProfile,
 )
+from topos.evaluation.policies.calibration import (
+    CLONE,
+    COMPOSABLE,
+    COVERAGE,
+    SCORE_FLOORS,
+    SECURE,
+    SIMPLE,
+)
 from topos.evaluation.policies.clones import are_clones
 from topos.evaluation.policies.composable import score_coupling
 from topos.evaluation.policies.coverage import (
@@ -30,14 +38,6 @@ from topos.evaluation.policies.simple import (
     build_omega,
     describe_entropy_ratio,
     score_simple,
-)
-from topos.evaluation.policies.calibration import (
-    CLONE,
-    COMPOSABLE,
-    COVERAGE,
-    SCORE_FLOORS,
-    SECURE,
-    SIMPLE,
 )
 
 __all__ = [

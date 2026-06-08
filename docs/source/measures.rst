@@ -79,7 +79,7 @@ the "Quality Medals" reflect empirical software engineering standards.
      - ``0.40``
      - ``cyclomatic <= 15`` AND ``max_func <= 10`` AND ``entropy in [0.2, 0.8]``
    * - **COMPOSABLE**
-     - ``0.60``
+     - ``0.80``
      - ``instability in [0.3, 0.7]`` AND ``fan_in <= 15`` AND ``fan_out <= 15``
    * - **SECURE**
      - ``1.00``

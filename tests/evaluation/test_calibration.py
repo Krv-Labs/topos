@@ -22,6 +22,12 @@ def test_score_floors_cover_every_generator():
         assert 0.0 < SCORE_FLOORS[g] <= 1.0
 
 
+def test_score_floors_match_pypi_calibration():
+    assert SCORE_FLOORS[Generator.SIMPLE] == 0.40
+    assert SCORE_FLOORS[Generator.COMPOSABLE] == 0.80
+    assert SCORE_FLOORS[Generator.SECURE] == 1.00
+
+
 def test_secure_gates_are_zero_tolerance():
     assert SECURE.max_dangerous_calls == 0.0
     assert SECURE.max_taint_flows == 0.0

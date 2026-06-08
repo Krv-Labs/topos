@@ -22,7 +22,8 @@ meets. Live ``Φᵢ`` translators do not use these for ``achieved``.
 
 **Auxiliary** — clone detection and declaration-coverage defaults (outside Ω).
 
-Calibration provenance: v0 defaults — update from corpus experiments.
+Calibration provenance: PyPI corpus ECDF calibration (June 2026).
+See topos-leaderboard/CALIBRATION_REPORT.md and calibration.json.
 """
 
 from __future__ import annotations
@@ -99,6 +100,6 @@ CLONE = ClonePolicyThresholds()
 # Score-floor alternate path (meet_satisfied + multi-file CharacteristicMorphism).
 SCORE_FLOORS: dict[Generator, float] = {
     Generator.SIMPLE: 0.40,
-    Generator.COMPOSABLE: 0.60,
+    Generator.COMPOSABLE: 0.80,
     Generator.SECURE: 1.00,
 }

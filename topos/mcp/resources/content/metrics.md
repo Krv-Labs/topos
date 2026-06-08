@@ -65,7 +65,7 @@ score-floor dict in `calibration.py` (`SCORE_FLOORS`, re-exported as
 | Generator | Floor |
 |---|---|
 | SIMPLE | 0.40 |
-| COMPOSABLE | 0.60 |
+| COMPOSABLE | 0.80 |
 | SECURE | 1.00 |
 
 The live `CharacteristicMorphism` path uses each `Φᵢ`'s `ScoredDecision.achieved`

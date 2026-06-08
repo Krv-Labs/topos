@@ -99,8 +99,8 @@ Key property: **The three generators are pairwise incomparable.** Each can be ac
 
 | Generator | Representation | Metrics | Scoring |
 |-----------|---------------|---------|---------|
-| SIMPLE | `ControlFlowGraph` (+ `ASTRepresentation` entropy) | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth`, `cfg.longest_path`, `ast.entropy` | Weighted: `1 - cyclomatic/40` + entropy bell-curve (peak at 0.5). Threshold: **0.60**. |
-| COMPOSABLE | `ModuleDependencyGraph` | `mdg.coupling`, `mdg.instability`, `mdg.fan_in`, `mdg.fan_out`, `mdg.dep_depth` | Weighted: `1 - coupling/35` + instability flat-top tent over [0.3, 0.7]. Threshold: **0.60**. |
+| SIMPLE | `ControlFlowGraph` (+ `ASTRepresentation` entropy) | `cfg.cyclomatic`, `cfg.essential`, `cfg.nesting_depth`, `cfg.longest_path`, `ast.entropy` | Weighted: `1 - cyclomatic/40` + entropy bell-curve (peak at 0.5). Threshold: **0.40**. |
+| COMPOSABLE | `ModuleDependencyGraph` | `mdg.coupling`, `mdg.instability`, `mdg.fan_in`, `mdg.fan_out`, `mdg.dep_depth` | Weighted: `1 - coupling/35` + instability flat-top tent over [0.3, 0.7]. Threshold: **0.80**. |
 | SECURE | `CodePropertyGraph` | `cpg.dangerous_calls`, `cpg.taint_flows` | Weighted exp-decay: `exp(-count / scale)` for each metric. Threshold: **0.70** (higher — security false-negatives are asymmetrically costly). |
 
 **Diagnostic (not counted toward verdict):**

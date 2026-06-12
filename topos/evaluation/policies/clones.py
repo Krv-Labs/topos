@@ -4,13 +4,15 @@ Clone detection policy (pairwise, outside Ω).
 
 Functors compute normalized AST distance; this module applies the
 clone threshold.  Not a ``Φᵢ`` translator — does not participate in the
-SIMPLE / COMPOSABLE / SECURE lattice.
+SIMPLE / COMPOSABLE / SECURE lattice. Default lives in
+:mod:`topos.evaluation.policies.calibration`.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from topos.evaluation.policies.calibration import CLONE
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
 if TYPE_CHECKING:
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 def are_clones(
     source: ProgramObject,
     target: ProgramObject,
-    threshold: float = 0.1,
+    threshold: float = CLONE.max_normalized_distance,
 ) -> bool:
     """
     Check if two programs are structural clones.

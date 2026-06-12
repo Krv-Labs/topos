@@ -8,16 +8,17 @@ characteristic morphism (:mod:`topos.evaluation.characteristic_morphism`)
 reads each decision's ``achieved`` flag and assembles the 8-element
 verdict in Ω via :func:`topos.core.omega.verdict_from_generators`.
 
-This module defines the shared types; the decisive thresholds live in
-each Φᵢ module:
+This module defines the shared types; all numeric calibration lives in
+:mod:`topos.evaluation.policies.calibration`:
 
 - :class:`ScoredDecision` — output of one Φᵢ (score + achieved + text).
 - :class:`Priority`       — legacy single-generator emphasis (signature
                             compatibility only; Φᵢ do not use it today).
 - :class:`WeightProfile`  — legacy intra-Φᵢ metric weights (same).
-- :data:`THRESHOLDS`      — optional score-floor helpers for tools that
-                            aggregate normalized scores without re-running
-                            a full Φᵢ.
+- :data:`THRESHOLDS`      — re-export of score-floor helpers from
+                            :data:`~topos.evaluation.policies.calibration.SCORE_FLOORS`
+                            for tools that aggregate normalized scores
+                            without re-running a full Φᵢ.
 
 There is exactly one ``Φᵢ`` per generator::
 
@@ -79,6 +80,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from topos.evaluation.policies.calibration import SCORE_FLOORS
 from topos.evaluation.preferences import Generator
 
 # ---------------------------------------------------------------------------
@@ -89,13 +91,10 @@ from topos.evaluation.preferences import Generator
 # score floors are for :func:`meet_satisfied` and other callers that
 # already aggregated scores without re-invoking a Φᵢ.
 #
-# Defaults are v0 placeholders pending corpus calibration.
+# Defined in :mod:`topos.evaluation.policies.calibration`; re-exported here
+# for backward compatibility.
 
-THRESHOLDS: dict[Generator, float] = {
-    Generator.SIMPLE: 0.40,
-    Generator.COMPOSABLE: 0.60,
-    Generator.SECURE: 1.00,
-}
+THRESHOLDS: dict[Generator, float] = SCORE_FLOORS
 
 
 def threshold(generator: Generator) -> float:
@@ -115,8 +114,8 @@ def meet_satisfied(scores: dict[Generator, float]) -> dict[Generator, bool]:
     :func:`topos.core.omega.verdict_from_generators` for the Ω element.
 
     Prefer each ``Φᵢ``'s ``ScoredDecision.achieved`` when probe metrics are
-    available — that path applies raw-metric thresholds defined in
-    :mod:`topos.evaluation.policies.simple`, ``composable``, and ``secure``.
+    available — that path applies raw-metric gates from
+    :mod:`topos.evaluation.policies.calibration`.
     """
     return {g: is_satisfied(g, scores.get(g, 0.0)) for g in Generator}
 

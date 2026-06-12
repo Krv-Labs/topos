@@ -6,11 +6,12 @@ Maps CFG and AST observations into a
 :class:`~topos.evaluation.policies.base.ScoredDecision`.
 
     Φ_SIMPLE(metrics) → ScoredDecision
-    achieved = (cyclomatic ≤ 15) ∧ (0.2 ≤ entropy ≤ 0.8) ∧ (max_func ≤ 10)
+    achieved = (cyclomatic ≤ gate) ∧ (entropy in band) ∧ (max_func ≤ gate)
     score      = min(per-metric qualities)   # reporting only; does not gate achieved
 
 This is the categorical formulation of the math spec §3 "Policy
-Translation". All decisions (thresholds, combinations) are centralized here.
+Translation". Thresholds and normalization caps live in
+:mod:`topos.evaluation.policies.calibration`.
 """
 
 from __future__ import annotations
@@ -20,17 +21,7 @@ from topos.evaluation.policies.base import (
     Priority,
     ScoredDecision,
 )
-
-# Normalization caps (for [0, 1] mapping)
-MAX_CYCLOMATIC_CAP: float = 40.0
-ENTROPY_IDEAL: float = 0.5
-MAX_FUNCTION_COMPLEXITY_CAP: float = 20.0
-
-# Independent Raw Thresholds (Policy Decisions)
-MAX_CYCLOMATIC_THRESHOLD: float = 15.0
-MAX_FUNCTION_COMPLEXITY_THRESHOLD: float = 10.0
-MIN_ENTROPY_THRESHOLD: float = 0.2
-MAX_ENTROPY_THRESHOLD: float = 0.8
+from topos.evaluation.policies.calibration import SIMPLE
 
 
 def score_simple(
@@ -60,25 +51,27 @@ def score_simple(
 
     # 1. CFG Cyclomatic Complexity
     if cyclomatic is not None:
-        quality = 1.0 - min(cyclomatic / MAX_CYCLOMATIC_CAP, 1.0)
+        quality = 1.0 - min(cyclomatic / SIMPLE.max_cyclomatic_cap, 1.0)
         qualities.append(quality)
-        if cyclomatic > MAX_CYCLOMATIC_THRESHOLD:
+        if cyclomatic > SIMPLE.max_cyclomatic:
             achieved = False
         interp["cfg.cyclomatic"] = _cyclomatic_interpretation(cyclomatic, quality)
 
     # 2. AST Entropy
     if entropy is not None:
-        quality = max(0.0, 1.0 - 2.0 * abs(entropy - ENTROPY_IDEAL))
+        quality = max(0.0, 1.0 - 2.0 * abs(entropy - SIMPLE.entropy_ideal))
         qualities.append(quality)
-        if not (MIN_ENTROPY_THRESHOLD <= entropy <= MAX_ENTROPY_THRESHOLD):
+        if not (SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy):
             achieved = False
         interp["ast.entropy"] = _entropy_interpretation(entropy, quality)
 
     # 3. AST Max Function Complexity
     if max_function_complexity is not None:
-        quality = 1.0 - min(max_function_complexity / MAX_FUNCTION_COMPLEXITY_CAP, 1.0)
+        quality = 1.0 - min(
+            max_function_complexity / SIMPLE.max_function_complexity_cap, 1.0
+        )
         qualities.append(quality)
-        if max_function_complexity > MAX_FUNCTION_COMPLEXITY_THRESHOLD:
+        if max_function_complexity > SIMPLE.max_function_complexity:
             achieved = False
         interp["ast.max_function_complexity"] = _max_func_interpretation(
             max_function_complexity, quality
@@ -105,7 +98,7 @@ def build_omega() -> Omega:
 
 def describe_entropy_ratio(entropy: float) -> str:
     """Describe a raw AST entropy ratio using SIMPLE policy language."""
-    quality = max(0.0, 1.0 - 2.0 * abs(entropy - ENTROPY_IDEAL))
+    quality = max(0.0, 1.0 - 2.0 * abs(entropy - SIMPLE.entropy_ideal))
     return _entropy_interpretation(entropy, quality)
 
 
@@ -115,35 +108,35 @@ def describe_entropy_ratio(entropy: float) -> str:
 
 
 def _cyclomatic_interpretation(raw: float, quality: float) -> str:
-    if raw <= MAX_CYCLOMATIC_THRESHOLD:
+    if raw <= SIMPLE.max_cyclomatic:
         return (
             f"cyclomatic complexity ({raw:.0f}) within threshold "
-            f"(<= {MAX_CYCLOMATIC_THRESHOLD})"
+            f"(<= {SIMPLE.max_cyclomatic})"
         )
     return (
         f"cyclomatic complexity ({raw:.0f}) exceeds threshold "
-        f"(> {MAX_CYCLOMATIC_THRESHOLD})"
+        f"(> {SIMPLE.max_cyclomatic})"
     )
 
 
 def _max_func_interpretation(raw: float, quality: float) -> str:
-    if raw <= MAX_FUNCTION_COMPLEXITY_THRESHOLD:
+    if raw <= SIMPLE.max_function_complexity:
         return (
             f"max function complexity ({raw:.0f}) within threshold "
-            f"(<= {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
+            f"(<= {SIMPLE.max_function_complexity})"
         )
     return (
         f"max function complexity ({raw:.0f}) exceeds threshold "
-        f"(> {MAX_FUNCTION_COMPLEXITY_THRESHOLD})"
+        f"(> {SIMPLE.max_function_complexity})"
     )
 
 
 def _entropy_interpretation(entropy: float, quality: float) -> str:
-    if MIN_ENTROPY_THRESHOLD <= entropy <= MAX_ENTROPY_THRESHOLD:
+    if SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy:
         return (
             f"entropy ({entropy:.2f}) within structured range "
-            f"[{MIN_ENTROPY_THRESHOLD}, {MAX_ENTROPY_THRESHOLD}]"
+            f"[{SIMPLE.min_entropy}, {SIMPLE.max_entropy}]"
         )
-    if entropy < MIN_ENTROPY_THRESHOLD:
+    if entropy < SIMPLE.min_entropy:
         return f"entropy ({entropy:.2f}) is too low; code may be repetitive or trivial"
     return f"entropy ({entropy:.2f}) is too high; code may be unstructured"

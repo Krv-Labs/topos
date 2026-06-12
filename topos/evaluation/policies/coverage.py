@@ -6,13 +6,15 @@ The UAST profunctor emits a raw
 :class:`~topos.functors.profunctors.uast.structural_test_coverage.DeclarationCoverageReport`;
 this module threshold-classifies it into a :class:`CoverageDecision`
 (mean recall, F2, uncovered declarations).  Independent of the three
-quality generators in Ω.
+quality generators in Ω. Defaults live in
+:mod:`topos.evaluation.policies.calibration`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from topos.evaluation.policies.calibration import COVERAGE
 from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
 )
@@ -38,7 +40,7 @@ class CoverageDecision:
 def score_declaration_coverage(
     report: DeclarationCoverageReport,
     *,
-    threshold: float = 0.5,
+    threshold: float = COVERAGE.declaration_recall,
 ) -> CoverageDecision:
     """Threshold-classify a raw coverage report (mean recall vs ``threshold``)."""
     best_recall = tuple(report.best_declaration_recall)
@@ -86,10 +88,10 @@ def score_declaration_coverage(
 
 
 def _coverage_interpretation(score: float, threshold: float) -> str:
-    if score >= threshold + 0.25:
+    if score >= threshold + COVERAGE.strong_offset:
         return "coverage is strong"
     if score >= threshold:
         return "coverage meets the policy threshold"
-    if score >= threshold * 0.5:
+    if score >= threshold * COVERAGE.partial_factor:
         return "coverage is partial"
     return "coverage is weak"

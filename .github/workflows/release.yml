@@ -87,7 +87,7 @@ jobs:
             --collect-all tree_sitter_typescript
             --collect-all topos
             --collect-all fastmcp
-            --collect-all real-ladybug
+            --collect-all ladybug
             --copy-metadata fastmcp
           )
 

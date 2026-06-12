@@ -113,6 +113,38 @@ def test_evaluate_file_warns_without_gitnexus(
     assert "mdg.unavailable" in r.pillars["composable"].interpretation
 
 
+def test_gitnexus_warnings_surface_schema_mismatch(tmp_path: Path) -> None:
+    from topos.graphs.mdg.object import LadybugSchemaMismatchError
+    from topos.mcp.evaluation import (
+        clear_dep_graph_error,
+        gitnexus_warnings,
+        load_dep_graph,
+    )
+
+    gitnexus_dir = tmp_path / ".gitnexus"
+    gitnexus_dir.mkdir()
+    (gitnexus_dir / "lbug").write_bytes(b"\x00")
+
+    clear_dep_graph_error()
+    with patch(
+        "topos.mcp.evaluation.dep_graph_for",
+        side_effect=LadybugSchemaMismatchError(
+            "LadybugDB storage version mismatch while loading .gitnexus/lbug. "
+            "Upgrade Topos to v0.3.4+."
+        ),
+    ):
+        dep_graph = load_dep_graph(gitnexus_dir, "module.py")
+
+    assert dep_graph is None
+    warnings = gitnexus_warnings(
+        str(gitnexus_dir),
+        tmp_path,
+        gitnexus_dir,
+        dep_graph_loaded=False,
+    )
+    assert any("storage version mismatch" in w.lower() for w in warnings)
+
+
 def test_evaluate_file_reports_security_findings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

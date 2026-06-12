@@ -1,6 +1,6 @@
 [project]
 name = "topos"
-version = "0.3.3"
+version = "0.3.4"
 description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,7 +27,7 @@ dependencies = [
     "click>=8.1",
     "fastmcp>=3.0.0",
     "numpy>=1.24",
-    "real-ladybug>=0.15",
+    "ladybug>=0.17.0,<0.18",
 ]
 
 

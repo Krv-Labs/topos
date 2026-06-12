@@ -62,6 +62,27 @@ NodeLabel = Literal[
     "Constructor",
 ]
 
+class LadybugSchemaMismatchError(RuntimeError):
+    """Raised when ``.gitnexus/lbug`` storage version exceeds embedded ladybug."""
+
+    def __init__(self, message: str, *, original: Exception | None = None) -> None:
+        super().__init__(message)
+        self.original = original
+
+
+def _raise_schema_mismatch(exc: BaseException) -> None:
+    msg = str(exc).lower()
+    if "different version" not in msg and "storage version" not in msg:
+        raise exc
+    raise LadybugSchemaMismatchError(
+        "LadybugDB storage version mismatch while loading .gitnexus/lbug. "
+        "Upgrade Topos to v0.3.4+ (bundles ladybug 0.17+) or re-run "
+        "'topos depgraph generate' after upgrading. "
+        "GitNexus 1.6.x requires ladybug 0.17+.",
+        original=exc if isinstance(exc, Exception) else None,
+    ) from exc
+
+
 RelationshipType = Literal[
     "CONTAINS",
     "CALLS",
@@ -180,7 +201,8 @@ class ModuleDependencyGraph:
 
         Raises:
             FileNotFoundError: If the graph store cannot be found.
-            ImportError: If ``real-ladybug`` is not installed for binary format.
+            ImportError: If ``ladybug`` is not installed for binary format.
+            LadybugSchemaMismatchError: If the store version exceeds embedded ladybug.
         """
         base = Path(gitnexus_dir)
         lbug_path = base / "lbug"
@@ -202,10 +224,13 @@ class ModuleDependencyGraph:
         cls, lbug_path: Path, target_file: str
     ) -> ModuleDependencyGraph:
         """Load from the binary LadybugDB format produced by GitNexus ≥ 1.5."""
-        import real_ladybug as lb
+        import ladybug as lb
 
         graph = cls(target_file=target_file)
-        db = lb.Database(str(lbug_path), read_only=True)
+        try:
+            db = lb.Database(str(lbug_path), read_only=True)
+        except RuntimeError as exc:
+            _raise_schema_mismatch(exc)
         conn = lb.Connection(db)
 
         # Discover node tables at runtime so we're not tied to a fixed schema.

@@ -23,9 +23,22 @@ from topos.evaluation.characteristic_morphism import (
 )
 from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
-from topos.graphs.mdg.object import ModuleDependencyGraph
+from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
 
 from .cache import dep_graph_for
+
+_last_dep_graph_error: str | None = None
+
+
+def last_dep_graph_error() -> str | None:
+    """Return the most recent MDG load failure message, if any."""
+    return _last_dep_graph_error
+
+
+def clear_dep_graph_error() -> None:
+    """Reset the stored MDG load failure message (primarily for tests)."""
+    global _last_dep_graph_error
+    _last_dep_graph_error = None
 
 
 def resolve_gitnexus_dir(
@@ -78,11 +91,22 @@ def gitnexus_warnings(
         ]
 
     if gitnexus_dir is not None and not dep_graph_loaded:
-        warnings.append(
-            "COMPOSABLE not scored — .gitnexus exists but the dependency graph could "
-            "not be loaded; re-run 'topos depgraph generate' and ensure GitNexus "
-            "dependencies are installed."
-        )
+        load_error = last_dep_graph_error()
+        if load_error and (
+            "storage version" in load_error.lower()
+            or "different version" in load_error.lower()
+            or "ladybug" in load_error.lower()
+        ):
+            warnings.append(
+                "COMPOSABLE not scored — LadybugDB storage version mismatch: "
+                f"{load_error}"
+            )
+        else:
+            warnings.append(
+                "COMPOSABLE not scored — .gitnexus exists but the dependency graph "
+                "could not be loaded; re-run 'topos depgraph generate' and ensure "
+                "GitNexus dependencies are installed."
+            )
     if gitnexus_dir is not None:
         stale = _stale_gitnexus_warning(project_root, gitnexus_dir)
         if stale:
@@ -138,12 +162,25 @@ def load_dep_graph(
     gitnexus_dir: Path | None, target_file: str
 ) -> ModuleDependencyGraph | None:
     """Load the cached dep graph for a file, or None if not available."""
+    global _last_dep_graph_error
     if gitnexus_dir is None:
+        _last_dep_graph_error = None
         return None
     try:
-        return dep_graph_for(gitnexus_dir, target_file)
-    except (FileNotFoundError, ImportError, OSError):
-        # Silently degrade when gitnexus can't load — CFG and CPG still run.
+        graph = dep_graph_for(gitnexus_dir, target_file)
+        _last_dep_graph_error = None
+        return graph
+    except LadybugSchemaMismatchError as exc:
+        _last_dep_graph_error = str(exc)
+        return None
+    except RuntimeError as exc:
+        msg = str(exc).lower()
+        if "different version" in msg or "storage version" in msg:
+            _last_dep_graph_error = str(exc)
+            return None
+        raise
+    except (FileNotFoundError, ImportError, OSError) as exc:
+        _last_dep_graph_error = str(exc)
         return None
 
 

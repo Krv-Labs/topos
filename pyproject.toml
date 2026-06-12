@@ -27,7 +27,7 @@ dependencies = [
     "click>=8.1",
     "fastmcp>=3.0.0",
     "numpy>=1.24",
-    "real-ladybug>=0.15",
+    "ladybug>=0.17.0,<0.18",
 ]
 
 

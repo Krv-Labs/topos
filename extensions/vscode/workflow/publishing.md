@@ -143,7 +143,7 @@ uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
   --collect-all tree_sitter_typescript \
   --collect-all topos \
   --collect-all fastmcp \
-  --collect-all real-ladybug \
+  --collect-all ladybug \
   --copy-metadata fastmcp \
   topos/cli/main.py
 ```

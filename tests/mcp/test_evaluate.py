@@ -114,12 +114,12 @@ def test_evaluate_file_warns_without_gitnexus(
 
 
 def test_gitnexus_warnings_surface_schema_mismatch(tmp_path: Path) -> None:
+    from topos.graphs.mdg.object import LadybugSchemaMismatchError
     from topos.mcp.evaluation import (
         clear_dep_graph_error,
         gitnexus_warnings,
         load_dep_graph,
     )
-    from topos.graphs.mdg.object import LadybugSchemaMismatchError
 
     gitnexus_dir = tmp_path / ".gitnexus"
     gitnexus_dir.mkdir()

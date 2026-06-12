@@ -62,6 +62,7 @@ NodeLabel = Literal[
     "Constructor",
 ]
 
+
 class LadybugSchemaMismatchError(RuntimeError):
     """Raised when ``.gitnexus/lbug`` storage version exceeds embedded ladybug."""
 

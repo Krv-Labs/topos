@@ -217,6 +217,22 @@ Generate a module dependency graph with `GitNexus <https://github.com/abhigyanpa
 
 Writes ``.gitnexus/`` under the repo root. Re-run when imports change.
 
+**GitNexus / LadybugDB compatibility**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 30 50
+
+   * - Topos
+     - Python binding
+     - GitNexus CLI
+   * - ≤0.3.3
+     - ``real-ladybug`` 0.15 (storage v40)
+     - pin ``gitnexus@<1.6`` or omit ``--gitnexus-dir``
+   * - ≥0.3.4
+     - ``ladybug`` 0.17+ (storage v41)
+     - ``gitnexus@latest`` (tested with 1.6.7)
+
 **Example**
 
 .. code-block:: bash

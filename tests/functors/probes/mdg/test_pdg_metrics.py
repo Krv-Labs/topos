@@ -3,7 +3,9 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import pytest
 from topos.functors.probes.mdg.coupling import (
     CouplingResult,
     calculate_coupling,
@@ -15,6 +17,7 @@ from topos.functors.probes.mdg.fan import FanResult, calculate_fan_in_out
 from topos.graphs.mdg.object import (
     GraphNode,
     GraphRelationship,
+    LadybugSchemaMismatchError,
     ModuleDependencyGraph,
 )
 
@@ -705,8 +708,6 @@ def test_coupling_counts_nested_method_imports():
 
 def test_from_gitnexus_dir_malformed_json():
     """A JSON file with invalid content raises json.JSONDecodeError."""
-    import pytest
-
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         lbug = base / "lbug"
@@ -715,6 +716,51 @@ def test_from_gitnexus_dir_malformed_json():
 
         with pytest.raises(json.JSONDecodeError):
             ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+
+
+def test_from_ladybugdb_schema_mismatch_raises_actionable_error() -> None:
+    """Binary lbug with newer storage version yields LadybugSchemaMismatchError."""
+    mismatch = RuntimeError(
+        "Runtime exception: Trying to read a database file with a different version. "
+        "Database file version: 41, Current build storage version: 40"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        lbug_file = base / "lbug"
+        lbug_file.write_bytes(b"\x00")
+
+        mock_lb = MagicMock()
+        mock_lb.Database.side_effect = mismatch
+        with (
+            patch.dict("sys.modules", {"ladybug": mock_lb}),
+            pytest.raises(LadybugSchemaMismatchError, match="ladybug 0.17\\+"),
+        ):
+            ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+
+
+def test_load_dep_graph_returns_none_on_schema_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import evaluation as mcp_evaluation
+
+    monkeypatch.setattr(
+        mcp_evaluation,
+        "dep_graph_for",
+        MagicMock(
+            side_effect=LadybugSchemaMismatchError(
+                "LadybugDB storage version mismatch while loading .gitnexus/lbug."
+            )
+        ),
+    )
+    mcp_evaluation.clear_dep_graph_error()
+    gitnexus_dir = tmp_path / ".gitnexus"
+    gitnexus_dir.mkdir()
+
+    result = mcp_evaluation.load_dep_graph(gitnexus_dir, "foo.py")
+
+    assert result is None
+    assert mcp_evaluation.last_dep_graph_error() is not None
+    assert "storage version mismatch" in mcp_evaluation.last_dep_graph_error().lower()
 
 
 # ---------------------------------------------------------------------------

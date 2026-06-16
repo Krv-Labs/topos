@@ -1,5 +1,5 @@
 [project]
-name = "topos"
+name = "topos-mcp"
 version = "0.3.4"
 description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"

@@ -46,6 +46,14 @@ Topos is designed to be accessible as either a standalone binary or by building 
       .. note::
          **macOS ``different Team IDs`` error (v0.3.1 and earlier):** If ``topos --version`` fails with a PyInstaller error about ``libpython3.12.dylib`` and mismatched Team IDs, upgrade to **v0.3.2** or later via ``install.sh``, or use the **Building from Source** tab. See `issue #55 <https://github.com/Krv-Labs/topos/issues/55>`_ for details.
 
+   .. tab-item:: 📦 PyPI Package
+
+      Topos is also available as a Python package via PyPI. Note that unlike the standalone binary, this method requires you to manage your own Python environment (Python 3.11+).
+
+      .. code-block:: bash
+
+         pip install topos-mcp
+
    .. tab-item:: 🐍 Building from Source
 
       If you want to contribute, use the latest development version, or integrate Topos into your Python pipelines:

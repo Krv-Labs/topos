@@ -291,12 +291,25 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64
+            args: --release --out dist
           - os: ubuntu-latest
             target: aarch64
+            args: --release --out dist -i python3.12
           - os: macos-latest
             target: universal2
+            args: --release --out dist
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.target == 'aarch64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Python
+        if: runner.os == 'macOS'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -305,7 +318,8 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist
+          manylinux: auto
+          args: ${{ matrix.args }}
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4

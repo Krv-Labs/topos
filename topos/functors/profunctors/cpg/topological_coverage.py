@@ -15,6 +15,7 @@ filtration grid.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from dataclasses import dataclass
 
@@ -27,9 +28,34 @@ _CALL_PREFIX = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)\s*\(")
 
 _EMBEDDING_MODEL = None
 
+ECT_COVERAGE_INSTALL_HINT = "pip install 'topos[ect-coverage]'"
+
+
+class ECTCoverageUnavailableError(ImportError):
+    """Raised when fastembed or trailed are not installed."""
+
+
+def ect_coverage_available() -> bool:
+    """Return True when optional ECT coverage dependencies are importable."""
+    return (
+        importlib.util.find_spec("fastembed") is not None
+        and importlib.util.find_spec("trailed") is not None
+    )
+
+
+def require_ect_coverage() -> None:
+    """Raise :class:`ECTCoverageUnavailableError` if optional deps are missing."""
+    if ect_coverage_available():
+        return
+    raise ECTCoverageUnavailableError(
+        "Topological (ECT) coverage requires the optional ect-coverage extra. "
+        f"Install with: {ECT_COVERAGE_INSTALL_HINT}"
+    )
+
 
 def get_embedding_model():
     """Lazily load and reuse the fastembed TextEmbedding model."""
+    require_ect_coverage()
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
         from fastembed import TextEmbedding
@@ -227,6 +253,7 @@ def calculate_topological_coverage(
     4. Compute V - E ECT for both graphs in one batched TRAILED call.
     5. Normalize, take RMSE, and exponentiate into a [0, 1] score.
     """
+    require_ect_coverage()
     from trailed.tabular import compute_ect_from_numpy
 
     scoped_nodes, tested_funcs, untested_functions = get_test_scoped_subgraph(

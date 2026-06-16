@@ -21,7 +21,7 @@ Quick reference
    topos evaluate src/ -r --preferences simple,composable,secure
    topos inspect module.py --preferences simple,composable,secure
    topos compare before.py after.py
-   topos structural-test-coverage src/logic.py --tests tests/test_logic.py
+   topos coverage src/logic.py --tests tests/test_logic.py
    topos depgraph generate
    topos mcp
 
@@ -33,7 +33,7 @@ Quick reference
 
       Classify files, drill into metrics, measure AST drift, and score structural test overlap.
       ^^^
-      ``evaluate`` · ``inspect`` · ``compare`` · ``structural-test-coverage``
+      ``evaluate`` · ``inspect`` · ``compare`` · ``coverage``
 
    .. grid-item-card:: ⚙️ System commands
       :shadow: md
@@ -144,14 +144,18 @@ Compare **structural (AST) distance** between two programs — topological drift
 
    topos compare old_version.py new_version.py -v
 
-structural-test-coverage
-------------------------
+coverage
+--------
 
-Measure how much of the **program-under-test (PUT)** structure is represented in test code, using UAST k-gram path recall. No test execution required — useful for agent loops that refactor tests and source together.
+Measure how much of the **program-under-test (PUT)** structure is represented in test code.
+
+**UAST (default):** declaration-level bipartite matching and k-gram path recall. No test execution required.
+
+**Topological (ECT):** when the release binary or ``topos[ect-coverage]`` extra is present, also scores CPG semantic overlap via fastembed embeddings and Euler characteristic transform (TRAILED). First topological run downloads the embedding model to ``~/.cache/fastembed``.
 
 .. code-block:: bash
 
-   topos structural-test-coverage [PUT_PATHS]... --tests TEST_PATH [OPTIONS]
+   topos coverage [PUT_PATHS]... --tests TEST_PATH [OPTIONS]
 
 .. list-table::
    :header-rows: 1
@@ -176,7 +180,7 @@ Measure how much of the **program-under-test (PUT)** structure is represented in
 
 .. code-block:: bash
 
-   topos structural-test-coverage src/logic.py --tests tests/test_logic.py --json
+   topos coverage src/logic.py --tests tests/test_logic.py --json
 
 System commands
 ===============

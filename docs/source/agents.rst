@@ -193,7 +193,12 @@ Structure & Coverage
    AST edit distance (topological drift) between two code strings.
 
 ``topos_calculate_coverage(put_files, test_files, k)``
-   Calculates structural test coverage using UAST k-gram path recall.
+   Calculates structural test coverage (UAST declaration matching and k-gram recall).
+   When ``ect-coverage`` dependencies are available, the response also includes
+   ``topological_coverage`` (ECT score, tested/untested functions, node counts).
+   Without the extra, UAST metrics are returned and topological fields report
+   ``unavailable`` with an install hint. Prefer **file-pair or module-scoped**
+   PUT/test sets rather than whole-repository merges.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

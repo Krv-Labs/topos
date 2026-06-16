@@ -119,7 +119,7 @@ Pick a preference ranking, then let your agent evaluate and iterate on its own o
 
    topos evaluate src/ -r --preferences simple,composable,secure  # classify a directory
    topos inspect module.py --preferences simple,composable,secure # detailed metrics
-   topos structural-test-coverage src/ --language python          # measure test code coverage
+   topos coverage src/ --language python          # measure test code coverage (scope to modules)
    topos compare before.py after.py                               # AST edit distance
 
 Each file gets a verdict per quality generator. You always see which generator is the problem, not a single blended number.

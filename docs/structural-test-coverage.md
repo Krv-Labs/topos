@@ -2,7 +2,35 @@
 
 This document describes the **structural test coverage** measure implemented in Topos. It is a prototype metric: it estimates how much of a **program-under-test (PUT)** appears in a **test suite** at the level of normalized **Universal AST (UAST) structure**. It does **not** replace line or branch coverage, and it does **not** establish that tests invoke specific production functions unless you add separate call-linkage analysis.
 
-The implementation lives in `topos/functors/profunctors/uast/structural_test_coverage.py`. The CLI entry point is `topos structural-test-coverage`. Formal definitions also appear in Sphinx as `docs/source/measures.rst`.
+The UAST implementation lives in `topos/functors/profunctors/uast/structural_test_coverage.py`. Topological (ECT) coverage lives in `topos/functors/profunctors/cpg/topological_coverage.py`. The CLI entry point is `topos coverage` (UAST + optional ECT). Formal UAST definitions also appear in Sphinx as `docs/source/measures.rst`.
+
+---
+
+## Topological (ECT) semantic coverage
+
+When the optional **`ect-coverage`** extra is installed, Topos can score **CPG topological coverage**: node texts from a scoped PUT subgraph and the test CPG are embedded (fastembed / ONNX), projected to 2-D with joint PCA, and compared via **Euler characteristic transform** (TRAILED). The score is `exp(-RMSE)` between PUT and test ECT landscapes.
+
+**Install**
+
+```bash
+pip install 'topos[ect-coverage]'
+```
+
+The default `pip install topos` remains lightweight (UAST coverage only). The VS Code release binary includes ECT dependencies; pip users opt in via the extra.
+
+**First run**
+
+The embedding model (`snowflake-arctic-embed-xs`) downloads on the first topological coverage call to `~/.cache/fastembed` (network required unless you pre-populate the cache). Expect a **2–8 s** one-time cold start; subsequent calls reuse a process-wide singleton.
+
+**Scoping**
+
+Topological coverage merges all PUT paths into one CPG and scopes PUT nodes via call-graph reachability from test entry points. For large repositories, invoke coverage **per module or file pair** (e.g. `src/pkg/mod.py` + `tests/pkg/test_mod.py`), not entire `src/` vs `tests/` trees. Whole-repo merges can reach tens of thousands of nodes and dominate runtime on embedding, not ECT.
+
+**Unavailable extra**
+
+If `ect-coverage` is not installed, `topos coverage` and `topos_calculate_coverage` still return UAST metrics; the topological section reports `unavailable` with install guidance instead of failing.
+
+Binary size impact when ECT deps are bundled: see `docs/ect-coverage-release-sizes.md`.
 
 ---
 
@@ -57,9 +85,11 @@ report = declaration_coverage([put], [tst], k=3, include_unknown=False)
 **CLI**
 
 ```bash
-topos structural-test-coverage --tests tests/test_mod.py src/mod.py
-topos structural-test-coverage --tests t1.py --tests t2.py --language python --k 3 --json src/a.py src/b.py
+topos coverage --tests tests/test_mod.py src/mod.py
+topos coverage --tests t1.py --tests t2.py --language python --k 3 --json src/a.py src/b.py
 ```
+
+With `topos[ect-coverage]` installed, output includes a **Topological CPG Semantic Coverage** section (ECT score, tested/untested functions, node counts).
 
 Options include `--language` (`python`, `rust`, `javascript`, `cpp`), `--k`, `--include-unknown`, `--coverage-threshold`, and `--json`.
 
@@ -73,3 +103,5 @@ Options include `--language` (`python`, `rust`, `javascript`, `cpp`), `--k`, `--
 | Framework / mock heavy tests | Shared kinds (especially calls) can inflate overlap without exercising PUT logic. |
 | `Unknown` kinds | With `include_unknown=True`, parser gaps can add mass that tests accidentally align with. |
 | Symmetric size | A very small PUT and a very large test suite can still show moderate recall if kinds overlap; read diagnostics alongside scores. |
+| Whole-repo merge | Embedding and CPG build scale with node count; prefer file-pair or package-scoped PUT/test sets. |
+| ECT extra missing | UAST coverage still works; topological section is omitted with install hint. |

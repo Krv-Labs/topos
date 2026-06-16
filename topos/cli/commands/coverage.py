@@ -107,11 +107,11 @@ def coverage_cmd(
     decision = score_declaration_coverage(report, threshold=coverage_threshold)
 
     # 2. New CPG Topological ECT coverage
-    from topos.graphs.cpg.object import CodePropertyGraph
+    from topos.evaluation.policies.coverage import score_topological_coverage
     from topos.functors.profunctors.cpg.topological_coverage import (
         calculate_topological_coverage,
     )
-    from topos.evaluation.policies.coverage import score_topological_coverage
+    from topos.graphs.cpg.object import CodePropertyGraph
 
     # Build and merge CodePropertyGraphs
     put_cpgs = []

@@ -15,11 +15,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from topos.evaluation.policies.calibration import COVERAGE
-from topos.functors.profunctors.uast.structural_test_coverage import (
-    DeclarationCoverageReport,
-)
 from topos.functors.profunctors.cpg.topological_coverage import (
     TopologicalCoverageReport,
+)
+from topos.functors.profunctors.uast.structural_test_coverage import (
+    DeclarationCoverageReport,
 )
 
 
@@ -131,7 +131,9 @@ def score_topological_coverage(
         "topological_coverage": interp_msg,
         "topological_distance": f"ECT L2 distance is {report.topological_distance:.4f}",
         "tested_functions_count": f"{len(report.tested_functions)} functions tested",
-        "untested_functions_count": f"{len(report.untested_functions)} functions untested",
+        "untested_functions_count": (
+            f"{len(report.untested_functions)} functions untested"
+        ),
     }
 
     return TopologicalCoverageDecision(

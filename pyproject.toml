@@ -28,11 +28,13 @@ dependencies = [
     "fastmcp>=3.0.0",
     "numpy>=1.24",
     "ladybug>=0.17.0,<0.18",
+]
+
+[project.optional-dependencies]
+ect-coverage = [
     "fastembed",
     "trailed>=0.1.2",
 ]
-
-
 
 [project.scripts]
 topos = "topos.cli.main:cli"
@@ -60,12 +62,15 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--cov=topos --cov-report=term-missing"
+norecursedirs = ["tests/fixtures"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.8",
+    "fastembed",
+    "trailed>=0.1.2",
 ]
 docs = [
     "sphinx>=7.4,<9",

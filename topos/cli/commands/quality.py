@@ -6,6 +6,16 @@ from pathlib import Path
 import click
 
 from topos.cli.commands.coverage import coverage_cmd
+from topos.cli.diagnostics import (
+    acknowledged_to_dict,
+    collect_findings_and_verdict,
+    finding_to_dict,
+    render_security_findings,
+    render_suggestions,
+    render_verdict_line,
+    suggestion_to_dict,
+    suggestions_for,
+)
 from topos.cli.evaluation import (
     collect_files,
     output_directory_average,
@@ -15,6 +25,7 @@ from topos.cli.evaluation import (
     result_to_row,
     run_classify_file,
 )
+from topos.config import load_topos_config, merge_cli_allows
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
 from topos.evaluation.policies import Priority
@@ -31,6 +42,12 @@ _PRIORITY_HELP = (
     "thresholds in each policy; this flag does not change achieved flags. "
     "For a full generator ranking and relaxation walk, use MCP evaluate "
     "tools with preferences."
+)
+_ALLOW_HELP = (
+    "Acknowledge a dangerous-call pattern for this run (repeatable / "
+    "comma-separated, e.g. --allow yaml.load). The raw SECURE verdict is "
+    "always still computed and shown, and any acknowledgement caps the grade "
+    "below Gold/IDEAL. For persistent project rules use a .topos.toml file."
 )
 
 
@@ -79,6 +96,12 @@ _PRIORITY_HELP = (
     ),
 )
 @click.option(
+    "--allow",
+    "allows",
+    multiple=True,
+    help=_ALLOW_HELP,
+)
+@click.option(
     "--language",
     type=_EVALUATE_LANGUAGE_CHOICE,
     default="python",
@@ -93,6 +116,7 @@ def evaluate(
     priority: str,
     preferences: str | None,
     gitnexus_dir: str | None,
+    allows: tuple[str, ...],
     language: str,
 ) -> None:
     """Evaluate code quality using the characteristic morphism χ_S : P → Ω."""
@@ -116,6 +140,7 @@ def evaluate(
         )
         sys.exit(1)
 
+    config = merge_cli_allows(load_topos_config(Path(paths[0])), allows)
     classifier = CharacteristicMorphism()
     results: list[dict[str, object]] = []
     progress_stream = click.get_text_stream("stderr")
@@ -147,7 +172,22 @@ def evaluate(
                 except (OSError, ValueError) as exc:
                     click.echo(f"Error: {exc}", err=True)
                     sys.exit(1)
-                results.append(result_to_row(filepath, cr))
+                row = result_to_row(filepath, cr)
+                active, acknowledged, verdict = collect_findings_and_verdict(
+                    filepath, cr, config
+                )
+                suggestions = suggestions_for(cr, active)
+                row["security_findings"] = [finding_to_dict(f) for f in active]
+                row["acknowledged_risks"] = acknowledged_to_dict(acknowledged)
+                row["suggestions"] = [suggestion_to_dict(s) for s in suggestions]
+                row["secure_raw"] = verdict.raw_secure_pass
+                row["secure_adjusted"] = verdict.adjusted_secure_pass
+                row["grade_capped"] = verdict.grade_capped
+                row["_active_findings"] = active
+                row["_acknowledged"] = acknowledged
+                row["_verdict"] = verdict
+                row["_suggestions"] = suggestions
+                results.append(row)
         except KeyboardInterrupt:
             click.echo("Interrupted. Exiting.", err=True)
             sys.exit(130)
@@ -226,8 +266,25 @@ def compare(source: str, target: str, verbose: bool) -> None:
         "(e.g., 'simple,composable,secure')."
     ),
 )
+@click.option(
+    "--allow",
+    "allows",
+    multiple=True,
+    help=_ALLOW_HELP,
+)
+@click.option(
+    "--json",
+    "output_json_flag",
+    is_flag=True,
+    help="Output the inspection as a single JSON object.",
+)
 def inspect(
-    path: str, gitnexus_dir: str | None, priority: str, preferences: str | None
+    path: str,
+    gitnexus_dir: str | None,
+    priority: str,
+    preferences: str | None,
+    allows: tuple[str, ...],
+    output_json_flag: bool,
 ) -> None:
     """Inspect detailed metrics for a single file."""
     # Use the first preference as the priority for CLI output
@@ -239,6 +296,14 @@ def inspect(
 
     morphism = ProgramMorphism.from_file(path)
     result = run_classify_file(Path(path), priority=priority, gitnexus_dir=gitnexus_dir)
+
+    config = merge_cli_allows(load_topos_config(Path(path)), allows)
+    active, acknowledged, verdict = collect_findings_and_verdict(path, result, config)
+    suggestions = suggestions_for(result, active)
+
+    if output_json_flag:
+        _inspect_json(path, result, active, acknowledged, verdict, suggestions)
+        return
 
     click.echo(f"File: {path}")
     click.echo()
@@ -261,8 +326,9 @@ def inspect(
         suffix = f"  ({interp})" if interp else ""
         click.echo(f"  {key}: {value:.3f}{suffix}")
 
-    if morphism.ast:
-        pass
+    render_security_findings(active, acknowledged)
+    render_verdict_line(verdict)
+    render_suggestions(suggestions)
 
     click.echo()
     click.echo("Entropy Analysis")
@@ -271,6 +337,31 @@ def inspect(
     interp = describe_entropy_ratio(ratio)
     click.echo(f"  Compression Ratio: {ratio:.3f}")
     click.echo(f"  Interpretation: {interp}")
+
+
+def _inspect_json(path, result, active, acknowledged, verdict, suggestions) -> None:  # type: ignore[no-untyped-def]
+    """Emit the single-file inspection as JSON."""
+    import json
+
+    from topos import __version__
+
+    payload = {
+        "version": __version__,
+        "file": str(path),
+        "is_parseable": result.is_parseable,
+        "lattice_element": result.summary().name,
+        "dimensions": {d: v.name for d, v in result.dimensions.items()},
+        "scores": {d: round(s * 100.0, 1) for d, s in result.scores.items()},
+        "raw_metrics": dict(result.raw_metrics),
+        "secure_raw": verdict.raw_secure_pass,
+        "secure_adjusted": verdict.adjusted_secure_pass,
+        "grade_capped": verdict.grade_capped,
+        "adjusted_lattice_element": verdict.adjusted_element.name,
+        "security_findings": [finding_to_dict(f) for f in active],
+        "acknowledged_risks": acknowledged_to_dict(acknowledged),
+        "suggestions": [suggestion_to_dict(s) for s in suggestions],
+    }
+    click.echo(json.dumps(payload, indent=2))
 
 
 def register_quality_commands(cli_group: click.Group) -> None:

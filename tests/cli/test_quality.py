@@ -186,3 +186,82 @@ def test_inspect_file(tmp_path: Path):
     assert "Classification" in result.output
     assert "Raw Metrics" in result.output
     assert "Entropy Analysis" in result.output
+
+
+import json
+import re
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def test_inspect_shows_security_findings_and_suggestions(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f)])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "Security Findings" in out
+    assert "Line 2" in out
+    assert "eval" in out
+    assert "Suggestions" in out
+
+
+def test_inspect_allowlist_flips_verdict_and_caps_grade(tmp_path: Path):
+    f = tmp_path / "conf.py"
+    f.write_text("import yaml\ndef g(p):\n    return yaml.load(p)\n", encoding="utf-8")
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "yaml.load"\nreason = "trusted ML config"\n',
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f)])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "FAIL (raw)" in out
+    assert "PASS (acknowledged)" in out
+    assert "trusted ML config" in out
+
+
+def test_inspect_json_carries_findings_and_verdict(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f), "--allow", "eval", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["secure_raw"] is False
+    assert data["secure_adjusted"] is True
+    assert data["acknowledged_risks"][0]["callee"] == "eval"
+    assert "suggestions" in data
+
+
+def test_evaluate_json_carries_diagnostics(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(f), "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    row = data["results"][0]
+    assert row["security_findings"][0]["callee"] == "eval"
+    assert row["secure_raw"] is False
+    assert "suggestions" in row
+
+
+def test_evaluate_verbose_lists_findings(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(f), "--verbose"])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "Security Findings" in out
+    assert "eval" in out

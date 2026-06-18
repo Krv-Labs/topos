@@ -86,3 +86,43 @@ def test_coverage_invalid_k(tmp_path: Path):
     )
     assert result.exit_code != 0
     assert "Error: --k must be >= 1." in result.output
+
+
+def test_coverage_suggested_next_steps(tmp_path: Path):
+    put = tmp_path / "put.py"
+    put.write_text(
+        "def add(a, b):\n    return a + b\n\ndef untested(z):\n    return z * 2\n",
+        encoding="utf-8",
+    )
+    test = tmp_path / "test.py"
+    test.write_text(
+        "from put import add\ndef test_add():\n    assert add(1, 2) == 3\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["coverage", "--tests", str(test), str(put)])
+    assert result.exit_code == 0
+    assert "Suggested Next Steps" in result.output
+    assert "Goal:" in result.output
+
+
+def test_coverage_json_carries_targets_and_goal(tmp_path: Path):
+    import json
+
+    put = tmp_path / "put.py"
+    put.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    test = tmp_path / "test.py"
+    test.write_text(
+        "from put import add\ndef test_add():\n    assert add(1, 2) == 3\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["coverage", "--tests", str(test), str(put), "--json"]
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "coverage_goal" in data
+    assert "suggested_test_targets" in data

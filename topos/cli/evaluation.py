@@ -240,7 +240,26 @@ def _output_file_details(results: list[dict[str, object]], verbose: bool) -> Non
                 click.echo(click.style(f"      {key}: {value:.3f}", dim=True))
             if "error" in result:
                 click.echo(click.style(f"      Error: {result['error']}", fg="red"))
+            _render_file_diagnostics(result)
         click.echo()
+
+
+def _render_file_diagnostics(result: dict[str, object]) -> None:
+    """Render per-file security findings + suggestions (verbose mode)."""
+    from topos.cli.diagnostics import (
+        render_security_findings,
+        render_suggestions,
+        render_verdict_line,
+    )
+
+    active = result.get("_active_findings") or []
+    acknowledged = result.get("_acknowledged") or []
+    verdict = result.get("_verdict")
+    suggestions = result.get("_suggestions") or []
+    render_security_findings(active, acknowledged, indent="    ")
+    if verdict is not None:
+        render_verdict_line(verdict, indent="    ")
+    render_suggestions(suggestions, indent="    ")
 
 
 def output_directory_average(results: list[dict[str, object]]) -> None:
@@ -396,7 +415,9 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
 
 def output_json(results: list[dict[str, object]]) -> None:
     """Output results as JSON."""
-    serialisable = [{k: v for k, v in r.items() if k != "_result"} for r in results]
+    serialisable = [
+        {k: v for k, v in r.items() if not k.startswith("_")} for r in results
+    ]
     output = {
         "version": __version__,
         "results": serialisable,

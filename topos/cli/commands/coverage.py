@@ -174,9 +174,15 @@ def coverage_cmd(
             f"Install with: {ECT_COVERAGE_INSTALL_HINT}"
         )
 
+    # Actionable next steps — ranked test targets + a coverage goal.
+    suggested_targets = _suggested_test_targets(decision, topo_report)
+    coverage_goal = _coverage_goal(report, decision)
+
     if output_json_flag:
         payload = asdict(report)
         payload.update(asdict(decision))
+        payload["coverage_goal"] = coverage_goal
+        payload["suggested_test_targets"] = suggested_targets
         if topo_report is not None and topo_decision is not None:
             payload["topological_coverage"] = {
                 "distance": topo_report.topological_distance,
@@ -270,3 +276,55 @@ def coverage_cmd(
                 click.echo(f"  {func}")
     else:
         click.echo(f"  Unavailable: {topo_unavailable_reason}")
+
+    # Actionable next steps.
+    click.echo()
+    click.echo("Suggested Next Steps")
+    click.echo("-" * 52)
+    click.echo(f"  Goal: {coverage_goal}")
+    if suggested_targets:
+        click.echo()
+        click.echo("  Suggested test targets (write tests for these first):")
+        for target in suggested_targets[:10]:
+            score = target["best_score"]
+            score_note = f" (best score: {score:.3f})" if score is not None else ""
+            click.echo(f"    - Add a test exercising {target['target']}{score_note}")
+        if len(suggested_targets) > 10:
+            click.echo(f"    … and {len(suggested_targets) - 10} more.")
+    else:
+        click.echo("  All measured declarations and functions meet the threshold.")
+
+
+def _coverage_goal(report: object, decision: object) -> str:
+    """Translate the coverage gap into a concrete, imperative goal."""
+    mean = report.mean_declaration_coverage  # type: ignore[attr-defined]
+    threshold = decision.threshold  # type: ignore[attr-defined]
+    uncovered = decision.uncovered_declarations  # type: ignore[attr-defined]
+    if decision.achieved:  # type: ignore[attr-defined]
+        return (
+            f"Mean coverage {mean:.2f} meets the {threshold:.2f} threshold. "
+            "Add tests for any remaining untested functions to harden coverage."
+        )
+    return (
+        f"Mean coverage {mean:.2f} < threshold {threshold:.2f} — add tests for "
+        f"{len(uncovered)} uncovered declaration(s) to pass."
+    )
+
+
+def _suggested_test_targets(
+    decision: object, topo_report: object
+) -> list[dict[str, object]]:
+    """Rank test targets worst-first: uncovered declarations then untested funcs."""
+    targets: list[dict[str, object]] = []
+    uncovered = sorted(
+        decision.uncovered_declarations,  # type: ignore[attr-defined]
+        key=lambda pair: pair[1],
+    )
+    for loc, score in uncovered:
+        targets.append(
+            {"target": loc, "kind": "declaration", "best_score": round(score, 3)}
+        )
+    if topo_report is not None:
+        for func in topo_report.untested_functions:  # type: ignore[attr-defined]
+            targets.append({"target": func, "kind": "function", "best_score": None})
+    return targets

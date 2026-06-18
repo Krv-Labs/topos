@@ -11,6 +11,7 @@ values that can express partial confidence about program quality and
 maintainability.
 """
 
+from topos._version import __version__
 from topos.core.category import ProgramCategory
 from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
@@ -30,9 +31,8 @@ from topos.graphs.cpg.object import CodePropertyGraph
 from topos.graphs.mdg.object import ModuleDependencyGraph
 from topos.graphs.pdg.object import ProgramDependenceGraph
 
-__version__ = "0.3.4"
-
 __all__ = [
+    "__version__",
     # Categorical primitives
     "ProgramCategory",
     "ProgramMorphism",

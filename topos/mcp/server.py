@@ -8,12 +8,7 @@ by the ``topos mcp`` CLI command.
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version("topos")
-except PackageNotFoundError:
-    __version__ = "dev"
+from topos import __version__
 
 
 _mcp_instance = None

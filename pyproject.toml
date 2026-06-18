@@ -1,6 +1,6 @@
 [project]
 name = "topos-mcp"
-version = "0.3.4"
+dynamic = ["version"]
 description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,6 +44,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
+# Version comes from [package].version in Cargo.toml (see scripts/check_versions.py).
 features = ["pyo3/extension-module"]
 python-source = "."
 module-name = "topos.topos_functors"

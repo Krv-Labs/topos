@@ -24,3 +24,4 @@ def test_cli_help():
     assert "uninstall" in result.output
     assert "mcp" in result.output
     assert "depgraph" in result.output
+

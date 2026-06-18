@@ -117,11 +117,14 @@ def _parse_allow_entries(raw_entries: object) -> list[AllowEntry]:
         if not isinstance(reason, str) or not reason.strip():
             continue
         scope = raw.get("scope")
+        normalized_scope = (
+            scope.strip() if isinstance(scope, str) and scope.strip() else "**"
+        )
         entries.append(
             AllowEntry(
                 pattern=pattern.strip(),
                 reason=reason.strip(),
-                scope=scope.strip() if isinstance(scope, str) and scope.strip() else "**",
+                scope=normalized_scope,
             )
         )
     return entries

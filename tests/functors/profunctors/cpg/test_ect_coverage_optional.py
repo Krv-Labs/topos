@@ -20,8 +20,11 @@ def test_ect_coverage_available_when_deps_present():
 
 
 def test_calculate_topological_coverage_raises_without_deps():
-    with patch(
-        "topos.functors.profunctors.cpg.topological_coverage.ect_coverage_available",
-        return_value=False,
-    ), pytest.raises(ECTCoverageUnavailableError, match="ect-coverage"):
+    with (
+        patch(
+            "topos.functors.profunctors.cpg.topological_coverage.ect_coverage_available",
+            return_value=False,
+        ),
+        pytest.raises(ECTCoverageUnavailableError, match="ect-coverage"),
+    ):
         calculate_topological_coverage(CodePropertyGraph(), CodePropertyGraph())

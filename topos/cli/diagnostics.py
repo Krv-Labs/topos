@@ -24,12 +24,18 @@ from topos.mcp.schemas import SecurityFinding
 _RULE = "-" * 40
 _KIND_LABEL = {"dangerous_call": "Dangerous Call", "taint_flow": "Taint Flow"}
 
+FindingsVerdict = tuple[
+    list[SecurityFinding],
+    list[tuple[SecurityFinding, object]],
+    AdjustedVerdict,
+]
+
 
 def collect_findings_and_verdict(
     path: str | Path,
     result: ClassificationResult,
     config: ToposConfig,
-) -> tuple[list[SecurityFinding], list[tuple[SecurityFinding, object]], AdjustedVerdict]:
+) -> FindingsVerdict:
     """Build security findings (lazily) and the raw/adjusted verdict for *path*."""
     dangerous = result.raw_metrics.get("cpg.dangerous_calls", 0.0)
     taint = result.raw_metrics.get("cpg.taint_flows", 0.0)
@@ -43,9 +49,7 @@ def collect_findings_and_verdict(
 
             findings = security_findings(cpg)
 
-    verdict = apply_allowlist(
-        result, findings, config, file_path=str(path), cpg=cpg
-    )
+    verdict = apply_allowlist(result, findings, config, file_path=str(path), cpg=cpg)
     return verdict.active_findings, verdict.acknowledged, verdict
 
 
@@ -80,9 +84,7 @@ def render_security_findings(
         if finding.callee:
             click.echo(f"{indent}    Callee: {finding.callee}")
         if finding.kind == "taint_flow" and finding.source:
-            click.echo(
-                f"{indent}    Source: {finding.source}  →  Sink: {finding.sink}"
-            )
+            click.echo(f"{indent}    Source: {finding.source}  →  Sink: {finding.sink}")
 
     if acknowledged:
         click.echo()

@@ -117,9 +117,7 @@ def _compute_topological_coverage(
             _merge_cpgs(put_cpgs),
             _merge_cpgs(test_cpgs),
         )
-        topo_decision = score_topological_coverage(
-            topo_report, threshold=threshold
-        )
+        topo_decision = score_topological_coverage(topo_report, threshold=threshold)
     except ECTCoverageUnavailableError as exc:
         return TopologicalCoverageResult(unavailable=True, reason=str(exc))
 

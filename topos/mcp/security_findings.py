@@ -30,9 +30,7 @@ def security_findings(
     findings = dangerous_call_findings(cpg, max_findings=max_findings, allow=allow)
     remaining = max(0, max_findings - len(findings))
     if remaining:
-        findings.extend(
-            taint_flow_findings(cpg, max_findings=remaining, allow=allow)
-        )
+        findings.extend(taint_flow_findings(cpg, max_findings=remaining, allow=allow))
     return findings
 
 

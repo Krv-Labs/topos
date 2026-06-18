@@ -119,9 +119,7 @@ def test_coverage_json_carries_targets_and_goal(tmp_path: Path):
     )
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["coverage", "--tests", str(test), str(put), "--json"]
-    )
+    result = runner.invoke(cli, ["coverage", "--tests", str(test), str(put), "--json"])
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert "coverage_goal" in data

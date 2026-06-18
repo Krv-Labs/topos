@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from topos.functors.probes.cpg.danger import (
-    DANGEROUS_APIS,
     _callee_from_text,
     _matches_registry,
     effective_registry,

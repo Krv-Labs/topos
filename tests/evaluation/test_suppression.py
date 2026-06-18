@@ -38,7 +38,9 @@ def test_allowlist_flips_secure_and_caps_grade() -> None:
 
 def test_no_allowlist_leaves_raw_intact() -> None:
     result, cpg, findings = _setup(_EVAL)
-    verdict = apply_allowlist(result, findings, ToposConfig(), file_path="f.py", cpg=cpg)
+    verdict = apply_allowlist(
+        result, findings, ToposConfig(), file_path="f.py", cpg=cpg
+    )
 
     assert verdict.raw_secure_pass is False
     assert verdict.adjusted_secure_pass is False

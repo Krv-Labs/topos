@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import json
+import re
 from pathlib import Path
 
 import click
@@ -30,8 +32,6 @@ def test_evaluate_file(tmp_path: Path):
     assert result.exit_code == 0
     assert str(f) in result.output
     assert "Files" in result.output
-
-    import re
 
     clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert f"{f}  [" in clean_output
@@ -186,10 +186,6 @@ def test_inspect_file(tmp_path: Path):
     assert "Classification" in result.output
     assert "Raw Metrics" in result.output
     assert "Entropy Analysis" in result.output
-
-
-import json
-import re
 
 
 def _strip_ansi(text: str) -> str:

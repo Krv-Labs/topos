@@ -34,7 +34,9 @@ _REMEDIATION: dict[str, str] = {
     "eval": "Replace `eval` with `ast.literal_eval` or explicit parsing.",
     "exec": "Remove `exec`; call the code path directly or dispatch via a map.",
     "compile": "Avoid dynamic `compile`; use a static, reviewed code path.",
-    "pickle.loads": "Use `json` or a schema-validated deserializer instead of `pickle`.",
+    "pickle.loads": (
+        "Use `json` or a schema-validated deserializer instead of `pickle`."
+    ),
     "marshal.loads": "Avoid `marshal`; deserialize with `json` or a safe format.",
     "yaml.load": "Use `yaml.safe_load` instead of `yaml.load`.",
     "os.system": "Replace `os.system` with `subprocess.run([...])` (no shell).",
@@ -53,7 +55,9 @@ _REMEDIATION: dict[str, str] = {
     "sprintf": "Use `snprintf` with an explicit buffer size.",
     "gets": "Replace `gets` with `fgets` and an explicit length.",
     "transmute": "Avoid `mem::transmute`; use a safe conversion or `bytemuck`.",
-    "unsafe": "Confine or remove the `unsafe` block; document the invariant it upholds.",
+    "unsafe": (
+        "Confine or remove the `unsafe` block; document the invariant it upholds."
+    ),
 }
 
 
@@ -61,12 +65,18 @@ def _remediation(finding: SecurityFinding) -> str:
     if finding.kind == "taint_flow":
         src = finding.source or "untrusted input"
         sink = finding.callee or finding.sink or "the dangerous call"
-        return f"Validate/sanitize `{src}` before it reaches `{sink}` (line {finding.line})."
+        return (
+            f"Validate/sanitize `{src}` before it reaches `{sink}` "
+            f"(line {finding.line})."
+        )
     callee = (finding.callee or "").lower()
     for key, advice in _REMEDIATION.items():
         if callee == key or callee.endswith("." + key) or callee.endswith(key):
             return advice
-    return f"Remove or sandbox the dangerous call `{finding.callee}` (line {finding.line})."
+    return (
+        f"Remove or sandbox the dangerous call `{finding.callee}` "
+        f"(line {finding.line})."
+    )
 
 
 def suggest_refactors(
@@ -187,8 +197,11 @@ def _composable_suggestions(metrics: dict[str, float]) -> list[Suggestion]:
                 "composable",
                 "mdg.fan_in",
                 "fix",
-                f"Split this module (fan-in {fan_in:.0f} > {COMPOSABLE.max_fan_in:.0f}); "
-                "too many modules depend on it.",
+                (
+                    f"Split this module (fan-in {fan_in:.0f} > "
+                    f"{COMPOSABLE.max_fan_in:.0f}); "
+                    "too many modules depend on it."
+                ),
             )
         )
     return out

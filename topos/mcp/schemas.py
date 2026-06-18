@@ -403,8 +403,7 @@ class CalculateCoverageInput(_StrictModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Minimum threshold for declaration and topological "
-            "coverage policies."
+            "Minimum threshold for declaration and topological coverage policies."
         ),
     )
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)

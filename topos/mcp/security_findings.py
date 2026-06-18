@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from topos.functors.probes.cpg.danger import (
-    DANGEROUS_APIS,
     _callee_from_text,
     _matches_registry,
+    effective_registry,
 )
 from topos.functors.probes.cpg.taint import TAINT_SOURCES
 from topos.graphs.cpg.models import CPGEdgeKind
@@ -18,14 +18,21 @@ def security_findings(
     cpg: CodePropertyGraph | None,
     *,
     max_findings: int = 20,
+    allow: set[str] | None = None,
 ) -> list[SecurityFinding]:
-    """Return concise dangerous-call and taint-flow diagnostics."""
+    """Return concise dangerous-call and taint-flow diagnostics.
+
+    When *allow* is given, allowlisted patterns are excluded from the
+    registry first.  ``allow=None`` preserves canonical behavior.
+    """
     if cpg is None:
         return []
-    findings = dangerous_call_findings(cpg, max_findings=max_findings)
+    findings = dangerous_call_findings(cpg, max_findings=max_findings, allow=allow)
     remaining = max(0, max_findings - len(findings))
     if remaining:
-        findings.extend(taint_flow_findings(cpg, max_findings=remaining))
+        findings.extend(
+            taint_flow_findings(cpg, max_findings=remaining, allow=allow)
+        )
     return findings
 
 
@@ -33,9 +40,10 @@ def dangerous_call_findings(
     cpg: CodePropertyGraph,
     *,
     max_findings: int = 20,
+    allow: set[str] | None = None,
 ) -> list[SecurityFinding]:
     """Find dangerous API call sites with source locations."""
-    registry = DANGEROUS_APIS.get(cpg.language, set())
+    registry = effective_registry(cpg.language, allow)
     if not registry:
         return []
 
@@ -66,10 +74,11 @@ def taint_flow_findings(
     cpg: CodePropertyGraph,
     *,
     max_findings: int = 20,
+    allow: set[str] | None = None,
 ) -> list[SecurityFinding]:
     """Find source-to-dangerous-sink DDG paths with source/sink snippets."""
     source_registry = TAINT_SOURCES.get(cpg.language, set())
-    sink_registry = DANGEROUS_APIS.get(cpg.language, set())
+    sink_registry = effective_registry(cpg.language, allow)
     if not source_registry or not sink_registry:
         return []
 

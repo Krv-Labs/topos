@@ -66,13 +66,32 @@ DANGEROUS_APIS: dict[str, set[str]] = {
 _CALL_PREFIX = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)\s*\(")
 
 
-def dangerous_api_reachable(cpg: CodePropertyGraph) -> int:
+def effective_registry(language: str, allow: set[str] | None) -> set[str]:
+    """Dangerous-API registry for *language* minus any allowlisted patterns.
+
+    A registry entry is dropped when it matches an allowlist pattern under
+    the same suffix-aware rules used for callee matching.  ``allow=None``
+    (or empty) returns the full registry unchanged — the canonical default.
+    """
+    registry = DANGEROUS_APIS.get(language, set())
+    if not allow:
+        return registry
+    return {api for api in registry if not _matches_registry(api, allow)}
+
+
+def dangerous_api_reachable(
+    cpg: CodePropertyGraph, allow: set[str] | None = None
+) -> int:
     """
     Count CallExpr nodes whose callee text matches the dangerous-API
     registry for ``cpg.language``.  Matches both bare names (``eval``)
     and dotted/qualified names (``pickle.loads``).
+
+    When *allow* is given, allowlisted patterns are excluded from the
+    registry first.  The default ``allow=None`` preserves the canonical
+    behavior used by :meth:`CodePropertyGraph.metrics`.
     """
-    registry = DANGEROUS_APIS.get(cpg.language, set())
+    registry = effective_registry(cpg.language, allow)
     if not registry:
         return 0
 

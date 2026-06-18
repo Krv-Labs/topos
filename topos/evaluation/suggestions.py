@@ -16,7 +16,6 @@ from dataclasses import dataclass
 
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.calibration import COMPOSABLE, SIMPLE
-from topos.mcp.formatting import build_guidance
 from topos.mcp.schemas import SecurityFinding
 
 
@@ -102,17 +101,6 @@ def suggest_refactors(
                 metric=finding.callee,
                 severity="fix",
                 message=_remediation(finding),
-            )
-        )
-
-    # Fallback: a generator failed but produced no specific suggestion.
-    if not suggestions and result.summary().name != "IDEAL":
-        suggestions.append(
-            Suggestion(
-                pillar=result.priority.value,
-                metric=None,
-                severity="fix",
-                message=build_guidance(result),
             )
         )
     return suggestions

@@ -1,57 +1,98 @@
 from __future__ import annotations
 
-from topos.core.morphism import ProgramMorphism
+from topos.core.omega import EvaluationValue
+from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies import Priority
 from topos.evaluation.suggestions import suggest_refactors
-from topos.mcp.evaluation import classify_code_string
-from topos.mcp.security_findings import security_findings
+from topos.mcp.schemas import SecurityFinding
 
 
-def _classify(code: str):
-    return classify_code_string(code, "python", Priority.SECURE)
+def _result(
+    *,
+    dimensions: dict[str, EvaluationValue],
+    raw_metrics: dict[str, float],
+    element: EvaluationValue,
+) -> ClassificationResult:
+    return ClassificationResult(
+        is_parseable=True,
+        dimensions=dimensions,
+        scores={d: 0.0 for d in dimensions},
+        lattice_element=element,
+        priority=Priority.SECURE,
+        raw_metrics=raw_metrics,
+        interpretation={},
+    )
 
 
-def test_eval_yields_secure_fix_naming_callee() -> None:
-    code = "def f(x):\n    return eval(x)\n"
-    result = _classify(code)
-    cpg = ProgramMorphism(source=code, language="python").build_cpg()
-    findings = security_findings(cpg)
+def test_eval_finding_yields_secure_fix_naming_callee() -> None:
+    result = _result(
+        dimensions={"secure": EvaluationValue.SLOP},
+        raw_metrics={"cpg.dangerous_calls": 1.0, "cpg.taint_flows": 0.0},
+        element=EvaluationValue.SLOP,
+    )
+    finding = SecurityFinding(
+        kind="dangerous_call", line=2, snippet="return eval(x)", callee="eval"
+    )
 
-    suggestions = suggest_refactors(result, active_findings=findings)
+    suggestions = suggest_refactors(result, active_findings=[finding])
 
     secure = [s for s in suggestions if s.pillar == "secure"]
-    assert secure, "expected a SECURE suggestion for eval()"
+    assert secure, "expected a SECURE suggestion for an eval finding"
     assert secure[0].severity == "fix"
     assert "eval" in secure[0].message
 
 
-def test_high_complexity_yields_simple_suggestion() -> None:
-    body = "\n".join(f"    if x == {i}:\n        x += {i}" for i in range(40))
-    code = f"def f(x):\n{body}\n    return x\n"
-    result = _classify(code)
+def test_high_cyclomatic_yields_simple_suggestion() -> None:
+    result = _result(
+        dimensions={"simple": EvaluationValue.SLOP},
+        raw_metrics={"cfg.cyclomatic": 25.0, "ast.entropy": 0.5},
+        element=EvaluationValue.SLOP,
+    )
 
     suggestions = suggest_refactors(result)
 
-    simple = [s for s in suggestions if s.pillar == "simple"]
-    assert simple, "expected a SIMPLE suggestion for a high-complexity function"
-    assert all(s.severity == "fix" for s in simple)
+    simple = [s for s in suggestions if s.metric == "cfg.cyclomatic"]
+    assert simple and simple[0].severity == "fix"
+    assert "cyclomatic" in simple[0].message.lower()
 
 
-def test_clean_simple_file_yields_no_simple_or_secure_fix() -> None:
-    code = "def add(a, b):\n    return a + b\n"
-    result = _classify(code)
+def test_high_fan_out_yields_composable_suggestion() -> None:
+    result = _result(
+        dimensions={"composable": EvaluationValue.SLOP},
+        raw_metrics={"mdg.fan_out": 30.0, "mdg.instability": 0.5},
+        element=EvaluationValue.SLOP,
+    )
 
-    suggestions = suggest_refactors(result, active_findings=[])
+    suggestions = suggest_refactors(result)
 
-    assert not [s for s in suggestions if s.pillar == "secure"]
-    # A trivial clean function should not trigger complexity/branching fixes.
-    assert not [s for s in suggestions if s.metric == "cfg.cyclomatic"]
+    assert [s for s in suggestions if s.metric == "mdg.fan_out"]
+
+
+def test_clean_file_yields_no_suggestions() -> None:
+    result = _result(
+        dimensions={
+            "simple": EvaluationValue.SIMPLE,
+            "secure": EvaluationValue.SECURE,
+        },
+        raw_metrics={
+            "cfg.cyclomatic": 2.0,
+            "ast.entropy": 0.5,
+            "cpg.dangerous_calls": 0.0,
+            "cpg.taint_flows": 0.0,
+        },
+        element=EvaluationValue.IDEAL,
+    )
+
+    assert suggest_refactors(result, active_findings=[]) == []
 
 
 def test_allowlisted_finding_produces_no_secure_suggestion() -> None:
-    # When the eval finding is acknowledged upstream, active_findings is empty.
-    code = "def f(x):\n    return eval(x)\n"
-    result = _classify(code)
+    # The CLI passes only NON-allowlisted findings as active_findings.
+    result = _result(
+        dimensions={"secure": EvaluationValue.SLOP},
+        raw_metrics={"cpg.dangerous_calls": 1.0, "cpg.taint_flows": 0.0},
+        element=EvaluationValue.SECURE,
+    )
 
     suggestions = suggest_refactors(result, active_findings=[])
 

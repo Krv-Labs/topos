@@ -33,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 ect-coverage = [
     "fastembed",
-    "trailed>=0.1.2",
+    "trailed>=0.1.3",
 ]
 
 [project.scripts]
@@ -70,7 +70,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.15.8",
     "fastembed",
-    "trailed>=0.1.2",
+    "trailed>=0.1.3",
 ]
 docs = [
     "sphinx>=7.4,<9",

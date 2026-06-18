@@ -19,6 +19,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -27,8 +28,6 @@ jobs:
             target: linux-arm64
           - os: macos-latest
             target: macos-arm64
-          - os: macos-15-intel
-            target: macos-amd64
 
     runs-on: ${{ matrix.os }}
 
@@ -159,8 +158,6 @@ jobs:
             artifact: topos-linux-amd64
           - vscode_target: linux-arm64
             artifact: topos-linux-arm64
-          - vscode_target: darwin-x64
-            artifact: topos-macos-amd64
           - vscode_target: darwin-arm64
             artifact: topos-macos-arm64
     steps:
@@ -266,7 +263,6 @@ jobs:
           fi
 
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-arm64.vsix
-          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-x64.vsix
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-arm64.vsix
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-x64.vsix
 

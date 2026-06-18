@@ -62,7 +62,7 @@ export function buildCliInvocation(resolvedBinaryPath: string, cliArgs: string[]
  */
 export function getPlatformKey(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string | undefined {
     if (platform === 'darwin') {
-        return arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+        return arch === 'arm64' ? 'darwin-arm64' : undefined;
     } else if (platform === 'linux') {
         return arch === 'arm64' ? 'linux-arm64' : 'linux-x64';
     }

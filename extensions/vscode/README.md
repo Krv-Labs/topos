@@ -81,9 +81,10 @@ Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine an
 **Supported platforms** (the runtime is bundled on each):
 
 - macOS Apple Silicon (`darwin-arm64`)
-- macOS Intel (`darwin-x64`)
 - Linux x64 (`linux-x64`)
 - Linux arm64 (`linux-arm64`)
+
+macOS Intel is not supported for bundled binaries (ECT deps lack x86_64 wheels). Use `topos.autoDiscover` with a local `pip install 'topos[ect-coverage]'`, or set `topos.executablePath`.
 
 Native Windows isn't supported yet — use WSL and install the Linux extension-host package through VS Code Remote - WSL.
 

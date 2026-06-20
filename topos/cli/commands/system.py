@@ -140,9 +140,9 @@ def depgraph_generate(directory: str | None) -> None:
         "Using GitNexus (https://github.com/abhigyanpatwari/GitNexus) "
         "to generate dependency graph...\n"
     )
-    click.echo("  $ gitnexus analyze\n")
+    click.echo("  $ gitnexus analyze --index-only\n")
 
-    proc = subprocess.run(["gitnexus", "analyze"], cwd=target_dir)
+    proc = subprocess.run(["gitnexus", "analyze", "--index-only"], cwd=target_dir)
     if proc.returncode != 0:
         sys.exit(proc.returncode)
 

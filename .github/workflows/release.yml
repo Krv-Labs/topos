@@ -37,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -147,7 +147,7 @@ jobs:
             --wait
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: topos-${{ matrix.target }}
           path: dist/topos-${{ matrix.target }}
@@ -166,11 +166,11 @@ jobs:
           - vscode_target: darwin-arm64
             artifact: topos-macos-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: extensions/vscode/package-lock.json
 
@@ -179,7 +179,7 @@ jobs:
         run: npm ci
 
       - name: Download runtime artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact }}
           path: dist
@@ -193,7 +193,7 @@ jobs:
         run: node scripts/check-vsix-size.js topos-vscode-${{ matrix.vscode_target }}.vsix
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: topos-vscode-${{ matrix.vscode_target }}
           path: extensions/vscode/topos-vscode-${{ matrix.vscode_target }}.vsix
@@ -205,10 +205,10 @@ jobs:
       - package-vscode
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -247,12 +247,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: vscode-marketplace
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Download VSIX artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: topos-vscode-*
@@ -274,7 +274,7 @@ jobs:
   build-pypi-sdist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build Source Distribution
         uses: PyO3/maturin-action@v1
@@ -283,7 +283,7 @@ jobs:
           args: --out dist
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-sdist
           path: dist
@@ -307,7 +307,7 @@ jobs:
             manylinux: off
             args: --release --out dist -i python3.12 --compatibility pypi
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up QEMU
         if: matrix.target == 'aarch64'
@@ -315,7 +315,7 @@ jobs:
 
       - name: Set up Python
         if: runner.os == 'macOS'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -330,7 +330,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
           path: dist
@@ -345,7 +345,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all wheels
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: wheels-*

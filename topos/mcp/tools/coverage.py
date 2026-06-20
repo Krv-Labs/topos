@@ -4,6 +4,8 @@ Coverage tools — structural test coverage (UAST) and topological ECT coverage.
 
 from __future__ import annotations
 
+from fastmcp.tools.base import ToolResult
+
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.policies.coverage import (
     score_topological_coverage,
@@ -19,10 +21,10 @@ from topos.functors.profunctors.uast.structural_test_coverage import (
 )
 from topos.graphs.cpg.object import CodePropertyGraph
 
+from ..formatting import to_tool_result
 from ..schemas import (
     CalculateCoverageInput,
     CoverageResult,
-    ResponseFormat,
     TopologicalCoverageResult,
 )
 from ..security import resolve_within_root
@@ -140,7 +142,7 @@ def _compute_topological_coverage(
     tags={"coverage", "uast"},
     annotations=_READ_ONLY_ANN,
 )
-def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
+def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
     """Calculate structural test coverage (v2) for a set of PUT and test files.
 
     Uses UAST kind histograms, statement/expression recall, and k-gram path
@@ -148,54 +150,59 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
     is installed, also returns topological ECT semantic coverage from CPG
     node embeddings.
     """
-    warnings = _response_format_warnings(params.response_format)
+    warnings: list[str] = []
     put_roots = []
     for path in params.put_files:
         resolved, err = resolve_within_root(path)
         if err or resolved is None:
-            return _empty_coverage_result(
+            model = _empty_coverage_result(
                 warnings,
                 (
                     f"PUT file error: {(err or {}).get('error', 'path error')} "
                     f"for {path}"
                 ),
             )
+            return to_tool_result(model, render_coverage_md(model))
         try:
             morphism = ProgramMorphism.from_file(resolved, language=params.language)
             if morphism.ast and morphism.ast.uast_root:
                 put_roots.append(morphism.ast.uast_root)
         except Exception as exc:
-            return _empty_coverage_result(
+            model = _empty_coverage_result(
                 warnings,
                 f"Failed to parse PUT file {path}: {exc}",
             )
+            return to_tool_result(model, render_coverage_md(model))
 
     test_roots = []
     for path in params.test_files:
         resolved, err = resolve_within_root(path)
         if err or resolved is None:
-            return _empty_coverage_result(
+            model = _empty_coverage_result(
                 warnings,
                 (
                     f"Test file error: {(err or {}).get('error', 'path error')} "
                     f"for {path}"
                 ),
             )
+            return to_tool_result(model, render_coverage_md(model))
         try:
             morphism = ProgramMorphism.from_file(resolved, language=params.language)
             if morphism.ast and morphism.ast.uast_root:
                 test_roots.append(morphism.ast.uast_root)
         except Exception as exc:
-            return _empty_coverage_result(
+            model = _empty_coverage_result(
                 warnings,
                 f"Failed to parse test file {path}: {exc}",
             )
+            return to_tool_result(model, render_coverage_md(model))
 
     if not put_roots:
-        return _empty_coverage_result(
+        model = _empty_coverage_result(
             warnings,
             "No valid PUT roots found (parsing failed or files empty).",
         )
+        return to_tool_result(model, render_coverage_md(model))
 
     try:
         report = declaration_coverage(
@@ -215,7 +222,7 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
                 *warnings,
                 topological.reason or "Topological coverage unavailable.",
             ]
-        return CoverageResult(
+        model = CoverageResult(
             mean_declaration_coverage=report.mean_declaration_coverage,
             best_declaration_recall=list(report.best_declaration_recall),
             declaration_locations=list(report.declaration_locations),
@@ -230,11 +237,13 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> CoverageResult:
             topological_coverage=topological,
             warnings=warnings,
         )
+        return to_tool_result(model, render_coverage_md(model))
     except Exception as exc:
-        return _empty_coverage_result(
+        model = _empty_coverage_result(
             warnings,
             f"Coverage calculation failed: {exc}",
         )
+        return to_tool_result(model, render_coverage_md(model))
 
 
 def render_coverage_md(r: CoverageResult) -> str:
@@ -306,12 +315,3 @@ def render_coverage_md(r: CoverageResult) -> str:
                 )
 
     return "\n".join(lines)
-
-
-def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
-    if response_format == ResponseFormat.MARKDOWN:
-        return []
-    return [
-        "response_format is deprecated/no-op for MCP structured output; tools return "
-        "structured content regardless of this value."
-    ]

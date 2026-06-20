@@ -9,6 +9,7 @@ import pytest
 from topos.evaluation.preferences import Generator
 from topos.mcp.schemas import (
     AssessImprovementInput,
+    AssessmentResult,
     AssessmentStatus,
     UserPreferencesInput,
 )
@@ -17,6 +18,16 @@ from topos.mcp.tools.assess import topos_assess_improvement
 _PREFS = UserPreferencesInput(
     ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
 )
+
+
+def _assess(tool_result) -> AssessmentResult:
+    """Rebuild the AssessmentResult model from a tool's ToolResult channel."""
+    return AssessmentResult.model_validate(tool_result.structured_content)
+
+
+def _content_text(tool_result) -> str:
+    """The markdown text the LLM sees (first content block)."""
+    return tool_result.content[0].text
 
 
 def test_assess_requires_current_or_filepath() -> None:
@@ -36,9 +47,13 @@ def test_assess_accepts_proposed_filepath(
     current.write_text("def f(x):\n    return x + 1\n", encoding="utf-8")
     proposed.write_text("def f(x):\n    return x + 2\n", encoding="utf-8")
 
-    r = topos_assess_improvement(
-        AssessImprovementInput(
-            filepath="current.py", proposed_filepath="proposed.py", preferences=_PREFS
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                filepath="current.py",
+                proposed_filepath="proposed.py",
+                preferences=_PREFS,
+            )
         )
     )
 
@@ -48,13 +63,19 @@ def test_assess_accepts_proposed_filepath(
 
 def test_assess_reports_security_findings() -> None:
     current = "def f(expr):\n    return eval(expr)\n"
-    r = topos_assess_improvement(
+    tr = topos_assess_improvement(
         AssessImprovementInput(
             current_code=current,
             proposed_code=current,
             preferences=_PREFS,
         )
     )
+    # Content block is compact markdown, NOT serialized JSON; structured
+    # channel carries the key field.
+    text = _content_text(tr)
+    assert not text.lstrip().startswith("{")
+    assert "status" in tr.structured_content
+    r = _assess(tr)
 
     assert r.current.security_findings
     finding = r.current.security_findings[0]
@@ -83,9 +104,11 @@ def test_assess_emits_distance_and_deltas_on_real_change() -> None:
         "            return label\n"
         "    return 'zero'\n"
     )
-    r = topos_assess_improvement(
-        AssessImprovementInput(
-            current_code=current, proposed_code=proposed, preferences=_PREFS
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                current_code=current, proposed_code=proposed, preferences=_PREFS
+            )
         )
     )
     # Mechanics: distance is computed, deltas reported, status classified.
@@ -128,9 +151,11 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
             side_effect=fake_classify,
         ),
     ):
-        r = topos_assess_improvement(
-            AssessImprovementInput(
-                current_code=code, proposed_code=code, preferences=_PREFS
+        r = _assess(
+            topos_assess_improvement(
+                AssessImprovementInput(
+                    current_code=code, proposed_code=code, preferences=_PREFS
+                )
             )
         )
     assert r.structural_distance is not None
@@ -140,15 +165,93 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
     assert "barely changed" in r.suspicion_reason
 
 
+_SIMPLE_FN = "def handle(x):\n    return x + 1\n"
+_BRANCHY_FN = (
+    "def handle(x):\n"
+    "    if x > 0:\n"
+    "        if x > 10:\n"
+    "            return 'big'\n"
+    "        return 'pos'\n"
+    "    elif x < 0:\n"
+    "        return 'neg'\n"
+    "    return 'zero'\n"
+)
+
+
+def _force_regression_score():
+    """Patch the classifier so the *proposed* eval scores worse.
+
+    Decouples the regression-status trigger from the lattice scoring model's
+    quirks (added branching can score as an improvement under SIMPLE), so the
+    test exercises the additive regression-diff path on a true regression.
+    """
+    import topos.mcp.evaluation as ev_mod
+    from topos.core.omega import EvaluationValue
+
+    original = ev_mod.classify_morphism
+
+    # In current_code mode the baseline uses classify_code_string, so only the
+    # *proposed* code flows through classify_morphism — force its lattice down.
+    def fake_classify(morph, priority, dep_graph=None):
+        result = original(morph, priority, dep_graph)
+        result.lattice_element = EvaluationValue.SLOP
+        result.scores["simple"] = result.scores.get("simple", 0.5) - 0.2
+        return result
+
+    return fake_classify
+
+
+def test_assess_regression_emits_function_scoped_diff() -> None:
+    """A regression yields a pinpoint diff of the worst function + its delta."""
+    fake = _force_regression_score()
+    with patch("topos.mcp.tools.assess.classify_morphism", side_effect=fake):
+        tr = topos_assess_improvement(
+            AssessImprovementInput(
+                current_code=_SIMPLE_FN, proposed_code=_BRANCHY_FN, preferences=_PREFS
+            )
+        )
+    r = _assess(tr)
+    assert r.status in {
+        AssessmentStatus.REGRESSION,
+        AssessmentStatus.REGRESSION_SCORE,
+        AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE,
+    }
+    assert r.regression_diff is not None
+    # Names the regressing function and the complexity movement.
+    assert "handle" in r.regression_diff
+    assert "cyclomatic complexity" in r.regression_diff
+    assert "+" in r.regression_diff  # added lines / positive delta
+    # Markdown carries a fenced diff block.
+    text = _content_text(tr)
+    assert "## Regression diff" in text
+    assert "```diff" in text
+
+
+def test_assess_improvement_has_no_regression_diff() -> None:
+    """A non-regression verdict leaves regression_diff None."""
+    tr = topos_assess_improvement(
+        AssessImprovementInput(
+            current_code=_SIMPLE_FN, proposed_code=_BRANCHY_FN, preferences=_PREFS
+        )
+    )
+    r = _assess(tr)
+    # Unpatched, added branching scores as an improvement here.
+    assert r.status == AssessmentStatus.IMPROVEMENT
+    assert r.regression_diff is None
+    assert "## Regression diff" not in _content_text(tr)
+
+
 def test_assess_filepath_path_validation() -> None:
     import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
         f.write(b"def x(): pass")
         bad = f.name
-    r = topos_assess_improvement(
-        AssessImprovementInput(
-            filepath=bad, proposed_code="def x(): return 1", preferences=_PREFS
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                filepath=bad, proposed_code="def x(): return 1", preferences=_PREFS
+            )
         )
     )
     assert r.error is not None  # outside repo root

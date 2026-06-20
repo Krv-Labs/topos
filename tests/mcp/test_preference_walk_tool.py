@@ -6,6 +6,7 @@ from topos.evaluation.preferences import Generator
 from topos.mcp.schemas import (
     LatticeElement,
     PreferenceWalkInput,
+    PreferenceWalkResult,
 )
 from topos.mcp.tools.preferences import (
     render_preference_walk_md,
@@ -13,10 +14,17 @@ from topos.mcp.tools.preferences import (
 )
 
 
+def _walk(tool_result) -> PreferenceWalkResult:
+    """Rebuild the PreferenceWalkResult model from a tool's ToolResult channel."""
+    return PreferenceWalkResult.model_validate(tool_result.structured_content)
+
+
 def test_default_walk_starts_at_ideal_with_fallback_below():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+            )
         )
     )
     assert result.aspirational_target == LatticeElement.IDEAL
@@ -29,10 +37,12 @@ def test_default_walk_starts_at_ideal_with_fallback_below():
 
 
 def test_walk_truncates_above_current():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.COMPOSABLE, Generator.SECURE, Generator.SIMPLE],
-            current=LatticeElement.SECURE,
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.COMPOSABLE, Generator.SECURE, Generator.SIMPLE],
+                current=LatticeElement.SECURE,
+            )
         )
     )
     # With this ranking SECURE has score 2; everything in the walk must
@@ -45,10 +55,12 @@ def test_walk_truncates_above_current():
 
 
 def test_walk_empty_at_ideal():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE],
-            current=LatticeElement.IDEAL,
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE],
+                current=LatticeElement.IDEAL,
+            )
         )
     )
     assert result.next_step is None
@@ -57,9 +69,11 @@ def test_walk_empty_at_ideal():
 
 
 def test_steps_annotated_with_satisfied_generators():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+            )
         )
     )
     # Find the SIMPLE_SECURE step — should report exactly those two generators.
@@ -68,9 +82,11 @@ def test_steps_annotated_with_satisfied_generators():
 
 
 def test_induced_order_is_complete_and_descending():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+            )
         )
     )
     # All 8 elements appear.
@@ -83,10 +99,12 @@ def test_induced_order_is_complete_and_descending():
 
 
 def test_explicit_target_overrides_ideal():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE],
-            target=LatticeElement.SIMPLE_COMPOSABLE,
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE],
+                target=LatticeElement.SIMPLE_COMPOSABLE,
+            )
         )
     )
     assert result.aspirational_target == LatticeElement.SIMPLE_COMPOSABLE
@@ -97,10 +115,12 @@ def test_explicit_target_overrides_ideal():
 
 
 def test_markdown_render_includes_all_sections():
-    result = topos_preference_walk(
-        PreferenceWalkInput(
-            ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE],
-            current=LatticeElement.SIMPLE,
+    result = _walk(
+        topos_preference_walk(
+            PreferenceWalkInput(
+                ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE],
+                current=LatticeElement.SIMPLE,
+            )
         )
     )
     md = render_preference_walk_md(result)
@@ -110,3 +130,18 @@ def test_markdown_render_includes_all_sections():
     assert "Fallback target" in md
     assert "Walk" in md
     assert "Full induced order" in md
+
+
+def test_preference_walk_markdown_content_and_structured():
+    tr = topos_preference_walk(
+        PreferenceWalkInput(
+            ranking=[Generator.SIMPLE, Generator.COMPOSABLE, Generator.SECURE]
+        )
+    )
+    text = tr.content[0].text
+    # Content block is compact markdown, NOT serialized JSON.
+    assert not text.lstrip().startswith("{")
+    assert text.lstrip().startswith("# Preference Walk")
+    # Structured channel still carries the model for programmatic clients.
+    assert tr.structured_content is not None
+    assert "aspirational_target" in tr.structured_content

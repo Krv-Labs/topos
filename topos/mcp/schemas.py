@@ -15,13 +15,6 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import Generator, UserPreferences
 
 
-class ResponseFormat(StrEnum):
-    """Output format for tools that support human/machine presentation."""
-
-    MARKDOWN = "markdown"
-    JSON = "json"
-
-
 class LatticeElement(StrEnum):
     """String-valued mirror of ``EvaluationValue`` for MCP wire format.
 
@@ -150,13 +143,6 @@ class EvaluateCodeInput(_StrictModel):
             "'python', 'rust', 'javascript', 'typescript', 'cpp'."
         ),
     )
-    response_format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
-        description=(
-            "'markdown' for human/agent-readable, 'json' for structured "
-            "programmatic use."
-        ),
-    )
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
@@ -164,6 +150,10 @@ class EvaluateCodeInput(_StrictModel):
             "a targeted relaxation walk toward the 'ideal intersection' "
             "(meet of the top-two ranked generators)."
         ),
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
     )
 
 
@@ -184,7 +174,6 @@ class EvaluateFileInput(_StrictModel):
             "Defaults to <project_root>/.gitnexus if it exists."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
@@ -198,6 +187,10 @@ class EvaluateFileInput(_StrictModel):
             "Include line/snippet diagnostics for dangerous API calls when "
             "SECURE fails."
         ),
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
     )
 
 
@@ -244,7 +237,6 @@ class EvaluateProjectInput(_StrictModel):
             "Defaults off for project scans to keep responses compact."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class CompareCodeInput(_StrictModel):
@@ -253,7 +245,6 @@ class CompareCodeInput(_StrictModel):
     source_code: str = Field(..., min_length=1, description="Baseline code.")
     target_code: str = Field(..., min_length=1, description="Proposed/target code.")
     language: str = Field(default="python")
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class CompareFilesInput(_StrictModel):
@@ -261,7 +252,6 @@ class CompareFilesInput(_StrictModel):
 
     source: str = Field(..., min_length=1, description="Baseline file path.")
     target: str = Field(..., min_length=1, description="Proposed file path.")
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class AssessImprovementInput(_StrictModel):
@@ -314,7 +304,6 @@ class AssessImprovementInput(_StrictModel):
             "SECURE fails."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
     @model_validator(mode="after")
     def validate_inputs(self) -> AssessImprovementInput:
@@ -362,7 +351,10 @@ class InspectCodeInput(_StrictModel):
             "cyclomatic complexity. Keeps agent context lean on large files."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
+    )
 
     @model_validator(mode="after")
     def validate_source(self) -> InspectCodeInput:
@@ -406,7 +398,6 @@ class CalculateCoverageInput(_StrictModel):
             "Minimum threshold for declaration and topological coverage policies."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class PreferenceWalkInput(_StrictModel):
@@ -444,7 +435,6 @@ class PreferenceWalkInput(_StrictModel):
             "the target lower."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 # ---------------------------------------------------------------------------
@@ -591,18 +581,19 @@ class PreferenceWalk(BaseModel):
 
 
 class PillarResult(BaseModel):
-    """Detailed result for one quality pillar (generator)."""
+    """Lean per-generator summary (achieved + score).
+
+    The full per-metric detail and interpretation strings live once in the
+    parent's flat ``raw_metrics`` / ``interpretation`` maps (namespaced by
+    representation prefix: ``cfg.``/``ast.`` -> simple, ``mdg.`` -> composable,
+    ``cpg.`` -> secure, ``pdg.`` -> unprefixed structural). They are NOT
+    duplicated here.
+    """
 
     achieved: bool = Field(
         ..., description="Whether the generator's threshold was met."
     )
     score: float = Field(..., description="Normalized quality score in [0, 100].")
-    metrics: dict[str, float] = Field(
-        default_factory=dict, description="Raw metrics feeding this pillar."
-    )
-    interpretation: dict[str, str] = Field(
-        default_factory=dict, description="Per-metric interpretation strings."
-    )
 
 
 class SecurityFinding(BaseModel):
@@ -622,6 +613,24 @@ class FunctionEntry(BaseModel):
     name: str
     line: int = Field(..., ge=1)
     complexity: int
+
+
+class Suggestion(BaseModel):
+    """One actionable, refactor-focused next step.
+
+    Wire mirror of ``topos.evaluation.suggestions.Suggestion`` — the pure
+    engine emits the frozen dataclass; this is its Pydantic shape so the same
+    suggestions reach MCP agents that the CLI already shows.
+    """
+
+    pillar: str = Field(..., description="simple | composable | secure | coverage.")
+    metric: str | None = Field(
+        default=None, description="Raw-metric key, or null for finding-derived."
+    )
+    severity: str = Field(
+        ..., description="'fix' (gate failed) | 'improve' (advisory)."
+    )
+    message: str = Field(..., description="Imperative instruction to act on.")
 
 
 class EvaluationResult(BaseModel):
@@ -659,6 +668,13 @@ class EvaluationResult(BaseModel):
     interpretation: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     security_findings: list[SecurityFinding] = Field(default_factory=list)
+    suggestions: list[Suggestion] = Field(
+        default_factory=list,
+        description=(
+            "Actionable, refactor-focused next steps derived from the failing "
+            "policy gates and active security findings."
+        ),
+    )
     preference_walk: PreferenceWalk | None = Field(
         default=None,
         description=(
@@ -689,17 +705,11 @@ class ProjectEvaluationResult(BaseModel):
     parse_failures: int
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
-    overall: LatticeElement
     aggregate_floor_verdict: LatticeElement
     aggregate_explanation: str
     worst_file_verdict: LatticeElement | None = None
     worst_files: list[ProjectFileEntry] = Field(default_factory=list)
     guidance: str = ""
-    overall_note: str = (
-        "`overall` is a deprecated alias for aggregate_floor_verdict; use "
-        "aggregate_floor_verdict plus worst_file_verdict/worst_files for agent "
-        "planning."
-    )
     priority: Priority
     priority_source: PrioritySource = PrioritySource.DEFAULT
     coupling_available: bool
@@ -751,6 +761,10 @@ class AssessmentResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     # Anti-gaming: populated when scores moved but the tree barely changed.
     suspicion_reason: str | None = None
+    # On a regression: a function-scoped unified diff of the single worst
+    # function (largest adverse complexity increase), so the LLM can pinpoint
+    # what got worse instead of diffing two full metric trees.
+    regression_diff: str | None = None
     error: str | None = None
 
 

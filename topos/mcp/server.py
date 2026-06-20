@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from topos import __version__
 
-
 _mcp_instance = None
 
 

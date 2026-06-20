@@ -23,7 +23,25 @@ from topos.graphs.mdg.object import ModuleDependencyGraph
 
 
 def _gitnexus_mtime(gitnexus_dir: Path) -> float:
-    """mtime of the gitnexus directory or its lbug file, for cache keying."""
+    """Cheap mtime signal for the gitnexus snapshot, used as a cache key.
+
+    Invalidation key component for ``dep_graph_for``: when GitNexus re-runs it
+    rewrites the ``lbug`` store, bumping this mtime and busting the cache.
+
+    Resolution by snapshot format (see ``ModuleDependencyGraph.from_gitnexus_dir``):
+    - Binary LadybugDB (``lbug`` is a file, GitNexus >= 1.5): the file's mtime is
+      exact — it changes whenever the store is rewritten.
+    - Legacy JSON (``lbug`` is a directory): we use the directory's mtime. This is
+      an APPROXIMATION — a directory's mtime changes when entries are added or
+      removed but NOT when an existing ``*.json`` file is edited in place, so an
+      in-place edit could produce a stale cache hit. Correctness-over-cleverness:
+      a missed invalidation here is the one failure mode we must avoid, but the
+      legacy JSON path is only produced by old GitNexus versions and snapshots are
+      regenerated wholesale (dir mtime bumps) in practice. Full implementation if
+      this ever bites: hash every ``lbug/*.json`` file (mirror ``_file_sha256``)
+      and fold the digest into the key instead of the dir mtime.
+    - No ``lbug`` yet: fall back to the gitnexus dir's own mtime.
+    """
     lbug = gitnexus_dir / "lbug"
     try:
         if lbug.exists():

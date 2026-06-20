@@ -10,9 +10,16 @@ edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 
 from __future__ import annotations
 
+import difflib
+
+from fastmcp.tools.base import ToolResult
+
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.functors.probes.cfg.complexity import cyclomatic_complexity
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
+from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
+from topos.graphs.cfg.object import ControlFlowGraph
 
 from ..evaluation import (
     classify_code_string,
@@ -21,14 +28,13 @@ from ..evaluation import (
     load_dep_graph,
     resolve_gitnexus_dir,
 )
-from ..formatting import to_evaluation_result
+from ..formatting import to_evaluation_result, to_tool_result
 from ..schemas import (
     AssessImprovementInput,
     AssessmentResult,
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
-    ResponseFormat,
     resolve_priority,
 )
 from ..security import (
@@ -51,13 +57,16 @@ _READ_ONLY_ANN = {
 _STRUCTURAL_CHANGE_THRESHOLD = 0.02  # normalized distance
 _MEANINGFUL_SCORE_DELTA = 3.0  # percentage points
 
+# Cap the function-scoped regression diff so it stays a pinpoint, not a dump.
+_REGRESSION_DIFF_MAX_LINES = 40
+
 
 @mcp.tool(
     name="topos_assess_improvement",
     tags={"assess", "workflow"},
     annotations=_READ_ONLY_ANN,
 )
-def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult:
+def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
     """Compare proposed code against the current baseline.
 
     **Preferred usage** — pass ``filepath`` (code loaded from disk + coupling
@@ -74,7 +83,6 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
     ``suspicion_reason`` is populated.
     """
     priority, priority_source = resolve_priority(params.preferences)
-    response_warnings = _response_format_warnings(params.response_format)
 
     # ---- load baseline ----
     if params.filepath:
@@ -99,6 +107,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
             dep_graph_loaded=dep_graph is not None,
         )
     elif params.current_code:
+        current_src = params.current_code
         current_res = classify_code_string(
             params.current_code, params.language, priority
         )
@@ -113,7 +122,6 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         ]
     else:
         return _err_assessment(params, "Provide either `filepath` or `current_code`.")
-    warnings.extend(response_warnings)
 
     proposed_src, proposed_err = _load_proposed_source(params)
     if proposed_err or proposed_src is None:
@@ -133,12 +141,13 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
             current_findings = security_findings(current_morph.build_cpg())
         if _secure_failed(proposed_res):
             proposed_findings = security_findings(proposed_morph.build_cpg())
+    # Warnings live on the top-level AssessmentResult only; the nested
+    # current/proposed evals would otherwise duplicate the identical list.
     current_eval = to_evaluation_result(
         current_res,
         coupling_available=dep_graph is not None,
         preferences=prefs,
         priority_source=priority_source,
-        warnings=warnings,
         security_findings=current_findings,
     )
     proposed_eval = to_evaluation_result(
@@ -146,7 +155,6 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         coupling_available=coupling_for_proposed,
         preferences=prefs,
         priority_source=priority_source,
-        warnings=warnings,
         security_findings=proposed_findings,
     )
 
@@ -219,7 +227,14 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
             "structural change."
         )
 
-    return AssessmentResult(
+    # ---- regression pinpoint ----
+    # On a regression/suspicious verdict, give the agent a function-scoped diff
+    # of the single worst function instead of forcing a full metric-tree diff.
+    regression_diff = None
+    if status in _REGRESSION_STATUSES:
+        regression_diff = _regression_diff(current_src, proposed_src, params.language)
+
+    model = AssessmentResult(
         status=status,
         priority=priority,
         priority_source=priority_source,
@@ -232,10 +247,12 @@ def topos_assess_improvement(params: AssessImprovementInput) -> AssessmentResult
         coupling_available_for_proposed=coupling_for_proposed,
         warnings=warnings,
         suspicion_reason=suspicion,
+        regression_diff=regression_diff,
     )
+    return to_tool_result(model, render_assessment_md(model))
 
 
-def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResult:
+def _err_assessment(params: AssessImprovementInput, msg: str) -> ToolResult:
     priority, priority_source = resolve_priority(params.preferences)
     empty = EvaluationResult(
         is_parseable=False,
@@ -248,9 +265,8 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResul
         priority_source=priority_source,
         guidance="",
         coupling_available=False,
-        warnings=_response_format_warnings(params.response_format),
     )
-    return AssessmentResult(
+    model = AssessmentResult(
         status=AssessmentStatus.LATERAL_MOVE,
         priority=priority,
         priority_source=priority_source,
@@ -260,9 +276,9 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> AssessmentResul
         structural_distance=None,
         similarity=None,
         coupling_available_for_proposed=False,
-        warnings=_response_format_warnings(params.response_format),
         error=msg,
     )
+    return to_tool_result(model, render_assessment_md(model))
 
 
 def _load_proposed_source(
@@ -285,10 +301,164 @@ def _secure_failed(result) -> bool:
     )
 
 
-def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
-    if response_format == ResponseFormat.MARKDOWN:
-        return []
-    return [
-        "response_format is deprecated/no-op for MCP structured output; tools return "
-        "structured content regardless of this value."
-    ]
+# ---------------------------------------------------------------------------
+# Regression pinpoint — function-scoped unified diff
+# ---------------------------------------------------------------------------
+
+# Statuses that warrant a targeted regression diff.
+_REGRESSION_STATUSES = frozenset(
+    {
+        AssessmentStatus.REGRESSION,
+        AssessmentStatus.REGRESSION_SCORE,
+        AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE,
+    }
+)
+
+
+def _function_complexities(
+    source: str, language: str
+) -> dict[str, tuple[int, list[str]]]:
+    """Map function name -> (cyclomatic_complexity, source_lines).
+
+    Mirrors the callable-collection pattern in ``inspect.py``. Source lines are
+    sliced by the UAST byte span so they round-trip exactly into difflib.
+    """
+    out: dict[str, tuple[int, list[str]]] = {}
+    morph = ProgramMorphism(source=source, language=language)
+    if not (morph.ast and morph.ast.uast_root):
+        return out
+    try:
+        callables = _collect_callables(morph.ast.uast_root)
+    except Exception:
+        return out
+    for c in callables:
+        name = c.attributes.get("name")
+        if not name:
+            for child in c.children:
+                if child.kind == "Identifier":
+                    s = child.span
+                    name = morph.source[s.start_byte : s.end_byte]
+                    break
+        if not name:
+            name = c.attributes.get("scope") or "anonymous"
+        if name in out:
+            # Overloads / duplicate names: skip rather than guess which moved.
+            continue
+        try:
+            blocks, edges, entry_id, exit_id = build_cfg_from_uast(c)
+            cfg = ControlFlowGraph(
+                blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id
+            )
+            complexity = cyclomatic_complexity(cfg)
+        except Exception:
+            continue
+        span = c.span
+        body = morph.source[span.start_byte : span.end_byte]
+        # No keepends: difflib + lineterm="" then a "\n".join keeps lines clean.
+        out[name] = (complexity, body.splitlines())
+    return out
+
+
+def _regression_diff(current_src: str, proposed_src: str, language: str) -> str | None:
+    """Unified diff of the single function with the worst complexity increase.
+
+    Returns ``None`` (rather than a whole-file diff) when no function got more
+    complex, or when function matching is ambiguous — keeps the output lean and
+    actionable. stdlib ``difflib`` only.
+    """
+    cur = _function_complexities(current_src, language)
+    prop = _function_complexities(proposed_src, language)
+    if not cur or not prop:
+        return None
+
+    # Match by name; find the largest ADVERSE complexity increase.
+    worst_name: str | None = None
+    worst_delta = 0
+    for name, (prop_cx, _) in prop.items():
+        if name not in cur:
+            # Rename/add — don't dump a whole-function diff. Fallback: None.
+            continue
+        delta = prop_cx - cur[name][0]
+        if delta > worst_delta:
+            worst_delta = delta
+            worst_name = name
+    if worst_name is None:
+        return None
+
+    cur_cx, cur_lines = cur[worst_name]
+    prop_cx, prop_lines = prop[worst_name]
+    diff_lines = list(
+        difflib.unified_diff(
+            cur_lines,
+            prop_lines,
+            fromfile=f"{worst_name} (current)",
+            tofile=f"{worst_name} (proposed)",
+            lineterm="",
+        )
+    )
+    if not diff_lines:
+        return None
+
+    header = (
+        f"# regression in `{worst_name}`: cyclomatic complexity "
+        f"{cur_cx} -> {prop_cx} ({prop_cx - cur_cx:+d})"
+    )
+    body = diff_lines
+    if len(body) > _REGRESSION_DIFF_MAX_LINES:
+        hidden = len(body) - _REGRESSION_DIFF_MAX_LINES
+        body = body[:_REGRESSION_DIFF_MAX_LINES]
+        body.append(f"# ... (truncated, {hidden} more lines)")
+    return "\n".join([header, *body])
+
+
+# ---------------------------------------------------------------------------
+# Markdown renderer (rendered into ToolResult.content)
+# ---------------------------------------------------------------------------
+
+_STATUS_MEANING: dict[AssessmentStatus, str] = {
+    AssessmentStatus.IMPROVEMENT: "moved up the lattice",
+    AssessmentStatus.IMPROVEMENT_SCORE: "same verdict, scores improved",
+    AssessmentStatus.LATERAL_MOVE: "no verdict or score movement",
+    AssessmentStatus.REGRESSION: "moved down the lattice",
+    AssessmentStatus.REGRESSION_SCORE: "same verdict, scores regressed",
+    AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE: (
+        "scores moved but the AST barely changed"
+    ),
+}
+
+
+def render_assessment_md(r: AssessmentResult) -> str:
+    """Compact markdown for a refactor assessment.
+
+    Summarizes current vs. proposed rather than dumping both full evaluations;
+    the structured_content channel still carries everything.
+    """
+    if r.error:
+        return f"**Error:** {r.error}"
+    meaning = _STATUS_MEANING.get(r.status, "")
+    lines = [f"**Status:** {r.status.value} — {meaning}"]
+    lines.append(f"**Priority:** `{r.priority.value}`")
+    lines.append(
+        f"**Verdict:** {r.current.lattice_element.value} → "
+        f"{r.proposed.lattice_element.value}"
+    )
+    if r.structural_distance is not None:
+        sim = f", similarity {r.similarity:.3f}" if r.similarity is not None else ""
+        lines.append(f"**Structural distance:** {r.structural_distance:.3f}{sim}")
+    if r.score_deltas:
+        deltas = ", ".join(f"{k}={v:+.1f}" for k, v in sorted(r.score_deltas.items()))
+        lines.append(f"**Score deltas:** {deltas}")
+    # Only surface metrics that actually moved, to keep this lean.
+    moved = {m: d for m, d in r.metric_deltas.items() if d != 0.0}
+    if moved:
+        md = ", ".join(f"`{m}`={d:+.3f}" for m, d in sorted(moved.items()))
+        lines.append(f"**Metric deltas:** {md}")
+    if r.suspicion_reason:
+        lines.append(f"> ⚠️ {r.suspicion_reason}")
+    if r.regression_diff:
+        lines.append("")
+        lines.append("## Regression diff")
+        lines.append("```diff")
+        lines.append(r.regression_diff)
+        lines.append("```")
+    return "\n".join(lines)

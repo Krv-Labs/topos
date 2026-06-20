@@ -144,12 +144,3 @@ only the top-two generators. See `topos://docs/preferences`.
 
 Topos is one signal in a multi-signal loop. Pair it with test coverage and
 type checks for the full picture.
-
-## Compatibility notes
-
-- `response_format` is deprecated/no-op for MCP structured output.  Tools return
-  structured content regardless of this value and emit a warning when callers
-  pass a non-default value.
-- `overall` on project evaluation is retained as a compatibility alias for
-  `aggregate_floor_verdict`; prefer the newer aggregate/worst-file fields for
-  agent planning.

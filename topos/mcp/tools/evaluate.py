@@ -9,6 +9,7 @@ was never built and COMPOSABLE/IDEAL were unreachable via MCP.
 from __future__ import annotations
 
 from fastmcp import Context
+from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.characteristic_morphism import CharacteristicMorphism
@@ -24,7 +25,9 @@ from ..evaluation import (
 from ..formatting import (
     build_pillars,
     lattice_to_str,
+    render_evaluation_md,
     to_evaluation_result,
+    to_tool_result,
 )
 from ..schemas import (
     EvaluateCodeInput,
@@ -34,7 +37,6 @@ from ..schemas import (
     LatticeElement,
     ProjectEvaluationResult,
     ProjectFileEntry,
-    ResponseFormat,
     resolve_priority,
 )
 from ..security import resolve_file_root, resolve_within_root
@@ -55,7 +57,7 @@ _READ_ONLY_ANN = {
     tags={"evaluate", "single-unit"},
     annotations=_READ_ONLY_ANN,
 )
-def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
+def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
     """Classify a raw code string on the free Heyting algebra H(G_qual).
 
     SIMPLE and SECURE generators are scored from CFG / CPG built on the
@@ -73,7 +75,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
         priority, priority_source = resolve_priority(params.preferences)
         result = classify_code_string(params.code, params.language, priority)
     except Exception as exc:
-        return EvaluationResult(
+        model = EvaluationResult(
             is_parseable=False,
             lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
@@ -85,15 +87,16 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
             coupling_available=False,
             error=str(exc),
         )
+        return to_tool_result(model, _error_md(model))
     prefs = params.preferences.to_preferences() if params.preferences else None
-    warnings = _response_format_warnings(params.response_format)
-    return to_evaluation_result(
+    model = to_evaluation_result(
         result,
         coupling_available=False,
         preferences=prefs,
         priority_source=priority_source,
-        warnings=warnings,
+        verbose=params.verbose,
     )
+    return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
 
 @mcp.tool(
@@ -101,7 +104,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> EvaluationResult:
     tags={"evaluate", "single-unit"},
     annotations=_READ_ONLY_ANN,
 )
-def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
+def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
     """Evaluate a file on disk. **Enables the COMPOSABLE generator.**
 
     When ``gitnexus_dir`` is provided (or auto-detected at
@@ -114,7 +117,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     """
     resolved, err = resolve_within_root(params.filepath)
     if err or resolved is None:
-        return EvaluationResult(
+        model = EvaluationResult(
             is_parseable=False,
             lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
@@ -126,9 +129,10 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             coupling_available=False,
             error=(err or {}).get("error", "path error"),
         )
+        return to_tool_result(model, _error_md(model))
 
     if not resolved.is_file():
-        return EvaluationResult(
+        model = EvaluationResult(
             is_parseable=False,
             lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
@@ -140,6 +144,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             coupling_available=False,
             error=f"Path is not a file: {resolved}",
         )
+        return to_tool_result(model, _error_md(model))
 
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
@@ -148,7 +153,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
     try:
         result, dep_graph = classify_file(resolved, priority, gitnexus_dir)
     except Exception as exc:
-        return EvaluationResult(
+        model = EvaluationResult(
             is_parseable=False,
             lattice_element=LatticeElement.SLOP,
             lattice_symbol="⊥",
@@ -160,6 +165,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
             coupling_available=False,
             error=str(exc),
         )
+        return to_tool_result(model, _error_md(model))
 
     prefs = params.preferences.to_preferences() if params.preferences else None
     warnings = gitnexus_warnings(
@@ -168,19 +174,20 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
         gitnexus_dir,
         dep_graph_loaded=dep_graph is not None,
     )
-    warnings.extend(_response_format_warnings(params.response_format))
     findings = []
     if params.include_security_findings and _secure_failed(result):
         morphism = ProgramMorphism.from_file(resolved)
         findings = security_findings(morphism.build_cpg())
-    return to_evaluation_result(
+    model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
         preferences=prefs,
         priority_source=priority_source,
         warnings=warnings,
         security_findings=findings,
+        verbose=params.verbose,
     )
+    return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
 
 @mcp.tool(
@@ -190,7 +197,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> EvaluationResult:
 )
 async def topos_evaluate_project(
     params: EvaluateProjectInput, ctx: Context
-) -> ProjectEvaluationResult:
+) -> ToolResult:
     """Recursively evaluate every Python file in a directory.
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
@@ -202,12 +209,14 @@ async def topos_evaluate_project(
     """
     resolved_root, err = resolve_within_root(params.path)
     if err or resolved_root is None:
-        return _empty_project_result(params, error=(err or {}).get("error"))
+        model = _empty_project_result(params, error=(err or {}).get("error"))
+        return to_tool_result(model, render_project_md(model))
 
     if not resolved_root.is_dir():
-        return _empty_project_result(
+        model = _empty_project_result(
             params, error=f"Path is not a directory: {resolved_root}"
         )
+        return to_tool_result(model, render_project_md(model))
 
     py_files = collect_source_files(
         (str(resolved_root),),
@@ -216,7 +225,8 @@ async def topos_evaluate_project(
     )
     total_files = len(py_files)
     if total_files == 0:
-        return _empty_project_result(params, error="No .py files found.")
+        model = _empty_project_result(params, error="No .py files found.")
+        return to_tool_result(model, render_project_md(model))
 
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
@@ -294,15 +304,13 @@ async def topos_evaluate_project(
         gitnexus_dir,
         dep_graph_loaded=any_dep_graph_loaded,
     )
-    project_warnings.extend(_response_format_warnings(params.response_format))
 
-    return ProjectEvaluationResult(
+    model = ProjectEvaluationResult(
         root=str(resolved_root),
         file_count=total_files,
         parse_failures=parse_failures,
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
-        overall=overall,
         aggregate_floor_verdict=overall,
         aggregate_explanation=aggregate_explanation,
         worst_file_verdict=worst_file_verdict,
@@ -320,6 +328,7 @@ async def topos_evaluate_project(
         files=page,
         verbose=params.verbose,
     )
+    return to_tool_result(model, render_project_md(model))
 
 
 def _minimum_scores_by_dim(results) -> dict[str, float]:
@@ -341,7 +350,6 @@ def _empty_project_result(
         parse_failures=0,
         rolled_up_dimensions={},
         rolled_up_scores={},
-        overall=LatticeElement.SLOP,
         aggregate_floor_verdict=LatticeElement.SLOP,
         aggregate_explanation=(
             "No files were evaluated, so the aggregate floor is SLOP."
@@ -352,7 +360,6 @@ def _empty_project_result(
         priority=priority,
         priority_source=priority_source,
         coupling_available=False,
-        warnings=_response_format_warnings(params.response_format),
         count=0,
         offset=params.offset,
         total=0,
@@ -364,20 +371,16 @@ def _empty_project_result(
     )
 
 
+def _error_md(model: EvaluationResult) -> str:
+    """Compact markdown for an error/early-return EvaluationResult."""
+    return f"**Error:** {model.error or model.lattice_description}"
+
+
 def _secure_failed(result) -> bool:
     return bool(
         result.raw_metrics.get("cpg.dangerous_calls", 0.0) > 0
         or result.raw_metrics.get("cpg.taint_flows", 0.0) > 0
     )
-
-
-def _response_format_warnings(response_format: ResponseFormat) -> list[str]:
-    if response_format == ResponseFormat.MARKDOWN:
-        return []
-    return [
-        "response_format is deprecated/no-op for MCP structured output; tools return "
-        "structured content regardless of this value."
-    ]
 
 
 def _aggregate_explanation(
@@ -419,13 +422,13 @@ def _project_guidance(worst_files: list[ProjectFileEntry]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Markdown helpers (used by assess.py when response_format=markdown)
+# Markdown helpers (rendered into ToolResult.content by the tools above)
 # ---------------------------------------------------------------------------
 
 
 def render_project_md(r: ProjectEvaluationResult) -> str:
     lines = [f"# Project Evaluation — {r.root}", ""]
-    lines.append(f"**Overall:** {r.overall.value}")
+    lines.append(f"**Overall:** {r.aggregate_floor_verdict.value}")
     lines.append(
         f"**Files scanned:** {r.file_count} (parse failures: {r.parse_failures})"
     )

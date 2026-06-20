@@ -27,6 +27,7 @@ _DECL_KINDS = frozenset({"FunctionDecl", "MethodDecl"})
 _CALL_PREFIX = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)\s*\(")
 
 _EMBEDDING_MODEL = None
+_ECT_ZERO_DISTANCE_TOLERANCE = 1e-8
 
 ECT_COVERAGE_INSTALL_HINT = "pip install 'topos[ect-coverage]'"
 
@@ -365,6 +366,10 @@ def calculate_topological_coverage(
     norm_test = max(n_test, 1)
     diff = ect_put / norm_put - ect_test / norm_test
     distance = float(np.sqrt(np.mean(diff**2)))
+    # Batched ECT over identical graphs can still leave sub-nanometric native
+    # float residue across platforms. Treat that as the mathematical zero.
+    if np.isclose(distance, 0.0, rtol=0.0, atol=_ECT_ZERO_DISTANCE_TOLERANCE):
+        distance = 0.0
     coverage_score = float(np.exp(-distance))
 
     return TopologicalCoverageReport(

@@ -52,7 +52,7 @@ Target user install behavior:
 4. Add this README marker before publishing to PyPI:
 
    ```html
-   <!-- mcp-name: io.github.krv-labs/topos -->
+   <!-- mcp-name: io.github.Krv-Labs/topos -->
    ```
 
 The MCP Registry uses that marker to verify that the PyPI package belongs to the
@@ -65,7 +65,7 @@ Create `.mcp/server.json`:
 ```json
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.krv-labs/topos",
+  "name": "io.github.Krv-Labs/topos",
   "title": "Topos",
   "description": "Structural code-quality tools for AI coding agents.",
   "version": "0.3.5",
@@ -77,9 +77,9 @@ Create `.mcp/server.json`:
   "packages": [
     {
       "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
       "identifier": "topos-mcp",
       "version": "0.3.5",
-      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
       }
@@ -106,7 +106,7 @@ Create `.mcp/server.json`:
    - **Manual Trigger:** Manually dispatch the **Build and Release** workflow through the GitHub repository Actions panel with the target version input.
 3. **Verify PyPI is Live:** Confirm that the package is successfully published to PyPI as `topos-mcp` and that the live package description (README) includes the required verification marker:
    ```html
-   <!-- mcp-name: io.github.krv-labs/topos -->
+   <!-- mcp-name: io.github.Krv-Labs/topos -->
    ```
 4. Install the `mcp-publisher` CLI tool. On macOS and Linux, the recommended method is Homebrew:
 
@@ -142,7 +142,7 @@ Create `.mcp/server.json`:
 8. Verify through the official registry API:
 
    ```bash
-   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.krv-labs/topos"
+   curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos"
    ```
 
 ## VS Code Verification

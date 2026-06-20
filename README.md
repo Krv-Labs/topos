@@ -7,6 +7,7 @@
 </p>
 
 > **Structural code quality metrics for agent-written programs.**
+<!-- mcp-name: io.github.Krv-Labs/topos -->
 
 **Topos** gives you structural code quality metrics your agents can act on. Passing unit tests proves your code works, but Topos proves it's built to last. It measures program structure — not just syntax — giving agents concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
 

@@ -254,13 +254,11 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         )
 
     # ---- evaluate proposed & findings ----
-    proposed_res, proposed_morph = (
-        _evaluate_proposed(
-            proposed_src,
-            dep_graph,
-            priority,
-            params.language,
-        )
+    proposed_res, proposed_morph = _evaluate_proposed(
+        proposed_src,
+        dep_graph,
+        priority,
+        params.language,
     )
 
     prefs = params.preferences.to_preferences() if params.preferences else None

@@ -38,6 +38,7 @@ ect-coverage = [
 
 [project.scripts]
 topos = "topos.cli.main:cli"
+topos-mcp = "topos.mcp.server:main"
 
 [build-system]
 requires = ["maturin>=1.5,<2.0"]

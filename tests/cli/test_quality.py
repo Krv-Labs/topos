@@ -123,6 +123,71 @@ def test_evaluate_progress_bar_for_interactive_text(tmp_path: Path, monkeypatch)
     assert "#" not in progress_output
 
 
+def test_evaluate_lowest_hanging_fruit(tmp_path: Path):
+    d = tmp_path / "src"
+    d.mkdir()
+    # Five hard failures on `simple` (score 0%, gap 60).
+    for idx in range(5):
+        (d / f"trivial_{idx}.py").write_text(f"x = {idx}\n", encoding="utf-8")
+    # One clear near-miss on `simple` (~52%, the smallest failing gap).
+    near = d / "near_miss.py"
+    near.write_text(
+        "def f(a, b):\n"
+        "    if a:\n"
+        "        return b\n"
+        "    if b:\n"
+        "        return a\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(d), "-r"])
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+    assert result.exit_code == 0
+    assert "Lowest-hanging fruit" in clean_output
+
+    fruit_section = clean_output[clean_output.index("Lowest-hanging fruit") :]
+    assert "near_miss.py" in fruit_section
+    # The near-miss is the cheapest win: ranked first with the smallest gap.
+    assert re.search(r"1\.\s+.*near_miss\.py", fruit_section)
+    assert "simple 52% → 60%" in fruit_section
+
+
+def test_evaluate_lowest_hanging_fruit_all_pass_message(tmp_path: Path):
+    d = tmp_path / "src"
+    d.mkdir()
+    # A clean module that passes every measured pillar.
+    clean = (
+        '"""A small clean module."""\n\n\n'
+        "def add(a, b):\n"
+        '    """Return the sum."""\n'
+        "    return a + b\n\n\n"
+        "def mul(a, b):\n"
+        '    """Return the product."""\n'
+        "    return a * b\n"
+    )
+    for idx in range(6):
+        (d / f"clean_{idx}.py").write_text(clean, encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(d), "-r"])
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+    assert result.exit_code == 0
+    assert "Lowest-hanging fruit" in clean_output
+    assert "All measured pillars pass" in clean_output
+
+
+def test_help_short_flag_root_and_subcommands():
+    runner = CliRunner()
+    for args in (["-h"], ["evaluate", "-h"], ["coverage", "-h"]):
+        result = runner.invoke(cli, args)
+        assert result.exit_code == 0, args
+        assert "Usage:" in result.output, args
+
+
 def test_evaluate_json_suppresses_progress_bar(tmp_path: Path, monkeypatch):
     d = tmp_path / "src"
     d.mkdir()

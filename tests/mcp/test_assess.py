@@ -241,6 +241,22 @@ def test_assess_improvement_has_no_regression_diff() -> None:
     assert "## Regression diff" not in _content_text(tr)
 
 
+def test_function_complexities_non_ascii_source() -> None:
+    # Regression: UAST byte spans vs. code-point str indexing. A non-ASCII char
+    # before the def used to shift both the extracted name and body slice.
+    from topos.mcp.tools.assess import _function_complexities
+
+    src = '"""Docstring → with — non-ascii 🎯."""\ndef handle(x):\n    return x\n'
+    fns = _function_complexities(src, "python")
+    assert "handle" in fns
+    assert all(name.isidentifier() for name in fns), fns
+    _complexity, body_lines = fns["handle"]
+    body = "\n".join(body_lines)
+    # Body round-trips to the real function, not a shifted fragment.
+    assert body.startswith("def handle(x):")
+    assert "return x" in body
+
+
 def test_assess_filepath_path_validation() -> None:
     import tempfile
 

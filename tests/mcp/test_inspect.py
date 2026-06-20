@@ -84,6 +84,35 @@ def test_inspect_accepts_filepath(
     assert r.function_entries[0].line == 1
 
 
+def test_inspect_non_ascii_before_def_keeps_clean_names() -> None:
+    # Regression: UAST spans are UTF-8 byte offsets. A non-ASCII char (→, —)
+    # BEFORE the def shifts byte vs. code-point offsets, which used to slice
+    # garbled fragments (e.g. "s(\n    override:") into the function name.
+    code = (
+        '"""Docstring with → and — and an emoji 🎯 ahead of the def."""\n'
+        "def resolve_gitnexus_dir(override):\n    return override\n"
+    )
+    tr = topos_inspect_code(InspectCodeInput(code=code))
+    r = _inspect(tr)
+    names = {entry.name for entry in r.function_entries}
+    assert "resolve_gitnexus_dir" in names
+    # No shifted fragments: every name is a bare identifier.
+    assert all(name.isidentifier() for name in names), names
+    # Markdown table rows stay well-formed: 3 pipes (4 cells) and no stray
+    # newline/pipe inside a name cell.
+    text = _content_text(tr)
+    body_rows = [
+        ln
+        for ln in text.splitlines()
+        if ln.startswith("| `") and "resolve_gitnexus_dir" in ln
+    ]
+    assert body_rows
+    for row in body_rows:
+        # A well-formed 3-column row has exactly 4 unescaped pipes. A stray
+        # newline/pipe in the name cell (the old bug) would change this count.
+        assert row.count("|") == 4
+
+
 def test_inspect_requires_exactly_one_source() -> None:
     with pytest.raises(ValueError, match="code.*filepath"):
         InspectCodeInput()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import runpy
 import sys
 import tomllib
 from pathlib import Path
@@ -14,6 +15,11 @@ ROOT = Path(__file__).resolve().parent.parent
 def cargo_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as f:
         return tomllib.load(f)["package"]["version"]
+
+
+def python_source_version() -> str:
+    version_globals = runpy.run_path(str(ROOT / "topos/_version.py"))
+    return version_globals["_cargo_version"]()
 
 
 def main() -> int:
@@ -29,11 +35,12 @@ def main() -> int:
             f"has {package_json['version']!r}, expected {expected!r}"
         )
 
-    sys.path.insert(0, str(ROOT))
-    from topos import __version__
-
-    if __version__ != expected:
-        errors.append(f"topos.__version__ is {__version__!r}, expected {expected!r}")
+    python_version = python_source_version()
+    if python_version != expected:
+        errors.append(
+            f"topos._version._cargo_version() is {python_version!r}, "
+            f"expected {expected!r}"
+        )
 
     if errors:
         for message in errors:

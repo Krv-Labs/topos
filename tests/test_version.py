@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from importlib.metadata import PackageNotFoundError
+from pathlib import Path
 from unittest.mock import patch
 
 import topos._version as version_mod
@@ -23,9 +26,21 @@ def test_get_version_falls_back_to_cargo_toml():
 
 def test_cargo_version_matches_repo():
     import tomllib
-    from pathlib import Path
 
     cargo_path = Path(__file__).resolve().parent.parent / "Cargo.toml"
     with cargo_path.open("rb") as f:
         expected = tomllib.load(f)["package"]["version"]
     assert version_mod._cargo_version() == expected
+
+
+def test_check_versions_runs_without_site_packages():
+    root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, "-S", "scripts/check_versions.py"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr

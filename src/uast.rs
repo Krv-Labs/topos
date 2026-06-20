@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[pyclass(get_all)]
+#[pyclass(get_all, from_py_object)]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct SourceSpan {
     pub file: Option<String>,
@@ -39,7 +39,7 @@ impl SourceSpan {
     }
 }
 
-#[pyclass(get_all)]
+#[pyclass(get_all, from_py_object)]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct NativeRef {
     pub parser: String,
@@ -59,7 +59,7 @@ impl NativeRef {
     }
 }
 
-#[pyclass(get_all)]
+#[pyclass(get_all, from_py_object)]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct UASTNode {
     pub kind: String,

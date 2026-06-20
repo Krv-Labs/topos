@@ -131,8 +131,11 @@ only the top-two generators. See `topos://docs/preferences`.
 
 ## What Topos does NOT measure
 
-- **Test coverage.** A refactor that improves the score but breaks tests
-  is a regression. Topos cannot see this; run the test suite separately.
+- **Whether tests pass or behavior is preserved.** A refactor can lift the
+  lattice score yet break behavior — the evaluate/assess loop cannot see this,
+  so run the suite separately. (Test *coverage* itself — structural UAST and
+  semantic ECT — is available as a distinct signal via
+  `topos_calculate_coverage`; it is not part of the lattice verdict.)
 - **Functional correctness.** AST edit distance measures *change*, not
   *preservation of behavior*. Always verify behavior with tests.
 - **Runtime performance.** Orthogonal to all Topos metrics.

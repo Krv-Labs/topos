@@ -27,17 +27,17 @@ import {
 
 test('getPlatformKey maps every supported platform/arch pair', () => {
     assert.equal(getPlatformKey('darwin', 'arm64'), 'darwin-arm64');
-    assert.equal(getPlatformKey('darwin', 'x64'), 'darwin-x64');
     assert.equal(getPlatformKey('linux', 'arm64'), 'linux-arm64');
     assert.equal(getPlatformKey('linux', 'x64'), 'linux-x64');
 });
 
-test('getPlatformKey treats non-arm64 darwin/linux as x64', () => {
-    assert.equal(getPlatformKey('darwin', 'ia32'), 'darwin-x64');
+test('getPlatformKey treats non-arm64 linux as x64', () => {
     assert.equal(getPlatformKey('linux', 'ppc64'), 'linux-x64');
 });
 
 test('getPlatformKey returns undefined for unsupported platforms', () => {
+    assert.equal(getPlatformKey('darwin', 'x64'), undefined);
+    assert.equal(getPlatformKey('darwin', 'ia32'), undefined);
     assert.equal(getPlatformKey('win32', 'x64'), undefined);
     assert.equal(getPlatformKey('freebsd', 'x64'), undefined);
 });

@@ -181,7 +181,7 @@ The CLI command is:
 
 .. code-block:: bash
 
-   topos structural-test-coverage --tests tests/test_mod.py src/mod.py
+   topos coverage --tests tests/test_mod.py src/mod.py
 
 **How it works**
 
@@ -205,3 +205,8 @@ The CLI command is:
 - Higher mean coverage indicates more of the PUT’s structural declarations have matches in the test suite.
 - An F2 score significantly lower than mean coverage indicates a bloated test suite.
 - A **low** score suggests tests may be missing classes of syntax present in the PUT.
+
+Topological (ECT) coverage
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With ``pip install 'topos[ect-coverage]'`` (or the VS Code release binary), ``topos coverage`` also reports **CPG topological coverage**: scoped PUT subgraph nodes and test CPG nodes are embedded, jointly projected to 2-D, and compared via Euler characteristic transform. The score is ``exp(-RMSE)`` between landscapes. The embedding model downloads on first use to ``~/.cache/fastembed``. Prefer module- or file-scoped PUT/test pairs for large codebases.

@@ -16,9 +16,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from topos.functors.probes.cpg.danger import (
-    DANGEROUS_APIS,
     _callee_from_text,
     _matches_registry,
+    effective_registry,
 )
 
 if TYPE_CHECKING:
@@ -60,15 +60,18 @@ TAINT_SOURCES: dict[str, set[str]] = {
 }
 
 
-def taint_flow_paths(cpg: CodePropertyGraph) -> int:
+def taint_flow_paths(cpg: CodePropertyGraph, allow: set[str] | None = None) -> int:
     """
     Count DDG paths from any taint source to any dangerous-API sink.
 
     A DDG path here is a chain of CPG nodes connected by DDG edges; we
     count distinct ``(source_node, sink_node)`` pairs that are reachable.
+
+    When *allow* is given, allowlisted sink patterns are excluded; the
+    default ``allow=None`` preserves the canonical metrics behavior.
     """
     source_registry = TAINT_SOURCES.get(cpg.language, set())
-    sink_registry = DANGEROUS_APIS.get(cpg.language, set())
+    sink_registry = effective_registry(cpg.language, allow)
     if not source_registry or not sink_registry:
         return 0
 

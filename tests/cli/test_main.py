@@ -20,7 +20,7 @@ def test_cli_help():
     assert "evaluate" in result.output
     assert "compare" in result.output
     assert "inspect" in result.output
-    assert "structural-test-coverage" in result.output
+    assert "coverage" in result.output
     assert "uninstall" in result.output
     assert "mcp" in result.output
     assert "depgraph" in result.output

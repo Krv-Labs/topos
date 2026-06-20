@@ -6,7 +6,6 @@ const { execFileSync } = require("child_process");
 
 const TARGETS = {
   "darwin-arm64": "macos-arm64",
-  "darwin-x64": "macos-amd64",
   "linux-arm64": "linux-arm64",
   "linux-x64": "linux-amd64",
 };
@@ -17,7 +16,7 @@ const binDir = path.join(extensionRoot, "bin");
 const stagedBinary = path.join(binDir, "topos");
 
 function usage() {
-  console.error("Usage: node scripts/stage-binary.js <darwin-arm64|darwin-x64|linux-arm64|linux-x64|clean>");
+  console.error("Usage: node scripts/stage-binary.js <darwin-arm64|linux-arm64|linux-x64|clean>");
 }
 
 function clean() {

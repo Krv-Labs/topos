@@ -10,11 +10,13 @@ import topos.mcp.tools  # noqa: F401
 from topos.mcp.server import mcp
 
 
-def test_all_four_docs_resources_registered() -> None:
+def test_docs_resources_registered() -> None:
     resources = asyncio.run(mcp.list_resources())
     uris = {str(r.uri) for r in resources}
+    assert "topos://docs/agent-contract" in uris
     assert "topos://docs/lattice" in uris
     assert "topos://docs/metrics" in uris
+    assert "topos://docs/preferences" in uris
     assert "topos://docs/priority" in uris
     assert "topos://docs/workflows" in uris
 
@@ -34,3 +36,10 @@ def test_workflows_resource_has_refactor_loop() -> None:
     contents = "".join(b.content if hasattr(b, "content") else str(b) for b in blocks)
     assert "review → plan → refactor → re-measure" in contents
     assert "SUSPICIOUS_NO_STRUCTURAL_CHANGE" in contents
+
+
+def test_agent_contract_resource_has_done_gates() -> None:
+    blocks = asyncio.run(mcp.read_resource("topos://docs/agent-contract"))
+    contents = "".join(b.content if hasattr(b, "content") else str(b) for b in blocks)
+    assert "Done Gates" in contents
+    assert "agent_contract" in contents

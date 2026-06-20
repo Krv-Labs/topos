@@ -31,7 +31,10 @@ def test_depgraph_generate_success(mock_which, mock_run):
     result = runner.invoke(cli, ["depgraph", "generate"])
     assert result.exit_code == 0
     assert "Using GitNexus" in result.output
-    mock_run.assert_called_once()
+    mock_run.assert_called_once_with(
+        ["gitnexus", "analyze", "--index-only"],
+        cwd=Path.cwd(),
+    )
 
 
 def test_uninstall_package_manager():

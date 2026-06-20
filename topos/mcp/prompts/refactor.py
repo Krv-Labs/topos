@@ -13,6 +13,8 @@ user-facing prompt prose where soft-wrapping mid-sentence hurts readability.
 
 from __future__ import annotations
 
+import json
+
 from topos.evaluation.policies.base import Priority
 
 from ..server import mcp
@@ -52,51 +54,33 @@ def topos_refactor_until_ideal(
         *[p.value for p in Priority if p.value != priority.value],
     ]
     ranking_str = " ≻ ".join(ranking)
-    pref_args = f', preferences={{"ranking": {ranking!r}}}'
-    pref_block = (
-        f"\n**Preference order:** `{ranking_str}` — Two-stage strategy: "
-        "aim for `preference_walk.target` (IDEAL) first; if it stalls "
-        "after a few iterations, divert to `preference_walk.fallback_target` "
-        "(the meet of your top-two ranked generators). `next_step` is "
-        "always your immediate goal.\n"
-    )
-    return f"""Refactor `{filepath}` using the Topos closed-loop method. Priority: **{priority.value}**. Budget: **{max_iterations} iterations**.{pref_block}
+    pref_args = f', "preferences": {{"ranking": {json.dumps(ranking)}}}'
+    return f"""Improve `{filepath}` with Topos. Priority: **{priority.value}**. Iteration budget: **{max_iterations}**. Preference order: `{ranking_str}`.
 
-**Before you start**, read `topos://docs/workflows` — it's the orchestration guide.
+Use the compact contract in `topos://docs/agent-contract`. Success means a focused structural change moves the target toward `preference_walk.next_step` or the fallback target, preserves behavior, and leaves residual risks explicit.
 
----
+Core tool calls:
+```json
+{{"params": {{"filepath": "{filepath}"{pref_args}}}}}
+```
+Use with `topos_evaluate_file` to measure the current verdict.
 
-### Step 1 — Measure baseline
-Call `topos_evaluate_file(filepath="{filepath}"{pref_args})`.
-If `coupling_available: false` in the response, run `topos depgraph generate` first; any verdict containing COMPOSABLE (including IDEAL) is unreachable without it.
+```json
+{{"params": {{"filepath": "{filepath}"{pref_args}}}}}
+```
+Use with `topos_inspect_code` when the returned `agent_contract`, `guidance`, or `suggestions` indicate inspection is needed.
 
-### Step 2 — Inspect
-Call `topos_inspect_code(filepath="{filepath}"{pref_args})` to find the highest-complexity functions and their line numbers.
+```json
+{{"params": {{"filepath": "{filepath}", "proposed_code": "<new code>"{pref_args}}}}}
+```
+Use with `topos_assess_improvement` to verify each proposed patch.
 
-### Step 3 — Propose
-Make ONE focused change targeting the lowest-scoring generator. Do not shuffle complexity between generators; reduce it.
+Acceptance gates:
+- `status` is `IMPROVEMENT` or `IMPROVEMENT_SCORE`.
+- `status` is not `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
+- Active SECURE findings are fixed or intentionally acknowledged and disclosed.
+- Project rollup is checked after non-trivial cross-file changes.
+- Relevant behavior tests, type checks, or linters pass when available; if unavailable or not run, report that explicitly.
 
-### Step 4 — Verify
-Call `topos_assess_improvement(filepath="{filepath}", proposed_code=<new code>{pref_args})`.
-
-Read the `status` field:
-- `IMPROVEMENT` → apply the change, record progress, return to step 1 if not IDEAL.
-- `IMPROVEMENT_SCORE` → verdict unchanged but progress made; continue.
-- `LATERAL_MOVE` / `REGRESSION*` → discard the change, try a different angle.
-- **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** → ⚠️ the tree barely changed. You are gaming the metric. Make a real structural change (extract, inline, split, merge), not a cosmetic one. Do NOT commit.
-
-### Step 5 — Stop when
-- Verdict = `IDEAL` (`preference_walk.target` by default — beat all three thresholds), OR
-- Verdict reaches `preference_walk.fallback_target` after IDEAL plateaus (the ideal intersection — meet of your top-two ranked generators), OR
-- Priority-specific generator satisfied (`{priority.value}` bit set), OR
-- Iteration budget exhausted → report partial progress honestly.
-
-**Divert rule:** if IDEAL hasn't moved after 2 consecutive iterations, switch your goal to `preference_walk.fallback_target` instead.
-
-### Do NOT
-- Run tests to "improve" the score by deleting them.
-- Rename symbols or shuffle whitespace as a "refactor".
-- Optimize one file while regressing the project rollup. Re-check with `topos_evaluate_project` after non-trivial changes.
-
-Begin at Step 1.
+Return only the baseline, change summary, Topos verification, behavior verification, and residual risks.
 """

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import json
+import re
 from pathlib import Path
 
 import click
@@ -30,8 +32,6 @@ def test_evaluate_file(tmp_path: Path):
     assert result.exit_code == 0
     assert str(f) in result.output
     assert "Files" in result.output
-
-    import re
 
     clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
     assert f"{f}  [" in clean_output
@@ -123,6 +123,71 @@ def test_evaluate_progress_bar_for_interactive_text(tmp_path: Path, monkeypatch)
     assert "#" not in progress_output
 
 
+def test_evaluate_lowest_hanging_fruit(tmp_path: Path):
+    d = tmp_path / "src"
+    d.mkdir()
+    # Five hard failures on `simple` (score 0%, gap 60).
+    for idx in range(5):
+        (d / f"trivial_{idx}.py").write_text(f"x = {idx}\n", encoding="utf-8")
+    # One clear near-miss on `simple` (~52%, the smallest failing gap).
+    near = d / "near_miss.py"
+    near.write_text(
+        "def f(a, b):\n"
+        "    if a:\n"
+        "        return b\n"
+        "    if b:\n"
+        "        return a\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(d), "-r"])
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+    assert result.exit_code == 0
+    assert "Lowest-hanging fruit" in clean_output
+
+    fruit_section = clean_output[clean_output.index("Lowest-hanging fruit") :]
+    assert "near_miss.py" in fruit_section
+    # The near-miss is the cheapest win: ranked first with the smallest gap.
+    assert re.search(r"1\.\s+.*near_miss\.py", fruit_section)
+    assert "simple 52% → 60%" in fruit_section
+
+
+def test_evaluate_lowest_hanging_fruit_all_pass_message(tmp_path: Path):
+    d = tmp_path / "src"
+    d.mkdir()
+    # A clean module that passes every measured pillar.
+    clean = (
+        '"""A small clean module."""\n\n\n'
+        "def add(a, b):\n"
+        '    """Return the sum."""\n'
+        "    return a + b\n\n\n"
+        "def mul(a, b):\n"
+        '    """Return the product."""\n'
+        "    return a * b\n"
+    )
+    for idx in range(6):
+        (d / f"clean_{idx}.py").write_text(clean, encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(d), "-r"])
+    clean_output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+
+    assert result.exit_code == 0
+    assert "Lowest-hanging fruit" in clean_output
+    assert "All measured pillars pass" in clean_output
+
+
+def test_help_short_flag_root_and_subcommands():
+    runner = CliRunner()
+    for args in (["-h"], ["evaluate", "-h"], ["coverage", "-h"]):
+        result = runner.invoke(cli, args)
+        assert result.exit_code == 0, args
+        assert "Usage:" in result.output, args
+
+
 def test_evaluate_json_suppresses_progress_bar(tmp_path: Path, monkeypatch):
     d = tmp_path / "src"
     d.mkdir()
@@ -186,3 +251,78 @@ def test_inspect_file(tmp_path: Path):
     assert "Classification" in result.output
     assert "Raw Metrics" in result.output
     assert "Entropy Analysis" in result.output
+
+
+def _strip_ansi(text: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def test_inspect_shows_security_findings_and_suggestions(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f)])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "Security Findings" in out
+    assert "Line 2" in out
+    assert "eval" in out
+    assert "Suggestions" in out
+
+
+def test_inspect_allowlist_flips_verdict_and_caps_grade(tmp_path: Path):
+    f = tmp_path / "conf.py"
+    f.write_text("import yaml\ndef g(p):\n    return yaml.load(p)\n", encoding="utf-8")
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "yaml.load"\nreason = "trusted ML config"\n',
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f)])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "FAIL (raw)" in out
+    assert "PASS (acknowledged)" in out
+    assert "trusted ML config" in out
+
+
+def test_inspect_json_carries_findings_and_verdict(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f), "--allow", "eval", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["secure_raw"] is False
+    assert data["secure_adjusted"] is True
+    assert data["acknowledged_risks"][0]["callee"] == "eval"
+    assert "suggestions" in data
+
+
+def test_evaluate_json_carries_diagnostics(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(f), "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    row = data["results"][0]
+    assert row["security_findings"][0]["callee"] == "eval"
+    assert row["secure_raw"] is False
+    assert "suggestions" in row
+
+
+def test_evaluate_verbose_lists_findings(tmp_path: Path):
+    f = tmp_path / "danger.py"
+    f.write_text("def f(x):\n    return eval(x)\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["evaluate", str(f), "--verbose"])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "Security Findings" in out
+    assert "eval" in out

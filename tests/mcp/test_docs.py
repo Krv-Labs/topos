@@ -10,6 +10,18 @@ def test_get_doc_returns_workflows() -> None:
     body = topos_get_doc(topic="workflows")
     assert "review → plan → refactor → re-measure" in body
     assert "SUSPICIOUS_NO_STRUCTURAL_CHANGE" in body
+    assert '"params"' in body
+    assert "acknowledged_risks" in body
+    assert "agent_contract" in body
+    assert "if unavailable or not run" in body
+    assert "Always verify behavior with tests" not in body
+
+
+def test_get_doc_returns_agent_contract() -> None:
+    body = topos_get_doc(topic="agent-contract")
+    assert "Done Gates" in body
+    assert "agent_contract" in body
+    assert "verification_gates" in body
 
 
 def test_get_doc_returns_lattice() -> None:
@@ -31,6 +43,12 @@ def test_get_doc_returns_priority() -> None:
     assert "composable" in body
 
 
+def test_get_doc_returns_preferences() -> None:
+    body = topos_get_doc(topic="preferences")
+    assert "preference_walk" in body
+    assert '"params"' in body
+
+
 def test_get_doc_matches_resource_content() -> None:
     """Same source file; tool and resource must return byte-identical content."""
     import asyncio
@@ -40,7 +58,14 @@ def test_get_doc_matches_resource_content() -> None:
     import topos.mcp.tools  # noqa: F401
     from topos.mcp.server import mcp
 
-    for topic in ("lattice", "metrics", "priority", "workflows"):
+    for topic in (
+        "agent-contract",
+        "lattice",
+        "metrics",
+        "preferences",
+        "priority",
+        "workflows",
+    ):
         via_tool = topos_get_doc(topic=topic)
         result = asyncio.run(mcp.read_resource(f"topos://docs/{topic}"))
         resource_body = "".join(

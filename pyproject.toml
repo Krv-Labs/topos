@@ -1,6 +1,6 @@
 [project]
 name = "topos-mcp"
-version = "0.3.4"
+dynamic = ["version"]
 description = "Structural code quality metrics for agent-written programs."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,16 +30,22 @@ dependencies = [
     "ladybug>=0.17.0,<0.18",
 ]
 
-
+[project.optional-dependencies]
+ect-coverage = [
+    "fastembed",
+    "trailed>=0.1.3",
+]
 
 [project.scripts]
 topos = "topos.cli.main:cli"
+topos-mcp = "topos.mcp.server:main"
 
 [build-system]
 requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
+# Version comes from [package].version in Cargo.toml (see scripts/check_versions.py).
 features = ["pyo3/extension-module"]
 python-source = "."
 module-name = "topos.topos_functors"
@@ -58,12 +64,15 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--cov=topos --cov-report=term-missing"
+norecursedirs = ["tests/fixtures"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.8",
+    "fastembed",
+    "trailed>=0.1.3",
 ]
 docs = [
     "sphinx>=7.4,<9",

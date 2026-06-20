@@ -29,7 +29,7 @@ function withTempBinary(fn) {
 }
 
 assert(candidatePaths("linux-x64").some((candidate) => candidate.endsWith("dist/topos-linux-amd64")));
-assert(candidatePaths("darwin-x64").some((candidate) => candidate.endsWith("dist/topos-macos-amd64")));
+assert(candidatePaths("darwin-arm64").some((candidate) => candidate.endsWith("dist/topos-macos-arm64")));
 
 withTempBinary(() => {
   stage("linux-x64");

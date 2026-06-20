@@ -8,13 +8,7 @@ by the ``topos mcp`` CLI command.
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version("topos")
-except PackageNotFoundError:
-    __version__ = "dev"
-
+from topos import __version__
 
 _mcp_instance = None
 
@@ -30,12 +24,13 @@ def _get_mcp():
             version=__version__,
             instructions=(
                 "Topos evaluates structural code quality on a diamond lattice. "
-                "FIRST: load the workflow guide — call "
-                '`topos_get_doc(topic="workflows")` '
-                "(works on any client) OR fetch `topos://docs/workflows` as a resource "
-                "(Claude Code, Cursor). "
+                "For agent loops, load the compact contract with "
+                '`topos_get_doc(topic="agent-contract")` or '
+                "fetch `topos://docs/agent-contract`. "
                 "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
-                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL."
+                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL. "
+                "topos_calculate_coverage reports test-suite coverage — structural "
+                "(UAST) and semantic (ECT) — as a separate signal, outside the lattice."
             ),
         )
     return _mcp_instance

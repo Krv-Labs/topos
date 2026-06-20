@@ -64,6 +64,19 @@ Topos is designed to be accessible as either a standalone binary or by building 
          cd topos
          pip install -e .
 
+      **Optional: topological (ECT) coverage**
+
+      Structural UAST coverage is included in the default install. For CPG topological
+      coverage (fastembed + TRAILED), install the optional extra:
+
+      .. code-block:: bash
+
+         pip install -e ".[ect-coverage]"
+
+      The embedding model downloads on first use to ``~/.cache/fastembed`` (~23 MB quantized).
+      Scope coverage to a module or file pair rather than merging entire ``src/`` and ``tests/``
+      trees; see :doc:`measures` and ``docs/structural-test-coverage.md``.
+
       **Running Tests**
 
       To verify the Python and Rust components:

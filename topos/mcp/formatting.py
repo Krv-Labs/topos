@@ -2,24 +2,32 @@
 Response formatters for the Topos MCP server.
 
 Converts ``ClassificationResult`` and distance results into the Pydantic
-return models defined in ``schemas.py``.  Also provides the Markdown
-flavor used when ``response_format="markdown"``.
+return models defined in ``schemas.py``.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
+
+from fastmcp.tools.base import ToolResult
+from pydantic import BaseModel
 
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
+from topos.evaluation.suggestions import suggest_refactors
 
 from .schemas import (
+    AcknowledgedRisk,
+    AgentContract,
     EvaluationResult,
     LatticeElement,
     PillarResult,
     PreferenceWalk,
     PrioritySource,
     SecurityFinding,
+    Suggestion,
 )
 
 _LATTICE_TO_STR: dict[EvaluationValue, LatticeElement] = {
@@ -108,41 +116,110 @@ def build_guidance(result: ClassificationResult) -> str:
     return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD."
 
 
+def build_agent_contract(
+    result: ClassificationResult,
+    *,
+    coupling_available: bool,
+    security_findings: list[SecurityFinding],
+    acknowledged_risks: list[AcknowledgedRisk],
+    grade_capped: bool,
+    warnings: list[str] | None = None,
+) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
+    """Return compact loop-control fields for MCP agents."""
+    blocked_by: list[str] = []
+    risk_flags: list[str] = []
+    next_actions: list[str] = []
+
+    if not result.is_parseable:
+        blocked_by.append("parse_failure")
+        risk_flags.append("parse_failure")
+        return None, [], blocked_by, ["restore parseable source"], risk_flags
+
+    if not coupling_available:
+        blocked_by.append("missing_gitnexus_dir")
+        risk_flags.append("composable_unavailable")
+    if security_findings:
+        risk_flags.append("active_security_findings")
+    if acknowledged_risks:
+        risk_flags.append("acknowledged_security_risk")
+    if grade_capped:
+        risk_flags.append("grade_capped")
+    if warnings:
+        risk_flags.append("warnings")
+
+    summary = result.summary()
+    simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
+
+    if summary == EvaluationValue.IDEAL:
+        next_tool = "topos_evaluate_project"
+        next_actions.append(
+            "confirm project rollup and behavior tests before accepting"
+        )
+    elif not simple_ok:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "inspect weakest measured pillar, then verify a focused patch"
+        )
+    elif security_findings:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "remove active SECURE findings or acknowledge intentional risk"
+        )
+    elif "missing_gitnexus_dir" in blocked_by:
+        next_tool = None
+        next_actions.append("provide gitnexus_dir to score COMPOSABLE")
+    else:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "inspect weakest measured pillar, then verify a focused patch"
+        )
+
+    verification_gates = [
+        "topos_assess_improvement returns IMPROVEMENT or IMPROVEMENT_SCORE",
+        "status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE",
+        "behavior tests or type/lint checks pass when available",
+    ]
+    return next_tool, next_actions, blocked_by, verification_gates, risk_flags
+
+
+# Raw metrics are namespaced by representation: cfg/ast -> simple,
+# mdg -> composable, cpg -> secure.  (pdg.* is structural and maps to no
+# pillar; it is preserved only in the flat ``raw_metrics``.)
+_PILLAR_METRIC_PREFIXES: dict[str, tuple[str, ...]] = {
+    "simple": ("cfg.", "ast."),
+    "composable": ("mdg.",),
+    "secure": ("cpg.",),
+}
+
+
+def mdg_unavailable_message(warnings: list[str] | None) -> str:
+    """The 'COMPOSABLE not scored' note surfaced when no MDG is available."""
+    return (warnings or [None])[0] or (
+        "unavailable — no ModuleDependencyGraph; run 'topos depgraph generate' "
+        "to score COMPOSABLE."
+    )
+
+
 def build_pillars(
     result: ClassificationResult,
     coupling_available: bool,
     *,
     warnings: list[str] | None = None,
 ) -> dict[str, PillarResult]:
-    """Build the per-pillar (simple, composable, secure) breakdown."""
-    pillars: dict[str, PillarResult] = {}
-    for dim in ("simple", "composable", "secure"):
-        # raw metrics namespaced by representation: cfg/ast -> simple,
-        # mdg -> composable, cpg -> secure
-        metric_prefixes = {
-            "simple": ("cfg.", "ast."),
-            "composable": ("mdg.",),
-            "secure": ("cpg.",),
-        }[dim]
+    """Build the lean per-pillar (simple, composable, secure) summary.
 
-        dim_metrics = {
-            k: v
-            for k, v in result.raw_metrics.items()
-            if any(k.startswith(p) for p in metric_prefixes)
-        }
-        dim_interp = {
-            k: v
-            for k, v in result.interpretation.items()
-            if any(k.startswith(p) for p in metric_prefixes)
-        }
-        if dim == "composable" and not coupling_available:
-            message = (
-                (warnings or [None])[0]
-                or "unavailable — no ModuleDependencyGraph; run "
-                "'topos depgraph generate' "
-                "to score COMPOSABLE."
-            )
-            dim_interp.setdefault("mdg.unavailable", message)
+    Each pillar carries only ``achieved`` + ``score``.  The full metric and
+    interpretation detail is NOT duplicated here — it lives once in the
+    parent's flat ``raw_metrics`` / ``interpretation`` (see
+    ``_PILLAR_METRIC_PREFIXES`` for the namespacing).  ``warnings`` is unused
+    now that the ``mdg.unavailable`` note is injected into the flat
+    interpretation by ``to_evaluation_result``; kept for call-site stability.
+    """
+    pillars: dict[str, PillarResult] = {}
+    for dim, metric_prefixes in _PILLAR_METRIC_PREFIXES.items():
+        has_metrics = any(
+            any(k.startswith(p) for p in metric_prefixes) for k in result.raw_metrics
+        )
 
         # achieved = was the singleton generator for this dimension satisfied?
         generator_val = {
@@ -154,15 +231,50 @@ def build_pillars(
         achieved = result.dimensions.get(dim) == generator_val
         score = result.scores.get(dim, 0.0)
 
-        # Only include pillars that were actually measured
-        if dim_metrics or dim == "composable" and not coupling_available:
+        # Only include pillars that were actually measured (composable still
+        # surfaces when coupling is unavailable, to carry achieved=False).
+        if has_metrics or dim == "composable" and not coupling_available:
             pillars[dim] = PillarResult(
                 achieved=achieved,
                 score=round(score * 100.0, 1),
-                metrics=dim_metrics,
-                interpretation=dim_interp,
             )
     return pillars
+
+
+def _failing_interpretation(
+    result: ClassificationResult, interpretation: dict[str, str]
+) -> dict[str, str]:
+    """Keep only interpretation strings for generators that were NOT satisfied.
+
+    Default (non-verbose) output drops the 16 raw-metric floats but must still
+    tell the agent *why* a failing generator failed. We retain interpretation
+    keys whose representation prefix maps (via ``_PILLAR_METRIC_PREFIXES``) to a
+    dimension that did not achieve its singleton generator, plus any non-pillar
+    note (e.g. ``mdg.unavailable``) that carries no prefix mapping.
+    """
+    achieved: dict[str, bool] = {}
+    for dim in _PILLAR_METRIC_PREFIXES:
+        generator_val = {
+            "simple": EvaluationValue.SIMPLE,
+            "composable": EvaluationValue.COMPOSABLE,
+            "secure": EvaluationValue.SECURE,
+        }[dim]
+        achieved[dim] = result.dimensions.get(dim) == generator_val
+
+    def _dim_for(key: str) -> str | None:
+        for dim, prefixes in _PILLAR_METRIC_PREFIXES.items():
+            if any(key.startswith(p) for p in prefixes):
+                return dim
+        return None
+
+    kept: dict[str, str] = {}
+    for key, text in interpretation.items():
+        dim = _dim_for(key)
+        # Keep notes with no pillar mapping (e.g. mdg.unavailable) and any
+        # interpretation belonging to a generator that failed.
+        if dim is None or not achieved.get(dim, False):
+            kept[key] = text
+    return kept
 
 
 def to_evaluation_result(
@@ -173,30 +285,138 @@ def to_evaluation_result(
     priority_source: PrioritySource = PrioritySource.DEFAULT,
     warnings: list[str] | None = None,
     security_findings: list[SecurityFinding] | None = None,
+    acknowledged_risks: list[AcknowledgedRisk] | None = None,
+    adjusted_verdict=None,
+    include_agent_contract: bool = True,
+    verbose: bool = True,
 ) -> EvaluationResult:
-    """Convert a ``ClassificationResult`` into the Pydantic return model."""
-    summary = result.summary()
+    """Convert a ``ClassificationResult`` into the Pydantic return model.
+
+    When ``verbose`` is ``False`` the structured channel omits the 16 raw-metric
+    floats and trims ``interpretation`` to failing generators only (see
+    ``_failing_interpretation``). Measurement showed ``raw_metrics`` +
+    ``interpretation`` make up ~55% of the default structured payload, and
+    clients routinely inject ``structured_content`` into context, so gating both
+    channels (not just the markdown) is what earns the keep here.
+    """
+    summary = (
+        adjusted_verdict.adjusted_element if adjusted_verdict else result.summary()
+    )
     walk = (
         build_preference_walk(preferences, summary) if preferences is not None else None
     )
+
+    interpretation = dict(result.interpretation)
+    if not coupling_available:
+        # The "COMPOSABLE not scored" note has no flat-metric equivalent; it
+        # used to live only on the composable pillar's interpretation. Keep it
+        # reaching the agent by parking it in the single flat interpretation.
+        interpretation.setdefault("mdg.unavailable", mdg_unavailable_message(warnings))
+
+    raw_metrics = dict(result.raw_metrics)
+    if not verbose:
+        interpretation = _failing_interpretation(result, interpretation)
+        raw_metrics = {}
+
+    dimensions = dict(result.dimensions)
+    if adjusted_verdict is not None and adjusted_verdict.adjusted_secure_pass:
+        dimensions["secure"] = EvaluationValue.SECURE
+    display_result = replace(result, dimensions=dimensions, lattice_element=summary)
+
+    active_findings = security_findings or []
+    risks = acknowledged_risks or []
+    grade_capped = adjusted_verdict.grade_capped if adjusted_verdict else False
+    agent_contract = None
+    if include_agent_contract:
+        next_tool, next_actions, blocked_by, verification_gates, risk_flags = (
+            build_agent_contract(
+                display_result,
+                coupling_available=coupling_available,
+                security_findings=active_findings,
+                acknowledged_risks=risks,
+                grade_capped=grade_capped,
+                warnings=warnings,
+            )
+        )
+        agent_contract = AgentContract(
+            next_tool=next_tool,
+            next_actions=next_actions,
+            blocked_by=blocked_by,
+            verification_gates=verification_gates,
+            risk_flags=risk_flags,
+        )
+
+    suggestions = [
+        Suggestion(
+            pillar=s.pillar,
+            metric=s.metric,
+            severity=s.severity,
+            message=s.message,
+        )
+        for s in suggest_refactors(result, active_findings=active_findings)
+    ]
 
     return EvaluationResult(
         is_parseable=result.is_parseable,
         lattice_element=lattice_to_str(summary),
         lattice_symbol=summary.symbol,
         lattice_description=summary.description,
-        dimensions={dim: lattice_to_str(val) for dim, val in result.dimensions.items()},
+        dimensions={dim: lattice_to_str(val) for dim, val in dimensions.items()},
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-        pillars=build_pillars(result, coupling_available, warnings=warnings),
+        pillars=build_pillars(display_result, coupling_available, warnings=warnings),
         priority=result.priority,
         priority_source=priority_source,
-        guidance=build_guidance(result),
+        guidance=build_guidance(display_result),
         coupling_available=coupling_available,
-        raw_metrics=dict(result.raw_metrics),
-        interpretation=dict(result.interpretation),
+        raw_metrics=raw_metrics,
+        interpretation=interpretation,
         warnings=warnings or [],
-        security_findings=security_findings or [],
+        agent_contract=agent_contract,
+        security_findings=active_findings,
+        acknowledged_risks=risks,
+        raw_lattice_element=(
+            lattice_to_str(adjusted_verdict.raw_element) if adjusted_verdict else None
+        ),
+        adjusted_lattice_element=(
+            lattice_to_str(adjusted_verdict.adjusted_element)
+            if adjusted_verdict
+            else None
+        ),
+        secure_raw=adjusted_verdict.raw_secure_pass if adjusted_verdict else None,
+        secure_adjusted=(
+            adjusted_verdict.adjusted_secure_pass if adjusted_verdict else None
+        ),
+        grade_capped=grade_capped,
+        suggestions=suggestions,
         preference_walk=walk,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dual-channel converter (Software 3.0)
+# ---------------------------------------------------------------------------
+
+
+def to_tool_result(model: BaseModel, markdown: str) -> ToolResult:
+    """Return a dual-channel ``ToolResult``: markdown for the LLM, JSON for code.
+
+    ``content`` is the compact markdown the LLM reads (FastMCP wraps the bare
+    string in a ``TextContent``); ``structured_content`` is the model's
+    JSON-mode dump for programmatic clients.
+
+    Empirically verified FastMCP behavior (see ``tests/mcp/test_evaluate.py``
+    and a probe over ``mcp.call_tool`` + ``to_mcp_tool().model_dump()``):
+      * When a tool is annotated ``-> ToolResult``, FastMCP emits **no**
+        ``outputSchema`` for it — this is intentional and shrinks the eager
+        tool-definition surface (outputSchema is optional per the MCP spec).
+        Tools wanting to keep an outputSchema can instead annotate ``-> Model``
+        while still returning this ``ToolResult`` (both channels are honored at
+        runtime regardless of the annotation).
+      * ``structured_content`` is still delivered on the wire.
+      * ``content`` is the markdown text, not the model JSON.
+    """
+    return ToolResult(
+        content=markdown, structured_content=model.model_dump(mode="json")
     )
 
 
@@ -205,7 +425,9 @@ def to_evaluation_result(
 # ---------------------------------------------------------------------------
 
 
-def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
+def render_evaluation_md(
+    e: EvaluationResult, title: str | None = None, *, verbose: bool = True
+) -> str:
     lines: list[str] = []
     if title:
         lines.append(f"# {title}")
@@ -231,6 +453,17 @@ def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
     lines.append("")
     lines.append(f"**Priority:** `{e.priority.value}`")
     lines.append(f"**Guidance:** {e.guidance}")
+    if e.agent_contract is not None:
+        contract = e.agent_contract
+        if contract.next_tool or contract.next_actions or contract.blocked_by:
+            lines.append("")
+            lines.append("## Agent Contract")
+            if contract.next_tool:
+                lines.append(f"- **Next tool:** `{contract.next_tool}`")
+            for action in contract.next_actions:
+                lines.append(f"- **Action:** {action}")
+            for blocked in contract.blocked_by:
+                lines.append(f"- **Blocked by:** `{blocked}`")
 
     if e.preference_walk is not None:
         pw = e.preference_walk
@@ -254,7 +487,36 @@ def render_evaluation_md(e: EvaluationResult, title: str | None = None) -> str:
         else:
             lines.append("- **Walk:** _at or beyond target — no further steps._")
 
-    if e.raw_metrics:
+    if e.secure_raw is not None and e.secure_raw != e.secure_adjusted:
+        raw = "PASS" if e.secure_raw else "FAIL"
+        adjusted = "PASS" if e.secure_adjusted else "FAIL"
+        lines.append("")
+        lines.append(f"**SECURE overlay:** {raw} (raw) -> {adjusted} (acknowledged)")
+    if e.acknowledged_risks:
+        lines.append("")
+        lines.append("## Acknowledged Risks")
+        for risk in e.acknowledged_risks:
+            lines.append(
+                f"- `{risk.callee or risk.kind}` line {risk.line}: {risk.reason}"
+            )
+    if e.grade_capped:
+        lines.append(
+            "> Max grade capped below IDEAL because an acknowledged security "
+            "risk is active."
+        )
+
+    # Suggestions are the actionable payload — show them by default (one line
+    # each, already concise). Not verbose-gated: they are the whole point.
+    if e.suggestions:
+        lines.append("")
+        lines.append("## Suggestions")
+        for s in e.suggestions:
+            lines.append(f"- [ ] ({s.pillar}) {s.message}")
+
+    # The 16 raw-metric floats are the heaviest part of the default markdown
+    # (~430 of ~794 bytes for a typical file) and are rarely needed inline;
+    # gate them behind ``verbose``.
+    if verbose and e.raw_metrics:
         lines.append("")
         lines.append("## Raw Metrics")
         for k, v in sorted(e.raw_metrics.items()):

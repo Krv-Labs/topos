@@ -144,7 +144,11 @@ uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
   --collect-all topos \
   --collect-all fastmcp \
   --collect-all ladybug \
+  --collect-all onnxruntime \
+  --collect-all fastembed \
+  --collect-all trailed \
   --copy-metadata fastmcp \
+  --copy-metadata fastembed \
   topos/cli/main.py
 ```
 

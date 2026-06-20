@@ -60,6 +60,44 @@ def resolve_gitnexus_dir(
     return default if default.exists() else None
 
 
+def _check_override_warning(
+    override: str | Path, project_root: Path
+) -> list[str] | None:
+    override_path = Path(override).expanduser().resolve()
+    try:
+        override_path.relative_to(project_root)
+    except ValueError:
+        return [
+            "gitnexus_dir rejected — override must be inside TOPOS_MCP_FILE_ROOT. "
+            f"Got: {override_path}"
+        ]
+    if not override_path.exists():
+        return [
+            "gitnexus_dir unavailable — override path does not exist. "
+            f"Got: {override_path}"
+        ]
+    return None
+
+
+def _dep_graph_load_warning(gitnexus_dir: Path, dep_graph_loaded: bool) -> list[str]:
+    if dep_graph_loaded:
+        return []
+    load_error = last_dep_graph_error()
+    is_schema_mismatch = load_error and any(
+        term in load_error.lower()
+        for term in ("storage version", "different version", "ladybug")
+    )
+    if is_schema_mismatch:
+        return [
+            f"COMPOSABLE not scored — LadybugDB storage version mismatch: {load_error}"
+        ]
+    return [
+        "COMPOSABLE not scored — .gitnexus exists but the dependency graph "
+        "could not be loaded; re-run 'topos depgraph generate' and ensure "
+        "GitNexus dependencies are installed."
+    ]
+
+
 def gitnexus_warnings(
     override: str | Path | None,
     project_root: Path,
@@ -69,45 +107,19 @@ def gitnexus_warnings(
 ) -> list[str]:
     """Explain why COMPOSABLE is unavailable or risky."""
     project_root = project_root.resolve()
-    warnings: list[str] = []
     if override:
-        override_path = Path(override).expanduser().resolve()
-        try:
-            override_path.relative_to(project_root)
-        except ValueError:
-            return [
-                "gitnexus_dir rejected — override must be inside TOPOS_MCP_FILE_ROOT. "
-                f"Got: {override_path}"
-            ]
-        if not override_path.exists():
-            return [
-                "gitnexus_dir unavailable — override path does not exist. "
-                f"Got: {override_path}"
-            ]
+        warn = _check_override_warning(override, project_root)
+        if warn:
+            return warn
     elif gitnexus_dir is None:
         return [
             "COMPOSABLE not scored — no .gitnexus directory found; run "
             "'topos depgraph generate' to score this generator."
         ]
 
-    if gitnexus_dir is not None and not dep_graph_loaded:
-        load_error = last_dep_graph_error()
-        if load_error and (
-            "storage version" in load_error.lower()
-            or "different version" in load_error.lower()
-            or "ladybug" in load_error.lower()
-        ):
-            warnings.append(
-                "COMPOSABLE not scored — LadybugDB storage version mismatch: "
-                f"{load_error}"
-            )
-        else:
-            warnings.append(
-                "COMPOSABLE not scored — .gitnexus exists but the dependency graph "
-                "could not be loaded; re-run 'topos depgraph generate' and ensure "
-                "GitNexus dependencies are installed."
-            )
+    warnings: list[str] = []
     if gitnexus_dir is not None:
+        warnings.extend(_dep_graph_load_warning(gitnexus_dir, dep_graph_loaded))
         stale = _stale_gitnexus_warning(project_root, gitnexus_dir)
         if stale:
             warnings.append(stale)
@@ -129,6 +141,14 @@ def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | Non
     return None
 
 
+def _resolve_ref_mtime(git_dir: Path, ref_line: str) -> float | None:
+    ref_path = git_dir / ref_line.removeprefix("ref: ").strip()
+    try:
+        return ref_path.stat().st_mtime
+    except OSError:
+        return None
+
+
 def _git_head_mtime(project_root: Path) -> float | None:
     git_dir = project_root / ".git"
     head = git_dir / "HEAD"
@@ -137,11 +157,7 @@ def _git_head_mtime(project_root: Path) -> float | None:
     except OSError:
         return None
     if head_text.startswith("ref: "):
-        ref_path = git_dir / head_text.removeprefix("ref: ").strip()
-        try:
-            return ref_path.stat().st_mtime
-        except OSError:
-            return None
+        return _resolve_ref_mtime(git_dir, head_text)
     try:
         return head.stat().st_mtime
     except OSError:
@@ -158,6 +174,23 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
         return 0.0
 
 
+def _handle_dep_graph_error(exc: Exception) -> ModuleDependencyGraph | None:
+    global _last_dep_graph_error
+    if isinstance(exc, LadybugSchemaMismatchError):
+        _last_dep_graph_error = str(exc)
+        return None
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).lower()
+        if "different version" in msg or "storage version" in msg:
+            _last_dep_graph_error = str(exc)
+            return None
+        raise exc
+    if isinstance(exc, (FileNotFoundError, ImportError, OSError)):
+        _last_dep_graph_error = str(exc)
+        return None
+    raise exc
+
+
 def load_dep_graph(
     gitnexus_dir: Path | None, target_file: str
 ) -> ModuleDependencyGraph | None:
@@ -170,18 +203,8 @@ def load_dep_graph(
         graph = dep_graph_for(gitnexus_dir, target_file)
         _last_dep_graph_error = None
         return graph
-    except LadybugSchemaMismatchError as exc:
-        _last_dep_graph_error = str(exc)
-        return None
-    except RuntimeError as exc:
-        msg = str(exc).lower()
-        if "different version" in msg or "storage version" in msg:
-            _last_dep_graph_error = str(exc)
-            return None
-        raise
-    except (FileNotFoundError, ImportError, OSError) as exc:
-        _last_dep_graph_error = str(exc)
-        return None
+    except Exception as exc:
+        return _handle_dep_graph_error(exc)
 
 
 def _intrinsic_representations(

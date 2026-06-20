@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Krv-Labs/topos",
+  "title": "Topos",
+  "description": "Structural code-quality tools for AI coding agents.",
+  "websiteUrl": "https://github.com/Krv-Labs/topos",
+  "repository": {
+    "url": "https://github.com/Krv-Labs/topos",
+    "source": "github"
+  },
+  "version": "0.3.5",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "topos-mcp",
+      "version": "0.3.5",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

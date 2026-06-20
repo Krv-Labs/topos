@@ -2,7 +2,7 @@
 Pydantic schemas for the Topos MCP server.
 
 Input models validate tool arguments; return models give FastMCP the
-``outputSchema`` it emits to clients per MCP 2025-11-25 structured-output spec.
+``outputSchema`` it emits to clients when structured output is enabled.
 """
 
 from __future__ import annotations
@@ -13,13 +13,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import Generator, UserPreferences
-
-
-class ResponseFormat(StrEnum):
-    """Output format for tools that support human/machine presentation."""
-
-    MARKDOWN = "markdown"
-    JSON = "json"
 
 
 class LatticeElement(StrEnum):
@@ -150,19 +143,23 @@ class EvaluateCodeInput(_StrictModel):
             "'python', 'rust', 'javascript', 'typescript', 'cpp'."
         ),
     )
-    response_format: ResponseFormat = Field(
-        default=ResponseFormat.MARKDOWN,
-        description=(
-            "'markdown' for human/agent-readable, 'json' for structured "
-            "programmatic use."
-        ),
-    )
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
             "Strict total order on the three generators. The result includes "
             "a targeted relaxation walk toward the 'ideal intersection' "
             "(meet of the top-two ranked generators)."
+        ),
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in the result."
         ),
     )
 
@@ -184,7 +181,6 @@ class EvaluateFileInput(_StrictModel):
             "Defaults to <project_root>/.gitnexus if it exists."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
@@ -198,6 +194,17 @@ class EvaluateFileInput(_StrictModel):
             "Include line/snippet diagnostics for dangerous API calls when "
             "SECURE fails."
         ),
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in the result."
+        ),
+    )
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
     )
 
 
@@ -244,7 +251,13 @@ class EvaluateProjectInput(_StrictModel):
             "Defaults off for project scans to keep responses compact."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in each affected file entry."
+        ),
+    )
 
 
 class CompareCodeInput(_StrictModel):
@@ -253,7 +266,6 @@ class CompareCodeInput(_StrictModel):
     source_code: str = Field(..., min_length=1, description="Baseline code.")
     target_code: str = Field(..., min_length=1, description="Proposed/target code.")
     language: str = Field(default="python")
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class CompareFilesInput(_StrictModel):
@@ -261,7 +273,6 @@ class CompareFilesInput(_StrictModel):
 
     source: str = Field(..., min_length=1, description="Baseline file path.")
     target: str = Field(..., min_length=1, description="Proposed file path.")
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 class AssessImprovementInput(_StrictModel):
@@ -314,7 +325,13 @@ class AssessImprovementInput(_StrictModel):
             "SECURE fails."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this assessment. "
+            "Mirrors CLI --allow and is fully disclosed in nested evaluations."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_inputs(self) -> AssessImprovementInput:
@@ -362,7 +379,17 @@ class InspectCodeInput(_StrictModel):
             "cyclomatic complexity. Keeps agent context lean on large files."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+    verbose: bool = Field(
+        default=False,
+        description="Include raw probe metric floats under each file in the response.",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this inspection. "
+            "Mirrors CLI --allow and is fully disclosed in the evaluation."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_source(self) -> InspectCodeInput:
@@ -398,7 +425,14 @@ class CalculateCoverageInput(_StrictModel):
         default=False,
         description="Whether to include Unknown UAST nodes in the analysis.",
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
+    coverage_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum threshold for declaration and topological coverage policies."
+        ),
+    )
 
 
 class PreferenceWalkInput(_StrictModel):
@@ -436,7 +470,6 @@ class PreferenceWalkInput(_StrictModel):
             "the target lower."
         ),
     )
-    response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN)
 
 
 # ---------------------------------------------------------------------------
@@ -583,18 +616,19 @@ class PreferenceWalk(BaseModel):
 
 
 class PillarResult(BaseModel):
-    """Detailed result for one quality pillar (generator)."""
+    """Lean per-generator summary (achieved + score).
+
+    The full per-metric detail and interpretation strings live once in the
+    parent's flat ``raw_metrics`` / ``interpretation`` maps (namespaced by
+    representation prefix: ``cfg.``/``ast.`` -> simple, ``mdg.`` -> composable,
+    ``cpg.`` -> secure, ``pdg.`` -> unprefixed structural). They are NOT
+    duplicated here.
+    """
 
     achieved: bool = Field(
         ..., description="Whether the generator's threshold was met."
     )
     score: float = Field(..., description="Normalized quality score in [0, 100].")
-    metrics: dict[str, float] = Field(
-        default_factory=dict, description="Raw metrics feeding this pillar."
-    )
-    interpretation: dict[str, str] = Field(
-        default_factory=dict, description="Per-metric interpretation strings."
-    )
 
 
 class SecurityFinding(BaseModel):
@@ -608,12 +642,54 @@ class SecurityFinding(BaseModel):
     sink: str | None = Field(default=None, description="Taint sink snippet.")
 
 
+class AcknowledgedRisk(BaseModel):
+    """A disclosed security finding acknowledged by project config or input."""
+
+    callee: str | None = None
+    kind: str
+    line: int = Field(..., ge=1)
+    snippet: str
+    reason: str
+    scope: str = "**"
+
+
 class FunctionEntry(BaseModel):
     """Function-level complexity diagnostic."""
 
     name: str
     line: int = Field(..., ge=1)
     complexity: int
+
+
+class Suggestion(BaseModel):
+    """One actionable, refactor-focused next step.
+
+    Wire mirror of ``topos.evaluation.suggestions.Suggestion`` — the pure
+    engine emits the frozen dataclass; this is its Pydantic shape so the same
+    suggestions reach MCP agents that the CLI already shows.
+    """
+
+    pillar: str = Field(..., description="simple | composable | secure | coverage.")
+    metric: str | None = Field(
+        default=None, description="Raw-metric key, or null for finding-derived."
+    )
+    severity: str = Field(
+        ..., description="'fix' (gate failed) | 'improve' (advisory)."
+    )
+    message: str = Field(..., description="Imperative instruction to act on.")
+
+
+class AgentContract(BaseModel):
+    """Compact loop-control packet for agentic harnesses."""
+
+    next_tool: str | None = Field(
+        default=None,
+        description="Recommended next MCP tool for the agent loop, if any.",
+    )
+    next_actions: list[str] = Field(default_factory=list)
+    blocked_by: list[str] = Field(default_factory=list)
+    verification_gates: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
 
 
 class EvaluationResult(BaseModel):
@@ -650,7 +726,34 @@ class EvaluationResult(BaseModel):
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     interpretation: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     security_findings: list[SecurityFinding] = Field(default_factory=list)
+    acknowledged_risks: list[AcknowledgedRisk] = Field(default_factory=list)
+    raw_lattice_element: LatticeElement | None = Field(
+        default=None,
+        description="Canonical raw verdict before acknowledged-risk overlay.",
+    )
+    adjusted_lattice_element: LatticeElement | None = Field(
+        default=None,
+        description="Verdict after acknowledged-risk overlay and grade cap.",
+    )
+    secure_raw: bool | None = Field(
+        default=None, description="Raw SECURE gate before acknowledged-risk overlay."
+    )
+    secure_adjusted: bool | None = Field(
+        default=None, description="SECURE gate after acknowledged-risk overlay."
+    )
+    grade_capped: bool = Field(
+        default=False,
+        description="True when acknowledged risk prevents a top IDEAL grade.",
+    )
+    suggestions: list[Suggestion] = Field(
+        default_factory=list,
+        description=(
+            "Actionable, refactor-focused next steps derived from the failing "
+            "policy gates and active security findings."
+        ),
+    )
     preference_walk: PreferenceWalk | None = Field(
         default=None,
         description=(
@@ -670,6 +773,12 @@ class ProjectFileEntry(BaseModel):
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     security_findings: list[SecurityFinding] = Field(default_factory=list)
+    acknowledged_risks: list[AcknowledgedRisk] = Field(default_factory=list)
+    raw_lattice_element: LatticeElement | None = None
+    adjusted_lattice_element: LatticeElement | None = None
+    secure_raw: bool | None = None
+    secure_adjusted: bool | None = None
+    grade_capped: bool = False
     is_parseable: bool = True
 
 
@@ -681,21 +790,16 @@ class ProjectEvaluationResult(BaseModel):
     parse_failures: int
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
-    overall: LatticeElement
     aggregate_floor_verdict: LatticeElement
     aggregate_explanation: str
     worst_file_verdict: LatticeElement | None = None
     worst_files: list[ProjectFileEntry] = Field(default_factory=list)
     guidance: str = ""
-    overall_note: str = (
-        "`overall` is a deprecated alias for aggregate_floor_verdict; use "
-        "aggregate_floor_verdict plus worst_file_verdict/worst_files for agent "
-        "planning."
-    )
     priority: Priority
     priority_source: PrioritySource = PrioritySource.DEFAULT
     coupling_available: bool
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     count: int = Field(..., description="Entries in this page.")
     offset: int
     total: int
@@ -741,8 +845,13 @@ class AssessmentResult(BaseModel):
     similarity: float | None = None
     coupling_available_for_proposed: bool
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     # Anti-gaming: populated when scores moved but the tree barely changed.
     suspicion_reason: str | None = None
+    # On a regression: a function-scoped unified diff of the single worst
+    # function (largest adverse complexity increase), so the LLM can pinpoint
+    # what got worse instead of diffing two full metric trees.
+    regression_diff: str | None = None
     error: str | None = None
 
 
@@ -762,6 +871,23 @@ class InspectionResult(BaseModel):
     entropy_compression_ratio: float | None = None
     entropy_interpretation: str | None = None
     error: str | None = None
+
+
+class TopologicalCoverageResult(BaseModel):
+    """ECT-based topological semantic coverage (optional extra)."""
+
+    unavailable: bool = False
+    reason: str | None = None
+    distance: float | None = None
+    coverage_score: float | None = None
+    tested_functions: list[str] = Field(default_factory=list)
+    untested_functions: list[str] = Field(default_factory=list)
+    put_node_count: int | None = None
+    test_node_count: int | None = None
+    scoped_node_count: int | None = None
+    achieved: bool | None = None
+    threshold: float | None = None
+    interpretation: dict[str, str] = Field(default_factory=dict)
 
 
 class CoverageResult(BaseModel):
@@ -794,5 +920,6 @@ class CoverageResult(BaseModel):
     )
     put_declaration_count: int
     test_declaration_count: int
+    topological_coverage: TopologicalCoverageResult | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None

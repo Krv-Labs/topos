@@ -123,9 +123,9 @@ Step 3 — Launch from the project root
       }
 
 .. tip::
-   On the agent's first turn, point it at the workflow doc:
+   On the agent's first turn, point it at the compact contract:
 
-      "Fetch ``topos://docs/workflows`` and follow the Topos refactor loop."
+      "Fetch ``topos://docs/agent-contract`` and use Topos as the structural verifier."
 
    Or invoke the prompt directly: ``topos_refactor_until_ideal(filepath="path/to/file.py")``.
 
@@ -147,20 +147,20 @@ All evaluation tools accept an optional ``preferences`` parameter which includes
 Core Evaluation
 ~~~~~~~~~~~~~~~
 
-``topos_evaluate_file(filepath, preferences, gitnexus_dir, include_security_findings)``
+``topos_evaluate_file({"params": {"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ...}})``
    Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and 
    reach higher badges like ``IDEAL``. Missing or rejected GitNexus configuration is
    reported in ``warnings`` and in the COMPOSABLE pillar interpretation.
 
-``topos_evaluate_code(code, language, preferences)``
+``topos_evaluate_code({"params": {"code": ..., "language": ..., "preferences": ...}})``
    Classifies a raw code string (SIMPLE and SECURE only).
 
-``topos_evaluate_project(path, preferences, gitnexus_dir, limit, offset, include_security_findings)``
+``topos_evaluate_project({"params": {"path": ..., "preferences": ..., "gitnexus_dir": ..., "limit": ..., "offset": ..., "include_security_findings": ...}})``
    Project-wide rollup. Returns worst-scoring files first. Use
    ``aggregate_floor_verdict`` for the codebase floor and ``worst_files`` /
    ``guidance`` for the next action.
 
-``topos_inspect_code(code, filepath, language, preferences, top_n_functions)``
+``topos_inspect_code({"params": {"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ...}})``
    Detailed metric breakdown: top-N functions by complexity and line number,
    entropy details, and full metric table. Provide exactly one of ``code`` or
    ``filepath``.
@@ -168,7 +168,7 @@ Core Evaluation
 Refactor & Iterate
 ~~~~~~~~~~~~~~~~~~
 
-``topos_assess_improvement(proposed_code, proposed_filepath, filepath, preferences, gitnexus_dir)``
+``topos_assess_improvement({"params": {"proposed_code": ..., "proposed_filepath": ..., "filepath": ..., "preferences": ..., "gitnexus_dir": ...}})``
    Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
    if the quality badge or scores have improved according to the preferences. Provide
    exactly one of ``proposed_code`` or ``proposed_filepath``.
@@ -193,22 +193,30 @@ Structure & Coverage
    AST edit distance (topological drift) between two code strings.
 
 ``topos_calculate_coverage(put_files, test_files, k)``
-   Calculates structural test coverage using UAST k-gram path recall.
+   Calculates structural test coverage (UAST declaration matching and k-gram recall).
+   When ``ect-coverage`` dependencies are available, the response also includes
+   ``topological_coverage`` (ECT score, tested/untested functions, node counts).
+   Without the extra, UAST metrics are returned and topological fields report
+   ``unavailable`` with an install hint. Prefer **file-pair or module-scoped**
+   PUT/test sets rather than whole-repository merges.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~
 
 ``topos_get_doc(topic)``
-   Retrieves Topos documentation (``workflows``, ``lattice``, ``metrics``, or ``priority``) 
+   Retrieves Topos documentation (``agent-contract``, ``workflows``, ``lattice``,
+   ``metrics``, ``preferences``, or ``priority``)
    as Markdown. Useful for agents in environments where MCP resources are not directly accessible.
 
 
 MCP Resources
 -------------
 
-Read these on the agent's first turn to orient it:
+Read these to orient agents:
 
-- ``topos://docs/workflows`` — canonical review → plan → refactor → re-measure loop (stop condition: ``IDEAL``)
+- ``topos://docs/agent-contract`` — compact outcome-first loop contract and done gates
+- ``topos://docs/workflows`` — expanded review → plan → refactor → re-measure guide
 - ``topos://docs/lattice`` — the 8-element Quality Badge lattice
 - ``topos://docs/metrics`` — every metric key, pillar, and threshold
 - ``topos://docs/priority`` — priority profiles (simple / composable / secure)
+- ``topos://docs/preferences`` — strict generator rankings and preference walks

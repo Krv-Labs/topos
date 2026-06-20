@@ -68,25 +68,17 @@ def dangerous_call_findings(
     return findings
 
 
-def taint_flow_findings(
-    cpg: CodePropertyGraph,
-    *,
-    max_findings: int = 20,
-    allow: set[str] | None = None,
-) -> list[SecurityFinding]:
-    """Find source-to-dangerous-sink DDG paths with source/sink snippets."""
-    source_registry = TAINT_SOURCES.get(cpg.language, set())
-    sink_registry = effective_registry(cpg.language, allow)
-    if not source_registry or not sink_registry:
-        return []
-
+def _build_forward_ddg_map(cpg: CodePropertyGraph) -> dict[str, list[str]]:
     forward: dict[str, list[str]] = {}
     for edge in cpg.edges:
         if edge.kind is CPGEdgeKind.DDG:
             forward.setdefault(edge.source, []).append(edge.target)
-    if not forward:
-        return []
+    return forward
 
+
+def _find_sources_and_sinks(
+    cpg: CodePropertyGraph, source_registry: set[str], sink_registry: set[str]
+) -> tuple[list[str], dict[str, str]]:
     sources: list[str] = []
     sinks: dict[str, str] = {}
     for node_id, node in cpg.nodes.items():
@@ -99,7 +91,26 @@ def taint_flow_findings(
                 sinks[node_id] = snippet
         if node.kind in ("Identifier", "MemberExpr") and snippet in source_registry:
             sources.append(node_id)
+    return sources, sinks
 
+
+def taint_flow_findings(
+    cpg: CodePropertyGraph,
+    *,
+    max_findings: int = 20,
+    allow: set[str] | None = None,
+) -> list[SecurityFinding]:
+    """Find source-to-dangerous-sink DDG paths with source/sink snippets."""
+    source_registry = TAINT_SOURCES.get(cpg.language, set())
+    sink_registry = effective_registry(cpg.language, allow)
+    if not source_registry or not sink_registry:
+        return []
+
+    forward = _build_forward_ddg_map(cpg)
+    if not forward:
+        return []
+
+    sources, sinks = _find_sources_and_sinks(cpg, source_registry, sink_registry)
     findings: list[SecurityFinding] = []
     for source_id in sources:
         reachable = _bfs_reachable(forward, source_id)

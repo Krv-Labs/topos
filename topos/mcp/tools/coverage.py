@@ -79,6 +79,19 @@ def _merge_cpgs(cpgs: list[CodePropertyGraph]) -> CodePropertyGraph:
     )
 
 
+def _build_file_cpgs(files: list[str], language: str) -> list[CodePropertyGraph]:
+    cpgs: list[CodePropertyGraph] = []
+    for path in files:
+        resolved, err = resolve_within_root(path)
+        if err or resolved is None:
+            continue
+        morphism = ProgramMorphism.from_file(resolved, language=language)
+        cpg = morphism.build_cpg()
+        if cpg is not None:
+            cpgs.append(cpg)
+    return cpgs
+
+
 def _compute_topological_coverage(
     put_files: list[str],
     test_files: list[str],
@@ -94,25 +107,8 @@ def _compute_topological_coverage(
             ),
         )
 
-    put_cpgs: list[CodePropertyGraph] = []
-    for path in put_files:
-        resolved, err = resolve_within_root(path)
-        if err or resolved is None:
-            continue
-        morphism = ProgramMorphism.from_file(resolved, language=language)
-        cpg = morphism.build_cpg()
-        if cpg is not None:
-            put_cpgs.append(cpg)
-
-    test_cpgs: list[CodePropertyGraph] = []
-    for path in test_files:
-        resolved, err = resolve_within_root(path)
-        if err or resolved is None:
-            continue
-        morphism = ProgramMorphism.from_file(resolved, language=language)
-        cpg = morphism.build_cpg()
-        if cpg is not None:
-            test_cpgs.append(cpg)
+    put_cpgs = _build_file_cpgs(put_files, language)
+    test_cpgs = _build_file_cpgs(test_files, language)
 
     try:
         topo_report = calculate_topological_coverage(
@@ -137,6 +133,34 @@ def _compute_topological_coverage(
     )
 
 
+def _parse_roots(
+    files: list[str], language: str, warnings: list[str], label: str
+) -> tuple[list, CoverageResult | None]:
+    roots = []
+    for path in files:
+        resolved, err = resolve_within_root(path)
+        if err or resolved is None:
+            model = _empty_coverage_result(
+                warnings,
+                (
+                    f"{label} file error: {(err or {}).get('error', 'path error')} "
+                    f"for {path}"
+                ),
+            )
+            return [], model
+        try:
+            morphism = ProgramMorphism.from_file(resolved, language=language)
+            if morphism.ast and morphism.ast.uast_root:
+                roots.append(morphism.ast.uast_root)
+        except Exception as exc:
+            model = _empty_coverage_result(
+                warnings,
+                f"Failed to parse {label} file {path}: {exc}",
+            )
+            return [], model
+    return roots, None
+
+
 @mcp.tool(
     name="topos_calculate_coverage",
     tags={"coverage", "uast"},
@@ -151,51 +175,17 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
     node embeddings.
     """
     warnings: list[str] = []
-    put_roots = []
-    for path in params.put_files:
-        resolved, err = resolve_within_root(path)
-        if err or resolved is None:
-            model = _empty_coverage_result(
-                warnings,
-                (
-                    f"PUT file error: {(err or {}).get('error', 'path error')} "
-                    f"for {path}"
-                ),
-            )
-            return to_tool_result(model, render_coverage_md(model))
-        try:
-            morphism = ProgramMorphism.from_file(resolved, language=params.language)
-            if morphism.ast and morphism.ast.uast_root:
-                put_roots.append(morphism.ast.uast_root)
-        except Exception as exc:
-            model = _empty_coverage_result(
-                warnings,
-                f"Failed to parse PUT file {path}: {exc}",
-            )
-            return to_tool_result(model, render_coverage_md(model))
+    put_roots, err_model = _parse_roots(
+        params.put_files, params.language, warnings, "PUT"
+    )
+    if err_model is not None:
+        return to_tool_result(err_model, render_coverage_md(err_model))
 
-    test_roots = []
-    for path in params.test_files:
-        resolved, err = resolve_within_root(path)
-        if err or resolved is None:
-            model = _empty_coverage_result(
-                warnings,
-                (
-                    f"Test file error: {(err or {}).get('error', 'path error')} "
-                    f"for {path}"
-                ),
-            )
-            return to_tool_result(model, render_coverage_md(model))
-        try:
-            morphism = ProgramMorphism.from_file(resolved, language=params.language)
-            if morphism.ast and morphism.ast.uast_root:
-                test_roots.append(morphism.ast.uast_root)
-        except Exception as exc:
-            model = _empty_coverage_result(
-                warnings,
-                f"Failed to parse test file {path}: {exc}",
-            )
-            return to_tool_result(model, render_coverage_md(model))
+    test_roots, err_model = _parse_roots(
+        params.test_files, params.language, warnings, "Test"
+    )
+    if err_model is not None:
+        return to_tool_result(err_model, render_coverage_md(err_model))
 
     if not put_roots:
         model = _empty_coverage_result(
@@ -246,6 +236,49 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
         return to_tool_result(model, render_coverage_md(model))
 
 
+def _render_uncovered(r: CoverageResult) -> list[str]:
+    lines = []
+    if r.uncovered_declarations:
+        lines.append("## Uncovered Declarations")
+        for loc in r.uncovered_declarations:
+            try:
+                idx = r.declaration_locations.index(loc)
+                recall = r.best_declaration_recall[idx]
+                lines.append(f"- `{loc}` ({recall * 100:.1f}%)")
+            except (ValueError, IndexError):
+                lines.append(f"- `{loc}`")
+    else:
+        lines.append("## ✅ 100% Structural Coverage")
+        lines.append(
+            "All declarations in the PUT are structurally represented in the test "
+            "suite."
+        )
+    return lines
+
+
+def _render_topological_coverage(topo) -> list[str]:
+    lines = ["", "## Topological CPG Semantic Coverage (ECT)"]
+    if topo.unavailable:
+        lines.append(f"> Topological coverage unavailable: {topo.reason}")
+    elif topo.coverage_score is not None:
+        lines.append(f"- **Coverage score:** {topo.coverage_score:.4f}")
+        if topo.distance is not None:
+            lines.append(f"- **ECT distance:** {topo.distance:.4f}")
+        if topo.achieved is not None and topo.threshold is not None:
+            lines.append(
+                f"- **Threshold met:** {topo.achieved} (threshold {topo.threshold:.2f})"
+            )
+        if topo.scoped_node_count is not None:
+            lines.append(f"- **Scoped PUT nodes:** {topo.scoped_node_count}")
+        if topo.tested_functions:
+            lines.append(f"- **Tested functions:** {', '.join(topo.tested_functions)}")
+        if topo.untested_functions:
+            lines.append(
+                f"- **Untested functions:** {', '.join(topo.untested_functions)}"
+            )
+    return lines
+
+
 def render_coverage_md(r: CoverageResult) -> str:
     """Markdown rendering of a structural coverage result."""
     lines = ["# Structural Test Coverage (UAST)", ""]
@@ -272,46 +305,9 @@ def render_coverage_md(r: CoverageResult) -> str:
     lines.append(f"- **Test Declarations:** {r.test_declaration_count}")
     lines.append("")
 
-    if r.uncovered_declarations:
-        lines.append("## Uncovered Declarations")
-        for loc in r.uncovered_declarations:
-            try:
-                idx = r.declaration_locations.index(loc)
-                recall = r.best_declaration_recall[idx]
-                lines.append(f"- `{loc}` ({recall * 100:.1f}%)")
-            except (ValueError, IndexError):
-                lines.append(f"- `{loc}`")
-    else:
-        lines.append("## ✅ 100% Structural Coverage")
-        lines.append(
-            "All declarations in the PUT are structurally represented in the test "
-            "suite."
-        )
+    lines.extend(_render_uncovered(r))
 
     if r.topological_coverage is not None:
-        lines.append("")
-        lines.append("## Topological CPG Semantic Coverage (ECT)")
-        topo = r.topological_coverage
-        if topo.unavailable:
-            lines.append(f"> Topological coverage unavailable: {topo.reason}")
-        elif topo.coverage_score is not None:
-            lines.append(f"- **Coverage score:** {topo.coverage_score:.4f}")
-            if topo.distance is not None:
-                lines.append(f"- **ECT distance:** {topo.distance:.4f}")
-            if topo.achieved is not None and topo.threshold is not None:
-                lines.append(
-                    f"- **Threshold met:** {topo.achieved} "
-                    f"(threshold {topo.threshold:.2f})"
-                )
-            if topo.scoped_node_count is not None:
-                lines.append(f"- **Scoped PUT nodes:** {topo.scoped_node_count}")
-            if topo.tested_functions:
-                lines.append(
-                    f"- **Tested functions:** {', '.join(topo.tested_functions)}"
-                )
-            if topo.untested_functions:
-                lines.append(
-                    f"- **Untested functions:** {', '.join(topo.untested_functions)}"
-                )
+        lines.extend(_render_topological_coverage(r.topological_coverage))
 
     return "\n".join(lines)

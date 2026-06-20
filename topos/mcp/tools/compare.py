@@ -27,6 +27,20 @@ _READ_ONLY_ANN = {
 }
 
 
+def _failed_comparison(
+    error: str, source_valid: bool = False, target_valid: bool = False
+) -> ComparisonResult:
+    return ComparisonResult(
+        raw_distance=0.0,
+        normalized_distance=0.0,
+        similarity=0.0,
+        operations={},
+        source_valid=source_valid,
+        target_valid=target_valid,
+        error=error,
+    )
+
+
 @mcp.tool(
     name="topos_compare_code",
     tags={"compare"},
@@ -45,26 +59,14 @@ def topos_compare_code(params: CompareCodeInput) -> ToolResult:
         src = ProgramMorphism(source=params.source_code, language=params.language)
         tgt = ProgramMorphism(source=params.target_code, language=params.language)
     except Exception as exc:
-        model = ComparisonResult(
-            raw_distance=0.0,
-            normalized_distance=0.0,
-            similarity=0.0,
-            operations={},
-            source_valid=False,
-            target_valid=False,
-            error=str(exc),
-        )
+        model = _failed_comparison(str(exc))
         return to_tool_result(model, render_comparison_md(model))
 
     if not (src.is_valid and tgt.is_valid):
-        model = ComparisonResult(
-            raw_distance=0.0,
-            normalized_distance=0.0,
-            similarity=0.0,
-            operations={},
+        model = _failed_comparison(
+            "Failed to parse one or both code snippets.",
             source_valid=src.is_valid,
             target_valid=tgt.is_valid,
-            error="Failed to parse one or both code snippets.",
         )
         return to_tool_result(model, render_comparison_md(model))
 
@@ -89,26 +91,18 @@ def topos_compare_files(params: CompareFilesInput) -> ToolResult:
     """AST distance between two files on disk."""
     source_text, source_err = read_safe_utf8_file(params.source)
     if source_err:
-        model = ComparisonResult(
-            raw_distance=0.0,
-            normalized_distance=0.0,
-            similarity=0.0,
-            operations={},
+        model = _failed_comparison(
+            f"Source file error: {source_err['error']}",
             source_valid=False,
             target_valid=False,
-            error=f"Source file error: {source_err['error']}",
         )
         return to_tool_result(model, render_comparison_md(model))
     target_text, target_err = read_safe_utf8_file(params.target)
     if target_err:
-        model = ComparisonResult(
-            raw_distance=0.0,
-            normalized_distance=0.0,
-            similarity=0.0,
-            operations={},
+        model = _failed_comparison(
+            f"Target file error: {target_err['error']}",
             source_valid=True,
             target_valid=False,
-            error=f"Target file error: {target_err['error']}",
         )
         return to_tool_result(model, render_comparison_md(model))
     return topos_compare_code(

@@ -122,6 +122,15 @@ def topos_preference_walk(params: PreferenceWalkInput) -> ToolResult:
     return to_tool_result(model, render_preference_walk_md(model))
 
 
+def _render_step(s: WalkStep) -> str:
+    sat = ", ".join(g.value for g in s.generators_satisfied) or "—"
+    return f"- `{s.verdict.value}` (score {s.preference_score}) — satisfies: {sat}"
+
+
+def _render_walk_list(steps: list[WalkStep]) -> list[str]:
+    return [_render_step(s) for s in steps]
+
+
 def render_preference_walk_md(r: PreferenceWalkResult) -> str:
     """Markdown rendering of a preference-walk result for agent UIs."""
     ranking_str = " ≻ ".join(g.value for g in r.ranking)
@@ -141,17 +150,9 @@ def render_preference_walk_md(r: PreferenceWalkResult) -> str:
             lines.append("_Already at or beyond the aspirational target — no walk._")
     if r.walk:
         lines.append("\n## Walk (descending preference)")
-        for s in r.walk:
-            sat = ", ".join(g.value for g in s.generators_satisfied) or "—"
-            lines.append(
-                f"- `{s.verdict.value}` (score {s.preference_score}) — satisfies: {sat}"
-            )
+        lines.extend(_render_walk_list(r.walk))
     lines.append("\n## Full induced order on Ω")
-    for s in r.induced_order:
-        sat = ", ".join(g.value for g in s.generators_satisfied) or "—"
-        lines.append(
-            f"- `{s.verdict.value}` (score {s.preference_score}) — satisfies: {sat}"
-        )
+    lines.extend(_render_walk_list(r.induced_order))
     if r.error:
         lines.append(f"\n> error: {r.error}")
     return "\n".join(lines)

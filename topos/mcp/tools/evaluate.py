@@ -8,11 +8,16 @@ was never built and COMPOSABLE/IDEAL were unreachable via MCP.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastmcp import Context
 from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
-from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
 from topos.evaluation.policies.base import Priority
 from topos.utils.discovery import collect_source_files
 
@@ -35,6 +40,7 @@ from ..schemas import (
     EvaluateProjectInput,
     EvaluationResult,
     LatticeElement,
+    PrioritySource,
     ProjectEvaluationResult,
     ProjectFileEntry,
     resolve_priority,
@@ -190,6 +196,96 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
 
+def _evaluate_single_file(
+    path: Path,
+    resolved_root: Path,
+    priority: Priority,
+    gitnexus_dir: Path | None,
+    include_security_findings: bool,
+) -> tuple[ClassificationResult | None, ProjectFileEntry | None, bool, bool]:
+    try:
+        result, dep_graph = classify_file(path, priority, gitnexus_dir)
+    except Exception:
+        return None, None, True, False
+
+    is_parse_failure = not result.is_parseable
+    warnings: list[str] = []
+    findings = []
+    if include_security_findings and _secure_failed(result):
+        morphism = ProgramMorphism.from_file(path)
+        findings = security_findings(morphism.build_cpg())
+
+    entry = ProjectFileEntry(
+        filepath=str(path.relative_to(resolved_root)),
+        lattice_element=lattice_to_str(result.summary()),
+        scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
+        pillars=build_pillars(result, dep_graph is not None),
+        raw_metrics=dict(result.raw_metrics),
+        warnings=warnings,
+        security_findings=findings,
+        is_parseable=result.is_parseable,
+    )
+    return result, entry, is_parse_failure, dep_graph is not None
+
+
+def _validate_and_collect_project(
+    params: EvaluateProjectInput,
+) -> tuple[Path | None, list[Path] | None, str | None]:
+    resolved_root, err = resolve_within_root(params.path)
+    if err or resolved_root is None:
+        return None, None, (err or {}).get("error") or "Access denied"
+
+    if not resolved_root.is_dir():
+        return None, None, f"Path is not a directory: {resolved_root}"
+
+    py_files = collect_source_files(
+        (str(resolved_root),),
+        suffixes=(".py",),
+        recursive=True,
+    )
+    if not py_files:
+        return None, None, "No .py files found."
+
+    return resolved_root, py_files, None
+
+
+async def _evaluate_project_files_loop(
+    py_files: list[Path],
+    resolved_root: Path,
+    priority: Priority,
+    gitnexus_dir: Path | None,
+    include_security_findings: bool,
+    ctx: Context,
+) -> tuple[list[ClassificationResult], list[ProjectFileEntry], int, bool]:
+    total_files = len(py_files)
+    per_file_results = []
+    entries: list[ProjectFileEntry] = []
+    parse_failures = 0
+    any_dep_graph_loaded = False
+
+    for idx, path in enumerate(py_files, start=1):
+        result, entry, failed, has_dep = _evaluate_single_file(
+            path,
+            resolved_root,
+            priority,
+            gitnexus_dir,
+            include_security_findings,
+        )
+        if failed:
+            parse_failures += 1
+        if result is None or entry is None:
+            continue
+        any_dep_graph_loaded = any_dep_graph_loaded or has_dep
+        if not result.is_parseable:
+            parse_failures += 1
+        per_file_results.append(result)
+        entries.append(entry)
+        if idx % max(1, total_files // 20) == 0 or idx == total_files:
+            await ctx.report_progress(progress=idx, total=total_files)
+
+    return per_file_results, entries, parse_failures, any_dep_graph_loaded
+
+
 @mcp.tool(
     name="topos_evaluate_project",
     tags={"evaluate", "project"},
@@ -207,67 +303,61 @@ async def topos_evaluate_project(
     Returns a paginated per-file table plus the overall rollup. Use ``limit``
     / ``offset`` to page through large codebases.
     """
-    resolved_root, err = resolve_within_root(params.path)
-    if err or resolved_root is None:
-        model = _empty_project_result(params, error=(err or {}).get("error"))
-        return to_tool_result(model, render_project_md(model))
-
-    if not resolved_root.is_dir():
-        model = _empty_project_result(
-            params, error=f"Path is not a directory: {resolved_root}"
-        )
-        return to_tool_result(model, render_project_md(model))
-
-    py_files = collect_source_files(
-        (str(resolved_root),),
-        suffixes=(".py",),
-        recursive=True,
-    )
-    total_files = len(py_files)
-    if total_files == 0:
-        model = _empty_project_result(params, error="No .py files found.")
+    resolved_root, py_files, err_msg = _validate_and_collect_project(params)
+    if err_msg or resolved_root is None or py_files is None:
+        model = _empty_project_result(params, error=err_msg)
         return to_tool_result(model, render_project_md(model))
 
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
     priority, priority_source = resolve_priority(params.preferences)
     coupling_available = gitnexus_dir is not None
-    any_dep_graph_loaded = False
 
-    per_file_results = []
-    entries: list[ProjectFileEntry] = []
-    parse_failures = 0
+    (
+        per_file_results,
+        entries,
+        parse_failures,
+        any_dep_graph_loaded,
+    ) = await _evaluate_project_files_loop(
+        py_files,
+        resolved_root,
+        priority,
+        gitnexus_dir,
+        params.include_security_findings,
+        ctx,
+    )
 
-    for idx, path in enumerate(py_files, start=1):
-        try:
-            result, dep_graph = classify_file(path, priority, gitnexus_dir)
-        except Exception:
-            parse_failures += 1
-            continue
-        any_dep_graph_loaded = any_dep_graph_loaded or dep_graph is not None
-        if not result.is_parseable:
-            parse_failures += 1
-        warnings = []
-        findings = []
-        if params.include_security_findings and _secure_failed(result):
-            morphism = ProgramMorphism.from_file(path)
-            findings = security_findings(morphism.build_cpg())
-        per_file_results.append(result)
-        entries.append(
-            ProjectFileEntry(
-                filepath=str(path.relative_to(resolved_root)),
-                lattice_element=lattice_to_str(result.summary()),
-                scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-                pillars=build_pillars(result, dep_graph is not None),
-                raw_metrics=dict(result.raw_metrics),
-                warnings=warnings,
-                security_findings=findings,
-                is_parseable=result.is_parseable,
-            )
-        )
-        if idx % max(1, total_files // 20) == 0 or idx == total_files:
-            await ctx.report_progress(progress=idx, total=total_files)
+    model = _build_project_result(
+        resolved_root,
+        py_files,
+        parse_failures,
+        per_file_results,
+        entries,
+        any_dep_graph_loaded,
+        params,
+        priority,
+        priority_source,
+        coupling_available,
+        project_root,
+        gitnexus_dir,
+    )
+    return to_tool_result(model, render_project_md(model))
 
+
+def _build_project_result(
+    resolved_root: Path,
+    py_files: list[Path],
+    parse_failures: int,
+    per_file_results: list[ClassificationResult],
+    entries: list[ProjectFileEntry],
+    any_dep_graph_loaded: bool,
+    params: EvaluateProjectInput,
+    priority: Priority,
+    priority_source: PrioritySource,
+    coupling_available: bool,
+    project_root: Path,
+    gitnexus_dir: Path | None,
+) -> ProjectEvaluationResult:
     classifier = CharacteristicMorphism()
     rolled = classifier.combine_dimensions(per_file_results)
     rolled_scores = _minimum_scores_by_dim(per_file_results)
@@ -305,9 +395,9 @@ async def topos_evaluate_project(
         dep_graph_loaded=any_dep_graph_loaded,
     )
 
-    model = ProjectEvaluationResult(
+    return ProjectEvaluationResult(
         root=str(resolved_root),
-        file_count=total_files,
+        file_count=len(py_files),
         parse_failures=parse_failures,
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
@@ -328,7 +418,6 @@ async def topos_evaluate_project(
         files=page,
         verbose=params.verbose,
     )
-    return to_tool_result(model, render_project_md(model))
 
 
 def _minimum_scores_by_dim(results) -> dict[str, float]:
@@ -426,6 +515,16 @@ def _project_guidance(worst_files: list[ProjectFileEntry]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _render_project_entry(entry: ProjectFileEntry, verbose: bool) -> list[str]:
+    lines = []
+    s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
+    lines.append(f"- `{entry.filepath}` — {entry.lattice_element.value} ({s_str})")
+    if verbose and entry.raw_metrics:
+        for k, v in sorted(entry.raw_metrics.items()):
+            lines.append(f"  - `{k}`: {v:.3f}")
+    return lines
+
+
 def render_project_md(r: ProjectEvaluationResult) -> str:
     lines = [f"# Project Evaluation — {r.root}", ""]
     lines.append(f"**Overall:** {r.aggregate_floor_verdict.value}")
@@ -445,11 +544,7 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
     lines.append("")
     lines.append(f"## Worst files (showing {r.count} of {r.total}, offset {r.offset})")
     for entry in r.files:
-        s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
-        lines.append(f"- `{entry.filepath}` — {entry.lattice_element.value} ({s_str})")
-        if r.verbose and entry.raw_metrics:
-            for k, v in sorted(entry.raw_metrics.items()):
-                lines.append(f"  - `{k}`: {v:.3f}")
+        lines.extend(_render_project_entry(entry, r.verbose))
     if r.has_more:
         lines.append(
             f"\n_more files available: pass offset={r.next_offset} to continue._"

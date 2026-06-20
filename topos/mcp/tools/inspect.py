@@ -36,6 +36,20 @@ _READ_ONLY_ANN = {
 }
 
 
+def _span_text(source_bytes: bytes, span) -> str:
+    """Slice a UAST byte span out of the UTF-8-encoded source.
+
+    UAST offsets are byte offsets, so we must index the encoded bytes, not the
+    code-point-indexed str. Bounds-guarded like ``cpg/object.py`` in case the
+    span refers to a different revision than ``source_bytes``.
+    """
+    if span.end_byte > len(source_bytes):
+        return ""
+    return source_bytes[span.start_byte : span.end_byte].decode(
+        "utf-8", errors="replace"
+    )
+
+
 @mcp.tool(
     name="topos_inspect_code",
     tags={"inspect"},
@@ -98,6 +112,10 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
     )
 
     morphism = ProgramMorphism(source=source, language=params.language)
+    # UAST spans are UTF-8 byte offsets; encode ONCE before the loop and slice
+    # the bytes (not the code-point-indexed str) so non-ASCII chars don't shift
+    # the extracted identifiers. Same idiom as complexity.py / cpg/object.py.
+    source_bytes = morphism.source.encode("utf-8")
     all_funcs: list[FunctionEntry] = []
     if morphism.ast and morphism.ast.uast_root:
         try:
@@ -108,8 +126,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
                     # Look for an Identifier child (common in most UAST mappings)
                     for child in c.children:
                         if child.kind == "Identifier":
-                            s = child.span
-                            name = morphism.source[s.start_byte : s.end_byte]
+                            name = _span_text(source_bytes, child.span)
                             break
                 if not name:
                     name = c.attributes.get("scope") or "anonymous"
@@ -176,7 +193,12 @@ def render_inspection_md(r: InspectionResult, *, verbose: bool = True) -> str:
         lines.append("| Function | Line | Complexity |")
         lines.append("| --- | ---: | ---: |")
         for fn in r.function_entries:
-            lines.append(f"| `{fn.name}` | {fn.line} | {fn.complexity} |")
+            # Sanitize the cell: a stray newline or `|` in a name would break
+            # the markdown table layout — collapse them so rendering is robust.
+            safe_name = (
+                fn.name.replace("\n", " ").replace("\r", " ").replace("|", "\\|")
+            )
+            lines.append(f"| `{safe_name}` | {fn.line} | {fn.complexity} |")
     if r.entropy_compression_ratio is not None:
         lines.append("")
         interp = f" — {r.entropy_interpretation}" if r.entropy_interpretation else ""

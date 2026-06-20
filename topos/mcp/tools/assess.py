@@ -15,7 +15,11 @@ import difflib
 from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
-from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+from topos.evaluation.characteristic_morphism import (
+    CharacteristicMorphism,
+    ClassificationResult,
+)
+from topos.evaluation.policies.base import Priority
 from topos.functors.probes.cfg.complexity import cyclomatic_complexity
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
@@ -35,6 +39,7 @@ from ..schemas import (
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
+    SecurityFinding,
     resolve_priority,
 )
 from ..security import (
@@ -61,6 +66,163 @@ _MEANINGFUL_SCORE_DELTA = 3.0  # percentage points
 _REGRESSION_DIFF_MAX_LINES = 40
 
 
+def _load_baseline(
+    params: AssessImprovementInput, priority: Priority
+) -> tuple[str, ProgramMorphism, ClassificationResult, bool, list[str], object | None]:
+    if params.filepath:
+        resolved, err = resolve_within_root(params.filepath)
+        if err or resolved is None:
+            raise ValueError((err or {}).get("error", "path error"))
+        if not resolved.is_file():
+            raise ValueError(f"Path is not a file: {resolved}")
+        current_src, read_err = read_safe_utf8_file(resolved)
+        if read_err or current_src is None:
+            raise ValueError((read_err or {}).get("error", "read error"))
+        project_root = resolve_file_root()
+        gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
+        dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
+        current_morph = ProgramMorphism(source=current_src, language=params.language)
+        current_res = classify_morphism(current_morph, priority, dep_graph)
+        coupling_for_proposed = dep_graph is not None
+        warnings = gitnexus_warnings(
+            params.gitnexus_dir,
+            project_root,
+            gitnexus_dir,
+            dep_graph_loaded=dep_graph is not None,
+        )
+        return (
+            current_src,
+            current_morph,
+            current_res,
+            coupling_for_proposed,
+            warnings,
+            dep_graph,
+        )
+    elif params.current_code:
+        current_src = params.current_code
+        current_res = classify_code_string(
+            params.current_code, params.language, priority
+        )
+        current_morph = ProgramMorphism(
+            source=params.current_code, language=params.language
+        )
+        coupling_for_proposed = False
+        warnings = [
+            "COMPOSABLE not scored — current_code mode has no filepath or "
+            "ModuleDependencyGraph context."
+        ]
+        return (
+            current_src,
+            current_morph,
+            current_res,
+            coupling_for_proposed,
+            warnings,
+            None,
+        )
+    else:
+        raise ValueError("Provide either `filepath` or `current_code`.")
+
+
+def _is_suspicious(
+    status: AssessmentStatus, distance: float | None, score_deltas: dict[str, float]
+) -> bool:
+    if distance is None:
+        return False
+    if distance >= _STRUCTURAL_CHANGE_THRESHOLD:
+        return False
+    if status not in (AssessmentStatus.IMPROVEMENT, AssessmentStatus.IMPROVEMENT_SCORE):
+        return False
+    return any(abs(d) >= _MEANINGFUL_SCORE_DELTA for d in score_deltas.values())
+
+
+def _determine_lattice_status(
+    cur_summary, prop_summary, score_deltas
+) -> AssessmentStatus:
+    lattice = CharacteristicMorphism().omega
+    if cur_summary == prop_summary:
+        score_improved = any(d > 0 for d in score_deltas.values())
+        score_regressed = any(d < 0 for d in score_deltas.values())
+        if score_improved and not score_regressed:
+            return AssessmentStatus.IMPROVEMENT_SCORE
+        if score_regressed and not score_improved:
+            return AssessmentStatus.REGRESSION_SCORE
+        return AssessmentStatus.LATERAL_MOVE
+
+    if lattice.leq(cur_summary, prop_summary):
+        return AssessmentStatus.IMPROVEMENT
+    if lattice.leq(prop_summary, cur_summary):
+        return AssessmentStatus.REGRESSION
+    return AssessmentStatus.LATERAL_MOVE
+
+
+def _determine_assessment_status(
+    current_res, proposed_res, score_deltas, distance
+) -> tuple[AssessmentStatus, str | None]:
+    cur_summary = current_res.summary()
+    prop_summary = proposed_res.summary()
+    status = _determine_lattice_status(cur_summary, prop_summary, score_deltas)
+
+    suspicion = None
+    if _is_suspicious(status, distance, score_deltas):
+        status = AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE
+        suspicion = (
+            f"Scores improved (deltas={score_deltas}) but normalized AST edit "
+            f"distance is only {distance:.3f} — the tree barely changed. Either "
+            "the refactor is trivially cosmetic (comment/whitespace shuffle) "
+            "or the scoring is oscillating. Re-verify with a concrete "
+            "structural change."
+        )
+    return status, suspicion
+
+
+def _evaluate_proposed_and_findings(
+    proposed_src: str,
+    current_res,
+    current_morph: ProgramMorphism,
+    dep_graph,
+    priority: Priority,
+    language: str,
+    include_security_findings: bool,
+) -> tuple[
+    ClassificationResult, ProgramMorphism, list[SecurityFinding], list[SecurityFinding]
+]:
+    proposed_morph = ProgramMorphism(source=proposed_src, language=language)
+    proposed_res = classify_morphism(proposed_morph, priority, dep_graph)
+    current_findings = []
+    proposed_findings = []
+    if include_security_findings:
+        if _secure_failed(current_res):
+            current_findings = security_findings(current_morph.build_cpg())
+        if _secure_failed(proposed_res):
+            proposed_findings = security_findings(proposed_morph.build_cpg())
+    return proposed_res, proposed_morph, current_findings, proposed_findings
+
+
+def _calculate_deltas(
+    current_eval: EvaluationResult,
+    proposed_eval: EvaluationResult,
+    current_res: ClassificationResult,
+    proposed_res: ClassificationResult,
+) -> tuple[dict[str, float], dict[str, float]]:
+    all_dims = set(current_eval.scores) | set(proposed_eval.scores)
+    score_deltas = {
+        dim: round(
+            proposed_eval.scores.get(dim, 0.0) - current_eval.scores.get(dim, 0.0), 1
+        )
+        for dim in all_dims
+    }
+
+    all_metrics = set(current_res.raw_metrics) | set(proposed_res.raw_metrics)
+    metric_deltas = {
+        m: round(
+            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0),
+            3,
+        )
+        for m in all_metrics
+    }
+    return score_deltas, metric_deltas
+
+
 @mcp.tool(
     name="topos_assess_improvement",
     tags={"assess", "workflow"},
@@ -85,43 +247,17 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
     priority, priority_source = resolve_priority(params.preferences)
 
     # ---- load baseline ----
-    if params.filepath:
-        resolved, err = resolve_within_root(params.filepath)
-        if err or resolved is None:
-            return _err_assessment(params, (err or {}).get("error", "path error"))
-        if not resolved.is_file():
-            return _err_assessment(params, f"Path is not a file: {resolved}")
-        current_src, read_err = read_safe_utf8_file(resolved)
-        if read_err or current_src is None:
-            return _err_assessment(params, (read_err or {}).get("error", "read error"))
-        project_root = resolve_file_root()
-        gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
-        dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
-        current_morph = ProgramMorphism(source=current_src, language=params.language)
-        current_res = classify_morphism(current_morph, priority, dep_graph)
-        coupling_for_proposed = dep_graph is not None
-        warnings = gitnexus_warnings(
-            params.gitnexus_dir,
-            project_root,
-            gitnexus_dir,
-            dep_graph_loaded=dep_graph is not None,
-        )
-    elif params.current_code:
-        current_src = params.current_code
-        current_res = classify_code_string(
-            params.current_code, params.language, priority
-        )
-        current_morph = ProgramMorphism(
-            source=params.current_code, language=params.language
-        )
-        dep_graph = None
-        coupling_for_proposed = False
-        warnings = [
-            "COMPOSABLE not scored — current_code mode has no filepath or "
-            "ModuleDependencyGraph context."
-        ]
-    else:
-        return _err_assessment(params, "Provide either `filepath` or `current_code`.")
+    try:
+        (
+            current_src,
+            current_morph,
+            current_res,
+            coupling_for_proposed,
+            warnings,
+            dep_graph,
+        ) = _load_baseline(params, priority)
+    except ValueError as exc:
+        return _err_assessment(params, str(exc))
 
     proposed_src, proposed_err = _load_proposed_source(params)
     if proposed_err or proposed_src is None:
@@ -129,18 +265,20 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
             params, proposed_err or "Unable to load proposed source."
         )
 
-    # ---- evaluate proposed ----
-    proposed_morph = ProgramMorphism(source=proposed_src, language=params.language)
-    proposed_res = classify_morphism(proposed_morph, priority, dep_graph)
+    # ---- evaluate proposed & findings ----
+    proposed_res, proposed_morph, current_findings, proposed_findings = (
+        _evaluate_proposed_and_findings(
+            proposed_src,
+            current_res,
+            current_morph,
+            dep_graph,
+            priority,
+            params.language,
+            params.include_security_findings,
+        )
+    )
 
     prefs = params.preferences.to_preferences() if params.preferences else None
-    current_findings = []
-    proposed_findings = []
-    if params.include_security_findings:
-        if _secure_failed(current_res):
-            current_findings = security_findings(current_morph.build_cpg())
-        if _secure_failed(proposed_res):
-            proposed_findings = security_findings(proposed_morph.build_cpg())
     # Warnings live on the top-level AssessmentResult only; the nested
     # current/proposed evals would otherwise duplicate the identical list.
     current_eval = to_evaluation_result(
@@ -159,22 +297,9 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
     )
 
     # ---- score & metric deltas ----
-    all_dims = set(current_eval.scores) | set(proposed_eval.scores)
-    score_deltas = {
-        dim: round(
-            proposed_eval.scores.get(dim, 0.0) - current_eval.scores.get(dim, 0.0), 1
-        )
-        for dim in all_dims
-    }
-
-    all_metrics = set(current_res.raw_metrics) | set(proposed_res.raw_metrics)
-    metric_deltas = {
-        m: round(
-            proposed_res.raw_metrics.get(m, 0.0) - current_res.raw_metrics.get(m, 0.0),
-            3,
-        )
-        for m in all_metrics
-    }
+    score_deltas, metric_deltas = _calculate_deltas(
+        current_eval, proposed_eval, current_res, proposed_res
+    )
 
     # ---- structural distance ----
     distance = None
@@ -184,48 +309,10 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         distance = dist.normalized_distance
         similarity = 1.0 - dist.normalized_distance
 
-    # ---- lattice movement ----
-    lattice = CharacteristicMorphism().omega
-    cur_summary = current_res.summary()
-    prop_summary = proposed_res.summary()
-    lattice_changed = cur_summary != prop_summary
-    lattice_improved = lattice_changed and lattice.leq(cur_summary, prop_summary)
-    lattice_regressed = lattice_changed and lattice.leq(prop_summary, cur_summary)
-
-    score_improved = any(d > 0 for d in score_deltas.values())
-    score_regressed = any(d < 0 for d in score_deltas.values())
-
-    # ---- status classification ----
-    status = AssessmentStatus.LATERAL_MOVE
-    if lattice_improved:
-        status = AssessmentStatus.IMPROVEMENT
-    elif lattice_regressed:
-        status = AssessmentStatus.REGRESSION
-    elif score_improved and not score_regressed:
-        status = AssessmentStatus.IMPROVEMENT_SCORE
-    elif score_regressed and not score_improved:
-        status = AssessmentStatus.REGRESSION_SCORE
-
-    # ---- anti-gaming check ----
-    suspicion = None
-    if (
-        distance is not None
-        and distance < _STRUCTURAL_CHANGE_THRESHOLD
-        and status
-        in (
-            AssessmentStatus.IMPROVEMENT,
-            AssessmentStatus.IMPROVEMENT_SCORE,
-        )
-        and any(abs(d) >= _MEANINGFUL_SCORE_DELTA for d in score_deltas.values())
-    ):
-        status = AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE
-        suspicion = (
-            f"Scores improved (deltas={score_deltas}) but normalized AST edit "
-            f"distance is only {distance:.3f} — the tree barely changed. Either "
-            "the refactor is trivially cosmetic (comment/whitespace shuffle) "
-            "or the scoring is oscillating. Re-verify with a concrete "
-            "structural change."
-        )
+    # ---- status classification & anti-gaming ----
+    status, suspicion = _determine_assessment_status(
+        current_res, proposed_res, score_deltas, distance
+    )
 
     # ---- regression pinpoint ----
     # On a regression/suspicious verdict, give the agent a function-scoped diff
@@ -315,6 +402,20 @@ _REGRESSION_STATUSES = frozenset(
 )
 
 
+def _span_text(source_bytes: bytes, span) -> str:
+    """Slice a UAST byte span out of the UTF-8-encoded source.
+
+    UAST offsets are byte offsets, so we must index the encoded bytes, not the
+    code-point-indexed str. Bounds-guarded like ``cpg/object.py`` in case the
+    span refers to a different revision than ``source_bytes``.
+    """
+    if span.end_byte > len(source_bytes):
+        return ""
+    return source_bytes[span.start_byte : span.end_byte].decode(
+        "utf-8", errors="replace"
+    )
+
+
 def _function_complexities(
     source: str, language: str
 ) -> dict[str, tuple[int, list[str]]]:
@@ -327,6 +428,9 @@ def _function_complexities(
     morph = ProgramMorphism(source=source, language=language)
     if not (morph.ast and morph.ast.uast_root):
         return out
+    # UAST spans are UTF-8 byte offsets; encode ONCE and slice the bytes so
+    # non-ASCII source (→, —, emoji) doesn't shift names/bodies. See _span_text.
+    source_bytes = morph.source.encode("utf-8")
     try:
         callables = _collect_callables(morph.ast.uast_root)
     except Exception:
@@ -336,8 +440,7 @@ def _function_complexities(
         if not name:
             for child in c.children:
                 if child.kind == "Identifier":
-                    s = child.span
-                    name = morph.source[s.start_byte : s.end_byte]
+                    name = _span_text(source_bytes, child.span)
                     break
         if not name:
             name = c.attributes.get("scope") or "anonymous"
@@ -352,8 +455,7 @@ def _function_complexities(
             complexity = cyclomatic_complexity(cfg)
         except Exception:
             continue
-        span = c.span
-        body = morph.source[span.start_byte : span.end_byte]
+        body = _span_text(source_bytes, c.span)
         # No keepends: difflib + lineterm="" then a "\n".join keeps lines clean.
         out[name] = (complexity, body.splitlines())
     return out
@@ -427,6 +529,18 @@ _STATUS_MEANING: dict[AssessmentStatus, str] = {
 }
 
 
+def _render_deltas(r: AssessmentResult) -> list[str]:
+    lines = []
+    if r.score_deltas:
+        deltas = ", ".join(f"{k}={v:+.1f}" for k, v in sorted(r.score_deltas.items()))
+        lines.append(f"**Score deltas:** {deltas}")
+    moved = {m: d for m, d in r.metric_deltas.items() if d != 0.0}
+    if moved:
+        md = ", ".join(f"`{m}`={d:+.3f}" for m, d in sorted(moved.items()))
+        lines.append(f"**Metric deltas:** {md}")
+    return lines
+
+
 def render_assessment_md(r: AssessmentResult) -> str:
     """Compact markdown for a refactor assessment.
 
@@ -445,14 +559,9 @@ def render_assessment_md(r: AssessmentResult) -> str:
     if r.structural_distance is not None:
         sim = f", similarity {r.similarity:.3f}" if r.similarity is not None else ""
         lines.append(f"**Structural distance:** {r.structural_distance:.3f}{sim}")
-    if r.score_deltas:
-        deltas = ", ".join(f"{k}={v:+.1f}" for k, v in sorted(r.score_deltas.items()))
-        lines.append(f"**Score deltas:** {deltas}")
-    # Only surface metrics that actually moved, to keep this lean.
-    moved = {m: d for m, d in r.metric_deltas.items() if d != 0.0}
-    if moved:
-        md = ", ".join(f"`{m}`={d:+.3f}" for m, d in sorted(moved.items()))
-        lines.append(f"**Metric deltas:** {md}")
+
+    lines.extend(_render_deltas(r))
+
     if r.suspicion_reason:
         lines.append(f"> ⚠️ {r.suspicion_reason}")
     if r.regression_diff:

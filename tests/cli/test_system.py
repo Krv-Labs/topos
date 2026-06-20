@@ -32,7 +32,7 @@ def test_depgraph_generate_success(mock_which, mock_run):
     assert result.exit_code == 0
     assert "Using GitNexus" in result.output
     mock_run.assert_called_once_with(
-        ["gitnexus", "analyze", "--index-only"],
+        ["gitnexus", "analyze", "--skip-agents-md"],
         cwd=Path.cwd(),
     )
 

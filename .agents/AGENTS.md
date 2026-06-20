@@ -42,20 +42,16 @@ topos evaluate <path> [-r] [--gitnexus-dir <dir>] [--priority <dim>]
 
 ## MCP Server (`topos-mcp`)
 Exposes tools, resources, and prompts for agent workflows:
-- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_inspect_code`, `topos_preference_walk`.
-- **Resources**: `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
+- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_inspect_code`, `topos_preference_walk`, `topos_calculate_coverage`, `topos_get_doc`.
+- **Resources**: `topos://docs/agent-contract`, `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
 - **Prompts**: `topos_refactor_until_ideal`.
 
 ## Closed-Loop Agent Workflow
-1. **Measure**: Run `topos_evaluate_file` (pass `gitnexus_dir` to enable COMPOSABLE).
-2. **Plan**: Inspect weak spots using `topos_inspect_code` and evaluation `guidance`.
-3. **Refactor**: Apply structural changes.
-4. **Verify**: Call `topos_assess_improvement(filepath=..., proposed_code=...)`.
-   - `IMPROVEMENT`: Lattice level moved up $\to$ **Commit**.
-   - `IMPROVEMENT_SCORE`: Metrics improved, same lattice level $\to$ Keep going.
-   - `LATERAL_MOVE` / `REGRESSION`: Revert and re-plan.
-   - `SUSPICIOUS_NO_STRUCTURAL_CHANGE`: Only cosmetic changes (whitespace/comments/renames). Do NOT commit; require structural edits.
-5. **Decide**: Stop on `IDEAL`, priority-satisfied, or iteration limit.
+Read `topos://docs/agent-contract` first. Use Topos as the structural verifier:
+measure, make one focused structural change, verify with
+`topos_assess_improvement`, and run relevant behavior checks before accepting.
+`IMPROVEMENT` / `IMPROVEMENT_SCORE` are Topos acceptance signals, not automatic
+commit permission. `SUSPICIOUS_NO_STRUCTURAL_CHANGE` blocks acceptance.
 
 ### Escape Hatches
 - **Score plateaus**: Split file. Extract high-complexity functions identified by `topos_inspect_code`.

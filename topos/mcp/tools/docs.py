@@ -20,7 +20,9 @@ from ..server import mcp
 
 _CONTENT_DIR = Path(__file__).parent.parent / "resources" / "content"
 
-DocTopic = Literal["lattice", "metrics", "priority", "workflows"]
+DocTopic = Literal[
+    "agent-contract", "lattice", "metrics", "preferences", "priority", "workflows"
+]
 
 
 @mcp.tool(
@@ -42,8 +44,10 @@ def topos_get_doc(topic: DocTopic) -> str:
     equivalent resource URI for efficiency: ``topos://docs/{topic}``.
 
     Topics:
+        agent-contract — compact outcome-first loop contract and done gates.
         lattice    — the 8-element 3-cube H(G_qual); top = IDEAL, bottom = SLOP.
         metrics    — every metric key, thresholds, interpretation.
+        preferences — strict generator rankings and preference walks.
         priority   — priority profiles (simple/composable/secure).
         workflows  — the canonical review→plan→refactor→re-measure loop.
                      **Read this first on every new refactor session.**

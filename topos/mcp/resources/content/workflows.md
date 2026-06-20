@@ -1,9 +1,8 @@
 # Topos Agent Workflows
 
-Per CodeScene's 2026 best-practice research ("agent-first tools need
-AGENTS.md-style orchestration"), this document is the canonical recipe for
-using Topos tools in a closed-loop refactor. Agents should read this on
-first encounter with the server.
+This is the expanded guide for using Topos tools in a closed-loop refactor.
+Agents should read `topos://docs/agent-contract` first and use this document
+only when they need detail beyond the compact outcome contract.
 
 ## The canonical loop: review → plan → refactor → re-measure
 
@@ -25,12 +24,14 @@ first encounter with the server.
 
 ### 1. Measure
 
-- Single file: `topos_evaluate_file(filepath, gitnexus_dir)` — `gitnexus_dir`
+- Single file: `topos_evaluate_file` with
+  `{"params": {"filepath": "...", "gitnexus_dir": "..."}}` — `gitnexus_dir`
   is required for the COMPOSABLE generator.  Without it, any verdict
   containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.  When missing,
   the result includes both top-level `warnings` and a COMPOSABLE-pillar
   `mdg.unavailable` interpretation.
-- Whole project: `topos_evaluate_project(path, gitnexus_dir)` — rollup +
+- Whole project: `topos_evaluate_project` with
+  `{"params": {"path": "...", "gitnexus_dir": "..."}}` — rollup +
   worst-N file list.  Treat `aggregate_floor_verdict` as the codebase floor;
   use `worst_files` and `guidance` to pick the next action.
 
@@ -41,21 +42,23 @@ tells you which dimension to work on. If `guidance` says "provide
 gitnexus_dir" you must run `topos depgraph generate` first.
 
 For deep analysis of a specific file, call `topos_inspect_code` with either
-`filepath` or `code` — it returns top-N functions by complexity, source line,
-entropy details, and the full metric table.
+`{"params": {"filepath": "..."}}` or `{"params": {"code": "..."}}` — it
+returns top-N functions by complexity, source line, entropy details, and the
+full metric table.
 
 ### 3. Propose
 
 Write a refactor. Keep the change focused on one dimension at a time.
-Submit via `topos_assess_improvement(filepath=..., proposed_code=...)`, or use
-`proposed_filepath` when the proposed version is already written inside the
-configured file root.
+Submit via `topos_assess_improvement` with
+`{"params": {"filepath": "...", "proposed_code": "..."}}`, or use
+`proposed_filepath` inside `params` when the proposed version is already
+written inside the configured file root.
 
 ### 4. Verify
 
 `topos_assess_improvement` returns one of:
 
-- `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Commit.
+- `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Topos accepts the structural direction; behavior checks still gate final acceptance.
 - `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.
   Progress, but not a medal jump yet.
 - `LATERAL_MOVE` — neither improved nor regressed. Try a different angle.
@@ -67,6 +70,11 @@ configured file root.
 When SECURE fails, file-level evaluation and assessment include
 `security_findings` by default.  Start with `callee`, `line`, and `snippet`;
 these are the actionable fields an agent needs before guessing at fixes.
+If a project `.topos.toml` or an `allow` input acknowledges a finding, the raw
+SECURE verdict remains visible as `secure_raw`, the adjusted result is visible
+as `secure_adjusted` / `adjusted_lattice_element`, and acknowledged entries are
+listed in `acknowledged_risks`. Only active findings drive SECURE suggestions.
+Acknowledged risk can never buy an undisclosed IDEAL grade.
 
 ### 5. Decide
 
@@ -76,6 +84,10 @@ Stop when:
   `composable` → COMPOSABLE bit set, `secure` → SECURE bit set), OR
 - `max_iterations` exhausted — report partial progress honestly rather than
   gaming one more iteration.
+
+Prefer the structured `agent_contract` field over parsing prose. It carries
+`next_tool`, `next_actions`, `blocked_by`, `verification_gates`, and
+`risk_flags` for the current result.
 
 ## Escape hatches — when the loop stalls
 
@@ -137,7 +149,9 @@ only the top-two generators. See `topos://docs/preferences`.
   semantic ECT — is available as a distinct signal via
   `topos_calculate_coverage`; it is not part of the lattice verdict.)
 - **Functional correctness.** AST edit distance measures *change*, not
-  *preservation of behavior*. Always verify behavior with tests.
+  *preservation of behavior*. Verify behavior with relevant project tests or
+  equivalent checks when available; if unavailable or not run, report that
+  explicitly.
 - **Runtime performance.** Orthogonal to all Topos metrics.
 - **Beyond-syntactic security.** The SECURE generator catches obvious
   footguns (dangerous-API call sites, source→sink taint paths) via

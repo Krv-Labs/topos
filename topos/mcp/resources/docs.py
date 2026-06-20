@@ -24,6 +24,16 @@ def _read(name: str) -> str:
 
 
 @mcp.resource(
+    "topos://docs/agent-contract",
+    name="topos_agent_contract",
+    mime_type="text/markdown",
+)
+def agent_contract() -> str:
+    """Compact outcome-first contract for agent loops: targets, gates, risks, and next-tool fields."""
+    return _read("agent-contract.md")
+
+
+@mcp.resource(
     "topos://docs/lattice",
     name="topos_lattice_reference",
     mime_type="text/markdown",

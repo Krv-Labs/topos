@@ -23,4 +23,12 @@ def test_refactor_prompt_renders_with_filepath() -> None:
     text = " ".join(msg.content.text for msg in rendered.messages)
     assert "topos/__init__.py" in text
     assert "SUSPICIOUS_NO_STRUCTURAL_CHANGE" in text
-    assert "topos://docs/workflows" in text
+    assert "topos://docs/agent-contract" in text
+    assert '"params"' in text
+    assert "topos_evaluate_file" in text
+    assert "topos_assess_improvement" in text
+    assert "behavior tests" in text
+    assert "Step 1" not in text
+    assert "Begin at Step 1" not in text
+    assert "FIRST:" not in text
+    assert len(text) < 2500

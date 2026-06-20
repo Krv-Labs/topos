@@ -8,12 +8,13 @@ was never built and COMPOSABLE/IDEAL were unreachable via MCP.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from fastmcp import Context
 from fastmcp.tools.base import ToolResult
 
-from topos.core.morphism import ProgramMorphism
+from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import (
     CharacteristicMorphism,
     ClassificationResult,
@@ -21,6 +22,7 @@ from topos.evaluation.characteristic_morphism import (
 from topos.evaluation.policies.base import Priority
 from topos.utils.discovery import collect_source_files
 
+from ..diagnostics import overlay_for_file, overlay_for_source
 from ..evaluation import (
     classify_code_string,
     classify_file,
@@ -35,6 +37,7 @@ from ..formatting import (
     to_tool_result,
 )
 from ..schemas import (
+    AgentContract,
     EvaluateCodeInput,
     EvaluateFileInput,
     EvaluateProjectInput,
@@ -46,7 +49,6 @@ from ..schemas import (
     resolve_priority,
 )
 from ..security import resolve_file_root, resolve_within_root
-from ..security_findings import security_findings
 from ..server import mcp
 
 _READ_ONLY_ANN = {
@@ -100,6 +102,15 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
         coupling_available=False,
         preferences=prefs,
         priority_source=priority_source,
+        **_overlay_kwargs(
+            overlay_for_source(
+                params.code,
+                params.language,
+                result,
+                allows=params.allow,
+                include_security_findings=True,
+            )
+        ),
         verbose=params.verbose,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
@@ -180,17 +191,19 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         gitnexus_dir,
         dep_graph_loaded=dep_graph is not None,
     )
-    findings = []
-    if params.include_security_findings and _secure_failed(result):
-        morphism = ProgramMorphism.from_file(resolved)
-        findings = security_findings(morphism.build_cpg())
+    overlay = overlay_for_file(
+        resolved,
+        result,
+        allows=params.allow,
+        include_security_findings=params.include_security_findings,
+    )
     model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
         preferences=prefs,
         priority_source=priority_source,
         warnings=warnings,
-        security_findings=findings,
+        **_overlay_kwargs(overlay),
         verbose=params.verbose,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
@@ -202,6 +215,7 @@ def _evaluate_single_file(
     priority: Priority,
     gitnexus_dir: Path | None,
     include_security_findings: bool,
+    allows: list[str],
 ) -> tuple[ClassificationResult | None, ProjectFileEntry | None, bool, bool]:
     try:
         result, dep_graph = classify_file(path, priority, gitnexus_dir)
@@ -210,22 +224,36 @@ def _evaluate_single_file(
 
     is_parse_failure = not result.is_parseable
     warnings: list[str] = []
-    findings = []
-    if include_security_findings and _secure_failed(result):
-        morphism = ProgramMorphism.from_file(path)
-        findings = security_findings(morphism.build_cpg())
+    overlay = overlay_for_file(
+        path,
+        result,
+        allows=allows,
+        include_security_findings=include_security_findings,
+    )
+    adjusted = overlay.verdict if overlay else None
+    result_for_rollup = _adjusted_result(result, overlay)
 
     entry = ProjectFileEntry(
         filepath=str(path.relative_to(resolved_root)),
-        lattice_element=lattice_to_str(result.summary()),
+        lattice_element=lattice_to_str(result_for_rollup.summary()),
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-        pillars=build_pillars(result, dep_graph is not None),
+        pillars=build_pillars(result_for_rollup, dep_graph is not None),
         raw_metrics=dict(result.raw_metrics),
         warnings=warnings,
-        security_findings=findings,
+        security_findings=overlay.active_findings if overlay else [],
+        acknowledged_risks=overlay.acknowledged_risks if overlay else [],
+        raw_lattice_element=(
+            lattice_to_str(adjusted.raw_element) if adjusted else None
+        ),
+        adjusted_lattice_element=(
+            lattice_to_str(adjusted.adjusted_element) if adjusted else None
+        ),
+        secure_raw=adjusted.raw_secure_pass if adjusted else None,
+        secure_adjusted=adjusted.adjusted_secure_pass if adjusted else None,
+        grade_capped=adjusted.grade_capped if adjusted else False,
         is_parseable=result.is_parseable,
     )
-    return result, entry, is_parse_failure, dep_graph is not None
+    return result_for_rollup, entry, is_parse_failure, dep_graph is not None
 
 
 def _validate_and_collect_project(
@@ -255,6 +283,7 @@ async def _evaluate_project_files_loop(
     priority: Priority,
     gitnexus_dir: Path | None,
     include_security_findings: bool,
+    allows: list[str],
     ctx: Context,
 ) -> tuple[list[ClassificationResult], list[ProjectFileEntry], int, bool]:
     total_files = len(py_files)
@@ -270,6 +299,7 @@ async def _evaluate_project_files_loop(
             priority,
             gitnexus_dir,
             include_security_findings,
+            allows,
         )
         if failed:
             parse_failures += 1
@@ -324,6 +354,7 @@ async def topos_evaluate_project(
         priority,
         gitnexus_dir,
         params.include_security_findings,
+        params.allow,
         ctx,
     )
 
@@ -394,6 +425,15 @@ def _build_project_result(
         gitnexus_dir,
         dep_graph_loaded=any_dep_graph_loaded,
     )
+    next_tool, next_actions, blocked_by, verification_gates, risk_flags = (
+        _project_contract(
+            overall,
+            worst_files,
+            coupling_available,
+            project_warnings,
+            parse_failures,
+        )
+    )
 
     return ProjectEvaluationResult(
         root=str(resolved_root),
@@ -410,6 +450,13 @@ def _build_project_result(
         priority_source=priority_source,
         coupling_available=coupling_available,
         warnings=project_warnings,
+        agent_contract=AgentContract(
+            next_tool=next_tool,
+            next_actions=next_actions,
+            blocked_by=blocked_by,
+            verification_gates=verification_gates,
+            risk_flags=risk_flags,
+        ),
         count=len(page),
         offset=params.offset,
         total=len(entries),
@@ -449,6 +496,10 @@ def _empty_project_result(
         priority=priority,
         priority_source=priority_source,
         coupling_available=False,
+        agent_contract=AgentContract(
+            blocked_by=["project_evaluation_error"] if error else [],
+            risk_flags=["project_evaluation_error"] if error else [],
+        ),
         count=0,
         offset=params.offset,
         total=0,
@@ -465,10 +516,32 @@ def _error_md(model: EvaluationResult) -> str:
     return f"**Error:** {model.error or model.lattice_description}"
 
 
-def _secure_failed(result) -> bool:
-    return bool(
-        result.raw_metrics.get("cpg.dangerous_calls", 0.0) > 0
-        or result.raw_metrics.get("cpg.taint_flows", 0.0) > 0
+def _overlay_kwargs(overlay):
+    if overlay is None:
+        return {}
+    return {
+        "security_findings": overlay.active_findings,
+        "acknowledged_risks": overlay.acknowledged_risks,
+        "adjusted_verdict": overlay.verdict,
+    }
+
+
+def _adjusted_result(result: ClassificationResult, overlay):
+    if overlay is None:
+        return result
+    dimensions = dict(result.dimensions)
+    scores = dict(result.scores)
+    dimensions["secure"] = (
+        EvaluationValue.SECURE
+        if overlay.verdict.adjusted_secure_pass
+        else EvaluationValue.SLOP
+    )
+    scores["secure"] = 1.0 if overlay.verdict.adjusted_secure_pass else 0.0
+    return replace(
+        result,
+        dimensions=dimensions,
+        scores=scores,
+        lattice_element=overlay.verdict.adjusted_element,
     )
 
 
@@ -510,6 +583,47 @@ def _project_guidance(worst_files: list[ProjectFileEntry]) -> str:
     return f"Start with `{worst.filepath}`; inspect parseability and raw metrics."
 
 
+def _project_contract(
+    overall: LatticeElement,
+    worst_files: list[ProjectFileEntry],
+    coupling_available: bool,
+    warnings: list[str],
+    parse_failures: int,
+) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
+    blocked_by: list[str] = []
+    risk_flags: list[str] = []
+    next_actions: list[str] = []
+
+    if not coupling_available:
+        blocked_by.append("missing_gitnexus_dir")
+        risk_flags.append("composable_unavailable")
+    if parse_failures:
+        blocked_by.append("parse_failures")
+        risk_flags.append("parse_failures")
+    if warnings:
+        risk_flags.append("warnings")
+    if any(f.grade_capped for f in worst_files):
+        risk_flags.append("grade_capped")
+    if any(f.security_findings for f in worst_files):
+        risk_flags.append("active_security_findings")
+
+    if not worst_files:
+        return None, [], blocked_by, [], risk_flags
+    if overall == LatticeElement.IDEAL:
+        next_tool = None
+        next_actions.append("preserve behavior checks before accepting")
+    else:
+        next_tool = "topos_inspect_code"
+        next_actions.append(f"start with worst file {worst_files[0].filepath}")
+
+    verification_gates = [
+        "topos_assess_improvement validates each accepted refactor",
+        "project rollup does not regress after non-trivial changes",
+        "behavior tests or type/lint checks pass when available",
+    ]
+    return next_tool, next_actions, blocked_by, verification_gates, risk_flags
+
+
 # ---------------------------------------------------------------------------
 # Markdown helpers (rendered into ToolResult.content by the tools above)
 # ---------------------------------------------------------------------------
@@ -534,6 +648,15 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
     lines.append(f"**Priority:** `{r.priority.value}`")
     if not r.coupling_available:
         lines.append("> ⚠️ No `.gitnexus/` present — coupling dimension not scored.")
+    if r.agent_contract is not None:
+        lines.append("")
+        lines.append("## Agent Contract")
+        if r.agent_contract.next_tool:
+            lines.append(f"- **Next tool:** `{r.agent_contract.next_tool}`")
+        for action in r.agent_contract.next_actions:
+            lines.append(f"- **Action:** {action}")
+        for blocked in r.agent_contract.blocked_by:
+            lines.append(f"- **Blocked by:** `{blocked}`")
     lines.append("")
     lines.append("## Rolled-up dimensions")
     for dim, val in r.rolled_up_dimensions.items():

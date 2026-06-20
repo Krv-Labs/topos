@@ -7,6 +7,8 @@ return models defined in ``schemas.py``.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastmcp.tools.base import ToolResult
 from pydantic import BaseModel
 
@@ -17,6 +19,8 @@ from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
 from .schemas import (
+    AcknowledgedRisk,
+    AgentContract,
     EvaluationResult,
     LatticeElement,
     PillarResult,
@@ -110,6 +114,72 @@ def build_guidance(result: ClassificationResult) -> str:
             "to satisfy SECURE."
         )
     return "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD."
+
+
+def build_agent_contract(
+    result: ClassificationResult,
+    *,
+    coupling_available: bool,
+    security_findings: list[SecurityFinding],
+    acknowledged_risks: list[AcknowledgedRisk],
+    grade_capped: bool,
+    warnings: list[str] | None = None,
+) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
+    """Return compact loop-control fields for MCP agents."""
+    blocked_by: list[str] = []
+    risk_flags: list[str] = []
+    next_actions: list[str] = []
+
+    if not result.is_parseable:
+        blocked_by.append("parse_failure")
+        risk_flags.append("parse_failure")
+        return None, [], blocked_by, ["restore parseable source"], risk_flags
+
+    if not coupling_available:
+        blocked_by.append("missing_gitnexus_dir")
+        risk_flags.append("composable_unavailable")
+    if security_findings:
+        risk_flags.append("active_security_findings")
+    if acknowledged_risks:
+        risk_flags.append("acknowledged_security_risk")
+    if grade_capped:
+        risk_flags.append("grade_capped")
+    if warnings:
+        risk_flags.append("warnings")
+
+    summary = result.summary()
+    simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
+
+    if summary == EvaluationValue.IDEAL:
+        next_tool = "topos_evaluate_project"
+        next_actions.append(
+            "confirm project rollup and behavior tests before accepting"
+        )
+    elif not simple_ok:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "inspect weakest measured pillar, then verify a focused patch"
+        )
+    elif security_findings:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "remove active SECURE findings or acknowledge intentional risk"
+        )
+    elif "missing_gitnexus_dir" in blocked_by:
+        next_tool = None
+        next_actions.append("provide gitnexus_dir to score COMPOSABLE")
+    else:
+        next_tool = "topos_inspect_code"
+        next_actions.append(
+            "inspect weakest measured pillar, then verify a focused patch"
+        )
+
+    verification_gates = [
+        "topos_assess_improvement returns IMPROVEMENT or IMPROVEMENT_SCORE",
+        "status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE",
+        "behavior tests or type/lint checks pass when available",
+    ]
+    return next_tool, next_actions, blocked_by, verification_gates, risk_flags
 
 
 # Raw metrics are namespaced by representation: cfg/ast -> simple,
@@ -215,6 +285,9 @@ def to_evaluation_result(
     priority_source: PrioritySource = PrioritySource.DEFAULT,
     warnings: list[str] | None = None,
     security_findings: list[SecurityFinding] | None = None,
+    acknowledged_risks: list[AcknowledgedRisk] | None = None,
+    adjusted_verdict=None,
+    include_agent_contract: bool = True,
     verbose: bool = True,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
@@ -226,7 +299,9 @@ def to_evaluation_result(
     clients routinely inject ``structured_content`` into context, so gating both
     channels (not just the markdown) is what earns the keep here.
     """
-    summary = result.summary()
+    summary = (
+        adjusted_verdict.adjusted_element if adjusted_verdict else result.summary()
+    )
     walk = (
         build_preference_walk(preferences, summary) if preferences is not None else None
     )
@@ -243,13 +318,34 @@ def to_evaluation_result(
         interpretation = _failing_interpretation(result, interpretation)
         raw_metrics = {}
 
-    # TODO(allowlist): the MCP layer does not yet load a ``ToposConfig``, so the
-    # ``security_findings`` passed in are RAW (no allowlist applied). Passing
-    # them as ``active_findings`` is the correct no-config path. To surface
-    # allowlist-adjusted verdicts: load ToposConfig, call
-    # ``apply_allowlist(result, findings, config)`` (suppression.py), pass the
-    # returned ``AdjustedVerdict.active_findings`` here, and surface the
-    # raw-vs-adjusted distinction on the result.
+    dimensions = dict(result.dimensions)
+    if adjusted_verdict is not None and adjusted_verdict.adjusted_secure_pass:
+        dimensions["secure"] = EvaluationValue.SECURE
+    display_result = replace(result, dimensions=dimensions, lattice_element=summary)
+
+    active_findings = security_findings or []
+    risks = acknowledged_risks or []
+    grade_capped = adjusted_verdict.grade_capped if adjusted_verdict else False
+    agent_contract = None
+    if include_agent_contract:
+        next_tool, next_actions, blocked_by, verification_gates, risk_flags = (
+            build_agent_contract(
+                display_result,
+                coupling_available=coupling_available,
+                security_findings=active_findings,
+                acknowledged_risks=risks,
+                grade_capped=grade_capped,
+                warnings=warnings,
+            )
+        )
+        agent_contract = AgentContract(
+            next_tool=next_tool,
+            next_actions=next_actions,
+            blocked_by=blocked_by,
+            verification_gates=verification_gates,
+            risk_flags=risk_flags,
+        )
+
     suggestions = [
         Suggestion(
             pillar=s.pillar,
@@ -257,7 +353,7 @@ def to_evaluation_result(
             severity=s.severity,
             message=s.message,
         )
-        for s in suggest_refactors(result, active_findings=security_findings)
+        for s in suggest_refactors(result, active_findings=active_findings)
     ]
 
     return EvaluationResult(
@@ -265,17 +361,32 @@ def to_evaluation_result(
         lattice_element=lattice_to_str(summary),
         lattice_symbol=summary.symbol,
         lattice_description=summary.description,
-        dimensions={dim: lattice_to_str(val) for dim, val in result.dimensions.items()},
+        dimensions={dim: lattice_to_str(val) for dim, val in dimensions.items()},
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-        pillars=build_pillars(result, coupling_available, warnings=warnings),
+        pillars=build_pillars(display_result, coupling_available, warnings=warnings),
         priority=result.priority,
         priority_source=priority_source,
-        guidance=build_guidance(result),
+        guidance=build_guidance(display_result),
         coupling_available=coupling_available,
         raw_metrics=raw_metrics,
         interpretation=interpretation,
         warnings=warnings or [],
-        security_findings=security_findings or [],
+        agent_contract=agent_contract,
+        security_findings=active_findings,
+        acknowledged_risks=risks,
+        raw_lattice_element=(
+            lattice_to_str(adjusted_verdict.raw_element) if adjusted_verdict else None
+        ),
+        adjusted_lattice_element=(
+            lattice_to_str(adjusted_verdict.adjusted_element)
+            if adjusted_verdict
+            else None
+        ),
+        secure_raw=adjusted_verdict.raw_secure_pass if adjusted_verdict else None,
+        secure_adjusted=(
+            adjusted_verdict.adjusted_secure_pass if adjusted_verdict else None
+        ),
+        grade_capped=grade_capped,
         suggestions=suggestions,
         preference_walk=walk,
     )
@@ -342,6 +453,17 @@ def render_evaluation_md(
     lines.append("")
     lines.append(f"**Priority:** `{e.priority.value}`")
     lines.append(f"**Guidance:** {e.guidance}")
+    if e.agent_contract is not None:
+        contract = e.agent_contract
+        if contract.next_tool or contract.next_actions or contract.blocked_by:
+            lines.append("")
+            lines.append("## Agent Contract")
+            if contract.next_tool:
+                lines.append(f"- **Next tool:** `{contract.next_tool}`")
+            for action in contract.next_actions:
+                lines.append(f"- **Action:** {action}")
+            for blocked in contract.blocked_by:
+                lines.append(f"- **Blocked by:** `{blocked}`")
 
     if e.preference_walk is not None:
         pw = e.preference_walk
@@ -364,6 +486,24 @@ def render_evaluation_md(
             lines.append(f"- **Walk:** {walk_str}")
         else:
             lines.append("- **Walk:** _at or beyond target — no further steps._")
+
+    if e.secure_raw is not None and e.secure_raw != e.secure_adjusted:
+        raw = "PASS" if e.secure_raw else "FAIL"
+        adjusted = "PASS" if e.secure_adjusted else "FAIL"
+        lines.append("")
+        lines.append(f"**SECURE overlay:** {raw} (raw) -> {adjusted} (acknowledged)")
+    if e.acknowledged_risks:
+        lines.append("")
+        lines.append("## Acknowledged Risks")
+        for risk in e.acknowledged_risks:
+            lines.append(
+                f"- `{risk.callee or risk.kind}` line {risk.line}: {risk.reason}"
+            )
+    if e.grade_capped:
+        lines.append(
+            "> Max grade capped below IDEAL because an acknowledged security "
+            "risk is active."
+        )
 
     # Suggestions are the actionable payload — show them by default (one line
     # each, already concise). Not verbose-gated: they are the whole point.

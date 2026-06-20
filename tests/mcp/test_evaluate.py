@@ -118,10 +118,16 @@ def test_evaluate_surfaces_actionable_suggestions() -> None:
         s for s in r.suggestions if s.pillar == "simple" and s.severity == "fix"
     ]
     assert simple_fixes, r.suggestions
+    assert r.agent_contract is not None
+    assert r.agent_contract.next_tool == "topos_inspect_code"
+    assert "topos_assess_improvement returns IMPROVEMENT or IMPROVEMENT_SCORE" in (
+        r.agent_contract.verification_gates
+    )
 
     # Markdown shows the checklist by default (not verbose-gated).
     text = _content_text(tr)
     assert "## Suggestions" in text
+    assert "## Agent Contract" in text
     assert "- [ ] (simple)" in text
 
 
@@ -137,6 +143,8 @@ def test_evaluate_clean_code_has_no_suggestions() -> None:
     tr = topos_evaluate_code(EvaluateCodeInput(code=clean_code, preferences=_PREFS))
     r = _eval(tr)
     assert r.suggestions == []
+    assert r.agent_contract is not None
+    assert r.agent_contract.next_actions
     assert "## Suggestions" not in _content_text(tr)
 
 
@@ -219,6 +227,8 @@ def test_evaluate_file_warns_without_gitnexus(
 
     assert r.coupling_available is False
     assert r.warnings
+    assert r.agent_contract is not None
+    assert "missing_gitnexus_dir" in r.agent_contract.blocked_by
     # The "COMPOSABLE not scored" note now lives in the flat interpretation.
     assert "mdg.unavailable" in r.interpretation
 
@@ -311,6 +321,54 @@ def test_evaluate_file_reports_security_findings(
     assert r.security_findings[0].line == 2
 
 
+def test_evaluate_file_applies_topos_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "danger.py"
+    path.write_text("def f(expr):\n    return eval(expr)\n", encoding="utf-8")
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "eval"\nreason = "trusted REPL"\n',
+        encoding="utf-8",
+    )
+
+    r = _eval(
+        topos_evaluate_file(EvaluateFileInput(filepath="danger.py", preferences=_PREFS))
+    )
+
+    assert r.secure_raw is False
+    assert r.secure_adjusted is True
+    assert r.security_findings == []
+    assert r.acknowledged_risks
+    assert r.acknowledged_risks[0].callee == "eval"
+    assert r.acknowledged_risks[0].reason == "trusted REPL"
+    assert not [s for s in r.suggestions if s.pillar == "secure"]
+
+
+def test_evaluate_file_supports_one_off_allow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "danger.py"
+    path.write_text("def f(expr):\n    return eval(expr)\n", encoding="utf-8")
+
+    r = _eval(
+        topos_evaluate_file(
+            EvaluateFileInput(filepath="danger.py", preferences=_PREFS, allow=["eval"])
+        )
+    )
+
+    assert r.secure_raw is False
+    assert r.secure_adjusted is True
+    assert r.acknowledged_risks[0].reason == "CLI --allow (ephemeral)"
+
+
 def test_evaluate_file_rejects_path_outside_root(tmp_path: Path) -> None:
     outside = tmp_path / "stranger.py"
     outside.write_text("x = 1")
@@ -387,6 +445,8 @@ def test_evaluate_project_rolls_up_files() -> None:
     assert r.files, "expected at least one per-file entry"
     assert r.aggregate_explanation
     assert r.guidance
+    assert r.agent_contract is not None
+    assert r.agent_contract.verification_gates
 
 
 def test_evaluate_project_paginates() -> None:
@@ -415,6 +475,39 @@ def test_evaluate_project_paginates() -> None:
     full_paths = {e.filepath for e in full.files}
     page2_paths = {e.filepath for e in page2.files}
     assert full_paths.isdisjoint(page2_paths) or len(full_paths) < 5
+
+
+def test_evaluate_project_applies_topos_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    (tmp_path / "danger.py").write_text(
+        "def f(expr):\n    return eval(expr)\n", encoding="utf-8"
+    )
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "eval"\nreason = "trusted REPL"\n',
+        encoding="utf-8",
+    )
+
+    r = _project(
+        asyncio.run(
+            topos_evaluate_project(
+                EvaluateProjectInput(path=".", limit=5, preferences=_PREFS),
+                _StubCtx(),
+            )
+        )
+    )
+
+    assert r.files[0].secure_raw is False
+    assert r.files[0].secure_adjusted is True
+    assert r.files[0].security_findings == []
+    assert r.files[0].acknowledged_risks[0].reason == "trusted REPL"
+    assert r.aggregate_floor_verdict == r.files[0].lattice_element
+    assert r.agent_contract is not None
+    assert r.agent_contract.next_actions[0].startswith("start with worst file")
 
 
 def test_evaluate_project_rejects_outside_root(tmp_path: Path) -> None:

@@ -2,7 +2,7 @@
 Pydantic schemas for the Topos MCP server.
 
 Input models validate tool arguments; return models give FastMCP the
-``outputSchema`` it emits to clients per MCP 2025-11-25 structured-output spec.
+``outputSchema`` it emits to clients when structured output is enabled.
 """
 
 from __future__ import annotations
@@ -155,6 +155,13 @@ class EvaluateCodeInput(_StrictModel):
         default=False,
         description="Include raw probe metric floats under each file in the response.",
     )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in the result."
+        ),
+    )
 
 
 class EvaluateFileInput(_StrictModel):
@@ -186,6 +193,13 @@ class EvaluateFileInput(_StrictModel):
         description=(
             "Include line/snippet diagnostics for dangerous API calls when "
             "SECURE fails."
+        ),
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in the result."
         ),
     )
     verbose: bool = Field(
@@ -235,6 +249,13 @@ class EvaluateProjectInput(_StrictModel):
         description=(
             "Include line/snippet diagnostics for SECURE failures in per-file entries. "
             "Defaults off for project scans to keep responses compact."
+        ),
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this evaluation. "
+            "Mirrors CLI --allow and is fully disclosed in each affected file entry."
         ),
     )
 
@@ -304,6 +325,13 @@ class AssessImprovementInput(_StrictModel):
             "SECURE fails."
         ),
     )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this assessment. "
+            "Mirrors CLI --allow and is fully disclosed in nested evaluations."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_inputs(self) -> AssessImprovementInput:
@@ -354,6 +382,13 @@ class InspectCodeInput(_StrictModel):
     verbose: bool = Field(
         default=False,
         description="Include raw probe metric floats under each file in the response.",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this inspection. "
+            "Mirrors CLI --allow and is fully disclosed in the evaluation."
+        ),
     )
 
     @model_validator(mode="after")
@@ -607,6 +642,17 @@ class SecurityFinding(BaseModel):
     sink: str | None = Field(default=None, description="Taint sink snippet.")
 
 
+class AcknowledgedRisk(BaseModel):
+    """A disclosed security finding acknowledged by project config or input."""
+
+    callee: str | None = None
+    kind: str
+    line: int = Field(..., ge=1)
+    snippet: str
+    reason: str
+    scope: str = "**"
+
+
 class FunctionEntry(BaseModel):
     """Function-level complexity diagnostic."""
 
@@ -631,6 +677,19 @@ class Suggestion(BaseModel):
         ..., description="'fix' (gate failed) | 'improve' (advisory)."
     )
     message: str = Field(..., description="Imperative instruction to act on.")
+
+
+class AgentContract(BaseModel):
+    """Compact loop-control packet for agentic harnesses."""
+
+    next_tool: str | None = Field(
+        default=None,
+        description="Recommended next MCP tool for the agent loop, if any.",
+    )
+    next_actions: list[str] = Field(default_factory=list)
+    blocked_by: list[str] = Field(default_factory=list)
+    verification_gates: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
 
 
 class EvaluationResult(BaseModel):
@@ -667,7 +726,27 @@ class EvaluationResult(BaseModel):
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     interpretation: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     security_findings: list[SecurityFinding] = Field(default_factory=list)
+    acknowledged_risks: list[AcknowledgedRisk] = Field(default_factory=list)
+    raw_lattice_element: LatticeElement | None = Field(
+        default=None,
+        description="Canonical raw verdict before acknowledged-risk overlay.",
+    )
+    adjusted_lattice_element: LatticeElement | None = Field(
+        default=None,
+        description="Verdict after acknowledged-risk overlay and grade cap.",
+    )
+    secure_raw: bool | None = Field(
+        default=None, description="Raw SECURE gate before acknowledged-risk overlay."
+    )
+    secure_adjusted: bool | None = Field(
+        default=None, description="SECURE gate after acknowledged-risk overlay."
+    )
+    grade_capped: bool = Field(
+        default=False,
+        description="True when acknowledged risk prevents a top IDEAL grade.",
+    )
     suggestions: list[Suggestion] = Field(
         default_factory=list,
         description=(
@@ -694,6 +773,12 @@ class ProjectFileEntry(BaseModel):
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     security_findings: list[SecurityFinding] = Field(default_factory=list)
+    acknowledged_risks: list[AcknowledgedRisk] = Field(default_factory=list)
+    raw_lattice_element: LatticeElement | None = None
+    adjusted_lattice_element: LatticeElement | None = None
+    secure_raw: bool | None = None
+    secure_adjusted: bool | None = None
+    grade_capped: bool = False
     is_parseable: bool = True
 
 
@@ -714,6 +799,7 @@ class ProjectEvaluationResult(BaseModel):
     priority_source: PrioritySource = PrioritySource.DEFAULT
     coupling_available: bool
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     count: int = Field(..., description="Entries in this page.")
     offset: int
     total: int
@@ -759,6 +845,7 @@ class AssessmentResult(BaseModel):
     similarity: float | None = None
     coupling_available_for_proposed: bool
     warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     # Anti-gaming: populated when scores moved but the tree barely changed.
     suspicion_reason: str | None = None
     # On a regression: a function-scoped unified diff of the single worst

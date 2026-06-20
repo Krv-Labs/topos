@@ -84,6 +84,40 @@ def test_assess_reports_security_findings() -> None:
     assert finding.callee == "eval"
 
 
+def test_assess_applies_allowlist_to_nested_evaluations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    current = tmp_path / "current.py"
+    current.write_text("def f(expr):\n    return eval(expr)\n", encoding="utf-8")
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "eval"\nreason = "trusted REPL"\n',
+        encoding="utf-8",
+    )
+
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                filepath="current.py",
+                proposed_code=current.read_text(encoding="utf-8"),
+                preferences=_PREFS,
+            )
+        )
+    )
+
+    assert r.current.secure_raw is False
+    assert r.current.secure_adjusted is True
+    assert r.current.security_findings == []
+    assert r.current.acknowledged_risks[0].reason == "trusted REPL"
+    assert r.proposed.secure_raw is False
+    assert r.proposed.secure_adjusted is True
+    assert r.proposed.security_findings == []
+    assert r.proposed.acknowledged_risks[0].callee == "eval"
+
+
 def test_assess_emits_distance_and_deltas_on_real_change() -> None:
     """Any meaningful code change should produce nonzero AST distance and deltas."""
     current = (
@@ -118,6 +152,8 @@ def test_assess_emits_distance_and_deltas_on_real_change() -> None:
     assert "simple" in r.score_deltas
     # Status must be one of the valid enum members (any movement is fine).
     assert r.status in set(AssessmentStatus)
+    assert r.agent_contract is not None
+    assert r.agent_contract.verification_gates
 
 
 def test_assess_flags_suspicious_no_structural_change() -> None:
@@ -163,6 +199,9 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
     assert r.status == AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE
     assert r.suspicion_reason is not None
     assert "barely changed" in r.suspicion_reason
+    assert r.agent_contract is not None
+    assert "suspicious_no_structural_change" in r.agent_contract.blocked_by
+    assert "metric_gaming_risk" in r.agent_contract.risk_flags
 
 
 _SIMPLE_FN = "def handle(x):\n    return x + 1\n"

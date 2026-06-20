@@ -25,6 +25,7 @@ from topos.functors.profunctors.ast.compare import calculate_ast_distance
 from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
 from topos.graphs.cfg.object import ControlFlowGraph
 
+from ..diagnostics import overlay_for_source
 from ..evaluation import (
     classify_code_string,
     classify_morphism,
@@ -34,12 +35,12 @@ from ..evaluation import (
 )
 from ..formatting import to_evaluation_result, to_tool_result
 from ..schemas import (
+    AgentContract,
     AssessImprovementInput,
     AssessmentResult,
     AssessmentStatus,
     EvaluationResult,
     LatticeElement,
-    SecurityFinding,
     resolve_priority,
 )
 from ..security import (
@@ -47,7 +48,6 @@ from ..security import (
     resolve_file_root,
     resolve_within_root,
 )
-from ..security_findings import security_findings
 from ..server import mcp
 
 _READ_ONLY_ANN = {
@@ -175,27 +175,15 @@ def _determine_assessment_status(
     return status, suspicion
 
 
-def _evaluate_proposed_and_findings(
+def _evaluate_proposed(
     proposed_src: str,
-    current_res,
-    current_morph: ProgramMorphism,
     dep_graph,
     priority: Priority,
     language: str,
-    include_security_findings: bool,
-) -> tuple[
-    ClassificationResult, ProgramMorphism, list[SecurityFinding], list[SecurityFinding]
-]:
+) -> tuple[ClassificationResult, ProgramMorphism]:
     proposed_morph = ProgramMorphism(source=proposed_src, language=language)
     proposed_res = classify_morphism(proposed_morph, priority, dep_graph)
-    current_findings = []
-    proposed_findings = []
-    if include_security_findings:
-        if _secure_failed(current_res):
-            current_findings = security_findings(current_morph.build_cpg())
-        if _secure_failed(proposed_res):
-            proposed_findings = security_findings(proposed_morph.build_cpg())
-    return proposed_res, proposed_morph, current_findings, proposed_findings
+    return proposed_res, proposed_morph
 
 
 def _calculate_deltas(
@@ -266,19 +254,35 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         )
 
     # ---- evaluate proposed & findings ----
-    proposed_res, proposed_morph, current_findings, proposed_findings = (
-        _evaluate_proposed_and_findings(
+    proposed_res, proposed_morph = (
+        _evaluate_proposed(
             proposed_src,
-            current_res,
-            current_morph,
             dep_graph,
             priority,
             params.language,
-            params.include_security_findings,
         )
     )
 
     prefs = params.preferences.to_preferences() if params.preferences else None
+    file_path = None
+    if params.filepath:
+        file_path, _ = resolve_within_root(params.filepath)
+    current_overlay = overlay_for_source(
+        current_src,
+        params.language,
+        current_res,
+        file_path=file_path,
+        allows=params.allow,
+        include_security_findings=params.include_security_findings,
+    )
+    proposed_overlay = overlay_for_source(
+        proposed_src,
+        params.language,
+        proposed_res,
+        file_path=file_path,
+        allows=params.allow,
+        include_security_findings=params.include_security_findings,
+    )
     # Warnings live on the top-level AssessmentResult only; the nested
     # current/proposed evals would otherwise duplicate the identical list.
     current_eval = to_evaluation_result(
@@ -286,14 +290,16 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         coupling_available=dep_graph is not None,
         preferences=prefs,
         priority_source=priority_source,
-        security_findings=current_findings,
+        include_agent_contract=False,
+        **_overlay_kwargs(current_overlay),
     )
     proposed_eval = to_evaluation_result(
         proposed_res,
         coupling_available=coupling_for_proposed,
         preferences=prefs,
         priority_source=priority_source,
-        security_findings=proposed_findings,
+        include_agent_contract=False,
+        **_overlay_kwargs(proposed_overlay),
     )
 
     # ---- score & metric deltas ----
@@ -333,6 +339,7 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         similarity=similarity,
         coupling_available_for_proposed=coupling_for_proposed,
         warnings=warnings,
+        agent_contract=_assessment_contract(status, warnings, proposed_eval),
         suspicion_reason=suspicion,
         regression_diff=regression_diff,
     )
@@ -363,6 +370,10 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> ToolResult:
         structural_distance=None,
         similarity=None,
         coupling_available_for_proposed=False,
+        agent_contract=AgentContract(
+            blocked_by=["assessment_error"],
+            risk_flags=["assessment_error"],
+        ),
         error=msg,
     )
     return to_tool_result(model, render_assessment_md(model))
@@ -381,10 +392,59 @@ def _load_proposed_source(
     return source, None
 
 
-def _secure_failed(result) -> bool:
-    return bool(
-        result.raw_metrics.get("cpg.dangerous_calls", 0.0) > 0
-        or result.raw_metrics.get("cpg.taint_flows", 0.0) > 0
+def _overlay_kwargs(overlay):
+    if overlay is None:
+        return {}
+    return {
+        "security_findings": overlay.active_findings,
+        "acknowledged_risks": overlay.acknowledged_risks,
+        "adjusted_verdict": overlay.verdict,
+    }
+
+
+def _assessment_contract(
+    status: AssessmentStatus,
+    warnings: list[str],
+    proposed_eval: EvaluationResult,
+) -> AgentContract:
+    risk_flags: list[str] = []
+    blocked_by: list[str] = []
+    next_actions: list[str] = []
+
+    if warnings:
+        risk_flags.append("warnings")
+    if proposed_eval.grade_capped:
+        risk_flags.append("grade_capped")
+    if proposed_eval.security_findings:
+        risk_flags.append("active_security_findings")
+
+    if status == AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE:
+        blocked_by.append("suspicious_no_structural_change")
+        risk_flags.append("metric_gaming_risk")
+        next_tool = "topos_inspect_code"
+        next_actions.append("make a real structural change before reassessing")
+    elif status in _REGRESSION_STATUSES:
+        blocked_by.append("regression")
+        risk_flags.append("regression")
+        next_tool = "topos_inspect_code"
+        next_actions.append("discard or revise the proposed change")
+    elif status in (AssessmentStatus.IMPROVEMENT, AssessmentStatus.IMPROVEMENT_SCORE):
+        next_tool = "topos_evaluate_project"
+        next_actions.append("run project rollup and behavior checks before accepting")
+    else:
+        next_tool = "topos_inspect_code"
+        next_actions.append("try a different focused structural change")
+
+    return AgentContract(
+        next_tool=next_tool,
+        next_actions=next_actions,
+        blocked_by=blocked_by,
+        verification_gates=[
+            "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE",
+            "assessment status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE",
+            "behavior tests or type/lint checks pass when available",
+        ],
+        risk_flags=risk_flags,
     )
 
 
@@ -559,6 +619,19 @@ def render_assessment_md(r: AssessmentResult) -> str:
     if r.structural_distance is not None:
         sim = f", similarity {r.similarity:.3f}" if r.similarity is not None else ""
         lines.append(f"**Structural distance:** {r.structural_distance:.3f}{sim}")
+    if r.agent_contract is not None and (
+        r.agent_contract.next_tool
+        or r.agent_contract.next_actions
+        or r.agent_contract.blocked_by
+    ):
+        lines.append("")
+        lines.append("## Agent Contract")
+        if r.agent_contract.next_tool:
+            lines.append(f"- **Next tool:** `{r.agent_contract.next_tool}`")
+        for action in r.agent_contract.next_actions:
+            lines.append(f"- **Action:** {action}")
+        for blocked in r.agent_contract.blocked_by:
+            lines.append(f"- **Blocked by:** `{blocked}`")
 
     lines.extend(_render_deltas(r))
 

@@ -84,6 +84,30 @@ def test_inspect_accepts_filepath(
     assert r.function_entries[0].line == 1
 
 
+def test_inspect_applies_topos_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "danger.py"
+    path.write_text("def f(expr):\n    return eval(expr)\n", encoding="utf-8")
+    (tmp_path / ".topos.toml").write_text(
+        '[[secure.allow]]\npattern = "eval"\nreason = "trusted REPL"\n',
+        encoding="utf-8",
+    )
+
+    r = _inspect(topos_inspect_code(InspectCodeInput(filepath="danger.py")))
+
+    assert r.evaluation.secure_raw is False
+    assert r.evaluation.secure_adjusted is True
+    assert r.evaluation.security_findings == []
+    assert r.evaluation.acknowledged_risks[0].callee == "eval"
+    assert r.evaluation.agent_contract is not None
+    assert "acknowledged_security_risk" in r.evaluation.agent_contract.risk_flags
+
+
 def test_inspect_non_ascii_before_def_keeps_clean_names() -> None:
     # Regression: UAST spans are UTF-8 byte offsets. A non-ASCII char (→, —)
     # BEFORE the def shifts byte vs. code-point offsets, which used to slice

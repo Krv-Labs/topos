@@ -5,6 +5,8 @@ entropy breakdown.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
@@ -14,6 +16,7 @@ from topos.functors.probes.cfg.complexity import cyclomatic_complexity
 from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
 from topos.graphs.cfg.object import ControlFlowGraph
 
+from ..diagnostics import overlay_for_source
 from ..evaluation import classify_code_string
 from ..formatting import render_evaluation_md, to_evaluation_result, to_tool_result
 from ..schemas import (
@@ -24,7 +27,7 @@ from ..schemas import (
     LatticeElement,
     resolve_priority,
 )
-from ..security import read_safe_utf8_file
+from ..security import read_safe_utf8_file, resolve_within_root
 from ..server import mcp
 
 _READ_ONLY_ANN = {
@@ -63,7 +66,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
     details. The top-N cap prevents large files from dumping hundreds of
     functions and blowing out agent context.
     """
-    source, source_error = _load_source(params)
+    source, source_error, file_path = _load_source(params)
     priority, priority_source = resolve_priority(params.preferences)
     if source_error or source is None:
         empty = EvaluationResult(
@@ -108,6 +111,16 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         coupling_available=False,
         preferences=params.preferences.to_preferences() if params.preferences else None,
         priority_source=priority_source,
+        **_overlay_kwargs(
+            overlay_for_source(
+                source,
+                params.language,
+                result,
+                file_path=file_path,
+                allows=params.allow,
+                include_security_findings=True,
+            )
+        ),
         verbose=params.verbose,
     )
 
@@ -164,15 +177,30 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
     return to_tool_result(model, render_inspection_md(model, verbose=params.verbose))
 
 
-def _load_source(params: InspectCodeInput) -> tuple[str | None, str | None]:
+def _load_source(
+    params: InspectCodeInput,
+) -> tuple[str | None, str | None, Path | None]:
     if params.code is not None:
-        return params.code, None
+        return params.code, None, None
     if params.filepath is None:
-        return None, "Provide exactly one of `code` or `filepath`."
+        return None, "Provide exactly one of `code` or `filepath`.", None
+    resolved, resolve_err = resolve_within_root(params.filepath)
+    if resolve_err or resolved is None:
+        return None, (resolve_err or {}).get("error", "path error"), None
     source, err = read_safe_utf8_file(params.filepath)
     if err:
-        return None, err["error"]
-    return source, None
+        return None, err["error"], None
+    return source, None, resolved
+
+
+def _overlay_kwargs(overlay):
+    if overlay is None:
+        return {}
+    return {
+        "security_findings": overlay.active_findings,
+        "acknowledged_risks": overlay.acknowledged_risks,
+        "adjusted_verdict": overlay.verdict,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -38,15 +38,84 @@ Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding 
 #### Install
 
 ```bash
-# Install CLI
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+topos --version          # verify it's on your PATH
+topos --help             # full command list — every command also takes -h / --help
 ```
 
-#### Using Topos
+#### Evaluate code — the 60-second tour
 
 ```bash
-# Preferences are how you prioritize the evaluation pillars
-topos evaluate src/ -r --preferences simple,composable,secure  # classify each file in a directory
+topos evaluate path/to/file.py     # one file → quality medal + the metrics behind it
+topos evaluate src/ -r             # every file under a directory, recursively
+topos evaluate src/ -r --json      # same, machine-readable (pipe to jq, CI, etc.)
+topos inspect path/to/file.py      # deep dive: per-function complexity, AST entropy, all raw metrics
+topos compare before.py after.py   # AST edit distance between two versions of a file
+```
+
+#### Review a whole repo or module
+
+Point `evaluate` at a directory with `-r` for a ranked, actionable digest instead of a per-file wall:
+
+```bash
+topos evaluate src/ -r              # the whole repo
+topos evaluate src/mypackage -r     # one module / sub-package
+```
+
+The summary surfaces, in order:
+
+- **Pillars** — per-pillar PASS/FAIL with average & minimum scores across all files.
+- **Directory Floor Verdict** — the worst verdict any single file drags the codebase down to (the pointwise lattice meet).
+- **Needs attention** — the lowest-scoring files (where quality is *worst*).
+- **Lowest-hanging fruit** — the files closest to *flipping* a failing pillar, each with the concrete fix. **Start here for the cheapest wins:**
+
+```text
+Lowest-hanging fruit
+  Smallest improvement that flips a failing pillar.
+  1.  src/mypackage/__init__.py
+      simple 59% → 60% (+1 pts)
+  2.  src/mypackage/util.py
+      simple 55% → 60% (+5 pts)
+      ↳ Extract helper functions to cut branching (cyclomatic 21 > 15).
+```
+
+Add `--json` for a machine-readable rollup, or `-v` to expand every file's raw metrics.
+
+#### Score COMPOSABLE — add a dependency graph
+
+`COMPOSABLE` measures how cleanly a module is decoupled, which needs a cross-file **dependency graph**. Topos reads one from a `.gitnexus/` directory produced by [GitNexus](https://github.com/abhigyanpatwari/GitNexus). Without it, `SIMPLE` and `SECURE` still run — but any medal containing `COMPOSABLE` (including 🥇 GOLD) is unreachable.
+
+```bash
+npm install -g gitnexus                            # one-time, per machine
+topos depgraph generate                            # writes ./.gitnexus/ for the current repo
+topos evaluate src/ -r --gitnexus-dir .gitnexus    # COMPOSABLE (and GOLD) now scored
+```
+
+> The CLI does **not** auto-detect `.gitnexus/` — pass `--gitnexus-dir` explicitly. Regenerate after imports change (new modules, renames, restructures). *(The `topos mcp` server, by contrast, auto-detects `./.gitnexus`.)*
+
+#### Measure test coverage — structural + semantic
+
+`--tests` takes your test files (repeat the flag for several); the positional arguments are the program-under-test files.
+
+```bash
+# one test file covering one module
+topos coverage --tests tests/test_foo.py topos/foo.py
+
+# several of each
+topos coverage --tests tests/test_a.py --tests tests/test_b.py src/a.py src/b.py
+
+# stricter gate + JSON, e.g. for CI
+topos coverage --tests tests/test_foo.py topos/foo.py --coverage-threshold 0.8 --json
+```
+
+Reports UAST **declaration coverage** (structural) plus **topological ECT coverage** (semantic — does the suite exercise the same code *shapes*, not just the same names?). ECT is an optional extra: `pip install 'topos[ect-coverage]'`.
+
+#### Steer the verdict
+
+```bash
+topos evaluate src/ -r --preferences simple,composable,secure   # rank pillars for your agent to target
+topos evaluate app.py --allow yaml.load                         # acknowledge a known-risky call (caps grade below GOLD)
+topos evaluate src/ -r --language typescript                    # python (default) · typescript · javascript · rust · cpp
 ```
 
 ---

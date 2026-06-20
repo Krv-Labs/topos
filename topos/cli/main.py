@@ -11,7 +11,7 @@ from topos.cli.commands.quality import register_quality_commands
 from topos.cli.commands.system import register_system_commands
 
 
-@click.group()
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(version=__version__, prog_name="topos")
 def cli() -> None:
     """

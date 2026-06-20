@@ -262,6 +262,75 @@ def _render_file_diagnostics(result: dict[str, object]) -> None:
     render_suggestions(suggestions, indent="    ")
 
 
+def _lowest_hanging_fruit(
+    results: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Find files whose cheapest failing pillar is closest to passing.
+
+    For each file we look at every *measured* pillar that fails its threshold,
+    take the one with the smallest gap (the easiest win), and rank files
+    ascending by that gap. Parse failures (no dimensions / SLOP) are skipped —
+    they belong in "Needs attention", not here. Returns up to the top 5.
+    """
+    fruit: list[dict[str, object]] = []
+    for result in results:
+        scores = result.get("scores")
+        dimensions = result.get("dimensions")
+        if not isinstance(scores, dict) or not scores:
+            continue
+        # Skip parse failures — they have no measured dimensions to improve.
+        if not isinstance(dimensions, dict) or not dimensions:
+            continue
+
+        best_gap: dict[str, object] | None = None
+        for pillar, raw_score in scores.items():
+            threshold = _PILLAR_THRESHOLDS.get(str(pillar))
+            if threshold is None:
+                continue
+            score = float(raw_score)
+            if score >= threshold:
+                continue
+            gap = threshold - score
+            if best_gap is None or gap < float(best_gap["gap"]):
+                best_gap = {
+                    "pillar": str(pillar),
+                    "score": score,
+                    "threshold": threshold,
+                    "gap": gap,
+                }
+
+        if best_gap is None:
+            continue
+
+        suggestion = _suggestion_for_pillar(result, str(best_gap["pillar"]))
+        fruit.append(
+            {
+                "file": result["file"],
+                "pillar": best_gap["pillar"],
+                "score": best_gap["score"],
+                "threshold": best_gap["threshold"],
+                "gap": best_gap["gap"],
+                "suggestion": suggestion,
+            }
+        )
+
+    fruit.sort(key=lambda item: (float(item["gap"]), str(item["file"])))
+    return fruit[:5]
+
+
+def _suggestion_for_pillar(result: dict[str, object], pillar: str) -> str | None:
+    """Return the most relevant suggestion message for *pillar*, or None.
+
+    Prefers a "fix" (gate-failure) suggestion over an advisory "improve" one.
+    """
+    suggestions = result.get("_suggestions") or []
+    matches = [s for s in suggestions if getattr(s, "pillar", None) == pillar]
+    if not matches:
+        return None
+    matches.sort(key=lambda s: 0 if getattr(s, "severity", "") == "fix" else 1)
+    return getattr(matches[0], "message", None)
+
+
 def output_directory_average(results: list[dict[str, object]]) -> None:
     """Consolidated into output_text. This is now a backward compatible no-op."""
     pass
@@ -411,6 +480,46 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
         click.echo(click.style(header_files, bold=True))
         click.echo(click.style(divider_files, dim=True))
         click.echo(_format_file_row("-", best["file"], best))
+
+        _output_lowest_hanging_fruit(results)
+
+
+def _output_lowest_hanging_fruit(results: list[dict[str, object]]) -> None:
+    """Render the cheapest-win section: failing pillars closest to passing."""
+    fruit = _lowest_hanging_fruit(results)
+    click.echo()
+    click.echo(click.style("Lowest-hanging fruit", fg="cyan", bold=True))
+    if not fruit:
+        click.echo(
+            click.style(
+                "  All measured pillars pass — no near-misses to fix.", dim=True
+            )
+        )
+        return
+
+    click.echo(
+        click.style("  Smallest improvement that flips a failing pillar.", dim=True)
+    )
+    for idx, item in enumerate(fruit, start=1):
+        pillar = str(item["pillar"])
+        score = float(item["score"])
+        threshold = float(item["threshold"])
+        gap = float(item["gap"])
+
+        file_str = str(item["file"])
+        if len(file_str) > 42:
+            file_str = "..." + file_str[-39:]
+
+        gap_str = click.style(
+            f"{pillar} {score:.0f}% → {threshold:.0f}% (+{gap:.0f} pts)",
+            fg="yellow",
+            bold=True,
+        )
+        click.echo(f"  {idx}.  {file_str}")
+        click.echo(f"      {gap_str}")
+        suggestion = item.get("suggestion")
+        if suggestion:
+            click.echo(click.style(f"      ↳ {suggestion}", dim=True))
 
 
 def output_json(results: list[dict[str, object]]) -> None:

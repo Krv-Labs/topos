@@ -8,7 +8,7 @@ CFGs lets us reason about how a refactor changed branching shape *without*
 being misled by lexical churn (whitespace, renames) the AST distance
 picks up.
 
-Three orthogonal signals are exposed:
+Three orthogonal signals are exposed::
 
     cyclomatic_delta   : signed change in McCabe complexity
     edge_kind_l1       : L1 distance between edge-kind histograms

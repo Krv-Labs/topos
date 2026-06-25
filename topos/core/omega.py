@@ -85,25 +85,31 @@ class EvaluationValue(IntEnum):
     ``IDEAL = ⊤`` (everything satisfied) and ``SLOP = ⊥`` (nothing
     satisfied).
 
-    Encoding (integer value = bitmask SIMPLE|COMPOSABLE|SECURE):
+    Encoding (integer value = bitmask SIMPLE|COMPOSABLE|SECURE)::
+
         - bit 0 = SIMPLE satisfied
         - bit 1 = COMPOSABLE satisfied
         - bit 2 = SECURE satisfied
 
     Values:
-        SLOP:               ⊥ - no generator satisfied. The unconstrained
-                                universe; total structural chaos.
-        SIMPLE:             Only the SIMPLE generator is satisfied (low
-                                cyclomatic complexity on the CFG).
-        COMPOSABLE:         Only the COMPOSABLE generator is satisfied
-                                (good coupling/instability on the dep graph).
-        SIMPLE_COMPOSABLE:  Meet of SIMPLE and COMPOSABLE.
-        SECURE:             Only the SECURE generator is satisfied (no
-                                taint-flow / dangerous APIs on the CPG).
-        SIMPLE_SECURE:      Meet of SIMPLE and SECURE.
-        COMPOSABLE_SECURE:  Meet of COMPOSABLE and SECURE.
-        IDEAL:              ⊤ - all three generators satisfied. The meet
-                                of all generators: the ideal program state.
+
+        ``SLOP``:
+            ⊥ - no generator satisfied. The unconstrained universe; total
+            structural chaos.
+        ``SIMPLE``:
+            Only the SIMPLE generator is satisfied.
+        ``COMPOSABLE``:
+            Only the COMPOSABLE generator is satisfied.
+        ``SIMPLE_COMPOSABLE``:
+            Meet of SIMPLE and COMPOSABLE.
+        ``SECURE``:
+            Only the SECURE generator is satisfied.
+        ``SIMPLE_SECURE``:
+            Meet of SIMPLE and SECURE.
+        ``COMPOSABLE_SECURE``:
+            Meet of COMPOSABLE and SECURE.
+        ``IDEAL``:
+            ⊤ - all three generators satisfied.
     """
 
     SLOP = 0b000  # ⊥

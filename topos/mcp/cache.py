@@ -2,6 +2,7 @@
 LRU caches for the Topos MCP server.
 
 Two caches:
+
 - ``dep_graph_for``: parsed ``ModuleDependencyGraph``, keyed by (gitnexus_dir,
   target_file, mtime). mtime invalidates automatically when gitnexus re-runs.
 - ``baseline_result_for``: ``ClassificationResult`` for a file's current on-disk

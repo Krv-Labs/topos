@@ -13,6 +13,11 @@ code. Install it where you review and iterate: Claude Code, VS Code, or Cursor.
 The terminal is still useful, but the point is not to collect another report;
 the point is to give your agent a quality target it can actually chase.
 
+Agents can write the mess, then burn your tokens reading it back. Topos helps
+stop that loop. Cleaner code going in means fewer future tokens spent on
+archaeology, faster context loading, and less refactoring drag on every feature
+that follows.
+
 .. admonition:: The short version
    :class: philosophy-box
 
@@ -32,31 +37,23 @@ locally and expose the same structural quality tools.
    structural verifier in the same agent loop: measure, edit, verify, repeat.
 
    You do not need a persistent Python install. Let ``uvx`` resolve and run the
-   package when Claude starts the MCP server:
-
-   .. code-block:: bash
-
-      claude mcp add --transport stdio topos -- uvx --from topos-mcp topos mcp
-      claude mcp list
-
-   For semantic coverage, use the extra in the same command:
+   package when Claude starts the MCP server. We recommend the ``ect-coverage`` extra for semantic coverage, but it is optional:
 
    .. code-block:: bash
 
       claude mcp add --transport stdio topos -- uvx --from "topos-mcp[ect-coverage]" topos mcp
 
-   If ``topos`` is already on your ``PATH`` from the binary installer or a
-   package install, register that directly instead:
+   To confirm the install + MCP server status, you can run:
 
    .. code-block:: bash
 
-      claude mcp add --transport stdio topos -- topos mcp
+      claude mcp list
 
    Then ask Claude Code:
 
    .. code-block:: text
 
-      Use Topos to evaluate the worst files in src/.
+      Use Topos to evaluate the worst files in <whatever directory/project you are working on>.
       Propose a refactor, make the change, and verify it with Topos.
 
    This is the happy path: the agent gets a concrete structural signal instead
@@ -85,8 +82,14 @@ locally and expose the same structural quality tools.
    hand-editing, no separate terminal ritual, and the quality feedback stays
    where you are reading the diff.
 
-What this is
-------------
+When to use Topos
+-----------------
+
+Use Topos when the code works, but you are not sure it can keep taking more
+changes.
+
+What Topos is
+~~~~~~~~~~~~~
 
 Topos is a structural code-quality evaluator for agent-written and
 human-written code. It exists for the judgment gap created when agents generate
@@ -97,32 +100,18 @@ Topos gives that review a measurable object: program structure. It asks whether
 the implementation is simple enough to reason about, composable enough to fit
 the repository, and free of known dangerous data-flow patterns.
 
+Topos pre-computes the structural signals your agent would otherwise have to
+rediscover by scanning the codebase: cyclomatic complexity, module coupling,
+dangerous API reachability, and test-structure coverage. It gives the agent a
+precise gradient to optimize against before the mess compounds, not after.
+
 The useful mental model is simple: **tests catch broken behavior; Topos catches
 structural drift.** Tests tell you whether the code produced the expected
 answer. Topos asks whether the code is built in a way your team can understand,
 change, and trust later.
 
-When to use Topos
------------------
-
-Use Topos when the code works, but you are not sure it belongs:
-
-* before merging large agent-generated diffs;
-* inside an agent loop, so the agent can measure, refactor, and verify its own
-  output;
-* when a passing implementation feels harder to understand than the problem it
-  solved;
-* when a file imports half the repo and nobody wants to touch it;
-* when a refactor claims to improve structure, but you want a signal stronger
-  than "looks cleaner";
-* when checking whether tests structurally cover the code paths and declarations
-  they claim to exercise.
-
-Use it especially when the diff is too large to trust by vibe. That is where
-agentic speed turns into review debt.
-
 What Topos is not
------------------
+~~~~~~~~~~~~~~~~~
 
 Topos is not a replacement for unit tests, integration tests, type checks, or
 linters. Keep those gates.
@@ -131,10 +120,53 @@ Tests prove behavior against examples. Type checks prove values fit declared
 contracts. Linters catch style and known syntax-level mistakes. Topos adds a
 different layer: **is the structure healthy enough to keep changing?**
 
-Think of a Jenga tower. A test can tell you the tower is still standing after
-one move. Topos asks whether the move quietly made the next ten moves more
-dangerous. A passing build can still leave you with a load-bearing block in the
-wrong place.
+Why that matters
+~~~~~~~~~~~~~~~~
+
+That distinction matters. A feature can pass every test today and still be the
+wrong shape for tomorrow.
+
+.. admonition:: The Jenga Analogy
+   :class: philosophy-box
+
+   Think of your codebase as a Jenga tower. An agent implements a feature, the
+   tests pass, and the tower remains standing—functionally, the move "worked."
+   But if they succeeded only by sliding a load-bearing block out of the
+   foundation to balance three quick patches on top, the next change becomes
+   twice as dangerous. Topos catches that structural compromise before the
+   system becomes too brittle to touch.
+
+Another way to think about it: a unit test checks that the door opens. Topos
+checks whether the hinges are now screwed into drywall.
+
+This is also a cost problem. If code is tangled, every future agent session has
+to spend more context figuring out what changed, why it matters, and where the
+real boundaries are. Cleaner structure makes sessions last longer because the
+agent spends less time re-reading its own homework.
+
+Concrete use cases
+~~~~~~~~~~~~~~~~~~
+
+Concrete times to use Topos:
+
+* **After an agent writes code:** verify that the diff is not just correct, but
+  still simple, composable, and safe to build on.
+* **Before merging a large generated diff:** use Topos when the review is too
+  big to trust by vibe.
+* **Before asking for the next feature:** catch structural debt before the next
+  session spends paid context rediscovering it.
+* **When a passing implementation feels too clever:** check whether complexity
+  is concentrated in one tangled function.
+* **When a file imports too much:** catch modules that quietly become
+  load-bearing because they know about half the codebase.
+* **During refactors:** verify that the structure actually improved, instead of
+  just moving lines around.
+* **When agent sessions keep getting expensive:** use Topos to reduce the deep
+  codebase scans and repeated explanations caused by tangled code.
+* **When reviewing tests:** check whether the tests structurally cover the code
+  paths and declarations they claim to protect.
+* **Inside an agent loop:** let the agent measure, refactor, and verify its own
+  work against a concrete quality target.
 
 Semantic coverage
 -----------------

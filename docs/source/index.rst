@@ -15,11 +15,11 @@ Topos
        <img class="topos-hero-logo only-dark" src="_static/topos-logo-dark.svg" alt="" aria-hidden="true" />
      </div>
      <p class="topos-tagline">Structural code quality your agents can measure&nbsp;&mdash;&nbsp;and optimize toward.</p>
-     <p class="topos-lead"><strong>Topos gives you structural code-quality metrics your agents can act on.</strong>
-       Pick a preference ranking and Topos measures program structure&nbsp;&mdash;&nbsp;not just syntax&nbsp;&mdash;&nbsp;giving
-       agents concrete targets to optimize toward on every pass. You set the target; agents handle the iteration.</p>
+     <p class="topos-lead"><strong>Stop paying agents to rediscover and repair their own structural mess.</strong>
+       Topos gives coding agents concrete quality targets before complexity, coupling, and risky data paths compound into expensive context archaeology.
+       Pick a preference ranking and Topos measures program structure&nbsp;&mdash;&nbsp;not just syntax&nbsp;&mdash;&nbsp;so agents can optimize toward the code shape you want on every pass.</p>
      <div class="topos-cta-row">
-       <a class="topos-btn" href="installation.html">Get started →</a>
+       <a class="topos-btn" href="quickstart.html">Get started →</a>
        <a class="topos-btn ghost" href="https://github.com/Krv-Labs/topos">View on GitHub</a>
      </div>
    </div>
@@ -28,7 +28,6 @@ Topos
    :class: philosophy-box
 
    Passing unit tests only proves that your code is a solution to a finite set of requirements. Agents have proved to be exceptional at this and will continue to improve. We believe the new currency is the quality of these solutions. Topos provides the structural evaluations that empower coding agents to find higher quality solutions.
-   `View Topos on GitHub <https://github.com/Krv-Labs/topos>`_.
 
 .. grid:: 1 1 2 2
    :gutter: 3

@@ -13,10 +13,10 @@ When the optional **`ect-coverage`** extra is installed, Topos can score **CPG t
 **Install**
 
 ```bash
-pip install 'topos[ect-coverage]'
+uv pip install 'topos-mcp[ect-coverage]'
 ```
 
-The default `pip install topos` remains lightweight (UAST coverage only). The VS Code release binary includes ECT dependencies; pip users opt in via the extra.
+The default `uv pip install topos-mcp` remains lightweight (UAST coverage only). The VS Code release binary includes ECT dependencies; Python package users opt in via the extra.
 
 **First run**
 
@@ -89,7 +89,7 @@ topos coverage --tests tests/test_mod.py src/mod.py
 topos coverage --tests t1.py --tests t2.py --language python --k 3 --json src/a.py src/b.py
 ```
 
-With `topos[ect-coverage]` installed, output includes a **Topological CPG Semantic Coverage** section (ECT score, tested/untested functions, node counts).
+With `topos-mcp[ect-coverage]` installed, output includes a **Topological CPG Semantic Coverage** section (ECT score, tested/untested functions, node counts).
 
 Options include `--language` (`python`, `rust`, `javascript`, `cpp`), `--k`, `--include-unknown`, `--coverage-threshold`, and `--json`.
 

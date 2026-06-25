@@ -5,113 +5,216 @@ Installation
 ============
 
 .. meta::
-   :description: Get started with Topos. Install the CLI, MCP server, or build from source.
-   :twitter:description: Get started with Topos. Install the CLI, MCP server, or build from source.
+   :description: Get started with Topos. Install the CLI, MCP server, GitNexus composability metrics, and optional semantic coverage.
+   :twitter:description: Get started with Topos. Install the CLI, MCP server, GitNexus composability metrics, and optional semantic coverage.
 
-Topos is designed to be accessible as either a standalone binary or by building from source. 
+Install Topos first, then add optional metrics only when you need them. The
+core install includes the CLI, MCP server, SIMPLE and SECURE evaluation, AST
+comparison, and UAST structural coverage.
 
-.. hint::
-   **Prerequisites:** 
-   
-   * **Python 3.11+** is required for core evaluation. 
-   * **Rust toolchain (Cargo)** is required if building from source.
-   * If you use the Binary installation, the embedded Python/Rust environments are managed for you.
+.. list-table::
+   :header-rows: 1
+   :widths: 22 28 50
+   :class: topos-install-table
+
+   * - Use case
+     - Install path
+     - What to know
+   * - Most users
+     - Binary CLI
+     - One command installs ``topos`` and prompts to install GitNexus for COMPOSABLE metrics.
+   * - Managed Python environment
+     - PyPI package
+     - Requires Python 3.11+ and ``uv``. Install GitNexus and ``ect-coverage`` separately when needed.
+   * - Development
+     - Source checkout
+     - Requires Python 3.11+ and Cargo. Install optional metrics separately.
+
+Choose an install path
+----------------------
 
 .. tab-set::
 
-   .. tab-item:: 🚀 Binary CLI (Recommended)
+   .. tab-item:: Binary CLI
+      :sync: binary
 
-      The quickest way to get up and running with the Topos CLI and MCP server.
+      Recommended for most users. Installs the ``topos`` executable and MCP
+      server, then offers to install GitNexus if npm is available.
 
       .. code-block:: bash
 
          curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 
-      .. card:: **What happens during installation?**
+      The installer:
 
-         1. The latest release binary is downloaded to ``~/.local/bin``.
-         2. An embedded Python environment is configured.
-         3. You will be prompted to optionally install `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_ (requires Node.js 18+).
+      * downloads the latest release binary to ``~/.local/bin``;
+      * verifies the release checksum;
+      * records install provenance for ``topos uninstall``;
+      * adds ``~/.local/bin`` to your shell profile when needed;
+      * prompts to install GitNexus through npm for COMPOSABLE metrics.
 
-      .. note::
-         **Why GitNexus?** GitNexus enables **Coupling Analysis** (the ``COMPOSABLE`` lattice target). Without it, Topos performs structural analysis (AST-based) but cannot evaluate inter-module dependencies.
+      If GitNexus is already installed, the installer detects it and skips the
+      prompt. If npm is missing or you decline the prompt, Topos still works for
+      SIMPLE, SECURE, AST comparison, MCP tools, and UAST coverage.
 
-      **Verify the Installation**
+      Verify the binary:
 
       .. code-block:: bash
 
          topos --version
-         topos mcp   # prints the FastMCP banner and waits on stdin; Ctrl-C to exit
+         topos --help
 
-      .. note::
-         **macOS ``different Team IDs`` error (v0.3.1 and earlier):** If ``topos --version`` fails with a PyInstaller error about ``libpython3.12.dylib`` and mismatched Team IDs, upgrade to **v0.3.2** or later via ``install.sh``, or use the **Building from Source** tab. See `issue #55 <https://github.com/Krv-Labs/topos/issues/55>`_ for details.
-
-   .. tab-item:: 📦 PyPI Package
-
-      Topos is also available as a Python package via PyPI. Note that unlike the standalone binary, this method requires you to manage your own Python environment (Python 3.11+).
+      Smoke-test the MCP server:
 
       .. code-block:: bash
 
-         pip install topos-mcp
+         topos mcp
 
-   .. tab-item:: 🐍 Building from Source
+      ``topos mcp`` waits on standard input. Press ``Ctrl-C`` after the FastMCP
+      banner appears.
 
-      If you want to contribute, use the latest development version, or integrate Topos into your Python pipelines:
+   .. tab-item:: PyPI package
+      :sync: pypi
+
+      Use this when you want Topos in a managed Python environment.
+
+      .. code-block:: bash
+
+         uv pip install topos-mcp
+
+      Add semantic coverage when needed:
+
+      .. code-block:: bash
+
+         uv pip install "topos-mcp[ect-coverage]"
+
+      PyPI installs do not install GitNexus automatically. Add it separately
+      when you need COMPOSABLE metrics:
+
+      .. code-block:: bash
+
+         npm install -g gitnexus
+
+   .. tab-item:: Source checkout
+      :sync: source
+
+      Use this for development, local patches, or repository integration.
 
       .. code-block:: bash
 
          git clone https://github.com/Krv-Labs/topos.git
          cd topos
-         pip install -e .
+         uv pip install -e .
 
-      **Optional: topological (ECT) coverage**
-
-      Structural UAST coverage is included in the default install. For CPG topological
-      coverage (fastembed + TRAILED), install the optional extra:
+      Add semantic coverage when needed:
 
       .. code-block:: bash
 
-         pip install -e ".[ect-coverage]"
+         uv pip install -e ".[ect-coverage]"
 
-      The embedding model downloads on first use to ``~/.cache/fastembed`` (~23 MB quantized).
-      Scope coverage to a module or file pair rather than merging entire ``src/`` and ``tests/``
-      trees; see :doc:`measures` and ``docs/structural-test-coverage.md``.
-
-      **Running Tests**
-
-      To verify the Python and Rust components:
+      Source installs do not install GitNexus automatically. Add it separately
+      when you need COMPOSABLE metrics:
 
       .. code-block:: bash
 
-         # Run Python tests
+         npm install -g gitnexus
+
+      Run the local test suites:
+
+      .. code-block:: bash
+
          pytest
-
-         # Run Rust unit tests
          cargo test
 
-.. grid:: 1 1 2 2
-   :gutter: 3
+Enable optional metrics
+-----------------------
 
-   .. grid-item-card:: 🛠️ GitNexus Integration
-      :link: https://github.com/abhigyanpatwari/GitNexus
-      :link-type: url
+.. tab-set::
 
-      For coupling analysis of dependency graphs, use the built-in generator:
-      ^^^
+   .. tab-item:: COMPOSABLE
+      :sync: composable
+
+      GitNexus builds the repository dependency graph used by the COMPOSABLE
+      pillar. Install it once, generate ``.gitnexus/`` per repository, then pass
+      that directory to CLI evaluations.
+
       .. code-block:: bash
 
+         npm install -g gitnexus
+         cd /path/to/your/repo
          topos depgraph generate
+         topos evaluate src/ -r --gitnexus-dir .gitnexus/
 
-   .. grid-item-card:: 🗑️ Uninstallation
-      :shadow: md
+      Re-run ``topos depgraph generate`` after imports, module names, or
+      directory structure change. MCP tools auto-detect ``./.gitnexus`` from
+      the project root; CLI commands expect ``--gitnexus-dir``.
 
-      Removing the binary installation is simple and clean:
-      ^^^
+   .. tab-item:: Semantic coverage
+      :sync: coverage
+
+      ``topos coverage`` always reports UAST structural coverage. With
+      ``ect-coverage`` installed, it also reports CPG topological coverage.
+
       .. code-block:: bash
 
-         topos uninstall
+         uv pip install "topos-mcp[ect-coverage]"
+         topos coverage src/logic.py --tests tests/test_logic.py
 
-Next Steps
+      The embedding model downloads on first use to ``~/.cache/fastembed``.
+      Prefer module- or file-scoped PUT/test pairs over whole-repository runs.
+
+First useful commands
+---------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 64
+   :class: topos-command-table
+
+   * - Goal
+     - Command
+   * - Inspect one file
+     - ``topos inspect path/to/file.py``
+   * - Evaluate a directory
+     - ``topos evaluate src/ -r``
+   * - Include COMPOSABLE
+     - ``topos evaluate src/ -r --gitnexus-dir .gitnexus/``
+   * - Measure test structure
+     - ``topos coverage src/logic.py --tests tests/test_logic.py``
+   * - Start MCP
+     - ``topos mcp``
+
+Details and troubleshooting
+---------------------------
+
+.. dropdown:: What the binary installer does
+
+   Set ``TOPOS_INSTALL`` to choose a different install directory,
+   ``TOPOS_VERSION`` to install a specific release, or
+   ``TOPOS_NO_MODIFY_PATH=1`` to prevent shell-profile edits. If the installer
+   adds a PATH block, it marks it with ``BEGIN TOPOS INSTALLER PATH`` /
+   ``END TOPOS INSTALLER PATH`` so ``topos uninstall --prune-path-hints`` can
+   remove it later.
+
+.. dropdown:: macOS Team ID error on old releases
+
+   If ``topos --version`` fails with a PyInstaller ``different Team IDs`` error
+   involving ``libpython3.12.dylib``, upgrade to v0.3.2 or later with the
+   installer. Source installs are not affected.
+
+.. dropdown:: Clean uninstall
+
+   Binary installs can be removed by Topos itself:
+
+   .. code-block:: bash
+
+      topos uninstall
+
+   Package installs should be removed with the package manager that installed
+   them, such as ``uv pip uninstall topos-mcp``.
+
+Next steps
 ----------
 
-Once installed, proceed to the :ref:`Quickstart <index>` or learn about :ref:`Concepts <concepts>` to understand the Diamond Lattice evaluation model.
+Wire Topos into an agent with :doc:`agents`, use terminal workflows from
+:doc:`cli`, or review the metric definitions in :doc:`measures`.

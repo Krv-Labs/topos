@@ -14,6 +14,7 @@ release = __version__
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx_design",
@@ -34,6 +35,10 @@ autodoc_default_options = {
     "undoc-members": True,
     "show-inheritance": True,
 }
+autodoc_member_order = "bysource"
+autodoc_typehints = "none"
+autosummary_generate = True
+autosummary_imported_members = False
 
 source_suffix = {
     ".rst": "restructuredtext",
@@ -54,16 +59,161 @@ html_extra_path = ["../../install.sh"]
 html_title = "Topos Documentation"
 html_css_files = ["custom.css"]
 
+# Dark, muted code highlighting — dark code blocks on a white page (Variant B).
+pygments_style = "github-dark"
+pygments_dark_style = "github-dark"
+
+# --- "Engineered" design system ---------------------------------------------
+# White, high-contrast, monochrome base + a single ochre accent (Linear/Vercel
+# discipline). Self-hosted Geist (see @font-face in custom.css). Tokens are
+# theme-aware so Furo wires them to the right light/dark selectors and the
+# manual theme toggle works correctly.
+SANS = '"Geist","Geist Fallback",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif'
+MONO = '"Geist Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace'
+
+_light_vars = {
+    # Brand accent — used sparingly (links, current nav, focus)
+    "color-brand-primary": "#bf6209",
+    "color-brand-content": "#bf6209",
+    "color-brand-visited": "#9a5212",
+    # Surfaces — true white, cool neutral grays
+    "color-background-primary": "#ffffff",
+    "color-background-secondary": "#f7f7f8",
+    "color-background-hover": "#f2f2f3",
+    "color-background-border": "#ededed",
+    "color-foreground-primary": "#0a0a0a",
+    "color-foreground-secondary": "#525252",
+    "color-foreground-muted": "#8f8f8f",
+    "color-foreground-border": "#ededed",
+    # Sidebar
+    "color-sidebar-background": "#ffffff",
+    "color-sidebar-background-border": "#ededed",
+    "color-sidebar-caption-text": "#8f8f8f",
+    "color-sidebar-link-text": "#525252",
+    "color-sidebar-link-text--top-level": "#0a0a0a",
+    "color-sidebar-item-background--current": "#fdf3e7",
+    "color-sidebar-item-background--hover": "#f7f7f8",
+    "color-sidebar-search-border": "#ededed",
+    "color-highlight-on-target": "#fdf3e7",
+    # Dark code blocks even in light mode (Variant B)
+    "color-code-background": "#0d1117",
+    "color-code-foreground": "#e6edf3",
+    "color-inline-code-background": "#f7f7f8",
+    # Fonts
+    "font-stack": SANS,
+    "font-stack--monospace": MONO,
+    # Topos semantic tokens (used by custom.css)
+    "topos-bg": "#ffffff",
+    "topos-soft": "#f7f7f8",
+    "topos-line": "#ededed",
+    "topos-line-strong": "#e2e2e2",
+    "topos-ink": "#0a0a0a",
+    "topos-ink-2": "#525252",
+    "topos-ink-3": "#8f8f8f",
+    "topos-accent": "#d9730d",
+    "topos-accent-ink": "#bf6209",
+    "topos-accent-soft": "#fdf3e7",
+    "topos-code-bg": "#0d1117",
+    # Figure plate (figures bake in their own ink-on-paper colors)
+    "topos-plate-bg": "#ffffff",
+    "topos-plate-border": "#ededed",
+    "topos-image-outline": "rgba(0,0,0,0.08)",
+    "topos-shadow-1": "rgba(16,24,40,0.04)",
+    "topos-shadow-2": "rgba(16,24,40,0.08)",
+    # Pillar / verdict colors (used only inside badges + figures)
+    "topos-pillar-simple": "#2b7eb5",
+    "topos-pillar-composable": "#126e5a",
+    "topos-pillar-secure": "#c94040",
+    "topos-gold": "#c9a25d",
+    "topos-silver": "#9f988e",
+    "topos-bronze": "#a96f45",
+}
+
+_dark_vars = {
+    "color-brand-primary": "#f0a868",
+    "color-brand-content": "#f0a868",
+    "color-brand-visited": "#d6936a",
+    "color-background-primary": "#0a0a0a",
+    "color-background-secondary": "#141414",
+    "color-background-hover": "#1c1c1c",
+    "color-background-border": "#262626",
+    "color-foreground-primary": "#ededed",
+    "color-foreground-secondary": "#a3a3a3",
+    "color-foreground-muted": "#737373",
+    "color-foreground-border": "#262626",
+    "color-sidebar-background": "#0a0a0a",
+    "color-sidebar-background-border": "#1f1f1f",
+    "color-sidebar-caption-text": "#737373",
+    "color-sidebar-link-text": "#a3a3a3",
+    "color-sidebar-link-text--top-level": "#ededed",
+    "color-sidebar-item-background--current": "#2a1d0e",
+    "color-sidebar-item-background--hover": "#1c1c1c",
+    "color-sidebar-search-border": "#262626",
+    "color-highlight-on-target": "#2a1d0e",
+    "color-code-background": "#0d1117",
+    "color-code-foreground": "#e6edf3",
+    "color-inline-code-background": "#1c1c1c",
+    "font-stack": SANS,
+    "font-stack--monospace": MONO,
+    "topos-bg": "#0a0a0a",
+    "topos-soft": "#141414",
+    "topos-line": "#262626",
+    "topos-line-strong": "#333333",
+    "topos-ink": "#ededed",
+    "topos-ink-2": "#a3a3a3",
+    "topos-ink-3": "#737373",
+    "topos-accent": "#f0a868",
+    "topos-accent-ink": "#f0a868",
+    "topos-accent-soft": "#2a1d0e",
+    "topos-code-bg": "#0d1117",
+    "topos-plate-bg": "transparent",
+    "topos-plate-border": "#262626",
+    "topos-image-outline": "rgba(255,255,255,0.10)",
+    "topos-shadow-1": "rgba(0,0,0,0.40)",
+    "topos-shadow-2": "rgba(0,0,0,0.55)",
+    "topos-pillar-simple": "#5aa6d8",
+    "topos-pillar-composable": "#3fae8f",
+    "topos-pillar-secure": "#e07a7a",
+    "topos-gold": "#d8b878",
+    "topos-silver": "#b5ad9f",
+    "topos-bronze": "#c08a5c",
+}
+
 html_theme_options = {
-    "light_logo": "logo.png",
-    "dark_logo": "logo-dark.png",
+    # Krv mark as backgroundless SVGs; Furo swaps them per theme via its native
+    # only-light/only-dark. krv-logo-dark.svg is the same mark in a brighter red
+    # for legibility on near-black. (CSS mask was cleaner in theory but Chrome
+    # wouldn't honor the alpha mask for this SVG, so we use the proven <img> path.)
+    "light_logo": "krv-logo.svg",
+    "dark_logo": "krv-logo-dark.svg",
     "sidebar_hide_name": False,
+    "light_css_variables": _light_vars,
+    "dark_css_variables": _dark_vars,
+    "source_repository": "https://github.com/Krv-Labs/topos",
+    "source_branch": "main",
+    "source_directory": "docs/source/",
     "footer_icons": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/Krv-Labs/topos",
+            "html": (
+                '<svg stroke="currentColor" fill="currentColor" stroke-width="0" '
+                'viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 '
+                "8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 "
+                "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 "
+                "1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
+                "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 "
+                "2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 "
+                "1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 "
+                '2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>'
+            ),
+            "class": "",
+        },
         {
             "name": "Krv Labs",
             "url": "https://krv.ai",
             "html": "Built by Krv Labs →",
-            "class": "",
-        }
+            "class": "topos-footer-krv",
+        },
     ],
 }

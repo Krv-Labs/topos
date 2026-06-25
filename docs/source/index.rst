@@ -8,26 +8,23 @@ Topos
 
 .. raw:: html
 
-   <div class="topos-docs-hero">
-     <h1 class="topos-docs-heading">
-       <img src="_static/topos-logo.svg" alt="" aria-hidden="true" />
-       <span>Topos</span>
-     </h1>
+   <div class="topos-hero">
+     <p class="topos-eyebrow">Code quality evaluation</p>
+     <div class="topos-hero-row">
+       <img class="topos-hero-logo only-light" src="_static/topos-logo.svg" alt="Topos" />
+       <img class="topos-hero-logo only-dark" src="_static/topos-logo-dark.svg" alt="" aria-hidden="true" />
+     </div>
+     <p class="topos-tagline">Structural code quality your agents can measure&nbsp;&mdash;&nbsp;and optimize toward.</p>
+     <p class="topos-lead"><strong>Topos gives you structural code-quality metrics your agents can act on.</strong>
+       Pick a preference ranking and Topos measures program structure&nbsp;&mdash;&nbsp;not just syntax&nbsp;&mdash;&nbsp;giving
+       agents concrete targets to optimize toward on every pass. You set the target; agents handle the iteration.</p>
+     <div class="topos-cta-row">
+       <a class="topos-btn" href="installation.html">Get started →</a>
+       <a class="topos-btn ghost" href="https://github.com/Krv-Labs/topos">View on GitHub</a>
+     </div>
    </div>
 
-.. grid:: 1 1 2 2
-   :gutter: 3
-
-   .. grid-item-card::
-      :columns: 12
-      :shadow: md
-      :class-header: sd-bg-light sd-text-black sd-font-weight-bold
-
-      **Topos** gives you structural code quality metrics your agents can act on.
-      Pick a preference ranking and Topos measures program structure — not just syntax — giving agents
-      concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
-
-.. admonition:: Philosophy: Correctness is expected. Quality is the new currency.
+.. admonition:: Correctness is expected. Quality is the new currency.
    :class: philosophy-box
 
    Passing unit tests only proves that your code is a solution to a finite set of requirements. Agents have proved to be exceptional at this and will continue to improve. We believe the new currency is the quality of these solutions. Topos provides the structural evaluations that empower coding agents to find higher quality solutions.
@@ -35,26 +32,27 @@ Topos
 
 .. grid:: 1 1 2 2
    :gutter: 3
+   :class-container: topos-reveal
 
-   .. grid-item-card:: 🚀 Installation
+   .. grid-item-card:: Installation
       :link: installation
       :link-type: doc
 
       Get started with the CLI, MCP server, or build from source.
 
-   .. grid-item-card:: 🤖 For Agents
+   .. grid-item-card:: For Agents
       :link: agents
       :link-type: doc
 
       How AI coding agents use Topos to iteratively optimize code and hit quality targets.
 
-   .. grid-item-card:: 💻 CLI Reference
+   .. grid-item-card:: CLI Reference
       :link: cli
       :link-type: doc
 
       Detailed overview of the Topos command-line interface and available tools.
 
-   .. grid-item-card:: 📐 Measures
+   .. grid-item-card:: Measures
       :link: measures
       :link-type: doc
 
@@ -91,16 +89,16 @@ Run ``topos evaluate`` or ``topos inspect`` on a file; Topos checks all three pi
      - Medal
      - Example (any combination with this count)
    * - **3 of 3**
-     - 🥇 **GOLD**
+     - ``🥇 GOLD``
      - SIMPLE + COMPOSABLE + SECURE
    * - **2 of 3**
-     - 🥈 **SILVER**
+     - ``🥈 SILVER``
      - e.g. SIMPLE + SECURE, or COMPOSABLE + SECURE
    * - **1 of 3**
-     - 🥉 **BRONZE**
+     - ``🥉 BRONZE``
      - e.g. SIMPLE only, or SECURE only
    * - **0 of 3**
-     - ❌ **NONE**
+     - ``❌ NONE``
      - Fails every pillar (or the file could not be parsed)
 
 Manager Priorities & Agent Iteration
@@ -117,10 +115,10 @@ Pick a preference ranking, then let your agent evaluate and iterate on its own o
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --preferences simple,composable,secure  # classify a directory
-   topos inspect module.py --preferences simple,composable,secure # detailed metrics
-   topos coverage src/ --language python          # measure test code coverage (scope to modules)
-   topos compare before.py after.py                               # AST edit distance
+   topos evaluate src/ -r --preferences simple,composable,secure
+   topos inspect module.py --preferences simple,composable,secure
+   topos coverage src/logic.py --tests tests/test_logic.py
+   topos compare before.py after.py
 
 Each file gets a verdict per quality generator. You always see which generator is the problem, not a single blended number.
 
@@ -133,39 +131,21 @@ Topos measures code along the three independent quality generators and maps them
 - **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, to capture inter-module dependencies. This is slightly different than the usual `program dependence graph <https://en.wikipedia.org/wiki/Program_dependence_graph>`_ (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
 - **SECURE** — Built from the `code property graph <https://en.wikipedia.org/wiki/Code_property_graph>`_ (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
 
-.. mermaid::
+.. raw:: html
 
-   graph BT
-       SLOP["❌ SLOP<br/>No Medal"]
-       SIMPLE["🥉 BRONZE<br/>Simple"]
-       COMPOSABLE["🥉 BRONZE<br/>Composable"]
-       SECURE["🥉 BRONZE<br/>Secure"]
-       SC["🥈 SILVER<br/>S ∧ C"]
-       SSc["🥈 SILVER<br/>S ∧ Sc"]
-       CSc["🥈 SILVER<br/>C ∧ Sc"]
-       IDEAL["🥇 GOLD<br/>Quality Code"]
+   <figure class="topos-figure">
+     <img class="only-light" src="_static/figures/topos-methods.svg" alt="AST, CFG, PDG, and MDG graph lenses glued over a shared source-coordinate base, amalgamated into a single code property graph." />
+     <img class="only-dark" src="_static/figures/topos-methods-dark.svg" alt="" aria-hidden="true" />
+     <figcaption>Each lens reads the same source coordinates; Topos amalgamates them into one code property graph, then measures structure over the unified space.</figcaption>
+   </figure>
 
-       SLOP --> SIMPLE
-       SLOP --> COMPOSABLE
-       SLOP --> SECURE
-       SIMPLE --> SC
-       SIMPLE --> SSc
-       COMPOSABLE --> SC
-       COMPOSABLE --> CSc
-       SECURE --> SSc
-       SECURE --> CSc
-       SC --> IDEAL
-       SSc --> IDEAL
-       CSc --> IDEAL
+.. raw:: html
 
-       style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-       style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-       style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
-       style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-       style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
-       style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-       style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-       style IDEAL      fill:#ffd700,stroke:#856404,color:#000
+   <figure class="topos-figure topos-figure--framed">
+     <img class="only-light" src="_static/figures/topos-lattice.svg" alt="The Topos quality lattice — SLOP at the bottom, three single-pillar BRONZE states, three two-pillar SILVER states, and IDEAL (GOLD) at the top." />
+     <img class="only-dark" src="_static/figures/topos-lattice-dark.svg" alt="" aria-hidden="true" />
+     <figcaption>The eight-element evaluation lattice. Climbing the order means satisfying more independent quality generators; GOLD is the meet of all three.</figcaption>
+   </figure>
 
 .. hint::
    **Three Independent Pillars:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
@@ -175,11 +155,31 @@ Topos measures code along the three independent quality generators and maps them
 
 .. toctree::
    :maxdepth: 1
-   :caption: Documentation
+   :caption: Getting Started
    :hidden:
 
+   Quick Start <quickstart>
    installation
-   cli
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Guides
+   :hidden:
+
    For Agents <agents>
+   cli
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Concepts
+   :hidden:
+
    Measures <measures>
    concepts
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+   :hidden:
+
+   API Reference <api>

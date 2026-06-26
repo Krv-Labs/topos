@@ -28,6 +28,9 @@ def _get_mcp():
                 '`topos_get_doc(topic="agent-contract")` or '
                 "fetch `topos://docs/agent-contract`. "
                 "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
+                "After editing a file in place, verify with "
+                "topos_assess_worktree_change (baseline = git ref) or "
+                "topos_begin_refactor + topos_assess_snapshot. "
                 "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL. "
                 "topos_calculate_coverage reports test-suite coverage — structural "
                 "(UAST) and semantic (ECT) — as a separate signal, outside the lattice."

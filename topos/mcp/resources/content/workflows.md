@@ -49,7 +49,23 @@ full metric table.
 ### 3. Propose
 
 Write a refactor. Keep the change focused on one dimension at a time.
-Submit via `topos_assess_improvement` with
+
+**Editing the file in place (recommended for coding agents).** After you edit
+the target file directly, you don't need to re-send the source — recover the
+baseline automatically:
+
+- `topos_assess_worktree_change` with
+  `{"params": {"filepath": "...", "baseline_ref": "HEAD"}}` — compares the
+  working-tree file to its committed version. Stateless; the common "did my
+  edit beat HEAD?" check. Point `baseline_ref` at any branch/commit.
+- For an untracked/new file, or a baseline that was never committed, snapshot
+  it **before** editing: `topos_begin_refactor {"params": {"filepath": "..."}}`
+  → returns `snapshot_id` → edit → `topos_assess_snapshot
+  {"params": {"snapshot_id": "...", "filepath": "..."}}`. A missing/expired
+  snapshot reports `blocked_by` `snapshot_not_found` / `snapshot_stale`.
+
+**Side-by-side comparison.** When you have a proposed variant in hand, submit
+via `topos_assess_improvement` with
 `{"params": {"filepath": "...", "proposed_code": "..."}}`, or use
 `proposed_filepath` inside `params` when the proposed version is already
 written inside the configured file root.

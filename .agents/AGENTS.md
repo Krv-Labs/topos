@@ -42,7 +42,7 @@ topos evaluate <path> [-r] [--gitnexus-dir <dir>] [--priority <dim>]
 
 ## MCP Server (`topos-mcp`)
 Exposes tools, resources, and prompts for agent workflows:
-- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_inspect_code`, `topos_preference_walk`, `topos_calculate_coverage`, `topos_get_doc`.
+- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_assess_worktree_change` (edit-in-place vs a git ref), `topos_begin_refactor` + `topos_assess_snapshot` (edit-in-place vs a captured baseline), `topos_inspect_code`, `topos_preference_walk`, `topos_calculate_coverage`, `topos_get_doc`.
 - **Resources**: `topos://docs/agent-contract`, `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
 - **Prompts**: `topos_refactor_until_ideal`.
 

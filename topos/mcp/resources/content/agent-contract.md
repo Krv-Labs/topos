@@ -16,7 +16,11 @@ correctness.
 2. Inspect only the weakest relevant area with `topos_inspect_code` or the
    returned `suggestions`.
 3. Make one focused structural change.
-4. Verify the proposed change with `topos_assess_improvement`.
+4. Verify the change. If you edited the file in place, use
+   `topos_assess_worktree_change` (baseline = a git ref, default `HEAD`) or, for
+   untracked/uncommitted baselines, snapshot first with `topos_begin_refactor`
+   and verify with `topos_assess_snapshot`. If you have a proposed variant in
+   hand, use `topos_assess_improvement`. All share the same status semantics.
 5. Run relevant project tests, type checks, or linters when available. If they
    are unavailable or not run, report that explicitly.
 

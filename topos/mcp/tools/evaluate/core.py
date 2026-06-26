@@ -39,6 +39,7 @@ _READ_ONLY_ANN = {
     "openWorldHint": False,
 }
 
+
 def _overlay_kwargs(overlay):
     if overlay is None:
         return {}

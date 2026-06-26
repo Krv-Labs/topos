@@ -35,6 +35,7 @@ _WRITE_ANN = {
     "openWorldHint": False,
 }
 
+
 @mcp.tool(
     name="topos_begin_refactor",
     tags={"assess", "workflow"},

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from ...schemas import EvaluationResult, ProjectEvaluationResult, ProjectFileEntry
 
+
 def _render_project_entry(entry: ProjectFileEntry, verbose: bool) -> list[str]:
     lines = []
     s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
@@ -52,6 +53,7 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
     if r.error:
         lines.append(f"\\n> error: {r.error}")
     return "\\n".join(lines)
+
 
 def _error_md(model: EvaluationResult) -> str:
     """Compact markdown for an error/early-return EvaluationResult."""

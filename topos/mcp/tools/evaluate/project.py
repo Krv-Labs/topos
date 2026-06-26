@@ -51,6 +51,7 @@ _READ_ONLY_ANN = {
     "openWorldHint": False,
 }
 
+
 def _adjusted_result(result: ClassificationResult, overlay):
     if overlay is None:
         return result

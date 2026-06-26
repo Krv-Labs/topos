@@ -16,6 +16,7 @@ from ...security import resolve_within_root
 from ...server import mcp
 from .core import _assess_edit_in_place, _err_assessment, _READ_ONLY_ANN
 
+
 def _git_show(
     repo_root: Path, ref: str, rel_path: str
 ) -> tuple[str | None, str | None]:

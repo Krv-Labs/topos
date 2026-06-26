@@ -24,6 +24,7 @@ _REGRESSION_STATUSES = frozenset(
 
 _REGRESSION_DIFF_MAX_LINES = 40
 
+
 def _span_text(source_bytes: bytes, span) -> str:
     """Slice a UAST byte span out of the UTF-8-encoded source."""
     if span.end_byte > len(source_bytes):
@@ -114,6 +115,7 @@ def _regression_diff(current_src: str, proposed_src: str, language: str) -> str 
         body.append(f"# ... (truncated, {hidden} more lines)")
     return "\\n".join([header, *body])
 
+
 _STATUS_MEANING: dict[AssessmentStatus, str] = {
     AssessmentStatus.IMPROVEMENT: "moved up the lattice",
     AssessmentStatus.IMPROVEMENT_SCORE: "same verdict, scores improved",
@@ -125,6 +127,7 @@ _STATUS_MEANING: dict[AssessmentStatus, str] = {
     ),
 }
 
+
 def _render_deltas(r: AssessmentResult) -> list[str]:
     lines = []
     if r.score_deltas:
@@ -135,6 +138,7 @@ def _render_deltas(r: AssessmentResult) -> list[str]:
         md = ", ".join(f"`{m}`={d:+.3f}" for m, d in sorted(moved.items()))
         lines.append(f"**Metric deltas:** {md}")
     return lines
+
 
 def render_assessment_md(r: AssessmentResult) -> str:
     """Compact markdown for a refactor assessment."""

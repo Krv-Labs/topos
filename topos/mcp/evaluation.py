@@ -2,6 +2,7 @@
 Shared evaluation helpers used by the evaluate / assess / inspect tools.
 
 Keeps the core pipeline in one place:
+
 1. Build a ``ProgramMorphism``.
 2. Attach CFG / academic PDG / CPG (always — they're derived from the
    morphism itself and require no external tooling).

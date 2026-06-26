@@ -9,7 +9,7 @@ fuses AST ∪ CFG ∪ DDG ∪ CDG into a single labeled multigraph; comparing
 two CPGs gives a single end-to-end signal for "did this refactor change
 the program's semantic structure?".
 
-Signals:
+Signals::
 
     family_jaccards   : Jaccard similarity per edge family
                         ({AST, CFG, DDG, CDG} → float in [0, 1])

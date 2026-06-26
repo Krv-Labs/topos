@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Dark-theme variant of krv-logo.svg: Krv red brightened (#c4301b -> #f6f6f7)
+     so the mark reads on near-black. Regenerate from krv-logo.svg if the source
+     mark changes (single color swap). -->
+<svg
+   viewBox="0 0 500 500"
+   version="1.1"
+   width="500"
+   height="500"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><defs
+     id="defs1" /><g
+     id="layer1"
+     transform="matrix(2.7434917,0,0,2.7434917,-37.861676,-40.016888)"
+     style="fill:#f6f6f7;fill-opacity:1"><path
+       style="display:inline;fill:#f6f6f7;fill-opacity:1;fill-rule:evenodd;stroke-width:1.43299;stroke-dasharray:5.73193, 2.86598"
+       d="m 46.137654,106.32606 86.394976,-86.481927 56.48777,0.05938 -83.8588,84.858387 84.11445,85.53421 -55.3251,-0.17457 z"
+       id="path3" /><path
+       style="fill:#f6f6f7;fill-opacity:1;fill-rule:evenodd;stroke-width:1.4269;stroke-dasharray:5.70757, 2.8538"
+       d="m 26.444164,20.69278 41.461606,0.118739 0.08046,59.918852 -25.73253,25.745539 -0.0012,63.54146 34.0524,-20.96039 0.10566,42.81608 -50.533959,-0.32117 z"
+       id="path4" /></g></svg>

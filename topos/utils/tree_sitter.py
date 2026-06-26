@@ -65,7 +65,8 @@ class PythonParser:
     Attributes:
         language: The language identifier ('python').
 
-    Example:
+    Example::
+
         parser = PythonParser()
         root = parser.parse("print('hello')")
         for child in root.children:

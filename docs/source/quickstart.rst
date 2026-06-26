@@ -193,7 +193,7 @@ Think of it like a vehicle inspection report for software. The engine may
 start, but you still want to know whether the brakes are worn, the frame is
 cracked, or the steering is loose. Topos checks three independent things.
 
-See :doc:`measures` and :doc:`metrics` for more information.
+See :doc:`measures` and :doc:`concepts` for more information.
 
 SIMPLE: local complexity
 ~~~~~~~~~~~~~~~~~~~~~~~~

@@ -175,6 +175,7 @@ Topos measures code along the three independent quality generators and maps them
 
    Measures <measures>
    concepts
+   Agentic Cost Savings <agent-cost-savings-case-study>
 
 .. toctree::
    :maxdepth: 2

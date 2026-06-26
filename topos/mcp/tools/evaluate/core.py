@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastmcp.tools.base import ToolResult
 
 from topos.evaluation.policies.base import Priority
+
 from ...diagnostics import overlay_for_file, overlay_for_source
 from ...evaluation import (
     classify_code_string,
@@ -28,7 +29,6 @@ from ...schemas import (
 )
 from ...security import resolve_file_root, resolve_within_root
 from ...server import mcp
-
 from .render import _error_md
 
 _READ_ONLY_ANN = {

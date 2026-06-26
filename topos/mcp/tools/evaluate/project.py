@@ -40,7 +40,6 @@ from ...schemas import (
 )
 from ...security import resolve_file_root, resolve_within_root
 from ...server import mcp
-
 from .render import render_project_md
 
 _READ_ONLY_ANN = {

@@ -5,7 +5,6 @@ Snapshot assessment tools.
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 
 from fastmcp.tools.base import ToolResult
 
@@ -25,7 +24,7 @@ from ...security import read_safe_utf8_file, resolve_file_root, resolve_within_r
 from ...server import mcp
 from ...snapshots import now as snapshot_now
 from ...snapshots import read_snapshot, write_snapshot
-from .core import _assess_edit_in_place, _err_assessment, _READ_ONLY_ANN
+from .core import _READ_ONLY_ANN, _assess_edit_in_place, _err_assessment
 
 _WRITE_ANN = {
     "title": "Topos Begin Refactor",
@@ -164,6 +163,7 @@ def _priority_from_meta(meta: dict):
             None,
         )
     from topos.evaluation.preferences import Generator
+
     from ..schemas import UserPreferencesInput
 
     target = meta.get("target")

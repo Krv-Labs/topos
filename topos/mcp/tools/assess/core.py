@@ -48,7 +48,6 @@ from ...security import (
     resolve_within_root,
 )
 from ...server import mcp
-
 from .render import _REGRESSION_STATUSES, _regression_diff, render_assessment_md
 
 _READ_ONLY_ANN = {

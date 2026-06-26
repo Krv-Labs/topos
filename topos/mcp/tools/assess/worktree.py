@@ -14,7 +14,7 @@ from topos.utils.discovery import find_git_root
 from ...schemas import AssessWorktreeChangeInput, resolve_priority
 from ...security import resolve_within_root
 from ...server import mcp
-from .core import _assess_edit_in_place, _err_assessment, _READ_ONLY_ANN
+from .core import _READ_ONLY_ANN, _assess_edit_in_place, _err_assessment
 
 
 def _git_show(

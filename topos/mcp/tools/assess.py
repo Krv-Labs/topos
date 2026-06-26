@@ -11,6 +11,9 @@ edit distance is near zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 from __future__ import annotations
 
 import difflib
+import hashlib
+import subprocess
+from pathlib import Path
 
 from fastmcp.tools.base import ToolResult
 
@@ -24,11 +27,12 @@ from topos.functors.probes.cfg.complexity import cyclomatic_complexity
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
 from topos.graphs.cfg.object import ControlFlowGraph
+from topos.utils.discovery import find_git_root
 
 from ..diagnostics import overlay_for_source
 from ..evaluation import (
-    classify_code_string,
     classify_morphism,
+    detect_language,
     gitnexus_warnings,
     load_dep_graph,
     resolve_gitnexus_dir,
@@ -39,8 +43,13 @@ from ..schemas import (
     AssessImprovementInput,
     AssessmentResult,
     AssessmentStatus,
+    AssessSnapshotInput,
+    AssessWorktreeChangeInput,
+    BeginRefactorInput,
     EvaluationResult,
     LatticeElement,
+    PrioritySource,
+    SnapshotResult,
     resolve_priority,
 )
 from ..security import (
@@ -49,6 +58,8 @@ from ..security import (
     resolve_within_root,
 )
 from ..server import mcp
+from ..snapshots import now as snapshot_now
+from ..snapshots import read_snapshot, write_snapshot
 
 _READ_ONLY_ANN = {
     "title": "Topos Refactor Assessment",
@@ -67,8 +78,14 @@ _REGRESSION_DIFF_MAX_LINES = 40
 
 
 def _load_baseline(
-    params: AssessImprovementInput, priority: Priority
-) -> tuple[str, ProgramMorphism, ClassificationResult, bool, list[str], object | None]:
+    params: AssessImprovementInput,
+) -> tuple[str, bool, list[str], object | None]:
+    """Resolve the baseline source + coupling context for ``assess_improvement``.
+
+    Returns ``(baseline_src, coupling_for_proposed, warnings, dep_graph)``;
+    classification is deferred to ``_assess_core`` so both sides score against
+    the same dep graph.
+    """
     if params.filepath:
         resolved, err = resolve_within_root(params.filepath)
         if err or resolved is None:
@@ -81,44 +98,19 @@ def _load_baseline(
         project_root = resolve_file_root()
         gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
         dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
-        current_morph = ProgramMorphism(source=current_src, language=params.language)
-        current_res = classify_morphism(current_morph, priority, dep_graph)
-        coupling_for_proposed = dep_graph is not None
         warnings = gitnexus_warnings(
             params.gitnexus_dir,
             project_root,
             gitnexus_dir,
             dep_graph_loaded=dep_graph is not None,
         )
-        return (
-            current_src,
-            current_morph,
-            current_res,
-            coupling_for_proposed,
-            warnings,
-            dep_graph,
-        )
+        return current_src, dep_graph is not None, warnings, dep_graph
     elif params.current_code:
-        current_src = params.current_code
-        current_res = classify_code_string(
-            params.current_code, params.language, priority
-        )
-        current_morph = ProgramMorphism(
-            source=params.current_code, language=params.language
-        )
-        coupling_for_proposed = False
         warnings = [
             "COMPOSABLE not scored — current_code mode has no filepath or "
             "ModuleDependencyGraph context."
         ]
-        return (
-            current_src,
-            current_morph,
-            current_res,
-            coupling_for_proposed,
-            warnings,
-            None,
-        )
+        return params.current_code, False, warnings, None
     else:
         raise ValueError("Provide either `filepath` or `current_code`.")
 
@@ -228,63 +220,99 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
     **Legacy usage** — pass ``current_code`` + ``proposed_code``. Coupling is
     NOT computed (AST-only).
 
+    For edit-in-place loops, prefer ``topos_assess_worktree_change`` (compare
+    against a git ref) or ``topos_begin_refactor`` + ``topos_assess_snapshot``.
+
     Anti-gaming: when scores move meaningfully but AST edit distance is near
     zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE`` and
     ``suspicion_reason`` is populated.
     """
     priority, priority_source = resolve_priority(params.preferences)
-
-    # ---- load baseline ----
     try:
-        (
-            current_src,
-            current_morph,
-            current_res,
-            coupling_for_proposed,
-            warnings,
-            dep_graph,
-        ) = _load_baseline(params, priority)
+        baseline_src, coupling_for_proposed, warnings, dep_graph = _load_baseline(
+            params
+        )
     except ValueError as exc:
-        return _err_assessment(params, str(exc))
+        return _err_assessment(priority, priority_source, str(exc))
 
     proposed_src, proposed_err = _load_proposed_source(params)
     if proposed_err or proposed_src is None:
         return _err_assessment(
-            params, proposed_err or "Unable to load proposed source."
+            priority, priority_source, proposed_err or "Unable to load proposed source."
         )
-
-    # ---- evaluate proposed & findings ----
-    proposed_res, proposed_morph = _evaluate_proposed(
-        proposed_src,
-        dep_graph,
-        priority,
-        params.language,
-    )
 
     prefs = params.preferences.to_preferences() if params.preferences else None
     file_path = None
     if params.filepath:
         file_path, _ = resolve_within_root(params.filepath)
-    current_overlay = overlay_for_source(
-        current_src,
-        params.language,
-        current_res,
+
+    model = _assess_core(
+        baseline_src=baseline_src,
+        proposed_src=proposed_src,
+        language=params.language,
+        priority=priority,
+        priority_source=priority_source,
+        prefs=prefs,
+        dep_graph=dep_graph,
+        coupling_for_proposed=coupling_for_proposed,
         file_path=file_path,
-        allows=params.allow,
+        allow=params.allow,
         include_security_findings=params.include_security_findings,
+        warnings=warnings,
+    )
+    return to_tool_result(model, render_assessment_md(model))
+
+
+def _assess_core(
+    *,
+    baseline_src: str,
+    proposed_src: str,
+    language: str,
+    priority: Priority,
+    priority_source: PrioritySource,
+    prefs,
+    dep_graph,
+    coupling_for_proposed: bool,
+    file_path,
+    allow: list[str],
+    include_security_findings: bool,
+    warnings: list[str],
+) -> AssessmentResult:
+    """Score a baseline vs. a proposed source and classify the move on Ω.
+
+    The single comparison engine behind every assessment entry point
+    (``topos_assess_improvement``, ``topos_assess_worktree_change``,
+    ``topos_assess_snapshot``) so they share identical status semantics. Both
+    sides are scored against ``dep_graph`` when present, so COMPOSABLE is
+    available in snapshot/worktree modes too.
+    """
+    # ---- classify both sides against the same dep graph ----
+    baseline_morph = ProgramMorphism(source=baseline_src, language=language)
+    baseline_res = classify_morphism(baseline_morph, priority, dep_graph)
+    proposed_res, proposed_morph = _evaluate_proposed(
+        proposed_src, dep_graph, priority, language
+    )
+
+    current_overlay = overlay_for_source(
+        baseline_src,
+        language,
+        baseline_res,
+        file_path=file_path,
+        allows=allow,
+        include_security_findings=include_security_findings,
     )
     proposed_overlay = overlay_for_source(
         proposed_src,
-        params.language,
+        language,
         proposed_res,
         file_path=file_path,
-        allows=params.allow,
-        include_security_findings=params.include_security_findings,
+        allows=allow,
+        include_security_findings=include_security_findings,
     )
     # Warnings live on the top-level AssessmentResult only; the nested
     # current/proposed evals would otherwise duplicate the identical list.
     current_eval = to_evaluation_result(
-        current_res,
+        baseline_res,
         coupling_available=dep_graph is not None,
         preferences=prefs,
         priority_source=priority_source,
@@ -302,20 +330,20 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
 
     # ---- score & metric deltas ----
     score_deltas, metric_deltas = _calculate_deltas(
-        current_eval, proposed_eval, current_res, proposed_res
+        current_eval, proposed_eval, baseline_res, proposed_res
     )
 
     # ---- structural distance ----
     distance = None
     similarity = None
-    if current_res.is_parseable and proposed_res.is_parseable:
-        dist = calculate_ast_distance(current_morph.ast, proposed_morph.ast)
+    if baseline_res.is_parseable and proposed_res.is_parseable:
+        dist = calculate_ast_distance(baseline_morph.ast, proposed_morph.ast)
         distance = dist.normalized_distance
         similarity = 1.0 - dist.normalized_distance
 
     # ---- status classification & anti-gaming ----
     status, suspicion = _determine_assessment_status(
-        current_res, proposed_res, score_deltas, distance
+        baseline_res, proposed_res, score_deltas, distance
     )
 
     # ---- regression pinpoint ----
@@ -323,9 +351,9 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
     # of the single worst function instead of forcing a full metric-tree diff.
     regression_diff = None
     if status in _REGRESSION_STATUSES:
-        regression_diff = _regression_diff(current_src, proposed_src, params.language)
+        regression_diff = _regression_diff(baseline_src, proposed_src, language)
 
-    model = AssessmentResult(
+    return AssessmentResult(
         status=status,
         priority=priority,
         priority_source=priority_source,
@@ -336,16 +364,345 @@ def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
         structural_distance=distance,
         similarity=similarity,
         coupling_available_for_proposed=coupling_for_proposed,
+        baseline_hash=hashlib.sha256(baseline_src.encode("utf-8")).hexdigest(),
+        current_hash=hashlib.sha256(proposed_src.encode("utf-8")).hexdigest(),
         warnings=warnings,
         agent_contract=_assessment_contract(status, warnings, proposed_eval),
         suspicion_reason=suspicion,
         regression_diff=regression_diff,
     )
+
+
+# ---------------------------------------------------------------------------
+# Edit-in-place assessment — snapshot + git-worktree entry points
+#
+# Both recover the "before" source the agent obliterated by editing in place,
+# then run the same ``_assess_core``. The worktree path is stateless (git);
+# the snapshot path uses the content-addressed store in ``..snapshots``.
+# ---------------------------------------------------------------------------
+
+_WRITE_ANN = {
+    "title": "Topos Begin Refactor",
+    "readOnlyHint": False,  # writes a baseline snapshot to scratch storage
+    "destructiveHint": False,
+    "idempotentHint": True,  # content-addressed: re-capturing same source is a noop
+    "openWorldHint": False,
+}
+
+
+def _assess_edit_in_place(
+    *,
+    baseline_src: str,
+    resolved_path: Path,
+    gitnexus_dir_override: str | None,
+    priority: Priority,
+    priority_source: PrioritySource,
+    prefs,
+    allow: list[str],
+    include_security_findings: bool,
+    extra_warnings: list[str],
+) -> ToolResult:
+    """Read the current on-disk file and assess it against ``baseline_src``."""
+    current_src, read_err = read_safe_utf8_file(resolved_path)
+    if read_err or current_src is None:
+        return _err_assessment(
+            priority,
+            priority_source,
+            (read_err or {}).get("error", "read error"),
+            blocked_by="file_not_found",
+        )
+    project_root = resolve_file_root()
+    gitnexus_dir = resolve_gitnexus_dir(gitnexus_dir_override, project_root)
+    dep_graph = load_dep_graph(gitnexus_dir, str(resolved_path))
+    warnings = [
+        *extra_warnings,
+        *gitnexus_warnings(
+            gitnexus_dir_override,
+            project_root,
+            gitnexus_dir,
+            dep_graph_loaded=dep_graph is not None,
+        ),
+    ]
+    model = _assess_core(
+        baseline_src=baseline_src,
+        proposed_src=current_src,
+        language=detect_language(resolved_path),
+        priority=priority,
+        priority_source=priority_source,
+        prefs=prefs,
+        dep_graph=dep_graph,
+        coupling_for_proposed=dep_graph is not None,
+        file_path=resolved_path,
+        allow=allow,
+        include_security_findings=include_security_findings,
+        warnings=warnings,
+    )
     return to_tool_result(model, render_assessment_md(model))
 
 
-def _err_assessment(params: AssessImprovementInput, msg: str) -> ToolResult:
+def _git_show(
+    repo_root: Path, ref: str, rel_path: str
+) -> tuple[str | None, str | None]:
+    """Read ``<ref>:<rel_path>`` from git, mirroring discovery.py's git idiom.
+
+    Returns ``(source, None)`` or ``(None, blocked_by_code)``. ``git_unavailable``
+    when git is not installed; ``baseline_ref_not_found`` when the ref or path
+    does not exist at that revision (also covers timeouts/OS errors).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "show", f"{ref}:{rel_path}"],
+            capture_output=True,
+            timeout=5,
+        )
+    except FileNotFoundError:
+        return None, "git_unavailable"
+    except (OSError, subprocess.TimeoutExpired):
+        return None, "baseline_ref_not_found"
+    if result.returncode != 0:
+        return None, "baseline_ref_not_found"
+    return result.stdout.decode("utf-8", errors="replace"), None
+
+
+@mcp.tool(
+    name="topos_assess_worktree_change",
+    tags={"assess", "workflow"},
+    annotations=_READ_ONLY_ANN,
+)
+def topos_assess_worktree_change(params: AssessWorktreeChangeInput) -> ToolResult:
+    """Assess an in-place edit against a git revision — the common refactor loop.
+
+    Stateless: the baseline is read from git (``git show <baseline_ref>:<path>``,
+    default ``HEAD``) and compared to the current working-tree file. No prior
+    call required — edit the file, then ask "did it beat HEAD?". COMPOSABLE is
+    scored when a ``.gitnexus`` dep graph is available.
+
+    For untracked/new files or an uncommitted pre-edit baseline (which git
+    cannot serve), use ``topos_begin_refactor`` + ``topos_assess_snapshot``.
+    """
     priority, priority_source = resolve_priority(params.preferences)
+    resolved, err = resolve_within_root(params.filepath)
+    if err or resolved is None:
+        return _err_assessment(
+            priority, priority_source, (err or {}).get("error", "path error")
+        )
+
+    git_root = find_git_root(resolved)
+    if git_root is None:
+        return _err_assessment(
+            priority,
+            priority_source,
+            f"Not inside a git repository: {resolved}",
+            blocked_by="not_a_git_repo",
+        )
+    rel_path = resolved.relative_to(git_root).as_posix()
+    baseline_src, git_err = _git_show(git_root, params.baseline_ref, rel_path)
+    if git_err or baseline_src is None:
+        return _err_assessment(
+            priority,
+            priority_source,
+            f"Could not read `{rel_path}` at ref `{params.baseline_ref}`.",
+            blocked_by=git_err or "baseline_ref_not_found",
+        )
+
+    prefs = params.preferences.to_preferences() if params.preferences else None
+    return _assess_edit_in_place(
+        baseline_src=baseline_src,
+        resolved_path=resolved,
+        gitnexus_dir_override=params.gitnexus_dir,
+        priority=priority,
+        priority_source=priority_source,
+        prefs=prefs,
+        allow=params.allow,
+        include_security_findings=params.include_security_findings,
+        extra_warnings=[],
+    )
+
+
+@mcp.tool(
+    name="topos_begin_refactor",
+    tags={"assess", "workflow"},
+    annotations=_WRITE_ANN,
+)
+def topos_begin_refactor(params: BeginRefactorInput) -> ToolResult:
+    """Capture a file's current source as a baseline snapshot before editing.
+
+    Returns a ``snapshot_id``. Edit the file in place, then call
+    ``topos_assess_snapshot(snapshot_id, filepath)`` to score the change — no
+    need to re-send the baseline. Use this when the baseline is not a committed
+    git revision (untracked/new files, or uncommitted prior edits); otherwise
+    ``topos_assess_worktree_change`` needs no snapshot at all.
+    """
+    resolved, err = resolve_within_root(params.filepath)
+    if err or resolved is None:
+        return _err_snapshot(params.filepath, (err or {}).get("error", "path error"))
+    if not resolved.is_file():
+        return _err_snapshot(params.filepath, f"Path is not a file: {resolved}")
+    baseline_src, read_err = read_safe_utf8_file(resolved)
+    if read_err or baseline_src is None:
+        return _err_snapshot(
+            params.filepath, (read_err or {}).get("error", "read error")
+        )
+
+    priority, _ = resolve_priority(params.preferences)
+    meta = {
+        "filepath": str(resolved),
+        "priority": priority.value,
+        "ranking": (
+            [g.value for g in params.preferences.ranking]
+            if params.preferences
+            else None
+        ),
+        "target": (
+            params.preferences.target.value
+            if params.preferences and params.preferences.target
+            else None
+        ),
+        "gitnexus_dir": params.gitnexus_dir,
+    }
+    created_at = snapshot_now()
+    project_root = resolve_file_root()
+    snapshot_id = write_snapshot(
+        project_root, baseline_src, meta, created_at=created_at
+    )
+    model = SnapshotResult(
+        snapshot_id=snapshot_id,
+        filepath=str(resolved),
+        baseline_hash=hashlib.sha256(baseline_src.encode("utf-8")).hexdigest(),
+        created_at=created_at,
+        agent_contract=AgentContract(
+            next_tool="topos_assess_snapshot",
+            next_actions=[
+                "edit the file in place, then call topos_assess_snapshot with this "
+                "snapshot_id"
+            ],
+        ),
+    )
+    return to_tool_result(model, _render_snapshot_md(model))
+
+
+@mcp.tool(
+    name="topos_assess_snapshot",
+    tags={"assess", "workflow"},
+    annotations=_READ_ONLY_ANN,
+)
+def topos_assess_snapshot(params: AssessSnapshotInput) -> ToolResult:
+    """Assess the current file against a baseline captured by topos_begin_refactor.
+
+    Loads the stored baseline by ``snapshot_id`` and compares it to the current
+    on-disk file, with the same status semantics as ``topos_assess_improvement``
+    (and COMPOSABLE scored when a dep graph is available). A missing or expired
+    snapshot is reported via ``blocked_by`` (``snapshot_not_found`` /
+    ``snapshot_stale``).
+    """
+    resolved, err = resolve_within_root(params.filepath)
+    if err or resolved is None:
+        return _err_assessment(
+            Priority.SIMPLE,
+            PrioritySource.DEFAULT,
+            (err or {}).get("error", "path error"),
+        )
+
+    project_root = resolve_file_root()
+    load = read_snapshot(project_root, params.snapshot_id, at=snapshot_now())
+    if load.blocked_by or load.meta is None or load.baseline_src is None:
+        return _err_assessment(
+            Priority.SIMPLE,
+            PrioritySource.DEFAULT,
+            f"Snapshot `{params.snapshot_id}` is unavailable.",
+            blocked_by=load.blocked_by or "snapshot_not_found",
+        )
+    # A snapshot is bound to the file it was taken from; a different path means
+    # the agent is reusing a stale id.
+    if load.meta.get("filepath") != str(resolved):
+        return _err_assessment(
+            Priority.SIMPLE,
+            PrioritySource.DEFAULT,
+            (
+                f"Snapshot was taken from `{load.meta.get('filepath')}`, not "
+                f"`{resolved}`."
+            ),
+            blocked_by="snapshot_stale",
+        )
+
+    priority, priority_source, prefs = _priority_from_meta(load.meta)
+    return _assess_edit_in_place(
+        baseline_src=load.baseline_src,
+        resolved_path=resolved,
+        gitnexus_dir_override=load.meta.get("gitnexus_dir"),
+        priority=priority,
+        priority_source=priority_source,
+        prefs=prefs,
+        allow=params.allow,
+        include_security_findings=params.include_security_findings,
+        extra_warnings=[],
+    )
+
+
+def _priority_from_meta(meta: dict):
+    """Reconstruct (priority, priority_source, preferences) from a snapshot sidecar.
+
+    Rebuilds a ``UserPreferencesInput`` so priority/preferences resolution reuses
+    the same validated logic as a live tool call rather than duplicating it.
+    """
+    ranking = meta.get("ranking")
+    if not ranking:
+        return (
+            Priority(meta.get("priority", Priority.SIMPLE.value)),
+            (PrioritySource.DEFAULT),
+            None,
+        )
+    from topos.evaluation.preferences import Generator
+
+    from ..schemas import UserPreferencesInput
+
+    target = meta.get("target")
+    prefs_input = UserPreferencesInput(
+        ranking=[Generator(r) for r in ranking],
+        target=LatticeElement(target) if target else None,
+    )
+    return (
+        prefs_input.to_priority(),
+        PrioritySource.PREFERENCES,
+        prefs_input.to_preferences(),
+    )
+
+
+def _err_snapshot(filepath: str, msg: str) -> ToolResult:
+    model = SnapshotResult(
+        snapshot_id="",
+        filepath=filepath,
+        baseline_hash="",
+        created_at=0.0,
+        agent_contract=AgentContract(
+            blocked_by=["snapshot_error"], risk_flags=["snapshot_error"]
+        ),
+        error=msg,
+    )
+    return to_tool_result(model, _render_snapshot_md(model))
+
+
+def _render_snapshot_md(r: SnapshotResult) -> str:
+    if r.error:
+        return f"**Error:** {r.error}"
+    lines = [
+        f"**Snapshot captured:** `{r.snapshot_id}`",
+        f"**File:** `{r.filepath}`",
+        "",
+        "Edit the file in place, then call "
+        f'`topos_assess_snapshot(snapshot_id="{r.snapshot_id}", '
+        f'filepath="{r.filepath}")`.',
+    ]
+    return "\n".join(lines)
+
+
+def _err_assessment(
+    priority: Priority,
+    priority_source: PrioritySource,
+    msg: str,
+    *,
+    blocked_by: str = "assessment_error",
+) -> ToolResult:
     empty = EvaluationResult(
         is_parseable=False,
         lattice_element=LatticeElement.SLOP,
@@ -369,8 +726,8 @@ def _err_assessment(params: AssessImprovementInput, msg: str) -> ToolResult:
         similarity=None,
         coupling_available_for_proposed=False,
         agent_contract=AgentContract(
-            blocked_by=["assessment_error"],
-            risk_flags=["assessment_error"],
+            blocked_by=[blocked_by],
+            risk_flags=[blocked_by],
         ),
         error=msg,
     )

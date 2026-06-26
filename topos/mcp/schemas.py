@@ -350,6 +350,112 @@ class AssessImprovementInput(_StrictModel):
         return self
 
 
+class BeginRefactorInput(_StrictModel):
+    """Arguments for ``topos_begin_refactor``.
+
+    Captures the current on-disk source as a baseline snapshot so the agent can
+    edit the file in place and later assess it with ``topos_assess_snapshot``
+    without re-sending the baseline.
+    """
+
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="Path to the file to snapshot, relative to the project root.",
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
+        description=(
+            "Strict total order on the three generators; stored with the "
+            "snapshot so the later assessment uses the same scorer."
+        ),
+    )
+    gitnexus_dir: str | None = Field(
+        default=None,
+        description="Optional .gitnexus/ directory; stored with the snapshot.",
+    )
+
+
+class AssessSnapshotInput(_StrictModel):
+    """Arguments for ``topos_assess_snapshot``.
+
+    Compares a baseline captured by ``topos_begin_refactor`` to the current
+    on-disk file. ``preferences`` and ``gitnexus_dir`` are recovered from the
+    snapshot — no need to repeat them.
+    """
+
+    snapshot_id: str = Field(
+        ...,
+        min_length=1,
+        description="The id returned by ``topos_begin_refactor``.",
+    )
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="Path to the (now edited) file, relative to the project root.",
+    )
+    include_security_findings: bool = Field(
+        default=True,
+        description=(
+            "Include line/snippet diagnostics for dangerous API calls when "
+            "SECURE fails."
+        ),
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this assessment. "
+            "Mirrors CLI --allow and is fully disclosed in nested evaluations."
+        ),
+    )
+
+
+class AssessWorktreeChangeInput(_StrictModel):
+    """Arguments for ``topos_assess_worktree_change``.
+
+    Stateless edit-in-place assessment: the baseline is read from git
+    (``git show <baseline_ref>:<path>``) and compared to the current
+    working-tree file. No prior call required — the common "did my edit beat
+    HEAD?" loop.
+    """
+
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="Path to the working-tree file, relative to the project root.",
+    )
+    baseline_ref: str = Field(
+        default="HEAD",
+        min_length=1,
+        description=(
+            "Git revision to use as the baseline (e.g. ``HEAD``, a branch, or a "
+            "commit sha). The file is read at this ref via ``git show``."
+        ),
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
+        description=(
+            "Strict total order on the three generators; see "
+            "``topos://docs/preferences``."
+        ),
+    )
+    gitnexus_dir: str | None = Field(default=None)
+    include_security_findings: bool = Field(
+        default=True,
+        description=(
+            "Include line/snippet diagnostics for dangerous API calls when "
+            "SECURE fails."
+        ),
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "One-off acknowledged dangerous-call patterns for this assessment. "
+            "Mirrors CLI --allow and is fully disclosed in nested evaluations."
+        ),
+    )
+
+
 class InspectCodeInput(_StrictModel):
     """Arguments for ``topos_inspect_code``."""
 
@@ -823,6 +929,21 @@ class ComparisonResult(BaseModel):
     error: str | None = None
 
 
+class SnapshotResult(BaseModel):
+    """Result of ``topos_begin_refactor`` — a captured baseline handle."""
+
+    snapshot_id: str = Field(
+        ...,
+        description="Opaque handle for this capture; pass to topos_assess_snapshot.",
+    )
+    filepath: str = Field(..., description="The file the baseline was captured from.")
+    baseline_hash: str = Field(..., description="sha256 of the baseline source.")
+    created_at: float = Field(..., description="Unix timestamp the snapshot was taken.")
+    warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
 class AssessmentResult(BaseModel):
     """Result of ``topos_assess_improvement``."""
 
@@ -844,6 +965,11 @@ class AssessmentResult(BaseModel):
     structural_distance: float | None = None
     similarity: float | None = None
     coupling_available_for_proposed: bool
+    # sha256 of the baseline and current (proposed) source. Let snapshot/worktree
+    # callers confirm exactly which revisions were compared without re-sending
+    # source. None only on the error path.
+    baseline_hash: str | None = None
+    current_hash: str | None = None
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
     # Anti-gaming: populated when scores moved but the tree barely changed.

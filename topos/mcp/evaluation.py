@@ -256,6 +256,16 @@ def classify_code_string(
     return classify_morphism(morphism, priority)
 
 
+def detect_language(path: Path) -> str:
+    """Map a file suffix to a tree-sitter language, defaulting to ``python``."""
+    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+
+    for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
+        if path.suffix in suffixes:
+            return lang
+    return "python"
+
+
 def classify_file(
     path: Path,
     priority: Priority,
@@ -266,14 +276,7 @@ def classify_file(
     Returns ``(result, dep_graph)`` so callers can cache the dep graph
     for subsequent proposed-code evaluations.
     """
-    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
-
-    language = "python"
-    for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
-        if path.suffix in suffixes:
-            language = lang
-            break
-
+    language = detect_language(path)
     morphism = ProgramMorphism.from_file(path, language=language)
     dep_graph = load_dep_graph(gitnexus_dir, str(path))
     result = classify_morphism(morphism, priority, dep_graph)

@@ -1,21 +1,18 @@
 """
-LRU caches for the Topos MCP server.
+LRU cache for the Topos MCP server.
 
-Two caches:
-- ``dep_graph_for``: parsed ``ModuleDependencyGraph``, keyed by (gitnexus_dir,
-  target_file, mtime). mtime invalidates automatically when gitnexus re-runs.
-- ``baseline_result_for``: ``ClassificationResult`` for a file's current on-disk
-  state, keyed by (filepath, content sha256, priority, gitnexus_mtime).
-  Lets ``topos_assess_improvement`` skip re-evaluating the baseline across a
-  loop of proposed variants.
+``dep_graph_for``: parsed ``ModuleDependencyGraph``, keyed by (gitnexus_dir,
+target_file, mtime). mtime invalidates automatically when gitnexus re-runs.
 
-Both caches are process-local; stdio servers are single-process so no
+The cache is process-local; stdio servers are single-process so no
 cross-process coordination is needed.
+
+(Baseline source preservation across an edit-in-place loop lives in
+``topos.mcp.snapshots`` — a content-addressed on-disk store — not here.)
 """
 
 from __future__ import annotations
 
-import hashlib
 from functools import lru_cache
 from pathlib import Path
 
@@ -38,7 +35,7 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
       a missed invalidation here is the one failure mode we must avoid, but the
       legacy JSON path is only produced by old GitNexus versions and snapshots are
       regenerated wholesale (dir mtime bumps) in practice. Full implementation if
-      this ever bites: hash every ``lbug/*.json`` file (mirror ``_file_sha256``)
+      this ever bites: hash every ``lbug/*.json`` file (sha256 of the bytes)
       and fold the digest into the key instead of the dir mtime.
     - No ``lbug`` yet: fall back to the gitnexus dir's own mtime.
     """
@@ -49,12 +46,6 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
         return gitnexus_dir.stat().st_mtime
     except OSError:
         return 0.0
-
-
-def _file_sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
 
 
 @lru_cache(maxsize=32)
@@ -71,16 +62,6 @@ def dep_graph_for(gitnexus_dir: Path, target_file: str) -> ModuleDependencyGraph
     gitnexus_dir = Path(gitnexus_dir).resolve()
     mtime = _gitnexus_mtime(gitnexus_dir)
     return _cached_dep_graph(str(gitnexus_dir), target_file, mtime)
-
-
-def baseline_key(
-    filepath: Path,
-    priority: str,
-    gitnexus_dir: Path | None,
-) -> tuple[str, str, str, float]:
-    """Cache key for a file's current on-disk baseline evaluation."""
-    gitnexus_mtime = _gitnexus_mtime(gitnexus_dir) if gitnexus_dir else 0.0
-    return (str(filepath.resolve()), _file_sha256(filepath), priority, gitnexus_mtime)
 
 
 def clear_caches() -> None:

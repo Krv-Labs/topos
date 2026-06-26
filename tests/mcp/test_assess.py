@@ -229,12 +229,14 @@ def _force_regression_score():
 
     original = ev_mod.classify_morphism
 
-    # In current_code mode the baseline uses classify_code_string, so only the
-    # *proposed* code flows through classify_morphism — force its lattice down.
+    # Baseline and proposed now share one scoring path (_assess_core), so key on
+    # the source itself: only the branchy proposed variant (the one with `elif`)
+    # is forced down, leaving the simple baseline untouched.
     def fake_classify(morph, priority, dep_graph=None):
         result = original(morph, priority, dep_graph)
-        result.lattice_element = EvaluationValue.SLOP
-        result.scores["simple"] = result.scores.get("simple", 0.5) - 0.2
+        if "elif" in morph.source:
+            result.lattice_element = EvaluationValue.SLOP
+            result.scores["simple"] = result.scores.get("simple", 0.5) - 0.2
         return result
 
     return fake_classify

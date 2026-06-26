@@ -5,7 +5,7 @@ Agentic Cost Savings
 =====================
 
 This case study tests a narrow claim: when an agent starts from structurally
-cleaner, Topos-approved code, does the next feature work take less time, fewer tokens, and less
+cleaner code, does the next feature work take less time, fewer tokens, and less
 money?
 
 In one controlled experiment, the answer was yes. After a Topos-guided refactor,
@@ -114,8 +114,7 @@ effect this case study is measuring.
      - Both passed
 
 The final test counts are not a quality score; the two implementations added
-different tests. The important point is that both paths finished with passing
-test suites.
+different tests. They show only that both paths ended with passing suites.
 
 Refactor cost and payback
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -153,25 +152,82 @@ This should be read as payback arithmetic, not as a general guarantee. A
 different codebase, model, feature mix, or refactor target could produce a
 different result.
 
-There is also an accounting distinction. In this experiment the code was first
-allowed to become structurally expensive, then cleaned up in a separate pass.
-That creates a visible refactor cost. If similar structure is maintained from
-the start, the same work is not a separate cleanup bill; it is routine
-maintenance, like sharpening a tool before it becomes too dull to use
-efficiently.
-
-Future work is to measure Topos inside the agent loop, where structural guidance
-could be applied during feature development rather than as a retrospective
-cleanup step. That optimization is an intent, not a result measured by this run.
+This accounting is specific to a retrospective cleanup. In this run, the code
+was first allowed to become structurally expensive and then refactored in a
+separate pass, so the cleanup appears as an upfront cost. If structural feedback
+is used during ordinary feature work, the economics may differ; this experiment
+did not measure that workflow.
 
 After the Topos-guided refactor, the overloaded adjudicator was split into
 smaller rule modules. Its maximum function complexity fell from 48 to 9. Its
 Topos SIMPLE score, a 0-100 measure of local structural complexity, improved
 from 0.0 to 55.0 while the test suite stayed green.
 
-The agent had less reconstruction to do. It could add features against clearer
-boundaries instead of repeatedly re-reading one giant function to work out where
-each new rule belonged.
+The likely mechanism is simpler boundaries: the agent had less code to
+reconstruct before deciding where each new rule belonged.
+
+Coverage guardrails
+~~~~~~~~~~~~~~~~~~~
+
+Coverage was collected as a guardrail, not as the headline result. Ordinary
+pytest coverage asks which lines ran during the tests. Topos structural coverage
+asks whether tests cover the declarations and code shapes in the
+program-under-test; semantic/topological coverage asks whether the test graph
+resembles the production graph's behavior and data/control relationships. In
+this experiment, all three signals were useful, but none was the source of the
+cost-savings claim.
+
+.. list-table:: Coverage snapshots
+   :header-rows: 1
+   :widths: 24 16 18 22 20
+
+   * - Snapshot
+     - Tests
+     - Line coverage
+     - Topos structural
+     - Semantic/topological
+   * - Baseline
+     - 10
+     - 83%
+     - 0.867
+     - 0.909
+   * - B cleanup
+     - 10
+     - 87%
+     - 0.817
+     - 0.906
+   * - A final
+     - 27
+     - 88%
+     - 0.843
+     - 0.908
+   * - B final
+     - 30
+     - 91%
+     - 0.853
+     - 0.905
+
+The Topos cleanup changed structure without expanding the test suite: the same
+10 tests still passed, line coverage rose from 83% to 87%, and
+semantic/topological coverage stayed effectively stable.
+
+Structural coverage dipped during cleanup, from 0.867 to 0.817, because the
+refactor increased production declarations from 19 to 32 while the tests stayed
+fixed. That is a useful check on the interpretation. Topos did not make the
+numbers look better by adding tests during cleanup; it changed the code shape
+and preserved behavior.
+
+The later feature sessions added tests. By final B, the test suite had 30 tests
+and 91% line coverage, versus 27 tests and 88% line coverage in A final. Topos
+structural coverage stayed above threshold in both final snapshots: 0.853 for B
+and 0.843 for A. Semantic/topological coverage also stayed strong, but did not
+materially improve: 0.905 for B final and 0.908 for A final.
+
+This fixture was small enough that an agent could still inspect much of the
+production and test code directly. That limits what semantic coverage can prove
+here. A larger-system hypothesis is that precomputed structural and semantic
+coverage may reduce paid reading and review uncertainty, but this run only used
+coverage as a guardrail.
 
 What this does and does not prove
 ---------------------------------
@@ -206,3 +262,185 @@ Topos-guided and unguided refactor baselines.
 
 The practical claim is narrower than a benchmark but still useful: in this run,
 structural feedback made subsequent agent work cheaper to complete.
+
+.. dropdown:: Appendix: recreate a similar experiment
+
+   This is not a byte-for-byte reproduction script. It is the shape of the
+   experiment, written so another agent can build a comparable fixture and run
+   the same A/B comparison.
+
+   **Fixture target**
+
+   Build a small Python package named ``claims_engine`` with tests. The package
+   should model healthcare claim adjudication and include enough cross-cutting
+   rules that new features have to touch payment, denial, patient
+   responsibility, and audit behavior.
+
+   Aim for this baseline shape:
+
+   * about 700-800 total lines,
+   * about 10 production and test files,
+   * a passing pytest suite,
+   * roughly 80% line coverage,
+   * one intentionally overloaded ``claims_engine/adjudicator.py`` file of
+     about 250 lines,
+   * one main adjudication function with high branching complexity.
+
+   The baseline should include:
+
+   * member eligibility,
+   * payer plan rules,
+   * provider network status,
+   * procedure allowed amounts,
+   * modifiers,
+   * specialty reductions,
+   * deductibles,
+   * coinsurance,
+   * copays,
+   * out-of-pocket maximums,
+   * hardship credit,
+   * audit messages,
+   * CSV/JSON import,
+   * JSON decision export.
+
+   **Initial structural and coverage checks**
+
+   After creating the baseline, run tests and collect Topos structural and
+   coverage snapshots. Install Topos with the ``ect-coverage`` extra if you want
+   the semantic/topological coverage field included in ``topos coverage``:
+
+   .. code-block:: bash
+
+      uv tool install "topos-mcp[ect-coverage]"
+
+   .. code-block:: bash
+
+      python -m pytest -q
+      python -m pytest --cov=claims_engine --cov-report=term-missing
+
+      gitnexus analyze --force --skip-git --index-only --skip-agents-md .
+
+      topos evaluate claims_engine \
+        -r \
+        --gitnexus-dir .gitnexus \
+        --json > baseline_topos.json
+
+      topos coverage \
+        --tests tests/test_claims_engine.py \
+        --json \
+        $(rg --files -g '*.py' claims_engine) \
+        > baseline_coverage.json
+
+   The fixture used in this case study had ``adjudicator.py`` as the intended
+   structural problem: SIMPLE 0.0, cyclomatic complexity 34, and maximum
+   function complexity 48. A close reproduction does not need the exact same
+   scores, but it should have one obvious central file that Topos identifies as
+   expensive to extend.
+
+   **Feature prompts**
+
+   Run the same four feature requests in the same order:
+
+   1. Add coordination of benefits.
+   2. Add provider network tier pricing.
+   3. Add prior authorization denial and override workflow.
+   4. Add audit export with redaction and tamper-evident hashes.
+
+   Each feature prompt should require:
+
+   * production code,
+   * tests for the new behavior,
+   * preservation of the existing tests,
+   * no web search,
+   * a short final summary of changed files and verification commands.
+
+   **Condition A: no Topos**
+
+   Copy the baseline into a clean directory. Ask the agent to implement the four
+   features in sequence, starting each feature from the previous feature's
+   output. Do not mention Topos in the feature prompts.
+
+   Record for each feature:
+
+   * wall time,
+   * input tokens,
+   * cached input tokens,
+   * output tokens,
+   * total tokens,
+   * tool calls,
+   * estimated cost,
+   * final test result.
+   * Topos coverage JSON, including ``topological_coverage`` when the
+     ``ect-coverage`` extra is installed.
+
+   After each feature, rerun the same snapshot commands: pytest, line coverage,
+   ``gitnexus analyze``, ``topos evaluate``, and ``topos coverage``.
+
+   **Condition B: Topos-guided cleanup**
+
+   Copy the same baseline into another clean directory. Before feature work,
+   ask the agent to use Topos to identify the worst structural file, refactor it
+   for simpler boundaries, and keep the tests passing.
+
+   A useful cleanup prompt is:
+
+   .. code-block:: text
+
+      Use Topos to evaluate this package. Identify the worst structural
+      bottleneck, refactor it into clearer modules, and verify that tests still
+      pass. Preserve behavior. Prefer smaller rule modules over a larger
+      orchestration function.
+
+   After cleanup, run the same four feature prompts from Condition A. Record the
+   same metrics and rerun the same Topos coverage snapshots.
+
+   **Suggested result table**
+
+   Compare feature work separately from cleanup work:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 26 22 22 30
+
+      * - Metric
+        - A: unrefactored features
+        - B: features after cleanup
+        - Difference
+      * - Wall time
+        - ``<seconds>``
+        - ``<seconds>``
+        - ``<percent>``
+      * - Total tokens
+        - ``<tokens>``
+        - ``<tokens>``
+        - ``<percent>``
+      * - Estimated cost
+        - ``<$>``
+        - ``<$>``
+        - ``<$ and percent>``
+
+   Then account for the cleanup separately:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 30 40
+
+      * - Scenario
+        - Cost counted
+        - Result
+      * - One feature batch
+        - Cleanup plus features
+        - ``<B total>`` vs ``<A total>``
+      * - Feature work only
+        - Features after cleanup
+        - ``<B feature cost>`` vs ``<A feature cost>``
+      * - Break-even
+        - Same observed saving rate
+        - ``<cleanup cost / feature-batch savings>``
+
+   **Cost estimate**
+
+   Use the model provider's token report if available. Keep cached input,
+   uncached input, and output tokens separate, because they may be priced
+   differently. State the pricing assumptions next to the result; do not treat
+   the estimate as an invoice.

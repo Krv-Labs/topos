@@ -22,13 +22,13 @@ from topos.mcp.schemas import (
     BeginRefactorInput,
     SnapshotResult,
 )
-from topos.mcp.tools import assess as assess_mod
-from topos.mcp.tools.assess import (
-    topos_assess_improvement,
+from topos.mcp.tools.assess import snapshot as assess_snapshot_mod
+from topos.mcp.tools.assess.core import topos_assess_improvement
+from topos.mcp.tools.assess.snapshot import (
     topos_assess_snapshot,
-    topos_assess_worktree_change,
     topos_begin_refactor,
 )
+from topos.mcp.tools.assess.worktree import topos_assess_worktree_change
 
 _BASE = "def f(x):\n    return x + 1\n"
 _EDIT = "def f(x):\n    return x + 2\n"
@@ -181,12 +181,12 @@ def test_assess_snapshot_expired_is_stale(
     target = tmp_path / "m.py"
     target.write_text(_BASE, encoding="utf-8")
 
-    monkeypatch.setattr(assess_mod, "snapshot_now", lambda: 1000.0)
+    monkeypatch.setattr(assess_snapshot_mod, "snapshot_now", lambda: 1000.0)
     snap = _snapshot(topos_begin_refactor(BeginRefactorInput(filepath="m.py")))
     target.write_text(_EDIT, encoding="utf-8")
 
     # Jump past the 24h TTL on the assessment read.
-    monkeypatch.setattr(assess_mod, "snapshot_now", lambda: 1000.0 + 25 * 3600)
+    monkeypatch.setattr(assess_snapshot_mod, "snapshot_now", lambda: 1000.0 + 25 * 3600)
     r = _assessment(
         topos_assess_snapshot(
             AssessSnapshotInput(snapshot_id=snap.snapshot_id, filepath="m.py")

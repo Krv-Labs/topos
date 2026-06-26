@@ -17,11 +17,11 @@ from topos.mcp.schemas import (
     ProjectEvaluationResult,
     UserPreferencesInput,
 )
-from topos.mcp.tools.evaluate import (
+from topos.mcp.tools.evaluate.core import (
     topos_evaluate_code,
     topos_evaluate_file,
-    topos_evaluate_project,
 )
+from topos.mcp.tools.evaluate.project import topos_evaluate_project
 
 
 def _eval(tool_result) -> EvaluationResult:

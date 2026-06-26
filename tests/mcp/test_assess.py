@@ -13,7 +13,7 @@ from topos.mcp.schemas import (
     AssessmentStatus,
     UserPreferencesInput,
 )
-from topos.mcp.tools.assess import topos_assess_improvement
+from topos.mcp.tools.assess.core import topos_assess_improvement
 
 _PREFS = UserPreferencesInput(
     ranking=[Generator.SECURE, Generator.SIMPLE, Generator.COMPOSABLE]
@@ -183,7 +183,7 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
     with (
         patch.object(ev_mod, "classify_morphism", side_effect=fake_classify),
         patch(
-            "topos.mcp.tools.assess.classify_morphism",
+            "topos.mcp.tools.assess.core.classify_morphism",
             side_effect=fake_classify,
         ),
     ):
@@ -245,7 +245,7 @@ def _force_regression_score():
 def test_assess_regression_emits_function_scoped_diff() -> None:
     """A regression yields a pinpoint diff of the worst function + its delta."""
     fake = _force_regression_score()
-    with patch("topos.mcp.tools.assess.classify_morphism", side_effect=fake):
+    with patch("topos.mcp.tools.assess.core.classify_morphism", side_effect=fake):
         tr = topos_assess_improvement(
             AssessImprovementInput(
                 current_code=_SIMPLE_FN, proposed_code=_BRANCHY_FN, preferences=_PREFS
@@ -285,7 +285,7 @@ def test_assess_improvement_has_no_regression_diff() -> None:
 def test_function_complexities_non_ascii_source() -> None:
     # Regression: UAST byte spans vs. code-point str indexing. A non-ASCII char
     # before the def used to shift both the extracted name and body slice.
-    from topos.mcp.tools.assess import _function_complexities
+    from topos.mcp.tools.assess.render import _function_complexities
 
     src = '"""Docstring → with — non-ascii 🎯."""\ndef handle(x):\n    return x\n'
     fns = _function_complexities(src, "python")

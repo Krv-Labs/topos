@@ -1,6 +1,5 @@
 """
 Topological Semantic Test Coverage via Euler Characteristic Transform (ECT).
--------------------------------------------------------------------------
 
 Evaluates coverage by comparing the V - E ECT of the "test scope" static
 subgraph of the program under test (PUT) against the ECT of the test execution

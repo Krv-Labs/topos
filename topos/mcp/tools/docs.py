@@ -44,13 +44,14 @@ def topos_get_doc(topic: DocTopic) -> str:
     equivalent resource URI for efficiency: ``topos://docs/{topic}``.
 
     Topics:
-        agent-contract — compact outcome-first loop contract and done gates.
-        lattice    — the 8-element 3-cube H(G_qual); top = IDEAL, bottom = SLOP.
-        metrics    — every metric key, thresholds, interpretation.
-        preferences — strict generator rankings and preference walks.
-        priority   — priority profiles (simple/composable/secure).
-        workflows  — the canonical review→plan→refactor→re-measure loop.
-                     **Read this first on every new refactor session.**
+
+    * ``agent-contract`` — compact outcome-first loop contract and done gates.
+    * ``lattice`` — the 8-element 3-cube H(G_qual); top = IDEAL, bottom = SLOP.
+    * ``metrics`` — every metric key, thresholds, interpretation.
+    * ``preferences`` — strict generator rankings and preference walks.
+    * ``priority`` — priority profiles (simple/composable/secure).
+    * ``workflows`` — the canonical review→plan→refactor→re-measure loop.
+      **Read this first on every new refactor session.**
     """
     path = _CONTENT_DIR / f"{topic}.md"
     return path.read_text(encoding="utf-8")

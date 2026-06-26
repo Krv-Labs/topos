@@ -40,27 +40,31 @@ Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding 
 
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
-topos --version          # verify it's on your PATH
-topos --help             # full command list — every command also takes -h / --help
+topos --version
+topos --help
 ```
+
+Every command also accepts `-h` / `--help`.
 
 #### Evaluate code — the 60-second tour
 
 ```bash
-topos evaluate path/to/file.py     # one file → quality medal + the metrics behind it
-topos evaluate src/ -r             # every file under a directory, recursively
-topos evaluate src/ -r --json      # same, machine-readable (pipe to jq, CI, etc.)
-topos inspect path/to/file.py      # deep dive: per-function complexity, AST entropy, all raw metrics
-topos compare before.py after.py   # AST edit distance between two versions of a file
+topos evaluate path/to/file.py
+topos evaluate src/ -r
+topos evaluate src/ -r --json
+topos inspect path/to/file.py
+topos compare before.py after.py
 ```
+
+Use `evaluate` for medals, `inspect` for per-file metrics, `compare` for AST edit distance, and `--json` for CI or automation.
 
 #### Review a whole repo or module
 
 Point `evaluate` at a directory with `-r` for a ranked, actionable digest instead of a per-file wall:
 
 ```bash
-topos evaluate src/ -r              # the whole repo
-topos evaluate src/mypackage -r     # one module / sub-package
+topos evaluate src/ -r
+topos evaluate src/mypackage -r
 ```
 
 The summary surfaces, in order:
@@ -87,10 +91,12 @@ Add `--json` for a machine-readable rollup, or `-v` to expand every file's raw m
 `COMPOSABLE` measures how cleanly a module is decoupled, which needs a cross-file **dependency graph**. Topos reads one from a `.gitnexus/` directory produced by [GitNexus](https://github.com/abhigyanpatwari/GitNexus). Without it, `SIMPLE` and `SECURE` still run — but any medal containing `COMPOSABLE` (including 🥇 GOLD) is unreachable.
 
 ```bash
-npm install -g gitnexus                            # one-time, per machine
-topos depgraph generate                            # writes ./.gitnexus/ for the current repo
-topos evaluate src/ -r --gitnexus-dir .gitnexus    # COMPOSABLE (and GOLD) now scored
+npm install -g gitnexus
+topos depgraph generate
+topos evaluate src/ -r --gitnexus-dir .gitnexus
 ```
+
+Install GitNexus once per machine. Run `topos depgraph generate` from each repository you want to score for COMPOSABLE.
 
 > The CLI does **not** auto-detect `.gitnexus/` — pass `--gitnexus-dir` explicitly. Regenerate after imports change (new modules, renames, restructures). *(The `topos mcp` server, by contrast, auto-detects `./.gitnexus`.)*
 
@@ -99,25 +105,22 @@ topos evaluate src/ -r --gitnexus-dir .gitnexus    # COMPOSABLE (and GOLD) now s
 `--tests` takes your test files (repeat the flag for several); the positional arguments are the program-under-test files.
 
 ```bash
-# one test file covering one module
 topos coverage --tests tests/test_foo.py topos/foo.py
-
-# several of each
 topos coverage --tests tests/test_a.py --tests tests/test_b.py src/a.py src/b.py
-
-# stricter gate + JSON, e.g. for CI
 topos coverage --tests tests/test_foo.py topos/foo.py --coverage-threshold 0.8 --json
 ```
 
-Reports UAST **declaration coverage** (structural) plus **topological ECT coverage** (semantic — does the suite exercise the same code *shapes*, not just the same names?). ECT is an optional extra: `pip install 'topos[ect-coverage]'`.
+Reports UAST **declaration coverage** by default. With the optional extra, it also reports **topological ECT coverage**: `uv pip install 'topos-mcp[ect-coverage]'`.
 
 #### Steer the verdict
 
 ```bash
-topos evaluate src/ -r --preferences simple,composable,secure   # rank pillars for your agent to target
-topos evaluate app.py --allow yaml.load                         # acknowledge a known-risky call (caps grade below GOLD)
-topos evaluate src/ -r --language typescript                    # python (default) · typescript · javascript · rust · cpp
+topos evaluate src/ -r --preferences simple,composable,secure
+topos evaluate app.py --allow yaml.load
+topos evaluate src/ -r --language typescript
 ```
+
+`--preferences` ranks pillars for agents, `--allow` acknowledges a known risky call and caps the grade below Gold, and `--language` supports `python`, `typescript`, `javascript`, `rust`, and `cpp`.
 
 ---
 
@@ -136,9 +139,9 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 > Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
 >
 > ```bash
-> npm install -g gitnexus        # one-time per machine
+> npm install -g gitnexus
 > cd /path/to/your/repo
-> topos depgraph generate        # one-time per repo; writes .gitnexus/
+> topos depgraph generate
 > ```
 >
 > Re-run when imports change (new modules, renames, restructures). The cache keys on `.gitnexus/` mtime and invalidates itself.
@@ -147,8 +150,10 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 > Verify the binary before wiring it into editors:
 >
 > ```bash
-> topos mcp   # prints the FastMCP banner and waits on stdin. Ctrl-C to exit.
+> topos mcp
 > ```
+>
+> `topos mcp` prints the FastMCP banner and waits on standard input. Press `Ctrl-C` after the smoke check.
 
 #### Step 2 — Register with your agent
 

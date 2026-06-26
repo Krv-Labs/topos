@@ -18,12 +18,15 @@ Quick reference
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --preferences simple,composable,secure
+   topos depgraph generate
+   topos evaluate src/ -r --preferences simple,composable,secure --gitnexus-dir .gitnexus/
    topos inspect module.py --preferences simple,composable,secure
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
-   topos depgraph generate
    topos mcp
+
+Run ``topos depgraph generate`` only when you need COMPOSABLE metrics. Run
+``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -72,6 +75,8 @@ Evaluate code quality for one or more files or directories. This is the primary 
      - Comma-separated pillar ranking (e.g. ``simple,composable,secure``).
    * - ``--gitnexus-dir PATH``
      - Path to a ``.gitnexus/`` directory for **COMPOSABLE** metrics (requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_).
+   * - ``--allow TEXT``
+     - Acknowledge a dangerous-call pattern for this run. Repeat or comma-separate values.
    * - ``--language [python|rust|javascript|typescript|cpp]``
      - Source language for parsing and directory discovery (default: ``python``).
 
@@ -113,6 +118,10 @@ Inspect detailed metrics and entropy analysis for a **single** file.
      - Comma-separated pillar ranking.
    * - ``--gitnexus-dir PATH``
      - Path to a ``.gitnexus/`` directory for coupling metrics.
+   * - ``--allow TEXT``
+     - Acknowledge a dangerous-call pattern for this run.
+   * - ``--json``
+     - Output the inspection as a single JSON object.
 
 **Example**
 
@@ -151,7 +160,16 @@ Measure how much of the **program-under-test (PUT)** structure is represented in
 
 **UAST (default):** declaration-level bipartite matching and k-gram path recall. No test execution required.
 
-**Topological (ECT):** when the release binary or ``topos[ect-coverage]`` extra is present, also scores CPG semantic overlap via fastembed embeddings and Euler characteristic transform (TRAILED). First topological run downloads the embedding model to ``~/.cache/fastembed``.
+**Topological (ECT):** when the ``ect-coverage`` optional extra is installed,
+also scores CPG semantic overlap via fastembed embeddings and Euler
+characteristic transform (TRAILED). First topological run downloads the
+embedding model to ``~/.cache/fastembed``.
+
+Install the optional extra in Python package/source environments with:
+
+.. code-block:: bash
+
+   uv pip install "topos-mcp[ect-coverage]"
 
 .. code-block:: bash
 
@@ -199,7 +217,10 @@ Start the Topos **Model Context Protocol** server on stdio. AI coding agents con
 
    .. code-block:: bash
 
-      topos mcp   # FastMCP banner; waits on stdin — Ctrl-C to exit
+      topos mcp
+
+   The command waits on standard input. Press ``Ctrl-C`` after the FastMCP
+   banner appears.
 
 depgraph generate
 -----------------
@@ -220,6 +241,12 @@ Generate a module dependency graph with `GitNexus <https://github.com/abhigyanpa
      - Repository root to analyze (default: current working directory).
 
 Writes ``.gitnexus/`` under the repo root. Re-run when imports change.
+
+If ``gitnexus`` is missing, install it first:
+
+.. code-block:: bash
+
+   npm install -g gitnexus
 
 **GitNexus / LadybugDB compatibility**
 

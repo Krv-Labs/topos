@@ -406,14 +406,15 @@ def to_tool_result(model: BaseModel, markdown: str) -> ToolResult:
 
     Empirically verified FastMCP behavior (see ``tests/mcp/test_evaluate.py``
     and a probe over ``mcp.call_tool`` + ``to_mcp_tool().model_dump()``):
-      * When a tool is annotated ``-> ToolResult``, FastMCP emits **no**
-        ``outputSchema`` for it — this is intentional and shrinks the eager
-        tool-definition surface (outputSchema is optional per the MCP spec).
-        Tools wanting to keep an outputSchema can instead annotate ``-> Model``
-        while still returning this ``ToolResult`` (both channels are honored at
-        runtime regardless of the annotation).
-      * ``structured_content`` is still delivered on the wire.
-      * ``content`` is the markdown text, not the model JSON.
+
+    * When a tool is annotated ``-> ToolResult``, FastMCP emits **no**
+      ``outputSchema`` for it — this is intentional and shrinks the eager
+      tool-definition surface (outputSchema is optional per the MCP spec).
+      Tools wanting to keep an outputSchema can instead annotate ``-> Model``
+      while still returning this ``ToolResult`` (both channels are honored at
+      runtime regardless of the annotation).
+    * ``structured_content`` is still delivered on the wire.
+    * ``content`` is the markdown text, not the model JSON.
     """
     return ToolResult(
         content=markdown, structured_content=model.model_dump(mode="json")

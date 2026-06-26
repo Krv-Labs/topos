@@ -121,6 +121,30 @@ The weights (``w_*``) for each pillar's internal components are controlled by th
 Changing the priority does not change what is measured — it changes the weights
 within each generator's scoring function.
 
+Calibration against real corpora
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The thresholds above are not arbitrary. They are tuned so that the medal tiers
+track how mature, widely-trusted Python libraries actually score. Below, three
+reference codebases — ``requests``, ``numpy``, and ``pandas`` — measured pillar
+by pillar and by the resulting medal mix.
+
+.. raw:: html
+
+   <figure class="topos-figure">
+     <img class="only-light" src="_static/figures/topos-library-profiles.svg" alt="Average SIMPLE, COMPOSABLE, and SECURE scores for the requests, numpy, and pandas libraries." />
+     <img class="only-dark" src="_static/figures/topos-library-profiles-dark.svg" alt="" aria-hidden="true" />
+     <figcaption>Average pillar scores per library. Security clears its bar consistently; simplicity is the pillar most codebases leave on the table.</figcaption>
+   </figure>
+
+.. raw:: html
+
+   <figure class="topos-figure">
+     <img class="only-light" src="_static/figures/topos-medal-mix.svg" alt="Distribution of GOLD, SILVER, BRONZE, and SLOP medals across files in each reference library." />
+     <img class="only-dark" src="_static/figures/topos-medal-mix-dark.svg" alt="" aria-hidden="true" />
+     <figcaption>The per-file medal distribution that those thresholds produce.</figcaption>
+   </figure>
+
 Verdicts
 --------
 
@@ -192,6 +216,7 @@ The CLI command is:
 3. **Bipartite Matching:** Each PUT declaration is matched against the
    best-matching declaration in the test suite using multiset recall.
 4. **Scoring:**
+
    - **Mean Declaration Coverage:** The average best-match recall across all
      PUT declarations.
    - **F2 Score:** A harmonic mean that combines declaration recall with
@@ -209,4 +234,4 @@ The CLI command is:
 Topological (ECT) coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With ``pip install 'topos[ect-coverage]'`` (or the VS Code release binary), ``topos coverage`` also reports **CPG topological coverage**: scoped PUT subgraph nodes and test CPG nodes are embedded, jointly projected to 2-D, and compared via Euler characteristic transform. The score is ``exp(-RMSE)`` between landscapes. The embedding model downloads on first use to ``~/.cache/fastembed``. Prefer module- or file-scoped PUT/test pairs for large codebases.
+With ``uv pip install 'topos-mcp[ect-coverage]'``, ``topos coverage`` also reports **CPG topological coverage**: scoped PUT subgraph nodes and test CPG nodes are embedded, jointly projected to 2-D, and compared via Euler characteristic transform. The score is ``exp(-RMSE)`` between landscapes. The embedding model downloads on first use to ``~/.cache/fastembed``. Prefer module- or file-scoped PUT/test pairs for large codebases.

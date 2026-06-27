@@ -542,64 +542,32 @@ class PreferenceWalkResult(BaseModel):
 
 
 class PreferenceWalk(BaseModel):
-    """Targeted relaxation walk derived from a user preference ranking.
-
-    Two-stage strategy:
-
-    1. **Aim for 🥇 GOLD** (``target``) — try to beat the policy
-       thresholds for all three generators.
-    2. **Divert to the 🥈 SILVER "ideal intersection"** (``fallback_target``)
-       when 🥇 GOLD plateaus — the meet of the top-two ranked
-       generators per the preference ordering.
-
-    Beyond the fallback the walk continues down through 🥉 BRONZE atoms toward
-    ❌ ``SLOP``, in descending preference order.
-    """
+    """Targeted relaxation walk for a preference ranking."""
 
     ranking: list[Generator] = Field(
         ..., description="The preference ranking, most-preferred first."
     )
     target: LatticeElement = Field(
         ...,
-        description=(
-            "Aspirational target.  Defaults to ``IDEAL`` — try beating "
-            "all three thresholds first."
-        ),
+        description="Aspirational target.",
     )
     fallback_target: LatticeElement = Field(
         ...,
-        description=(
-            "Pragmatic divert-point when IDEAL plateaus — the 'ideal "
-            "intersection', i.e. the meet of the top-two ranked "
-            "generators.  For ranking [composable, secure, simple] "
-            "this is ``COMPOSABLE_SECURE``."
-        ),
+        description="Divert target when IDEAL stalls.",
     )
     walk: list[LatticeElement] = Field(
         default_factory=list,
-        description=(
-            "Descending sequence of verdicts the agent should aim for, "
-            "from the aspirational target (``IDEAL`` by default) down "
-            "to just above the current verdict.  The **second** "
-            "element is ``fallback_target`` — the natural divert-point "
-            "when IDEAL stalls.  Empty when at or beyond target."
-        ),
+        description="Preference-ordered verdict path above current.",
     )
     next_step: LatticeElement | None = Field(
         default=None,
-        description=(
-            "The immediate next achievable verdict above the current "
-            "one — the smallest improvement that still respects the "
-            "preference order.  ``None`` when at or beyond target."
-        ),
+        description="Immediate next verdict above current.",
     )
     progress: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description=(
-            "Fractional progress from SLOP to the aspirational target, in [0.0, 1.0]."
-        ),
+        description="Progress toward target in [0, 1].",
     )
 
 

@@ -45,13 +45,12 @@ def topos_get_doc(topic: DocTopic) -> str:
 
     Topics:
 
-    * ``agent-contract`` — compact outcome-first loop contract and done gates.
+    * ``agent-contract`` — compact loop contract. Read first for refactors.
     * ``lattice`` — the 8-element 3-cube H(G_qual); top = IDEAL, bottom = SLOP.
     * ``metrics`` — every metric key, thresholds, interpretation.
     * ``preferences`` — strict generator rankings and preference walks.
     * ``priority`` — priority profiles (simple/composable/secure).
-    * ``workflows`` — the canonical review→plan→refactor→re-measure loop.
-      **Read this first on every new refactor session.**
+    * ``workflows`` — expanded review→plan→refactor→re-measure guide.
     """
     path = _CONTENT_DIR / f"{topic}.md"
     return path.read_text(encoding="utf-8")

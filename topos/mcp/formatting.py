@@ -175,8 +175,9 @@ def build_agent_contract(
         )
 
     verification_gates = [
-        "topos_assess_improvement returns IMPROVEMENT or IMPROVEMENT_SCORE",
-        "status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE",
+        "verify in-place edits with topos_assess_worktree_change",
+        "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE",
+        "assessment status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE",
         "behavior tests or type/lint checks pass when available",
     ]
     return next_tool, next_actions, blocked_by, verification_gates, risk_flags

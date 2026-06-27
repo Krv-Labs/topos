@@ -28,14 +28,11 @@ import pytest
 from topos.mcp import tools  # noqa: F401
 from topos.mcp.server import _get_mcp
 
-# Loose ceilings -- GREEN today, ratcheted DOWN as the surface shrinks.
-TOTAL_CEILING_CHARS = 95_000
-# RATCHET: lower this ceiling as Phases 1-2 shrink the surface
-# (target <32_000 chars / ~8K tokens).
+# Ratchets: keep the tool discovery surface below the repo target
+# (<32K chars / ~8K rough tokens) while leaving room for small schema changes.
+TOTAL_CEILING_CHARS = 30_000
 
-PER_TOOL_CEILING_CHARS = 25_000
-# RATCHET: lower this per-tool ceiling as Phases 1-2 shrink the surface
-# (today's worst offender, topos_assess_improvement, is ~22,765 chars).
+PER_TOOL_CEILING_CHARS = 4_500
 
 
 def _approx_tokens(chars: int) -> int:
@@ -86,6 +83,23 @@ def test_per_tool_surface_under_ceiling() -> None:
         f"Tool(s) exceed per-tool ceiling {PER_TOOL_CEILING_CHARS} chars: "
         f"{over}.\n" + _report(sizes)
     )
+
+
+def test_tool_surface_has_current_refactor_routing() -> None:
+    """Keep stale side-by-side guidance out of model-visible tool metadata."""
+
+    async def _wire_blob() -> str:
+        chunks = []
+        for tool in await _get_mcp().list_tools():
+            wire = tool.to_mcp_tool().model_dump(exclude_none=True)
+            chunks.append(json.dumps(wire))
+        return "\n".join(chunks)
+
+    blob = asyncio.run(_wire_blob())
+    assert "STRONGLY PREFERRED for real refactor loops" not in blob
+    assert "Read this first on every new refactor session" not in blob
+    assert "topos_assess_improvement validates each accepted refactor" not in blob
+    assert "topos_assess_worktree_change" in blob
 
 
 if __name__ == "__main__":

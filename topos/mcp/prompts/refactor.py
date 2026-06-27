@@ -71,13 +71,16 @@ Use with `topos_evaluate_file` to measure the current verdict.
 Use with `topos_inspect_code` when the returned `agent_contract`, `guidance`, or `suggestions` indicate inspection is needed.
 
 ```json
-{{"params": {{"filepath": "{filepath}", "proposed_code": "<new code>"{pref_args}}}}}
+{{"params": {{"filepath": "{filepath}", "baseline_ref": "HEAD"{pref_args}}}}}
 ```
-Use with `topos_assess_improvement` to verify each proposed patch.
+Verification route:
+- Default after in-place edits: `topos_assess_worktree_change` against `HEAD` or another git ref.
+- Dirty or untracked baseline: call `topos_begin_refactor` before editing, then `topos_assess_snapshot`.
+- Side-by-side variant only: use `topos_assess_improvement`.
 
 Acceptance gates:
-- `status` is `IMPROVEMENT` or `IMPROVEMENT_SCORE`.
-- `status` is not `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
+- Assessment `status` is `IMPROVEMENT` or `IMPROVEMENT_SCORE`.
+- Assessment `status` is not `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - Active SECURE findings are fixed or intentionally acknowledged and disclosed.
 - Project rollup is checked after non-trivial cross-file changes.
 - Relevant behavior tests, type checks, or linters pass when available; if unavailable or not run, report that explicitly.

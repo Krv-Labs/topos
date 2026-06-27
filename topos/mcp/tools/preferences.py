@@ -64,22 +64,9 @@ def _to_step(prefs: UserPreferences, value: EvaluationValue) -> WalkStep:
     annotations=_READ_ONLY_ANN,
 )
 def topos_preference_walk(params: PreferenceWalkInput) -> ToolResult:
-    """Convert a generator ranking into a concrete relaxation walk on Ω.
+    """Return the preference-ordered relaxation walk for a generator ranking.
 
-    The walk is the descending preference-ordered list of Ω verdicts
-    starting at the aspirational target (default: ``IDEAL``) down to
-    (but not including) the current verdict.  By convention the
-    **second** element of the walk is the ``fallback_target`` — the
-    meet of the top-two ranked generators (the "ideal intersection"),
-    which is the natural divert-point when IDEAL plateaus.
-
-    Each step is annotated with the satisfied-generator set, so the
-    agent can see what changing to that verdict requires (e.g. "next
-    step adds COMPOSABLE").
-
-    No source code is required — this is purely a computation over
-    the preference ordering.  Call it between refactor iterations to
-    refresh the agent's concrete next goal.
+    Use after evaluation when an agent needs the next lattice target.
     """
     try:
         target_value = (

@@ -50,10 +50,8 @@ def topos_compare_code(params: CompareCodeInput) -> ToolResult:
     """Compute AST edit distance between two source strings.
 
     Returns normalized distance in [0, 1] and a similarity score (1 - distance).
-    Useful for detecting clones, measuring refactor impact, or — in
-    conjunction with ``topos_assess_improvement`` — catching agents that
-    "improve" scores without actually changing the code (near-zero distance
-    + score jump = suspicious).
+    Useful for clone checks and independent refactor-impact inspection.
+    Assessment tools already include anti-gaming distance checks.
     """
     try:
         src = ProgramMorphism(source=params.source_code, language=params.language)

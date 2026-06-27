@@ -26,6 +26,8 @@ def test_refactor_prompt_renders_with_filepath() -> None:
     assert "topos://docs/agent-contract" in text
     assert '"params"' in text
     assert "topos_evaluate_file" in text
+    assert "topos_assess_worktree_change" in text
+    assert "topos_assess_snapshot" in text
     assert "topos_assess_improvement" in text
     assert "behavior tests" in text
     assert "Step 1" not in text

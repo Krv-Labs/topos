@@ -68,38 +68,17 @@ class _StrictModel(BaseModel):
 
 
 class UserPreferencesInput(_StrictModel):
-    """A strict total order on the three quality generators.
-
-    Stronger than ``priority`` (which only upweights one generator):
-    this is a full ranking that induces a total order on the 8-element
-    lattice Ω.  Agents use the induced order to pick a *targeted
-    relaxation walk* — by convention 🥇 GOLD (IDEAL) is treated as infeasible
-    and the default target becomes the meet of the top-two ranked
-    generators (the 🥈 SILVER "ideal intersection", e.g. ``SIMPLE_SECURE``).
-
-    Example:
-        ``ranking=["secure", "simple", "composable"]`` ⟹ default
-        target ``SIMPLE_SECURE``; walk descends through it down
-        toward ``SLOP``.
-    """
+    """Strict ranking over simple, composable, and secure."""
 
     ranking: list[Generator] = Field(
         ...,
-        description=(
-            "Permutation of {simple, composable, secure}, most-preferred "
-            "first.  Length must be exactly 3."
-        ),
+        description="Permutation of simple/composable/secure, best first.",
         min_length=3,
         max_length=3,
     )
     target: LatticeElement | None = Field(
         default=None,
-        description=(
-            "Optional explicit target verdict.  Defaults to the meet of "
-            "the top-two ranked generators (the 'ideal intersection'). "
-            "Pass IDEAL only if you really want to aim there — it is "
-            "treated as infeasible by convention."
-        ),
+        description="Optional explicit target verdict.",
     )
 
     def to_preferences(self) -> UserPreferences:
@@ -133,34 +112,24 @@ class EvaluateCodeInput(_StrictModel):
 
     code: str = Field(
         ...,
-        description="Raw source code to evaluate.",
+        description="Source code to evaluate.",
         min_length=1,
     )
     language: str = Field(
         default="python",
-        description=(
-            "Programming language of the source. Supported via tree-sitter: "
-            "'python', 'rust', 'javascript', 'typescript', 'cpp'."
-        ),
+        description="Language: python, rust, javascript, typescript, or cpp.",
     )
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description=(
-            "Strict total order on the three generators. The result includes "
-            "a targeted relaxation walk toward the 'ideal intersection' "
-            "(meet of the top-two ranked generators)."
-        ),
+        description="Optional generator ranking.",
     )
     verbose: bool = Field(
         default=False,
-        description="Include raw probe metric floats under each file in the response.",
+        description="Include raw metrics.",
     )
     allow: list[str] = Field(
         default_factory=list,
-        description=(
-            "One-off acknowledged dangerous-call patterns for this evaluation. "
-            "Mirrors CLI --allow and is fully disclosed in the result."
-        ),
+        description="One-off acknowledged dangerous-call patterns.",
     )
 
 
@@ -169,42 +138,28 @@ class EvaluateFileInput(_StrictModel):
 
     filepath: str = Field(
         ...,
-        description="Path to the source file, relative to the project root.",
+        description="Source file path.",
         min_length=1,
     )
     gitnexus_dir: str | None = Field(
         default=None,
-        description=(
-            "Path to a .gitnexus/ directory produced by `topos depgraph "
-            "generate`. When provided, the ModuleDependencyGraph is "
-            "attached so the COMPOSABLE generator can be scored. "
-            "Defaults to <project_root>/.gitnexus if it exists."
-        ),
+        description=".gitnexus directory for COMPOSABLE scoring.",
     )
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description=(
-            "Strict total order on the three generators; see "
-            "``topos://docs/preferences``."
-        ),
+        description="Optional generator ranking.",
     )
     include_security_findings: bool = Field(
         default=True,
-        description=(
-            "Include line/snippet diagnostics for dangerous API calls when "
-            "SECURE fails."
-        ),
+        description="Include SECURE findings.",
     )
     allow: list[str] = Field(
         default_factory=list,
-        description=(
-            "One-off acknowledged dangerous-call patterns for this evaluation. "
-            "Mirrors CLI --allow and is fully disclosed in the result."
-        ),
+        description="One-off acknowledged dangerous-call patterns.",
     )
     verbose: bool = Field(
         default=False,
-        description="Include raw probe metric floats under each file in the response.",
+        description="Include raw metrics.",
     )
 
 
@@ -213,50 +168,38 @@ class EvaluateProjectInput(_StrictModel):
 
     path: str = Field(
         ...,
-        description=(
-            "Directory to recursively evaluate. Must be inside the project root."
-        ),
+        description="Directory to evaluate.",
         min_length=1,
     )
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description=(
-            "Strict total order on the three generators; see "
-            "``topos://docs/preferences``."
-        ),
+        description="Optional generator ranking.",
     )
     gitnexus_dir: str | None = Field(
-        default=None,
-        description="Optional .gitnexus/ directory for per-file coupling scoring.",
+        default=None, description=".gitnexus directory for COMPOSABLE scoring."
     )
     limit: int = Field(
         default=25,
         ge=1,
         le=500,
-        description="Maximum per-file entries to include in the response.",
+        description="Page size.",
     )
     offset: int = Field(
         default=0,
         ge=0,
-        description="Number of per-file entries to skip (pagination).",
+        description="Pagination offset.",
     )
     verbose: bool = Field(
         default=False,
-        description="Include raw probe metric floats under each file in the response.",
+        description="Include raw metrics.",
     )
     include_security_findings: bool = Field(
         default=False,
-        description=(
-            "Include line/snippet diagnostics for SECURE failures in per-file entries. "
-            "Defaults off for project scans to keep responses compact."
-        ),
+        description="Include per-file SECURE findings.",
     )
     allow: list[str] = Field(
         default_factory=list,
-        description=(
-            "One-off acknowledged dangerous-call patterns for this evaluation. "
-            "Mirrors CLI --allow and is fully disclosed in each affected file entry."
-        ),
+        description="One-off acknowledged dangerous-call patterns.",
     )
 
 
@@ -276,61 +219,37 @@ class CompareFilesInput(_StrictModel):
 
 
 class AssessImprovementInput(_StrictModel):
-    """Arguments for ``topos_assess_improvement``.
-
-    Provide EITHER ``filepath`` (preferred — scores the COMPOSABLE
-    generator against the cached ModuleDependencyGraph) OR
-    ``current_code`` (AST + CFG + CPG only; COMPOSABLE unreachable).
-    """
+    """Side-by-side assessment. In-place edits use worktree/snapshot tools."""
 
     proposed_code: str | None = Field(
-        default=None, min_length=1, description="The refactored / proposed source."
+        default=None, min_length=1, description="Proposed source."
     )
     proposed_filepath: str | None = Field(
         default=None,
         min_length=1,
-        description=(
-            "Path to a proposed version inside the project root. Use this to avoid "
-            "sending full source text for large files."
-        ),
+        description="Proposed file path.",
     )
     filepath: str | None = Field(
         default=None,
-        description=(
-            "Path to the current file on disk. When provided, baseline is "
-            "loaded from disk and coupling is scored against the cached "
-            "ModuleDependencyGraph. STRONGLY PREFERRED for real refactor loops."
-        ),
+        description="Baseline file path for side-by-side assessment.",
     )
     current_code: str | None = Field(
         default=None,
-        description=(
-            "Baseline source as a string. Used only when `filepath` is not "
-            "given. Coupling will NOT be computed (AST-only)."
-        ),
+        description="Inline baseline source; COMPOSABLE is unavailable.",
     )
     language: str = Field(default="python")
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description=(
-            "Strict total order on the three generators; see "
-            "``topos://docs/preferences``."
-        ),
+        description="Optional generator ranking.",
     )
     gitnexus_dir: str | None = Field(default=None)
     include_security_findings: bool = Field(
         default=True,
-        description=(
-            "Include line/snippet diagnostics for dangerous API calls when "
-            "SECURE fails."
-        ),
+        description="Include SECURE findings.",
     )
     allow: list[str] = Field(
         default_factory=list,
-        description=(
-            "One-off acknowledged dangerous-call patterns for this assessment. "
-            "Mirrors CLI --allow and is fully disclosed in nested evaluations."
-        ),
+        description="One-off acknowledged dangerous-call patterns.",
     )
 
     @model_validator(mode="after")
@@ -348,6 +267,75 @@ class AssessImprovementInput(_StrictModel):
         if baseline_count != 1:
             raise ValueError("Provide exactly one of `filepath` or `current_code`.")
         return self
+
+
+class BeginRefactorInput(_StrictModel):
+    """Capture a dirty/untracked baseline before editing."""
+
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="File path to snapshot.",
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
+        description="Optional generator ranking.",
+    )
+    gitnexus_dir: str | None = Field(
+        default=None,
+        description=".gitnexus directory.",
+    )
+
+
+class AssessSnapshotInput(_StrictModel):
+    """Assess current file against a captured baseline."""
+
+    snapshot_id: str = Field(
+        ...,
+        min_length=1,
+        description="Snapshot id from topos_begin_refactor.",
+    )
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="Edited file path.",
+    )
+    include_security_findings: bool = Field(
+        default=True,
+        description="Include SECURE findings.",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description="One-off acknowledged dangerous-call patterns.",
+    )
+
+
+class AssessWorktreeChangeInput(_StrictModel):
+    """Assess an in-place edit against a git baseline."""
+
+    filepath: str = Field(
+        ...,
+        min_length=1,
+        description="Edited file path.",
+    )
+    baseline_ref: str = Field(
+        default="HEAD",
+        min_length=1,
+        description="Git baseline ref.",
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None,
+        description="Optional generator ranking.",
+    )
+    gitnexus_dir: str | None = Field(default=None)
+    include_security_findings: bool = Field(
+        default=True,
+        description="Include SECURE findings.",
+    )
+    allow: list[str] = Field(
+        default_factory=list,
+        description="One-off acknowledged dangerous-call patterns.",
+    )
 
 
 class InspectCodeInput(_StrictModel):
@@ -554,64 +542,32 @@ class PreferenceWalkResult(BaseModel):
 
 
 class PreferenceWalk(BaseModel):
-    """Targeted relaxation walk derived from a user preference ranking.
-
-    Two-stage strategy:
-
-    1. **Aim for 🥇 GOLD** (``target``) — try to beat the policy
-       thresholds for all three generators.
-    2. **Divert to the 🥈 SILVER "ideal intersection"** (``fallback_target``)
-       when 🥇 GOLD plateaus — the meet of the top-two ranked
-       generators per the preference ordering.
-
-    Beyond the fallback the walk continues down through 🥉 BRONZE atoms toward
-    ❌ ``SLOP``, in descending preference order.
-    """
+    """Targeted relaxation walk for a preference ranking."""
 
     ranking: list[Generator] = Field(
         ..., description="The preference ranking, most-preferred first."
     )
     target: LatticeElement = Field(
         ...,
-        description=(
-            "Aspirational target.  Defaults to ``IDEAL`` — try beating "
-            "all three thresholds first."
-        ),
+        description="Aspirational target.",
     )
     fallback_target: LatticeElement = Field(
         ...,
-        description=(
-            "Pragmatic divert-point when IDEAL plateaus — the 'ideal "
-            "intersection', i.e. the meet of the top-two ranked "
-            "generators.  For ranking [composable, secure, simple] "
-            "this is ``COMPOSABLE_SECURE``."
-        ),
+        description="Divert target when IDEAL stalls.",
     )
     walk: list[LatticeElement] = Field(
         default_factory=list,
-        description=(
-            "Descending sequence of verdicts the agent should aim for, "
-            "from the aspirational target (``IDEAL`` by default) down "
-            "to just above the current verdict.  The **second** "
-            "element is ``fallback_target`` — the natural divert-point "
-            "when IDEAL stalls.  Empty when at or beyond target."
-        ),
+        description="Preference-ordered verdict path above current.",
     )
     next_step: LatticeElement | None = Field(
         default=None,
-        description=(
-            "The immediate next achievable verdict above the current "
-            "one — the smallest improvement that still respects the "
-            "preference order.  ``None`` when at or beyond target."
-        ),
+        description="Immediate next verdict above current.",
     )
     progress: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description=(
-            "Fractional progress from SLOP to the aspirational target, in [0.0, 1.0]."
-        ),
+        description="Progress toward target in [0, 1].",
     )
 
 
@@ -823,6 +779,21 @@ class ComparisonResult(BaseModel):
     error: str | None = None
 
 
+class SnapshotResult(BaseModel):
+    """Result of ``topos_begin_refactor`` — a captured baseline handle."""
+
+    snapshot_id: str = Field(
+        ...,
+        description="Opaque handle for this capture; pass to topos_assess_snapshot.",
+    )
+    filepath: str = Field(..., description="The file the baseline was captured from.")
+    baseline_hash: str = Field(..., description="sha256 of the baseline source.")
+    created_at: float = Field(..., description="Unix timestamp the snapshot was taken.")
+    warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
 class AssessmentResult(BaseModel):
     """Result of ``topos_assess_improvement``."""
 
@@ -844,6 +815,11 @@ class AssessmentResult(BaseModel):
     structural_distance: float | None = None
     similarity: float | None = None
     coupling_available_for_proposed: bool
+    # sha256 of the baseline and current (proposed) source. Let snapshot/worktree
+    # callers confirm exactly which revisions were compared without re-sending
+    # source. None only on the error path.
+    baseline_hash: str | None = None
+    current_hash: str | None = None
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
     # Anti-gaming: populated when scores moved but the tree barely changed.

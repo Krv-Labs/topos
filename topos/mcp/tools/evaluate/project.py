@@ -1,9 +1,5 @@
 """
-Evaluation tools: code string, single file, whole project.
-
-The single-file tool is the P0 bug fix — the previous ``evaluate_file``
-delegated to ``evaluate_code`` and dropped the filepath, so ModuleDependencyGraph
-was never built and COMPOSABLE/IDEAL were unreachable via MCP.
+Evaluation tool: whole project.
 """
 
 from __future__ import annotations
@@ -22,34 +18,29 @@ from topos.evaluation.characteristic_morphism import (
 from topos.evaluation.policies.base import Priority
 from topos.utils.discovery import collect_source_files
 
-from ..diagnostics import overlay_for_file, overlay_for_source
-from ..evaluation import (
-    classify_code_string,
+from ...diagnostics import overlay_for_file
+from ...evaluation import (
     classify_file,
     gitnexus_warnings,
     resolve_gitnexus_dir,
 )
-from ..formatting import (
+from ...formatting import (
     build_pillars,
     lattice_to_str,
-    render_evaluation_md,
-    to_evaluation_result,
     to_tool_result,
 )
-from ..schemas import (
+from ...schemas import (
     AgentContract,
-    EvaluateCodeInput,
-    EvaluateFileInput,
     EvaluateProjectInput,
-    EvaluationResult,
     LatticeElement,
     PrioritySource,
     ProjectEvaluationResult,
     ProjectFileEntry,
     resolve_priority,
 )
-from ..security import resolve_file_root, resolve_within_root
-from ..server import mcp
+from ...security import resolve_file_root, resolve_within_root
+from ...server import mcp
+from .render import render_project_md
 
 _READ_ONLY_ANN = {
     "title": "Topos Code Evaluation",
@@ -60,153 +51,23 @@ _READ_ONLY_ANN = {
 }
 
 
-@mcp.tool(
-    name="topos_evaluate_code",
-    tags={"evaluate", "single-unit"},
-    annotations=_READ_ONLY_ANN,
-)
-def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
-    """Classify a raw code string on the free Heyting algebra H(G_qual).
-
-    SIMPLE and SECURE generators are scored from CFG / CPG built on the
-    source.  COMPOSABLE requires a ``ModuleDependencyGraph`` (and is therefore
-    unreachable from a bare string); use ``topos_evaluate_file`` with
-    ``gitnexus_dir`` to enable it.
-
-    Lattice values are the 8 elements of the 3-cube H(G_qual):
-        SLOP (⊥)             No generator satisfied.
-        SIMPLE / COMPOSABLE / SECURE     One generator satisfied.
-        SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE  Two satisfied.
-        IDEAL (⊤)            All three generators satisfied.
-    """
-    try:
-        priority, priority_source = resolve_priority(params.preferences)
-        result = classify_code_string(params.code, params.language, priority)
-    except Exception as exc:
-        model = EvaluationResult(
-            is_parseable=False,
-            lattice_element=LatticeElement.SLOP,
-            lattice_symbol="⊥",
-            lattice_description="Evaluation failed",
-            dimensions={},
-            scores={},
-            priority=Priority.SIMPLE,
-            guidance="",
-            coupling_available=False,
-            error=str(exc),
-        )
-        return to_tool_result(model, _error_md(model))
-    prefs = params.preferences.to_preferences() if params.preferences else None
-    model = to_evaluation_result(
+def _adjusted_result(result: ClassificationResult, overlay):
+    if overlay is None:
+        return result
+    dimensions = dict(result.dimensions)
+    scores = dict(result.scores)
+    dimensions["secure"] = (
+        EvaluationValue.SECURE
+        if overlay.verdict.adjusted_secure_pass
+        else EvaluationValue.SLOP
+    )
+    scores["secure"] = 1.0 if overlay.verdict.adjusted_secure_pass else 0.0
+    return replace(
         result,
-        coupling_available=False,
-        preferences=prefs,
-        priority_source=priority_source,
-        **_overlay_kwargs(
-            overlay_for_source(
-                params.code,
-                params.language,
-                result,
-                allows=params.allow,
-                include_security_findings=True,
-            )
-        ),
-        verbose=params.verbose,
+        dimensions=dimensions,
+        scores=scores,
+        lattice_element=overlay.verdict.adjusted_element,
     )
-    return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
-
-
-@mcp.tool(
-    name="topos_evaluate_file",
-    tags={"evaluate", "single-unit"},
-    annotations=_READ_ONLY_ANN,
-)
-def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
-    """Evaluate a file on disk. **Enables the COMPOSABLE generator.**
-
-    When ``gitnexus_dir`` is provided (or auto-detected at
-    ``<project_root>/.gitnexus``), a ``ModuleDependencyGraph`` is attached to
-    the classifier so the COMPOSABLE generator can be scored.  CFG and
-    CPG (SIMPLE and SECURE generators) always run.
-
-    Generate a ``.gitnexus/`` directory with ``topos depgraph generate`` first
-    (requires ``npm install -g gitnexus``).
-    """
-    resolved, err = resolve_within_root(params.filepath)
-    if err or resolved is None:
-        model = EvaluationResult(
-            is_parseable=False,
-            lattice_element=LatticeElement.SLOP,
-            lattice_symbol="⊥",
-            lattice_description="Access denied / path error",
-            dimensions={},
-            scores={},
-            priority=Priority.SIMPLE,
-            guidance="",
-            coupling_available=False,
-            error=(err or {}).get("error", "path error"),
-        )
-        return to_tool_result(model, _error_md(model))
-
-    if not resolved.is_file():
-        model = EvaluationResult(
-            is_parseable=False,
-            lattice_element=LatticeElement.SLOP,
-            lattice_symbol="⊥",
-            lattice_description="Not a file",
-            dimensions={},
-            scores={},
-            priority=Priority.SIMPLE,
-            guidance="",
-            coupling_available=False,
-            error=f"Path is not a file: {resolved}",
-        )
-        return to_tool_result(model, _error_md(model))
-
-    project_root = resolve_file_root()
-    gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
-    priority, priority_source = resolve_priority(params.preferences)
-
-    try:
-        result, dep_graph = classify_file(resolved, priority, gitnexus_dir)
-    except Exception as exc:
-        model = EvaluationResult(
-            is_parseable=False,
-            lattice_element=LatticeElement.SLOP,
-            lattice_symbol="⊥",
-            lattice_description="Evaluation failed",
-            dimensions={},
-            scores={},
-            priority=Priority.SIMPLE,
-            guidance="",
-            coupling_available=False,
-            error=str(exc),
-        )
-        return to_tool_result(model, _error_md(model))
-
-    prefs = params.preferences.to_preferences() if params.preferences else None
-    warnings = gitnexus_warnings(
-        params.gitnexus_dir,
-        project_root,
-        gitnexus_dir,
-        dep_graph_loaded=dep_graph is not None,
-    )
-    overlay = overlay_for_file(
-        resolved,
-        result,
-        allows=params.allow,
-        include_security_findings=params.include_security_findings,
-    )
-    model = to_evaluation_result(
-        result,
-        coupling_available=dep_graph is not None,
-        preferences=prefs,
-        priority_source=priority_source,
-        warnings=warnings,
-        **_overlay_kwargs(overlay),
-        verbose=params.verbose,
-    )
-    return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
 
 def _evaluate_single_file(
@@ -511,40 +372,6 @@ def _empty_project_result(
     )
 
 
-def _error_md(model: EvaluationResult) -> str:
-    """Compact markdown for an error/early-return EvaluationResult."""
-    return f"**Error:** {model.error or model.lattice_description}"
-
-
-def _overlay_kwargs(overlay):
-    if overlay is None:
-        return {}
-    return {
-        "security_findings": overlay.active_findings,
-        "acknowledged_risks": overlay.acknowledged_risks,
-        "adjusted_verdict": overlay.verdict,
-    }
-
-
-def _adjusted_result(result: ClassificationResult, overlay):
-    if overlay is None:
-        return result
-    dimensions = dict(result.dimensions)
-    scores = dict(result.scores)
-    dimensions["secure"] = (
-        EvaluationValue.SECURE
-        if overlay.verdict.adjusted_secure_pass
-        else EvaluationValue.SLOP
-    )
-    scores["secure"] = 1.0 if overlay.verdict.adjusted_secure_pass else 0.0
-    return replace(
-        result,
-        dimensions=dimensions,
-        scores=scores,
-        lattice_element=overlay.verdict.adjusted_element,
-    )
-
-
 def _aggregate_explanation(
     rolled: dict[str, object],
     rolled_scores: dict[str, float],
@@ -617,61 +444,8 @@ def _project_contract(
         next_actions.append(f"start with worst file {worst_files[0].filepath}")
 
     verification_gates = [
-        "topos_assess_improvement validates each accepted refactor",
+        "topos_assess_worktree_change validates each accepted in-place refactor",
         "project rollup does not regress after non-trivial changes",
         "behavior tests or type/lint checks pass when available",
     ]
     return next_tool, next_actions, blocked_by, verification_gates, risk_flags
-
-
-# ---------------------------------------------------------------------------
-# Markdown helpers (rendered into ToolResult.content by the tools above)
-# ---------------------------------------------------------------------------
-
-
-def _render_project_entry(entry: ProjectFileEntry, verbose: bool) -> list[str]:
-    lines = []
-    s_str = ", ".join(f"{k}={v:.0f}" for k, v in entry.scores.items())
-    lines.append(f"- `{entry.filepath}` — {entry.lattice_element.value} ({s_str})")
-    if verbose and entry.raw_metrics:
-        for k, v in sorted(entry.raw_metrics.items()):
-            lines.append(f"  - `{k}`: {v:.3f}")
-    return lines
-
-
-def render_project_md(r: ProjectEvaluationResult) -> str:
-    lines = [f"# Project Evaluation — {r.root}", ""]
-    lines.append(f"**Overall:** {r.aggregate_floor_verdict.value}")
-    lines.append(
-        f"**Files scanned:** {r.file_count} (parse failures: {r.parse_failures})"
-    )
-    lines.append(f"**Priority:** `{r.priority.value}`")
-    if not r.coupling_available:
-        lines.append("> ⚠️ No `.gitnexus/` present — coupling dimension not scored.")
-    if r.agent_contract is not None:
-        lines.append("")
-        lines.append("## Agent Contract")
-        if r.agent_contract.next_tool:
-            lines.append(f"- **Next tool:** `{r.agent_contract.next_tool}`")
-        for action in r.agent_contract.next_actions:
-            lines.append(f"- **Action:** {action}")
-        for blocked in r.agent_contract.blocked_by:
-            lines.append(f"- **Blocked by:** `{blocked}`")
-    lines.append("")
-    lines.append("## Rolled-up dimensions")
-    for dim, val in r.rolled_up_dimensions.items():
-        s = r.rolled_up_scores.get(dim)
-        lines.append(
-            f"- **{dim}**: {val.value}" + (f" ({s:.1f}%)" if s is not None else "")
-        )
-    lines.append("")
-    lines.append(f"## Worst files (showing {r.count} of {r.total}, offset {r.offset})")
-    for entry in r.files:
-        lines.extend(_render_project_entry(entry, r.verbose))
-    if r.has_more:
-        lines.append(
-            f"\n_more files available: pass offset={r.next_offset} to continue._"
-        )
-    if r.error:
-        lines.append(f"\n> error: {r.error}")
-    return "\n".join(lines)

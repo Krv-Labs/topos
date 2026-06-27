@@ -27,7 +27,11 @@ def _get_mcp():
                 "For agent loops, load the compact contract with "
                 '`topos_get_doc(topic="agent-contract")` or '
                 "fetch `topos://docs/agent-contract`. "
-                "Key call pattern: topos_evaluate_file → topos_assess_improvement. "
+                "Default loop: topos_evaluate_file, edit in place, then "
+                "topos_assess_worktree_change (baseline = git ref). "
+                "For uncommitted or untracked baselines, snapshot first with "
+                "topos_begin_refactor, then verify with topos_assess_snapshot. "
+                "Use topos_assess_improvement only for side-by-side variants. "
                 "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL. "
                 "topos_calculate_coverage reports test-suite coverage — structural "
                 "(UAST) and semantic (ECT) — as a separate signal, outside the lattice."

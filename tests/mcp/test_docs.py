@@ -24,6 +24,13 @@ def test_get_doc_returns_agent_contract() -> None:
     assert "verification_gates" in body
 
 
+def test_get_doc_points_refactors_to_compact_contract_first() -> None:
+    doc = topos_get_doc.__doc__ or ""
+    assert "agent-contract" in doc
+    assert "Read first for refactors" in doc
+    assert "Read this first on every new refactor session" not in doc
+
+
 def test_get_doc_returns_lattice() -> None:
     body = topos_get_doc(topic="lattice")
     assert "Evaluation Lattice" in body

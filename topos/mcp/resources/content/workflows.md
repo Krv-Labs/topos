@@ -72,7 +72,7 @@ written inside the configured file root.
 
 ### 4. Verify
 
-`topos_assess_improvement` returns one of:
+All assessment tools return one of:
 
 - `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Topos accepts the structural direction; behavior checks still gate final acceptance.
 - `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.

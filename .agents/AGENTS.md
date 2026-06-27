@@ -49,7 +49,9 @@ Exposes tools, resources, and prompts for agent workflows:
 ## Closed-Loop Agent Workflow
 Read `topos://docs/agent-contract` first. Use Topos as the structural verifier:
 measure, make one focused structural change, verify with
-`topos_assess_improvement`, and run relevant behavior checks before accepting.
+`topos_assess_worktree_change` for in-place edits, snapshot first only when the
+baseline is not in git, and use `topos_assess_improvement` only for side-by-side
+variants. Run relevant behavior checks before accepting.
 `IMPROVEMENT` / `IMPROVEMENT_SCORE` are Topos acceptance signals, not automatic
 commit permission. `SUSPICIOUS_NO_STRUCTURAL_CHANGE` blocks acceptance.
 

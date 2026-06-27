@@ -28,8 +28,8 @@ correctness.
 
 A change is ready to accept only when:
 
-- `topos_assess_improvement.status` is `IMPROVEMENT` or `IMPROVEMENT_SCORE`.
-- The status is not `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
+- The assessment status is `IMPROVEMENT` or `IMPROVEMENT_SCORE`.
+- The assessment status is not `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - Active SECURE findings are fixed or intentionally acknowledged and disclosed.
 - Project rollup does not regress after non-trivial cross-file changes.
 - Relevant behavior checks pass, or missing checks are reported.

@@ -444,7 +444,7 @@ def _project_contract(
         next_actions.append(f"start with worst file {worst_files[0].filepath}")
 
     verification_gates = [
-        "topos_assess_improvement validates each accepted refactor",
+        "topos_assess_worktree_change validates each accepted in-place refactor",
         "project rollup does not regress after non-trivial changes",
         "behavior tests or type/lint checks pass when available",
     ]

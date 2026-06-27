@@ -188,23 +188,12 @@ def _calculate_deltas(
     annotations=_READ_ONLY_ANN,
 )
 def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
-    """Compare proposed code against the current baseline.
+    """Compare a baseline to a side-by-side proposed variant.
 
-    **Preferred usage** — pass ``filepath`` (code loaded from disk + coupling
-    scored against the cached ``ModuleDependencyGraph``). The proposed code is
-    parsed, but coupling is an approximation: it uses the *current* dep graph
-    for the target file, so inbound edges from other files reflect the
-    pre-refactor state. That's fine for tight iteration loops.
-
-    **Legacy usage** — pass ``current_code`` + ``proposed_code``. Coupling is
-    NOT computed (AST-only).
-
-    For edit-in-place loops, prefer ``topos_assess_worktree_change`` (compare
-    against a git ref) or ``topos_begin_refactor`` + ``topos_assess_snapshot``.
-
-    Anti-gaming: when scores move meaningfully but AST edit distance is near
-    zero, status becomes ``SUSPICIOUS_NO_STRUCTURAL_CHANGE`` and
-    ``suspicion_reason`` is populated.
+    For normal edit-in-place loops, use ``topos_assess_worktree_change`` or
+    snapshot first with ``topos_begin_refactor`` then ``topos_assess_snapshot``.
+    This tool is for variants supplied as ``proposed_code`` or
+    ``proposed_filepath``.
     """
     priority, priority_source = resolve_priority(params.preferences)
     try:

@@ -51,6 +51,12 @@ Topos
 
       Detailed overview of the Topos command-line interface and available tools.
 
+   .. grid-item-card:: Preferences
+      :link: preferences
+      :link-type: doc
+
+      Tell agents how to trade off SIMPLE, COMPOSABLE, and SECURE when GOLD stalls.
+
    .. grid-item-card:: Measures
       :link: measures
       :link-type: doc
@@ -166,6 +172,7 @@ Topos measures code along the three independent quality generators and maps them
    :hidden:
 
    For Agents <agents>
+   Preferences <preferences>
    cli
 
 .. toctree::

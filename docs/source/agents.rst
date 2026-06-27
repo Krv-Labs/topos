@@ -13,42 +13,6 @@ For Agents
    Topos lets you set the quality target while the agent handles the loop:
    measure, change, verify, stop when the target or budget is reached.
 
-
-Setting Preferences
--------------------
-
-A **preference ranking** is a strict total order over the three quality pillars:
-``simple``, ``composable``, and ``secure``. Topos uses the ranking to compute a
-**relaxation walk**: the sequence of lattice targets an agent should try when
-``IDEAL`` is not reachable within the available time or token budget.
-
-Use it when you care about the order of tradeoffs. For example,
-``["simple", "composable", "secure"]`` tells the agent to preserve simplicity
-first, then composability, then security if all three cannot be improved at once.
-
-.. list-table::
-   :widths: 15 35 50
-   :header-rows: 1
-
-   * - Rank
-     - Primary Focus
-     - Optimizes toward
-   * - 1 (Top)
-     - Mandatory
-     - The property that must be achieved first.
-   * - 2 (Middle)
-     - Aspirational
-     - The secondary goal; forms the "ideal intersection" with Rank 1.
-   * - 3 (Bottom)
-     - Pragmatic
-     - The final property needed to reach ``IDEAL``.
-
-Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
-
-1. **Aspirational target**: The agent first tries to reach ``IDEAL`` (all three pillars pass).
-2. **Pragmatic fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE``
-   (the intersection of the top two).
-
 MCP Setup
 ---------
 
@@ -246,6 +210,40 @@ environment that runs ``topos mcp``.
 If the extra is missing, the tool still returns structural coverage and reports
 topological coverage as unavailable with an install hint.
 
+Setting Preferences
+-------------------
+
+A **preference ranking** is a strict total order over the three quality pillars:
+``simple``, ``composable``, and ``secure``. Topos uses the ranking to compute a
+**relaxation walk**: the sequence of lattice targets an agent should try when
+``IDEAL`` is not reachable within the available time or token budget.
+
+Use it when you care about the order of tradeoffs. For example,
+``["simple", "composable", "secure"]`` tells the agent to preserve simplicity
+first, then composability, then security if all three cannot be improved at once.
+
+.. list-table::
+   :widths: 15 35 50
+   :header-rows: 1
+
+   * - Rank
+     - Primary Focus
+     - Optimizes toward
+   * - 1 (Top)
+     - Mandatory
+     - The property that must be achieved first.
+   * - 2 (Middle)
+     - Aspirational
+     - The secondary goal; forms the "ideal intersection" with Rank 1.
+   * - 3 (Bottom)
+     - Pragmatic
+     - The final property needed to reach ``IDEAL``.
+
+Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
+
+1. **Aspirational target**: The agent first tries to reach ``IDEAL`` (all three pillars pass).
+2. **Pragmatic fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE``
+   (the intersection of the top two).
 
 MCP Tools
 ---------

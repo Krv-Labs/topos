@@ -1,13 +1,12 @@
 # Priority Profiles
 
-The `priority` parameter on every Topos evaluation tool encodes the
-manager's **strict total order on the quality generators** `G_qual =
-{ SIMPLE, COMPOSABLE, SECURE }`.
+The `priority` parameter is a single scorer knob. It upweights one quality
+generator (`simple`, `composable`, or `secure`) inside the policy translators
+`Φᵢ`.
 
-It shifts metric weights inside each policy translator `Φᵢ` and, when
-agents must trade off, defines the target-relaxation walk (highest
-bit = highest priority).  It does **not** change the lattice — the three
-generators remain pairwise incomparable in `H(G_qual)`.
+Priority does **not** define the target-relaxation walk and does **not**
+linearize the lattice. Use `preferences.ranking` when an agent needs a strict
+total order over `SIMPLE`, `COMPOSABLE`, and `SECURE`.
 
 ## When to use which
 
@@ -44,7 +43,10 @@ relevant target.
 
 ## Switching mid-loop
 
-Agents can change priority across evaluation calls.  It is a hint to the
-scorer, not a contract — the same raw metrics produce different verdicts
-under different priorities.  Running the same file at e.g. `secure` then
-`composable` typically exposes which generator is the current bottleneck.
+Agents can change priority across evaluation calls. It is a hint to the scorer,
+not a contract for what tradeoff to accept. Running the same file at e.g.
+`secure` then `composable` can expose which generator is the current scoring
+bottleneck.
+
+For target tradeoffs, use `preferences.ranking`: it tells the agent which
+silver or bronze outcome to prefer if `IDEAL` stalls.

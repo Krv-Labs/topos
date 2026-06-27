@@ -87,6 +87,7 @@ def test_per_tool_surface_under_ceiling() -> None:
 
 def test_tool_surface_has_current_refactor_routing() -> None:
     """Keep stale side-by-side guidance out of model-visible tool metadata."""
+
     async def _wire_blob() -> str:
         chunks = []
         for tool in await _get_mcp().list_tools():

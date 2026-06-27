@@ -35,6 +35,11 @@ def test_should_skip_passive_notice_env(monkeypatch):
     assert should_skip_passive_notice(invoked_subcommand="evaluate", help_requested=False)
 
 
+def test_should_skip_passive_notice_ci(monkeypatch):
+    monkeypatch.setenv("CI", "true")
+    assert should_skip_passive_notice(invoked_subcommand="evaluate", help_requested=False)
+
+
 def test_cache_is_fresh():
     recent = {
         "checked_at": datetime.now(UTC).isoformat(),
@@ -64,9 +69,11 @@ def test_maybe_show_update_notice_emits(
     mock_latest,
     mock_save,
     mock_outdated,
+    monkeypatch,
 ):
     from topos.cli.installation import InstallInfo
 
+    monkeypatch.delenv("CI", raising=False)
     mock_detect.return_value = InstallInfo(method="binary-installer")
 
     maybe_show_update_notice(invoked_subcommand="evaluate", help_requested=False)
@@ -87,9 +94,11 @@ def test_maybe_show_update_notice_uses_fresh_cache(
     mock_detect,
     mock_load_cache,
     mock_latest,
+    monkeypatch,
 ):
     from topos.cli.installation import InstallInfo
 
+    monkeypatch.delenv("CI", raising=False)
     mock_detect.return_value = InstallInfo(method="binary-installer")
     mock_load_cache.return_value = {
         "checked_at": datetime.now(UTC).isoformat(),

@@ -1,10 +1,25 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
+
+_PACKAGE_NAME = "topos-mcp"
+
+
+@dataclass(frozen=True)
+class InstallInfo:
+    """Detected install channel and related commands."""
+
+    method: str
+    provenance: dict[str, str] | None = None
+    uninstall_cmd: str | None = None
+    update_cmd: str | None = None
+    installer: str | None = None
 
 
 def provenance_file() -> Path:
@@ -34,15 +49,58 @@ def load_provenance() -> dict[str, str] | None:
     return data or None
 
 
-def detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
+def _is_editable_install(dist: importlib.metadata.Distribution) -> bool:
+    try:
+        direct_url_raw = dist.read_text("direct_url.json")
+    except (FileNotFoundError, OSError, UnicodeError):
+        return False
+    if not direct_url_raw:
+        return False
+    try:
+        direct_url = json.loads(direct_url_raw)
+    except json.JSONDecodeError:
+        return False
+    return bool(direct_url.get("dir")) and bool(direct_url.get("editable"))
+
+
+def _package_manager_info(installer: str) -> InstallInfo:
+    if installer == "uv":
+        return InstallInfo(
+            method="package-manager",
+            uninstall_cmd=f"uv pip uninstall {_PACKAGE_NAME}",
+            update_cmd=f"uv pip install -U {_PACKAGE_NAME}",
+            installer="uv",
+        )
+    if installer in {"pip", ""}:
+        return InstallInfo(
+            method="package-manager",
+            uninstall_cmd=f"pip uninstall {_PACKAGE_NAME}",
+            update_cmd=f"pip install -U {_PACKAGE_NAME}",
+            installer="pip",
+        )
+    return InstallInfo(
+        method="package-manager",
+        uninstall_cmd=f"{installer} uninstall {_PACKAGE_NAME}",
+        update_cmd=f"{installer} install -U {_PACKAGE_NAME}",
+        installer=installer,
+    )
+
+
+def detect_install_info() -> InstallInfo:
     provenance = load_provenance()
     if provenance and provenance.get("install_method") == "binary-installer":
-        return "binary-installer", provenance, None
+        return InstallInfo(method="binary-installer", provenance=provenance)
 
     try:
-        dist = importlib.metadata.distribution("topos")
+        dist = importlib.metadata.distribution(_PACKAGE_NAME)
     except importlib.metadata.PackageNotFoundError:
-        return "unknown", None, None
+        return InstallInfo(method="unknown")
+
+    if _is_editable_install(dist):
+        return InstallInfo(
+            method="source",
+            update_cmd="git pull && uv pip install -e .",
+        )
 
     try:
         installer_raw = dist.read_text("INSTALLER")
@@ -50,11 +108,12 @@ def detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
         installer_raw = "pip"
 
     installer = (installer_raw or "").strip().lower()
-    if installer == "uv":
-        return "package-manager", None, "uv pip uninstall topos"
-    if installer in {"pip", ""}:
-        return "package-manager", None, "pip uninstall topos"
-    return "package-manager", None, f"{installer} uninstall topos"
+    return _package_manager_info(installer)
+
+
+def detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
+    info = detect_install_info()
+    return info.method, info.provenance, info.uninstall_cmd
 
 
 def prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:

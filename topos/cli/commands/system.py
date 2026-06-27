@@ -12,6 +12,7 @@ from topos.cli.installation import (
     prune_path_hints,
     remove_provenance_record,
 )
+from topos.cli.update import run_update
 
 
 def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
@@ -77,8 +78,8 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
             "Could not determine a managed installer provenance record.",
             err=True,
         )
-        click.echo("If installed via pip: pip uninstall topos", err=True)
-        click.echo("If installed via uv: uv pip uninstall topos", err=True)
+        click.echo("If installed via pip: pip uninstall topos-mcp", err=True)
+        click.echo("If installed via uv: uv pip uninstall topos-mcp", err=True)
         sys.exit(1)
 
     install_path = provenance.get("install_path", "").strip()
@@ -102,6 +103,23 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
                 "PATH hints were left unchanged. Re-run with --prune-path-hints "
                 "to remove installer-added PATH blocks."
             )
+
+
+@click.command()
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Exit 0 if up to date, 1 if outdated (for scripts).",
+)
+@click.option(
+    "--version",
+    "pin_version",
+    default=None,
+    help="Pin release version for binary installs (e.g. v0.3.6).",
+)
+def update(check: bool, pin_version: str | None) -> None:
+    """Upgrade Topos using the detected install channel."""
+    run_update(check_only=check, pin_version=pin_version)
 
 
 @click.command()
@@ -153,6 +171,7 @@ def depgraph_generate(directory: str | None) -> None:
 
 def register_system_commands(cli_group: click.Group) -> None:
     """Attach system and integration commands to the root CLI group."""
+    cli_group.add_command(update)
     cli_group.add_command(uninstall)
     cli_group.add_command(mcp)
     cli_group.add_command(depgraph)

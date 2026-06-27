@@ -41,9 +41,9 @@ Run ``topos depgraph generate`` only when you need COMPOSABLE metrics. Run
    .. grid-item-card:: ⚙️ System commands
       :shadow: md
 
-      Run the MCP server, generate dependency graphs, or uninstall cleanly.
+      Run the MCP server, generate dependency graphs, update, or uninstall cleanly.
       ^^^
-      ``mcp`` · ``depgraph generate`` · ``uninstall``
+      ``mcp`` · ``depgraph generate`` · ``update`` · ``uninstall``
 
 Quality commands
 ================
@@ -271,6 +271,45 @@ If ``gitnexus`` is missing, install it first:
    cd /path/to/your/repo
    topos depgraph generate
    topos evaluate src/ -r --gitnexus-dir .gitnexus/
+
+update
+------
+
+Upgrade Topos using the detected install channel (binary installer, PyPI package manager, or source checkout).
+
+.. code-block:: bash
+
+   topos update [OPTIONS]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Option
+     - Description
+   * - ``--check``
+     - Exit 0 if up to date, 1 if outdated (for scripts). No upgrade is performed.
+   * - ``--version VERSION``
+     - Pin a release for binary installs (maps to ``TOPOS_VERSION`` in ``install.sh``).
+
+Channel behavior:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Install channel
+     - ``topos update`` behavior
+   * - Binary (``install.sh``)
+     - Re-runs the installer with checksum verification; preserves PATH hints.
+   * - PyPI (``uv`` / ``pip``)
+     - Runs ``uv pip install -U topos-mcp`` or ``pip install -U topos-mcp``.
+   * - Source (editable checkout)
+     - Prints instructions: ``git pull && uv pip install -e .``
+   * - Unknown
+     - Prints all supported upgrade paths.
+
+On interactive CLI use (not ``topos mcp``), Topos may print a one-line update notice at most once per 24 hours when a newer release is available. Set ``TOPOS_NO_UPDATE_NOTICES=1`` to disable.
 
 uninstall
 ---------

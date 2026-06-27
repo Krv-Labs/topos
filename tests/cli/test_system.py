@@ -95,3 +95,134 @@ def test_uninstall_binary_yes(tmp_path: Path):
         assert f"Removed binary: {binary}" in result.output
         assert not binary.exists()
         mock_remove.assert_called_once()
+
+
+@patch("topos.cli.update.subprocess.run")
+@patch("topos.cli.update.subprocess.Popen")
+def test_update_binary_invokes_install_script(mock_popen, mock_run, tmp_path: Path):
+    from unittest.mock import MagicMock
+
+    binary = tmp_path / "bin" / "topos"
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+
+    curl_proc = mock_popen.return_value
+    curl_proc.stdout = MagicMock()
+    mock_run.return_value.returncode = 0
+
+    with patch(
+        "topos.cli.update.detect_install_info",
+    ) as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="binary-installer",
+            provenance=provenance,
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        assert "Updating Topos via install.sh" in result.output
+
+    mock_popen.assert_called_once()
+    _, kwargs = mock_run.call_args
+    env = kwargs["env"]
+    assert env["TOPOS_UPDATE"] == "1"
+    assert env["TOPOS_INSTALL"] == str(binary.parent)
+    assert env["TOPOS_NO_MODIFY_PATH"] == "1"
+
+
+@patch("topos.cli.update.subprocess.run")
+def test_update_package_manager_uv(mock_run):
+    mock_run.return_value.returncode = 0
+
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="package-manager",
+            installer="uv",
+            update_cmd="uv pip install -U topos-mcp",
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        mock_run.assert_called_once_with(
+            ["uv", "pip", "install", "-U", "topos-mcp"],
+            check=False,
+        )
+
+
+@patch("topos.cli.update.subprocess.run")
+def test_update_package_manager_pip(mock_run):
+    mock_run.return_value.returncode = 0
+
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="package-manager",
+            installer="pip",
+            update_cmd="pip install -U topos-mcp",
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        mock_run.assert_called_once_with(
+            ["pip", "install", "-U", "topos-mcp"],
+            check=False,
+        )
+
+
+def test_update_source_prints_instructions():
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="source",
+            update_cmd="git pull && uv pip install -e .",
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        assert "editable/source installation" in result.output
+        assert "git pull && uv pip install -e ." in result.output
+
+
+@patch("topos.cli.update.__version__", "0.3.5")
+@patch("topos.cli.update.latest_version_for_channel", return_value="0.3.6")
+def test_update_check_outdated(mock_latest):
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(method="package-manager")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "--check"])
+        assert result.exit_code == 1
+        assert "Outdated: 0.3.5 → 0.3.6" in result.output
+
+
+@patch("topos.cli.update.__version__", "0.3.6")
+@patch("topos.cli.update.latest_version_for_channel", return_value="0.3.6")
+def test_update_check_current(mock_latest):
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(method="binary-installer")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "--check"])
+        assert result.exit_code == 0
+        assert "Up to date: 0.3.6" in result.output
+
+
+def test_update_unknown_lists_paths():
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(method="unknown")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        assert "Could not determine install channel" in result.output
+        assert "uv pip install -U topos-mcp" in result.output

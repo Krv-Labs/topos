@@ -4,6 +4,7 @@ from pathlib import Path
 
 from topos.cli.evaluation import collect_files
 from topos.cli.installation import (
+    detect_install_info,
     detect_install_method,
     load_provenance,
     prune_path_hints,
@@ -74,7 +75,15 @@ def test_detect_install_method_pip(monkeypatch):
     from unittest.mock import MagicMock
 
     mock_dist = MagicMock()
-    mock_dist.read_text.return_value = "pip"
+
+    def read_text(name: str) -> str:
+        if name == "direct_url.json":
+            raise FileNotFoundError
+        if name == "INSTALLER":
+            return "pip"
+        raise FileNotFoundError
+
+    mock_dist.read_text.side_effect = read_text
 
     with monkeypatch.context() as m:
         m.setattr("importlib.metadata.distribution", lambda name: mock_dist)
@@ -82,4 +91,43 @@ def test_detect_install_method_pip(monkeypatch):
 
         method, prov, cmd = detect_install_method()
         assert method == "package-manager"
-        assert cmd == "pip uninstall topos"
+        assert cmd == "pip uninstall topos-mcp"
+
+
+def test_detect_install_method_uv(monkeypatch):
+    from unittest.mock import MagicMock
+
+    mock_dist = MagicMock()
+
+    def read_text(name: str) -> str:
+        if name == "direct_url.json":
+            raise FileNotFoundError
+        if name == "INSTALLER":
+            return "uv"
+        raise FileNotFoundError
+
+    mock_dist.read_text.side_effect = read_text
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", lambda name: mock_dist)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+
+        info = detect_install_info()
+        assert info.method == "package-manager"
+        assert info.installer == "uv"
+        assert info.update_cmd == "uv pip install -U topos-mcp"
+
+
+def test_detect_install_method_editable(monkeypatch):
+    from unittest.mock import MagicMock
+
+    mock_dist = MagicMock()
+    mock_dist.read_text.return_value = '{"dir": "/src/topos", "editable": true}'
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", lambda name: mock_dist)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+
+        info = detect_install_info()
+        assert info.method == "source"
+        assert info.update_cmd == "git pull && uv pip install -e ."

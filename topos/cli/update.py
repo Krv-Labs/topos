@@ -22,9 +22,7 @@ _GITHUB_REPO = "Krv-Labs/topos"
 _PYPI_PACKAGE = "topos-mcp"
 _FETCH_TIMEOUT = 3
 _CACHE_TTL = timedelta(hours=24)
-_VERSION_RE = re.compile(
-    r"^v?(?P<major>\d+)(?:\.(?P<minor>\d+))?(?:\.(?P<patch>\d+))?"
-)
+_VERSION_RE = re.compile(r"^v?(?P<major>\d+)(?:\.(?P<minor>\d+))?(?:\.(?P<patch>\d+))?")
 
 
 def update_check_cache_file() -> Path:
@@ -236,9 +234,7 @@ def should_skip_passive_notice(
         return True
     if help_requested:
         return True
-    if invoked_subcommand in {"mcp", "update"}:
-        return True
-    return False
+    return invoked_subcommand in {"mcp", "update"}
 
 
 def maybe_show_update_notice(

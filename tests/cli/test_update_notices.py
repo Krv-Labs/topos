@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from click.testing import CliRunner
-
 from topos.cli.main import cli
 from topos.cli.update import (
     cache_is_fresh,
@@ -32,12 +31,18 @@ def test_should_skip_passive_notice_mcp():
 
 def test_should_skip_passive_notice_env(monkeypatch):
     monkeypatch.setenv("TOPOS_NO_UPDATE_NOTICES", "1")
-    assert should_skip_passive_notice(invoked_subcommand="evaluate", help_requested=False)
+    assert should_skip_passive_notice(
+        invoked_subcommand="evaluate",
+        help_requested=False,
+    )
 
 
 def test_should_skip_passive_notice_ci(monkeypatch):
     monkeypatch.setenv("CI", "true")
-    assert should_skip_passive_notice(invoked_subcommand="evaluate", help_requested=False)
+    assert should_skip_passive_notice(
+        invoked_subcommand="evaluate",
+        help_requested=False,
+    )
 
 
 def test_cache_is_fresh():
@@ -113,25 +118,26 @@ def test_maybe_show_update_notice_uses_fresh_cache(
 
 
 def test_passive_notice_skipped_for_mcp():
-    with patch("topos.mcp.server.main"):
-        with patch("topos.cli.main.maybe_show_update_notice") as mock_notice:
-            runner = CliRunner()
-            result = runner.invoke(cli, ["mcp"])
-            assert result.exit_code == 0
-            mock_notice.assert_called_once()
-            assert mock_notice.call_args.kwargs["invoked_subcommand"] == "mcp"
+    with (
+        patch("topos.mcp.server.main"),
+        patch("topos.cli.main.maybe_show_update_notice") as mock_notice,
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["mcp"])
+        assert result.exit_code == 0
+        mock_notice.assert_called_once()
+        assert mock_notice.call_args.kwargs["invoked_subcommand"] == "mcp"
 
 
 def test_passive_notice_skipped_for_update_command():
-    with patch("topos.cli.commands.system.run_update") as mock_run_update:
-        with patch("topos.cli.main.maybe_show_update_notice") as mock_notice:
-            runner = CliRunner()
-            with patch(
-                "topos.cli.update.latest_version_for_channel",
-                return_value="0.0.0",
-            ):
-                result = runner.invoke(cli, ["update", "--check"])
-            assert result.exit_code in (0, 1, 2)
-            mock_run_update.assert_called_once()
-            mock_notice.assert_called_once()
-            assert mock_notice.call_args.kwargs["invoked_subcommand"] == "update"
+    with (
+        patch("topos.cli.commands.system.run_update") as mock_run_update,
+        patch("topos.cli.main.maybe_show_update_notice") as mock_notice,
+        patch("topos.cli.update.latest_version_for_channel", return_value="0.0.0"),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "--check"])
+        assert result.exit_code in (0, 1, 2)
+        mock_run_update.assert_called_once()
+        mock_notice.assert_called_once()
+        assert mock_notice.call_args.kwargs["invoked_subcommand"] == "update"

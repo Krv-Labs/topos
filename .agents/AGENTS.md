@@ -58,3 +58,65 @@ commit permission. `SUSPICIOUS_NO_STRUCTURAL_CHANGE` blocks acceptance.
 ### Escape Hatches
 - **Score plateaus**: Split file. Extract high-complexity functions identified by `topos_inspect_code`.
 - **SIMPLE improves, COMPOSABLE regresses**: Abstraction is just relocation. Verify whole project rollup.
+
+## Releases
+
+Use a **lightweight release PR** when shipping a tagged version. Feature work lands in separate PRs first (`[cli]`, `[mcp]`, etc.); the release PR only bumps versions, finalizes the changelog, and applies any small docs touch-ups tied to the version string.
+
+### Branch and PR naming
+
+| Item | Convention | Example |
+|------|------------|---------|
+| Branch | `release/v<semver>` | `release/v0.3.6` |
+| PR title | `[release] v<semver>` | `[release] v0.3.6` |
+
+This matches the scoped prefixes used elsewhere (`[cli]`, `[mcp]`). Do **not** mix feature work into a release branch unless it is a hotfix that must ship in the same tag.
+
+When a feature PR itself carries the release (e.g. last change before tag), you may use `v<semver>: <summary>` in the title instead — but prefer a dedicated `[release]` PR for version-only diffs.
+
+### Version source of truth
+
+**`Cargo.toml`** (`[package].version`) is canonical. Maturin publishes that version to PyPI; `topos._version` reads it for editable installs.
+
+Also bump (must stay in sync):
+
+- `extensions/vscode/package.json` → `"version"`
+
+Run before opening the PR:
+
+```bash
+python scripts/check_versions.py   # CI enforces this
+```
+
+Python `__version__` and Sphinx `release` are derived from `Cargo.toml` at runtime — no manual edit in `topos/_version.py` or `docs/source/conf.py`.
+
+### Release PR checklist
+
+1. **CHANGELOG.md** — move `[Unreleased]` entries into `## [X.Y.Z] - YYYY-MM-DD`; leave an empty `[Unreleased]` section at the top.
+2. **Cargo.toml** — bump `[package].version` (semver: patch for fixes, minor for features while on 0.x).
+3. **extensions/vscode/package.json** — same semver string.
+4. **Docs** — only if needed (version called out in prose, install examples, etc.). API docs pick up version from `__version__` automatically.
+5. **`python scripts/check_versions.py`** — must pass.
+6. **PR body** — short summary of what ships; link merged feature PRs if helpful.
+
+No new features, refactors, or unrelated doc edits in a release PR.
+
+### Tag and publish
+
+After the release PR merges to `main`:
+
+```bash
+git checkout main && git pull
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Tags use a **`v` prefix** (`v0.3.6`). Pushing the tag triggers `.github/workflows/release.yml` (GitHub release assets, PyPI, VS Code marketplace).
+
+Optional manual dispatch: Actions → **Build and Release** → `workflow_dispatch` with `version: vX.Y.Z`.
+
+### Agent workflow summary
+
+```
+feature PRs → merge to main → [release] PR (version + changelog) → merge → tag vX.Y.Z → CI release
+```

@@ -120,7 +120,7 @@ def test_evaluate_surfaces_actionable_suggestions() -> None:
     assert simple_fixes, r.suggestions
     assert r.agent_contract is not None
     assert r.agent_contract.next_tool == "topos_inspect_code"
-    assert "topos_assess_improvement returns IMPROVEMENT or IMPROVEMENT_SCORE" in (
+    assert "verify in-place edits with topos_assess_worktree_change" in (
         r.agent_contract.verification_gates
     )
 

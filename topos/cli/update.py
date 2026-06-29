@@ -156,6 +156,9 @@ def _run_binary_update(info: InstallInfo, pin_version: str | None) -> None:
             curl_proc.stdout.close()
         curl_proc.wait()
 
+    if curl_proc.returncode != 0:
+        click.echo("Failed to download install.sh.", err=True)
+        sys.exit(curl_proc.returncode or 1)
     if proc.returncode != 0:
         sys.exit(proc.returncode)
 

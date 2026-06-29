@@ -109,6 +109,7 @@ def test_update_binary_invokes_install_script(mock_popen, mock_run, tmp_path: Pa
 
     curl_proc = mock_popen.return_value
     curl_proc.stdout = MagicMock()
+    curl_proc.returncode = 0
     mock_run.return_value.returncode = 0
 
     with patch(
@@ -131,6 +132,36 @@ def test_update_binary_invokes_install_script(mock_popen, mock_run, tmp_path: Pa
     assert env["TOPOS_UPDATE"] == "1"
     assert env["TOPOS_INSTALL"] == str(binary.parent)
     assert env["TOPOS_NO_MODIFY_PATH"] == "1"
+
+
+@patch("topos.cli.update.subprocess.run")
+@patch("topos.cli.update.subprocess.Popen")
+def test_update_binary_fails_when_curl_fails(mock_popen, mock_run, tmp_path: Path):
+    from unittest.mock import MagicMock
+
+    binary = tmp_path / "bin" / "topos"
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+
+    # curl fails (e.g. network down): writes nothing, exits non-zero. sh then
+    # reads EOF and exits 0 — the update must NOT report success.
+    curl_proc = mock_popen.return_value
+    curl_proc.stdout = MagicMock()
+    curl_proc.returncode = 22
+    mock_run.return_value.returncode = 0
+
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="binary-installer",
+            provenance=provenance,
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code != 0
+        assert "Failed to download install.sh" in result.output
 
 
 @patch("topos.cli.update.subprocess.run")

@@ -60,7 +60,7 @@ def _is_editable_install(dist: importlib.metadata.Distribution) -> bool:
         direct_url = json.loads(direct_url_raw)
     except json.JSONDecodeError:
         return False
-    return bool(direct_url.get("dir")) and bool(direct_url.get("editable"))
+    return bool((direct_url.get("dir_info") or {}).get("editable"))
 
 
 def _package_manager_info(installer: str) -> InstallInfo:

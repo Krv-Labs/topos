@@ -122,7 +122,9 @@ def test_detect_install_method_editable(monkeypatch):
     from unittest.mock import MagicMock
 
     mock_dist = MagicMock()
-    mock_dist.read_text.return_value = '{"dir": "/src/topos", "editable": true}'
+    mock_dist.read_text.return_value = (
+        '{"url": "file:///src/topos", "dir_info": {"editable": true}}'
+    )
 
     with monkeypatch.context() as m:
         m.setattr("importlib.metadata.distribution", lambda name: mock_dist)

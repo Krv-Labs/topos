@@ -11,14 +11,13 @@ from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.policies.simple import describe_entropy_ratio
+from topos.functors.probes.ast.complexity import calculate_function_complexity_entries
 from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
-from topos.functors.probes.cfg.complexity import cyclomatic_complexity
-from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
-from topos.graphs.cfg.object import ControlFlowGraph
 
 from ..diagnostics import overlay_for_source
 from ..evaluation import classify_code_string
 from ..formatting import render_evaluation_md, to_evaluation_result, to_tool_result
+from ..metric_locations import build_metric_locations, function_entry_from_complexity
 from ..schemas import (
     EvaluationResult,
     FunctionEntry,
@@ -37,20 +36,6 @@ _READ_ONLY_ANN = {
     "idempotentHint": True,
     "openWorldHint": False,
 }
-
-
-def _span_text(source_bytes: bytes, span) -> str:
-    """Slice a UAST byte span out of the UTF-8-encoded source.
-
-    UAST offsets are byte offsets, so we must index the encoded bytes, not the
-    code-point-indexed str. Bounds-guarded like ``cpg/object.py`` in case the
-    span refers to a different revision than ``source_bytes``.
-    """
-    if span.end_byte > len(source_bytes):
-        return ""
-    return source_bytes[span.start_byte : span.end_byte].decode(
-        "utf-8", errors="replace"
-    )
 
 
 @mcp.tool(
@@ -122,41 +107,18 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
             )
         ),
         verbose=params.verbose,
+        metric_locations=build_metric_locations(source, params.language, result),
     )
 
+    # Use the same AST decision-node probe that feeds ``ast.max_function_complexity``
+    # so this table never disagrees with the failing gate (issue #67).
     morphism = ProgramMorphism(source=source, language=params.language)
-    # UAST spans are UTF-8 byte offsets; encode ONCE before the loop and slice
-    # the bytes (not the code-point-indexed str) so non-ASCII chars don't shift
-    # the extracted identifiers. Same idiom as complexity.py / cpg/object.py.
-    source_bytes = morphism.source.encode("utf-8")
     all_funcs: list[FunctionEntry] = []
-    if morphism.ast and morphism.ast.uast_root:
-        try:
-            callables = _collect_callables(morphism.ast.uast_root)
-            for c in callables:
-                name = c.attributes.get("name")
-                if not name:
-                    # Look for an Identifier child (common in most UAST mappings)
-                    for child in c.children:
-                        if child.kind == "Identifier":
-                            name = _span_text(source_bytes, child.span)
-                            break
-                if not name:
-                    name = c.attributes.get("scope") or "anonymous"
-
-                blocks, edges, entry_id, exit_id = build_cfg_from_uast(c)
-                cfg = ControlFlowGraph(
-                    blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id
-                )
-                all_funcs.append(
-                    FunctionEntry(
-                        name=name,
-                        line=max(1, c.span.start_line),
-                        complexity=cyclomatic_complexity(cfg),
-                    )
-                )
-        except Exception:
-            pass
+    if morphism.ast is not None and morphism.is_valid:
+        all_funcs = [
+            function_entry_from_complexity(fc, metric_source="ast")
+            for fc in calculate_function_complexity_entries(morphism.ast)
+        ]
 
     top_entries = sorted(all_funcs, key=lambda entry: -entry.complexity)[
         : params.top_n_functions

@@ -22,6 +22,7 @@ from .schemas import (
     AcknowledgedRisk,
     AgentContract,
     EvaluationResult,
+    FunctionEntry,
     LatticeElement,
     PillarResult,
     PreferenceWalk,
@@ -290,6 +291,7 @@ def to_evaluation_result(
     adjusted_verdict=None,
     include_agent_contract: bool = True,
     verbose: bool = True,
+    metric_locations: dict[str, list[FunctionEntry]] | None = None,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
 
@@ -371,6 +373,7 @@ def to_evaluation_result(
         coupling_available=coupling_available,
         raw_metrics=raw_metrics,
         interpretation=interpretation,
+        metric_locations=metric_locations or {},
         warnings=warnings or [],
         agent_contract=agent_contract,
         security_findings=active_findings,
@@ -506,6 +509,22 @@ def render_evaluation_md(
             "> Max grade capped below IDEAL because an acknowledged security "
             "risk is active."
         )
+
+    # Failing complexity gates point at concrete edit targets — show them by
+    # default so an agent never has to guess where the offending function is.
+    if e.metric_locations:
+        lines.append("")
+        lines.append("## Metric Locations")
+        for metric, entries in e.metric_locations.items():
+            lines.append(f"- `{metric}`:")
+            for fn in entries:
+                where = (
+                    "module-level (not attributable to a function)"
+                    if fn.kind == "module"
+                    else f"`{fn.qualified_name or fn.name}` "
+                    f"({fn.kind}) lines {fn.start_line}-{fn.end_line}"
+                )
+                lines.append(f"  - {where} — complexity {fn.complexity}")
 
     # Suggestions are the actionable payload — show them by default (one line
     # each, already concise). Not verbose-gated: they are the whole point.

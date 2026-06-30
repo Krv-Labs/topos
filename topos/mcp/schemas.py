@@ -610,11 +610,33 @@ class AcknowledgedRisk(BaseModel):
 
 
 class FunctionEntry(BaseModel):
-    """Function-level complexity diagnostic."""
+    """Function-level complexity diagnostic.
+
+    ``name``/``line``/``complexity`` are the legacy fields. The remaining
+    optional fields let an agent map a failing complexity gate back to a
+    concrete AST location (see ``EvaluationResult.metric_locations``).
+    """
 
     name: str
     line: int = Field(..., ge=1)
     complexity: int
+    qualified_name: str | None = Field(
+        default=None, description="Dotted scope path, e.g. 'Cls.method.closure'."
+    )
+    kind: str | None = Field(
+        default=None,
+        description="function | async_function | method | closure | module.",
+    )
+    start_line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+    metric_source: str | None = Field(
+        default=None,
+        description="Which probe produced the complexity: 'ast' or 'cfg'.",
+    )
+    includes_nested: bool | None = Field(
+        default=None,
+        description="True when the count includes nested callables' decisions.",
+    )
 
 
 class Suggestion(BaseModel):
@@ -681,6 +703,15 @@ class EvaluationResult(BaseModel):
     )
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     interpretation: dict[str, str] = Field(default_factory=dict)
+    metric_locations: dict[str, list[FunctionEntry]] = Field(
+        default_factory=dict,
+        description=(
+            "Source locations for failing complexity gates, keyed by metric "
+            "(e.g. 'ast.max_function_complexity'). A single entry with "
+            "kind='module' means the metric is module-level only, not "
+            "attributable to a function."
+        ),
+    )
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
     security_findings: list[SecurityFinding] = Field(default_factory=list)

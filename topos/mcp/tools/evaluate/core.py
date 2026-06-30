@@ -12,6 +12,7 @@ from ...diagnostics import overlay_for_file, overlay_for_source
 from ...evaluation import (
     classify_code_string,
     classify_file,
+    detect_language,
     gitnexus_warnings,
     resolve_gitnexus_dir,
 )
@@ -20,6 +21,7 @@ from ...formatting import (
     to_evaluation_result,
     to_tool_result,
 )
+from ...metric_locations import build_metric_locations
 from ...schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
@@ -27,7 +29,7 @@ from ...schemas import (
     LatticeElement,
     resolve_priority,
 )
-from ...security import resolve_file_root, resolve_within_root
+from ...security import read_safe_utf8_file, resolve_file_root, resolve_within_root
 from ...server import mcp
 from .render import _error_md
 
@@ -102,6 +104,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
             )
         ),
         verbose=params.verbose,
+        metric_locations=build_metric_locations(params.code, params.language, result),
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
@@ -187,6 +190,12 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         allows=params.allow,
         include_security_findings=params.include_security_findings,
     )
+    source, _ = read_safe_utf8_file(resolved)
+    locations = (
+        build_metric_locations(source, detect_language(resolved), result)
+        if source is not None
+        else {}
+    )
     model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
@@ -195,5 +204,6 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         warnings=warnings,
         **_overlay_kwargs(overlay),
         verbose=params.verbose,
+        metric_locations=locations,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

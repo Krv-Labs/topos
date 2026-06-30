@@ -1,0 +1,27 @@
+name: "[CLI] Issue"
+description: Issue related to the topos CLI
+labels: ["cli"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: What's the issue?
+      placeholder: Brief description
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      placeholder: e.g. topos evaluate
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      placeholder: Describe the problem or request
+    validations:
+      required: true

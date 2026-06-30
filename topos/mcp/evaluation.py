@@ -15,6 +15,7 @@ SIMPLE (← CFG), COMPOSABLE (← ModuleDependencyGraph), SECURE (← CPG).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from topos.core.morphism import ProgramMorphism
@@ -80,14 +81,21 @@ def _check_override_warning(
     return None
 
 
+def _is_schema_mismatch(message: str | None) -> bool:
+    """Whether a dep-graph load error is a storage/schema version mismatch."""
+    if not message:
+        return False
+    return any(
+        term in message.lower()
+        for term in ("storage version", "different version", "ladybug")
+    )
+
+
 def _dep_graph_load_warning(gitnexus_dir: Path, dep_graph_loaded: bool) -> list[str]:
     if dep_graph_loaded:
         return []
     load_error = last_dep_graph_error()
-    is_schema_mismatch = load_error and any(
-        term in load_error.lower()
-        for term in ("storage version", "different version", "ladybug")
-    )
+    is_schema_mismatch = _is_schema_mismatch(load_error)
     if is_schema_mismatch:
         return [
             f"COMPOSABLE not scored — LadybugDB storage version mismatch: {load_error}"
@@ -127,6 +135,12 @@ def gitnexus_warnings(
     return warnings
 
 
+# Stable prefix shared by the producer (this module) and the agent-contract
+# consumer (``formatting.build_agent_contract``) so staleness is matched on a
+# single marker instead of an ad-hoc substring search over warning prose.
+STALE_GITNEXUS_MARKER = "gitnexus index may be stale"
+
+
 def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | None:
     graph_mtime = _gitnexus_mtime(gitnexus_dir)
     if graph_mtime <= 0:
@@ -136,7 +150,7 @@ def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | Non
         return None
     if graph_mtime < head_mtime:
         return (
-            "gitnexus index may be stale — .gitnexus is older than the latest "
+            f"{STALE_GITNEXUS_MARKER} — .gitnexus is older than the latest "
             "git commit; run 'topos depgraph generate' before trusting COMPOSABLE."
         )
     return None
@@ -173,6 +187,70 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
         return gitnexus_dir.stat().st_mtime
     except OSError:
         return 0.0
+
+
+@dataclass(frozen=True)
+class DepgraphStatus:
+    """Structured ``.gitnexus`` state for the depgraph status MCP tool."""
+
+    state: str  # missing | present | stale | load_error | schema_mismatch
+    gitnexus_dir: str | None
+    gitnexus_mtime: float | None
+    git_head_mtime: float | None
+    detail: str | None = None
+
+
+def depgraph_status(
+    override: str | Path | None, project_root: Path, target_file: str
+) -> DepgraphStatus:
+    """Report ``.gitnexus`` availability/freshness without shelling out.
+
+    Loading is wrapped so even a hard DB error (e.g. a locked LadybugDB)
+    becomes a structured ``load_error`` rather than an exception.
+    """
+    project_root = project_root.resolve()
+    if override:
+        warn = _check_override_warning(override, project_root)
+        if warn:
+            return DepgraphStatus("missing", None, None, None, detail=warn[0])
+
+    gitnexus_dir = resolve_gitnexus_dir(override, project_root)
+    if gitnexus_dir is None:
+        return DepgraphStatus(
+            "missing",
+            None,
+            None,
+            None,
+            detail="No .gitnexus directory found; run topos_generate_depgraph.",
+        )
+
+    graph_mtime = _gitnexus_mtime(gitnexus_dir)
+    head_mtime = _git_head_mtime(project_root)
+    dir_str = str(gitnexus_dir)
+
+    try:
+        clear_dep_graph_error()
+        dep_graph_for(gitnexus_dir, target_file)
+    except Exception as exc:  # noqa: BLE001 — surface any load failure as state
+        msg = str(exc)
+        state = "schema_mismatch" if _is_schema_mismatch(msg) else "load_error"
+        return DepgraphStatus(state, dir_str, graph_mtime, head_mtime, detail=msg)
+
+    stale = (
+        head_mtime is not None and graph_mtime > 0.0 and graph_mtime < head_mtime
+    )
+    return DepgraphStatus(
+        "stale" if stale else "present",
+        dir_str,
+        graph_mtime,
+        head_mtime,
+        detail=(
+            ".gitnexus is older than the latest git commit; regenerate before "
+            "trusting COMPOSABLE. (Freshness is mtime-based, not content-hashed.)"
+            if stale
+            else None
+        ),
+    )
 
 
 def _handle_dep_graph_error(exc: Exception) -> ModuleDependencyGraph | None:

@@ -35,6 +35,8 @@ def test_depgraph_generate_success(mock_which, mock_run):
     mock_run.assert_called_once_with(
         ["gitnexus", "analyze", "--skip-agents-md"],
         cwd=Path.cwd(),
+        capture_output=False,
+        text=True,
     )
 
 

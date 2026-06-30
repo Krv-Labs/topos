@@ -18,6 +18,7 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
+from .evaluation import STALE_GITNEXUS_MARKER
 from .schemas import (
     AcknowledgedRisk,
     AgentContract,
@@ -139,6 +140,13 @@ def build_agent_contract(
     if not coupling_available:
         blocked_by.append("missing_gitnexus_dir")
         risk_flags.append("composable_unavailable")
+    # A loaded-but-stale graph is a distinct precondition: COMPOSABLE *is*
+    # scored, but the agent should refresh the index before trusting it. Match
+    # on the shared marker (not a bare "stale" substring) so the contract can't
+    # silently drift from the warning prose.
+    if warnings and any(STALE_GITNEXUS_MARKER in w for w in warnings):
+        blocked_by.append("stale_gitnexus_dir")
+        risk_flags.append("stale_gitnexus_dir")
     if security_findings:
         risk_flags.append("active_security_findings")
     if acknowledged_risks:
@@ -166,9 +174,11 @@ def build_agent_contract(
         next_actions.append(
             "remove active SECURE findings or acknowledge intentional risk"
         )
-    elif "missing_gitnexus_dir" in blocked_by:
-        next_tool = None
-        next_actions.append("provide gitnexus_dir to score COMPOSABLE")
+    elif "missing_gitnexus_dir" in blocked_by or "stale_gitnexus_dir" in blocked_by:
+        next_tool = "topos_generate_depgraph"
+        next_actions.append(
+            "run topos_generate_depgraph to score/refresh COMPOSABLE"
+        )
     else:
         next_tool = "topos_inspect_code"
         next_actions.append(

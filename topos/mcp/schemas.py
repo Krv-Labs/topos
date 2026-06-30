@@ -930,3 +930,59 @@ class CoverageResult(BaseModel):
     topological_coverage: TopologicalCoverageResult | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
+
+
+class DepgraphState(StrEnum):
+    """Structured state of the ``.gitnexus`` dependency-graph index."""
+
+    MISSING = "missing"
+    PRESENT = "present"
+    STALE = "stale"
+    LOAD_ERROR = "load_error"
+    SCHEMA_MISMATCH = "schema_mismatch"
+
+
+class DepgraphStatusInput(_StrictModel):
+    """Arguments for ``topos_depgraph_status``."""
+
+    gitnexus_dir: str | None = Field(
+        default=None,
+        description="Override .gitnexus directory (default: <root>/.gitnexus).",
+    )
+
+
+class DepgraphStatusResult(BaseModel):
+    """Result of ``topos_depgraph_status`` — read-only graph state."""
+
+    state: DepgraphState
+    gitnexus_dir: str | None = None
+    gitnexus_mtime: float | None = None
+    git_head_mtime: float | None = None
+    coupling_available: bool = Field(
+        ...,
+        description="True only when the graph loads and is not stale.",
+    )
+    detail: str | None = None
+    recommended_next_action: str
+    agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
+class GenerateDepgraphInput(_StrictModel):
+    """Arguments for ``topos_generate_depgraph`` (side-effecting)."""
+
+    directory: str | None = Field(
+        default=None,
+        description="Repository root to analyze (default: the MCP file root).",
+    )
+
+
+class GenerateDepgraphResult(BaseModel):
+    """Result of ``topos_generate_depgraph``."""
+
+    ok: bool
+    returncode: int
+    gitnexus_dir: str | None = None
+    message: str
+    agent_contract: AgentContract | None = None
+    error: str | None = None

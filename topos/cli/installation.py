@@ -222,7 +222,9 @@ def install_layout_notice_lines(info: InstallInfo | None = None) -> list[str] | 
     return lines
 
 
-def echo_install_layout_notice(*, info: InstallInfo | None = None, err: bool = True) -> bool:
+def echo_install_layout_notice(
+    *, info: InstallInfo | None = None, err: bool = True
+) -> bool:
     """Print install layout notice when relevant. Returns True if printed."""
     lines = install_layout_notice_lines(info)
     if lines is None:

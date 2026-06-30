@@ -15,7 +15,11 @@ from urllib.request import Request, urlopen
 import click
 
 from topos import __version__
-from topos.cli.installation import InstallInfo, detect_install_info, echo_install_layout_notice
+from topos.cli.installation import (
+    InstallInfo,
+    detect_install_info,
+    echo_install_layout_notice,
+)
 
 _INSTALL_SCRIPT_URL = "https://docs.krv.ai/topos/install.sh"
 _GITHUB_REPO = "Krv-Labs/topos"

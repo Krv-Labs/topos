@@ -210,7 +210,9 @@ def test_install_layout_notice_none_for_single_install(monkeypatch):
 
     with monkeypatch.context() as m:
         m.setattr("topos.cli.installation.active_executable", lambda: active)
-        m.setattr("topos.cli.installation.find_topos_executables_on_path", lambda: [active])
+        m.setattr(
+            "topos.cli.installation.find_topos_executables_on_path", lambda: [active]
+        )
         m.setattr("topos.cli.installation.load_provenance", lambda: None)
         m.setattr("shutil.which", lambda name: str(active))
 

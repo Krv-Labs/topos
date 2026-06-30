@@ -489,13 +489,21 @@ verify_install() {
 
 # Main
 main() {
-    print_header
+    if [ "${TOPOS_UPDATE:-0}" = "1" ]; then
+        info "Updating Topos..."
+    else
+        print_header
+    fi
 
     check_dependencies
     validate_install_dir
     install_topos
-    install_optional_dependencies
-    setup_path
+
+    if [ "${TOPOS_UPDATE:-0}" != "1" ]; then
+        install_optional_dependencies
+        setup_path
+    fi
+
     write_provenance
     verify_install
 }

@@ -202,6 +202,34 @@ Details and troubleshooting
    involving ``libpython3.12.dylib``, upgrade to v0.3.2 or later with the
    installer. Source installs are not affected.
 
+.. dropdown:: Upgrade
+
+   Binary and PyPI installs:
+
+   .. code-block:: bash
+
+      topos update
+
+   Check for updates without upgrading (exit 0 if current, 1 if outdated):
+
+   .. code-block:: bash
+
+      topos update --check
+
+   Pin a binary release:
+
+   .. code-block:: bash
+
+      topos update --version v0.3.6
+
+   Source checkouts should use:
+
+   .. code-block:: bash
+
+      git pull && uv pip install -e .
+
+   Set ``TOPOS_NO_UPDATE_NOTICES=1`` to disable passive update notices on interactive CLI use.
+
 .. dropdown:: Clean uninstall
 
    Binary installs can be removed by Topos itself:

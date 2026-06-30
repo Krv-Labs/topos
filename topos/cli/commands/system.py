@@ -8,10 +8,12 @@ from pathlib import Path
 import click
 
 from topos.cli.installation import (
-    detect_install_method,
+    detect_install_info,
+    echo_install_layout_notice,
     prune_path_hints,
-    remove_provenance_record,
+    remove_state_dir,
 )
+from topos.cli.update import run_update
 
 
 def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
@@ -58,14 +60,17 @@ def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
     help="Skip confirmation prompts.",
 )
 @click.option(
-    "--prune-path-hints",
-    "prune_path_hints_flag",
+    "--keep-path-hints",
     is_flag=True,
-    help="Remove PATH hint blocks previously added by the installer.",
+    help="Skip removal of installer-added PATH blocks from shell rc files.",
 )
-def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
+def uninstall(dry_run: bool, yes: bool, keep_path_hints: bool) -> None:
     """Safely uninstall topos based on installation provenance."""
-    method, provenance, uninstall_cmd = detect_install_method()
+    info = detect_install_info()
+    echo_install_layout_notice(info=info)
+    method = info.method
+    provenance = info.provenance
+    uninstall_cmd = info.uninstall_cmd
 
     if method == "package-manager":
         click.echo("Detected package-manager installation.")
@@ -77,8 +82,8 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
             "Could not determine a managed installer provenance record.",
             err=True,
         )
-        click.echo("If installed via pip: pip uninstall topos", err=True)
-        click.echo("If installed via uv: uv pip uninstall topos", err=True)
+        click.echo("If installed via pip: pip uninstall topos-mcp", err=True)
+        click.echo("If installed via uv: uv pip uninstall topos-mcp", err=True)
         sys.exit(1)
 
     install_path = provenance.get("install_path", "").strip()
@@ -90,18 +95,27 @@ def uninstall(dry_run: bool, yes: bool, prune_path_hints_flag: bool) -> None:
     if not _handle_binary_removal(path, dry_run, yes):
         return
 
-    if not dry_run:
-        remove_provenance_record()
+    remove_state_dir(dry_run=dry_run)
 
-    if prune_path_hints_flag:
+    if not keep_path_hints:
         prune_path_hints(provenance, dry_run=dry_run)
-    else:
-        path_hint_file = provenance.get("path_hint_file", "").strip()
-        if path_hint_file:
-            click.echo(
-                "PATH hints were left unchanged. Re-run with --prune-path-hints "
-                "to remove installer-added PATH blocks."
-            )
+
+
+@click.command()
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Exit 0 if up to date, 1 if outdated (for scripts).",
+)
+@click.option(
+    "--version",
+    "pin_version",
+    default=None,
+    help="Pin release version for binary installs (e.g. v0.3.6).",
+)
+def update(check: bool, pin_version: str | None) -> None:
+    """Upgrade Topos using the detected install channel."""
+    run_update(check_only=check, pin_version=pin_version)
 
 
 @click.command()
@@ -153,6 +167,7 @@ def depgraph_generate(directory: str | None) -> None:
 
 def register_system_commands(cli_group: click.Group) -> None:
     """Attach system and integration commands to the root CLI group."""
+    cli_group.add_command(update)
     cli_group.add_command(uninstall)
     cli_group.add_command(mcp)
     cli_group.add_command(depgraph)

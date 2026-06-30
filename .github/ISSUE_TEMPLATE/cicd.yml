@@ -1,0 +1,27 @@
+name: "[ci/cd] Issue"
+description: Issue related to workflows, releases, or automation
+labels: ["ci/cd"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: What's the issue?
+      placeholder: Brief description
+    validations:
+      required: true
+
+  - type: input
+    id: workflow
+    attributes:
+      label: Workflow / step
+      placeholder: e.g. ci.yml / build
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      placeholder: Describe the problem or request
+    validations:
+      required: true

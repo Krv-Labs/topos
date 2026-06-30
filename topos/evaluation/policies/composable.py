@@ -34,6 +34,7 @@ def score_coupling(
     instability: float | None = None,
     fan_in: float | None = None,
     fan_out: float | None = None,
+    frc_min: float | None = None,
     priority: Priority = Priority.SECURE,
     threshold: float | None = None,
 ) -> ScoredDecision:
@@ -80,9 +81,13 @@ def score_coupling(
             achieved = False
         interp["mdg.fan_out"] = _fan_interpretation("out", fan_out, quality)
 
+    # 4. Balanced Forman-Ricci curvature — advisory only (uncalibrated).
+    if frc_min is not None:
+        interp["mdg.frc_min"] = _frc_interpretation(frc_min)
+
     if not qualities:
         # If no metrics are provided, we vacuously satisfy COMPOSABLE.
-        return ScoredDecision(score=1.0, achieved=True, interpretation={})
+        return ScoredDecision(score=1.0, achieved=True, interpretation=interp)
 
     # The combined score is the minimum of the individual qualities (conservative AND).
     composable_score = min(qualities)
@@ -133,3 +138,17 @@ def _fan_interpretation(direction: str, raw: float, quality: float) -> str:
     if raw <= gate:
         return f"fan-{direction} ({raw:.0f}) within threshold (<= {gate})"
     return f"fan-{direction} ({raw:.0f}) exceeds threshold (> {gate})"
+
+
+def _frc_interpretation(frc_min: float) -> str:
+    if frc_min < -1.0:
+        return (
+            f"bridge dependency detected (min balanced FRC={frc_min:.2f}); "
+            "most negative edge has no shared neighbours — consider an interface layer"
+        )
+    if frc_min < 0.0:
+        return (
+            f"weakly connected dependency (min balanced FRC={frc_min:.2f}); "
+            "low triangle density on at least one edge"
+        )
+    return f"dependency topology healthy (min balanced FRC={frc_min:.2f})"

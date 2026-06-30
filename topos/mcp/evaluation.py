@@ -229,15 +229,42 @@ def _intrinsic_representations(
     return reps
 
 
+def _process_representations(
+    dep_graph: ModuleDependencyGraph, language: str
+) -> list[Representation]:
+    """Fan GitNexus execution flows out across the three pillars.
+
+    The flows are parsed once from the already-loaded ``ModuleDependencyGraph``
+    (no second LadybugDB read) and viewed on each pillar so SIMPLE / COMPOSABLE
+    / SECURE all receive interprocedural signal.
+    """
+    from topos.graphs.process.object import ProcessFlowGraph
+
+    base = ProcessFlowGraph.from_dep_graph(
+        dep_graph, dep_graph.target_file, language=language, dimension="simple"
+    )
+    return [
+        base,
+        base.for_dimension("composable"),
+        base.for_dimension("secure"),
+    ]
+
+
 def classify_morphism(
     morphism: ProgramMorphism,
     priority: Priority,
     dep_graph: ModuleDependencyGraph | None = None,
 ) -> ClassificationResult:
-    """Run the classifier with CFG/PDG/CPG plus an optional ModuleDependencyGraph."""
+    """Run the classifier with CFG/PDG/CPG plus optional GitNexus graphs.
+
+    When a ``ModuleDependencyGraph`` is supplied, its execution-flow
+    (``Process``) layer is also lifted into per-pillar ``ProcessFlowGraph``
+    representations for interprocedural SIMPLE / COMPOSABLE / SECURE signal.
+    """
     reps: list[Representation] = _intrinsic_representations(morphism)
     if dep_graph is not None:
         reps.append(dep_graph)
+        reps.extend(_process_representations(dep_graph, morphism.language))
     classifier = CharacteristicMorphism()
     return classifier.classify_detailed(
         morphism,

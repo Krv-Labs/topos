@@ -75,6 +75,35 @@ class SecurePolicyThresholds:
 
 
 @dataclass(frozen=True)
+class ProcessPolicyThresholds:
+    """Process-flow gates and normalization (GitNexus execution flows).
+
+    PROVISIONAL — not yet ECDF-calibrated against the PyPI corpus (unlike the
+    SIMPLE/COMPOSABLE/SECURE singletons). SECURE is zero-tolerance, mirroring
+    :class:`SecurePolicyThresholds`; the SIMPLE/COMPOSABLE axes use conservative
+    starting gates. See ``docs/process-flow-spike.md``.
+    """
+
+    # SIMPLE axis — interprocedural flow complexity. Gates (achieved).
+    max_flow_length: float = 25.0
+    max_flow_participation: float = 20.0
+    # SIMPLE normalization (score only).
+    max_flow_length_cap: float = 80.0
+    max_flow_participation_cap: float = 60.0
+
+    # COMPOSABLE axis — flow-level coupling. Gates (achieved).
+    max_community_span: float = 5.0
+    max_cross_community_flows: float = 15.0
+    # COMPOSABLE normalization (score only).
+    max_community_span_cap: float = 12.0
+    max_cross_community_flows_cap: float = 50.0
+
+    # SECURE axis — interprocedural reachability. Gate (achieved) + decay scale.
+    max_dangerous_flows: float = 0.0
+    dangerous_flow_scale: float = 3.0
+
+
+@dataclass(frozen=True)
 class CoveragePolicyThresholds:
     """Structural test-coverage policy (outside Ω)."""
 
@@ -94,6 +123,7 @@ class ClonePolicyThresholds:
 SIMPLE = SimplePolicyThresholds()
 COMPOSABLE = ComposablePolicyThresholds()
 SECURE = SecurePolicyThresholds()
+PROCESS = ProcessPolicyThresholds()
 COVERAGE = CoveragePolicyThresholds()
 CLONE = ClonePolicyThresholds()
 

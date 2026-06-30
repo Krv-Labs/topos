@@ -54,6 +54,9 @@ from topos.evaluation.policies import (
     ScoredDecision,
     build_omega,
     score_coupling,
+    score_process_composable,
+    score_process_secure,
+    score_process_simple,
     score_secure,
     score_simple,
 )
@@ -70,54 +73,106 @@ if TYPE_CHECKING:
 # ScoredDecision via the matching policy translator Φᵢ.
 
 
+def _merge_decisions(
+    base: ScoredDecision | None, extra: ScoredDecision | None
+) -> ScoredDecision | None:
+    """Conjoin two contributions to one dimension (AND achieved, min score).
+
+    Used to fold an interprocedural process-flow contribution into the
+    intrinsic (CFG / MDG / CPG) decision for the same generator. Either side
+    may be ``None`` (metric family absent).
+    """
+    if base is None:
+        return extra
+    if extra is None:
+        return base
+    return ScoredDecision(
+        score=min(base.score, extra.score),
+        achieved=base.achieved and extra.achieved,
+        interpretation={**base.interpretation, **extra.interpretation},
+    )
+
+
+def _score_process_simple_dim(raw: dict[str, float]) -> ScoredDecision | None:
+    if "process.max_flow_length" not in raw and "process.flow_participation" not in raw:
+        return None
+    return score_process_simple(
+        max_flow_length=raw.get("process.max_flow_length"),
+        flow_participation=raw.get("process.flow_participation"),
+    )
+
+
+def _score_process_composable_dim(raw: dict[str, float]) -> ScoredDecision | None:
+    if (
+        "process.max_community_span" not in raw
+        and "process.cross_community_flows" not in raw
+    ):
+        return None
+    return score_process_composable(
+        max_community_span=raw.get("process.max_community_span"),
+        cross_community_flows=raw.get("process.cross_community_flows"),
+    )
+
+
+def _score_process_secure_dim(raw: dict[str, float]) -> ScoredDecision | None:
+    if "process.dangerous_flows" not in raw:
+        return None
+    return score_process_secure(dangerous_flows=raw.get("process.dangerous_flows"))
+
+
 def _score_simple_dim(
     raw: dict[str, float], priority: Priority
 ) -> ScoredDecision | None:
     # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
     # We pass all available metrics to score_simple; it handles the independent
     # thresholds.
+    base: ScoredDecision | None = None
     if (
-        "cfg.cyclomatic" not in raw
-        and "ast.entropy" not in raw
-        and "ast.max_function_complexity" not in raw
+        "cfg.cyclomatic" in raw
+        or "ast.entropy" in raw
+        or "ast.max_function_complexity" in raw
     ):
-        return None
+        base = score_simple(
+            cyclomatic=raw.get("cfg.cyclomatic"),
+            entropy=raw.get("ast.entropy"),
+            max_function_complexity=raw.get("ast.max_function_complexity"),
+            priority=priority,
+        )
 
-    return score_simple(
-        cyclomatic=raw.get("cfg.cyclomatic"),
-        entropy=raw.get("ast.entropy"),
-        max_function_complexity=raw.get("ast.max_function_complexity"),
-        priority=priority,
-    )
+    return _merge_decisions(base, _score_process_simple_dim(raw))
 
 
 def _score_composable_dim(
     raw: dict[str, float], priority: Priority
 ) -> ScoredDecision | None:
+    base: ScoredDecision | None = None
     if (
-        "mdg.instability" not in raw
-        and "mdg.fan_in" not in raw
-        and "mdg.fan_out" not in raw
+        "mdg.instability" in raw
+        or "mdg.fan_in" in raw
+        or "mdg.fan_out" in raw
     ):
-        return None
-    return score_coupling(
-        instability=raw.get("mdg.instability"),
-        fan_in=raw.get("mdg.fan_in"),
-        fan_out=raw.get("mdg.fan_out"),
-        priority=priority,
-    )
+        base = score_coupling(
+            instability=raw.get("mdg.instability"),
+            fan_in=raw.get("mdg.fan_in"),
+            fan_out=raw.get("mdg.fan_out"),
+            priority=priority,
+        )
+
+    return _merge_decisions(base, _score_process_composable_dim(raw))
 
 
 def _score_secure_dim(
     raw: dict[str, float], priority: Priority
 ) -> ScoredDecision | None:
-    if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
-        return None
-    return score_secure(
-        dangerous_calls=raw.get("cpg.dangerous_calls", 0.0),
-        taint_flows=raw.get("cpg.taint_flows", 0.0),
-        priority=priority,
-    )
+    base: ScoredDecision | None = None
+    if "cpg.dangerous_calls" in raw or "cpg.taint_flows" in raw:
+        base = score_secure(
+            dangerous_calls=raw.get("cpg.dangerous_calls", 0.0),
+            taint_flows=raw.get("cpg.taint_flows", 0.0),
+            priority=priority,
+        )
+
+    return _merge_decisions(base, _score_process_secure_dim(raw))
 
 
 _DIMENSION_SCORE_DISPATCHERS: dict[

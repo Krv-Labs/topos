@@ -23,6 +23,7 @@ from topos.evaluation.policies.calibration import (
     CLONE,
     COMPOSABLE,
     COVERAGE,
+    PROCESS,
     SCORE_FLOORS,
     SECURE,
     SIMPLE,
@@ -32,6 +33,11 @@ from topos.evaluation.policies.composable import score_coupling
 from topos.evaluation.policies.coverage import (
     CoverageDecision,
     score_declaration_coverage,
+)
+from topos.evaluation.policies.process import (
+    score_process_composable,
+    score_process_secure,
+    score_process_simple,
 )
 from topos.evaluation.policies.secure import score_secure
 from topos.evaluation.policies.simple import (
@@ -51,11 +57,15 @@ __all__ = [
     "score_simple",
     "score_coupling",
     "score_secure",
+    "score_process_simple",
+    "score_process_composable",
+    "score_process_secure",
     "describe_entropy_ratio",
     "build_omega",
     "SIMPLE",
     "COMPOSABLE",
     "SECURE",
+    "PROCESS",
     "COVERAGE",
     "CLONE",
     "SCORE_FLOORS",

@@ -13,6 +13,7 @@ through MCP.
    topos.mcp.diagnostics
    topos.mcp.evaluation
    topos.mcp.formatting
+   topos.mcp.metric_locations
    topos.mcp.schemas
    topos.mcp.security
    topos.mcp.security_findings
@@ -21,6 +22,7 @@ through MCP.
    topos.mcp.tools.assess
    topos.mcp.tools.compare
    topos.mcp.tools.coverage
+   topos.mcp.tools.depgraph
    topos.mcp.tools.docs
    topos.mcp.tools.evaluate
    topos.mcp.tools.inspect

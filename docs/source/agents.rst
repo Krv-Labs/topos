@@ -127,18 +127,28 @@ Choose an agent path
    or COMPOSABLE / ``IDEAL`` is unavailable.
 
    Dependency graph
-      Generate the graph from the repository you want the agent to evaluate.
-      Re-run when imports change, modules are renamed, or directories are
-      restructured.
+      COMPOSABLE and ``IDEAL`` require a ``.gitnexus/`` store. SIMPLE, SECURE,
+      AST comparison, MCP docs, and UAST coverage work without it.
+
+      Prefer the MCP tools (no shell required):
+
+      .. code-block:: text
+
+         topos_depgraph_status({"params": {}})
+         topos_generate_depgraph({"params": {}})
+
+      ``topos_depgraph_status`` is read-only and reports ``missing``,
+      ``present``, ``stale``, ``load_error``, or ``schema_mismatch``.
+      ``topos_generate_depgraph`` shells out to GitNexus and rewrites
+      ``.gitnexus/`` — approval-gated in most clients. Re-run when imports
+      change, modules are renamed, or directories are restructured.
+
+      CLI equivalent (requires ``npm install -g gitnexus``):
 
       .. code-block:: bash
 
-         npm install -g gitnexus
          cd /path/to/your/repo
          topos depgraph generate
-
-      COMPOSABLE and ``IDEAL`` require a ``.gitnexus/`` store. SIMPLE, SECURE,
-      AST comparison, MCP docs, and UAST coverage work without it.
 
    Root override
       If the MCP host starts Topos outside the repository, set the trusted root
@@ -188,13 +198,16 @@ Choose an agent path
 
       .. code-block:: text
 
-         Use topos to find the worst file in src/.
-         Propose a refactor and verify with topos_assess_improvement.
+         Use topos_evaluate_project to find the worst file in src/.
+         Edit it in place, then verify with topos_assess_worktree_change.
+         If COMPOSABLE is blocked, call topos_depgraph_status first.
 
-      If COMPOSABLE stays unavailable, check that ``.gitnexus/`` exists in the
-      project root or pass ``gitnexus_dir`` explicitly. ``topos_evaluate_code``
-      can only score SIMPLE and SECURE because raw strings do not carry
-      dependency-graph context.
+      If COMPOSABLE stays unavailable, call ``topos_depgraph_status`` or pass
+      ``gitnexus_dir`` explicitly. Evaluation results include ``agent_contract``
+      with ``blocked_by`` codes such as ``missing_gitnexus_dir`` or
+      ``stale_gitnexus_dir`` and ``next_tool`` pointing at
+      ``topos_generate_depgraph``. ``topos_evaluate_code`` can only score SIMPLE
+      and SECURE because raw strings do not carry dependency-graph context.
 
 Semantic coverage setup
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -248,20 +261,40 @@ Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
 MCP Tools
 ---------
 
-Topos currently registers ten MCP tools. The evaluation, inspection,
-assessment, and coverage tools take a single ``params`` object. ``topos_get_doc``
-takes a direct ``topic`` argument.
+Topos registers sixteen MCP tools. Evaluation, inspection, assessment, coverage,
+and depgraph tools take a single ``params`` object. ``topos_get_doc`` takes a
+direct ``topic`` argument.
 
-Most evaluation tools accept optional ``preferences`` with a strict ``ranking``
-(for example ``{"ranking": ["simple", "composable", "secure"]}``).
+Most evaluation and assessment tools accept optional ``preferences`` with a
+strict ``ranking`` (for example
+``{"ranking": ["simple", "composable", "secure"]}``).
+
+Structured responses may include:
+
+``agent_contract``
+   Outcome-first guidance: ``next_tool``, ``next_actions``, ``blocked_by``,
+   ``verification_gates``, and ``risk_flags``. Prefer these fields over parsing
+   markdown prose. Common ``blocked_by`` values include ``missing_gitnexus_dir``,
+   ``stale_gitnexus_dir``, and ``parse_failures``.
+
+``metric_locations``
+   On ``topos_evaluate_file`` and ``topos_inspect_code``, maps failing
+   complexity gates (``cfg.cyclomatic``, ``ast.max_function_complexity``) to
+   concrete source spans with ``qualified_name``, ``kind``, line range, and
+   nesting info.
+
+``suggestions``
+   Actionable fix hints for failing pillars; markdown includes a checklist when
+   present.
 
 Core Evaluation
 ~~~~~~~~~~~~~~~
 
 ``topos_evaluate_file({"params": {"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ..., "verbose": ...}})``
-   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and 
+   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and
    reach higher badges like ``IDEAL``. Missing or rejected GitNexus configuration is
-   reported in ``warnings`` and in the COMPOSABLE pillar interpretation.
+   reported in ``warnings``, ``agent_contract.blocked_by``, and the COMPOSABLE pillar
+   interpretation. Returns ``metric_locations`` for failing complexity gates.
 
 ``topos_evaluate_code({"params": {"code": ..., "language": ..., "preferences": ..., "allow": ..., "verbose": ...}})``
    Classifies a raw code string (SIMPLE and SECURE only).
@@ -272,28 +305,58 @@ Core Evaluation
    ``guidance`` for the next action.
 
 ``topos_inspect_code({"params": {"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ..., "allow": ..., "verbose": ...}})``
-   Detailed metric breakdown: top-N functions by complexity and line number,
-   entropy details, and full metric table. Provide exactly one of ``code`` or
-   ``filepath``.
+   Detailed metric breakdown: top-N functions by complexity (with line numbers and
+   ``qualified_name``), entropy details, and full metric table. Provide exactly
+   one of ``code`` or ``filepath``.
 
 Refactor & Iterate
 ~~~~~~~~~~~~~~~~~~
 
-``topos_assess_improvement({"params": {"filepath": ..., "current_code": ..., "proposed_code": ..., "proposed_filepath": ..., "language": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
-   Compares a proposed version against the current file. Returns an ``IMPROVEMENT`` status
-   if the quality badge or scores have improved according to the preferences. Provide
-   exactly one of ``filepath`` or ``current_code`` and exactly one of
-   ``proposed_code`` or ``proposed_filepath``.
+``topos_assess_worktree_change({"params": {"filepath": ..., "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+   **Default edit-in-place loop.** Compares the working-tree file to a git baseline
+   (``git show <baseline_ref>:<path>``). Edit the file, then call this — no snapshot
+   or pasted source required.
 
-   Anti-gaming check: if scores improved but AST edit distance is near zero, it returns 
+``topos_begin_refactor({"params": {"filepath": ..., "preferences": ..., "gitnexus_dir": ...}})``
+   Captures the current file as a baseline snapshot before editing. Returns a
+   ``snapshot_id``. Use for untracked files or uncommitted baselines that git cannot
+   serve.
+
+``topos_assess_snapshot({"params": {"snapshot_id": ..., "filepath": ..., "include_security_findings": ..., "allow": ...}})``
+   Compares the current on-disk file to a snapshot from ``topos_begin_refactor``.
+
+``topos_assess_improvement({"params": {"filepath": ..., "current_code": ..., "proposed_code": ..., "proposed_filepath": ..., "language": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+   Side-by-side variant assessment. Provide exactly one of ``filepath`` or
+   ``current_code`` and exactly one of ``proposed_code`` or ``proposed_filepath``.
+
+   Anti-gaming check: if scores improved but AST edit distance is near zero, it returns
    ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 
    When SECURE fails, file-level assessment includes ``security_findings`` with the
    dangerous callee, line, and source snippet.
 
+``topos_assess_changeset({"params": {"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ..., "refresh_depgraph": false}})``
+   Multi-file / module-split assessment. Each file is compared to the git baseline;
+   new files have no baseline. Returns per-file verdicts, a project rollup
+   (``aggregate_before`` / ``aggregate_after``), and flags
+   ``complexity_relocated_within_file`` and ``project_regression``. Read-only unless
+   ``refresh_depgraph`` is ``true`` (approval-gated).
+
 ``topos_preference_walk({"params": {"ranking": ..., "target": ..., "current": ...}})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
    follow to reach the target from its current state.
+
+Dependency Graph
+~~~~~~~~~~~~~~~~
+
+``topos_depgraph_status({"params": {"gitnexus_dir": ...}})``
+   Read-only ``.gitnexus`` state: ``missing``, ``present``, ``stale``,
+   ``load_error``, or ``schema_mismatch``. Includes mtime-based staleness vs. the
+   latest git commit. Never shells out.
+
+``topos_generate_depgraph({"params": {"directory": ...}})``
+   Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
+   approval-gated. Requires the ``gitnexus`` CLI (``npm install -g gitnexus``).
 
 Structure & Coverage
 ~~~~~~~~~~~~~~~~~~~~

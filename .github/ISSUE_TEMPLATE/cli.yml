@@ -1,4 +1,4 @@
-name: "[CLI] Issue"
+name: "[cli] Issue"
 description: Issue related to the topos CLI
 labels: ["cli"]
 body:

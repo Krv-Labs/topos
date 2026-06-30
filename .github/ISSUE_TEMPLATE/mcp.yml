@@ -1,4 +1,4 @@
-name: "[MCP] Issue"
+name: "[mcp] Issue"
 description: Issue related to the Topos MCP server or tools
 labels: ["mcp"]
 body:

@@ -1,4 +1,4 @@
-name: "[Methods] Issue"
+name: "[methods] Issue"
 description: Issue related to graph methods, algorithms, or topology computations
 labels: ["methods"]
 body:

@@ -1,4 +1,4 @@
-name: "[CI/CD] Issue"
+name: "[ci/cd] Issue"
 description: Issue related to workflows, releases, or automation
 labels: ["ci/cd"]
 body:

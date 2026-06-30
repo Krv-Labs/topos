@@ -986,3 +986,80 @@ class GenerateDepgraphResult(BaseModel):
     message: str
     agent_contract: AgentContract | None = None
     error: str | None = None
+
+
+class AssessChangesetInput(_StrictModel):
+    """Arguments for ``topos_assess_changeset`` (multi-file refactor)."""
+
+    files: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Edited file paths (working tree) that make up the changeset.",
+    )
+    baseline_ref: str = Field(
+        default="HEAD",
+        min_length=1,
+        description="Git baseline ref each file is compared against.",
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None, description="Optional generator ranking."
+    )
+    gitnexus_dir: str | None = Field(default=None)
+    refresh_depgraph: bool = Field(
+        default=False,
+        description=(
+            "Regenerate .gitnexus before assessing. Side-effecting and "
+            "approval-gated; leave false for a read-only assessment."
+        ),
+    )
+    include_security_findings: bool = Field(default=True)
+    allow: list[str] = Field(
+        default_factory=list,
+        description="One-off acknowledged dangerous-call patterns.",
+    )
+
+
+class ChangesetFileEntry(BaseModel):
+    """Per-file before/after summary inside a changeset assessment."""
+
+    filepath: str
+    status: AssessmentStatus
+    is_new: bool = Field(
+        default=False, description="True when the file did not exist at baseline_ref."
+    )
+    baseline_verdict: LatticeElement | None = None
+    current_verdict: LatticeElement | None = None
+    score_deltas: dict[str, float] = Field(default_factory=dict)
+    metric_deltas: dict[str, float] = Field(default_factory=dict)
+    complexity_relocated_within_file: bool = Field(
+        default=False,
+        description=(
+            "True when max function complexity improved but file cyclomatic "
+            "complexity worsened — extraction stayed inside one module."
+        ),
+    )
+    warnings: list[str] = Field(default_factory=list)
+    blocked_by: str | None = None
+    error: str | None = None
+
+
+class ChangesetResult(BaseModel):
+    """Result of ``topos_assess_changeset`` — multi-file rollup."""
+
+    baseline_ref: str
+    files: list[ChangesetFileEntry] = Field(default_factory=list)
+    project_before: dict[str, LatticeElement] = Field(default_factory=dict)
+    project_after: dict[str, LatticeElement] = Field(default_factory=dict)
+    project_scores_before: dict[str, float] = Field(default_factory=dict)
+    project_scores_after: dict[str, float] = Field(default_factory=dict)
+    aggregate_before: LatticeElement = LatticeElement.SLOP
+    aggregate_after: LatticeElement = LatticeElement.SLOP
+    project_regression: bool = False
+    complexity_relocated_files: list[str] = Field(default_factory=list)
+    coupling_available: bool = False
+    depgraph_refreshed: bool = False
+    priority: Priority
+    priority_source: PrioritySource = PrioritySource.DEFAULT
+    warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
+    error: str | None = None

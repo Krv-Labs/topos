@@ -176,9 +176,7 @@ def build_agent_contract(
         )
     elif "missing_gitnexus_dir" in blocked_by or "stale_gitnexus_dir" in blocked_by:
         next_tool = "topos_generate_depgraph"
-        next_actions.append(
-            "run topos_generate_depgraph to score/refresh COMPOSABLE"
-        )
+        next_actions.append("run topos_generate_depgraph to score/refresh COMPOSABLE")
     else:
         next_tool = "topos_inspect_code"
         next_actions.append(

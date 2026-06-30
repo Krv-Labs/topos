@@ -63,9 +63,7 @@ def test_changeset_improvement_across_files(tmp_path, monkeypatch) -> None:
     a.write_text(_CLEAN, encoding="utf-8")
     (tmp_path / "b.py").write_text(_CLEAN, encoding="utf-8")
 
-    r = _changeset(
-        topos_assess_changeset(AssessChangesetInput(files=["a.py", "b.py"]))
-    )
+    r = _changeset(topos_assess_changeset(AssessChangesetInput(files=["a.py", "b.py"])))
     assert r.error is None
     assert {e.filepath for e in r.files} == {"a.py", "b.py"}
     new_entry = next(e for e in r.files if e.filepath == "b.py")

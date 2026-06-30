@@ -236,9 +236,7 @@ def depgraph_status(
         state = "schema_mismatch" if _is_schema_mismatch(msg) else "load_error"
         return DepgraphStatus(state, dir_str, graph_mtime, head_mtime, detail=msg)
 
-    stale = (
-        head_mtime is not None and graph_mtime > 0.0 and graph_mtime < head_mtime
-    )
+    stale = head_mtime is not None and graph_mtime > 0.0 and graph_mtime < head_mtime
     return DepgraphStatus(
         "stale" if stale else "present",
         dir_str,

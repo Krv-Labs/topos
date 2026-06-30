@@ -213,6 +213,7 @@ def _is_import_export_entrypoint(morphism: ProgramMorphism) -> bool:
         return False
     return _is_entrypoint_source_only(morphism.source, morphism.language)
 
+
 # Map each *dimension* name to the singleton generator value it produces
 # when satisfied.  These three generators are pairwise incomparable in ℋ.
 _DIMENSION_GENERATOR: dict[str, EvaluationValue] = {

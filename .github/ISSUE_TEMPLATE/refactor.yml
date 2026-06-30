@@ -1,0 +1,25 @@
+name: Refactor
+description: Internal code improvement with no behavior change
+labels: ["refactor"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: What needs refactoring?
+      placeholder: Brief description of the target area
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why?
+      placeholder: What's wrong with the current code?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      placeholder: What should change?

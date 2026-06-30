@@ -1,0 +1,27 @@
+name: "[mcp] Issue"
+description: Issue related to the Topos MCP server or tools
+labels: ["mcp"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: What's the issue?
+      placeholder: Brief description
+    validations:
+      required: true
+
+  - type: input
+    id: tool
+    attributes:
+      label: MCP tool / endpoint
+      placeholder: e.g. topos_get_doc
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      placeholder: Describe the problem or request
+    validations:
+      required: true

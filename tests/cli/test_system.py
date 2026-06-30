@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
+from topos.cli.installation import InstallInfo
 from topos.cli.main import cli
 
 
@@ -38,8 +39,11 @@ def test_depgraph_generate_success(mock_which, mock_run):
 
 
 def test_uninstall_package_manager():
-    with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
-        mock_detect.return_value = ("package-manager", None, "pip uninstall topos")
+    info = InstallInfo(method="package-manager", uninstall_cmd="pip uninstall topos")
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+    ):
         runner = CliRunner()
         result = runner.invoke(cli, ["uninstall"])
         assert result.exit_code == 0
@@ -52,14 +56,21 @@ def test_uninstall_binary_dry_run(tmp_path: Path):
     binary.touch()
 
     provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+    info = InstallInfo(method="binary-installer", provenance=provenance)
 
-    with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
-        mock_detect.return_value = ("binary-installer", provenance, None)
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+        patch("topos.cli.commands.system.remove_state_dir") as mock_remove_state,
+        patch("topos.cli.commands.system.prune_path_hints") as mock_prune,
+    ):
         runner = CliRunner()
         result = runner.invoke(cli, ["uninstall", "--dry-run"])
         assert result.exit_code == 0
         assert f"[dry-run] Would remove binary: {binary}" in result.output
         assert binary.exists()
+        mock_remove_state.assert_called_once_with(dry_run=True)
+        mock_prune.assert_called_once_with(provenance, dry_run=True)
 
 
 def test_uninstall_binary_confirm_no(tmp_path: Path):
@@ -67,15 +78,19 @@ def test_uninstall_binary_confirm_no(tmp_path: Path):
     binary.touch()
 
     provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+    info = InstallInfo(method="binary-installer", provenance=provenance)
 
-    with patch("topos.cli.commands.system.detect_install_method") as mock_detect:
-        mock_detect.return_value = ("binary-installer", provenance, None)
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+        patch("topos.cli.commands.system.remove_state_dir") as mock_remove_state,
+    ):
         runner = CliRunner()
-        # "n" for the confirmation prompt
         result = runner.invoke(cli, ["uninstall"], input="n\n")
         assert result.exit_code == 0
         assert "Uninstall cancelled." in result.output
         assert binary.exists()
+        mock_remove_state.assert_not_called()
 
 
 def test_uninstall_binary_yes(tmp_path: Path):
@@ -83,18 +98,70 @@ def test_uninstall_binary_yes(tmp_path: Path):
     binary.touch()
 
     provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+    info = InstallInfo(method="binary-installer", provenance=provenance)
 
     with (
-        patch("topos.cli.commands.system.detect_install_method") as mock_detect,
-        patch("topos.cli.commands.system.remove_provenance_record") as mock_remove,
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+        patch("topos.cli.commands.system.remove_state_dir") as mock_remove_state,
+        patch("topos.cli.commands.system.prune_path_hints") as mock_prune,
     ):
-        mock_detect.return_value = ("binary-installer", provenance, None)
         runner = CliRunner()
         result = runner.invoke(cli, ["uninstall", "--yes"])
         assert result.exit_code == 0
         assert f"Removed binary: {binary}" in result.output
         assert not binary.exists()
-        mock_remove.assert_called_once()
+        mock_remove_state.assert_called_once_with(dry_run=False)
+        mock_prune.assert_called_once_with(provenance, dry_run=False)
+
+
+def test_uninstall_binary_keep_path_hints(tmp_path: Path):
+    binary = tmp_path / "topos"
+    binary.touch()
+
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+    info = InstallInfo(method="binary-installer", provenance=provenance)
+
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+        patch("topos.cli.commands.system.remove_state_dir"),
+        patch("topos.cli.commands.system.prune_path_hints") as mock_prune,
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["uninstall", "--yes", "--keep-path-hints"])
+        assert result.exit_code == 0
+        mock_prune.assert_not_called()
+
+
+def test_uninstall_removes_state_dir(tmp_path: Path):
+    """remove_state_dir is called and removes the XDG state directory."""
+    state_dir = tmp_path / "state" / "topos"
+    state_dir.mkdir(parents=True)
+    (state_dir / "update-check.json").write_text("{}")
+    (state_dir / "install-provenance").write_text("install_method=binary-installer\n")
+
+    binary = tmp_path / "bin" / "topos"
+    binary.parent.mkdir()
+    binary.touch()
+
+    provenance = {"install_method": "binary-installer", "install_path": str(binary)}
+    info = InstallInfo(method="binary-installer", provenance=provenance)
+
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+        patch("topos.cli.commands.system.prune_path_hints"),
+        patch(
+            "topos.cli.installation.topos_state_dir",
+            return_value=state_dir,
+        ),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["uninstall", "--yes"])
+        assert result.exit_code == 0
+        assert not state_dir.exists()
+        assert "Removed state directory" in result.output
 
 
 @patch("topos.cli.update.subprocess.run")

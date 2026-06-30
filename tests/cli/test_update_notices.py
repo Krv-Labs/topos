@@ -59,6 +59,54 @@ def test_cache_is_fresh():
     assert not cache_is_fresh(stale)
 
 
+@patch("topos.cli.update.echo_install_layout_notice", return_value=True)
+@patch("topos.cli.update.save_install_layout_notice_cache")
+@patch("topos.cli.update.load_install_layout_notice_cache", return_value=None)
+@patch("topos.cli.update.sys.stderr.isatty", return_value=True)
+def test_maybe_show_install_layout_notice_emits(
+    mock_isatty,
+    mock_load_cache,
+    mock_save_cache,
+    mock_echo_notice,
+    monkeypatch,
+):
+    from topos.cli.update import maybe_show_install_layout_notice
+
+    monkeypatch.delenv("CI", raising=False)
+    maybe_show_install_layout_notice(
+        invoked_subcommand="evaluate",
+        help_requested=False,
+    )
+    mock_echo_notice.assert_called_once()
+    mock_save_cache.assert_called_once()
+
+
+@patch("topos.cli.update.echo_install_layout_notice", return_value=True)
+@patch("topos.cli.update.save_install_layout_notice_cache")
+@patch("topos.cli.update.load_install_layout_notice_cache")
+@patch("topos.cli.update.sys.stderr.isatty", return_value=True)
+def test_maybe_show_install_layout_notice_respects_cache(
+    mock_isatty,
+    mock_load_cache,
+    mock_save_cache,
+    mock_echo_notice,
+    monkeypatch,
+):
+    from topos.cli.update import maybe_show_install_layout_notice
+
+    monkeypatch.delenv("CI", raising=False)
+    mock_load_cache.return_value = {
+        "checked_at": datetime.now(UTC).isoformat(),
+    }
+
+    maybe_show_install_layout_notice(
+        invoked_subcommand="evaluate",
+        help_requested=False,
+    )
+    mock_echo_notice.assert_not_called()
+    mock_save_cache.assert_not_called()
+
+
 @patch("topos.cli.update.is_outdated", return_value=True)
 @patch("topos.cli.update.save_update_check_cache")
 @patch("topos.cli.update.latest_version_for_channel", return_value="9.9.9")

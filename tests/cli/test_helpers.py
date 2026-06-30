@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 from topos.cli.evaluation import collect_files
 from topos.cli.installation import (
     detect_install_info,
     detect_install_method,
+    install_layout_notice_lines,
     load_provenance,
     prune_path_hints,
 )
@@ -133,3 +135,151 @@ def test_detect_install_method_editable(monkeypatch):
         info = detect_install_info()
         assert info.method == "source"
         assert info.update_cmd == "git pull && uv pip install -e ."
+
+
+def test_detect_install_method_editable_over_stale_binary_provenance(monkeypatch):
+    from unittest.mock import MagicMock
+
+    mock_dist = MagicMock()
+    mock_dist.read_text.return_value = (
+        '{"url": "file:///src/topos", "dir_info": {"editable": true}}'
+    )
+    stale_provenance = {
+        "install_method": "binary-installer",
+        "install_path": "/home/user/.local/bin/topos",
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", lambda name: mock_dist)
+        m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+
+        info = detect_install_info()
+        assert info.method == "source"
+
+
+def test_detect_install_method_pip_over_stale_binary_provenance(monkeypatch):
+    from unittest.mock import MagicMock
+
+    mock_dist = MagicMock()
+
+    def read_text(name: str) -> str:
+        if name == "direct_url.json":
+            raise FileNotFoundError
+        if name == "INSTALLER":
+            return "pip"
+        raise FileNotFoundError
+
+    mock_dist.read_text.side_effect = read_text
+    stale_provenance = {
+        "install_method": "binary-installer",
+        "install_path": "/home/user/.local/bin/topos",
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", lambda name: mock_dist)
+        m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+
+        info = detect_install_info()
+        assert info.method == "package-manager"
+        assert info.installer == "pip"
+
+
+def test_detect_install_method_binary_without_python_package(monkeypatch):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    stale_provenance = {
+        "install_method": "binary-installer",
+        "install_path": "/home/user/.local/bin/topos",
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr(
+            "importlib.metadata.distribution",
+            raise_not_found,
+        )
+        m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+
+        info = detect_install_info()
+        assert info.method == "binary-installer"
+        assert info.provenance == stale_provenance
+
+
+def test_install_layout_notice_none_for_single_install(monkeypatch):
+    active = Path("/venv/bin/topos")
+
+    with monkeypatch.context() as m:
+        m.setattr("topos.cli.installation.active_executable", lambda: active)
+        m.setattr("topos.cli.installation.find_topos_executables_on_path", lambda: [active])
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr("shutil.which", lambda name: str(active))
+
+        assert install_layout_notice_lines() is None
+
+
+def test_install_layout_notice_multiple_on_path(monkeypatch, tmp_path):
+    from topos.cli.installation import InstallInfo
+
+    # Use tmp_path so paths are already resolved — avoids macOS /home symlink issues
+    # when comparing path_bins (resolved) against shutil.which output (also resolved).
+    active = tmp_path / "venv" / "bin" / "topos"
+    other = tmp_path / "local" / "bin" / "topos"
+
+    with monkeypatch.context() as m:
+        m.setattr("topos.cli.installation.active_executable", lambda: active)
+        m.setattr(
+            "topos.cli.installation.find_topos_executables_on_path",
+            lambda: [other, active],
+        )
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr("shutil.which", lambda name: str(other))
+        m.setattr(
+            "topos.cli.installation.detect_install_info",
+            lambda: InstallInfo(method="source"),
+        )
+
+        lines = install_layout_notice_lines()
+        assert lines is not None
+        joined = "\n".join(lines)
+        assert "Multiple Topos installations detected." in joined
+        assert str(active) in joined
+        assert "editable source checkout" in joined
+        assert "runs when you type `topos`" in joined
+        assert str(other) in joined
+        # The PATH-default binary must not also appear as "Also on PATH".
+        assert joined.count(str(other)) == 1
+
+
+def test_install_layout_notice_stale_binary_provenance(monkeypatch):
+    from topos.cli.installation import InstallInfo
+
+    active = Path("/src/topos/.venv/bin/topos")
+    stale_binary = Path("/home/user/.local/bin/topos")
+    stale_provenance = {
+        "install_method": "binary-installer",
+        "install_path": str(stale_binary),
+    }
+
+    def fake_exists(self: Path) -> bool:
+        return self == stale_binary
+
+    with monkeypatch.context() as m:
+        m.setattr("topos.cli.installation.active_executable", lambda: active)
+        m.setattr(
+            "topos.cli.installation.find_topos_executables_on_path",
+            lambda: [active],
+        )
+        m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+        m.setattr("shutil.which", lambda name: str(active))
+        m.setattr(
+            "topos.cli.installation.detect_install_info",
+            lambda: InstallInfo(method="source"),
+        )
+        m.setattr(Path, "exists", fake_exists, raising=False)
+
+        lines = install_layout_notice_lines()
+        assert lines is not None
+        joined = "\n".join(lines)
+        assert f"Active: {active}" in joined
+        assert "Binary installer record:" in joined
+        assert ".local/bin/topos" in joined

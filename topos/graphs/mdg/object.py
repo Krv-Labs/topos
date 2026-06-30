@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
@@ -407,4 +408,20 @@ class ModuleDependencyGraph:
             "mdg.fan_in": float(fan_result.fan_in),
             "mdg.fan_out": float(fan_result.fan_out),
             "mdg.dep_depth": float(dep_depth),
+            "mdg.frc_min": self._frc_min,
         }
+
+    @cached_property
+    def _frc_min(self) -> float:
+        """Minimum balanced Forman-Ricci curvature over all edges.
+
+        A whole-graph invariant (independent of the target file), so it is
+        cached on the instance: repeated metric reads on the same graph object
+        do not recompute it. Cross-file dedup in a project walk would need a
+        content-keyed cache at the ``dep_graph_for`` layer — deferred until
+        profiling shows it matters (single-graph FRC is ~tens of ms).
+        """
+        from topos.functors.probes.mdg.curvature import mdg_edge_curvatures
+
+        curvatures = mdg_edge_curvatures(self)
+        return min((e.ric for e in curvatures), default=0.0)

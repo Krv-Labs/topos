@@ -104,6 +104,7 @@ def _score_composable_dim(
         instability=raw.get("mdg.instability"),
         fan_in=raw.get("mdg.fan_in"),
         fan_out=raw.get("mdg.fan_out"),
+        frc_min=raw.get("mdg.frc_min"),
         priority=priority,
     )
 

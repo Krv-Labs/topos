@@ -1,4 +1,5 @@
 pub mod cfg;
+pub mod frc;
 pub mod probes_ast;
 pub mod profunctors;
 pub mod uast;
@@ -21,6 +22,9 @@ fn topos_functors(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(probes_ast::calculate_entropy_detailed, m)?)?;
     m.add_function(wrap_pyfunction!(probes_ast::calculate_block_entropy, m)?)?;
     m.add_function(wrap_pyfunction!(probes_ast::calculate_entropy_variance, m)?)?;
+
+    m.add_class::<frc::EdgeCurvature>()?;
+    m.add_function(wrap_pyfunction!(frc::calculate_balanced_frc, m)?)?;
 
     m.add_class::<profunctors::DistanceResult>()?;
     m.add_function(wrap_pyfunction!(profunctors::compute_sequence_distance, m)?)?;

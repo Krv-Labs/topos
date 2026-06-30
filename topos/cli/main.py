@@ -11,7 +11,7 @@ import click
 from topos import __version__
 from topos.cli.commands.quality import register_quality_commands
 from topos.cli.commands.system import register_system_commands
-from topos.cli.update import maybe_show_update_notice
+from topos.cli.update import maybe_show_install_layout_notice, maybe_show_update_notice
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -34,6 +34,10 @@ register_system_commands(cli)
 @click.pass_context
 def _notify_updates(ctx: click.Context, result: object, **kwargs: object) -> None:
     help_requested = any(arg in sys.argv for arg in ("-h", "--help"))
+    maybe_show_install_layout_notice(
+        invoked_subcommand=ctx.invoked_subcommand,
+        help_requested=help_requested,
+    )
     maybe_show_update_notice(
         invoked_subcommand=ctx.invoked_subcommand,
         help_requested=help_requested,

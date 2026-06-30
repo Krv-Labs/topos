@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 import click
 
 from topos import __version__
-from topos.cli.installation import InstallInfo, detect_install_info
+from topos.cli.installation import InstallInfo, detect_install_info, echo_install_layout_notice
 
 _INSTALL_SCRIPT_URL = "https://docs.krv.ai/topos/install.sh"
 _GITHUB_REPO = "Krv-Labs/topos"
@@ -189,8 +189,56 @@ def _print_unknown_upgrade_paths() -> None:
     click.echo("  git pull && uv pip install -e .")
 
 
+def install_layout_notice_cache_file() -> Path:
+    override = os.environ.get("TOPOS_INSTALL_LAYOUT_NOTICE_FILE")
+    if override:
+        return Path(override).expanduser()
+    state_home = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser()
+    return state_home / "topos" / "install-layout-notice.json"
+
+
+def load_install_layout_notice_cache() -> dict[str, str] | None:
+    path = install_layout_notice_cache_file()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def save_install_layout_notice_cache() -> None:
+    path = install_layout_notice_cache_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"checked_at": datetime.now(UTC).isoformat()}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def maybe_show_install_layout_notice(
+    *,
+    invoked_subcommand: str | None,
+    help_requested: bool,
+) -> None:
+    if should_skip_passive_notice(
+        invoked_subcommand=invoked_subcommand,
+        help_requested=help_requested,
+    ):
+        return
+
+    cache = load_install_layout_notice_cache()
+    if cache_is_fresh(cache):
+        return
+
+    if echo_install_layout_notice():
+        save_install_layout_notice_cache()
+
+
 def run_update(*, check_only: bool, pin_version: str | None) -> None:
     info = detect_install_info()
+    echo_install_layout_notice(info=info)
     current = __version__
     latest = latest_version_for_channel(info.method)
 

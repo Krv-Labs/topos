@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
+import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,16 +88,9 @@ def _package_manager_info(installer: str) -> InstallInfo:
     )
 
 
-def detect_install_info() -> InstallInfo:
-    provenance = load_provenance()
-    if provenance and provenance.get("install_method") == "binary-installer":
-        return InstallInfo(method="binary-installer", provenance=provenance)
-
-    try:
-        dist = importlib.metadata.distribution(_PACKAGE_NAME)
-    except importlib.metadata.PackageNotFoundError:
-        return InstallInfo(method="unknown")
-
+def _install_info_from_distribution(
+    dist: importlib.metadata.Distribution,
+) -> InstallInfo:
     if _is_editable_install(dist):
         return InstallInfo(
             method="source",
@@ -111,9 +106,129 @@ def detect_install_info() -> InstallInfo:
     return _package_manager_info(installer)
 
 
+def _install_info_from_provenance(
+    provenance: dict[str, str] | None,
+) -> InstallInfo | None:
+    if provenance and provenance.get("install_method") == "binary-installer":
+        return InstallInfo(method="binary-installer", provenance=provenance)
+    return None
+
+
+def detect_install_info() -> InstallInfo:
+    provenance = load_provenance()
+
+    try:
+        dist = importlib.metadata.distribution(_PACKAGE_NAME)
+    except importlib.metadata.PackageNotFoundError:
+        binary_info = _install_info_from_provenance(provenance)
+        if binary_info is not None:
+            return binary_info
+        return InstallInfo(method="unknown")
+
+    # Active Python install metadata wins over stale binary provenance records.
+    return _install_info_from_distribution(dist)
+
+
 def detect_install_method() -> tuple[str, dict[str, str] | None, str | None]:
     info = detect_install_info()
     return info.method, info.provenance, info.uninstall_cmd
+
+
+def active_executable() -> Path:
+    """Resolved path of the executable/script running this process."""
+    return Path(sys.argv[0]).expanduser().resolve()
+
+
+def find_topos_executables_on_path() -> list[Path]:
+    """All distinct ``topos`` executables found on PATH (order preserved)."""
+    results: list[Path] = []
+    seen: set[Path] = set()
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        entry = entry.strip()
+        if not entry:
+            continue
+        candidate = Path(entry).expanduser() / "topos"
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                resolved = candidate.resolve()
+                if resolved not in seen:
+                    seen.add(resolved)
+                    results.append(resolved)
+        except OSError:
+            continue
+    return results
+
+
+def channel_label(info: InstallInfo) -> str:
+    if info.method == "binary-installer":
+        return "binary CLI"
+    if info.method == "source":
+        return "editable source checkout"
+    if info.method == "package-manager":
+        installer = info.installer or "pip"
+        return f"PyPI ({installer})"
+    return info.method
+
+
+def install_layout_notice_lines(info: InstallInfo | None = None) -> list[str] | None:
+    """Return notice lines when multiple installs may conflict, else None."""
+    info = info or detect_install_info()
+    active = active_executable()
+    path_bins = find_topos_executables_on_path()
+    provenance = load_provenance()
+
+    other_bins = [path for path in path_bins if path != active]
+    which_bin = shutil.which("topos")
+    which_resolved = Path(which_bin).resolve() if which_bin else None
+
+    stale_binary: Path | None = None
+    if provenance and provenance.get("install_method") == "binary-installer":
+        recorded = provenance.get("install_path", "").strip()
+        if recorded and info.method != "binary-installer":
+            recorded_path = Path(recorded).expanduser()
+            try:
+                if recorded_path.exists() and recorded_path.resolve() != active:
+                    stale_binary = recorded_path.resolve()
+            except OSError:
+                pass
+
+    path_precedence_mismatch = which_resolved is not None and which_resolved != active
+
+    if not other_bins and stale_binary is None and not path_precedence_mismatch:
+        return None
+
+    lines = [
+        "Multiple Topos installations detected.",
+        f"  Active: {active} ({channel_label(info)}) — "
+        "`topos update` / `topos uninstall` use this install.",
+    ]
+
+    if which_resolved is not None and which_resolved != active:
+        lines.append(
+            f"  PATH default: {which_resolved} "
+            "(runs when you type `topos` without a full path)"
+        )
+
+    for path in other_bins:
+        if path != which_resolved:
+            lines.append(f"  Also on PATH: {path}")
+
+    if stale_binary is not None and stale_binary not in other_bins:
+        lines.append(
+            f"  Binary installer record: {stale_binary} "
+            "(remove with that binary's `topos uninstall`, or delete manually)"
+        )
+
+    return lines
+
+
+def echo_install_layout_notice(*, info: InstallInfo | None = None, err: bool = True) -> bool:
+    """Print install layout notice when relevant. Returns True if printed."""
+    lines = install_layout_notice_lines(info)
+    if lines is None:
+        return False
+    click.echo("\n".join(lines), err=err)
+    return True
 
 
 def prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
@@ -171,6 +286,27 @@ def prune_path_hints(provenance: dict[str, str], dry_run: bool) -> None:
         new_content += "\n"
     rc_path.write_text(new_content, encoding="utf-8")
     click.echo(f"Pruned installer PATH hints from {rc_path}")
+
+
+def topos_state_dir() -> Path:
+    state_home = Path(os.environ.get("XDG_STATE_HOME", "~/.local/state")).expanduser()
+    return state_home / "topos"
+
+
+def remove_state_dir(dry_run: bool = False) -> None:
+    """Remove the entire topos XDG state directory (caches, provenance)."""
+    state_dir = topos_state_dir()
+    if not state_dir.exists():
+        return
+    if dry_run:
+        click.echo(f"[dry-run] Would remove state directory: {state_dir}")
+        return
+    try:
+        shutil.rmtree(state_dir)
+    except OSError as exc:
+        click.echo(f"Failed to remove state directory {state_dir}: {exc}", err=True)
+        return
+    click.echo(f"Removed state directory: {state_dir}")
 
 
 def remove_provenance_record() -> None:

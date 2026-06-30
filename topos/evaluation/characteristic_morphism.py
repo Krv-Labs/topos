@@ -42,6 +42,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from topos.core.omega import (
@@ -71,7 +72,9 @@ if TYPE_CHECKING:
 
 
 def _score_simple_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
     # We pass all available metrics to score_simple; it handles the independent
@@ -87,12 +90,15 @@ def _score_simple_dim(
         cyclomatic=raw.get("cfg.cyclomatic"),
         entropy=raw.get("ast.entropy"),
         max_function_complexity=raw.get("ast.max_function_complexity"),
+        is_entrypoint_module=is_entrypoint_module,
         priority=priority,
     )
 
 
 def _score_composable_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     if (
         "mdg.instability" not in raw
@@ -104,12 +110,15 @@ def _score_composable_dim(
         instability=raw.get("mdg.instability"),
         fan_in=raw.get("mdg.fan_in"),
         fan_out=raw.get("mdg.fan_out"),
+        is_entrypoint_module=is_entrypoint_module,
         priority=priority,
     )
 
 
 def _score_secure_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
         return None
@@ -122,12 +131,87 @@ def _score_secure_dim(
 
 _DIMENSION_SCORE_DISPATCHERS: dict[
     str,
-    Callable[[dict[str, float], Priority], ScoredDecision | None],
+    Callable[[dict[str, float], Priority, bool], ScoredDecision | None],
 ] = {
     "simple": _score_simple_dim,
     "composable": _score_composable_dim,
     "secure": _score_secure_dim,
 }
+
+
+def _entrypoint_filename_hint(path: Path, language: str) -> bool:
+    filename = path.name
+    lower_name = filename.lower()
+    if language == "python":
+        return filename == "__init__.py"
+    if language == "rust":
+        return filename in {"mod.rs", "lib.rs"}
+    if language == "typescript":
+        return lower_name in {"index.ts", "index.tsx"}
+    if language == "javascript":
+        return lower_name in {"index.js", "index.mjs", "index.cjs"}
+    if language == "cpp":
+        return path.suffix.lower() in {".hpp", ".hh", ".hxx"}
+    return False
+
+
+def _is_entrypoint_source_only(source: str, language: str) -> bool:
+    lines = [line.strip() for line in source.splitlines()]
+    lines = [line for line in lines if line and not line.startswith("#")]
+    if not lines:
+        return False
+
+    if language == "python":
+        return all(
+            line.startswith("import ")
+            or line.startswith("from ")
+            or line.startswith("__all__")
+            or line in {"[", "]", "(", ")"}
+            or line.startswith(("'", '"'))
+            for line in lines
+        )
+    if language in {"typescript", "javascript"}:
+        return all(
+            line.startswith("import ")
+            or line.startswith("export *")
+            or line.startswith("export {")
+            or line.startswith("export type ")
+            or line.startswith("export interface ")
+            or line.startswith("/*")
+            or line.startswith("*")
+            or line.endswith("*/")
+            for line in lines
+        )
+    if language == "rust":
+        return all(
+            line.startswith("use ")
+            or line.startswith("pub use ")
+            or line.startswith("pub mod ")
+            or line.startswith("mod ")
+            or line.startswith("extern crate ")
+            or line.startswith("#!")
+            or line.startswith("#[")
+            for line in lines
+        )
+    if language == "cpp":
+        return all(
+            line.startswith("#include")
+            or line.startswith("#pragma once")
+            or line.startswith("//")
+            or line.startswith("/*")
+            or line.startswith("*")
+            or line.endswith("*/")
+            for line in lines
+        )
+    return False
+
+
+def _is_import_export_entrypoint(morphism: ProgramMorphism) -> bool:
+    if morphism.filepath is None:
+        return False
+    if not _entrypoint_filename_hint(morphism.filepath, morphism.language):
+        return False
+    return _is_entrypoint_source_only(morphism.source, morphism.language)
 
 # Map each *dimension* name to the singleton generator value it produces
 # when satisfied.  These three generators are pairwise incomparable in ℋ.
@@ -250,6 +334,7 @@ class CharacteristicMorphism:
         by_dimension: dict[str, list[Representation]] = defaultdict(list)
         for rep in all_reps:
             by_dimension[rep.dimension].append(rep)
+        is_entrypoint_module = _is_import_export_entrypoint(morphism)
 
         raw_metrics: dict[str, float] = {}
         interpretation: dict[str, str] = {}
@@ -266,7 +351,7 @@ class CharacteristicMorphism:
             if not scorer:
                 continue
 
-            decision = scorer(dim_raw, priority)
+            decision = scorer(dim_raw, priority, is_entrypoint_module)
             if decision is None:
                 continue
 

@@ -34,6 +34,7 @@ def score_coupling(
     instability: float | None = None,
     fan_in: float | None = None,
     fan_out: float | None = None,
+    is_entrypoint_module: bool = False,
     priority: Priority = Priority.SECURE,
     threshold: float | None = None,
 ) -> ScoredDecision:
@@ -60,9 +61,17 @@ def score_coupling(
         quality = _instability_tent(instability)
         qualities.append(quality)
         low, high = COMPOSABLE.instability_low, COMPOSABLE.instability_high
-        if not (low <= instability <= high):
+        allow_entrypoint_instability = (
+            is_entrypoint_module and instability >= 0.95 and fan_in == 0.0
+        )
+        if not (low <= instability <= high) and not allow_entrypoint_instability:
             achieved = False
-        interp["mdg.instability"] = _instability_interpretation(instability, quality)
+        interp["mdg.instability"] = _instability_interpretation(
+            instability,
+            quality,
+            is_entrypoint_module=is_entrypoint_module,
+            allow_entrypoint_instability=allow_entrypoint_instability,
+        )
 
     # 2. Fan-In
     if fan_in is not None:
@@ -115,13 +124,24 @@ def _instability_tent(instability: float) -> float:
     return max(0.0, (1.0 - instability) / (1.0 - high))
 
 
-def _instability_interpretation(instability: float, quality: float) -> str:
+def _instability_interpretation(
+    instability: float,
+    quality: float,
+    *,
+    is_entrypoint_module: bool = False,
+    allow_entrypoint_instability: bool = False,
+) -> str:
     low = COMPOSABLE.instability_low
     high = COMPOSABLE.instability_high
     if low <= instability <= high:
         return f"instability ({instability:.2f}) within balanced range [{low}, {high}]"
     if instability < low:
         return f"instability ({instability:.2f}) is too low (module is too stable)"
+    if is_entrypoint_module and allow_entrypoint_instability:
+        return (
+            f"instability ({instability:.2f}) is high, but tolerated for "
+            "import/export-only entrypoint modules"
+        )
     return (
         f"instability ({instability:.2f}) is too high "
         "(module depends on too many things)"

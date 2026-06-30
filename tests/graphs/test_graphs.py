@@ -1,5 +1,7 @@
 """Tests for the graphs package."""
 
+from pathlib import Path
+
 from topos.core.object import ProgramObject
 from topos.graphs.ast.object import ASTRepresentation
 from topos.graphs.base import Representation
@@ -312,6 +314,26 @@ def test_score_simple_dim_returns_none_on_missing_keys():
 
     assert _score_simple_dim({}, Priority.SECURE) is None
     assert _score_simple_dim({"mdg.coupling": 3.0}, Priority.SECURE) is None
+
+
+def test_entrypoint_filename_hints_cover_supported_languages():
+    from topos.evaluation.characteristic_morphism import _entrypoint_filename_hint
+
+    assert _entrypoint_filename_hint(Path("__init__.py"), "python") is True
+    assert _entrypoint_filename_hint(Path("mod.rs"), "rust") is True
+    assert _entrypoint_filename_hint(Path("lib.rs"), "rust") is True
+    assert _entrypoint_filename_hint(Path("index.ts"), "typescript") is True
+    assert _entrypoint_filename_hint(Path("index.js"), "javascript") is True
+    assert _entrypoint_filename_hint(Path("something.cpp"), "cpp") is False
+
+
+def test_entrypoint_source_only_rejects_logic_for_entrypoint_files():
+    from topos.evaluation.characteristic_morphism import _is_entrypoint_source_only
+
+    assert _is_entrypoint_source_only("from .core import run\n", "python") is True
+    assert _is_entrypoint_source_only("from .core import run\nx = 1\n", "python") is False
+    assert _is_entrypoint_source_only("export * from './a'\n", "typescript") is True
+    assert _is_entrypoint_source_only("export const x = 1\n", "typescript") is False
 
 
 # ---------------------------------------------------------------------------

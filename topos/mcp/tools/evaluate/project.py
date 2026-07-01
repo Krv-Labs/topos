@@ -219,24 +219,18 @@ async def _evaluate_project_files_loop(
 async def topos_evaluate_project(
     params: EvaluateProjectInput, ctx: Context
 ) -> ToolResult:
-    """Recursively evaluate a directory's source files against SIMPLE /
-    COMPOSABLE / SECURE (read-only; never writes or executes code).
+    """Recursively score every supported source file in a directory on the
+    SIMPLE / COMPOSABLE / SECURE lattice, with a project rollup (read-only).
 
-    Autodetects every supported language in a single walk — Python (.py),
-    Rust (.rs), JavaScript (.js/.mjs/.cjs), TypeScript (.ts/.tsx), and C++
-    (.cpp/.cc/.cxx/.hpp/.hh/.hxx) — mapping each file to its language for a
-    per-language rollup. No language argument is needed; unsupported files are
-    skipped. Import/export-only entrypoint modules (e.g. ``__init__.py``,
-    ``index.ts``, ``mod.rs``) are recognized so their low logic density does
-    not falsely floor the verdict.
-
-    Reports progress to the client via ``ctx.report_progress`` so the UI shows
-    a live bar during long walks. Rolls up per-dimension scores using the
-    project-wide minimum (``CharacteristicMorphism.combine_dimensions``), so the
-    weakest file floors the verdict.
-
-    Returns a paginated per-file table (worst files first) plus the overall
-    rollup. Use ``limit`` / ``offset`` to page through large codebases.
+    Use for a whole tree; for a single file use ``topos_evaluate_file``, for a
+    snippet ``topos_evaluate_code``. Autodetects all supported languages
+    (Python, Rust, JavaScript, TypeScript, C++) in one walk — no language
+    argument — and skips unsupported files. Import/export-only entrypoint
+    modules (``__init__.py``, ``index.ts``, ``mod.rs``) are exempted so trivial
+    re-export hubs don't floor the verdict. The rollup takes the project-wide
+    minimum per dimension (weakest file floors it); progress streams via
+    ``ctx.report_progress``. Returns a paginated per-file table (worst first)
+    plus per-language rollups; page with ``limit`` / ``offset``.
     """
     resolved_root, source_files, err_msg = _validate_and_collect_project(params)
     if err_msg or resolved_root is None or source_files is None:

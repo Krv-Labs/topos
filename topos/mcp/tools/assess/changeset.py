@@ -62,14 +62,17 @@ _DIM_VALUE = {
     annotations=_WRITE_ANN,
 )
 def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
-    """Assess a multi-file changeset against a git baseline.
+    """Assess a multi-file changeset against a git baseline and roll the
+    per-file verdicts into a project before/after.
 
-    Each file is compared to ``baseline_ref`` (new files have no baseline), and
-    the per-file verdicts roll up into a project before/after. Flags
+    Use for a module split or any edit spanning several files; for a single
+    file use ``topos_assess_worktree_change``. Each file is compared to
+    ``baseline_ref`` (new files have no baseline). Flags
     ``complexity_relocated_within_file`` when a function shrank but its file's
-    cyclomatic complexity grew, and ``project_regression`` when the rollup
-    drops a generator it previously satisfied. Read-only unless
-    ``refresh_depgraph=True``.
+    cyclomatic complexity grew, and ``project_regression`` when the rollup drops
+    a generator it previously satisfied. Reads from git and writes nothing
+    unless ``refresh_depgraph=True``, which first regenerates ``.gitnexus`` (its
+    only side effect; approval-gated). Returns a ChangesetResult.
     """
     priority, priority_source = resolve_priority(params.preferences)
     prefs = params.preferences.to_preferences() if params.preferences else None

@@ -15,13 +15,11 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import Generator, UserPreferences
 
 
+# The 8 elements of the free Heyting algebra H(G_qual) on the three generators
+# SIMPLE, COMPOSABLE, SECURE, mirroring ``EvaluationValue`` on the MCP wire.
+# Medal Podium: IDEAL = 🥇 GOLD, SLOP = ❌ No Medal.
 class LatticeElement(StrEnum):
-    """String-valued mirror of ``EvaluationValue`` for MCP wire format.
-
-    These are the 8 elements of the free Heyting algebra H(G_qual) on the
-    three generators SIMPLE, COMPOSABLE, SECURE.  Mapped to the Medal Podium:
-    IDEAL = 🥇 GOLD, SLOP = ❌ No Medal.
-    """
+    """The 8 quality verdicts, from SLOP (none) to IDEAL (simple+composable+secure)."""
 
     SLOP = "SLOP"
     SIMPLE = "SIMPLE"

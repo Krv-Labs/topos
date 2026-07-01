@@ -167,13 +167,16 @@ def _parse_roots(
     annotations=_READ_ONLY_ANN,
 )
 def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
-    """Measure structural (UAST) and semantic (topological ECT) test coverage.
+    """Measure how well a test suite exercises its program-under-test, via
+    structural (UAST) and semantic (ECT) coverage (read-only).
 
-    Read-only standalone signal (outside the quality lattice). Calculates UAST
-    bipartite declaration matching and k-gram path recall.
+    A standalone signal, separate from the SIMPLE/COMPOSABLE/SECURE lattice; for
+    a quality verdict use ``topos_evaluate_*`` instead. Computes UAST bipartite
+    declaration matching and k-gram path recall. Returns a CoverageResult.
 
-    ⚠️ AGENTS: Optional ECT semantic coverage is experimental and 100x-1000x slower
-    than structural coverage. Use selectively on small files to prevent timeouts.
+    ⚠️ AGENTS: the optional ECT semantic coverage is experimental and 100x–1000x
+    slower than structural — enable it selectively on small files to avoid
+    timeouts.
     """
     warnings: list[str] = []
     put_roots, err_model = _parse_roots(

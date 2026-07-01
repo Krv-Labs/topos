@@ -344,9 +344,7 @@ def test_entrypoint_source_only_rejects_logic_for_entrypoint_files():
         _is_entrypoint_source_only("#pragma once\n#include <vector>\n", "cpp") is True
     )
     assert _is_entrypoint_source_only("#include <vector>\nint x;\n", "cpp") is False
-    assert (
-        _is_entrypoint_source_only("/// module\npub use crate::a;\n", "rust") is True
-    )
+    assert _is_entrypoint_source_only("/// module\npub use crate::a;\n", "rust") is True
 
 
 # ---------------------------------------------------------------------------

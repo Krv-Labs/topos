@@ -42,6 +42,20 @@ def render_project_md(r: ProjectEvaluationResult) -> str:
         lines.append(
             f"- **{dim}**: {val.value}" + (f" ({s:.1f}%)" if s is not None else "")
         )
+    if r.language_rollups:
+        lines.append("")
+        lines.append("## Per-language rollups")
+        for rollup in r.language_rollups:
+            lines.append(
+                f"- **{rollup.language}**: {rollup.aggregate_floor_verdict.value} "
+                f"(files={rollup.file_count}, parse_failures={rollup.parse_failures})"
+            )
+            if rollup.worst_file_path and rollup.worst_file_verdict:
+                lines.append(
+                    "  "
+                    f"- worst: `{rollup.worst_file_path}` "
+                    f"({rollup.worst_file_verdict.value})"
+                )
     lines.append("")
     lines.append(f"## Worst files (showing {r.count} of {r.total}, offset {r.offset})")
     for entry in r.files:

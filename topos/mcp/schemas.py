@@ -747,6 +747,19 @@ class ProjectFileEntry(BaseModel):
     is_parseable: bool = True
 
 
+class ProjectLanguageRollup(BaseModel):
+    """Per-language project rollup for polyglot directory evaluation."""
+
+    language: str
+    file_count: int
+    parse_failures: int = 0
+    rolled_up_dimensions: dict[str, LatticeElement] = Field(default_factory=dict)
+    rolled_up_scores: dict[str, float] = Field(default_factory=dict)
+    aggregate_floor_verdict: LatticeElement = LatticeElement.SLOP
+    worst_file_path: str | None = None
+    worst_file_verdict: LatticeElement | None = None
+
+
 class ProjectEvaluationResult(BaseModel):
     """Result of a directory-wide evaluation."""
 
@@ -756,6 +769,7 @@ class ProjectEvaluationResult(BaseModel):
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
     aggregate_floor_verdict: LatticeElement
+    language_rollups: list[ProjectLanguageRollup] = Field(default_factory=list)
     aggregate_explanation: str
     worst_file_verdict: LatticeElement | None = None
     worst_files: list[ProjectFileEntry] = Field(default_factory=list)

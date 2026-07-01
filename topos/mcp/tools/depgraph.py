@@ -160,14 +160,11 @@ def _status_to_result(status: DepgraphStatus) -> ToolResult:
     state = DepgraphState(status.state)
     action, next_tool, blocked_code = _STATE_GUIDANCE[state]
     blocked_by = [blocked_code] if blocked_code else []
-    # Mirror the state-specific code into risk_flags (not just composable_unavailable)
-    # so clients branching on risk_flags alone can tell stale / load_error /
-    # schema_mismatch / invalid_dir apart.
-    risk_flags: list[str] = []
-    if state != DepgraphState.PRESENT:
-        risk_flags.append("composable_unavailable")
-    if blocked_code:
-        risk_flags.append(blocked_code)
+    risk_flags = (
+        ["composable_unavailable", blocked_code]
+        if state != DepgraphState.PRESENT
+        else []
+    )
     model = DepgraphStatusResult(
         state=state,
         gitnexus_dir=status.gitnexus_dir,

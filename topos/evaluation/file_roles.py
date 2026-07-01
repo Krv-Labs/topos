@@ -55,15 +55,7 @@ def _is_entrypoint_source_only(source: str, language: str) -> bool:
         return False
 
     if language == "python":
-        return all(
-            line.startswith("#")
-            or line.startswith("import ")
-            or line.startswith("from ")
-            or line.startswith("__all__")
-            or line in {"[", "]", "(", ")"}
-            or line.startswith(("'", '"'))
-            for line in lines
-        )
+        return _python_entrypoint_only(lines)
     if language in {"typescript", "javascript"}:
         return all(
             line.startswith("import ")
@@ -104,3 +96,31 @@ def _is_entrypoint_source_only(source: str, language: str) -> bool:
             for line in lines
         )
     return False
+
+
+def _python_entrypoint_only(lines: list[str]) -> bool:
+    # Track open brackets so multiline ``from x import (...)`` and
+    # ``__all__ = [...]`` continuation lines (e.g. ``assess,``) are accepted.
+    depth = 0
+    for line in lines:
+        if depth > 0:
+            depth += _bracket_delta(line)
+            continue
+        if not (
+            line.startswith("#")
+            or line.startswith("import ")
+            or line.startswith("from ")
+            or line.startswith("__all__")
+            or line in {"[", "]", "(", ")"}
+            or line.startswith(("'", '"'))
+        ):
+            return False
+        if line.startswith(("import ", "from ", "__all__")):
+            depth += _bracket_delta(line)
+    return True
+
+
+def _bracket_delta(line: str) -> int:
+    opens = line.count("(") + line.count("[")
+    closes = line.count(")") + line.count("]")
+    return opens - closes

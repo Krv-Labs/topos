@@ -334,6 +334,16 @@ def test_entrypoint_source_only_rejects_logic_for_entrypoint_files():
     assert (
         _is_entrypoint_source_only("from .core import run\nx = 1\n", "python") is False
     )
+    assert (
+        _is_entrypoint_source_only(
+            "from . import (\n    assess,\n    evaluate,\n)\n", "python"
+        )
+        is True
+    )
+    assert (
+        _is_entrypoint_source_only("from . import (\n    assess,\n)\nx = 1\n", "python")
+        is False
+    )
     assert _is_entrypoint_source_only("export * from './a'\n", "typescript") is True
     assert _is_entrypoint_source_only("export const x = 1\n", "typescript") is False
     assert (

@@ -873,7 +873,7 @@ class InspectionResult(BaseModel):
 
 
 class TopologicalCoverageResult(BaseModel):
-    """ECT-based topological semantic coverage (optional extra)."""
+    """ECT-based topological semantic coverage (Experimental optional extra)."""
 
     unavailable: bool = False
     reason: str | None = None

@@ -49,6 +49,7 @@ from topos.core.omega import (
     Omega,
     verdict_from_generators,
 )
+from topos.evaluation.file_roles import is_entrypoint_module
 from topos.evaluation.policies import (
     Priority,
     ScoredDecision,
@@ -71,7 +72,9 @@ if TYPE_CHECKING:
 
 
 def _score_simple_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
     # We pass all available metrics to score_simple; it handles the independent
@@ -87,12 +90,15 @@ def _score_simple_dim(
         cyclomatic=raw.get("cfg.cyclomatic"),
         entropy=raw.get("ast.entropy"),
         max_function_complexity=raw.get("ast.max_function_complexity"),
+        is_entrypoint_module=is_entrypoint_module,
         priority=priority,
     )
 
 
 def _score_composable_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     if (
         "mdg.instability" not in raw
@@ -104,12 +110,15 @@ def _score_composable_dim(
         instability=raw.get("mdg.instability"),
         fan_in=raw.get("mdg.fan_in"),
         fan_out=raw.get("mdg.fan_out"),
+        is_entrypoint_module=is_entrypoint_module,
         priority=priority,
     )
 
 
 def _score_secure_dim(
-    raw: dict[str, float], priority: Priority
+    raw: dict[str, float],
+    priority: Priority,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision | None:
     if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
         return None
@@ -122,12 +131,13 @@ def _score_secure_dim(
 
 _DIMENSION_SCORE_DISPATCHERS: dict[
     str,
-    Callable[[dict[str, float], Priority], ScoredDecision | None],
+    Callable[[dict[str, float], Priority, bool], ScoredDecision | None],
 ] = {
     "simple": _score_simple_dim,
     "composable": _score_composable_dim,
     "secure": _score_secure_dim,
 }
+
 
 # Map each *dimension* name to the singleton generator value it produces
 # when satisfied.  These three generators are pairwise incomparable in ℋ.
@@ -250,6 +260,7 @@ class CharacteristicMorphism:
         by_dimension: dict[str, list[Representation]] = defaultdict(list)
         for rep in all_reps:
             by_dimension[rep.dimension].append(rep)
+        is_entrypoint = is_entrypoint_module(morphism)
 
         raw_metrics: dict[str, float] = {}
         interpretation: dict[str, str] = {}
@@ -266,7 +277,7 @@ class CharacteristicMorphism:
             if not scorer:
                 continue
 
-            decision = scorer(dim_raw, priority)
+            decision = scorer(dim_raw, priority, is_entrypoint)
             if decision is None:
                 continue
 

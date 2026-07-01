@@ -79,18 +79,6 @@ def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
     prefs = params.preferences.to_preferences() if params.preferences else None
     project_root = resolve_file_root()
 
-    # Validate the baseline ref once, up front: git cannot tell a genuinely-new
-    # file apart from a mistyped ref (both are "absent at ref"). Without this a
-    # bad ref would silently mark every file is_new and report a green result.
-    git_root = find_git_root(project_root)
-    if git_root is not None and not _ref_exists(git_root, params.baseline_ref):
-        return _changeset_error(
-            priority,
-            priority_source,
-            params.baseline_ref,
-            f"baseline ref not found: {params.baseline_ref}",
-        )
-
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
 
     entries: list[ChangesetFileEntry] = []
@@ -108,9 +96,9 @@ def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
             project_root,
             gitnexus_dir,
         )
-        if outcome.git_unavailable:
+        if outcome.fatal_error:
             return _changeset_error(
-                priority, priority_source, params.baseline_ref, "git is not available."
+                priority, priority_source, params.baseline_ref, outcome.fatal_error
             )
         entries.append(outcome.entry)
         if outcome.coupling:
@@ -137,15 +125,15 @@ class _FileOutcome:
         "baseline_eval",
         "current_eval",
         "coupling",
-        "git_unavailable",
+        "fatal_error",
     )
 
-    def __init__(self, entry, baseline_eval, current_eval, coupling, git_unavailable):
+    def __init__(self, entry, baseline_eval, current_eval, coupling, fatal_error):
         self.entry = entry
         self.baseline_eval = baseline_eval
         self.current_eval = current_eval
         self.coupling = coupling
-        self.git_unavailable = git_unavailable
+        self.fatal_error = fatal_error
 
 
 def _assess_one_file(
@@ -164,11 +152,19 @@ def _assess_one_file(
     git_root = find_git_root(resolved)
     if git_root is None:
         return _file_error(filepath, "not inside a git repo", code="not_a_git_repo")
+    if not _ref_exists(git_root, params.baseline_ref):
+        return _FileOutcome(
+            None,
+            None,
+            None,
+            False,
+            f"baseline ref not found: {params.baseline_ref}",
+        )
 
     rel_path = resolved.relative_to(git_root).as_posix()
     baseline_src, git_err = _git_show(git_root, params.baseline_ref, rel_path)
     if git_err == "git_unavailable":
-        return _FileOutcome(None, None, None, False, True)
+        return _FileOutcome(None, None, None, False, "git is not available.")
     is_new = git_err == "baseline_ref_not_found"
     if baseline_src is None:
         baseline_src = ""
@@ -219,7 +215,7 @@ def _assess_one_file(
         None if is_new else assessment.current,
         assessment.proposed,
         dep_graph is not None,
-        False,
+        None,
     )
 
 
@@ -241,7 +237,7 @@ def _file_error(
         blocked_by=code,
         error=message,
     )
-    return _FileOutcome(entry, None, None, False, False)
+    return _FileOutcome(entry, None, None, False, None)
 
 
 def _rollup(

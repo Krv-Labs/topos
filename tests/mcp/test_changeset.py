@@ -119,6 +119,30 @@ def test_changeset_rejects_invalid_baseline_ref(tmp_path, monkeypatch) -> None:
     assert r.files == []
 
 
+def test_changeset_rejects_invalid_ref_when_root_is_above_repo(
+    tmp_path, monkeypatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    repo = workspace / "repo"
+    repo.mkdir(parents=True)
+    _init_repo(repo)
+    a = repo / "a.py"
+    a.write_text(_CLEAN, encoding="utf-8")
+    _git(repo, "add", "a.py")
+    _git(repo, "commit", "-m", "init")
+    _use_root(workspace, monkeypatch)
+
+    r = _changeset(
+        topos_assess_changeset(
+            AssessChangesetInput(files=["repo/a.py"], baseline_ref="no-such-ref")
+        )
+    )
+
+    assert r.error is not None
+    assert "no-such-ref" in r.error
+    assert r.files == []
+
+
 def test_changeset_markdown_has_file_table(tmp_path, monkeypatch) -> None:
     _init_repo(tmp_path)
     a = tmp_path / "a.py"

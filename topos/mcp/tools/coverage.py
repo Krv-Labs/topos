@@ -167,12 +167,14 @@ def _parse_roots(
     annotations=_READ_ONLY_ANN,
 )
 def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
-    """Calculate structural test coverage (v2) for a set of PUT and test files.
+    """Measure structural test coverage of program-under-test files against tests.
 
-    Uses UAST kind histograms, statement/expression recall, and k-gram path
-    recall scoped to declarations. When the ``ect-coverage`` optional extra
-    is installed, also returns topological ECT semantic coverage from CPG
-    node embeddings.
+    Read-only; a standalone signal OUTSIDE the quality lattice (never changes a
+    medal). Uses UAST kind histograms, statement/expression recall, and k-gram
+    path recall; with the ``ect-coverage`` extra it also returns topological ECT
+    coverage. Returns a CoverageResult: ``mean_declaration_coverage`` in [0, 1],
+    recall metrics, ``f2_score``, ``uncovered_declarations``, and optional
+    ``topological_coverage``.
     """
     warnings: list[str] = []
     put_roots, err_model = _parse_roots(

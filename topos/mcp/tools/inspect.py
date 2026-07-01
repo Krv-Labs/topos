@@ -44,12 +44,14 @@ _READ_ONLY_ANN = {
     annotations=_READ_ONLY_ANN,
 )
 def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
-    """Full metric breakdown for a code string.
+    """Full metric breakdown for a single code unit (inline string or file).
 
-    Returns the lattice evaluation, a *top-N* function complexity table
-    (sorted descending; configurable via ``top_n_functions``), and entropy
-    details. The top-N cap prevents large files from dumping hundreds of
-    functions and blowing out agent context.
+    Read-only; provide exactly one of ``code`` or ``filepath``. Use when you
+    need the per-function detail behind a verdict; use ``topos_evaluate_*`` when
+    the medal alone is enough. Returns an InspectionResult: the lattice
+    ``evaluation``, a *top-N* function complexity table (``top_n_functions``,
+    default 10), ``total_functions``, and entropy details. The top-N cap keeps
+    large files from blowing out agent context.
     """
     source, source_error, file_path = _load_source(params)
     priority, priority_source = resolve_priority(params.preferences)

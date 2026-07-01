@@ -185,11 +185,12 @@ async def _evaluate_project_files_loop(
 async def topos_evaluate_project(
     params: EvaluateProjectInput, ctx: Context
 ) -> ToolResult:
-    """Recursively evaluate every Python file in a directory.
+    """Recursively evaluate every Python file in a directory (read-only).
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
     a live bar during long walks. Rolls up per-dimension scores using the
-    project-wide minimum (``CharacteristicMorphism.combine_dimensions``).
+    project-wide minimum (``CharacteristicMorphism.combine_dimensions``), so the
+    weakest file floors the verdict.
 
     Returns a paginated per-file table plus the overall rollup. Use ``limit``
     / ``offset`` to page through large codebases.

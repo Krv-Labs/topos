@@ -47,11 +47,15 @@ def _failed_comparison(
     annotations=_READ_ONLY_ANN,
 )
 def topos_compare_code(params: CompareCodeInput) -> ToolResult:
-    """Compute AST edit distance between two source strings.
+    """Compute the AST (tree-edit) distance between two source-code strings.
 
-    Returns normalized distance in [0, 1] and a similarity score (1 - distance).
-    Useful for clone checks and independent refactor-impact inspection.
-    Assessment tools already include anti-gaming distance checks.
+    Read-only and idempotent; parses both snippets in memory, never writes or
+    scores. Use for clone detection or to measure refactor impact; the
+    ``topos_assess_*`` tools already fold this in as an anti-gaming check, so
+    call it directly only for the raw number. Returns a ComparisonResult:
+    ``normalized_distance`` in [0, 1], ``similarity`` (= 1 - it),
+    ``raw_distance``, an ``operations`` edit-count map, and
+    ``source_valid``/``target_valid`` (``error`` set if either fails to parse).
     """
     try:
         src = ProgramMorphism(source=params.source_code, language=params.language)
@@ -86,7 +90,15 @@ def topos_compare_code(params: CompareCodeInput) -> ToolResult:
     annotations=_READ_ONLY_ANN,
 )
 def topos_compare_files(params: CompareFilesInput) -> ToolResult:
-    """AST distance between two files on disk."""
+    """Compute the AST (tree-edit) distance between two source files on disk.
+
+    Read-only; parses both files, never writes or scores. Use for clone
+    detection or refactor impact; use ``topos_assess_*`` for a quality verdict.
+    Returns a ComparisonResult: ``normalized_distance`` in [0, 1],
+    ``similarity`` (= 1 - it), ``raw_distance``, an ``operations`` edit-count
+    map, and ``source_valid``/``target_valid`` (``error`` set on read/parse
+    failure).
+    """
     source_text, source_err = read_safe_utf8_file(params.source)
     if source_err:
         model = _failed_comparison(

@@ -317,7 +317,7 @@ def test_score_simple_dim_returns_none_on_missing_keys():
 
 
 def test_entrypoint_filename_hints_cover_supported_languages():
-    from topos.evaluation.characteristic_morphism import _entrypoint_filename_hint
+    from topos.evaluation.file_roles import _entrypoint_filename_hint
 
     assert _entrypoint_filename_hint(Path("__init__.py"), "python") is True
     assert _entrypoint_filename_hint(Path("mod.rs"), "rust") is True
@@ -328,7 +328,7 @@ def test_entrypoint_filename_hints_cover_supported_languages():
 
 
 def test_entrypoint_source_only_rejects_logic_for_entrypoint_files():
-    from topos.evaluation.characteristic_morphism import _is_entrypoint_source_only
+    from topos.evaluation.file_roles import _is_entrypoint_source_only
 
     assert _is_entrypoint_source_only("from .core import run\n", "python") is True
     assert (
@@ -336,6 +336,17 @@ def test_entrypoint_source_only_rejects_logic_for_entrypoint_files():
     )
     assert _is_entrypoint_source_only("export * from './a'\n", "typescript") is True
     assert _is_entrypoint_source_only("export const x = 1\n", "typescript") is False
+    assert (
+        _is_entrypoint_source_only("// re-export\nexport * from './a'\n", "typescript")
+        is True
+    )
+    assert (
+        _is_entrypoint_source_only("#pragma once\n#include <vector>\n", "cpp") is True
+    )
+    assert _is_entrypoint_source_only("#include <vector>\nint x;\n", "cpp") is False
+    assert (
+        _is_entrypoint_source_only("/// module\npub use crate::a;\n", "rust") is True
+    )
 
 
 # ---------------------------------------------------------------------------

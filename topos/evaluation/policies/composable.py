@@ -34,9 +34,10 @@ def score_coupling(
     instability: float | None = None,
     fan_in: float | None = None,
     fan_out: float | None = None,
-    is_entrypoint_module: bool = False,
     priority: Priority = Priority.SECURE,
     threshold: float | None = None,
+    *,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision:
     """
     Φ_COMPOSABLE — score the COMPOSABLE generator using independent raw thresholds.
@@ -47,6 +48,8 @@ def score_coupling(
         fan_out:     Number of unique modules this module depends on.
         priority:    Retained for API compatibility; not read by this Φᵢ.
         threshold:   Retained for API compatibility; not read by this Φᵢ.
+        is_entrypoint_module: When True, tolerate high instability for
+            import/export-only entrypoint modules with zero fan-in.
 
     Returns:
         A ScoredDecision; ``achieved`` is the truth value of the COMPOSABLE

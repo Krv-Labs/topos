@@ -28,9 +28,10 @@ def score_simple(
     cyclomatic: float | None = None,
     entropy: float | None = None,
     max_function_complexity: float | None = None,
-    is_entrypoint_module: bool = False,
     priority: Priority = Priority.SECURE,
     threshold: float | None = None,
+    *,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision:
     """
     Φ_SIMPLE — score the SIMPLE generator using independent raw thresholds.
@@ -41,6 +42,8 @@ def score_simple(
         max_function_complexity: Maximum McCabe complexity of any single function.
         priority:   Retained for API compatibility; not read by this Φᵢ.
         threshold:  Retained for API compatibility; not read by this Φᵢ.
+        is_entrypoint_module: When True, tolerate low entropy for
+            import/export-only entrypoint modules.
 
     Returns:
         A ScoredDecision; ``achieved`` is the truth value of the SIMPLE

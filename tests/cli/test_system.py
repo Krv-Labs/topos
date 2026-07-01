@@ -6,6 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 from topos.cli.installation import InstallInfo
 from topos.cli.main import cli
+from topos.utils.gitnexus import DEFAULT_ANALYZE_TIMEOUT_S
 
 
 def test_mcp_invokes_server():
@@ -37,6 +38,7 @@ def test_depgraph_generate_success(mock_which, mock_run):
         cwd=Path.cwd(),
         capture_output=False,
         text=True,
+        timeout=DEFAULT_ANALYZE_TIMEOUT_S,
     )
 
 

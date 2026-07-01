@@ -18,10 +18,12 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
+from .evaluation import INVALID_GITNEXUS_MARKERS, STALE_GITNEXUS_MARKER
 from .schemas import (
     AcknowledgedRisk,
     AgentContract,
     EvaluationResult,
+    FunctionEntry,
     LatticeElement,
     PillarResult,
     PreferenceWalk,
@@ -135,9 +137,27 @@ def build_agent_contract(
         risk_flags.append("parse_failure")
         return None, [], blocked_by, ["restore parseable source"], risk_flags
 
+    # An invalid/denied gitnexus_dir override is distinct from a plain missing
+    # graph: regenerating in the project root won't fix a bad path, so the agent
+    # must fix the path instead. Detected via the shared markers so the contract
+    # can't drift from the warning prose.
+    invalid_override = any(
+        marker in w for w in (warnings or []) for marker in INVALID_GITNEXUS_MARKERS
+    )
     if not coupling_available:
-        blocked_by.append("missing_gitnexus_dir")
+        if invalid_override:
+            blocked_by.append("invalid_gitnexus_dir")
+            risk_flags.append("invalid_gitnexus_dir")
+        else:
+            blocked_by.append("missing_gitnexus_dir")
         risk_flags.append("composable_unavailable")
+    # A loaded-but-stale graph is a distinct precondition: COMPOSABLE *is*
+    # scored, but the agent should refresh the index before trusting it. Match
+    # on the shared marker (not a bare "stale" substring) so the contract can't
+    # silently drift from the warning prose.
+    if warnings and any(STALE_GITNEXUS_MARKER in w for w in warnings):
+        blocked_by.append("stale_gitnexus_dir")
+        risk_flags.append("stale_gitnexus_dir")
     if security_findings:
         risk_flags.append("active_security_findings")
     if acknowledged_risks:
@@ -150,7 +170,15 @@ def build_agent_contract(
     summary = result.summary()
     simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
 
-    if summary == EvaluationValue.IDEAL:
+    if "invalid_gitnexus_dir" in blocked_by:
+        next_tool = None
+        next_actions.append(
+            "fix gitnexus_dir — it must be an existing directory inside the file root"
+        )
+    elif "stale_gitnexus_dir" in blocked_by:
+        next_tool = "topos_generate_depgraph"
+        next_actions.append("run topos_generate_depgraph to refresh COMPOSABLE")
+    elif summary == EvaluationValue.IDEAL:
         next_tool = "topos_evaluate_project"
         next_actions.append(
             "confirm project rollup and behavior tests before accepting"
@@ -166,8 +194,8 @@ def build_agent_contract(
             "remove active SECURE findings or acknowledge intentional risk"
         )
     elif "missing_gitnexus_dir" in blocked_by:
-        next_tool = None
-        next_actions.append("provide gitnexus_dir to score COMPOSABLE")
+        next_tool = "topos_generate_depgraph"
+        next_actions.append("run topos_generate_depgraph to score COMPOSABLE")
     else:
         next_tool = "topos_inspect_code"
         next_actions.append(
@@ -290,6 +318,7 @@ def to_evaluation_result(
     adjusted_verdict=None,
     include_agent_contract: bool = True,
     verbose: bool = True,
+    metric_locations: dict[str, list[FunctionEntry]] | None = None,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
 
@@ -371,6 +400,7 @@ def to_evaluation_result(
         coupling_available=coupling_available,
         raw_metrics=raw_metrics,
         interpretation=interpretation,
+        metric_locations=metric_locations or {},
         warnings=warnings or [],
         agent_contract=agent_contract,
         security_findings=active_findings,
@@ -506,6 +536,22 @@ def render_evaluation_md(
             "> Max grade capped below IDEAL because an acknowledged security "
             "risk is active."
         )
+
+    # Failing complexity gates point at concrete edit targets — show them by
+    # default so an agent never has to guess where the offending function is.
+    if e.metric_locations:
+        lines.append("")
+        lines.append("## Metric Locations")
+        for metric, entries in e.metric_locations.items():
+            lines.append(f"- `{metric}`:")
+            for fn in entries:
+                where = (
+                    "module-level (not attributable to a function)"
+                    if fn.kind == "module"
+                    else f"`{fn.qualified_name or fn.name}` "
+                    f"({fn.kind}) lines {fn.start_line}-{fn.end_line}"
+                )
+                lines.append(f"  - {where} — complexity {fn.complexity}")
 
     # Suggestions are the actionable payload — show them by default (one line
     # each, already concise). Not verbose-gated: they are the whole point.

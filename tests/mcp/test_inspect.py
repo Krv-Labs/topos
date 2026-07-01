@@ -84,6 +84,23 @@ def test_inspect_accepts_filepath(
     assert r.function_entries[0].line == 1
 
 
+def test_inspect_filepath_autodetects_non_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "module.rs"
+    path.write_text("fn beta() -> i32 {\n    1\n}\n", encoding="utf-8")
+
+    r = _inspect(topos_inspect_code(InspectCodeInput(filepath="module.rs")))
+
+    assert r.error is None
+    assert r.evaluation.error is None
+    assert r.evaluation.is_parseable is True
+
+
 def test_inspect_applies_topos_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -140,3 +157,45 @@ def test_inspect_non_ascii_before_def_keeps_clean_names() -> None:
 def test_inspect_requires_exactly_one_source() -> None:
     with pytest.raises(ValueError, match="code.*filepath"):
         InspectCodeInput()
+
+
+_COMPLEX_FN = "def big(x):\n" + "".join(
+    f"    if x == {i}:\n        return {i}\n" for i in range(12)
+)
+
+
+def test_inspect_function_entries_carry_locations() -> None:
+    r = _inspect(topos_inspect_code(InspectCodeInput(code=_COMPLEX_FN)))
+    top = r.function_entries[0]
+    assert top.qualified_name == "big"
+    assert top.kind == "function"
+    assert top.metric_source == "ast"
+    assert top.start_line == 1
+    assert top.end_line is not None and top.end_line > top.start_line
+    assert top.includes_nested is True
+
+
+def test_inspect_reports_metric_locations_for_failing_gate() -> None:
+    r = _inspect(topos_inspect_code(InspectCodeInput(code=_COMPLEX_FN)))
+    locs = r.evaluation.metric_locations
+    assert "ast.max_function_complexity" in locs
+    entry = locs["ast.max_function_complexity"][0]
+    assert entry.qualified_name == "big"
+    assert entry.kind == "function"
+    # The location's complexity equals the table's max — no silent disagreement.
+    assert entry.complexity == max(e.complexity for e in r.function_entries)
+
+
+def test_inspect_and_evaluate_agree_on_max_function_complexity() -> None:
+    from topos.mcp.schemas import EvaluateCodeInput, EvaluationResult
+    from topos.mcp.tools.evaluate.core import topos_evaluate_code
+
+    insp = _inspect(
+        topos_inspect_code(InspectCodeInput(code=_COMPLEX_FN, verbose=True))
+    )
+    ev_result = topos_evaluate_code(EvaluateCodeInput(code=_COMPLEX_FN, verbose=True))
+    ev = EvaluationResult.model_validate(ev_result.structured_content)
+
+    gate = ev.raw_metrics["ast.max_function_complexity"]
+    insp_max = max(e.complexity for e in insp.function_entries)
+    assert insp_max == int(gate)

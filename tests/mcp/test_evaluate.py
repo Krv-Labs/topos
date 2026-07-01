@@ -445,8 +445,39 @@ def test_evaluate_project_rolls_up_files() -> None:
     assert r.files, "expected at least one per-file entry"
     assert r.aggregate_explanation
     assert r.guidance
+    assert r.language_rollups
     assert r.agent_contract is not None
     assert r.agent_contract.verification_gates
+
+
+def test_evaluate_project_auto_detects_supported_languages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    (tmp_path / "alpha.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "beta.rs").write_text(
+        "fn beta() -> i32 {\n    1\n}\n", encoding="utf-8"
+    )
+
+    r = _project(
+        asyncio.run(
+            topos_evaluate_project(
+                EvaluateProjectInput(path=".", limit=10, preferences=_PREFS),
+                _StubCtx(),
+            )
+        )
+    )
+
+    assert r.file_count == 2
+    rust_entry = next(entry for entry in r.files if entry.filepath.endswith(".rs"))
+    assert rust_entry.language == "rust"
+    assert any(rollup.language == "python" for rollup in r.language_rollups)
+    assert any(rollup.language == "rust" for rollup in r.language_rollups)
+    assert r.agent_contract is not None
+    assert "using language" in r.agent_contract.next_actions[0]
 
 
 def test_evaluate_project_paginates() -> None:
@@ -519,5 +550,5 @@ def test_evaluate_project_rejects_outside_root(tmp_path: Path) -> None:
             )
         )
     )
-    # Either refused (path outside root) or empty (no .py files).
+    # Either refused (path outside root) or empty (no supported source files).
     assert r.error is not None or r.file_count == 0

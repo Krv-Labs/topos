@@ -4,6 +4,7 @@ from . import (  # noqa: F401
     assess,
     compare,
     coverage,
+    depgraph,
     docs,
     evaluate,
     inspect,

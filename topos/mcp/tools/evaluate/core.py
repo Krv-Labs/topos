@@ -12,6 +12,7 @@ from ...diagnostics import overlay_for_file, overlay_for_source
 from ...evaluation import (
     classify_code_string,
     classify_file,
+    detect_language,
     gitnexus_warnings,
     resolve_gitnexus_dir,
 )
@@ -20,6 +21,7 @@ from ...formatting import (
     to_evaluation_result,
     to_tool_result,
 )
+from ...metric_locations import build_metric_locations
 from ...schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
@@ -27,7 +29,7 @@ from ...schemas import (
     LatticeElement,
     resolve_priority,
 )
-from ...security import resolve_file_root, resolve_within_root
+from ...security import read_safe_utf8_file, resolve_file_root, resolve_within_root
 from ...server import mcp
 from .render import _error_md
 
@@ -56,18 +58,15 @@ def _overlay_kwargs(overlay):
     annotations=_READ_ONLY_ANN,
 )
 def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
-    """Classify a raw code string on the free Heyting algebra H(G_qual).
+    """Score a raw code string on the SIMPLE / COMPOSABLE / SECURE quality
+    lattice (read-only; never writes or runs the code).
 
-    SIMPLE and SECURE generators are scored from CFG / CPG built on the
-    source.  COMPOSABLE requires a ``ModuleDependencyGraph`` (and is therefore
-    unreachable from a bare string); use ``topos_evaluate_file`` with
-    ``gitnexus_dir`` to enable it.
-
-    Lattice values are the 8 elements of the 3-cube H(G_qual):
-        SLOP (⊥)             No generator satisfied.
-        SIMPLE / COMPOSABLE / SECURE     One generator satisfied.
-        SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE  Two satisfied.
-        IDEAL (⊤)            All three generators satisfied.
+    Use for a snippet not yet on disk. Only SIMPLE and SECURE are reachable
+    here (scored from the source's CFG/CPG); COMPOSABLE needs a module
+    dependency graph, so for it use ``topos_evaluate_file`` with
+    ``gitnexus_dir``, or ``topos_evaluate_project`` for a whole tree. Returns an
+    EvaluationResult: the lattice verdict (SLOP…IDEAL), per-generator scores,
+    and a next-step agent contract.
     """
     try:
         priority, priority_source = resolve_priority(params.preferences)
@@ -102,6 +101,7 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
             )
         ),
         verbose=params.verbose,
+        metric_locations=build_metric_locations(params.code, params.language, result),
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))
 
@@ -112,15 +112,17 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
     annotations=_READ_ONLY_ANN,
 )
 def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
-    """Evaluate a file on disk. **Enables the COMPOSABLE generator.**
+    """Score a file on disk on the SIMPLE / COMPOSABLE / SECURE lattice — the
+    only evaluate tool that can reach COMPOSABLE (read-only).
 
-    When ``gitnexus_dir`` is provided (or auto-detected at
-    ``<project_root>/.gitnexus``), a ``ModuleDependencyGraph`` is attached to
-    the classifier so the COMPOSABLE generator can be scored.  CFG and
-    CPG (SIMPLE and SECURE generators) always run.
-
-    Generate a ``.gitnexus/`` directory with ``topos depgraph generate`` first
-    (requires ``npm install -g gitnexus``).
+    Use for one file on disk. A ModuleDependencyGraph is attached when
+    ``gitnexus_dir`` is given or auto-detected at ``<root>/.gitnexus``, enabling
+    COMPOSABLE (SIMPLE/SECURE always run); generate that graph first with
+    ``topos_generate_depgraph`` (needs ``npm install -g gitnexus``). For an
+    in-memory snippet use ``topos_evaluate_code``; for a whole directory use
+    ``topos_evaluate_project``. ``coupling_available`` is false when no graph is
+    found, leaving any COMPOSABLE verdict unreachable. Returns an
+    EvaluationResult.
     """
     resolved, err = resolve_within_root(params.filepath)
     if err or resolved is None:
@@ -187,6 +189,12 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         allows=params.allow,
         include_security_findings=params.include_security_findings,
     )
+    source, _ = read_safe_utf8_file(resolved)
+    locations = (
+        build_metric_locations(source, detect_language(resolved), result)
+        if source is not None
+        else {}
+    )
     model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
@@ -195,5 +203,6 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         warnings=warnings,
         **_overlay_kwargs(overlay),
         verbose=params.verbose,
+        metric_locations=locations,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

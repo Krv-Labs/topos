@@ -188,12 +188,13 @@ def _calculate_deltas(
     annotations=_READ_ONLY_ANN,
 )
 def topos_assess_improvement(params: AssessImprovementInput) -> ToolResult:
-    """Compare a baseline to a side-by-side proposed variant.
+    """Compare a baseline to a side-by-side proposed variant (read-only).
 
     For normal edit-in-place loops, use ``topos_assess_worktree_change`` or
     snapshot first with ``topos_begin_refactor`` then ``topos_assess_snapshot``.
     This tool is for variants supplied as ``proposed_code`` or
-    ``proposed_filepath``.
+    ``proposed_filepath``. Read-only; returns an AssessmentResult with
+    ``status`` and score/metric deltas.
     """
     priority, priority_source = resolve_priority(params.preferences)
     try:

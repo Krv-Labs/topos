@@ -15,6 +15,8 @@ SIMPLE (← CFG), COMPOSABLE (← ModuleDependencyGraph), SECURE (← CPG).
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from topos.core.morphism import ProgramMorphism
@@ -25,6 +27,7 @@ from topos.evaluation.characteristic_morphism import (
 from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
+from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE
 
 from .cache import dep_graph_for
 
@@ -61,6 +64,14 @@ def resolve_gitnexus_dir(
     return default if default.exists() else None
 
 
+# Stable prefixes shared by the producer (this module) and the agent-contract
+# consumer (``formatting.build_agent_contract``) so an invalid/denied override
+# is matched on a single marker instead of ad-hoc substring searches. An invalid
+# override is distinct from a missing graph: regenerating in the project root
+# won't fix a bad path, so the contract must tell the agent to fix the path.
+INVALID_GITNEXUS_MARKERS = ("gitnexus_dir rejected", "gitnexus_dir unavailable")
+
+
 def _check_override_warning(
     override: str | Path, project_root: Path
 ) -> list[str] | None:
@@ -69,25 +80,32 @@ def _check_override_warning(
         override_path.relative_to(project_root)
     except ValueError:
         return [
-            "gitnexus_dir rejected — override must be inside TOPOS_MCP_FILE_ROOT. "
-            f"Got: {override_path}"
+            f"{INVALID_GITNEXUS_MARKERS[0]} — override must be inside "
+            f"TOPOS_MCP_FILE_ROOT. Got: {override_path}"
         ]
     if not override_path.exists():
         return [
-            "gitnexus_dir unavailable — override path does not exist. "
+            f"{INVALID_GITNEXUS_MARKERS[1]} — override path does not exist. "
             f"Got: {override_path}"
         ]
     return None
+
+
+def _is_schema_mismatch(message: str | None) -> bool:
+    """Whether a dep-graph load error is a storage/schema version mismatch."""
+    if not message:
+        return False
+    return any(
+        term in message.lower()
+        for term in ("storage version", "different version", "ladybug")
+    )
 
 
 def _dep_graph_load_warning(gitnexus_dir: Path, dep_graph_loaded: bool) -> list[str]:
     if dep_graph_loaded:
         return []
     load_error = last_dep_graph_error()
-    is_schema_mismatch = load_error and any(
-        term in load_error.lower()
-        for term in ("storage version", "different version", "ladybug")
-    )
+    is_schema_mismatch = _is_schema_mismatch(load_error)
     if is_schema_mismatch:
         return [
             f"COMPOSABLE not scored — LadybugDB storage version mismatch: {load_error}"
@@ -127,19 +145,58 @@ def gitnexus_warnings(
     return warnings
 
 
-def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | None:
+# Stable prefix shared by the producer (this module) and the agent-contract
+# consumer (``formatting.build_agent_contract``) so staleness is matched on a
+# single marker instead of an ad-hoc substring search over warning prose.
+STALE_GITNEXUS_MARKER = "gitnexus index may be stale"
+
+
+def _read_graph_fingerprint(gitnexus_dir: Path) -> str | None:
+    """HEAD SHA the graph was built from, from the topos-owned marker (or None)."""
+    try:
+        raw = (gitnexus_dir / GITNEXUS_FINGERPRINT_FILE).read_text(encoding="utf-8")
+        sha = json.loads(raw).get("head_sha")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return sha or None
+
+
+def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str | None]:
+    """Whether the dependency graph is stale w.r.t. the current commit.
+
+    Prefers a commit-SHA anchor (the graph records the HEAD it was built from) so
+    a regenerate reliably clears staleness and a checkout to a different commit is
+    caught. Falls back to an mtime comparison for graphs generated before the
+    fingerprint marker existed. Returns ``(is_stale, detail)``.
+    """
+    graph_sha = _read_graph_fingerprint(gitnexus_dir)
+    head_sha = _git_head_sha(project_root)
+    if graph_sha is not None and head_sha is not None:
+        if graph_sha == head_sha:
+            return False, None
+        return True, (
+            f"{STALE_GITNEXUS_MARKER} — graph was built from commit "
+            f"{graph_sha[:7]} but HEAD is {head_sha[:7]}; run "
+            "'topos depgraph generate' before trusting COMPOSABLE."
+        )
+
+    # Legacy fallback: no fingerprint marker (or HEAD unresolvable) — compare the
+    # graph DB mtime to the latest commit's mtime.
     graph_mtime = _gitnexus_mtime(gitnexus_dir)
-    if graph_mtime <= 0:
-        return None
     head_mtime = _git_head_mtime(project_root)
-    if head_mtime is None:
-        return None
+    if graph_mtime <= 0 or head_mtime is None:
+        return False, None
     if graph_mtime < head_mtime:
-        return (
-            "gitnexus index may be stale — .gitnexus is older than the latest "
+        return True, (
+            f"{STALE_GITNEXUS_MARKER} — .gitnexus is older than the latest "
             "git commit; run 'topos depgraph generate' before trusting COMPOSABLE."
         )
-    return None
+    return False, None
+
+
+def _stale_gitnexus_warning(project_root: Path, gitnexus_dir: Path) -> str | None:
+    _stale, detail = _graph_freshness(project_root, gitnexus_dir)
+    return detail
 
 
 def _resolve_ref_mtime(git_dir: Path, ref_line: str) -> float | None:
@@ -165,6 +222,42 @@ def _git_head_mtime(project_root: Path) -> float | None:
         return None
 
 
+def _packed_ref_sha(git_dir: Path, ref: str) -> str | None:
+    """Resolve ``ref`` from ``.git/packed-refs`` (loose ref absent)."""
+    try:
+        lines = (git_dir / "packed-refs").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        if line.startswith(("#", "^")):
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) == 2 and parts[1].strip() == ref:
+            return parts[0].strip()
+    return None
+
+
+def _git_head_sha(project_root: Path) -> str | None:
+    """Current HEAD commit SHA, read from ``.git`` without shelling out.
+
+    Mirrors ``_git_head_mtime``: resolves a symbolic HEAD via its loose ref, then
+    ``packed-refs``; a detached HEAD stores the SHA directly. Returns ``None`` for
+    a non-git dir or an unborn/unresolvable HEAD (freshness then falls back).
+    """
+    git_dir = project_root / ".git"
+    try:
+        head_text = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not head_text.startswith("ref: "):
+        return head_text or None  # detached HEAD: contents are the SHA
+    ref = head_text.removeprefix("ref: ").strip()
+    try:
+        return (git_dir / ref).read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return _packed_ref_sha(git_dir, ref)
+
+
 def _gitnexus_mtime(gitnexus_dir: Path) -> float:
     lbug = gitnexus_dir / "lbug"
     try:
@@ -173,6 +266,63 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
         return gitnexus_dir.stat().st_mtime
     except OSError:
         return 0.0
+
+
+@dataclass(frozen=True)
+class DepgraphStatus:
+    """Structured ``.gitnexus`` state for the depgraph status MCP tool."""
+
+    state: str  # missing | present | stale | load_error | schema_mismatch | invalid_dir
+    gitnexus_dir: str | None
+    gitnexus_mtime: float | None
+    git_head_mtime: float | None
+    detail: str | None = None
+
+
+def depgraph_status(
+    override: str | Path | None, project_root: Path, target_file: str
+) -> DepgraphStatus:
+    """Report ``.gitnexus`` availability/freshness without shelling out.
+
+    Loading is wrapped so even a hard DB error (e.g. a locked LadybugDB)
+    becomes a structured ``load_error`` rather than an exception.
+    """
+    project_root = project_root.resolve()
+    if override:
+        warn = _check_override_warning(override, project_root)
+        if warn:
+            return DepgraphStatus("invalid_dir", None, None, None, detail=warn[0])
+
+    gitnexus_dir = resolve_gitnexus_dir(override, project_root)
+    if gitnexus_dir is None:
+        return DepgraphStatus(
+            "missing",
+            None,
+            None,
+            None,
+            detail="No .gitnexus directory found; run topos_generate_depgraph.",
+        )
+
+    graph_mtime = _gitnexus_mtime(gitnexus_dir)
+    head_mtime = _git_head_mtime(project_root)
+    dir_str = str(gitnexus_dir)
+
+    try:
+        clear_dep_graph_error()
+        dep_graph_for(gitnexus_dir, target_file)
+    except Exception as exc:  # noqa: BLE001 — surface any load failure as state
+        msg = str(exc)
+        state = "schema_mismatch" if _is_schema_mismatch(msg) else "load_error"
+        return DepgraphStatus(state, dir_str, graph_mtime, head_mtime, detail=msg)
+
+    stale, detail = _graph_freshness(project_root, gitnexus_dir)
+    return DepgraphStatus(
+        "stale" if stale else "present",
+        dir_str,
+        graph_mtime,
+        head_mtime,
+        detail=detail,
+    )
 
 
 def _handle_dep_graph_error(exc: Exception) -> ModuleDependencyGraph | None:

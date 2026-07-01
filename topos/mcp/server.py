@@ -32,7 +32,9 @@ def _get_mcp():
                 "For uncommitted or untracked baselines, snapshot first with "
                 "topos_begin_refactor, then verify with topos_assess_snapshot. "
                 "Use topos_assess_improvement only for side-by-side variants. "
-                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL. "
+                "Use gitnexus_dir (default: ./.gitnexus) to enable COMPOSABLE/IDEAL; "
+                "check graph state with topos_depgraph_status and build/refresh it "
+                "with topos_generate_depgraph. "
                 "topos_calculate_coverage reports test-suite coverage — structural "
                 "(UAST) and semantic (ECT) — as a separate signal, outside the lattice."
             ),

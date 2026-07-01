@@ -41,12 +41,13 @@ _WRITE_ANN = {
     annotations=_WRITE_ANN,
 )
 def topos_begin_refactor(params: BeginRefactorInput) -> ToolResult:
-    """Capture a file's current source as a baseline snapshot before editing.
+    """Persist the file's current source as a baseline snapshot before you edit
+    it (writes a snapshot record — its only side effect).
 
-    Returns a ``snapshot_id``. Edit the file in place, then call
-    ``topos_assess_snapshot(snapshot_id, filepath)`` to score the change — no
-    need to re-send the baseline. Use this when the baseline is not a committed
-    git revision (untracked/new files, or uncommitted prior edits); otherwise
+    Returns a ``snapshot_id``; edit the file in place, then call
+    ``topos_assess_snapshot(snapshot_id, filepath)`` to score the change without
+    re-sending the baseline. Use this when the baseline is not a committed git
+    revision (untracked/new files, or uncommitted prior edits); otherwise
     ``topos_assess_worktree_change`` needs no snapshot at all.
     """
     resolved, err = resolve_within_root(params.filepath)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -14,6 +12,7 @@ from topos.cli.installation import (
     remove_state_dir,
 )
 from topos.cli.update import run_update
+from topos.utils.gitnexus import generate_depgraph, gitnexus_available
 
 
 def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
@@ -143,7 +142,7 @@ def depgraph_generate(directory: str | None) -> None:
     """Generate a dependency graph using GitNexus."""
     target_dir = Path(directory).resolve() if directory else Path.cwd()
 
-    if shutil.which("gitnexus") is None:
+    if not gitnexus_available():
         click.echo(
             "GitNexus not found. Install it with: npm install -g gitnexus",
             err=True,
@@ -156,13 +155,12 @@ def depgraph_generate(directory: str | None) -> None:
     )
     click.echo("  $ gitnexus analyze --skip-agents-md\n")
 
-    proc = subprocess.run(["gitnexus", "analyze", "--skip-agents-md"], cwd=target_dir)
-    if proc.returncode != 0:
-        sys.exit(proc.returncode)
+    result = generate_depgraph(target_dir, capture=False)
+    if not result.ok:
+        sys.exit(result.returncode)
 
-    gitnexus_path = target_dir / ".gitnexus"
-    click.echo(f"\nDependency graph written to {gitnexus_path}")
-    click.echo(f"Next: topos evaluate src/ -r --gitnexus-dir {gitnexus_path}")
+    click.echo(f"\nDependency graph written to {result.gitnexus_path}")
+    click.echo(f"Next: topos evaluate src/ -r --gitnexus-dir {result.gitnexus_path}")
 
 
 def register_system_commands(cli_group: click.Group) -> None:

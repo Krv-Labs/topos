@@ -1,1 +1,1 @@
-from . import core, render, snapshot, worktree  # noqa: F401
+from . import changeset, core, render, snapshot, worktree  # noqa: F401

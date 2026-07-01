@@ -40,7 +40,11 @@ Evaluation, project, and assessment results may include `agent_contract`:
 
 - `next_tool` — the next Topos tool to call, if Topos can identify one.
 - `next_actions` — concise outcome-focused actions.
-- `blocked_by` — missing preconditions such as `missing_gitnexus_dir`.
+- `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no graph)
+  or `stale_gitnexus_dir` (graph older than the latest commit). When COMPOSABLE
+  is blocked by setup, `next_tool` is `topos_generate_depgraph`. An
+  `invalid_gitnexus_dir` code means the supplied `gitnexus_dir` override is bad
+  (outside the file root or nonexistent) — fix the path rather than generating.
 - `verification_gates` — checks required before accepting a patch.
 - `risk_flags` — compact labels such as `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.
@@ -50,7 +54,9 @@ Prefer these fields over parsing prose guidance.
 ## Boundaries
 
 - Use `gitnexus_dir` to score COMPOSABLE. Without it, any verdict containing
-  COMPOSABLE, including `IDEAL`, is unreachable.
+  COMPOSABLE, including `IDEAL`, is unreachable. Check graph state with
+  `topos_depgraph_status` and build/refresh it with `topos_generate_depgraph`
+  (side-effecting, approval-gated) rather than shelling out.
 - Use `allow` only for intentional dangerous calls. Acknowledged risks stay
   disclosed and can cap the grade.
 - Use `verbose=true` only for deep inspection. Default outputs are designed to

@@ -11,14 +11,13 @@ from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
 from topos.evaluation.policies.simple import describe_entropy_ratio
+from topos.functors.probes.ast.complexity import calculate_function_complexity_entries
 from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
-from topos.functors.probes.cfg.complexity import cyclomatic_complexity
-from topos.graphs.cfg.builder import _collect_callables, build_cfg_from_uast
-from topos.graphs.cfg.object import ControlFlowGraph
 
 from ..diagnostics import overlay_for_source
-from ..evaluation import classify_code_string
+from ..evaluation import classify_code_string, detect_language
 from ..formatting import render_evaluation_md, to_evaluation_result, to_tool_result
+from ..metric_locations import build_metric_locations, function_entry_from_complexity
 from ..schemas import (
     EvaluationResult,
     FunctionEntry,
@@ -39,34 +38,24 @@ _READ_ONLY_ANN = {
 }
 
 
-def _span_text(source_bytes: bytes, span) -> str:
-    """Slice a UAST byte span out of the UTF-8-encoded source.
-
-    UAST offsets are byte offsets, so we must index the encoded bytes, not the
-    code-point-indexed str. Bounds-guarded like ``cpg/object.py`` in case the
-    span refers to a different revision than ``source_bytes``.
-    """
-    if span.end_byte > len(source_bytes):
-        return ""
-    return source_bytes[span.start_byte : span.end_byte].decode(
-        "utf-8", errors="replace"
-    )
-
-
 @mcp.tool(
     name="topos_inspect_code",
     tags={"inspect"},
     annotations=_READ_ONLY_ANN,
 )
 def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
-    """Full metric breakdown for a code string.
+    """Full metric breakdown for a single code unit (inline string or file).
 
-    Returns the lattice evaluation, a *top-N* function complexity table
-    (sorted descending; configurable via ``top_n_functions``), and entropy
-    details. The top-N cap prevents large files from dumping hundreds of
-    functions and blowing out agent context.
+    Read-only; provide exactly one of ``code`` or ``filepath``. Use when you
+    need the per-function detail behind a verdict; use ``topos_evaluate_*`` when
+    the medal alone is enough. For ``filepath`` input, language is autodetected
+    from the extension; ``language`` only applies to inline ``code``. Returns an
+    InspectionResult: the lattice ``evaluation``, a *top-N* function complexity
+    table (``top_n_functions``, default 10), ``total_functions``, and entropy
+    details. The top-N cap keeps large files from blowing out agent context.
     """
     source, source_error, file_path = _load_source(params)
+    language = _inspection_language(params, file_path)
     priority, priority_source = resolve_priority(params.preferences)
     if source_error or source is None:
         empty = EvaluationResult(
@@ -88,7 +77,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         return to_tool_result(model, render_inspection_md(model))
 
     try:
-        result = classify_code_string(source, params.language, priority)
+        result = classify_code_string(source, language, priority)
     except Exception as exc:
         empty = EvaluationResult(
             is_parseable=False,
@@ -114,7 +103,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         **_overlay_kwargs(
             overlay_for_source(
                 source,
-                params.language,
+                language,
                 result,
                 file_path=file_path,
                 allows=params.allow,
@@ -122,41 +111,18 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
             )
         ),
         verbose=params.verbose,
+        metric_locations=build_metric_locations(source, language, result),
     )
 
-    morphism = ProgramMorphism(source=source, language=params.language)
-    # UAST spans are UTF-8 byte offsets; encode ONCE before the loop and slice
-    # the bytes (not the code-point-indexed str) so non-ASCII chars don't shift
-    # the extracted identifiers. Same idiom as complexity.py / cpg/object.py.
-    source_bytes = morphism.source.encode("utf-8")
+    # Use the same AST decision-node probe that feeds ``ast.max_function_complexity``
+    # so this table never disagrees with the failing gate (issue #67).
+    morphism = ProgramMorphism(source=source, language=language)
     all_funcs: list[FunctionEntry] = []
-    if morphism.ast and morphism.ast.uast_root:
-        try:
-            callables = _collect_callables(morphism.ast.uast_root)
-            for c in callables:
-                name = c.attributes.get("name")
-                if not name:
-                    # Look for an Identifier child (common in most UAST mappings)
-                    for child in c.children:
-                        if child.kind == "Identifier":
-                            name = _span_text(source_bytes, child.span)
-                            break
-                if not name:
-                    name = c.attributes.get("scope") or "anonymous"
-
-                blocks, edges, entry_id, exit_id = build_cfg_from_uast(c)
-                cfg = ControlFlowGraph(
-                    blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id
-                )
-                all_funcs.append(
-                    FunctionEntry(
-                        name=name,
-                        line=max(1, c.span.start_line),
-                        complexity=cyclomatic_complexity(cfg),
-                    )
-                )
-        except Exception:
-            pass
+    if morphism.ast is not None and morphism.is_valid:
+        all_funcs = [
+            function_entry_from_complexity(fc, metric_source="ast")
+            for fc in calculate_function_complexity_entries(morphism.ast)
+        ]
 
     top_entries = sorted(all_funcs, key=lambda entry: -entry.complexity)[
         : params.top_n_functions
@@ -175,6 +141,12 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         entropy_interpretation=interpretation,
     )
     return to_tool_result(model, render_inspection_md(model, verbose=params.verbose))
+
+
+def _inspection_language(params: InspectCodeInput, file_path: Path | None) -> str:
+    if file_path is None:
+        return params.language
+    return detect_language(file_path)
 
 
 def _load_source(

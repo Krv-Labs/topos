@@ -177,6 +177,11 @@ Related Tools
    Include ``preference_walk`` in their structured output when preferences are
    supplied.
 
-``topos_assess_worktree_change`` and ``topos_assess_snapshot``
-   Preserve the same preferences when verifying whether an in-place edit
-   improved the file.
+``topos_assess_worktree_change``, ``topos_assess_snapshot``, and
+``topos_assess_changeset``
+   Preserve the same preferences when verifying in-place edits, snapshot baselines,
+   or multi-file module splits.
+
+``topos_depgraph_status`` and ``topos_generate_depgraph``
+   Surface graph availability and refresh ``.gitnexus/`` when COMPOSABLE is blocked
+   by ``missing_gitnexus_dir`` or ``stale_gitnexus_dir`` in ``agent_contract``.

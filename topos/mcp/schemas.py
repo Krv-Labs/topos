@@ -15,13 +15,11 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import Generator, UserPreferences
 
 
+# The 8 elements of the free Heyting algebra H(G_qual) on the three generators
+# SIMPLE, COMPOSABLE, SECURE, mirroring ``EvaluationValue`` on the MCP wire.
+# Medal Podium: IDEAL = 🥇 GOLD, SLOP = ❌ No Medal.
 class LatticeElement(StrEnum):
-    """String-valued mirror of ``EvaluationValue`` for MCP wire format.
-
-    These are the 8 elements of the free Heyting algebra H(G_qual) on the
-    three generators SIMPLE, COMPOSABLE, SECURE.  Mapped to the Medal Podium:
-    IDEAL = 🥇 GOLD, SLOP = ❌ No Medal.
-    """
+    """The 8 quality verdicts, from SLOP (none) to IDEAL (simple+composable+secure)."""
 
     SLOP = "SLOP"
     SIMPLE = "SIMPLE"
@@ -168,38 +166,65 @@ class EvaluateProjectInput(_StrictModel):
 
     path: str = Field(
         ...,
-        description="Directory to evaluate.",
+        description=(
+            "Directory to evaluate, walked recursively. Must resolve inside the "
+            "trusted file root; paths outside it are refused. All supported "
+            "languages are autodetected — no language argument is needed."
+        ),
         min_length=1,
     )
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description="Optional generator ranking.",
+        description=(
+            "Optional ranking of simple/composable/secure (best first). The "
+            "top-ranked generator sets scorer priority; omit to default to "
+            "SIMPLE priority."
+        ),
     )
     gitnexus_dir: str | None = Field(
-        default=None, description=".gitnexus directory for COMPOSABLE scoring."
+        default=None,
+        description=(
+            "Path to a `.gitnexus` dependency-graph directory, required for "
+            "COMPOSABLE scoring. When omitted, it is auto-detected from the "
+            "project root; if none is found, COMPOSABLE is reported as "
+            "unavailable rather than failing."
+        ),
     )
     limit: int = Field(
         default=25,
         ge=1,
         le=500,
-        description="Page size.",
+        description="Per-file rows to return per page (1–500, default 25).",
     )
     offset: int = Field(
         default=0,
         ge=0,
-        description="Pagination offset.",
+        description=(
+            "Zero-based row offset for pagination; pass the response's "
+            "`next_offset` to fetch the next page."
+        ),
     )
     verbose: bool = Field(
         default=False,
-        description="Include raw metrics.",
+        description=(
+            "When true, include each file's raw metric values (entropy, "
+            "complexity, instability) alongside the scores."
+        ),
     )
     include_security_findings: bool = Field(
         default=False,
-        description="Include per-file SECURE findings.",
+        description=(
+            "When true, attach per-file SECURE findings (dangerous-call "
+            "locations) to each entry; off by default to keep responses compact."
+        ),
     )
     allow: list[str] = Field(
         default_factory=list,
-        description="One-off acknowledged dangerous-call patterns.",
+        description=(
+            "Dangerous-call patterns to acknowledge for this run only (e.g. "
+            "`subprocess.run`), suppressing their SECURE penalty without "
+            "changing stored preferences."
+        ),
     )
 
 
@@ -208,14 +233,17 @@ class CompareCodeInput(_StrictModel):
 
     source_code: str = Field(..., min_length=1, description="Baseline code.")
     target_code: str = Field(..., min_length=1, description="Proposed/target code.")
-    language: str = Field(default="python")
+    language: str = Field(
+        default="python",
+        description="python, rust, javascript, typescript, or cpp.",
+    )
 
 
 class CompareFilesInput(_StrictModel):
     """Arguments for ``topos_compare_files``."""
 
     source: str = Field(..., min_length=1, description="Baseline file path.")
-    target: str = Field(..., min_length=1, description="Proposed file path.")
+    target: str = Field(..., min_length=1, description="Comparison file path.")
 
 
 class AssessImprovementInput(_StrictModel):
@@ -350,7 +378,13 @@ class InspectCodeInput(_StrictModel):
             "large files."
         ),
     )
-    language: str = Field(default="python")
+    language: str = Field(
+        default="python",
+        description=(
+            "Language for inline `code`; ignored for `filepath`, which is "
+            "autodetected from the file extension."
+        ),
+    )
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
@@ -424,18 +458,12 @@ class CalculateCoverageInput(_StrictModel):
 
 
 class PreferenceWalkInput(_StrictModel):
-    """Arguments for ``topos_preference_walk``.
-
-    Convert a strict total order on the three generators into a
-    concrete relaxation walk on Ω — the sequence of verdicts an agent
-    should aim for, in descending order of preference.
-    """
+    """Arguments for ``topos_preference_walk``."""
 
     ranking: list[Generator] = Field(
         ...,
         description=(
-            "Permutation of {simple, composable, secure}, most-preferred "
-            "first.  Required — supply an explicit permutation (no implicit default)."
+            "Permutation of {simple, composable, secure}, most-preferred first."
         ),
         min_length=3,
         max_length=3,
@@ -443,20 +471,13 @@ class PreferenceWalkInput(_StrictModel):
     current: LatticeElement | None = Field(
         default=None,
         description=(
-            "Optional current verdict (e.g. from a previous "
-            "``topos_evaluate_file`` call).  When provided, the walk is "
-            "truncated to entries strictly above ``current`` in the "
-            "preference order, and ``next_step`` is the smallest "
-            "improvement to aim for next.  Defaults to no truncation."
+            "Optional current verdict; truncates the walk to steps strictly "
+            "above it and sets ``next_step``. Defaults to the full walk."
         ),
     )
     target: LatticeElement | None = Field(
         default=None,
-        description=(
-            "Optional override of the aspirational target.  Defaults to "
-            "``IDEAL``; callers who know IDEAL is unreachable can pin "
-            "the target lower."
-        ),
+        description="Optional aspirational-target override; defaults to IDEAL.",
     )
 
 
@@ -499,10 +520,7 @@ class PreferenceWalkResult(BaseModel):
     )
     fallback_target: LatticeElement = Field(
         ...,
-        description=(
-            "Where to divert if the aspirational target plateaus — the "
-            "meet of the top-two ranked generators."
-        ),
+        description="Divert target when the aspirational target plateaus.",
     )
     current: LatticeElement | None = Field(
         default=None,
@@ -511,8 +529,7 @@ class PreferenceWalkResult(BaseModel):
     next_step: LatticeElement | None = Field(
         default=None,
         description=(
-            "Smallest improvement above ``current``.  ``None`` when "
-            "already at or beyond the aspirational target."
+            "Smallest improvement above ``current``; null when at/beyond target."
         ),
     )
     progress: float = Field(
@@ -523,19 +540,11 @@ class PreferenceWalkResult(BaseModel):
     )
     walk: list[WalkStep] = Field(
         default_factory=list,
-        description=(
-            "Descending preference-ordered walk from the aspirational "
-            "target down to (but not including) ``current``.  Empty "
-            "when ``current`` is at or beyond target."
-        ),
+        description="Steps from the target down to just above ``current``.",
     )
     induced_order: list[WalkStep] = Field(
         default_factory=list,
-        description=(
-            "All 8 Ω elements ranked by descending preference.  Useful "
-            "for clients that want to render the full lattice in "
-            "user-preferred order rather than just the walk."
-        ),
+        description="All 8 verdicts ranked by descending preference.",
     )
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
@@ -610,11 +619,33 @@ class AcknowledgedRisk(BaseModel):
 
 
 class FunctionEntry(BaseModel):
-    """Function-level complexity diagnostic."""
+    """Function-level complexity diagnostic.
+
+    ``name``/``line``/``complexity`` are the legacy fields. The remaining
+    optional fields let an agent map a failing complexity gate back to a
+    concrete AST location (see ``EvaluationResult.metric_locations``).
+    """
 
     name: str
     line: int = Field(..., ge=1)
     complexity: int
+    qualified_name: str | None = Field(
+        default=None, description="Dotted scope path, e.g. 'Cls.method.closure'."
+    )
+    kind: str | None = Field(
+        default=None,
+        description="function | async_function | method | closure | module.",
+    )
+    start_line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+    metric_source: str | None = Field(
+        default=None,
+        description="Which probe produced the complexity: 'ast' or 'cfg'.",
+    )
+    includes_nested: bool | None = Field(
+        default=None,
+        description="True when the count includes nested callables' decisions.",
+    )
 
 
 class Suggestion(BaseModel):
@@ -681,6 +712,15 @@ class EvaluationResult(BaseModel):
     )
     raw_metrics: dict[str, float] = Field(default_factory=dict)
     interpretation: dict[str, str] = Field(default_factory=dict)
+    metric_locations: dict[str, list[FunctionEntry]] = Field(
+        default_factory=dict,
+        description=(
+            "Source locations for failing complexity gates, keyed by metric "
+            "(e.g. 'ast.max_function_complexity'). A single entry with "
+            "kind='module' means the metric is module-level only, not "
+            "attributable to a function."
+        ),
+    )
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
     security_findings: list[SecurityFinding] = Field(default_factory=list)
@@ -723,6 +763,10 @@ class EvaluationResult(BaseModel):
 
 class ProjectFileEntry(BaseModel):
     filepath: str
+    language: str = Field(
+        default="python",
+        description="Detected language used to evaluate this file.",
+    )
     lattice_element: LatticeElement
     scores: dict[str, float]
     pillars: dict[str, PillarResult] = Field(default_factory=dict)
@@ -738,6 +782,19 @@ class ProjectFileEntry(BaseModel):
     is_parseable: bool = True
 
 
+class ProjectLanguageRollup(BaseModel):
+    """Per-language project rollup for polyglot directory evaluation."""
+
+    language: str
+    file_count: int
+    parse_failures: int = 0
+    rolled_up_dimensions: dict[str, LatticeElement] = Field(default_factory=dict)
+    rolled_up_scores: dict[str, float] = Field(default_factory=dict)
+    aggregate_floor_verdict: LatticeElement = LatticeElement.SLOP
+    worst_file_path: str | None = None
+    worst_file_verdict: LatticeElement | None = None
+
+
 class ProjectEvaluationResult(BaseModel):
     """Result of a directory-wide evaluation."""
 
@@ -747,6 +804,7 @@ class ProjectEvaluationResult(BaseModel):
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
     aggregate_floor_verdict: LatticeElement
+    language_rollups: list[ProjectLanguageRollup] = Field(default_factory=list)
     aggregate_explanation: str
     worst_file_verdict: LatticeElement | None = None
     worst_files: list[ProjectFileEntry] = Field(default_factory=list)
@@ -850,7 +908,7 @@ class InspectionResult(BaseModel):
 
 
 class TopologicalCoverageResult(BaseModel):
-    """ECT-based topological semantic coverage (optional extra)."""
+    """ECT-based topological semantic coverage (Experimental optional extra)."""
 
     unavailable: bool = False
     reason: str | None = None
@@ -898,4 +956,130 @@ class CoverageResult(BaseModel):
     test_declaration_count: int
     topological_coverage: TopologicalCoverageResult | None = None
     warnings: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class DepgraphState(StrEnum):
+    """Structured state of the ``.gitnexus`` dependency-graph index."""
+
+    MISSING = "missing"
+    PRESENT = "present"
+    STALE = "stale"
+    LOAD_ERROR = "load_error"
+    SCHEMA_MISMATCH = "schema_mismatch"
+    INVALID_DIR = "invalid_dir"
+
+
+class DepgraphStatusInput(_StrictModel):
+    """Arguments for ``topos_depgraph_status``."""
+
+    gitnexus_dir: str | None = Field(
+        default=None,
+        description="Override .gitnexus directory (default: <root>/.gitnexus).",
+    )
+
+
+class DepgraphStatusResult(BaseModel):
+    """Result of ``topos_depgraph_status`` — read-only graph state."""
+
+    state: DepgraphState
+    gitnexus_dir: str | None = None
+    gitnexus_mtime: float | None = None
+    git_head_mtime: float | None = None
+    coupling_available: bool = Field(
+        ...,
+        description="True only when the graph loads and is not stale.",
+    )
+    detail: str | None = None
+    recommended_next_action: str
+    agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
+class GenerateDepgraphInput(_StrictModel):
+    """Arguments for ``topos_generate_depgraph`` (side-effecting)."""
+
+    directory: str | None = Field(
+        default=None,
+        description="Repository root to analyze (default: the MCP file root).",
+    )
+
+
+class GenerateDepgraphResult(BaseModel):
+    """Result of ``topos_generate_depgraph``."""
+
+    ok: bool
+    returncode: int
+    gitnexus_dir: str | None = None
+    message: str
+    agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
+class AssessChangesetInput(_StrictModel):
+    """Arguments for ``topos_assess_changeset`` (multi-file refactor)."""
+
+    files: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Edited file paths (working tree) that make up the changeset.",
+    )
+    baseline_ref: str = Field(
+        default="HEAD",
+        min_length=1,
+        description="Git baseline ref each file is compared against.",
+    )
+    preferences: UserPreferencesInput | None = Field(
+        default=None, description="Optional generator ranking."
+    )
+    gitnexus_dir: str | None = Field(default=None)
+    include_security_findings: bool = Field(default=True)
+    allow: list[str] = Field(
+        default_factory=list,
+        description="One-off acknowledged dangerous-call patterns.",
+    )
+
+
+class ChangesetFileEntry(BaseModel):
+    """Per-file before/after summary inside a changeset assessment."""
+
+    filepath: str
+    status: AssessmentStatus
+    is_new: bool = Field(
+        default=False, description="True when the file did not exist at baseline_ref."
+    )
+    baseline_verdict: LatticeElement | None = None
+    current_verdict: LatticeElement | None = None
+    score_deltas: dict[str, float] = Field(default_factory=dict)
+    metric_deltas: dict[str, float] = Field(default_factory=dict)
+    complexity_relocated_within_file: bool = Field(
+        default=False,
+        description=(
+            "True when max function complexity improved but file cyclomatic "
+            "complexity worsened — extraction stayed inside one module."
+        ),
+    )
+    warnings: list[str] = Field(default_factory=list)
+    blocked_by: str | None = None
+    error: str | None = None
+
+
+class ChangesetResult(BaseModel):
+    """Result of ``topos_assess_changeset`` — multi-file rollup."""
+
+    baseline_ref: str
+    files: list[ChangesetFileEntry] = Field(default_factory=list)
+    project_before: dict[str, LatticeElement] = Field(default_factory=dict)
+    project_after: dict[str, LatticeElement] = Field(default_factory=dict)
+    project_scores_before: dict[str, float] = Field(default_factory=dict)
+    project_scores_after: dict[str, float] = Field(default_factory=dict)
+    aggregate_before: LatticeElement = LatticeElement.SLOP
+    aggregate_after: LatticeElement = LatticeElement.SLOP
+    project_regression: bool = False
+    complexity_relocated_files: list[str] = Field(default_factory=list)
+    coupling_available: bool = False
+    priority: Priority
+    priority_source: PrioritySource = PrioritySource.DEFAULT
+    warnings: list[str] = Field(default_factory=list)
+    agent_contract: AgentContract | None = None
     error: str | None = None

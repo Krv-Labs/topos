@@ -6,6 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 from topos.cli.installation import InstallInfo
 from topos.cli.main import cli
+from topos.utils.gitnexus import DEFAULT_ANALYZE_TIMEOUT_S
 
 
 def test_mcp_invokes_server():
@@ -24,9 +25,12 @@ def test_depgraph_generate_no_gitnexus():
         assert "GitNexus not found" in result.output
 
 
+# Stub the fingerprint's HEAD lookup so generation makes exactly one subprocess
+# call (the analyze) and writes no marker into the real repo's .gitnexus.
+@patch("topos.utils.gitnexus._head_sha", return_value=None)
 @patch("subprocess.run")
 @patch("shutil.which", return_value="/usr/local/bin/gitnexus")
-def test_depgraph_generate_success(mock_which, mock_run):
+def test_depgraph_generate_success(mock_which, mock_run, mock_head_sha):
     mock_run.return_value.returncode = 0
     runner = CliRunner()
     result = runner.invoke(cli, ["depgraph", "generate"])
@@ -35,6 +39,9 @@ def test_depgraph_generate_success(mock_which, mock_run):
     mock_run.assert_called_once_with(
         ["gitnexus", "analyze", "--skip-agents-md"],
         cwd=Path.cwd(),
+        capture_output=False,
+        text=True,
+        timeout=DEFAULT_ANALYZE_TIMEOUT_S,
     )
 
 

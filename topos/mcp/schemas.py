@@ -168,38 +168,65 @@ class EvaluateProjectInput(_StrictModel):
 
     path: str = Field(
         ...,
-        description="Directory to evaluate.",
+        description=(
+            "Directory to evaluate, walked recursively. Must resolve inside the "
+            "trusted file root; paths outside it are refused. All supported "
+            "languages are autodetected — no language argument is needed."
+        ),
         min_length=1,
     )
     preferences: UserPreferencesInput | None = Field(
         default=None,
-        description="Optional generator ranking.",
+        description=(
+            "Optional ranking of simple/composable/secure (best first). The "
+            "top-ranked generator sets scorer priority; omit to default to "
+            "SIMPLE priority."
+        ),
     )
     gitnexus_dir: str | None = Field(
-        default=None, description=".gitnexus directory for COMPOSABLE scoring."
+        default=None,
+        description=(
+            "Path to a `.gitnexus` dependency-graph directory, required for "
+            "COMPOSABLE scoring. When omitted, it is auto-detected from the "
+            "project root; if none is found, COMPOSABLE is reported as "
+            "unavailable rather than failing."
+        ),
     )
     limit: int = Field(
         default=25,
         ge=1,
         le=500,
-        description="Page size.",
+        description="Per-file rows to return per page (1–500, default 25).",
     )
     offset: int = Field(
         default=0,
         ge=0,
-        description="Pagination offset.",
+        description=(
+            "Zero-based row offset for pagination; pass the response's "
+            "`next_offset` to fetch the next page."
+        ),
     )
     verbose: bool = Field(
         default=False,
-        description="Include raw metrics.",
+        description=(
+            "When true, include each file's raw metric values (entropy, "
+            "complexity, instability) alongside the scores."
+        ),
     )
     include_security_findings: bool = Field(
         default=False,
-        description="Include per-file SECURE findings.",
+        description=(
+            "When true, attach per-file SECURE findings (dangerous-call "
+            "locations) to each entry; off by default to keep responses compact."
+        ),
     )
     allow: list[str] = Field(
         default_factory=list,
-        description="One-off acknowledged dangerous-call patterns.",
+        description=(
+            "Dangerous-call patterns to acknowledge for this run only (e.g. "
+            "`subprocess.run`), suppressing their SECURE penalty without "
+            "changing stored preferences."
+        ),
     )
 
 

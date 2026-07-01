@@ -190,9 +190,9 @@ async def _evaluate_project_files_loop(
         if result is None or entry is None:
             continue
         any_dep_graph_loaded = any_dep_graph_loaded or has_dep
-        if not result.is_parseable:
-            parse_failures += 1
-            per_language_parse_failures[language] += 1
+        # NOTE: ``failed`` above already reflects ``not result.is_parseable`` on
+        # the success path (see ``_evaluate_single_file``), so parse failures are
+        # counted there once — re-counting here would double the tally.
         per_file_results.append(result)
         entries.append(entry)
         per_language_results[language].append(result)
@@ -219,15 +219,24 @@ async def _evaluate_project_files_loop(
 async def topos_evaluate_project(
     params: EvaluateProjectInput, ctx: Context
 ) -> ToolResult:
-    """Recursively evaluate supported source files in a directory (read-only).
+    """Recursively evaluate a directory's source files against SIMPLE /
+    COMPOSABLE / SECURE (read-only; never writes or executes code).
+
+    Autodetects every supported language in a single walk — Python (.py),
+    Rust (.rs), JavaScript (.js/.mjs/.cjs), TypeScript (.ts/.tsx), and C++
+    (.cpp/.cc/.cxx/.hpp/.hh/.hxx) — mapping each file to its language for a
+    per-language rollup. No language argument is needed; unsupported files are
+    skipped. Import/export-only entrypoint modules (e.g. ``__init__.py``,
+    ``index.ts``, ``mod.rs``) are recognized so their low logic density does
+    not falsely floor the verdict.
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
     a live bar during long walks. Rolls up per-dimension scores using the
     project-wide minimum (``CharacteristicMorphism.combine_dimensions``), so the
     weakest file floors the verdict.
 
-    Returns a paginated per-file table plus the overall rollup. Use ``limit``
-    / ``offset`` to page through large codebases.
+    Returns a paginated per-file table (worst files first) plus the overall
+    rollup. Use ``limit`` / ``offset`` to page through large codebases.
     """
     resolved_root, source_files, err_msg = _validate_and_collect_project(params)
     if err_msg or resolved_root is None or source_files is None:

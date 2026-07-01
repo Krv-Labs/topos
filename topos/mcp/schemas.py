@@ -957,6 +957,7 @@ class DepgraphState(StrEnum):
     STALE = "stale"
     LOAD_ERROR = "load_error"
     SCHEMA_MISMATCH = "schema_mismatch"
+    INVALID_DIR = "invalid_dir"
 
 
 class DepgraphStatusInput(_StrictModel):
@@ -1022,13 +1023,6 @@ class AssessChangesetInput(_StrictModel):
         default=None, description="Optional generator ranking."
     )
     gitnexus_dir: str | None = Field(default=None)
-    refresh_depgraph: bool = Field(
-        default=False,
-        description=(
-            "Regenerate .gitnexus before assessing. Side-effecting and "
-            "approval-gated; leave false for a read-only assessment."
-        ),
-    )
     include_security_findings: bool = Field(default=True)
     allow: list[str] = Field(
         default_factory=list,
@@ -1074,7 +1068,6 @@ class ChangesetResult(BaseModel):
     project_regression: bool = False
     complexity_relocated_files: list[str] = Field(default_factory=list)
     coupling_available: bool = False
-    depgraph_refreshed: bool = False
     priority: Priority
     priority_source: PrioritySource = PrioritySource.DEFAULT
     warnings: list[str] = Field(default_factory=list)

@@ -99,6 +99,26 @@ def test_changeset_detects_project_regression(tmp_path, monkeypatch) -> None:
     assert r.agent_contract.next_tool == "topos_inspect_code"
 
 
+def test_changeset_rejects_invalid_baseline_ref(tmp_path, monkeypatch) -> None:
+    # A mistyped ref must fail structurally, not masquerade as "every file is
+    # new" (git can't tell an absent-at-ref path from an invalid ref).
+    _init_repo(tmp_path)
+    a = tmp_path / "a.py"
+    a.write_text(_CLEAN, encoding="utf-8")
+    _git(tmp_path, "add", "a.py")
+    _git(tmp_path, "commit", "-m", "init")
+    _use_root(tmp_path, monkeypatch)
+
+    r = _changeset(
+        topos_assess_changeset(
+            AssessChangesetInput(files=["a.py"], baseline_ref="no-such-ref")
+        )
+    )
+    assert r.error is not None
+    assert "no-such-ref" in r.error
+    assert r.files == []
+
+
 def test_changeset_markdown_has_file_table(tmp_path, monkeypatch) -> None:
     _init_repo(tmp_path)
     a = tmp_path / "a.py"

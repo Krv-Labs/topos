@@ -42,7 +42,9 @@ Evaluation, project, and assessment results may include `agent_contract`:
 - `next_actions` — concise outcome-focused actions.
 - `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no graph)
   or `stale_gitnexus_dir` (graph older than the latest commit). When COMPOSABLE
-  is blocked by setup, `next_tool` is `topos_generate_depgraph`.
+  is blocked by setup, `next_tool` is `topos_generate_depgraph`. An
+  `invalid_gitnexus_dir` code means the supplied `gitnexus_dir` override is bad
+  (outside the file root or nonexistent) — fix the path rather than generating.
 - `verification_gates` — checks required before accepting a patch.
 - `risk_flags` — compact labels such as `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.

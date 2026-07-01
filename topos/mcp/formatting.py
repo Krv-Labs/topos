@@ -18,7 +18,7 @@ from topos.evaluation.policies.base import Priority
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
-from .evaluation import STALE_GITNEXUS_MARKER
+from .evaluation import INVALID_GITNEXUS_MARKERS, STALE_GITNEXUS_MARKER
 from .schemas import (
     AcknowledgedRisk,
     AgentContract,
@@ -137,8 +137,19 @@ def build_agent_contract(
         risk_flags.append("parse_failure")
         return None, [], blocked_by, ["restore parseable source"], risk_flags
 
+    # An invalid/denied gitnexus_dir override is distinct from a plain missing
+    # graph: regenerating in the project root won't fix a bad path, so the agent
+    # must fix the path instead. Detected via the shared markers so the contract
+    # can't drift from the warning prose.
+    invalid_override = any(
+        marker in w for w in (warnings or []) for marker in INVALID_GITNEXUS_MARKERS
+    )
     if not coupling_available:
-        blocked_by.append("missing_gitnexus_dir")
+        if invalid_override:
+            blocked_by.append("invalid_gitnexus_dir")
+            risk_flags.append("invalid_gitnexus_dir")
+        else:
+            blocked_by.append("missing_gitnexus_dir")
         risk_flags.append("composable_unavailable")
     # A loaded-but-stale graph is a distinct precondition: COMPOSABLE *is*
     # scored, but the agent should refresh the index before trusting it. Match
@@ -173,6 +184,11 @@ def build_agent_contract(
         next_tool = "topos_inspect_code"
         next_actions.append(
             "remove active SECURE findings or acknowledge intentional risk"
+        )
+    elif "invalid_gitnexus_dir" in blocked_by:
+        next_tool = None
+        next_actions.append(
+            "fix gitnexus_dir — it must be an existing directory inside the file root"
         )
     elif "missing_gitnexus_dir" in blocked_by or "stale_gitnexus_dir" in blocked_by:
         next_tool = "topos_generate_depgraph"

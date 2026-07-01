@@ -15,7 +15,6 @@ from fastmcp.tools.base import ToolResult
 from topos.core.omega import EvaluationValue, verdict_from_generators
 from topos.evaluation.policies.base import Priority
 from topos.utils.discovery import find_git_root
-from topos.utils.gitnexus import generate_depgraph
 
 from ...evaluation import (
     detect_language,
@@ -37,16 +36,17 @@ from ...schemas import (
 from ...security import read_safe_utf8_file, resolve_file_root, resolve_within_root
 from ...server import mcp
 from .core import _assess_core
-from .worktree import _git_show
+from .worktree import _git_show, _ref_exists
 
-_WRITE_ANN = {
+# Read-only: reads each file from git and the working tree, scores in memory,
+# writes nothing. When COMPOSABLE is blocked the contract points next_tool at
+# topos_generate_depgraph (approval-gated) — refresh happens there, not here.
+_READ_ONLY_ANN = {
     "title": "Topos Changeset Assessment",
-    # Read-only by default; with refresh_depgraph=True it shells out to GitNexus,
-    # so it is advertised as potentially-writing and should be approval-gated.
-    "readOnlyHint": False,
+    "readOnlyHint": True,
     "destructiveHint": False,
-    "idempotentHint": False,
-    "openWorldHint": True,
+    "idempotentHint": True,
+    "openWorldHint": False,
 }
 
 _DIM_VALUE = {
@@ -59,32 +59,36 @@ _DIM_VALUE = {
 @mcp.tool(
     name="topos_assess_changeset",
     tags={"assess", "workflow"},
-    annotations=_WRITE_ANN,
+    annotations=_READ_ONLY_ANN,
 )
 def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
     """Assess a multi-file changeset against a git baseline and roll the
-    per-file verdicts into a project before/after.
+    per-file verdicts into a project before/after (read-only).
 
     Use for a module split or any edit spanning several files; for a single
     file use ``topos_assess_worktree_change``. Each file is compared to
     ``baseline_ref`` (new files have no baseline). Flags
     ``complexity_relocated_within_file`` when a function shrank but its file's
     cyclomatic complexity grew, and ``project_regression`` when the rollup drops
-    a generator it previously satisfied. Reads from git and writes nothing
-    unless ``refresh_depgraph=True``, which first regenerates ``.gitnexus`` (its
-    only side effect; approval-gated). Returns a ChangesetResult.
+    a generator it previously satisfied. Reads from git and the working tree and
+    writes nothing. When COMPOSABLE is blocked (``missing_gitnexus_dir`` /
+    ``stale_gitnexus_dir`` in the contract), call ``topos_generate_depgraph``
+    first, then re-assess. Returns a ChangesetResult.
     """
     priority, priority_source = resolve_priority(params.preferences)
     prefs = params.preferences.to_preferences() if params.preferences else None
     project_root = resolve_file_root()
 
-    extra_warnings: list[str] = []
-    depgraph_refreshed = False
-    if params.refresh_depgraph:
-        gen = generate_depgraph(project_root)
-        depgraph_refreshed = gen.ok
-        extra_warnings.append(
-            gen.message if gen.ok else f"depgraph refresh failed: {gen.message}"
+    # Validate the baseline ref once, up front: git cannot tell a genuinely-new
+    # file apart from a mistyped ref (both are "absent at ref"). Without this a
+    # bad ref would silently mark every file is_new and report a green result.
+    git_root = find_git_root(project_root)
+    if git_root is not None and not _ref_exists(git_root, params.baseline_ref):
+        return _changeset_error(
+            priority,
+            priority_source,
+            params.baseline_ref,
+            f"baseline ref not found: {params.baseline_ref}",
         )
 
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
@@ -103,7 +107,6 @@ def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
             prefs,
             project_root,
             gitnexus_dir,
-            extra_warnings,
         )
         if outcome.git_unavailable:
             return _changeset_error(
@@ -125,8 +128,6 @@ def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
         before_evals=before_evals,
         after_evals=after_evals,
         coupling_available=any_coupling,
-        depgraph_refreshed=depgraph_refreshed,
-        extra_warnings=extra_warnings,
     )
 
 
@@ -155,7 +156,6 @@ def _assess_one_file(
     prefs,
     project_root: Path,
     gitnexus_dir,
-    extra_warnings: list[str],
 ) -> _FileOutcome:
     resolved, err = resolve_within_root(filepath)
     if err or resolved is None:
@@ -180,15 +180,12 @@ def _assess_one_file(
         )
 
     dep_graph = load_dep_graph(gitnexus_dir, str(resolved))
-    warnings = [
-        *extra_warnings,
-        *gitnexus_warnings(
-            params.gitnexus_dir,
-            project_root,
-            gitnexus_dir,
-            dep_graph_loaded=dep_graph is not None,
-        ),
-    ]
+    warnings = gitnexus_warnings(
+        params.gitnexus_dir,
+        project_root,
+        gitnexus_dir,
+        dep_graph_loaded=dep_graph is not None,
+    )
     assessment = _assess_core(
         baseline_src=baseline_src,
         proposed_src=current_src,
@@ -300,8 +297,6 @@ def _build_changeset_result(
     before_evals: list[EvaluationResult],
     after_evals: list[EvaluationResult],
     coupling_available: bool,
-    depgraph_refreshed: bool,
-    extra_warnings: list[str],
 ) -> ToolResult:
     before_dims, before_scores, before_ok = _rollup(before_evals)
     after_dims, after_scores, after_ok = _rollup(after_evals)
@@ -325,10 +320,8 @@ def _build_changeset_result(
         project_regression=project_regression,
         complexity_relocated_files=relocated_files,
         coupling_available=coupling_available,
-        depgraph_refreshed=depgraph_refreshed,
         priority=priority,
         priority_source=priority_source,
-        warnings=extra_warnings,
         agent_contract=_changeset_contract(
             project_regression, relocated_files, coupling_available
         ),

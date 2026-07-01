@@ -41,6 +41,34 @@ def _git_show(
     return result.stdout.decode("utf-8", errors="replace"), None
 
 
+def _ref_exists(repo_root: Path, ref: str) -> bool:
+    """Whether ``ref`` resolves to a commit in ``repo_root``.
+
+    Lets callers tell a genuinely-new file (path absent at a *valid* ref) apart
+    from an invalid/mistyped ref (where *every* path is absent). If git cannot
+    be run (not installed, timeout, OS error) we return ``True`` so the caller
+    falls through to its existing per-file ``git_unavailable`` handling rather
+    than falsely rejecting a valid ref.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                f"{ref}^{{commit}}",
+            ],
+            capture_output=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return True
+    return result.returncode == 0
+
+
 @mcp.tool(
     name="topos_assess_worktree_change",
     tags={"assess", "workflow"},

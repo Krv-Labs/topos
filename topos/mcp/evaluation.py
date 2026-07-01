@@ -62,6 +62,14 @@ def resolve_gitnexus_dir(
     return default if default.exists() else None
 
 
+# Stable prefixes shared by the producer (this module) and the agent-contract
+# consumer (``formatting.build_agent_contract``) so an invalid/denied override
+# is matched on a single marker instead of ad-hoc substring searches. An invalid
+# override is distinct from a missing graph: regenerating in the project root
+# won't fix a bad path, so the contract must tell the agent to fix the path.
+INVALID_GITNEXUS_MARKERS = ("gitnexus_dir rejected", "gitnexus_dir unavailable")
+
+
 def _check_override_warning(
     override: str | Path, project_root: Path
 ) -> list[str] | None:
@@ -70,12 +78,12 @@ def _check_override_warning(
         override_path.relative_to(project_root)
     except ValueError:
         return [
-            "gitnexus_dir rejected — override must be inside TOPOS_MCP_FILE_ROOT. "
-            f"Got: {override_path}"
+            f"{INVALID_GITNEXUS_MARKERS[0]} — override must be inside "
+            f"TOPOS_MCP_FILE_ROOT. Got: {override_path}"
         ]
     if not override_path.exists():
         return [
-            "gitnexus_dir unavailable — override path does not exist. "
+            f"{INVALID_GITNEXUS_MARKERS[1]} — override path does not exist. "
             f"Got: {override_path}"
         ]
     return None
@@ -193,7 +201,7 @@ def _gitnexus_mtime(gitnexus_dir: Path) -> float:
 class DepgraphStatus:
     """Structured ``.gitnexus`` state for the depgraph status MCP tool."""
 
-    state: str  # missing | present | stale | load_error | schema_mismatch
+    state: str  # missing | present | stale | load_error | schema_mismatch | invalid_dir
     gitnexus_dir: str | None
     gitnexus_mtime: float | None
     git_head_mtime: float | None
@@ -212,7 +220,7 @@ def depgraph_status(
     if override:
         warn = _check_override_warning(override, project_root)
         if warn:
-            return DepgraphStatus("missing", None, None, None, detail=warn[0])
+            return DepgraphStatus("invalid_dir", None, None, None, detail=warn[0])
 
     gitnexus_dir = resolve_gitnexus_dir(override, project_root)
     if gitnexus_dir is None:

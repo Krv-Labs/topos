@@ -2,7 +2,8 @@
 
 COMPOSABLE depends on a ``.gitnexus`` index. ``topos_depgraph_status`` lets an
 agent discover graph state (missing / present / stale / load_error /
-schema_mismatch) without shelling out, and ``topos_generate_depgraph`` performs
+schema_mismatch / invalid_dir) without shelling out, and
+``topos_generate_depgraph`` performs
 the side-effecting regeneration behind an approval-gated annotation.
 """
 
@@ -67,6 +68,12 @@ _STATE_GUIDANCE: dict[DepgraphState, tuple[str, str | None, str | None]] = {
         "topos_generate_depgraph.",
         "topos_generate_depgraph",
         "gitnexus_schema_mismatch",
+    ),
+    DepgraphState.INVALID_DIR: (
+        "The gitnexus_dir override is invalid (outside the file root or does not "
+        "exist); fix the path, then retry. Generating won't help.",
+        None,
+        "invalid_gitnexus_dir",
     ),
     DepgraphState.PRESENT: (
         "COMPOSABLE is scorable; proceed with topos_evaluate_file.",
@@ -153,7 +160,14 @@ def _status_to_result(status: DepgraphStatus) -> ToolResult:
     state = DepgraphState(status.state)
     action, next_tool, blocked_code = _STATE_GUIDANCE[state]
     blocked_by = [blocked_code] if blocked_code else []
-    risk_flags = ["composable_unavailable"] if state != DepgraphState.PRESENT else []
+    # Mirror the state-specific code into risk_flags (not just composable_unavailable)
+    # so clients branching on risk_flags alone can tell stale / load_error /
+    # schema_mismatch / invalid_dir apart.
+    risk_flags: list[str] = []
+    if state != DepgraphState.PRESENT:
+        risk_flags.append("composable_unavailable")
+    if blocked_code:
+        risk_flags.append(blocked_code)
     model = DepgraphStatusResult(
         state=state,
         gitnexus_dir=status.gitnexus_dir,
@@ -173,11 +187,16 @@ def _status_to_result(status: DepgraphStatus) -> ToolResult:
 
 
 def _status_error(message: str) -> ToolResult:
+    # A rejected gitnexus_dir path is an invalid override, not a missing graph:
+    # never route it to generation (which won't fix a bad path).
     model = DepgraphStatusResult(
-        state=DepgraphState.MISSING,
+        state=DepgraphState.INVALID_DIR,
         coupling_available=False,
         recommended_next_action="Fix the gitnexus_dir path, then retry.",
-        agent_contract=AgentContract(blocked_by=["path_error"]),
+        agent_contract=AgentContract(
+            blocked_by=["invalid_gitnexus_dir"],
+            risk_flags=["invalid_gitnexus_dir", "composable_unavailable"],
+        ),
         error=message,
     )
     return to_tool_result(model, _render_status_md(model))

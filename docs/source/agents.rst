@@ -138,7 +138,8 @@ Choose an agent path
          topos_generate_depgraph({"params": {}})
 
       ``topos_depgraph_status`` is read-only and reports ``missing``,
-      ``present``, ``stale``, ``load_error``, or ``schema_mismatch``.
+      ``present``, ``stale``, ``load_error``, ``schema_mismatch``, or
+      ``invalid_dir``.
       ``topos_generate_depgraph`` shells out to GitNexus and rewrites
       ``.gitnexus/`` — approval-gated in most clients. Re-run when imports
       change, modules are renamed, or directories are restructured.
@@ -275,7 +276,7 @@ Structured responses may include:
    Outcome-first guidance: ``next_tool``, ``next_actions``, ``blocked_by``,
    ``verification_gates``, and ``risk_flags``. Prefer these fields over parsing
    markdown prose. Common ``blocked_by`` values include ``missing_gitnexus_dir``,
-   ``stale_gitnexus_dir``, and ``parse_failures``.
+   ``stale_gitnexus_dir``, ``invalid_gitnexus_dir``, and ``parse_failures``.
 
 ``metric_locations``
    On ``topos_evaluate_file`` and ``topos_inspect_code``, maps failing
@@ -335,12 +336,12 @@ Refactor & Iterate
    When SECURE fails, file-level assessment includes ``security_findings`` with the
    dangerous callee, line, and source snippet.
 
-``topos_assess_changeset({"params": {"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ..., "refresh_depgraph": false}})``
-   Multi-file / module-split assessment. Each file is compared to the git baseline;
-   new files have no baseline. Returns per-file verdicts, a project rollup
+``topos_assess_changeset({"params": {"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+   Multi-file / module-split assessment (read-only). Each file is compared to the git
+   baseline; new files have no baseline. Returns per-file verdicts, a project rollup
    (``aggregate_before`` / ``aggregate_after``), and flags
-   ``complexity_relocated_within_file`` and ``project_regression``. Read-only unless
-   ``refresh_depgraph`` is ``true`` (approval-gated).
+   ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
+   blocked, call ``topos_generate_depgraph`` first, then re-assess.
 
 ``topos_preference_walk({"params": {"ranking": ..., "target": ..., "current": ...}})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
@@ -351,7 +352,8 @@ Dependency Graph
 
 ``topos_depgraph_status({"params": {"gitnexus_dir": ...}})``
    Read-only ``.gitnexus`` state: ``missing``, ``present``, ``stale``,
-   ``load_error``, or ``schema_mismatch``. Includes mtime-based staleness vs. the
+   ``load_error``, ``schema_mismatch``, or ``invalid_dir`` (a bad ``gitnexus_dir``
+   override). Includes mtime-based staleness vs. the
    latest git commit. Never shells out.
 
 ``topos_generate_depgraph({"params": {"directory": ...}})``

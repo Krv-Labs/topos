@@ -30,6 +30,8 @@ def score_simple(
     max_function_complexity: float | None = None,
     priority: Priority = Priority.SECURE,
     threshold: float | None = None,
+    *,
+    is_entrypoint_module: bool = False,
 ) -> ScoredDecision:
     """
     Φ_SIMPLE — score the SIMPLE generator using independent raw thresholds.
@@ -40,6 +42,8 @@ def score_simple(
         max_function_complexity: Maximum McCabe complexity of any single function.
         priority:   Retained for API compatibility; not read by this Φᵢ.
         threshold:  Retained for API compatibility; not read by this Φᵢ.
+        is_entrypoint_module: When True, tolerate low entropy for
+            import/export-only entrypoint modules.
 
     Returns:
         A ScoredDecision; ``achieved`` is the truth value of the SIMPLE
@@ -61,9 +65,13 @@ def score_simple(
     if entropy is not None:
         quality = max(0.0, 1.0 - 2.0 * abs(entropy - SIMPLE.entropy_ideal))
         qualities.append(quality)
-        if not (SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy):
+        if not (SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy) and not (
+            is_entrypoint_module and entropy < SIMPLE.min_entropy
+        ):
             achieved = False
-        interp["ast.entropy"] = _entropy_interpretation(entropy, quality)
+        interp["ast.entropy"] = _entropy_interpretation(
+            entropy, quality, is_entrypoint_module=is_entrypoint_module
+        )
 
     # 3. AST Max Function Complexity
     if max_function_complexity is not None:
@@ -131,12 +139,19 @@ def _max_func_interpretation(raw: float, quality: float) -> str:
     )
 
 
-def _entropy_interpretation(entropy: float, quality: float) -> str:
+def _entropy_interpretation(
+    entropy: float, quality: float, *, is_entrypoint_module: bool = False
+) -> str:
     if SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy:
         return (
             f"entropy ({entropy:.2f}) within structured range "
             f"[{SIMPLE.min_entropy}, {SIMPLE.max_entropy}]"
         )
     if entropy < SIMPLE.min_entropy:
+        if is_entrypoint_module:
+            return (
+                f"entropy ({entropy:.2f}) is low, but tolerated for "
+                "import/export-only entrypoint modules"
+            )
         return f"entropy ({entropy:.2f}) is too low; code may be repetitive or trivial"
     return f"entropy ({entropy:.2f}) is too high; code may be unstructured"

@@ -90,6 +90,17 @@ def test_simple_achieved_boundary_uses_calibration():
     )
 
 
+def test_simple_entrypoint_tolerates_low_entropy():
+    decision = score_simple(
+        cyclomatic=SIMPLE.max_cyclomatic - 5,
+        entropy=SIMPLE.min_entropy - 0.05,
+        max_function_complexity=SIMPLE.max_function_complexity - 5,
+        is_entrypoint_module=True,
+    )
+    assert decision.achieved is True
+    assert "entrypoint modules" in decision.interpretation["ast.entropy"]
+
+
 def test_secure_achieved_boundary_uses_calibration():
     assert score_secure(dangerous_calls=0, taint_flows=0).achieved is True
     assert (
@@ -141,3 +152,23 @@ def test_composable_achieved_boundary_uses_calibration():
         ).achieved
         is False
     )
+
+
+def test_composable_entrypoint_tolerates_high_instability_when_fan_in_zero():
+    decision = score_coupling(
+        instability=1.0,
+        fan_in=0.0,
+        fan_out=2.0,
+        is_entrypoint_module=True,
+    )
+    assert decision.achieved is True
+    assert "entrypoint modules" in decision.interpretation["mdg.instability"]
+
+
+def test_composable_high_instability_still_fails_without_entrypoint_flag():
+    decision = score_coupling(
+        instability=1.0,
+        fan_in=0.0,
+        fan_out=2.0,
+    )
+    assert decision.achieved is False

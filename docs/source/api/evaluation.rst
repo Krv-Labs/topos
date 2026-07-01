@@ -3,12 +3,14 @@ Evaluation
 
 Evaluation modules turn structural measurements into Topos verdicts. Start here
 to understand quality policies, preference ordering, calibration, suppression,
-and the suggestions returned after a file or project is assessed.
+file-role detection, and the suggestions returned after a file or project is
+assessed.
 
 .. autosummary::
    :toctree: generated/evaluation
 
    topos.evaluation.characteristic_morphism
+   topos.evaluation.file_roles
    topos.evaluation.preferences
    topos.evaluation.suggestions
    topos.evaluation.suppression

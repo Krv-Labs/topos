@@ -64,9 +64,15 @@ def _to_step(prefs: UserPreferences, value: EvaluationValue) -> WalkStep:
     annotations=_READ_ONLY_ANN,
 )
 def topos_preference_walk(params: PreferenceWalkInput) -> ToolResult:
-    """Return the preference-ordered relaxation walk for a generator ranking.
+    """Turn a generator ranking into a preference-ordered relaxation walk.
 
-    Use after evaluation when an agent needs the next lattice target.
+    Pure and read-only (lattice math only; no files, no scoring). Call after an
+    evaluation to pick the next verdict to aim for, or to relax the goal
+    gracefully under a token/time budget; pair with ``topos_evaluate_*`` for
+    actual metrics. Returns a PreferenceWalkResult: ``walk`` (steps from target
+    down to just above ``current``), ``next_step``, ``progress`` in [0, 1],
+    ``aspirational_target``/``fallback_target``, and ``induced_order`` (all 8
+    verdicts ranked).
     """
     try:
         target_value = (

@@ -4,6 +4,7 @@ Evaluation tool: whole project.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,11 +17,13 @@ from topos.evaluation.characteristic_morphism import (
     ClassificationResult,
 )
 from topos.evaluation.policies.base import Priority
+from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
 from topos.utils.discovery import collect_source_files
 
 from ...diagnostics import overlay_for_file
 from ...evaluation import (
     classify_file,
+    detect_language,
     gitnexus_warnings,
     resolve_gitnexus_dir,
 )
@@ -36,6 +39,7 @@ from ...schemas import (
     PrioritySource,
     ProjectEvaluationResult,
     ProjectFileEntry,
+    ProjectLanguageRollup,
     resolve_priority,
 )
 from ...security import resolve_file_root, resolve_within_root
@@ -49,6 +53,16 @@ _READ_ONLY_ANN = {
     "idempotentHint": True,
     "openWorldHint": False,
 }
+
+_SUPPORTED_SOURCE_SUFFIXES = tuple(
+    sorted(
+        {
+            suffix
+            for suffixes in LANGUAGE_FILE_SUFFIXES.values()
+            for suffix in suffixes
+        }
+    )
+)
 
 
 def _adjusted_result(result: ClassificationResult, overlay):
@@ -127,33 +141,45 @@ def _validate_and_collect_project(
     if not resolved_root.is_dir():
         return None, None, f"Path is not a directory: {resolved_root}"
 
-    py_files = collect_source_files(
+    source_files = collect_source_files(
         (str(resolved_root),),
-        suffixes=(".py",),
+        suffixes=_SUPPORTED_SOURCE_SUFFIXES,
         recursive=True,
     )
-    if not py_files:
-        return None, None, "No .py files found."
+    if not source_files:
+        return None, None, "No supported source files found."
 
-    return resolved_root, py_files, None
+    return resolved_root, source_files, None
 
 
 async def _evaluate_project_files_loop(
-    py_files: list[Path],
+    source_files: list[Path],
     resolved_root: Path,
     priority: Priority,
     gitnexus_dir: Path | None,
     include_security_findings: bool,
     allows: list[str],
     ctx: Context,
-) -> tuple[list[ClassificationResult], list[ProjectFileEntry], int, bool]:
-    total_files = len(py_files)
+) -> tuple[
+    list[ClassificationResult],
+    list[ProjectFileEntry],
+    int,
+    bool,
+    dict[str, list[ClassificationResult]],
+    dict[str, list[ProjectFileEntry]],
+    dict[str, int],
+]:
+    total_files = len(source_files)
     per_file_results = []
     entries: list[ProjectFileEntry] = []
     parse_failures = 0
     any_dep_graph_loaded = False
+    per_language_results: dict[str, list[ClassificationResult]] = defaultdict(list)
+    per_language_entries: dict[str, list[ProjectFileEntry]] = defaultdict(list)
+    per_language_parse_failures: dict[str, int] = defaultdict(int)
 
-    for idx, path in enumerate(py_files, start=1):
+    for idx, path in enumerate(source_files, start=1):
+        language = detect_language(path)
         result, entry, failed, has_dep = _evaluate_single_file(
             path,
             resolved_root,
@@ -164,17 +190,29 @@ async def _evaluate_project_files_loop(
         )
         if failed:
             parse_failures += 1
+            per_language_parse_failures[language] += 1
         if result is None or entry is None:
             continue
         any_dep_graph_loaded = any_dep_graph_loaded or has_dep
         if not result.is_parseable:
             parse_failures += 1
+            per_language_parse_failures[language] += 1
         per_file_results.append(result)
         entries.append(entry)
+        per_language_results[language].append(result)
+        per_language_entries[language].append(entry)
         if idx % max(1, total_files // 20) == 0 or idx == total_files:
             await ctx.report_progress(progress=idx, total=total_files)
 
-    return per_file_results, entries, parse_failures, any_dep_graph_loaded
+    return (
+        per_file_results,
+        entries,
+        parse_failures,
+        any_dep_graph_loaded,
+        dict(per_language_results),
+        dict(per_language_entries),
+        dict(per_language_parse_failures),
+    )
 
 
 @mcp.tool(
@@ -185,17 +223,18 @@ async def _evaluate_project_files_loop(
 async def topos_evaluate_project(
     params: EvaluateProjectInput, ctx: Context
 ) -> ToolResult:
-    """Recursively evaluate every Python file in a directory.
+    """Recursively evaluate supported source files in a directory (read-only).
 
     Reports progress to the client via ``ctx.report_progress`` so the UI shows
     a live bar during long walks. Rolls up per-dimension scores using the
-    project-wide minimum (``CharacteristicMorphism.combine_dimensions``).
+    project-wide minimum (``CharacteristicMorphism.combine_dimensions``), so the
+    weakest file floors the verdict.
 
     Returns a paginated per-file table plus the overall rollup. Use ``limit``
     / ``offset`` to page through large codebases.
     """
-    resolved_root, py_files, err_msg = _validate_and_collect_project(params)
-    if err_msg or resolved_root is None or py_files is None:
+    resolved_root, source_files, err_msg = _validate_and_collect_project(params)
+    if err_msg or resolved_root is None or source_files is None:
         model = _empty_project_result(params, error=err_msg)
         return to_tool_result(model, render_project_md(model))
 
@@ -209,8 +248,11 @@ async def topos_evaluate_project(
         entries,
         parse_failures,
         any_dep_graph_loaded,
+        per_language_results,
+        per_language_entries,
+        per_language_parse_failures,
     ) = await _evaluate_project_files_loop(
-        py_files,
+        source_files,
         resolved_root,
         priority,
         gitnexus_dir,
@@ -221,11 +263,14 @@ async def topos_evaluate_project(
 
     model = _build_project_result(
         resolved_root,
-        py_files,
+        source_files,
         parse_failures,
         per_file_results,
         entries,
         any_dep_graph_loaded,
+        per_language_results,
+        per_language_entries,
+        per_language_parse_failures,
         params,
         priority,
         priority_source,
@@ -238,11 +283,14 @@ async def topos_evaluate_project(
 
 def _build_project_result(
     resolved_root: Path,
-    py_files: list[Path],
+    source_files: list[Path],
     parse_failures: int,
     per_file_results: list[ClassificationResult],
     entries: list[ProjectFileEntry],
     any_dep_graph_loaded: bool,
+    per_language_results: dict[str, list[ClassificationResult]],
+    per_language_entries: dict[str, list[ProjectFileEntry]],
+    per_language_parse_failures: dict[str, int],
     params: EvaluateProjectInput,
     priority: Priority,
     priority_source: PrioritySource,
@@ -253,21 +301,15 @@ def _build_project_result(
     classifier = CharacteristicMorphism()
     rolled = classifier.combine_dimensions(per_file_results)
     rolled_scores = _minimum_scores_by_dim(per_file_results)
+    language_rollups = _build_language_rollups(
+        per_language_results,
+        per_language_entries,
+        per_language_parse_failures,
+    )
 
     # Combine the three rolled-up generator verdicts into a single ℋ
     # element via the free-algebra encoding.
-    from topos.core.omega import (
-        EvaluationValue,
-        verdict_from_generators,
-    )
-
-    simple_ok = rolled.get("simple") == EvaluationValue.SIMPLE
-    composable_ok = rolled.get("composable") == EvaluationValue.COMPOSABLE
-    secure_ok = rolled.get("secure") == EvaluationValue.SECURE
-    overall_value = verdict_from_generators(
-        simple=simple_ok, composable=composable_ok, secure=secure_ok
-    )
-    overall = lattice_to_str(overall_value)
+    overall = _aggregate_floor_verdict(rolled)
     aggregate_explanation = _aggregate_explanation(rolled, rolled_scores, entries)
 
     # Sort entries: lowest overall score first (worst files surfaced).
@@ -298,11 +340,12 @@ def _build_project_result(
 
     return ProjectEvaluationResult(
         root=str(resolved_root),
-        file_count=len(py_files),
+        file_count=len(source_files),
         parse_failures=parse_failures,
         rolled_up_dimensions={dim: lattice_to_str(val) for dim, val in rolled.items()},
         rolled_up_scores=rolled_scores,
         aggregate_floor_verdict=overall,
+        language_rollups=language_rollups,
         aggregate_explanation=aggregate_explanation,
         worst_file_verdict=worst_file_verdict,
         worst_files=worst_files,
@@ -335,6 +378,52 @@ def _minimum_scores_by_dim(results) -> dict[str, float]:
             if dim not in min_scores or s < min_scores[dim]:
                 min_scores[dim] = s
     return {dim: round(s * 100.0, 1) for dim, s in min_scores.items()}
+
+
+def _aggregate_floor_verdict(rolled: dict[str, object]) -> LatticeElement:
+    from topos.core.omega import verdict_from_generators
+
+    simple_ok = rolled.get("simple") == EvaluationValue.SIMPLE
+    composable_ok = rolled.get("composable") == EvaluationValue.COMPOSABLE
+    secure_ok = rolled.get("secure") == EvaluationValue.SECURE
+    return lattice_to_str(
+        verdict_from_generators(
+            simple=simple_ok, composable=composable_ok, secure=secure_ok
+        )
+    )
+
+
+def _build_language_rollups(
+    per_language_results: dict[str, list[ClassificationResult]],
+    per_language_entries: dict[str, list[ProjectFileEntry]],
+    per_language_parse_failures: dict[str, int],
+) -> list[ProjectLanguageRollup]:
+    classifier = CharacteristicMorphism()
+    rollups: list[ProjectLanguageRollup] = []
+    for language in sorted(per_language_results):
+        results = per_language_results[language]
+        rolled = classifier.combine_dimensions(results)
+        rolled_scores = _minimum_scores_by_dim(results)
+        entries = sorted(
+            per_language_entries.get(language, []),
+            key=lambda e: min(e.scores.values()) if e.scores else 0.0,
+        )
+        worst = entries[0] if entries else None
+        rollups.append(
+            ProjectLanguageRollup(
+                language=language,
+                file_count=len(entries),
+                parse_failures=per_language_parse_failures.get(language, 0),
+                rolled_up_dimensions={
+                    dim: lattice_to_str(val) for dim, val in rolled.items()
+                },
+                rolled_up_scores=rolled_scores,
+                aggregate_floor_verdict=_aggregate_floor_verdict(rolled),
+                worst_file_path=worst.filepath if worst else None,
+                worst_file_verdict=worst.lattice_element if worst else None,
+            )
+        )
+    return rollups
 
 
 def _empty_project_result(

@@ -208,14 +208,17 @@ class CompareCodeInput(_StrictModel):
 
     source_code: str = Field(..., min_length=1, description="Baseline code.")
     target_code: str = Field(..., min_length=1, description="Proposed/target code.")
-    language: str = Field(default="python")
+    language: str = Field(
+        default="python",
+        description="python, rust, javascript, typescript, or cpp.",
+    )
 
 
 class CompareFilesInput(_StrictModel):
     """Arguments for ``topos_compare_files``."""
 
     source: str = Field(..., min_length=1, description="Baseline file path.")
-    target: str = Field(..., min_length=1, description="Proposed file path.")
+    target: str = Field(..., min_length=1, description="Comparison file path.")
 
 
 class AssessImprovementInput(_StrictModel):
@@ -424,18 +427,12 @@ class CalculateCoverageInput(_StrictModel):
 
 
 class PreferenceWalkInput(_StrictModel):
-    """Arguments for ``topos_preference_walk``.
-
-    Convert a strict total order on the three generators into a
-    concrete relaxation walk on Ω — the sequence of verdicts an agent
-    should aim for, in descending order of preference.
-    """
+    """Arguments for ``topos_preference_walk``."""
 
     ranking: list[Generator] = Field(
         ...,
         description=(
-            "Permutation of {simple, composable, secure}, most-preferred "
-            "first.  Required — supply an explicit permutation (no implicit default)."
+            "Permutation of {simple, composable, secure}, most-preferred first."
         ),
         min_length=3,
         max_length=3,
@@ -443,20 +440,13 @@ class PreferenceWalkInput(_StrictModel):
     current: LatticeElement | None = Field(
         default=None,
         description=(
-            "Optional current verdict (e.g. from a previous "
-            "``topos_evaluate_file`` call).  When provided, the walk is "
-            "truncated to entries strictly above ``current`` in the "
-            "preference order, and ``next_step`` is the smallest "
-            "improvement to aim for next.  Defaults to no truncation."
+            "Optional current verdict; truncates the walk to steps strictly "
+            "above it and sets ``next_step``. Defaults to the full walk."
         ),
     )
     target: LatticeElement | None = Field(
         default=None,
-        description=(
-            "Optional override of the aspirational target.  Defaults to "
-            "``IDEAL``; callers who know IDEAL is unreachable can pin "
-            "the target lower."
-        ),
+        description="Optional aspirational-target override; defaults to IDEAL.",
     )
 
 
@@ -499,10 +489,7 @@ class PreferenceWalkResult(BaseModel):
     )
     fallback_target: LatticeElement = Field(
         ...,
-        description=(
-            "Where to divert if the aspirational target plateaus — the "
-            "meet of the top-two ranked generators."
-        ),
+        description="Divert target when the aspirational target plateaus.",
     )
     current: LatticeElement | None = Field(
         default=None,
@@ -511,8 +498,7 @@ class PreferenceWalkResult(BaseModel):
     next_step: LatticeElement | None = Field(
         default=None,
         description=(
-            "Smallest improvement above ``current``.  ``None`` when "
-            "already at or beyond the aspirational target."
+            "Smallest improvement above ``current``; null when at/beyond target."
         ),
     )
     progress: float = Field(
@@ -523,19 +509,11 @@ class PreferenceWalkResult(BaseModel):
     )
     walk: list[WalkStep] = Field(
         default_factory=list,
-        description=(
-            "Descending preference-ordered walk from the aspirational "
-            "target down to (but not including) ``current``.  Empty "
-            "when ``current`` is at or beyond target."
-        ),
+        description="Steps from the target down to just above ``current``.",
     )
     induced_order: list[WalkStep] = Field(
         default_factory=list,
-        description=(
-            "All 8 Ω elements ranked by descending preference.  Useful "
-            "for clients that want to render the full lattice in "
-            "user-preferred order rather than just the walk."
-        ),
+        description="All 8 verdicts ranked by descending preference.",
     )
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
@@ -769,6 +747,19 @@ class ProjectFileEntry(BaseModel):
     is_parseable: bool = True
 
 
+class ProjectLanguageRollup(BaseModel):
+    """Per-language project rollup for polyglot directory evaluation."""
+
+    language: str
+    file_count: int
+    parse_failures: int = 0
+    rolled_up_dimensions: dict[str, LatticeElement] = Field(default_factory=dict)
+    rolled_up_scores: dict[str, float] = Field(default_factory=dict)
+    aggregate_floor_verdict: LatticeElement = LatticeElement.SLOP
+    worst_file_path: str | None = None
+    worst_file_verdict: LatticeElement | None = None
+
+
 class ProjectEvaluationResult(BaseModel):
     """Result of a directory-wide evaluation."""
 
@@ -778,6 +769,7 @@ class ProjectEvaluationResult(BaseModel):
     rolled_up_dimensions: dict[str, LatticeElement]
     rolled_up_scores: dict[str, float]
     aggregate_floor_verdict: LatticeElement
+    language_rollups: list[ProjectLanguageRollup] = Field(default_factory=list)
     aggregate_explanation: str
     worst_file_verdict: LatticeElement | None = None
     worst_files: list[ProjectFileEntry] = Field(default_factory=list)
@@ -881,7 +873,7 @@ class InspectionResult(BaseModel):
 
 
 class TopologicalCoverageResult(BaseModel):
-    """ECT-based topological semantic coverage (optional extra)."""
+    """ECT-based topological semantic coverage (Experimental optional extra)."""
 
     unavailable: bool = False
     reason: str | None = None

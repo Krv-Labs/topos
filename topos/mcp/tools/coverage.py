@@ -167,12 +167,13 @@ def _parse_roots(
     annotations=_READ_ONLY_ANN,
 )
 def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
-    """Calculate structural test coverage (v2) for a set of PUT and test files.
+    """Measure structural (UAST) and semantic (topological ECT) test coverage.
 
-    Uses UAST kind histograms, statement/expression recall, and k-gram path
-    recall scoped to declarations. When the ``ect-coverage`` optional extra
-    is installed, also returns topological ECT semantic coverage from CPG
-    node embeddings.
+    Read-only standalone signal (outside the quality lattice). Calculates UAST
+    bipartite declaration matching and k-gram path recall.
+
+    ⚠️ AGENTS: Optional ECT semantic coverage is experimental and 100x-1000x slower
+    than structural coverage. Use selectively on small files to prevent timeouts.
     """
     warnings: list[str] = []
     put_roots, err_model = _parse_roots(
@@ -257,10 +258,17 @@ def _render_uncovered(r: CoverageResult) -> list[str]:
 
 
 def _render_topological_coverage(topo) -> list[str]:
-    lines = ["", "## Topological CPG Semantic Coverage (ECT)"]
+    lines = ["", "## 🧪 Topological CPG Semantic Coverage (ECT - Experimental)"]
     if topo.unavailable:
         lines.append(f"> Topological coverage unavailable: {topo.reason}")
     elif topo.coverage_score is not None:
+        lines.append(
+            "> ⚠️ **Experimental Warning:** ECT Semantic Coverage is an "
+            "experimental metric under method development. It uses deep learning "
+            "node embeddings and topological sweeps which can result in large "
+            "runtimes (100x to 1000x slower than structural coverage) on larger "
+            "files."
+        )
         lines.append(f"- **Coverage score:** {topo.coverage_score:.4f}")
         if topo.distance is not None:
             lines.append(f"- **ECT distance:** {topo.distance:.4f}")

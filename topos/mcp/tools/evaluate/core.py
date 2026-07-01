@@ -70,6 +70,9 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
         SIMPLE / COMPOSABLE / SECURE     One generator satisfied.
         SIMPLE_COMPOSABLE / SIMPLE_SECURE / COMPOSABLE_SECURE  Two satisfied.
         IDEAL (⊤)            All three generators satisfied.
+
+    Read-only. Use for a snippet not yet on disk; switch to
+    ``topos_evaluate_file`` for COMPOSABLE. Returns an EvaluationResult.
     """
     try:
         priority, priority_source = resolve_priority(params.preferences)
@@ -124,6 +127,9 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
 
     Generate a ``.gitnexus/`` directory with ``topos depgraph generate`` first
     (requires ``npm install -g gitnexus``).
+
+    Read-only. ``coupling_available`` is false when no dependency graph was
+    found, making any COMPOSABLE verdict unreachable.
     """
     resolved, err = resolve_within_root(params.filepath)
     if err or resolved is None:

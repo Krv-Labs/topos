@@ -56,11 +56,7 @@ _READ_ONLY_ANN = {
 
 _SUPPORTED_SOURCE_SUFFIXES = tuple(
     sorted(
-        {
-            suffix
-            for suffixes in LANGUAGE_FILE_SUFFIXES.values()
-            for suffix in suffixes
-        }
+        {suffix for suffixes in LANGUAGE_FILE_SUFFIXES.values() for suffix in suffixes}
     )
 )
 

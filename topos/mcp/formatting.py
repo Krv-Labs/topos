@@ -170,7 +170,15 @@ def build_agent_contract(
     summary = result.summary()
     simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
 
-    if summary == EvaluationValue.IDEAL:
+    if "invalid_gitnexus_dir" in blocked_by:
+        next_tool = None
+        next_actions.append(
+            "fix gitnexus_dir — it must be an existing directory inside the file root"
+        )
+    elif "stale_gitnexus_dir" in blocked_by:
+        next_tool = "topos_generate_depgraph"
+        next_actions.append("run topos_generate_depgraph to refresh COMPOSABLE")
+    elif summary == EvaluationValue.IDEAL:
         next_tool = "topos_evaluate_project"
         next_actions.append(
             "confirm project rollup and behavior tests before accepting"
@@ -185,14 +193,9 @@ def build_agent_contract(
         next_actions.append(
             "remove active SECURE findings or acknowledge intentional risk"
         )
-    elif "invalid_gitnexus_dir" in blocked_by:
-        next_tool = None
-        next_actions.append(
-            "fix gitnexus_dir — it must be an existing directory inside the file root"
-        )
-    elif "missing_gitnexus_dir" in blocked_by or "stale_gitnexus_dir" in blocked_by:
+    elif "missing_gitnexus_dir" in blocked_by:
         next_tool = "topos_generate_depgraph"
-        next_actions.append("run topos_generate_depgraph to score/refresh COMPOSABLE")
+        next_actions.append("run topos_generate_depgraph to score COMPOSABLE")
     else:
         next_tool = "topos_inspect_code"
         next_actions.append(

@@ -25,9 +25,12 @@ def test_depgraph_generate_no_gitnexus():
         assert "GitNexus not found" in result.output
 
 
+# Stub the fingerprint's HEAD lookup so generation makes exactly one subprocess
+# call (the analyze) and writes no marker into the real repo's .gitnexus.
+@patch("topos.utils.gitnexus._head_sha", return_value=None)
 @patch("subprocess.run")
 @patch("shutil.which", return_value="/usr/local/bin/gitnexus")
-def test_depgraph_generate_success(mock_which, mock_run):
+def test_depgraph_generate_success(mock_which, mock_run, mock_head_sha):
     mock_run.return_value.returncode = 0
     runner = CliRunner()
     result = runner.invoke(cli, ["depgraph", "generate"])

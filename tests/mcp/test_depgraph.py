@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+
 import pytest
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
-from topos.mcp.evaluation import DepgraphStatus
+from topos.mcp.evaluation import (
+    STALE_GITNEXUS_MARKER,
+    DepgraphStatus,
+    _git_head_sha,
+    _graph_freshness,
+)
 from topos.mcp.formatting import build_agent_contract
 from topos.mcp.schemas import (
     DepgraphState,
@@ -17,7 +26,7 @@ from topos.mcp.schemas import (
 )
 from topos.mcp.tools import depgraph as depgraph_tool
 from topos.mcp.tools.depgraph import topos_depgraph_status, topos_generate_depgraph
-from topos.utils.gitnexus import DepgraphGenerationResult
+from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, DepgraphGenerationResult
 
 
 def _status(tool_result) -> DepgraphStatusResult:
@@ -147,6 +156,33 @@ def test_build_agent_contract_flags_stale_graph() -> None:
     assert next_tool == "topos_generate_depgraph"
 
 
+def test_build_agent_contract_routes_stale_ideal_to_generate() -> None:
+    result = ClassificationResult(
+        is_parseable=True,
+        dimensions={
+            "simple": EvaluationValue.SIMPLE,
+            "composable": EvaluationValue.COMPOSABLE,
+            "secure": EvaluationValue.SECURE,
+        },
+        scores={"simple": 1.0, "composable": 1.0, "secure": 1.0},
+        lattice_element=EvaluationValue.IDEAL,
+        priority=Priority.SIMPLE,
+    )
+    next_tool, actions, blocked_by, _gates, risk_flags = build_agent_contract(
+        result,
+        coupling_available=True,
+        security_findings=[],
+        acknowledged_risks=[],
+        grade_capped=False,
+        warnings=["gitnexus index may be stale — regenerate before trusting."],
+    )
+
+    assert "stale_gitnexus_dir" in blocked_by
+    assert "stale_gitnexus_dir" in risk_flags
+    assert next_tool == "topos_generate_depgraph"
+    assert actions == ["run topos_generate_depgraph to refresh COMPOSABLE"]
+
+
 def test_build_agent_contract_flags_invalid_override() -> None:
     result = ClassificationResult(
         is_parseable=True,
@@ -183,3 +219,75 @@ def test_status_invalid_gitnexus_dir_end_to_end(tmp_path, monkeypatch) -> None:
     assert r.coupling_available is False
     assert "invalid_gitnexus_dir" in r.agent_contract.blocked_by
     assert r.agent_contract.next_tool != "topos_generate_depgraph"
+
+
+# --- freshness (commit-SHA anchored, mtime fallback) --------------------------
+
+
+def _commit_repo(root) -> str:
+    def g(*a):
+        subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True)
+
+    g("init")
+    g("config", "user.email", "t@t.t")
+    g("config", "user.name", "t")
+    (root / "f.py").write_text("x = 1\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-m", "init")
+    out = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return out.stdout.strip()
+
+
+def _graph_dir(root, *, fingerprint: str | None) -> os.PathLike:
+    gitnexus = root / ".gitnexus"
+    gitnexus.mkdir()
+    lbug = gitnexus / "lbug"
+    lbug.write_text("", encoding="utf-8")
+    os.utime(lbug, (1.0, 1.0))  # deliberately ancient, like an un-bumped DB
+    if fingerprint is not None:
+        (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+            json.dumps({"head_sha": fingerprint}), encoding="utf-8"
+        )
+    return gitnexus
+
+
+def test_git_head_sha_reads_without_shelling(tmp_path) -> None:
+    head = _commit_repo(tmp_path)
+    assert _git_head_sha(tmp_path) == head
+
+
+def test_freshness_sha_match_is_fresh_despite_old_mtime(tmp_path) -> None:
+    # The exact false-positive we hit: graph DB mtime is old, but its fingerprint
+    # matches HEAD, so it must read as fresh (not stale).
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=head)
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+    assert is_stale is False
+    assert detail is None
+
+
+def test_freshness_sha_mismatch_is_stale(tmp_path) -> None:
+    _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint="0" * 40)  # built from another commit
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+
+
+def test_freshness_no_marker_falls_back_to_mtime(tmp_path) -> None:
+    _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)  # legacy graph, ancient lbug
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+
+
+def test_freshness_non_git_is_fresh(tmp_path) -> None:
+    # No .git and no marker: nothing to be stale against → fresh, no crash.
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    assert _graph_freshness(tmp_path, gitnexus) == (False, None)

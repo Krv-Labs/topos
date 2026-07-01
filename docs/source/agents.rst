@@ -353,8 +353,9 @@ Dependency Graph
 ``topos_depgraph_status({"params": {"gitnexus_dir": ...}})``
    Read-only ``.gitnexus`` state: ``missing``, ``present``, ``stale``,
    ``load_error``, ``schema_mismatch``, or ``invalid_dir`` (a bad ``gitnexus_dir``
-   override). Includes mtime-based staleness vs. the
-   latest git commit. Never shells out.
+   override). Staleness is anchored to the commit the graph was built from
+   (falling back to file mtimes for graphs built before that marker existed), so
+   a regenerate reliably clears ``stale``. Never shells out.
 
 ``topos_generate_depgraph({"params": {"directory": ...}})``
    Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and

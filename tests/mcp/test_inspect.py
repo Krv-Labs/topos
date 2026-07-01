@@ -84,6 +84,23 @@ def test_inspect_accepts_filepath(
     assert r.function_entries[0].line == 1
 
 
+def test_inspect_filepath_autodetects_non_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "module.rs"
+    path.write_text("fn beta() -> i32 {\n    1\n}\n", encoding="utf-8")
+
+    r = _inspect(topos_inspect_code(InspectCodeInput(filepath="module.rs")))
+
+    assert r.error is None
+    assert r.evaluation.error is None
+    assert r.evaluation.is_parseable is True
+
+
 def test_inspect_applies_topos_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

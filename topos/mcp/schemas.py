@@ -378,7 +378,13 @@ class InspectCodeInput(_StrictModel):
             "large files."
         ),
     )
-    language: str = Field(default="python")
+    language: str = Field(
+        default="python",
+        description=(
+            "Language for inline `code`; ignored for `filepath`, which is "
+            "autodetected from the file extension."
+        ),
+    )
     preferences: UserPreferencesInput | None = Field(
         default=None,
         description=(
@@ -757,6 +763,10 @@ class EvaluationResult(BaseModel):
 
 class ProjectFileEntry(BaseModel):
     filepath: str
+    language: str = Field(
+        default="python",
+        description="Detected language used to evaluate this file.",
+    )
     lattice_element: LatticeElement
     scores: dict[str, float]
     pillars: dict[str, PillarResult] = Field(default_factory=dict)

@@ -15,7 +15,7 @@ from topos.functors.probes.ast.complexity import calculate_function_complexity_e
 from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
 
 from ..diagnostics import overlay_for_source
-from ..evaluation import classify_code_string
+from ..evaluation import classify_code_string, detect_language
 from ..formatting import render_evaluation_md, to_evaluation_result, to_tool_result
 from ..metric_locations import build_metric_locations, function_entry_from_complexity
 from ..schemas import (
@@ -48,12 +48,14 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
 
     Read-only; provide exactly one of ``code`` or ``filepath``. Use when you
     need the per-function detail behind a verdict; use ``topos_evaluate_*`` when
-    the medal alone is enough. Returns an InspectionResult: the lattice
-    ``evaluation``, a *top-N* function complexity table (``top_n_functions``,
-    default 10), ``total_functions``, and entropy details. The top-N cap keeps
-    large files from blowing out agent context.
+    the medal alone is enough. For ``filepath`` input, language is autodetected
+    from the extension; ``language`` only applies to inline ``code``. Returns an
+    InspectionResult: the lattice ``evaluation``, a *top-N* function complexity
+    table (``top_n_functions``, default 10), ``total_functions``, and entropy
+    details. The top-N cap keeps large files from blowing out agent context.
     """
     source, source_error, file_path = _load_source(params)
+    language = _inspection_language(params, file_path)
     priority, priority_source = resolve_priority(params.preferences)
     if source_error or source is None:
         empty = EvaluationResult(
@@ -75,7 +77,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         return to_tool_result(model, render_inspection_md(model))
 
     try:
-        result = classify_code_string(source, params.language, priority)
+        result = classify_code_string(source, language, priority)
     except Exception as exc:
         empty = EvaluationResult(
             is_parseable=False,
@@ -101,7 +103,7 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         **_overlay_kwargs(
             overlay_for_source(
                 source,
-                params.language,
+                language,
                 result,
                 file_path=file_path,
                 allows=params.allow,
@@ -109,12 +111,12 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
             )
         ),
         verbose=params.verbose,
-        metric_locations=build_metric_locations(source, params.language, result),
+        metric_locations=build_metric_locations(source, language, result),
     )
 
     # Use the same AST decision-node probe that feeds ``ast.max_function_complexity``
     # so this table never disagrees with the failing gate (issue #67).
-    morphism = ProgramMorphism(source=source, language=params.language)
+    morphism = ProgramMorphism(source=source, language=language)
     all_funcs: list[FunctionEntry] = []
     if morphism.ast is not None and morphism.is_valid:
         all_funcs = [
@@ -139,6 +141,12 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
         entropy_interpretation=interpretation,
     )
     return to_tool_result(model, render_inspection_md(model, verbose=params.verbose))
+
+
+def _inspection_language(params: InspectCodeInput, file_path: Path | None) -> str:
+    if file_path is None:
+        return params.language
+    return detect_language(file_path)
 
 
 def _load_source(

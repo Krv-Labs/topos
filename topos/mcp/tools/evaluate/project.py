@@ -106,6 +106,7 @@ def _evaluate_single_file(
 
     entry = ProjectFileEntry(
         filepath=str(path.relative_to(resolved_root)),
+        language=detect_language(path),
         lattice_element=lattice_to_str(result_for_rollup.summary()),
         scores={dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
         pillars=build_pillars(result_for_rollup, dep_graph is not None),
@@ -529,7 +530,10 @@ def _project_contract(
         next_actions.append("preserve behavior checks before accepting")
     else:
         next_tool = "topos_inspect_code"
-        next_actions.append(f"start with worst file {worst_files[0].filepath}")
+        worst = worst_files[0]
+        next_actions.append(
+            f"start with worst file {worst.filepath} using language {worst.language}"
+        )
 
     verification_gates = [
         "topos_assess_worktree_change validates each accepted in-place refactor",

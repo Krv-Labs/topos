@@ -472,9 +472,12 @@ def test_evaluate_project_auto_detects_supported_languages(
     )
 
     assert r.file_count == 2
-    assert any(entry.filepath.endswith(".rs") for entry in r.files)
+    rust_entry = next(entry for entry in r.files if entry.filepath.endswith(".rs"))
+    assert rust_entry.language == "rust"
     assert any(rollup.language == "python" for rollup in r.language_rollups)
     assert any(rollup.language == "rust" for rollup in r.language_rollups)
+    assert r.agent_contract is not None
+    assert "using language" in r.agent_contract.next_actions[0]
 
 
 def test_evaluate_project_paginates() -> None:

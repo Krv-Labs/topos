@@ -22,7 +22,7 @@ from ...evaluation import (
     load_dep_graph,
     resolve_gitnexus_dir,
 )
-from ...formatting import lattice_to_str, to_tool_result
+from ...formatting import composable_contract_signals, lattice_to_str, to_tool_result
 from ...schemas import (
     AgentContract,
     AssessChangesetInput,
@@ -116,6 +116,12 @@ def topos_assess_changeset(params: AssessChangesetInput) -> ToolResult:
         before_evals=before_evals,
         after_evals=after_evals,
         coupling_available=any_coupling,
+        warnings=gitnexus_warnings(
+            params.gitnexus_dir,
+            project_root,
+            gitnexus_dir,
+            dep_graph_loaded=any_coupling,
+        ),
     )
 
 
@@ -293,6 +299,7 @@ def _build_changeset_result(
     before_evals: list[EvaluationResult],
     after_evals: list[EvaluationResult],
     coupling_available: bool,
+    warnings: list[str],
 ) -> ToolResult:
     before_dims, before_scores, before_ok = _rollup(before_evals)
     after_dims, after_scores, after_ok = _rollup(after_evals)
@@ -319,7 +326,7 @@ def _build_changeset_result(
         priority=priority,
         priority_source=priority_source,
         agent_contract=_changeset_contract(
-            project_regression, relocated_files, coupling_available
+            project_regression, relocated_files, coupling_available, warnings
         ),
     )
     return to_tool_result(model, _render_changeset_md(model))
@@ -329,20 +336,29 @@ def _changeset_contract(
     project_regression: bool,
     relocated_files: list[str],
     coupling_available: bool,
+    warnings: list[str],
 ) -> AgentContract:
     blocked_by: list[str] = []
     risk_flags: list[str] = []
     next_actions: list[str] = []
 
-    if not coupling_available:
-        blocked_by.append("missing_gitnexus_dir")
-        risk_flags.append("composable_unavailable")
+    composable = composable_contract_signals(
+        coupling_available=coupling_available,
+        warnings=warnings,
+    )
+    blocked_by.extend(composable.blocked_by)
+    risk_flags.extend(composable.risk_flags)
+    if warnings:
+        risk_flags.append("warnings")
     if relocated_files:
         risk_flags.append("complexity_relocated_within_file")
         next_actions.append(
             "move extracted logic across a module boundary instead of within one file"
         )
-    if project_regression:
+    if composable.next_action:
+        next_tool = composable.next_tool
+        next_actions.append(composable.next_action)
+    elif project_regression:
         blocked_by.append("project_regression")
         risk_flags.append("project_regression")
         next_tool = "topos_inspect_code"

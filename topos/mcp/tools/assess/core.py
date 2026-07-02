@@ -31,7 +31,11 @@ from ...evaluation import (
     load_dep_graph,
     resolve_gitnexus_dir,
 )
-from ...formatting import to_evaluation_result, to_tool_result
+from ...formatting import (
+    composable_contract_signals,
+    to_evaluation_result,
+    to_tool_result,
+)
 from ...schemas import (
     AgentContract,
     AssessImprovementInput,
@@ -446,6 +450,13 @@ def _assessment_contract(
     blocked_by: list[str] = []
     next_actions: list[str] = []
 
+    composable = composable_contract_signals(
+        coupling_available=proposed_eval.coupling_available,
+        warnings=warnings,
+        include_missing=False,
+    )
+    blocked_by.extend(composable.blocked_by)
+    risk_flags.extend(composable.risk_flags)
     if warnings:
         risk_flags.append("warnings")
     if proposed_eval.grade_capped:
@@ -453,7 +464,10 @@ def _assessment_contract(
     if proposed_eval.security_findings:
         risk_flags.append("active_security_findings")
 
-    if status == AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE:
+    if composable.next_action:
+        next_tool = composable.next_tool
+        next_actions.append(composable.next_action)
+    elif status == AssessmentStatus.SUSPICIOUS_NO_STRUCTURAL_CHANGE:
         blocked_by.append("suspicious_no_structural_change")
         risk_flags.append("metric_gaming_risk")
         next_tool = "topos_inspect_code"

@@ -2,7 +2,7 @@
   "name": "topos-vscode",
   "displayName": "Topos: Code Quality Targets for Agents",
   "description": "Structural code-quality targets your coding agents can optimize toward, delivered as MCP tools for agent mode.",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "publisher": "KrvLabs",
   "icon": "icon.png",
   "license": "SEE LICENSE IN LICENSE",

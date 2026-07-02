@@ -480,6 +480,34 @@ def test_evaluate_project_auto_detects_supported_languages(
     assert "using language" in r.agent_contract.next_actions[0]
 
 
+def test_evaluate_project_flags_invalid_gitnexus_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    (tmp_path / "module.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    r = _project(
+        asyncio.run(
+            topos_evaluate_project(
+                EvaluateProjectInput(
+                    path=".",
+                    gitnexus_dir=str(tmp_path / "missing"),
+                    preferences=_PREFS,
+                ),
+                _StubCtx(),
+            )
+        )
+    )
+
+    assert r.agent_contract is not None
+    assert "invalid_gitnexus_dir" in r.agent_contract.blocked_by
+    assert "missing_gitnexus_dir" not in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool != "topos_generate_depgraph"
+
+
 def test_evaluate_project_paginates() -> None:
     full = _project(
         asyncio.run(

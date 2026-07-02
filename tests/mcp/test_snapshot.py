@@ -270,6 +270,33 @@ def test_worktree_change_vs_head(
 
 
 @pytestmark_git
+def test_worktree_change_flags_invalid_gitnexus_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _root(tmp_path, monkeypatch)
+    _git(tmp_path, "init")
+    target = tmp_path / "m.py"
+    target.write_text(_BASE, encoding="utf-8")
+    _git(tmp_path, "add", "m.py")
+    _git(tmp_path, "commit", "-m", "base")
+    target.write_text(_EDIT, encoding="utf-8")
+
+    r = _assessment(
+        topos_assess_worktree_change(
+            AssessWorktreeChangeInput(
+                filepath="m.py",
+                gitnexus_dir=str(tmp_path / "missing"),
+            )
+        )
+    )
+
+    assert r.agent_contract is not None
+    assert "invalid_gitnexus_dir" in r.agent_contract.blocked_by
+    assert "missing_gitnexus_dir" not in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool != "topos_generate_depgraph"
+
+
+@pytestmark_git
 def test_worktree_bad_ref(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _root(tmp_path, monkeypatch)
     _git(tmp_path, "init")

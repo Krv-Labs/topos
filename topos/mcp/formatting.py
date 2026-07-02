@@ -7,7 +7,7 @@ return models defined in ``schemas.py``.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from fastmcp.tools.base import ToolResult
 from pydantic import BaseModel
@@ -49,12 +49,70 @@ _STR_TO_LATTICE: dict[LatticeElement, EvaluationValue] = {
 }
 
 
+@dataclass(frozen=True)
+class ComposableContractSignals:
+    """Agent-contract fields implied by COMPOSABLE setup state."""
+
+    blocked_by: list[str]
+    risk_flags: list[str]
+    next_tool: str | None = None
+    next_action: str | None = None
+
+
 def lattice_to_str(value: EvaluationValue) -> LatticeElement:
     return _LATTICE_TO_STR[value]
 
 
 def str_to_lattice(value: LatticeElement) -> EvaluationValue:
     return _STR_TO_LATTICE[value]
+
+
+def composable_contract_signals(
+    *,
+    coupling_available: bool,
+    warnings: list[str] | None = None,
+    include_missing: bool = True,
+) -> ComposableContractSignals:
+    """Classify COMPOSABLE setup blockers from the shared warning markers."""
+    blocked_by: list[str] = []
+    risk_flags: list[str] = []
+    messages = warnings or []
+
+    invalid_override = any(
+        marker in w for w in messages for marker in INVALID_GITNEXUS_MARKERS
+    )
+    stale_graph = any(STALE_GITNEXUS_MARKER in w for w in messages)
+
+    if not coupling_available:
+        if invalid_override:
+            blocked_by.append("invalid_gitnexus_dir")
+            risk_flags.append("invalid_gitnexus_dir")
+        elif include_missing:
+            blocked_by.append("missing_gitnexus_dir")
+        if invalid_override or include_missing:
+            risk_flags.append("composable_unavailable")
+
+    if stale_graph:
+        blocked_by.append("stale_gitnexus_dir")
+        risk_flags.append("stale_gitnexus_dir")
+
+    if "invalid_gitnexus_dir" in blocked_by:
+        return ComposableContractSignals(
+            blocked_by=blocked_by,
+            risk_flags=risk_flags,
+            next_action=(
+                "fix gitnexus_dir — it must be an existing directory inside "
+                "the file root"
+            ),
+        )
+    if "stale_gitnexus_dir" in blocked_by:
+        return ComposableContractSignals(
+            blocked_by=blocked_by,
+            risk_flags=risk_flags,
+            next_tool="topos_generate_depgraph",
+            next_action="run topos_generate_depgraph to refresh COMPOSABLE",
+        )
+    return ComposableContractSignals(blocked_by=blocked_by, risk_flags=risk_flags)
 
 
 def build_preference_walk(
@@ -137,27 +195,12 @@ def build_agent_contract(
         risk_flags.append("parse_failure")
         return None, [], blocked_by, ["restore parseable source"], risk_flags
 
-    # An invalid/denied gitnexus_dir override is distinct from a plain missing
-    # graph: regenerating in the project root won't fix a bad path, so the agent
-    # must fix the path instead. Detected via the shared markers so the contract
-    # can't drift from the warning prose.
-    invalid_override = any(
-        marker in w for w in (warnings or []) for marker in INVALID_GITNEXUS_MARKERS
+    composable = composable_contract_signals(
+        coupling_available=coupling_available,
+        warnings=warnings,
     )
-    if not coupling_available:
-        if invalid_override:
-            blocked_by.append("invalid_gitnexus_dir")
-            risk_flags.append("invalid_gitnexus_dir")
-        else:
-            blocked_by.append("missing_gitnexus_dir")
-        risk_flags.append("composable_unavailable")
-    # A loaded-but-stale graph is a distinct precondition: COMPOSABLE *is*
-    # scored, but the agent should refresh the index before trusting it. Match
-    # on the shared marker (not a bare "stale" substring) so the contract can't
-    # silently drift from the warning prose.
-    if warnings and any(STALE_GITNEXUS_MARKER in w for w in warnings):
-        blocked_by.append("stale_gitnexus_dir")
-        risk_flags.append("stale_gitnexus_dir")
+    blocked_by.extend(composable.blocked_by)
+    risk_flags.extend(composable.risk_flags)
     if security_findings:
         risk_flags.append("active_security_findings")
     if acknowledged_risks:
@@ -170,14 +213,9 @@ def build_agent_contract(
     summary = result.summary()
     simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
 
-    if "invalid_gitnexus_dir" in blocked_by:
-        next_tool = None
-        next_actions.append(
-            "fix gitnexus_dir — it must be an existing directory inside the file root"
-        )
-    elif "stale_gitnexus_dir" in blocked_by:
-        next_tool = "topos_generate_depgraph"
-        next_actions.append("run topos_generate_depgraph to refresh COMPOSABLE")
+    if composable.next_action:
+        next_tool = composable.next_tool
+        next_actions.append(composable.next_action)
     elif summary == EvaluationValue.IDEAL:
         next_tool = "topos_evaluate_project"
         next_actions.append(

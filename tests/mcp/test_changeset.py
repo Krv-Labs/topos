@@ -99,6 +99,30 @@ def test_changeset_detects_project_regression(tmp_path, monkeypatch) -> None:
     assert r.agent_contract.next_tool == "topos_inspect_code"
 
 
+def test_changeset_flags_invalid_gitnexus_dir(tmp_path, monkeypatch) -> None:
+    _init_repo(tmp_path)
+    a = tmp_path / "a.py"
+    a.write_text(_CLEAN, encoding="utf-8")
+    _git(tmp_path, "add", "a.py")
+    _git(tmp_path, "commit", "-m", "init")
+    _use_root(tmp_path, monkeypatch)
+    a.write_text(_CLEAN + "\ndef extra():\n    return 2\n", encoding="utf-8")
+
+    r = _changeset(
+        topos_assess_changeset(
+            AssessChangesetInput(
+                files=["a.py"],
+                gitnexus_dir=str(tmp_path / "missing"),
+            )
+        )
+    )
+
+    assert r.agent_contract is not None
+    assert "invalid_gitnexus_dir" in r.agent_contract.blocked_by
+    assert "missing_gitnexus_dir" not in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool != "topos_generate_depgraph"
+
+
 def test_changeset_rejects_invalid_baseline_ref(tmp_path, monkeypatch) -> None:
     # A mistyped ref must fail structurally, not masquerade as "every file is
     # new" (git can't tell an absent-at-ref path from an invalid ref).

@@ -19,8 +19,8 @@ Topos
        Topos gives coding agents concrete quality targets before complexity, coupling, and risky data paths compound into expensive context archaeology.
        Pick a preference ranking and Topos measures program structure&nbsp;&mdash;&nbsp;not just syntax&nbsp;&mdash;&nbsp;so agents can optimize toward the code shape you want on every pass.</p>
      <div class="topos-cta-row">
-       <a class="topos-btn" href="quickstart.html">Get started →</a>
-       <a class="topos-btn ghost" href="https://github.com/Krv-Labs/topos">View on GitHub</a>
+       <a class="topos-btn" href="https://topos.krv.ai">View the Leaderboard →</a>
+       <a class="topos-btn ghost" href="https://github.com/Krv-Labs/topos">Topos on GitHub</a>
      </div>
    </div>
 

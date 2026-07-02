@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from click.testing import CliRunner
 from topos import __version__
-from topos.cli.main import cli
+from topos.cli.main import _register_commands, cli
 
 
 def test_cli_version():
+    _register_commands()
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
@@ -13,6 +14,7 @@ def test_cli_version():
 
 
 def test_cli_help():
+    _register_commands()
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
@@ -24,3 +26,16 @@ def test_cli_help():
     assert "uninstall" in result.output
     assert "mcp" in result.output
     assert "depgraph" in result.output
+
+
+def test_main_fast_path_version():
+    import subprocess
+    import sys
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "topos.cli.main", "--version"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert f"topos, version {__version__}" in completed.stdout

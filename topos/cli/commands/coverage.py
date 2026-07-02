@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, parse_source
+from topos.graphs.ast.languages import SUPPORTED_LANGUAGES
 
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 
@@ -70,6 +70,8 @@ def coverage_cmd(
     coverage_threshold: float,
 ) -> None:
     """Measure structural (UAST) and semantic (CPG Topological) test coverage."""
+    from topos.graphs.ast.dispatch import parse_source
+
     if kgram_length < 1:
         click.echo("Error: --k must be >= 1.", err=True)
         sys.exit(1)

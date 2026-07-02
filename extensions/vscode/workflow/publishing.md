@@ -129,7 +129,7 @@ Output: Topos
 
 ## Local Install With Bundled Runtime
 
-Build a local Topos binary from repo root:
+Build the **default slim** Topos binary from repo root (no ECT / topological coverage stack):
 
 ```bash
 cd <your-local-topos-repo>
@@ -144,13 +144,25 @@ uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
   --collect-all topos \
   --collect-all fastmcp \
   --collect-all ladybug \
+  --copy-metadata fastmcp \
+  --add-data Cargo.toml:. \
+  topos/cli/main.py
+```
+
+For **topological (ECT) coverage** offline, build the optional `topos-ect` binary (adds ~30 MB):
+
+```bash
+uv run --with pyinstaller pyinstaller --name topos-ect --onefile --clean \
+  ...same tree_sitter / topos / fastmcp / ladybug collects... \
   --collect-all onnxruntime \
   --collect-all fastembed \
   --collect-all trailed \
-  --copy-metadata fastmcp \
   --copy-metadata fastembed \
+  --add-data Cargo.toml:. \
   topos/cli/main.py
 ```
+
+See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement and artifact matrix.
 
 Rename the binary for your local platform:
 

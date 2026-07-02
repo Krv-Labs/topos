@@ -28,7 +28,9 @@ _CALL_PREFIX = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)\s*\(")
 _EMBEDDING_MODEL = None
 _ECT_ZERO_DISTANCE_TOLERANCE = 1e-8
 
-ECT_COVERAGE_INSTALL_HINT = "pip install 'topos[ect-coverage]'"
+ECT_COVERAGE_INSTALL_HINT = (
+    "pip install 'topos-mcp[ect-coverage]' or use the topos-ect release binary"
+)
 
 
 class ECTCoverageUnavailableError(ImportError):

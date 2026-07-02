@@ -1,6 +1,5 @@
 """
 Topos: Category-Theoretic Code Quality Evaluation
-==================================================
 
 Treating programs as morphisms in a world of commodity code.
 Building the subobject classifier for rigorous program evaluations.
@@ -11,25 +10,12 @@ values that can express partial confidence about program quality and
 maintainability.
 """
 
+from __future__ import annotations
+
+import importlib
+from typing import Any
+
 from topos._version import __version__
-from topos.core.category import ProgramCategory
-from topos.core.morphism import ProgramMorphism
-from topos.core.object import ProgramObject
-from topos.core.omega import (
-    EvaluationValue,
-    Omega,
-    verdict_from_generators,
-)
-from topos.evaluation.characteristic_morphism import (
-    CharacteristicMorphism,
-    ClassificationResult,
-)
-from topos.graphs.ast.object import ASTRepresentation
-from topos.graphs.base import Representation
-from topos.graphs.cfg.object import ControlFlowGraph
-from topos.graphs.cpg.object import CodePropertyGraph
-from topos.graphs.mdg.object import ModuleDependencyGraph
-from topos.graphs.pdg.object import ProgramDependenceGraph
 
 __all__ = [
     "__version__",
@@ -51,3 +37,36 @@ __all__ = [
     "ModuleDependencyGraph",
     "CodePropertyGraph",
 ]
+
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "ProgramCategory": ("topos.core.category", "ProgramCategory"),
+    "ProgramMorphism": ("topos.core.morphism", "ProgramMorphism"),
+    "ProgramObject": ("topos.core.object", "ProgramObject"),
+    "Omega": ("topos.core.omega", "Omega"),
+    "EvaluationValue": ("topos.core.omega", "EvaluationValue"),
+    "verdict_from_generators": ("topos.core.omega", "verdict_from_generators"),
+    "CharacteristicMorphism": (
+        "topos.evaluation.characteristic_morphism",
+        "CharacteristicMorphism",
+    ),
+    "ClassificationResult": (
+        "topos.evaluation.characteristic_morphism",
+        "ClassificationResult",
+    ),
+    "Representation": ("topos.graphs.base", "Representation"),
+    "ASTRepresentation": ("topos.graphs.ast.object", "ASTRepresentation"),
+    "ControlFlowGraph": ("topos.graphs.cfg.object", "ControlFlowGraph"),
+    "ProgramDependenceGraph": ("topos.graphs.pdg.object", "ProgramDependenceGraph"),
+    "ModuleDependencyGraph": ("topos.graphs.mdg.object", "ModuleDependencyGraph"),
+    "CodePropertyGraph": ("topos.graphs.cpg.object", "CodePropertyGraph"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _LAZY_EXPORTS[name]
+    module = importlib.import_module(module_name)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value

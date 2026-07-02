@@ -59,6 +59,55 @@ jobs:
         if: matrix.python-version == '3.13'
         run: uv run ruff format --check topos tests
 
+  cli-startup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --python 3.12
+
+      - name: Build slim binary
+        run: |
+          uv run --with pyinstaller pyinstaller \
+            --name topos \
+            --onefile \
+            --clean \
+            --collect-all tree_sitter \
+            --collect-all tree_sitter_python \
+            --collect-all tree_sitter_rust \
+            --collect-all tree_sitter_javascript \
+            --collect-all tree_sitter_cpp \
+            --collect-all tree_sitter_typescript \
+            --collect-all topos \
+            --collect-all fastmcp \
+            --collect-all ladybug \
+            --copy-metadata fastmcp \
+            --add-data Cargo.toml:. \
+            topos/cli/main.py
+          mv dist/topos dist/topos-linux-amd64
+          ls -lh dist/topos-linux-amd64
+
+      - name: Assert slim binary startup budget
+        env:
+          TOPOS_BENCHMARK: "1"
+          TOPOS_BINARY: dist/topos-linux-amd64
+          TOPOS_BENCHMARK_RUNS: "5"
+          TOPOS_VERSION_BUDGET_S: "2.5"
+          TOPOS_HELP_BUDGET_S: "3.5"
+        run: uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov -k "warm"
+
   extension:
     runs-on: ubuntu-latest
     steps:

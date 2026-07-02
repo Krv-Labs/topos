@@ -3,6 +3,15 @@
   "name": "io.github.Krv-Labs/topos",
   "title": "Topos",
   "description": "Structural code-quality tools for AI coding agents.",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/Krv-Labs/topos/main/extensions/vscode/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "958x958"
+      ]
+    }
+  ],
   "websiteUrl": "https://github.com/Krv-Labs/topos",
   "repository": {
     "url": "https://github.com/Krv-Labs/topos",

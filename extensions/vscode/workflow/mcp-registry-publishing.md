@@ -60,7 +60,10 @@ registry server entry.
 
 ## Registry Metadata
 
-Create `.mcp/server.json`:
+Create `.mcp/server.json`. Keep the square product icon in
+`extensions/vscode/icon.png`; VS Code packages need the package-local file, and
+the MCP Registry can reference the same committed PNG over HTTPS without copying
+it elsewhere.
 
 ```json
 {
@@ -68,7 +71,14 @@ Create `.mcp/server.json`:
   "name": "io.github.Krv-Labs/topos",
   "title": "Topos",
   "description": "Structural code-quality tools for AI coding agents.",
-  "version": "0.3.5",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/Krv-Labs/topos/main/extensions/vscode/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["958x958"]
+    }
+  ],
+  "version": "0.3.6",
   "websiteUrl": "https://github.com/Krv-Labs/topos",
   "repository": {
     "url": "https://github.com/Krv-Labs/topos",
@@ -79,7 +89,7 @@ Create `.mcp/server.json`:
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "topos-mcp",
-      "version": "0.3.5",
+      "version": "0.3.6",
       "transport": {
         "type": "stdio"
       }
@@ -100,8 +110,8 @@ Create `.mcp/server.json`:
 2. **Trigger the Automated PyPI Release:** Building and publishing the `topos-mcp` package (including compiling its PyO3 Rust binary wheels) is fully automated via GitHub Actions (`.github/workflows/release.yml`). To trigger a PyPI release:
    - **Tag Push:** Push a version tag matching your `Cargo.toml` and `.mcp/server.json` version:
      ```bash
-     git tag v0.3.5
-     git push origin v0.3.5
+     git tag v0.3.6
+     git push origin v0.3.6
      ```
    - **Manual Trigger:** Manually dispatch the **Build and Release** workflow through the GitHub repository Actions panel with the target version input.
 3. **Verify PyPI is Live:** Confirm that the package is successfully published to PyPI as `topos-mcp` and that the live package description (README) includes the required verification marker:
@@ -145,6 +155,16 @@ Create `.mcp/server.json`:
    curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos"
    ```
 
+## Glama Release
+
+Glama is a separate directory surface from the official MCP Registry and the VS
+Code Marketplace. Keep `glama.json` limited to the documented maintainer list;
+do not add undocumented `logo` or `icon` fields to that file. After the GitHub
+and PyPI metadata are current, use the claimed server's Glama admin UI to sync
+the repository, configure the Dockerfile build, and publish the Glama release.
+If Glama exposes a profile image override, point it at the same committed product
+icon used by `.mcp/server.json`.
+
 ## VS Code Verification
 
 1. Open VS Code.
@@ -183,3 +203,6 @@ Create `.mcp/server.json`:
   having `TOPOS_MCP_FILE_ROOT` set.
 - Raw GitHub release binaries are not enough for the current registry path unless
   they are packaged as MCPB artifacts.
+- Glama may show the GitHub namespace avatar until its own server profile or
+  release metadata is updated; the MCP Registry `icons` field and Glama profile
+  image are separate surfaces.

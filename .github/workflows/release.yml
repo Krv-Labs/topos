@@ -97,6 +97,7 @@ jobs:
             --collect-all trailed
             --copy-metadata fastmcp
             --copy-metadata fastembed
+            --add-data Cargo.toml:.
           )
 
           # onefile embeds dylibs in the archive; they must be signed during

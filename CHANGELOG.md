@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Standalone binary crashed on every command** (`FileNotFoundError: .../\_MEIxxxx/Cargo.toml`). `topos-mcp` ships no importlib metadata, so `topos._version.get_version()` always fell through to `_cargo_version()`, which read `Cargo.toml` relative to `__file__`. Inside the PyInstaller `--onefile` bundle that path lives under the `_MEIxxxx` temp dir where `Cargo.toml` was never bundled, so version resolution raised on import and took down the whole CLI. `_version.py` now also searches `sys._MEIPASS` and never raises (falls back to `0.0.0+unknown`), and the release build bundles `Cargo.toml` (`--add-data Cargo.toml:.`). The defect was latent since the dynamic `_version.py` landed (before v0.3.5); it only surfaced now because v0.3.6 is the first standalone binary widely installed — the PyPI wheel carries dist metadata and never hits the broken path. ([#105](https://github.com/Krv-Labs/topos/pull/105))
+
 ## [0.3.6] - 2026-07-01
 
 ### Added

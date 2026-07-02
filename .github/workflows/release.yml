@@ -356,3 +356,69 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  publish-mcp-registry:
+    # Runs on tag pushes and manual dispatches (including pypi_only), never on PRs.
+    # Gated on publish-pypi so topos-mcp==<version> exists before the registry
+    # validates the package. Does not touch VS Code Marketplace or GH release assets.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # GitHub OIDC token for MCP Registry auth (no dedicated secret)
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve release version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "VERSION=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify server.json matches the release version
+        env:
+          EXPECTED: ${{ steps.version.outputs.VERSION }}
+        run: |
+          MANIFEST_VERSION="$(python3 -c "import json;print(json.load(open('.mcp/server.json'))['version'])")"
+          PKG_VERSION="$(python3 -c "import json;print(json.load(open('.mcp/server.json'))['packages'][0]['version'])")"
+          if [ "$MANIFEST_VERSION" != "$EXPECTED" ] || [ "$PKG_VERSION" != "$EXPECTED" ]; then
+            echo "::error::.mcp/server.json version ($MANIFEST_VERSION / package $PKG_VERSION) does not match release $EXPECTED. Bump .mcp/server.json before tagging."
+            exit 1
+          fi
+          echo "server.json pinned to $EXPECTED"
+
+      - name: Wait for topos-mcp on PyPI
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          # PyPI indexing lags the upload; the registry rejects the publish if the
+          # package version isn't queryable yet, so confirm it before publishing.
+          for i in $(seq 1 30); do
+            if curl -fsSL "https://pypi.org/pypi/topos-mcp/${VERSION}/json" >/dev/null; then
+              echo "topos-mcp ${VERSION} is live on PyPI"
+              exit 0
+            fi
+            echo "Attempt ${i}/30: topos-mcp ${VERSION} not on PyPI yet; retrying in 10s"
+            sleep 10
+          done
+          echo "::error::topos-mcp ${VERSION} did not appear on PyPI within 5 minutes"
+          exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate .mcp/server.json
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish .mcp/server.json

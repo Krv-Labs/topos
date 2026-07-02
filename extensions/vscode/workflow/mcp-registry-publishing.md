@@ -98,7 +98,27 @@ it elsewhere.
 }
 ```
 
-## Publish Steps
+## Publishing (automated)
+
+Registry publishing runs automatically in `.github/workflows/release.yml` via the
+`publish-mcp-registry` job (see [#66](https://github.com/Krv-Labs/topos/issues/66)).
+On a release (`v*` tag push or manual dispatch) it:
+
+1. Confirms `.mcp/server.json` version matches the release tag.
+2. Waits for `topos-mcp==<version>` to be live on PyPI (`needs: publish-pypi`).
+3. Installs `mcp-publisher`, authenticates with **GitHub OIDC** (`mcp-publisher login
+   github-oidc`, no dedicated secret), then `validate`s and `publish`es `.mcp/server.json`.
+
+The job is skipped on pull requests and does not touch the VS Code Marketplace or
+GitHub release assets. To ship a registry update, bump `.mcp/server.json` and tag a
+release — nothing manual is required.
+
+> **OIDC fallback:** if OIDC can't satisfy the `io.github.Krv-Labs` org namespace,
+> add an `MCP_GITHUB_TOKEN` repo secret (registry-documented `read:org` + `read:user`
+> scopes) and switch the auth step to `./mcp-publisher login github --token
+> "$MCP_GITHUB_TOKEN"`.
+
+## Publish Steps (manual fallback)
 
 1. Verify locally:
 

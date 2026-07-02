@@ -25,7 +25,7 @@ maths.md
 # Data
 artifacts/
 data/
-benchmarks/
+/benchmarks/
 
 # Scratch
 scratch/

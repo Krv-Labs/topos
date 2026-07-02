@@ -44,7 +44,7 @@ topos --version
 topos --help
 ```
 
-Every command also accepts `-h` / `--help`.
+Every command also accepts `-h` / `--help`. Release builds ship a **slim** binary by default (~38 MB); optional **`topos-ect-*`** artifacts add topological coverage dependencies (~71 MB). See [`docs/cli-startup-benchmarks.md`](docs/cli-startup-benchmarks.md).
 
 #### Evaluate code — the 60-second tour
 

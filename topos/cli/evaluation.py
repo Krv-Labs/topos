@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
-from topos import __version__
-from topos.evaluation.characteristic_morphism import ClassificationResult
-from topos.graphs.ast.dispatch import language_file_suffixes
-from topos.mcp.evaluation import classify_file
+from topos.graphs.ast.languages import language_file_suffixes
 from topos.utils.discovery import collect_source_files
+
+if TYPE_CHECKING:
+    from topos.evaluation.characteristic_morphism import ClassificationResult
 
 _DETAIL_FILE_LIMIT = 5
 
@@ -29,9 +30,10 @@ def run_classify_file(
     gitnexus_dir: str | None,
 ) -> ClassificationResult:
     """Classify one file using the same pipeline as MCP evaluate-file."""
-    gdir = Path(gitnexus_dir).expanduser() if gitnexus_dir else None
     from topos.evaluation.policies import Priority
+    from topos.mcp.evaluation import classify_file
 
+    gdir = Path(gitnexus_dir).expanduser() if gitnexus_dir else None
     result, _deps = classify_file(filepath, Priority(priority), gdir)
     return result
 
@@ -524,6 +526,8 @@ def _output_lowest_hanging_fruit(results: list[dict[str, object]]) -> None:
 
 def output_json(results: list[dict[str, object]]) -> None:
     """Output results as JSON."""
+    from topos._version import __version__
+
     serialisable = [
         {k: v for k, v in r.items() if not k.startswith("_")} for r in results
     ]

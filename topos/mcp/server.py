@@ -8,7 +8,7 @@ by the ``topos mcp`` CLI command.
 
 from __future__ import annotations
 
-from topos import __version__
+from topos._version import __version__
 
 _mcp_instance = None
 

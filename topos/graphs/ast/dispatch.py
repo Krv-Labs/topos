@@ -3,29 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from topos.graphs.ast.languages import SUPPORTED_LANGUAGES
 from topos.graphs.ast.providers.native_provider import NativeAstProvider
 from topos.graphs.ast.providers.tree_sitter_provider import TreeSitterProvider
 from topos.graphs.ast.types import ParseResult
 
 AstBackend = Literal["tree-sitter", "native", "hybrid"]
-
-SUPPORTED_LANGUAGES = frozenset({"python", "rust", "javascript", "typescript", "cpp"})
-
-# Suffixes used by ``topos evaluate`` when collecting files from paths.
-LANGUAGE_FILE_SUFFIXES: dict[str, tuple[str, ...]] = {
-    "python": (".py",),
-    "rust": (".rs",),
-    "javascript": (".js", ".mjs", ".cjs"),
-    "typescript": (".ts", ".tsx"),
-    "cpp": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
-}
-
-
-def language_file_suffixes(language: str) -> tuple[str, ...]:
-    """Return filename suffixes associated with *language* for source discovery."""
-    if language not in SUPPORTED_LANGUAGES:
-        raise ValueError(f"Language '{language}' not supported")
-    return LANGUAGE_FILE_SUFFIXES[language]
 
 
 @dataclass

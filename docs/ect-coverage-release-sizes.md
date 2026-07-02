@@ -13,7 +13,15 @@ Measured on the `ect-coverage` branch with PyInstaller args from `.github/workfl
 
 Source: [GitHub release v0.3.4](https://github.com/Krv-Labs/topos/releases/tag/v0.3.4).
 
-## ECT-enabled build (this branch)
+From v0.3.8 onward, default release artifacts exclude ECT; use `topos-ect-*` for topological coverage offline.
+
+## Slim default (no ECT, post startup optimization)
+
+| Platform | Build date | Size | Notes |
+|----------|------------|------|-------|
+| macOS arm64 (local) | 2026-07-02 | **69 MB** | No onnxruntime/fastembed/trailed; warm `--version` ~1.1 s |
+
+## ECT-enabled build (`topos-ect-*`)
 
 | Platform | Build date | Size | Delta vs v0.3.4 |
 |----------|------------|------|-----------------|

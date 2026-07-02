@@ -5,34 +5,8 @@ from pathlib import Path
 
 import click
 
-from topos.cli.commands.coverage import coverage_cmd
-from topos.cli.diagnostics import (
-    acknowledged_to_dict,
-    collect_findings_and_verdict,
-    finding_to_dict,
-    render_security_findings,
-    render_suggestions,
-    render_verdict_line,
-    suggestion_to_dict,
-    suggestions_for,
-)
-from topos.cli.evaluation import (
-    collect_files,
-    output_directory_average,
-    output_json,
-    output_overall,
-    output_text,
-    result_to_row,
-    run_classify_file,
-)
-from topos.config import load_topos_config, merge_cli_allows
-from topos.core.morphism import ProgramMorphism
-from topos.evaluation.characteristic_morphism import CharacteristicMorphism
-from topos.evaluation.policies import Priority
-from topos.evaluation.policies.simple import describe_entropy_ratio
-from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
-from topos.functors.profunctors.ast.compare import calculate_ast_distance
-from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, language_file_suffixes
+from topos.evaluation.policies.base import Priority
+from topos.graphs.ast.languages import SUPPORTED_LANGUAGES, language_file_suffixes
 
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 _PRIORITY_CHOICE = click.Choice([p.value for p in Priority])
@@ -120,6 +94,25 @@ def evaluate(
     language: str,
 ) -> None:
     """Evaluate code quality using the characteristic morphism χ_S : P → Ω."""
+    from topos.cli.diagnostics import (
+        acknowledged_to_dict,
+        collect_findings_and_verdict,
+        finding_to_dict,
+        suggestion_to_dict,
+        suggestions_for,
+    )
+    from topos.cli.evaluation import (
+        collect_files,
+        output_directory_average,
+        output_json,
+        output_overall,
+        output_text,
+        result_to_row,
+        run_classify_file,
+    )
+    from topos.config import load_topos_config, merge_cli_allows
+    from topos.evaluation.characteristic_morphism import CharacteristicMorphism
+
     if not paths:
         click.echo("Error: No paths provided.", err=True)
         sys.exit(1)
@@ -217,6 +210,9 @@ def evaluate(
 )
 def compare(source: str, target: str, verbose: bool) -> None:
     """Compare structural distance between two programs."""
+    from topos.core.morphism import ProgramMorphism
+    from topos.functors.profunctors.ast.compare import calculate_ast_distance
+
     source_morph = ProgramMorphism.from_file(source)
     target_morph = ProgramMorphism.from_file(target)
 
@@ -287,6 +283,19 @@ def inspect(
     output_json_flag: bool,
 ) -> None:
     """Inspect detailed metrics for a single file."""
+    from topos.cli.diagnostics import (
+        collect_findings_and_verdict,
+        render_security_findings,
+        render_suggestions,
+        render_verdict_line,
+        suggestions_for,
+    )
+    from topos.cli.evaluation import run_classify_file
+    from topos.config import load_topos_config, merge_cli_allows
+    from topos.core.morphism import ProgramMorphism
+    from topos.evaluation.policies.simple import describe_entropy_ratio
+    from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
+
     # Use the first preference as the priority for CLI output
     if preferences:
         priority = preferences.split(",")[0].strip().lower()
@@ -343,7 +352,12 @@ def _inspect_json(path, result, active, acknowledged, verdict, suggestions) -> N
     """Emit the single-file inspection as JSON."""
     import json
 
-    from topos import __version__
+    from topos._version import __version__
+    from topos.cli.diagnostics import (
+        acknowledged_to_dict,
+        finding_to_dict,
+        suggestion_to_dict,
+    )
 
     payload = {
         "version": __version__,
@@ -366,6 +380,8 @@ def _inspect_json(path, result, active, acknowledged, verdict, suggestions) -> N
 
 def register_quality_commands(cli_group: click.Group) -> None:
     """Attach quality-analysis commands to the root CLI group."""
+    from topos.cli.commands.coverage import coverage_cmd
+
     cli_group.add_command(evaluate)
     cli_group.add_command(compare)
     cli_group.add_command(coverage_cmd)

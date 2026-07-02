@@ -219,7 +219,7 @@ def test_evaluate_interrupt_exits_cleanly(tmp_path: Path, monkeypatch):
     def interrupt(*args, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(quality_commands, "run_classify_file", interrupt)
+    monkeypatch.setattr("topos.cli.evaluation.run_classify_file", interrupt)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["evaluate", str(f)])

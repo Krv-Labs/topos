@@ -161,7 +161,7 @@ def _status_to_result(status: DepgraphStatus) -> ToolResult:
     action, next_tool, blocked_code = _STATE_GUIDANCE[state]
     blocked_by = [blocked_code] if blocked_code else []
     risk_flags = (
-        ["composable_unavailable", blocked_code]
+        ["composable_unavailable", *([blocked_code] if blocked_code else [])]
         if state != DepgraphState.PRESENT
         else []
     )

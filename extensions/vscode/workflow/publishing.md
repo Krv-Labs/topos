@@ -129,7 +129,7 @@ Output: Topos
 
 ## Local Install With Bundled Runtime
 
-Build the **default slim** Topos binary from repo root (no ECT / topological coverage stack):
+Build the Topos binary from repo root:
 
 ```bash
 cd <your-local-topos-repo>
@@ -156,29 +156,10 @@ uv run --with pyinstaller pyinstaller --name topos --onefile --noupx --clean \
   --hidden-import topos.graphs.pdg.object \
   --hidden-import topos.graphs.mdg.object \
   --hidden-import topos.graphs.cpg.object \
-  --exclude-module onnxruntime \
-  --exclude-module fastembed \
-  --exclude-module trailed \
-  --exclude-module tokenizers \
-  --exclude-module hf_xet \
-  --exclude-module huggingface_hub \
   topos/cli/main.py
 ```
 
-For **topological (ECT) coverage** offline, build the optional `topos-ect` binary (adds ~30 MB):
-
-```bash
-uv run --with pyinstaller pyinstaller --name topos-ect --onefile --clean \
-  ...same tree_sitter / topos / fastmcp / ladybug collects... \
-  --collect-all onnxruntime \
-  --collect-all fastembed \
-  --collect-all trailed \
-  --copy-metadata fastembed \
-  --add-data Cargo.toml:. \
-  topos/cli/main.py
-```
-
-See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement and artifact matrix.
+See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement.
 
 Rename the binary for your local platform:
 

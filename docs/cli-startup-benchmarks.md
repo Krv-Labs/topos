@@ -12,7 +12,7 @@ TOPOS_BENCHMARK=1 uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov
 
 ### Release binary (PyInstaller onefile + extraction)
 
-Build the slim binary locally (see `extensions/vscode/workflow/publishing.md`), then:
+Build the binary locally (see `extensions/vscode/workflow/publishing.md`), then:
 
 ```bash
 TOPOS_BENCHMARK=1 TOPOS_BINARY=./dist/topos-macos-arm64 \
@@ -45,12 +45,14 @@ hyperfine --warmup 2 --min-runs 5 \
 
 ## Artifacts
 
-| Artifact | ECT deps | Typical size (macOS arm64) | Use |
-|----------|----------|----------------------------|-----|
-| `topos-{platform}` | No | ~45 MB | Default install (`install.sh`), VS Code extension |
-| `topos-ect-{platform}` | Yes (onnxruntime, fastembed, trailed) | ~71 MB | Topological coverage offline; optional download |
+| Artifact | Typical size (macOS arm64) | Use |
+|----------|-----------------------------|-----|
+| `topos-{platform}` | ~39 MB | Default install (`install.sh`), VS Code extension |
 
-Structural (UAST) coverage works in the default binary. Topological (ECT) coverage requires `topos-ect-*` or `pip install 'topos-mcp[ect-coverage]'`.
+There is a single release binary variant. Prior to Issue #103 (removal of the
+experimental topological/ECT coverage feature), Topos shipped a second
+`topos-ect-*` artifact bundling `onnxruntime`/`fastembed`/`trailed`; that
+variant no longer exists.
 
 ## Optimization strategy (implemented)
 
@@ -58,32 +60,14 @@ Structural (UAST) coverage works in the default binary. Topological (ECT) covera
 2. **Deferred registration** — subcommands attach on first real CLI invocation.
 3. **Lazy package exports** — `import topos` loads only `__version__`; library symbols load on first access.
 4. **Lazy command imports** — evaluate/compare/inspect/coverage import heavy stacks inside handlers.
-5. **Slim default binary** — ECT stack moved to `topos-ect-*` release artifacts.
-6. **Targeted hidden-imports over `--collect-all topos`** — the blanket flag
+5. **Targeted hidden-imports over `--collect-all topos`** — the blanket flag
    bundled the entire 131-file package regardless of reachability. Only the
    `topos/__init__.py` lazy-export table (`importlib.import_module` on a
    runtime-resolved string) is invisible to PyInstaller's static analyzer;
    everything else is already reachable from `topos/cli/main.py`. Replacing
    it with 11 explicit `--hidden-import` entries is a ~0.3% size change
    (removing genuinely dead code) with zero functional risk.
-7. **Explicitly excluding the ECT dependency stack from the slim binary** —
-   the `dev` dependency group (needed to run the test suite) installs
-   `fastembed`, which transitively pulls in `onnxruntime`, `tokenizers`,
-   `hf_xet`, and `huggingface_hub`. Because
-   `topos/functors/profunctors/cpg/topological_coverage.py` does a lazy
-   `from fastembed import ...` reachable via the `coverage` command,
-   PyInstaller's static analysis bundled all ~27 MB of that stack into the
-   "slim" binary even without `--collect-all onnxruntime` — the slim binary
-   was never actually excluding ECT deps in practice. Adding explicit
-   `--exclude-module` flags for `onnxruntime`, `fastembed`, `trailed`,
-   `tokenizers`, `hf_xet`, and `huggingface_hub` to the slim variant fixes
-   this; `ect_coverage_available()` already degrades gracefully when these
-   are absent, so `coverage --topological` still reports a clean "install
-   the ect-coverage extra" message instead of crashing. Combined with item
-   6, this took the slim binary from 72.14 MB to 44.95 MB (-37.7%) with no
-   loss of functionality — the real lever behind the warm-startup wins
-   below, not the hidden-imports change on its own.
-8. **`--noupx`** — defensive: guards against a CI runner incidentally having
+6. **`--noupx`** — defensive: guards against a CI runner incidentally having
    `upx` on `PATH` and silently UPX-compressing the executable, which trades
    size for CPU-bound decompression at every startup (the wrong tradeoff for
    a latency-sensitive CLI).
@@ -92,16 +76,31 @@ See [`pyinstaller-onefile-vs-onedir.md`](pyinstaller-onefile-vs-onedir.md) for
 why we're keeping onefile as the sole shipped format rather than switching to
 onedir for a much bigger startup win.
 
+**Historical note — the ECT dependency leak (fixed in PR #109, moot after
+Issue #103).** Between PR #109 and Issue #103, the "slim" binary briefly had
+to work around a subtle PyInstaller bundling bug: the `dev` dependency group
+(needed to run the test suite) installed `fastembed`, which transitively
+pulled in `onnxruntime`/`tokenizers`/`hf_xet`/`huggingface_hub`. Because the
+now-removed `topological_coverage.py` did a lazy `from fastembed import ...`
+reachable via the `coverage` command, PyInstaller's static analysis bundled
+all ~27 MB of that stack into the "slim" binary even without
+`--collect-all onnxruntime` — omitting a `--collect-all` flag does not stop
+PyInstaller from bundling a package that's still statically reachable and
+installed in the build environment. PR #109 worked around this with explicit
+`--exclude-module` flags; Issue #103 made the workaround unnecessary by
+deleting the feature and its dependencies outright. Worth remembering for any
+future optional-dependency feature: a lazy import is invisible to Python's
+import cost at runtime, but not to PyInstaller's static bundling.
+
 **`fastmcp`/`ladybug` audit** (tracked in #108): `ladybug` (4.11 MB) backs
-depgraph/coupling metrics used outside MCP, so it can't be split out the way
-the ECT stack was. `fastmcp` itself is small (0.69 MB across 268 files), but
-its own dependency footprint (`pydantic_core`, `cryptography`, `watchfiles`,
-`rpds`, `PIL`, `certifi`, `yaml` ≈ 7.6 MB total, ~17% of the slim binary) is
-needed for a functional MCP server — and `topos mcp` is the CLI's primary
-agent-facing entrypoint (`install.sh` itself recommends `claude mcp add topos
-topos mcp`). Splitting fastmcp into a separate variant would fragment that
-entrypoint to save under 9 MB; not a good tradeoff. Both stay bundled by
-default.
+depgraph/coupling metrics used outside MCP, so it can't be split out.
+`fastmcp` itself is small (0.69 MB across 268 files), but its own dependency
+footprint (`pydantic_core`, `cryptography`, `watchfiles`, `rpds`, `PIL`,
+`certifi`, `yaml` ≈ 7.6 MB total) is needed for a functional MCP server — and
+`topos mcp` is the CLI's primary agent-facing entrypoint (`install.sh` itself
+recommends `claude mcp add topos topos mcp`). Splitting fastmcp into a
+separate variant would fragment that entrypoint to save under 9 MB; not a
+good tradeoff. Both stay bundled by default.
 
 ## Budgets
 
@@ -122,11 +121,12 @@ Run locally and paste results after each release that touches startup:
 |---------|------------------|---------------|-------|
 | `uv run topos` (dev, post-opt) | ~59 ms | ~57 ms | macOS arm64, 2026-07-02 |
 | `topos evaluate --help` (dev) | — | ~130 ms | Loads evaluate command module |
-| `topos-linux-amd64` (slim) | _CI job_ | _CI job_ | PR guardrail |
-| `topos-macos-arm64` (slim, pre this PR) | ~854 ms | ~791 ms | 72.14 MB local build; `--collect-all topos` + leaked ECT deps |
-| `topos-macos-arm64` (slim, post this PR) | ~610 ms | ~615 ms | 44.95 MB local build (-37.7% size, see items 6-7 above) |
-| `topos evaluate --help` (slim binary, post this PR) | — | ~1616 ms | Subcommand loads full stack |
-| `topos-macos-arm64` (onedir, benchmark only, not shipped) | ~70 ms | ~70 ms | See [`pyinstaller-onefile-vs-onedir.md`](pyinstaller-onefile-vs-onedir.md) |
+| `topos-linux-amd64` | _CI job_ | _CI job_ | PR guardrail |
+| `topos-macos-arm64` (pre PR #109) | ~854 ms | ~791 ms | 72.14 MB local build; `--collect-all topos` + leaked ECT deps |
+| `topos-macos-arm64` (post PR #109) | ~610 ms | ~615 ms | 44.95 MB local build (-37.7% size via hidden-imports + `--exclude-module` workaround) |
+| `topos-macos-arm64` (post #103, ECT removed) | ~586 ms | ~565 ms | 39.43 MB local build (-12.3% vs. PR #109); `--exclude-module` workaround no longer needed — deps are gone entirely |
+| `topos evaluate --help` (binary, post #103) | — | ~1560 ms | Subcommand loads full stack |
+| `topos-macos-arm64` (onedir, benchmark only, not shipped) | ~70 ms | ~70 ms | See [`pyinstaller-onefile-vs-onedir.md`](pyinstaller-onefile-vs-onedir.md); measured pre-#103 |
 
 Reference SOTA (typical):
 
@@ -139,6 +139,5 @@ Reference SOTA (typical):
 ## Related
 
 - Harness: [`tests/benchmarks/test_cli_startup.py`](../tests/benchmarks/test_cli_startup.py)
-- ECT size notes: [`ect-coverage-release-sizes.md`](ect-coverage-release-sizes.md)
 - onefile vs. onedir tradeoff: [`pyinstaller-onefile-vs-onedir.md`](pyinstaller-onefile-vs-onedir.md)
 - Release build: [`.github/workflows/release.yml`](../.github/workflows/release.yml)

@@ -8,8 +8,13 @@ shipped release format for now.
 ## Measured numbers
 
 Built locally (macOS arm64) from the same `PYINSTALLER_ARGS` used for the
-slim release binary (see `.github/workflows/release.yml`), varying only
-`--onefile` vs `--onedir`:
+release binary at the time (see `.github/workflows/release.yml`), varying
+only `--onefile` vs `--onedir`. Measured against the PR #109 binary, before
+Issue #103 removed the ECT dependency stack — the onefile-vs-onedir
+extraction-overhead conclusion is unaffected by that later size reduction,
+but the absolute numbers below predate it (see
+[`cli-startup-benchmarks.md`](cli-startup-benchmarks.md) for current onefile
+numbers):
 
 | | onefile (slim) | onedir | delta |
 |---|---|---|---|
@@ -18,9 +23,11 @@ slim release binary (see `.github/workflows/release.yml`), varying only
 | `topos --help` warm | ~615 ms | ~70 ms | onedir ~9x faster |
 | `topos evaluate --help` warm | ~1616 ms | ~108 ms | onedir ~15x faster |
 
-The onefile numbers already reflect this PR's optimizations (dropped
+The onefile numbers were measured with PR #109's optimizations (dropped
 `--collect-all topos`, excluded the ECT dependency stack — see
-[`cli-startup-benchmarks.md`](cli-startup-benchmarks.md)). The gap vs. onedir
+[`cli-startup-benchmarks.md`](cli-startup-benchmarks.md); the ECT stack was
+later removed entirely in Issue #103, shrinking the binary further). The gap
+vs. onedir
 is entirely PyInstaller onefile's per-run archive extraction to a temp
 directory: there's no built-in extraction caching in PyInstaller (confirmed
 via the upstream "extract only once" enhancement request,
@@ -84,6 +91,4 @@ not just a PyInstaller flag change.
 
 - [`cli-startup-benchmarks.md`](cli-startup-benchmarks.md) — startup
   measurement harness and the onefile optimizations shipped in this PR.
-- [`ect-coverage-release-sizes.md`](ect-coverage-release-sizes.md) — binary
-  size breakdown by artifact variant.
 - Release build: [`.github/workflows/release.yml`](../.github/workflows/release.yml)

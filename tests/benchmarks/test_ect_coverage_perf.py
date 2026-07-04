@@ -68,8 +68,7 @@ def _bench(
         )
 
     assert (
-        warm_report.topological_coverage_score
-        == cold_report.topological_coverage_score
+        warm_report.topological_coverage_score == cold_report.topological_coverage_score
     )
     assert t_warm <= warm_budget_s, (
         f"{label} warm path exceeded {warm_budget_s}s budget ({t_warm:.3f}s)"

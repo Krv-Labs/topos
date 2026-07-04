@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 import click
-import topos.cli.commands.quality as quality_commands
 from click.testing import CliRunner
 from topos.cli.main import cli
 

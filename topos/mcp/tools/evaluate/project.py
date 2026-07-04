@@ -29,6 +29,7 @@ from ...evaluation import (
 )
 from ...formatting import (
     build_pillars,
+    composable_contract_signals,
     lattice_to_str,
     to_tool_result,
 )
@@ -510,9 +511,12 @@ def _project_contract(
     risk_flags: list[str] = []
     next_actions: list[str] = []
 
-    if not coupling_available:
-        blocked_by.append("missing_gitnexus_dir")
-        risk_flags.append("composable_unavailable")
+    composable = composable_contract_signals(
+        coupling_available=coupling_available,
+        warnings=warnings,
+    )
+    blocked_by.extend(composable.blocked_by)
+    risk_flags.extend(composable.risk_flags)
     if parse_failures:
         blocked_by.append("parse_failures")
         risk_flags.append("parse_failures")
@@ -523,6 +527,19 @@ def _project_contract(
     if any(f.security_findings for f in worst_files):
         risk_flags.append("active_security_findings")
 
+    verification_gates = [
+        "topos_assess_worktree_change validates each accepted in-place refactor",
+        "project rollup does not regress after non-trivial changes",
+        "behavior tests or type/lint checks pass when available",
+    ]
+    if composable.next_action:
+        return (
+            composable.next_tool,
+            [composable.next_action],
+            blocked_by,
+            verification_gates,
+            risk_flags,
+        )
     if not worst_files:
         return None, [], blocked_by, [], risk_flags
     if overall == LatticeElement.IDEAL:
@@ -535,9 +552,4 @@ def _project_contract(
             f"start with worst file {worst.filepath} using language {worst.language}"
         )
 
-    verification_gates = [
-        "topos_assess_worktree_change validates each accepted in-place refactor",
-        "project rollup does not regress after non-trivial changes",
-        "behavior tests or type/lint checks pass when available",
-    ]
     return next_tool, next_actions, blocked_by, verification_gates, risk_flags

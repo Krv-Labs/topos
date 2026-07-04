@@ -61,6 +61,33 @@ def test_assess_accepts_proposed_filepath(
     assert r.structural_distance is not None
 
 
+def test_assess_flags_invalid_gitnexus_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    current = tmp_path / "current.py"
+    current.write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                filepath="current.py",
+                proposed_code="def f():\n    return 2\n",
+                gitnexus_dir=str(tmp_path / "missing"),
+                preferences=_PREFS,
+            )
+        )
+    )
+
+    assert r.agent_contract is not None
+    assert "invalid_gitnexus_dir" in r.agent_contract.blocked_by
+    assert "missing_gitnexus_dir" not in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool != "topos_generate_depgraph"
+
+
 def test_assess_reports_security_findings() -> None:
     current = "def f(expr):\n    return eval(expr)\n"
     tr = topos_assess_improvement(

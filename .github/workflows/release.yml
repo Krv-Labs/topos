@@ -29,22 +29,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux-amd64
-            variant: slim
           - os: ubuntu-24.04-arm
             target: linux-arm64
-            variant: slim
           - os: macos-latest
             target: macos-arm64
-            variant: slim
-          - os: ubuntu-latest
-            target: linux-amd64
-            variant: ect
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-            variant: ect
-          - os: macos-latest
-            target: macos-arm64
-            variant: ect
 
     runs-on: ${{ matrix.os }}
 
@@ -91,14 +79,8 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
         run: |
-          if [ "${{ matrix.variant }}" = "ect" ]; then
-            BINARY_NAME="topos-ect"
-          else
-            BINARY_NAME="topos"
-          fi
-
           PYINSTALLER_ARGS=(
-            --name "${BINARY_NAME}"
+            --name topos
             --onefile
             --noupx
             --clean
@@ -137,34 +119,6 @@ jobs:
             PYINSTALLER_ARGS+=(--hidden-import "${module}")
           done
 
-          if [ "${{ matrix.variant }}" = "ect" ]; then
-            PYINSTALLER_ARGS+=(
-              --collect-all onnxruntime
-              --collect-all fastembed
-              --collect-all trailed
-              --copy-metadata fastembed
-            )
-          else
-            # `dev` deps (needed to run the test suite) include `fastembed`,
-            # which pulls in onnxruntime/tokenizers/hf_xet/huggingface_hub.
-            # Without these excludes, PyInstaller's static analysis follows
-            # the lazy `from fastembed import ...` inside
-            # topos/functors/profunctors/cpg/topological_coverage.py (reachable
-            # via the `coverage` command) and bundles ~27 MB of ECT deps into
-            # the slim binary even though `--collect-all onnxruntime` etc. are
-            # never passed. `ect_coverage_available()` already degrades
-            # gracefully when these are missing, so excluding them here is safe
-            # and is what actually keeps the slim binary slim.
-            PYINSTALLER_ARGS+=(
-              --exclude-module onnxruntime
-              --exclude-module fastembed
-              --exclude-module trailed
-              --exclude-module tokenizers
-              --exclude-module hf_xet
-              --exclude-module huggingface_hub
-            )
-          fi
-
           # onefile embeds dylibs in the archive; they must be signed during
           # collection with the same Developer ID as the outer executable.
           if [ "$(uname -s)" = "Darwin" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
@@ -177,12 +131,7 @@ jobs:
           uv run --with pyinstaller pyinstaller "${PYINSTALLER_ARGS[@]}" topos/cli/main.py
 
       - name: Rename binary with platform suffix
-        run: |
-          if [ "${{ matrix.variant }}" = "ect" ]; then
-            mv dist/topos-ect "dist/topos-ect-${{ matrix.target }}"
-          else
-            mv dist/topos "dist/topos-${{ matrix.target }}"
-          fi
+        run: mv dist/topos "dist/topos-${{ matrix.target }}"
 
       - name: Sign macOS binary
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
@@ -193,11 +142,7 @@ jobs:
             exit 0
           fi
 
-          if [ "${{ matrix.variant }}" = "ect" ]; then
-            BINARY_PATH="dist/topos-ect-${{ matrix.target }}"
-          else
-            BINARY_PATH="dist/topos-${{ matrix.target }}"
-          fi
+          BINARY_PATH="dist/topos-${{ matrix.target }}"
 
           codesign --force --options runtime --timestamp \
             --entitlements packaging/macos-entitlements.plist \
@@ -216,13 +161,8 @@ jobs:
             exit 0
           fi
 
-          if [ "${{ matrix.variant }}" = "ect" ]; then
-            BINARY_PATH="dist/topos-ect-${{ matrix.target }}"
-            ARCHIVE_NAME="topos-ect-${{ matrix.target }}"
-          else
-            BINARY_PATH="dist/topos-${{ matrix.target }}"
-            ARCHIVE_NAME="topos-${{ matrix.target }}"
-          fi
+          BINARY_PATH="dist/topos-${{ matrix.target }}"
+          ARCHIVE_NAME="topos-${{ matrix.target }}"
 
           ditto -c -k --keepParent "${BINARY_PATH}" "$RUNNER_TEMP/${ARCHIVE_NAME}.zip"
           xcrun notarytool submit "$RUNNER_TEMP/${ARCHIVE_NAME}.zip" \
@@ -234,8 +174,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.variant == 'ect' && format('topos-ect-{0}', matrix.target) || format('topos-{0}', matrix.target) }}
-          path: ${{ matrix.variant == 'ect' && format('dist/topos-ect-{0}', matrix.target) || format('dist/topos-{0}', matrix.target) }}
+          name: topos-${{ matrix.target }}
+          path: dist/topos-${{ matrix.target }}
 
   package-vscode:
     needs: build

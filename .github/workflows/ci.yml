@@ -109,12 +109,6 @@ jobs:
             --hidden-import topos.graphs.pdg.object \
             --hidden-import topos.graphs.mdg.object \
             --hidden-import topos.graphs.cpg.object \
-            --exclude-module onnxruntime \
-            --exclude-module fastembed \
-            --exclude-module trailed \
-            --exclude-module tokenizers \
-            --exclude-module hf_xet \
-            --exclude-module huggingface_hub \
             topos/cli/main.py
           mv dist/topos dist/topos-linux-amd64
           ls -lh dist/topos-linux-amd64

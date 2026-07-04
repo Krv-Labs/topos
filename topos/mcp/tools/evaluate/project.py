@@ -532,8 +532,6 @@ def _project_contract(
         "project rollup does not regress after non-trivial changes",
         "behavior tests or type/lint checks pass when available",
     ]
-    if not worst_files:
-        return None, [], blocked_by, [], risk_flags
     if composable.next_action:
         return (
             composable.next_tool,
@@ -542,6 +540,8 @@ def _project_contract(
             verification_gates,
             risk_flags,
         )
+    if not worst_files:
+        return None, [], blocked_by, [], risk_flags
     if overall == LatticeElement.IDEAL:
         next_tool = None
         next_actions.append("preserve behavior checks before accepting")

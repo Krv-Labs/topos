@@ -1,5 +1,5 @@
 """
-Coverage tools — structural test coverage (UAST) and topological ECT coverage.
+Coverage tools — structural test coverage (UAST).
 """
 
 from __future__ import annotations
@@ -7,26 +7,12 @@ from __future__ import annotations
 from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
-from topos.evaluation.policies.coverage import (
-    score_topological_coverage,
-)
-from topos.functors.profunctors.cpg.topological_coverage import (
-    ECT_COVERAGE_INSTALL_HINT,
-    ECTCoverageUnavailableError,
-    calculate_topological_coverage,
-    ect_coverage_available,
-)
 from topos.functors.profunctors.uast.structural_test_coverage import (
     declaration_coverage,
 )
-from topos.graphs.cpg.object import CodePropertyGraph
 
 from ..formatting import to_tool_result
-from ..schemas import (
-    CalculateCoverageInput,
-    CoverageResult,
-    TopologicalCoverageResult,
-)
+from ..schemas import CalculateCoverageInput, CoverageResult
 from ..security import resolve_within_root
 from ..server import mcp
 
@@ -57,79 +43,6 @@ def _empty_coverage_result(
         test_declaration_count=0,
         warnings=warnings,
         error=error,
-    )
-
-
-def _merge_cpgs(cpgs: list[CodePropertyGraph]) -> CodePropertyGraph:
-    if not cpgs:
-        return CodePropertyGraph()
-    merged_nodes = {}
-    merged_edges = []
-    sources: list[str] = []
-    for cpg in cpgs:
-        merged_nodes.update(cpg.nodes)
-        merged_edges.extend(cpg.edges)
-        if cpg.source:
-            sources.append(cpg.source)
-    return CodePropertyGraph(
-        nodes=merged_nodes,
-        edges=merged_edges,
-        language=cpgs[0].language,
-        source="\n".join(sources),
-    )
-
-
-def _build_file_cpgs(files: list[str], language: str) -> list[CodePropertyGraph]:
-    cpgs: list[CodePropertyGraph] = []
-    for path in files:
-        resolved, err = resolve_within_root(path)
-        if err or resolved is None:
-            continue
-        morphism = ProgramMorphism.from_file(resolved, language=language)
-        cpg = morphism.build_cpg()
-        if cpg is not None:
-            cpgs.append(cpg)
-    return cpgs
-
-
-def _compute_topological_coverage(
-    put_files: list[str],
-    test_files: list[str],
-    language: str,
-    threshold: float,
-) -> TopologicalCoverageResult:
-    if not ect_coverage_available():
-        return TopologicalCoverageResult(
-            unavailable=True,
-            reason=(
-                "Topological (ECT) coverage requires the optional ect-coverage extra. "
-                f"Install with: {ECT_COVERAGE_INSTALL_HINT}"
-            ),
-        )
-
-    put_cpgs = _build_file_cpgs(put_files, language)
-    test_cpgs = _build_file_cpgs(test_files, language)
-
-    try:
-        topo_report = calculate_topological_coverage(
-            _merge_cpgs(put_cpgs),
-            _merge_cpgs(test_cpgs),
-        )
-        topo_decision = score_topological_coverage(topo_report, threshold=threshold)
-    except ECTCoverageUnavailableError as exc:
-        return TopologicalCoverageResult(unavailable=True, reason=str(exc))
-
-    return TopologicalCoverageResult(
-        distance=topo_report.topological_distance,
-        coverage_score=topo_report.topological_coverage_score,
-        tested_functions=list(topo_report.tested_functions),
-        untested_functions=list(topo_report.untested_functions),
-        put_node_count=topo_report.put_node_count,
-        test_node_count=topo_report.test_node_count,
-        scoped_node_count=topo_report.scoped_node_count,
-        achieved=topo_decision.achieved,
-        threshold=topo_decision.threshold,
-        interpretation=dict(topo_decision.interpretation),
     )
 
 
@@ -168,15 +81,11 @@ def _parse_roots(
 )
 def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
     """Measure how well a test suite exercises its program-under-test, via
-    structural (UAST) and semantic (ECT) coverage (read-only).
+    structural (UAST) coverage (read-only).
 
     A standalone signal, separate from the SIMPLE/COMPOSABLE/SECURE lattice; for
     a quality verdict use ``topos_evaluate_*`` instead. Computes UAST bipartite
     declaration matching and k-gram path recall. Returns a CoverageResult.
-
-    ⚠️ AGENTS: the optional ECT semantic coverage is experimental and 100x–1000x
-    slower than structural — enable it selectively on small files to avoid
-    timeouts.
     """
     warnings: list[str] = []
     put_roots, err_model = _parse_roots(
@@ -205,17 +114,6 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
             k=params.k,
             include_unknown=params.include_unknown,
         )
-        topological = _compute_topological_coverage(
-            params.put_files,
-            params.test_files,
-            params.language,
-            params.coverage_threshold,
-        )
-        if topological.unavailable:
-            warnings = [
-                *warnings,
-                topological.reason or "Topological coverage unavailable.",
-            ]
         model = CoverageResult(
             mean_declaration_coverage=report.mean_declaration_coverage,
             best_declaration_recall=list(report.best_declaration_recall),
@@ -228,7 +126,6 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
             uncovered_declarations=report.uncovered_declarations,
             put_declaration_count=report.put_declaration_count,
             test_declaration_count=report.test_declaration_count,
-            topological_coverage=topological,
             warnings=warnings,
         )
         return to_tool_result(model, render_coverage_md(model))
@@ -260,36 +157,6 @@ def _render_uncovered(r: CoverageResult) -> list[str]:
     return lines
 
 
-def _render_topological_coverage(topo) -> list[str]:
-    lines = ["", "## 🧪 Topological CPG Semantic Coverage (ECT - Experimental)"]
-    if topo.unavailable:
-        lines.append(f"> Topological coverage unavailable: {topo.reason}")
-    elif topo.coverage_score is not None:
-        lines.append(
-            "> ⚠️ **Experimental Warning:** ECT Semantic Coverage is an "
-            "experimental metric under method development. It uses deep learning "
-            "node embeddings and topological sweeps which can result in large "
-            "runtimes (100x to 1000x slower than structural coverage) on larger "
-            "files."
-        )
-        lines.append(f"- **Coverage score:** {topo.coverage_score:.4f}")
-        if topo.distance is not None:
-            lines.append(f"- **ECT distance:** {topo.distance:.4f}")
-        if topo.achieved is not None and topo.threshold is not None:
-            lines.append(
-                f"- **Threshold met:** {topo.achieved} (threshold {topo.threshold:.2f})"
-            )
-        if topo.scoped_node_count is not None:
-            lines.append(f"- **Scoped PUT nodes:** {topo.scoped_node_count}")
-        if topo.tested_functions:
-            lines.append(f"- **Tested functions:** {', '.join(topo.tested_functions)}")
-        if topo.untested_functions:
-            lines.append(
-                f"- **Untested functions:** {', '.join(topo.untested_functions)}"
-            )
-    return lines
-
-
 def render_coverage_md(r: CoverageResult) -> str:
     """Markdown rendering of a structural coverage result."""
     lines = ["# Structural Test Coverage (UAST)", ""]
@@ -317,8 +184,5 @@ def render_coverage_md(r: CoverageResult) -> str:
     lines.append("")
 
     lines.extend(_render_uncovered(r))
-
-    if r.topological_coverage is not None:
-        lines.extend(_render_topological_coverage(r.topological_coverage))
 
     return "\n".join(lines)

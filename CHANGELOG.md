@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-07-04
+
+### Fixed
+
+- **`cfg.longest_path` hung on functions with many sequential if/else branches**: `ControlFlowGraph::longest_acyclic_path` used backtracking-DFS path enumeration, which is O(2^k) for `k` sequential branches — real-world files (`typing_extensions`, `pycparser`'s `ply/yacc.py`) hung indefinitely. Replaced with a topological-sort + DP longest-path (O(V+E)). `CONTINUE` edges are now stripped alongside `LOOPBACK` before building the graph (a `continue`'s back-edge to its loop header also breaks the DAG invariant), and the implementation panics loudly if that invariant is ever violated instead of silently falling back to the algorithm that caused the hang. (closes [#113](https://github.com/Krv-Labs/topos/issues/113), [#114](https://github.com/Krv-Labs/topos/pull/114))
+
 ## [0.3.7] - 2026-07-02
 
 ### Fixed

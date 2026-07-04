@@ -37,7 +37,7 @@ ect-coverage = [
 ]
 
 [project.scripts]
-topos = "topos.cli.main:cli"
+topos = "topos.cli.main:main"
 topos-mcp = "topos.mcp.server:main"
 
 [build-system]

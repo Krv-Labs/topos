@@ -17,17 +17,17 @@ _ROOT_HELP = """Usage: topos [OPTIONS] COMMAND [ARGS]...
   Treating programs as morphisms in a world of structured code.
 
 Options:
-  --version  Show the version and exit.
+  --version   Show the version and exit.
   -h, --help  Show this message and exit.
 
 Commands:
   compare    Compare structural distance between two programs.
   coverage   Measure structural (UAST) and semantic (CPG Topological) test...
   depgraph   Commands for working with dependency graphs.
-  evaluate   Evaluate code quality using the characteristic morphism χ_S : P → Ω.
+  evaluate   Evaluate code quality using the characteristic morphism χ_S :...
   inspect    Inspect detailed metrics for a single file.
   mcp        Run the Topos MCP server (stdio).
-  uninstall  Remove Topos from this machine.
+  uninstall  Safely uninstall topos based on installation provenance.
   update     Upgrade Topos using the detected install channel.
 """
 
@@ -36,7 +36,7 @@ def _fast_path(argv: list[str]) -> bool:
     """Handle trivial invocations without loading evaluation stacks."""
     if len(argv) != 2:
         return False
-    if argv[1] in {"--version", "-V"}:
+    if argv[1] == "--version":
         click.echo(f"topos, version {__version__}")
         return True
     if argv[1] in {"--help", "-h"}:
@@ -45,27 +45,29 @@ def _fast_path(argv: list[str]) -> bool:
     return False
 
 
-_commands_registered = False
-
-
 def _register_commands() -> None:
-    global _commands_registered
-    if _commands_registered:
+    if cli.commands:
         return
     from topos.cli.commands.quality import register_quality_commands
     from topos.cli.commands.system import register_system_commands
 
     register_quality_commands(cli)
     register_system_commands(cli)
-    _commands_registered = True
 
 
 class ToposGroup(click.Group):
-    """Defer subcommand registration until the first real invocation."""
+    """Register subcommands before Click processes eager options.
 
-    def invoke(self, ctx: click.Context) -> object:
+    ``--help``/``--version`` and the no-args-is-help check are handled inside
+    ``parse_args()``, which always runs before ``invoke()``/``resolve_command()``
+    — registering there (rather than in ``invoke()``) ensures every invocation
+    path, including the installed console script calling ``cli()`` directly,
+    sees the real subcommand list.
+    """
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         _register_commands()
-        return super().invoke(ctx)
+        return super().parse_args(ctx, args)
 
 
 @click.group(

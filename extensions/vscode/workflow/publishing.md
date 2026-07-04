@@ -134,18 +134,34 @@ Build the **default slim** Topos binary from repo root (no ECT / topological cov
 ```bash
 cd <your-local-topos-repo>
 
-uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
+uv run --with pyinstaller pyinstaller --name topos --onefile --noupx --clean \
   --collect-all tree_sitter \
   --collect-all tree_sitter_python \
   --collect-all tree_sitter_rust \
   --collect-all tree_sitter_javascript \
   --collect-all tree_sitter_cpp \
   --collect-all tree_sitter_typescript \
-  --collect-all topos \
   --collect-all fastmcp \
   --collect-all ladybug \
   --copy-metadata fastmcp \
   --add-data Cargo.toml:. \
+  --hidden-import topos.core.category \
+  --hidden-import topos.core.morphism \
+  --hidden-import topos.core.object \
+  --hidden-import topos.core.omega \
+  --hidden-import topos.evaluation.characteristic_morphism \
+  --hidden-import topos.graphs.base \
+  --hidden-import topos.graphs.ast.object \
+  --hidden-import topos.graphs.cfg.object \
+  --hidden-import topos.graphs.pdg.object \
+  --hidden-import topos.graphs.mdg.object \
+  --hidden-import topos.graphs.cpg.object \
+  --exclude-module onnxruntime \
+  --exclude-module fastembed \
+  --exclude-module trailed \
+  --exclude-module tokenizers \
+  --exclude-module hf_xet \
+  --exclude-module huggingface_hub \
   topos/cli/main.py
 ```
 

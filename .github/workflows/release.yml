@@ -100,6 +100,7 @@ jobs:
           PYINSTALLER_ARGS=(
             --name "${BINARY_NAME}"
             --onefile
+            --noupx
             --clean
             --collect-all tree_sitter
             --collect-all tree_sitter_python
@@ -107,12 +108,34 @@ jobs:
             --collect-all tree_sitter_javascript
             --collect-all tree_sitter_cpp
             --collect-all tree_sitter_typescript
-            --collect-all topos
             --collect-all fastmcp
             --collect-all ladybug
             --copy-metadata fastmcp
             --add-data Cargo.toml:.
           )
+
+          # `topos/__init__.py` exposes these via a lazy `__getattr__` table
+          # (importlib.import_module on a runtime-resolved string), which
+          # PyInstaller's static analyzer can't follow from topos/cli/main.py.
+          # Everything else in the package is statically reachable, so we no
+          # longer need `--collect-all topos` (which bundled the entire
+          # package tree regardless of reachability).
+          HIDDEN_IMPORTS=(
+            topos.core.category
+            topos.core.morphism
+            topos.core.object
+            topos.core.omega
+            topos.evaluation.characteristic_morphism
+            topos.graphs.base
+            topos.graphs.ast.object
+            topos.graphs.cfg.object
+            topos.graphs.pdg.object
+            topos.graphs.mdg.object
+            topos.graphs.cpg.object
+          )
+          for module in "${HIDDEN_IMPORTS[@]}"; do
+            PYINSTALLER_ARGS+=(--hidden-import "${module}")
+          done
 
           if [ "${{ matrix.variant }}" = "ect" ]; then
             PYINSTALLER_ARGS+=(
@@ -120,6 +143,25 @@ jobs:
               --collect-all fastembed
               --collect-all trailed
               --copy-metadata fastembed
+            )
+          else
+            # `dev` deps (needed to run the test suite) include `fastembed`,
+            # which pulls in onnxruntime/tokenizers/hf_xet/huggingface_hub.
+            # Without these excludes, PyInstaller's static analysis follows
+            # the lazy `from fastembed import ...` inside
+            # topos/functors/profunctors/cpg/topological_coverage.py (reachable
+            # via the `coverage` command) and bundles ~27 MB of ECT deps into
+            # the slim binary even though `--collect-all onnxruntime` etc. are
+            # never passed. `ect_coverage_available()` already degrades
+            # gracefully when these are missing, so excluding them here is safe
+            # and is what actually keeps the slim binary slim.
+            PYINSTALLER_ARGS+=(
+              --exclude-module onnxruntime
+              --exclude-module fastembed
+              --exclude-module trailed
+              --exclude-module tokenizers
+              --exclude-module hf_xet
+              --exclude-module huggingface_hub
             )
           fi
 

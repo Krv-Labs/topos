@@ -19,7 +19,8 @@ From v0.3.8 onward, default release artifacts exclude ECT; use `topos-ect-*` for
 
 | Platform | Build date | Size | Notes |
 |----------|------------|------|-------|
-| macOS arm64 (local) | 2026-07-02 | **69 MB** | No onnxruntime/fastembed/trailed; warm `--version` ~1.1 s |
+| macOS arm64 (local) | 2026-07-02 | 72 MB | Regression: `--collect-all onnxruntime` etc. were correctly omitted, but the `dev`-group `fastembed` install plus a lazy `from fastembed import ...` reachable via the `coverage` command meant PyInstaller's static analysis bundled the full ECT stack anyway. Not actually slim; see below. |
+| macOS arm64 (local) | 2026-07-04 | **45 MB** | Fixed with explicit `--exclude-module` for `onnxruntime`/`fastembed`/`trailed`/`tokenizers`/`hf_xet`/`huggingface_hub`; combined with dropping `--collect-all topos` for targeted hidden-imports. warm `--version` ~610 ms. See [`cli-startup-benchmarks.md`](cli-startup-benchmarks.md). |
 
 ## ECT-enabled build (`topos-ect-*`)
 
@@ -37,3 +38,4 @@ The VS Code extension size gate is **200 MiB** (`extensions/vscode/scripts/check
 
 - Size increase is dominated by `onnxruntime` native libraries bundled into the onefile binary.
 - First-run model download (`snowflake-arctic-embed-xs`, quantized ~23 MB) is stored under `~/.cache/fastembed` and is not part of the binary size above.
+- The slim/ECT split is enforced via `--exclude-module` on the slim variant, not merely by omitting `--collect-all` for the ECT packages — omission alone doesn't stop PyInstaller from bundling a package that's still statically reachable and installed in the build environment.

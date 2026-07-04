@@ -142,28 +142,53 @@ impl ControlFlowGraph {
     }
 
     pub fn longest_acyclic_path(&self) -> usize {
-        let mut adj: HashMap<usize, Vec<usize>> = HashMap::new();
+        // LOOPBACK and CONTINUE are the only edge kinds the builder ever uses
+        // to jump backward to an already-visited block (both target a loop
+        // header). Stripping them makes the remaining graph a true DAG, so a
+        // topological-sort DP replaces what used to be exponential path
+        // enumeration. See src/cfg.rs test `test_longest_acyclic_path_panics_on_untagged_cycle`
+        // for what happens if that invariant is ever broken.
+        let mut graph = DiGraph::<usize, ()>::new();
+        let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
+        for &id in self.blocks.keys() {
+            indices.insert(id, graph.add_node(id));
+        }
         for edge in &self.edges {
-            if edge.kind == EdgeKind::LOOPBACK {
+            if matches!(edge.kind, EdgeKind::LOOPBACK | EdgeKind::CONTINUE) {
                 continue;
             }
-            adj.entry(edge.source).or_default().push(edge.target);
+            if let (Some(&s), Some(&t)) = (indices.get(&edge.source), indices.get(&edge.target)) {
+                graph.add_edge(s, t, ());
+            }
         }
 
-        let mut best = 0;
-        let sys_block_count = self.blocks.len();
-        let mut visited = std::collections::HashSet::new();
-        visited.insert(self.entry_id);
-
-        self.dfs_internal(
-            self.entry_id,
-            0,
-            &mut visited,
-            &adj,
-            &mut best,
-            sys_block_count,
+        let order = petgraph::algo::toposort(&graph, None).expect(
+            "CFG has a back-edge not tagged LOOPBACK/CONTINUE — builder invariant violated",
         );
-        best
+
+        let Some(&entry_idx) = indices.get(&self.entry_id) else {
+            return 0;
+        };
+        let mut dist: HashMap<NodeIndex, usize> = HashMap::new();
+        dist.insert(entry_idx, 0);
+        for node in order {
+            let Some(&d) = dist.get(&node) else {
+                continue;
+            };
+            for succ in graph.neighbors(node) {
+                let candidate = d + 1;
+                let entry = dist.entry(succ).or_insert(0);
+                if candidate > *entry {
+                    *entry = candidate;
+                }
+            }
+        }
+
+        indices
+            .get(&self.exit_id)
+            .and_then(|idx| dist.get(idx))
+            .copied()
+            .unwrap_or(0)
     }
 
     fn connected_components(&self) -> usize {
@@ -182,38 +207,6 @@ impl ControlFlowGraph {
         }
 
         petgraph::algo::connected_components(&graph)
-    }
-}
-
-impl ControlFlowGraph {
-    fn dfs_internal(
-        &self,
-        node: usize,
-        length: usize,
-        visited: &mut std::collections::HashSet<usize>,
-        adj: &HashMap<usize, Vec<usize>>,
-        best: &mut usize,
-        max_depth: usize,
-    ) {
-        if node == self.exit_id {
-            if length > *best {
-                *best = length;
-            }
-            return;
-        }
-        if length > max_depth {
-            return;
-        }
-        if let Some(neighbors) = adj.get(&node) {
-            for &nxt in neighbors {
-                if visited.contains(&nxt) {
-                    continue;
-                }
-                visited.insert(nxt);
-                self.dfs_internal(nxt, length + 1, visited, adj, best, max_depth);
-                visited.remove(&nxt);
-            }
-        }
     }
 }
 
@@ -285,7 +278,7 @@ mod tests {
         assert_eq!(cfg.max_nesting_depth(), 2);
     }
 
-    /// Tests the DFS-based longest acyclic path calculation on a straightforward forward-flowing graph.
+    /// Tests the DAG longest-path calculation on a straightforward forward-flowing graph.
     #[test]
     fn test_longest_acyclic_path() {
         let mut blocks = HashMap::new();

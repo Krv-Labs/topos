@@ -294,4 +294,86 @@ mod tests {
         let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
         assert_eq!(cfg.longest_acyclic_path(), 2);
     }
+
+    /// Regression test for issue #113: `k` sequential if/else diamonds used to force
+    /// 2^k path enumerations (hang); the DAG-DP implementation stays O(V+E).
+    #[test]
+    fn test_longest_acyclic_path_many_sequential_branches() {
+        let k = 40;
+        let mut blocks = HashMap::new();
+        let mut edges = Vec::new();
+        let mut next_id = 0usize;
+
+        blocks.insert(0, BasicBlock::new(0, None, "entry".to_string()));
+        next_id += 1;
+        let mut current_split = 0usize;
+
+        for _ in 0..k {
+            let true_id = next_id;
+            next_id += 1;
+            let false_id = next_id;
+            next_id += 1;
+            let join_id = next_id;
+            next_id += 1;
+            blocks.insert(true_id, BasicBlock::new(true_id, None, String::new()));
+            blocks.insert(false_id, BasicBlock::new(false_id, None, String::new()));
+            blocks.insert(join_id, BasicBlock::new(join_id, None, String::new()));
+
+            edges.push(CFGEdge::new(current_split, true_id, EdgeKind::TRUE));
+            edges.push(CFGEdge::new(current_split, false_id, EdgeKind::FALSE));
+            edges.push(CFGEdge::new(true_id, join_id, EdgeKind::UNCONDITIONAL));
+            edges.push(CFGEdge::new(false_id, join_id, EdgeKind::UNCONDITIONAL));
+
+            current_split = join_id;
+        }
+        let exit_id = current_split;
+
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, exit_id);
+        assert_eq!(cfg.longest_acyclic_path(), 2 * k);
+    }
+
+    /// A loop containing a `continue` produces a back-edge tagged CONTINUE (in addition to
+    /// the LOOP_BACK edge at the bottom of the loop). Both must be stripped for the
+    /// remaining graph to be a true DAG.
+    #[test]
+    fn test_longest_acyclic_path_loop_with_continue() {
+        let mut blocks = HashMap::new();
+        for id in 0..7 {
+            blocks.insert(id, BasicBlock::new(id, None, String::new()));
+        }
+
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::UNCONDITIONAL), // entry -> loop header
+            CFGEdge::new(1, 2, EdgeKind::TRUE),          // header -> if-check
+            CFGEdge::new(1, 3, EdgeKind::FALSE),         // header -> after-loop
+            CFGEdge::new(2, 4, EdgeKind::TRUE),          // if-check -> continue block
+            CFGEdge::new(4, 1, EdgeKind::CONTINUE),      // continue -> header (back-edge)
+            CFGEdge::new(2, 5, EdgeKind::FALSE),         // if-check -> loop tail
+            CFGEdge::new(5, 1, EdgeKind::LOOPBACK),      // loop tail -> header (back-edge)
+            CFGEdge::new(3, 6, EdgeKind::UNCONDITIONAL), // after-loop -> exit
+        ];
+
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 6);
+        assert_eq!(cfg.longest_acyclic_path(), 3);
+    }
+
+    /// If the builder ever emits a back-edge kind other than LOOPBACK/CONTINUE, the DAG
+    /// assumption breaks; this should panic loudly instead of silently degrading.
+    #[test]
+    #[should_panic(expected = "builder invariant violated")]
+    fn test_longest_acyclic_path_panics_on_untagged_cycle() {
+        let mut blocks = HashMap::new();
+        blocks.insert(0, BasicBlock::new(0, None, "a".to_string()));
+        blocks.insert(1, BasicBlock::new(1, None, "b".to_string()));
+        blocks.insert(2, BasicBlock::new(2, None, "c".to_string()));
+
+        let edges = vec![
+            CFGEdge::new(0, 1, EdgeKind::TRUE),
+            CFGEdge::new(1, 2, EdgeKind::TRUE),
+            CFGEdge::new(2, 0, EdgeKind::TRUE),
+        ];
+
+        let cfg = ControlFlowGraph::new(Some(blocks), Some(edges), 0, 2);
+        cfg.longest_acyclic_path();
+    }
 }

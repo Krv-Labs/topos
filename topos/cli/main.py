@@ -45,14 +45,19 @@ def _fast_path(argv: list[str]) -> bool:
     return False
 
 
+_commands_registered = False
+
+
 def _register_commands() -> None:
-    if cli.commands:
+    global _commands_registered
+    if _commands_registered:
         return
     from topos.cli.commands.quality import register_quality_commands
     from topos.cli.commands.system import register_system_commands
 
     register_quality_commands(cli)
     register_system_commands(cli)
+    _commands_registered = True
 
 
 class ToposGroup(click.Group):

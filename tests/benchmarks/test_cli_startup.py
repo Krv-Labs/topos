@@ -45,15 +45,41 @@ def _resolve_topos() -> list[str]:
     return [sys.executable, "-m", "topos.cli.main"]
 
 
-def _median_runtime(argv_suffix: list[str]) -> float:
+def _median_runtime(
+    argv_suffix: list[str], *, env: dict[str, str] | None = None
+) -> float:
     cmd = _resolve_topos() + argv_suffix
     timings: list[float] = []
     for _ in range(WARM_RUNS):
         start = time.perf_counter()
-        completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        completed = subprocess.run(
+            cmd, check=True, capture_output=True, text=True, env=env
+        )
         timings.append(time.perf_counter() - start)
         assert completed.returncode == 0
     return statistics.median(timings)
+
+
+def _single_runtime(
+    argv_suffix: list[str], *, env: dict[str, str] | None = None
+) -> float:
+    cmd = _resolve_topos() + argv_suffix
+    start = time.perf_counter()
+    completed = subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
+    assert completed.returncode == 0
+    return time.perf_counter() - start
+
+
+def _clear_mei_dirs(directory: str) -> None:
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return
+    for entry in entries:
+        if entry.startswith("_MEI"):
+            path = os.path.join(directory, entry)
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.mark.skipif(not BENCHMARK, reason=_SKIP_BENCHMARK)
@@ -84,16 +110,19 @@ def test_cli_startup_evaluate_help_warm() -> None:
     not os.environ.get("TOPOS_BINARY"),
     reason="Set TOPOS_BINARY to benchmark PyInstaller cold start",
 )
-def test_cli_startup_version_cold() -> None:
-    """Best-effort cold start: clear PyInstaller _MEI dirs when present."""
-    tmp = os.environ.get("TMPDIR") or "/tmp"
-    for entry in os.listdir(tmp):
-        if entry.startswith("_MEI"):
-            path = os.path.join(tmp, entry)
-            if os.path.isdir(path):
-                shutil.rmtree(path, ignore_errors=True)
+def test_cli_startup_version_cold(tmp_path) -> None:
+    """Cold start: clear PyInstaller _MEI dirs before each timed run."""
+    private_tmp = tmp_path / "pyinstaller-tmp"
+    private_tmp.mkdir()
+    env = os.environ.copy()
+    env["TMPDIR"] = str(private_tmp)
 
-    median = _median_runtime(["--version"])
+    timings: list[float] = []
+    for _ in range(WARM_RUNS):
+        _clear_mei_dirs(str(private_tmp))
+        timings.append(_single_runtime(["--version"], env=env))
+
+    cold = max(timings)
     cold_budget = float(os.environ.get("TOPOS_VERSION_COLD_BUDGET_S", "3.0"))
-    print(f"topos --version cold median: {median * 1000:.1f} ms")
-    assert median < cold_budget, f"topos --version cold too slow: {median:.3f}s"
+    print(f"topos --version cold max: {cold * 1000:.1f} ms ({WARM_RUNS} runs)")
+    assert cold < cold_budget, f"topos --version cold too slow: {cold:.3f}s"

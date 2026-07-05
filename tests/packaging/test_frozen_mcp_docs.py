@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
-import subprocess
-import sys
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONTENT_DIR = REPO_ROOT / "topos" / "mcp" / "resources" / "content"
@@ -27,6 +29,26 @@ def test_mcp_doc_content_files_exist_in_repo() -> None:
         assert path.is_file(), f"missing doc content file: {path}"
 
 
+async def _fetch_workflows_doc(binary: str) -> str:
+    """Call topos_get_doc(workflows) over MCP stdio using the official client."""
+    params = StdioServerParameters(command=binary, args=["mcp"])
+    async with stdio_client(params) as (read, write):  # noqa: SIM117
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "topos_get_doc",
+                {"topic": "workflows"},
+                read_timeout_seconds=timedelta(seconds=60),
+            )
+        assert not result.isError, result
+        chunks: list[str] = []
+        for block in result.content:
+            text = getattr(block, "text", None)
+            if text:
+                chunks.append(text)
+        return "\n".join(chunks)
+
+
 @pytest.mark.skipif(
     not os.environ.get("TOPOS_BINARY"),
     reason="Set TOPOS_BINARY to smoke-test MCP docs in a PyInstaller binary",
@@ -34,85 +56,8 @@ def test_mcp_doc_content_files_exist_in_repo() -> None:
 def test_frozen_binary_topos_get_doc_workflows() -> None:
     """Invoke topos_get_doc against a built binary via MCP stdio."""
     binary = os.environ["TOPOS_BINARY"]
-    script = r"""
-import json
-import os
-import subprocess
-import sys
-
-binary = os.environ["TOPOS_BINARY"]
-
-def send(proc, payload):
-    proc.stdin.write(json.dumps(payload) + "\n")
-    proc.stdin.flush()
-
-proc = subprocess.Popen(
-    [binary, "mcp"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True,
-    bufsize=1,
-)
-
-send(
-    proc,
-    {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "topos-packaging-test", "version": "1.0"},
-        },
-    },
-)
-send(proc, {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
-send(
-    proc,
-    {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/call",
-        "params": {"name": "topos_get_doc", "arguments": {"topic": "workflows"}},
-    },
-)
-
-lines = []
-for _ in range(20):
-    line = proc.stdout.readline()
-    if not line:
-        break
-    lines.append(line.strip())
-
-proc.terminate()
-proc.wait(timeout=5)
-
-payloads = []
-for line in lines:
-    try:
-        payloads.append(json.loads(line))
-    except json.JSONDecodeError:
-        continue
-
-responses = [p for p in payloads if p.get("id") == 2]
-assert responses, f"no tools/call response in MCP stdout: {lines!r}"
-result = responses[-1].get("result") or {}
-text = ""
-if isinstance(result, dict):
-    content = result.get("content") or []
-    if content and isinstance(content[0], dict):
-        text = content[0].get("text") or ""
-    else:
-        text = result.get("text") or ""
-assert "workflows" in text.lower() or "review" in text.lower(), text[:200]
-"""
-    completed = subprocess.run(
-        [sys.executable, "-c", script],
-        env={**os.environ, "TOPOS_BINARY": binary},
-        capture_output=True,
-        text=True,
-        timeout=120,
+    timeout_s = float(os.environ.get("TOPOS_MCP_SMOKE_TIMEOUT_S", "180"))
+    text = asyncio.run(
+        asyncio.wait_for(_fetch_workflows_doc(binary), timeout=timeout_s)
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "workflows" in text.lower() or "review" in text.lower(), text[:200]

@@ -133,31 +133,11 @@ Build the Topos binary from repo root:
 
 ```bash
 cd <your-local-topos-repo>
-
-uv run --with pyinstaller pyinstaller --name topos --onefile --noupx --clean \
-  --collect-all tree_sitter \
-  --collect-all tree_sitter_python \
-  --collect-all tree_sitter_rust \
-  --collect-all tree_sitter_javascript \
-  --collect-all tree_sitter_cpp \
-  --collect-all tree_sitter_typescript \
-  --collect-all fastmcp \
-  --collect-all ladybug \
-  --copy-metadata fastmcp \
-  --add-data Cargo.toml:. \
-  --hidden-import topos.core.category \
-  --hidden-import topos.core.morphism \
-  --hidden-import topos.core.object \
-  --hidden-import topos.core.omega \
-  --hidden-import topos.evaluation.characteristic_morphism \
-  --hidden-import topos.graphs.base \
-  --hidden-import topos.graphs.ast.object \
-  --hidden-import topos.graphs.cfg.object \
-  --hidden-import topos.graphs.pdg.object \
-  --hidden-import topos.graphs.mdg.object \
-  --hidden-import topos.graphs.cpg.object \
-  topos/cli/main.py
+chmod +x scripts/build-binary.sh
+./scripts/build-binary.sh
 ```
+
+`scripts/build-binary.sh` is the single source of truth for PyInstaller flags (also used by CI and release workflows). Hidden imports are derived from `topos._LAZY_EXPORTS` via `scripts/lazy_exports.py`.
 
 See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement.
 

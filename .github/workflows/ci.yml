@@ -80,38 +80,15 @@ jobs:
 
       - name: Build release binary
         run: |
-          # Keep in sync with the PYINSTALLER_ARGS in
-          # .github/workflows/release.yml so this budget check reflects what
-          # actually ships.
-          uv run --with pyinstaller pyinstaller \
-            --name topos \
-            --onefile \
-            --noupx \
-            --clean \
-            --collect-all tree_sitter \
-            --collect-all tree_sitter_python \
-            --collect-all tree_sitter_rust \
-            --collect-all tree_sitter_javascript \
-            --collect-all tree_sitter_cpp \
-            --collect-all tree_sitter_typescript \
-            --collect-all fastmcp \
-            --collect-all ladybug \
-            --copy-metadata fastmcp \
-            --add-data Cargo.toml:. \
-            --hidden-import topos.core.category \
-            --hidden-import topos.core.morphism \
-            --hidden-import topos.core.object \
-            --hidden-import topos.core.omega \
-            --hidden-import topos.evaluation.characteristic_morphism \
-            --hidden-import topos.graphs.base \
-            --hidden-import topos.graphs.ast.object \
-            --hidden-import topos.graphs.cfg.object \
-            --hidden-import topos.graphs.pdg.object \
-            --hidden-import topos.graphs.mdg.object \
-            --hidden-import topos.graphs.cpg.object \
-            topos/cli/main.py
+          chmod +x scripts/build-binary.sh
+          ./scripts/build-binary.sh
           mv dist/topos dist/topos-linux-amd64
           ls -lh dist/topos-linux-amd64
+
+      - name: Smoke test MCP docs in release binary
+        env:
+          TOPOS_BINARY: dist/topos-linux-amd64
+        run: uv run pytest tests/packaging/test_frozen_mcp_docs.py -v --no-cov
 
       - name: Assert release binary startup budget
         env:

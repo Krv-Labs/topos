@@ -79,56 +79,8 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
         run: |
-          PYINSTALLER_ARGS=(
-            --name topos
-            --onefile
-            --noupx
-            --clean
-            --collect-all tree_sitter
-            --collect-all tree_sitter_python
-            --collect-all tree_sitter_rust
-            --collect-all tree_sitter_javascript
-            --collect-all tree_sitter_cpp
-            --collect-all tree_sitter_typescript
-            --collect-all fastmcp
-            --collect-all ladybug
-            --copy-metadata fastmcp
-            --add-data Cargo.toml:.
-          )
-
-          # `topos/__init__.py` exposes these via a lazy `__getattr__` table
-          # (importlib.import_module on a runtime-resolved string), which
-          # PyInstaller's static analyzer can't follow from topos/cli/main.py.
-          # Everything else in the package is statically reachable, so we no
-          # longer need `--collect-all topos` (which bundled the entire
-          # package tree regardless of reachability).
-          HIDDEN_IMPORTS=(
-            topos.core.category
-            topos.core.morphism
-            topos.core.object
-            topos.core.omega
-            topos.evaluation.characteristic_morphism
-            topos.graphs.base
-            topos.graphs.ast.object
-            topos.graphs.cfg.object
-            topos.graphs.pdg.object
-            topos.graphs.mdg.object
-            topos.graphs.cpg.object
-          )
-          for module in "${HIDDEN_IMPORTS[@]}"; do
-            PYINSTALLER_ARGS+=(--hidden-import "${module}")
-          done
-
-          # onefile embeds dylibs in the archive; they must be signed during
-          # collection with the same Developer ID as the outer executable.
-          if [ "$(uname -s)" = "Darwin" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
-            PYINSTALLER_ARGS+=(
-              --codesign-identity "${CODESIGN_IDENTITY}"
-              --osx-entitlements-file packaging/macos-entitlements.plist
-            )
-          fi
-
-          uv run --with pyinstaller pyinstaller "${PYINSTALLER_ARGS[@]}" topos/cli/main.py
+          chmod +x scripts/build-binary.sh
+          ./scripts/build-binary.sh
 
       - name: Rename binary with platform suffix
         run: mv dist/topos "dist/topos-${{ matrix.target }}"

@@ -161,9 +161,9 @@ only the top-two generators. See `topos://docs/preferences`.
 
 - **Whether tests pass or behavior is preserved.** A refactor can lift the
   lattice score yet break behavior — the evaluate/assess loop cannot see this,
-  so run the suite separately. (Test *coverage* itself — structural UAST and
-  semantic ECT — is available as a distinct signal via
-  `topos_calculate_coverage`; it is not part of the lattice verdict.)
+  so run the suite separately. (Test *coverage* itself — structural UAST
+  declaration matching and k-gram recall — is available as a distinct signal
+  via `topos_calculate_coverage`; it is not part of the lattice verdict.)
 - **Functional correctness.** AST edit distance measures *change*, not
   *preservation of behavior*. Verify behavior with relevant project tests or
   equivalent checks when available; if unavailable or not run, report that

@@ -78,9 +78,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --python 3.12
 
-      - name: Build slim binary
+      - name: Build release binary
         run: |
-          # Keep in sync with the slim-variant PYINSTALLER_ARGS in
+          # Keep in sync with the PYINSTALLER_ARGS in
           # .github/workflows/release.yml so this budget check reflects what
           # actually ships.
           uv run --with pyinstaller pyinstaller \
@@ -113,7 +113,7 @@ jobs:
           mv dist/topos dist/topos-linux-amd64
           ls -lh dist/topos-linux-amd64
 
-      - name: Assert slim binary startup budget
+      - name: Assert release binary startup budget
         env:
           TOPOS_BENCHMARK: "1"
           TOPOS_BINARY: dist/topos-linux-amd64

@@ -85,19 +85,18 @@ jobs:
           mv dist/topos dist/topos-linux-amd64
           ls -lh dist/topos-linux-amd64
 
-      - name: Smoke test MCP docs in release binary
+      - name: Dogfood release binary
         env:
           TOPOS_BINARY: dist/topos-linux-amd64
-        run: uv run pytest tests/packaging/test_frozen_mcp_docs.py -v --no-cov
-
-      - name: Assert release binary startup budget
-        env:
           TOPOS_BENCHMARK: "1"
-          TOPOS_BINARY: dist/topos-linux-amd64
           TOPOS_BENCHMARK_RUNS: "5"
           TOPOS_VERSION_BUDGET_S: "2.5"
           TOPOS_HELP_BUDGET_S: "3.5"
-        run: uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov -k "warm"
+          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
+        run: |
+          chmod +x "$TOPOS_BINARY"
+          uv run pytest tests/packaging/ -v --no-cov
+          uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov -k "warm"
 
   extension:
     runs-on: ubuntu-latest

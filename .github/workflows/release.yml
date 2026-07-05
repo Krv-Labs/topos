@@ -85,6 +85,14 @@ jobs:
       - name: Rename binary with platform suffix
         run: mv dist/topos "dist/topos-${{ matrix.target }}"
 
+      - name: Dogfood release binary
+        env:
+          TOPOS_BINARY: dist/topos-${{ matrix.target }}
+          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
+        run: |
+          chmod +x "$TOPOS_BINARY"
+          uv run pytest tests/packaging/ -v --no-cov
+
       - name: Sign macOS binary
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
         env:

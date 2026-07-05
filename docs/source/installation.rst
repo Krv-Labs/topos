@@ -5,8 +5,8 @@ Installation
 ============
 
 .. meta::
-   :description: Get started with Topos. Install the CLI, MCP server, GitNexus composability metrics, and optional semantic coverage.
-   :twitter:description: Get started with Topos. Install the CLI, MCP server, GitNexus composability metrics, and optional semantic coverage.
+   :description: Get started with Topos. Install the CLI, MCP server, and GitNexus composability metrics.
+   :twitter:description: Get started with Topos. Install the CLI, MCP server, and GitNexus composability metrics.
 
 Install Topos first, then add optional metrics only when you need them. The
 core install includes the CLI, MCP server, SIMPLE and SECURE evaluation, AST
@@ -25,7 +25,7 @@ comparison, and UAST structural coverage.
      - One command installs ``topos`` and prompts to install GitNexus for COMPOSABLE metrics.
    * - Managed Python environment
      - PyPI package
-     - Requires Python 3.11+ and ``uv``. Install GitNexus and ``ect-coverage`` separately when needed.
+     - Requires Python 3.11+ and ``uv``. Install GitNexus separately when needed.
    * - Development
      - Source checkout
      - Requires Python 3.11+ and Cargo. Install optional metrics separately.
@@ -82,12 +82,6 @@ Choose an install path
 
          uv pip install topos-mcp
 
-      Add semantic coverage when needed:
-
-      .. code-block:: bash
-
-         uv pip install "topos-mcp[ect-coverage]"
-
       PyPI installs do not install GitNexus automatically. Add it separately
       when you need COMPOSABLE metrics:
 
@@ -105,12 +99,6 @@ Choose an install path
          git clone https://github.com/Krv-Labs/topos.git
          cd topos
          uv pip install -e .
-
-      Add semantic coverage when needed:
-
-      .. code-block:: bash
-
-         uv pip install -e ".[ect-coverage]"
 
       Source installs do not install GitNexus automatically. Add it separately
       when you need COMPOSABLE metrics:
@@ -148,20 +136,6 @@ Enable optional metrics
       Re-run ``topos depgraph generate`` after imports, module names, or
       directory structure change. MCP tools auto-detect ``./.gitnexus`` from
       the project root; CLI commands expect ``--gitnexus-dir``.
-
-   .. tab-item:: Semantic coverage
-      :sync: coverage
-
-      ``topos coverage`` always reports UAST structural coverage. With
-      ``ect-coverage`` installed, it also reports CPG topological coverage.
-
-      .. code-block:: bash
-
-         uv pip install "topos-mcp[ect-coverage]"
-         topos coverage src/logic.py --tests tests/test_logic.py
-
-      The embedding model downloads on first use to ``~/.cache/fastembed``.
-      Prefer module- or file-scoped PUT/test pairs over whole-repository runs.
 
 First useful commands
 ---------------------

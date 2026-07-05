@@ -172,44 +172,36 @@ Coverage guardrails
 Coverage was collected as a guardrail, not as the headline result. Ordinary
 pytest coverage asks which lines ran during the tests. Topos structural coverage
 asks whether tests cover the declarations and code shapes in the
-program-under-test; semantic/topological coverage asks whether the test graph
-resembles the production graph's behavior and data/control relationships. In
-this experiment, all three signals were useful, but none was the source of the
-cost-savings claim.
+program-under-test. In this experiment, both signals were useful, but neither
+was the source of the cost-savings claim.
 
 .. list-table:: Coverage snapshots
    :header-rows: 1
-   :widths: 24 16 18 22 20
+   :widths: 28 20 24 28
 
    * - Snapshot
      - Tests
      - Line coverage
      - Topos structural
-     - Semantic/topological
    * - Baseline
      - 10
      - 83%
      - 0.867
-     - 0.909
    * - B cleanup
      - 10
      - 87%
      - 0.817
-     - 0.906
    * - A final
      - 27
      - 88%
      - 0.843
-     - 0.908
    * - B final
      - 30
      - 91%
      - 0.853
-     - 0.905
 
 The Topos cleanup changed structure without expanding the test suite: the same
-10 tests still passed, line coverage rose from 83% to 87%, and
-semantic/topological coverage stayed effectively stable.
+10 tests still passed, and line coverage rose from 83% to 87%.
 
 Structural coverage dipped during cleanup, from 0.867 to 0.817, because the
 refactor increased production declarations from 19 to 32 while the tests stayed
@@ -220,14 +212,13 @@ and preserved behavior.
 The later feature sessions added tests. By final B, the test suite had 30 tests
 and 91% line coverage, versus 27 tests and 88% line coverage in A final. Topos
 structural coverage stayed above threshold in both final snapshots: 0.853 for B
-and 0.843 for A. Semantic/topological coverage also stayed strong, but did not
-materially improve: 0.905 for B final and 0.908 for A final.
+and 0.843 for A.
 
 This fixture was small enough that an agent could still inspect much of the
-production and test code directly. That limits what semantic coverage can prove
-here. A larger-system hypothesis is that precomputed structural and semantic
-coverage may reduce paid reading and review uncertainty, but this run only used
-coverage as a guardrail.
+production and test code directly. That limits what structural coverage can
+prove here. A larger-system hypothesis is that precomputed structural coverage
+may reduce paid reading and review uncertainty, but this run only used coverage
+as a guardrail.
 
 What this does and does not prove
 ---------------------------------
@@ -306,12 +297,7 @@ structural feedback made subsequent agent work cheaper to complete.
    **Initial structural and coverage checks**
 
    After creating the baseline, run tests and collect Topos structural and
-   coverage snapshots. Install Topos with the ``ect-coverage`` extra if you want
-   the semantic/topological coverage field included in ``topos coverage``:
-
-   .. code-block:: bash
-
-      uv tool install "topos-mcp[ect-coverage]"
+   coverage snapshots.
 
    .. code-block:: bash
 
@@ -370,8 +356,7 @@ structural feedback made subsequent agent work cheaper to complete.
    * tool calls,
    * estimated cost,
    * final test result.
-   * Topos coverage JSON, including ``topological_coverage`` when the
-     ``ect-coverage`` extra is installed.
+   * Topos coverage JSON.
 
    After each feature, rerun the same snapshot commands: pytest, line coverage,
    ``gitnexus analyze``, ``topos evaluate``, and ``topos coverage``.

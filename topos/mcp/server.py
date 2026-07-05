@@ -36,7 +36,8 @@ def _get_mcp():
                 "check graph state with topos_depgraph_status and build/refresh it "
                 "with topos_generate_depgraph. "
                 "topos_calculate_coverage reports test-suite coverage — structural "
-                "(UAST) and semantic (ECT) — as a separate signal, outside the lattice."
+                "(UAST) declaration matching and k-gram recall — as a separate "
+                "signal, outside the lattice."
             ),
         )
     return _mcp_instance

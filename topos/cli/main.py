@@ -22,7 +22,7 @@ Options:
 
 Commands:
   compare    Compare structural distance between two programs.
-  coverage   Measure structural (UAST) and semantic (CPG Topological) test...
+  coverage   Measure structural (UAST) test coverage.
   depgraph   Commands for working with dependency graphs.
   evaluate   Evaluate code quality using the characteristic morphism χ_S :...
   inspect    Inspect detailed metrics for a single file.

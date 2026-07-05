@@ -38,6 +38,8 @@ __all__ = [
     "CodePropertyGraph",
 ]
 
+_LAZY_SUBMODULES = frozenset({"core", "graphs", "evaluation"})
+
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "ProgramCategory": ("topos.core.category", "ProgramCategory"),
     "ProgramMorphism": ("topos.core.morphism", "ProgramMorphism"),
@@ -62,7 +64,13 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
 }
 
 
+def __dir__() -> list[str]:
+    return sorted([*__all__, *_LAZY_SUBMODULES])
+
+
 def __getattr__(name: str) -> Any:
+    if name in _LAZY_SUBMODULES:
+        return importlib.import_module(f"topos.{name}")
     if name not in _LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, attr_name = _LAZY_EXPORTS[name]

@@ -25,10 +25,7 @@ _READ_ONLY_ANN = {
 }
 
 
-def _empty_coverage_result(
-    warnings: list[str],
-    error: str,
-) -> CoverageResult:
+def _empty_coverage_result(error: str) -> CoverageResult:
     return CoverageResult(
         mean_declaration_coverage=0.0,
         best_declaration_recall=[],
@@ -41,24 +38,20 @@ def _empty_coverage_result(
         uncovered_declarations=[],
         put_declaration_count=0,
         test_declaration_count=0,
-        warnings=warnings,
         error=error,
     )
 
 
 def _parse_roots(
-    files: list[str], language: str, warnings: list[str], label: str
+    files: list[str], language: str, label: str
 ) -> tuple[list, CoverageResult | None]:
     roots = []
     for path in files:
         resolved, err = resolve_within_root(path)
         if err or resolved is None:
             model = _empty_coverage_result(
-                warnings,
-                (
-                    f"{label} file error: {(err or {}).get('error', 'path error')} "
-                    f"for {path}"
-                ),
+                f"{label} file error: {(err or {}).get('error', 'path error')} "
+                f"for {path}"
             )
             return [], model
         try:
@@ -67,7 +60,6 @@ def _parse_roots(
                 roots.append(morphism.ast.uast_root)
         except Exception as exc:
             model = _empty_coverage_result(
-                warnings,
                 f"Failed to parse {label} file {path}: {exc}",
             )
             return [], model
@@ -87,22 +79,16 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
     a quality verdict use ``topos_evaluate_*`` instead. Computes UAST bipartite
     declaration matching and k-gram path recall. Returns a CoverageResult.
     """
-    warnings: list[str] = []
-    put_roots, err_model = _parse_roots(
-        params.put_files, params.language, warnings, "PUT"
-    )
+    put_roots, err_model = _parse_roots(params.put_files, params.language, "PUT")
     if err_model is not None:
         return to_tool_result(err_model, render_coverage_md(err_model))
 
-    test_roots, err_model = _parse_roots(
-        params.test_files, params.language, warnings, "Test"
-    )
+    test_roots, err_model = _parse_roots(params.test_files, params.language, "Test")
     if err_model is not None:
         return to_tool_result(err_model, render_coverage_md(err_model))
 
     if not put_roots:
         model = _empty_coverage_result(
-            warnings,
             "No valid PUT roots found (parsing failed or files empty).",
         )
         return to_tool_result(model, render_coverage_md(model))
@@ -126,12 +112,10 @@ def topos_calculate_coverage(params: CalculateCoverageInput) -> ToolResult:
             uncovered_declarations=report.uncovered_declarations,
             put_declaration_count=report.put_declaration_count,
             test_declaration_count=report.test_declaration_count,
-            warnings=warnings,
         )
         return to_tool_result(model, render_coverage_md(model))
     except Exception as exc:
         model = _empty_coverage_result(
-            warnings,
             f"Coverage calculation failed: {exc}",
         )
         return to_tool_result(model, render_coverage_md(model))

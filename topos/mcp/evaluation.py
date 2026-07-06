@@ -194,7 +194,7 @@ def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
     git-aware ignore checker — it shells out per path, which is unaffordable
     on every freshness probe.
     """
-    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+    from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
     from topos.utils.discovery import iter_source_files
 
     suffixes = tuple(

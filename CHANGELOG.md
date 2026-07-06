@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RefactorTarget.verify_with` removed — verification guidance lives once on `agent_contract.verification_gates`; per-target `constraints` slimmed to kind-specific lines.
 - Agent-contract invariant documented and enforced: `next_tool`/`next_actions` never contradict `blocked_by`; when a target coexists with a setup blocker, `next_actions` carries both the edit step and the setup remedy (regression-tested in `tests/mcp/test_contract_invariant.py`).
 
+## [0.3.9] - 2026-07-06
+
+### Changed
+
+- **CLI startup latency**: `--version` and root `--help` exit before Click and heavy imports load; subcommands register lazily and `import topos` exposes only `__version__` eagerly. Standalone binary warm `--version` drops from ~854ms to ~586ms on macOS arm64. ([#109](https://github.com/Krv-Labs/topos/pull/109), closes [#108](https://github.com/Krv-Labs/topos/issues/108))
+- **Single release binary**: retired the ECT semantic-coverage variant and slim-vs-ect packaging split; one `topos-{platform}` binary (~39 MB, down from ~72 MB). Semantic (ECT) coverage was removed from CLI, MCP, and policies. ([#109](https://github.com/Krv-Labs/topos/pull/109), [#116](https://github.com/Krv-Labs/topos/pull/116))
+- **Release CI dogfoods binaries**: packaging smoke tests run against the built PyInstaller artifact so a broken frozen binary fails CI instead of shipping. (closes [#110](https://github.com/Krv-Labs/topos/issues/110), via [#109](https://github.com/Krv-Labs/topos/pull/109))
+
+### Fixed
+
+- **MCP invalid `gitnexus_dir` routing**: centralized COMPOSABLE setup contract routing for invalid, missing, and stale GitNexus states; `invalid_gitnexus_dir` now propagates across evaluate, assess, worktree, and changeset tool contracts instead of suggesting `topos_generate_depgraph` for a bad override path. ([#112](https://github.com/Krv-Labs/topos/pull/112), closes [#98](https://github.com/Krv-Labs/topos/issues/98))
+
 ## [0.3.8] - 2026-07-04
 
 ### Fixed

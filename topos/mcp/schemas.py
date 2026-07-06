@@ -159,19 +159,11 @@ class EvaluateFileInput(_StrictModel):
         default=False,
         description="Include raw metrics.",
     )
-    include_refactor_targets: bool = Field(
-        default=False,
-        description="Include ranked edit targets.",
-    )
-    max_refactor_targets: int = Field(
-        default=5,
-        ge=1,
+    refactor_targets: int = Field(
+        default=0,
+        ge=0,
         le=25,
-        description="Maximum targets to return.",
-    )
-    include_module_targets: bool = Field(
-        default=True,
-        description="Include module-level targets.",
+        description="Ranked edit targets to return (0 = off).",
     )
 
 
@@ -709,7 +701,8 @@ class RefactorTarget(BaseModel):
     severity: str = Field(description="fix | improve")
     recommended_operations: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
-    verify_with: list[str] = Field(default_factory=list)
+    # Verification guidance intentionally lives once on the agent contract
+    # (``verification_gates``), not repeated per target.
     evidence: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 

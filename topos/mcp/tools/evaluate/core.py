@@ -196,6 +196,18 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         if source is not None
         else {}
     )
+    # Targets are computed before the result model so build_agent_contract can
+    # route them natively — the contract is never mutated after construction.
+    targets = None
+    if params.refactor_targets:
+        targets = build_refactor_targets(
+            filepath=str(resolved),
+            result=result,
+            security_findings=overlay.active_findings if overlay else [],
+            locations=locations,
+            ranking=params.preferences.ranking if params.preferences else None,
+            max_targets=params.refactor_targets,
+        )
     model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
@@ -205,24 +217,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         **_overlay_kwargs(overlay),
         verbose=params.verbose,
         metric_locations=locations,
+        refactor_targets=targets,
+        offer_refactor_targets=targets is None,
     )
-    if params.include_refactor_targets:
-        targets = build_refactor_targets(
-            filepath=str(resolved),
-            evaluation=model,
-            raw_metrics=result.raw_metrics,
-            interpretation=result.interpretation,
-            locations=locations,
-            ranking=params.preferences.ranking if params.preferences else None,
-            max_targets=params.max_refactor_targets,
-            include_module_targets=params.include_module_targets,
-        )
-        model.refactor_targets = targets
-        if targets and model.agent_contract is not None:
-            first = targets[0]
-            model.agent_contract.next_tool = "topos_assess_worktree_change"
-            model.agent_contract.next_actions = [
-                f"edit target {first.target_id} ({first.metric})",
-                "make one focused structural change before reassessing",
-            ]
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

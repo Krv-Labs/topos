@@ -15,6 +15,9 @@ from pydantic import BaseModel
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
+from topos.evaluation.policies.gates import (
+    PILLAR_METRIC_PREFIXES as _PILLAR_METRIC_PREFIXES,
+)
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
@@ -28,6 +31,7 @@ from .schemas import (
     PillarResult,
     PreferenceWalk,
     PrioritySource,
+    RefactorTarget,
     SecurityFinding,
     Suggestion,
 )
@@ -184,8 +188,20 @@ def build_agent_contract(
     acknowledged_risks: list[AcknowledgedRisk],
     grade_capped: bool,
     warnings: list[str] | None = None,
+    refactor_targets: list[RefactorTarget] | None = None,
+    offer_refactor_targets: bool = False,
 ) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
-    """Return compact loop-control fields for MCP agents."""
+    """Return compact loop-control fields for MCP agents.
+
+    ``refactor_targets`` are ranked edit targets the caller computed (None
+    when the tool does not support them or they were not requested);
+    ``offer_refactor_targets`` marks a tool that supports them but was called
+    without them, so a below-IDEAL result can advertise the option.
+
+    Invariant: ``next_tool``/``next_actions`` never contradict ``blocked_by``
+    — when a target coexists with a setup blocker, ``next_actions`` carries
+    both the edit step and the setup remedy.
+    """
     blocked_by: list[str] = []
     risk_flags: list[str] = []
     next_actions: list[str] = []
@@ -213,7 +229,21 @@ def build_agent_contract(
     summary = result.summary()
     simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
 
-    if composable.next_action:
+    if refactor_targets:
+        # Ranked edit targets were requested and found: the edit loop is the
+        # next step. Setup blockers stay in blocked_by and their remedies ride
+        # along in next_actions so the contract never contradicts itself.
+        first = refactor_targets[0]
+        next_tool = "topos_assess_worktree_change"
+        next_actions.append(
+            f"edit target {first.target_id} ({first.metric}) — "
+            "one focused structural change"
+        )
+        if composable.next_action:
+            next_actions.append(composable.next_action)
+        elif "missing_gitnexus_dir" in blocked_by:
+            next_actions.append("run topos_generate_depgraph to score COMPOSABLE")
+    elif composable.next_action:
         next_tool = composable.next_tool
         next_actions.append(composable.next_action)
     elif summary == EvaluationValue.IDEAL:
@@ -240,6 +270,13 @@ def build_agent_contract(
             "inspect weakest measured pillar, then verify a focused patch"
         )
 
+    if offer_refactor_targets and summary != EvaluationValue.IDEAL:
+        # Self-discoverability: the caller supports ranked targets but did not
+        # ask for them; a below-IDEAL verdict is the moment they help.
+        next_actions.append(
+            "re-run topos_evaluate_file with refactor_targets=5 for ranked edit targets"
+        )
+
     verification_gates = [
         "verify in-place edits with topos_assess_worktree_change",
         "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE",
@@ -252,11 +289,9 @@ def build_agent_contract(
 # Raw metrics are namespaced by representation: cfg/ast -> simple,
 # mdg -> composable, cpg -> secure.  (pdg.* is structural and maps to no
 # pillar; it is preserved only in the flat ``raw_metrics``.)
-_PILLAR_METRIC_PREFIXES: dict[str, tuple[str, ...]] = {
-    "simple": ("cfg.", "ast."),
-    "composable": ("mdg.",),
-    "secure": ("cpg.",),
-}
+# _PILLAR_METRIC_PREFIXES is imported from topos.evaluation.policies.gates —
+# the canonical metric-namespace map shared with gate specs and refactor
+# targets.
 
 
 def mdg_unavailable_message(warnings: list[str] | None) -> str:
@@ -357,6 +392,8 @@ def to_evaluation_result(
     include_agent_contract: bool = True,
     verbose: bool = True,
     metric_locations: dict[str, list[FunctionEntry]] | None = None,
+    refactor_targets: list[RefactorTarget] | None = None,
+    offer_refactor_targets: bool = False,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
 
@@ -404,6 +441,8 @@ def to_evaluation_result(
                 acknowledged_risks=risks,
                 grade_capped=grade_capped,
                 warnings=warnings,
+                refactor_targets=refactor_targets,
+                offer_refactor_targets=offer_refactor_targets,
             )
         )
         agent_contract = AgentContract(
@@ -457,6 +496,7 @@ def to_evaluation_result(
         ),
         grade_capped=grade_capped,
         suggestions=suggestions,
+        refactor_targets=refactor_targets or [],
         preference_walk=walk,
     )
 

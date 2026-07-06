@@ -12,17 +12,22 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 GITNEXUS_CMD = "gitnexus"
 _INSTALL_HINT = "GitNexus not found. Install it with: npm install -g gitnexus"
 
-# Topos-owned marker written inside ``.gitnexus`` recording the HEAD commit the
-# graph was built from. Freshness is anchored to this commit rather than file
-# mtimes (``gitnexus analyze`` does not reliably bump its DB mtime on re-index),
-# so a regenerate always clears the "stale" signal. Read back by
-# ``topos.mcp.evaluation`` — keep the filename here as the single source of truth.
+# Topos-owned marker written inside ``.gitnexus`` recording when and from what
+# the graph was built: the HEAD commit SHA (null in non-git dirs) plus a
+# ``generated_at`` wall-clock stamp. The graph's *content* reflects the working
+# tree at generation time, so freshness needs both anchors: the SHA catches
+# checkouts/commits, ``generated_at`` catches in-place edits that never move
+# HEAD (the graph's own DB mtime is unreliable — ``gitnexus analyze`` does not
+# reliably bump it on re-index). Read back by ``topos.mcp.evaluation`` — keep
+# the filename here as the single source of truth. v1 markers carried only
+# ``head_sha``; readers must tolerate a missing ``generated_at``.
 GITNEXUS_FINGERPRINT_FILE = ".topos-fingerprint.json"
 
 # ``gitnexus analyze`` can legitimately run for minutes on a large repo, so the
@@ -153,18 +158,20 @@ def _head_sha(target_dir: Path) -> str | None:
 
 
 def _write_fingerprint(target_dir: Path, gitnexus_path: Path) -> None:
-    """Record the HEAD commit the graph was built from (best-effort).
+    """Record what the graph was built from (best-effort).
 
-    Never raises: a non-git directory simply gets no marker (freshness falls back
-    to mtime), and a write failure must not turn a successful generation into a
-    failure.
+    v2 marker: ``head_sha`` (null in non-git dirs — the ``generated_at`` stamp
+    still enables mtime-based freshness there) and ``generated_at`` (epoch
+    seconds). Never raises: a write failure must not turn a successful
+    generation into a failure.
     """
     sha = _head_sha(target_dir)
-    if not isinstance(sha, str) or not sha:
-        return
+    if not isinstance(sha, str):
+        sha = None
     # Best-effort: a read-only FS (OSError) or unexpected payload (Type/ValueError
     # from json) must never turn a successful generation into a failure.
     with contextlib.suppress(OSError, TypeError, ValueError):
         (gitnexus_path / GITNEXUS_FINGERPRINT_FILE).write_text(
-            json.dumps({"head_sha": sha}), encoding="utf-8"
+            json.dumps({"head_sha": sha or None, "generated_at": time.time()}),
+            encoding="utf-8",
         )

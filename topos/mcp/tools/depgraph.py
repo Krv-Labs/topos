@@ -65,9 +65,13 @@ _STATE_GUIDANCE: dict[DepgraphState, tuple[str, str | None, str | None]] = {
         "gitnexus_load_error",
     ),
     DepgraphState.SCHEMA_MISMATCH: (
-        "LadybugDB storage version mismatch; upgrade GitNexus/ladybug, then run "
-        "topos_generate_depgraph.",
-        "topos_generate_depgraph",
+        # The store was written by a NEWER GitNexus than the embedded ladybug
+        # reads, so plain regeneration rewrites the same (or a newer) version
+        # and cannot fix it — do not route to generation.
+        "Graph store was written by a newer GitNexus than this Topos can read. "
+        "Upgrade Topos (bundled ladybug), or downgrade GitNexus and regenerate "
+        "with force=true; regenerating with the current GitNexus will not fix it.",
+        None,
         "gitnexus_schema_mismatch",
     ),
     DepgraphState.INVALID_DIR: (
@@ -149,8 +153,10 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
         if state_before == DepgraphState.SCHEMA_MISMATCH:
             message = (
                 status.detail
-                or "LadybugDB storage version mismatch; upgrade GitNexus/ladybug, "
-                "then retry with force=true if appropriate."
+                or "Graph store was written by a newer GitNexus than this Topos "
+                "can read. Upgrade Topos (bundled ladybug), or downgrade "
+                "GitNexus and regenerate with force=true; regenerating with "
+                "the current GitNexus will not fix it."
             )
             model = GenerateDepgraphResult(
                 ok=False,
@@ -163,8 +169,8 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
                     blocked_by=["gitnexus_schema_mismatch"],
                     risk_flags=["gitnexus_schema_mismatch", "composable_unavailable"],
                     next_actions=[
-                        "upgrade/repair GitNexus or LadybugDB, then retry "
-                        "with force=true"
+                        "upgrade Topos (bundled ladybug) so the graph loads, or "
+                        "downgrade GitNexus and regenerate with force=true"
                     ],
                 ),
                 error=message,

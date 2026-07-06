@@ -151,34 +151,111 @@ def gitnexus_warnings(
 STALE_GITNEXUS_MARKER = "gitnexus index may be stale"
 
 
-def _read_graph_fingerprint(gitnexus_dir: Path) -> str | None:
-    """HEAD SHA the graph was built from, from the topos-owned marker (or None)."""
+@dataclass(frozen=True)
+class GraphFingerprint:
+    """Topos-owned generation marker: what and when the graph was built from.
+
+    v1 markers carry only ``head_sha``; ``generated_at`` is the v2 field that
+    enables working-tree freshness (in-place edits never move HEAD).
+    """
+
+    head_sha: str | None
+    generated_at: float | None
+
+
+def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
+    """The graph's generation marker, tolerant of v1 payloads (or None)."""
     try:
         raw = (gitnexus_dir / GITNEXUS_FINGERPRINT_FILE).read_text(encoding="utf-8")
-        sha = json.loads(raw).get("head_sha")
+        payload = json.loads(raw)
+        sha = payload.get("head_sha")
+        generated_at = payload.get("generated_at")
     except (OSError, ValueError, AttributeError):
         return None
-    return sha or None
+    return GraphFingerprint(
+        head_sha=sha if isinstance(sha, str) and sha else None,
+        generated_at=(
+            float(generated_at) if isinstance(generated_at, (int, float)) else None
+        ),
+    )
+
+
+# Freshness stat-walk ceiling: beyond this many source files the mtime pass
+# returns "fresh" rather than making every evaluate call pay for a pathological
+# monorepo walk. The SHA anchor still catches commit-level drift there.
+_FRESHNESS_WALK_CAP = 20_000
+
+
+def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
+    """First source file modified after *generated_at*, or None.
+
+    Stat-only walk over the same discovery pruning the evaluators use (skips
+    .git/.gitnexus/venvs/node_modules/build dirs). Deliberately avoids the
+    git-aware ignore checker — it shells out per path, which is unaffordable
+    on every freshness probe.
+    """
+    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+    from topos.utils.discovery import iter_source_files
+
+    suffixes = tuple(
+        {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
+    )
+    seen = 0
+    for path in iter_source_files(project_root, suffixes=suffixes):
+        seen += 1
+        if seen > _FRESHNESS_WALK_CAP:
+            return None
+        try:
+            if path.stat().st_mtime > generated_at:
+                return path
+        except OSError:
+            continue
+    return None
 
 
 def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str | None]:
-    """Whether the dependency graph is stale w.r.t. the current commit.
+    """Whether the dependency graph is stale w.r.t. the working tree.
 
-    Prefers a commit-SHA anchor (the graph records the HEAD it was built from) so
-    a regenerate reliably clears staleness and a checkout to a different commit is
-    caught. Falls back to an mtime comparison for graphs generated before the
-    fingerprint marker existed. Returns ``(is_stale, detail)``.
+    Two anchors, both recorded at generation time:
+
+    1. Commit SHA — catches checkouts and new commits; a regenerate reliably
+       clears it.
+    2. ``generated_at`` — the graph's content reflects the working tree at
+       generation, so any source file modified afterwards (an in-place edit
+       that never moves HEAD) also invalidates COMPOSABLE.
+
+    Graphs from before the fingerprint marker fall back to comparing the
+    graph DB mtime to the latest commit's mtime. Returns ``(is_stale, detail)``.
     """
-    graph_sha = _read_graph_fingerprint(gitnexus_dir)
+    fingerprint = _read_graph_fingerprint(gitnexus_dir)
+    graph_sha = fingerprint.head_sha if fingerprint else None
     head_sha = _git_head_sha(project_root)
-    if graph_sha is not None and head_sha is not None:
-        if graph_sha == head_sha:
-            return False, None
+    sha_anchored = graph_sha is not None and head_sha is not None
+    if sha_anchored and graph_sha != head_sha:
         return True, (
             f"{STALE_GITNEXUS_MARKER} — graph was built from commit "
             f"{graph_sha[:7]} but HEAD is {head_sha[:7]}; run "
             "'topos depgraph generate' before trusting COMPOSABLE."
         )
+
+    if fingerprint is not None and fingerprint.generated_at is not None:
+        newer = _newer_source_file(project_root, fingerprint.generated_at)
+        if newer is not None:
+            try:
+                rel = newer.relative_to(project_root)
+            except ValueError:
+                rel = newer
+            return True, (
+                f"{STALE_GITNEXUS_MARKER} — {rel} was modified after the "
+                "dependency graph was generated; run 'topos depgraph generate' "
+                "before trusting COMPOSABLE."
+            )
+        return False, None
+
+    if sha_anchored:
+        # v1 fingerprint (SHA only, matching HEAD): no working-tree signal
+        # available — preserve the legacy PRESENT verdict.
+        return False, None
 
     # Legacy fallback: no fingerprint marker (or HEAD unresolvable) — compare the
     # graph DB mtime to the latest commit's mtime.

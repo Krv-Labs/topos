@@ -127,12 +127,16 @@ def test_generate_writes_fingerprint_with_head_sha(tmp_path) -> None:
     assert result.ok is True
     marker = tmp_path / ".gitnexus" / GITNEXUS_FINGERPRINT_FILE
     assert marker.exists()
-    assert json.loads(marker.read_text(encoding="utf-8"))["head_sha"] == head
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    assert payload["head_sha"] == head
+    # v2 marker: generation time enables working-tree freshness.
+    assert isinstance(payload["generated_at"], float)
+    assert payload["generated_at"] > 0
 
 
-def test_generate_in_non_git_dir_writes_no_fingerprint(tmp_path) -> None:
-    # A non-git directory is a supported target: generation still succeeds, it
-    # just gets no fingerprint (freshness later falls back to mtime).
+def test_generate_in_non_git_dir_writes_sha_less_fingerprint(tmp_path) -> None:
+    # A non-git directory is a supported target: generation still succeeds and
+    # gets a sha-less v2 marker so mtime-based freshness works there too.
     (tmp_path / ".gitnexus").mkdir()
     with (
         patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
@@ -140,4 +144,7 @@ def test_generate_in_non_git_dir_writes_no_fingerprint(tmp_path) -> None:
     ):
         result = generate_depgraph(tmp_path)
     assert result.ok is True
-    assert not (tmp_path / ".gitnexus" / GITNEXUS_FINGERPRINT_FILE).exists()
+    marker = tmp_path / ".gitnexus" / GITNEXUS_FINGERPRINT_FILE
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    assert payload["head_sha"] is None
+    assert payload["generated_at"] > 0

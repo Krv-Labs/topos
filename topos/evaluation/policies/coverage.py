@@ -15,9 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from topos.evaluation.policies.calibration import COVERAGE
-from topos.functors.profunctors.cpg.topological_coverage import (
-    TopologicalCoverageReport,
-)
 from topos.functors.profunctors.uast.structural_test_coverage import (
     DeclarationCoverageReport,
 )
@@ -98,60 +95,3 @@ def _coverage_interpretation(score: float, threshold: float) -> str:
     if score >= threshold * COVERAGE.partial_factor:
         return "coverage is partial"
     return "coverage is weak"
-
-
-@dataclass(frozen=True)
-class TopologicalCoverageDecision:
-    """Thresholded judgment over a raw topological CPG coverage report.
-
-    Carries topological-specific fields like L2 distance, tested functions,
-    and untested functions.
-    """
-
-    score: float  # topological_coverage_score
-    achieved: bool
-    threshold: float
-    distance: float
-    tested_functions: tuple[str, ...] = field(default_factory=tuple)
-    untested_functions: tuple[str, ...] = field(default_factory=tuple)
-    interpretation: dict[str, str] = field(default_factory=dict)
-
-
-def score_topological_coverage(
-    report: TopologicalCoverageReport,
-    *,
-    threshold: float = 0.5,
-) -> TopologicalCoverageDecision:
-    """Threshold-classify a raw topological coverage report."""
-    score = report.topological_coverage_score
-    achieved = score >= threshold
-
-    interp_msg = _topological_coverage_interpretation(score, threshold)
-    interpretation = {
-        "topological_coverage": interp_msg,
-        "topological_distance": f"ECT L2 distance is {report.topological_distance:.4f}",
-        "tested_functions_count": f"{len(report.tested_functions)} functions tested",
-        "untested_functions_count": (
-            f"{len(report.untested_functions)} functions untested"
-        ),
-    }
-
-    return TopologicalCoverageDecision(
-        score=score,
-        achieved=achieved,
-        threshold=threshold,
-        distance=report.topological_distance,
-        tested_functions=report.tested_functions,
-        untested_functions=report.untested_functions,
-        interpretation=interpretation,
-    )
-
-
-def _topological_coverage_interpretation(score: float, threshold: float) -> str:
-    if score >= threshold + 0.25:
-        return "topological coverage is strong"
-    if score >= threshold:
-        return "topological coverage meets the policy threshold"
-    if score >= threshold * 0.5:
-        return "topological coverage is partial"
-    return "topological coverage is weak"

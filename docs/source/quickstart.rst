@@ -37,11 +37,11 @@ locally and expose the same structural quality tools.
    structural verifier in the same agent loop: measure, edit, verify, repeat.
 
    You do not need a persistent Python install. Let ``uvx`` resolve and run the
-   package when Claude starts the MCP server. We recommend the ``ect-coverage`` extra for semantic coverage, but it is optional:
+   package when Claude starts the MCP server.
 
    .. code-block:: bash
 
-      claude mcp add --transport stdio topos -- uvx --from "topos-mcp[ect-coverage]" topos mcp
+      claude mcp add --transport stdio topos -- uvx --from topos-mcp topos mcp
 
    To confirm the install + MCP server status, you can run:
 
@@ -167,20 +167,6 @@ Concrete times to use Topos:
   paths and declarations they claim to protect.
 * **Inside an agent loop:** let the agent measure, refactor, and verify its own
   work against a concrete quality target.
-
-Semantic coverage
------------------
-
-``topos coverage`` always returns UAST structural coverage: it compares the
-shape of declarations in the program-under-test with the shape present in the
-test suite. With the ``ect-coverage`` extra, coverage also includes semantic CPG
-topological coverage: Topos compares the scoped program-under-test graph with
-the test graph using embedded CPG node structure and ECT. Without the extra,
-coverage still returns UAST structural coverage and reports topological coverage
-as unavailable.
-
-For package-level setup and other install paths, see :doc:`installation`. To
-wire Topos into more agents, see :doc:`agents`.
 
 How it works
 ------------

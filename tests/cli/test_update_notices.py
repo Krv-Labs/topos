@@ -168,7 +168,7 @@ def test_maybe_show_update_notice_uses_fresh_cache(
 def test_passive_notice_skipped_for_mcp():
     with (
         patch("topos.mcp.server.main"),
-        patch("topos.cli.main.maybe_show_update_notice") as mock_notice,
+        patch("topos.cli.update.maybe_show_update_notice") as mock_notice,
     ):
         runner = CliRunner()
         result = runner.invoke(cli, ["mcp"])
@@ -180,7 +180,7 @@ def test_passive_notice_skipped_for_mcp():
 def test_passive_notice_skipped_for_update_command():
     with (
         patch("topos.cli.commands.system.run_update") as mock_run_update,
-        patch("topos.cli.main.maybe_show_update_notice") as mock_notice,
+        patch("topos.cli.update.maybe_show_update_notice") as mock_notice,
         patch("topos.cli.update.latest_version_for_channel", return_value="0.0.0"),
     ):
         runner = CliRunner()

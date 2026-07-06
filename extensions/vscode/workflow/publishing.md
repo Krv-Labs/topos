@@ -129,28 +129,17 @@ Output: Topos
 
 ## Local Install With Bundled Runtime
 
-Build a local Topos binary from repo root:
+Build the Topos binary from repo root:
 
 ```bash
 cd <your-local-topos-repo>
-
-uv run --with pyinstaller pyinstaller --name topos --onefile --clean \
-  --collect-all tree_sitter \
-  --collect-all tree_sitter_python \
-  --collect-all tree_sitter_rust \
-  --collect-all tree_sitter_javascript \
-  --collect-all tree_sitter_cpp \
-  --collect-all tree_sitter_typescript \
-  --collect-all topos \
-  --collect-all fastmcp \
-  --collect-all ladybug \
-  --collect-all onnxruntime \
-  --collect-all fastembed \
-  --collect-all trailed \
-  --copy-metadata fastmcp \
-  --copy-metadata fastembed \
-  topos/cli/main.py
+chmod +x scripts/build-binary.sh
+./scripts/build-binary.sh
 ```
+
+`scripts/build-binary.sh` is the single source of truth for PyInstaller flags (also used by CI and release workflows). Hidden imports are derived from `topos._LAZY_EXPORTS` via `scripts/lazy_exports.py`.
+
+See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement.
 
 Rename the binary for your local platform:
 

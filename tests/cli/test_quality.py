@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 import click
-import topos.cli.commands.quality as quality_commands
 from click.testing import CliRunner
 from topos.cli.main import cli
 
@@ -219,7 +218,7 @@ def test_evaluate_interrupt_exits_cleanly(tmp_path: Path, monkeypatch):
     def interrupt(*args, **kwargs):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(quality_commands, "run_classify_file", interrupt)
+    monkeypatch.setattr("topos.cli.evaluation.run_classify_file", interrupt)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["evaluate", str(f)])

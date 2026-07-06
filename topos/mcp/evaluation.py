@@ -486,7 +486,7 @@ def classify_code_string(
 
 def detect_language(path: Path) -> str:
     """Map a file suffix to a tree-sitter language, defaulting to ``python``."""
-    from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+    from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
 
     for lang, suffixes in LANGUAGE_FILE_SUFFIXES.items():
         if path.suffix in suffixes:

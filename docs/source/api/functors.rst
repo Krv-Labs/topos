@@ -22,7 +22,6 @@ UAST edit distance and structural coverage.
    topos.functors.profunctors.ast.compare
    topos.functors.profunctors.cfg.compare
    topos.functors.profunctors.cpg.compare
-   topos.functors.profunctors.cpg.topological_coverage
    topos.functors.profunctors.mdg.compare
    topos.functors.profunctors.pdg.compare
    topos.functors.profunctors.uast.compare

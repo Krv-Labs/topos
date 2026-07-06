@@ -158,18 +158,7 @@ coverage
 
 Measure how much of the **program-under-test (PUT)** structure is represented in test code.
 
-**UAST (default):** declaration-level bipartite matching and k-gram path recall. No test execution required.
-
-**Topological (ECT):** when the ``ect-coverage`` optional extra is installed,
-also scores CPG semantic overlap via fastembed embeddings and Euler
-characteristic transform (TRAILED). First topological run downloads the
-embedding model to ``~/.cache/fastembed``.
-
-Install the optional extra in Python package/source environments with:
-
-.. code-block:: bash
-
-   uv pip install "topos-mcp[ect-coverage]"
+Declaration-level bipartite matching and k-gram path recall. No test execution required.
 
 .. code-block:: bash
 

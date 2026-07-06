@@ -591,6 +591,24 @@ def render_evaluation_md(
                 )
                 lines.append(f"  - {where} — complexity {fn.complexity}")
 
+    if e.refactor_targets:
+        lines.append("")
+        lines.append("## Refactor Targets")
+        lines.append("| Target | Kind | Metric | Location | Operations |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for target in e.refactor_targets:
+            loc = (
+                f"{target.line_start}-{target.line_end}"
+                if target.line_end and target.line_end != target.line_start
+                else str(target.line_start or "?")
+            )
+            symbol = (target.symbol or "<module>").replace("|", "\\|")
+            ops = ", ".join(f"`{op}`" for op in target.recommended_operations)
+            lines.append(
+                f"| `{target.target_id}` `{symbol}` | {target.kind} | "
+                f"`{target.metric}` | {loc} | {ops} |"
+            )
+
     # Suggestions are the actionable payload — show them by default (one line
     # each, already concise). Not verbose-gated: they are the whole point.
     if e.suggestions:

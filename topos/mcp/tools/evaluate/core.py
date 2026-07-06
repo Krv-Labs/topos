@@ -22,6 +22,7 @@ from ...formatting import (
     to_tool_result,
 )
 from ...metric_locations import build_metric_locations
+from ...refactor_targets import build_refactor_targets
 from ...schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
@@ -205,4 +206,23 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         verbose=params.verbose,
         metric_locations=locations,
     )
+    if params.include_refactor_targets:
+        targets = build_refactor_targets(
+            filepath=str(resolved),
+            evaluation=model,
+            raw_metrics=result.raw_metrics,
+            interpretation=result.interpretation,
+            locations=locations,
+            ranking=params.preferences.ranking if params.preferences else None,
+            max_targets=params.max_refactor_targets,
+            include_module_targets=params.include_module_targets,
+        )
+        model.refactor_targets = targets
+        if targets and model.agent_contract is not None:
+            first = targets[0]
+            model.agent_contract.next_tool = "topos_assess_worktree_change"
+            model.agent_contract.next_actions = [
+                f"edit target {first.target_id} ({first.metric})",
+                "make one focused structural change before reassessing",
+            ]
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

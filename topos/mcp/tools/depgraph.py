@@ -35,7 +35,8 @@ _READ_ONLY_ANN = {
 }
 
 # Generation shells out to GitNexus and rewrites .gitnexus — not read-only and
-# not idempotent. Clients should treat it as approval-gated.
+# not idempotent. The default path first checks status and no-ops when the graph
+# is current, but clients should still treat the tool as approval-gated.
 _GENERATE_ANN = {
     "title": "Topos Generate Depgraph",
     "readOnlyHint": False,
@@ -113,9 +114,8 @@ def topos_depgraph_status(params: DepgraphStatusInput) -> ToolResult:
 def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
     """Generate the ``.gitnexus`` dependency graph via GitNexus (side-effecting).
 
-    Runs ``gitnexus analyze`` in the target directory. Not read-only and not
-    idempotent — intended to be approval-gated by the client. Requires the
-    ``gitnexus`` CLI (``npm install -g gitnexus``).
+    Ensures the graph by default: no-ops when current, otherwise runs
+    ``gitnexus analyze``. ``force=True`` always regenerates.
     """
     project_root = resolve_file_root()
     if params.directory is not None:
@@ -128,12 +128,57 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
     else:
         target_dir = project_root
 
+    state_before: DepgraphState | None = None
+    if not params.force:
+        status = depgraph_status(None, target_dir, str(target_dir))
+        state_before = DepgraphState(status.state)
+        if state_before == DepgraphState.PRESENT:
+            model = GenerateDepgraphResult(
+                ok=True,
+                returncode=0,
+                gitnexus_dir=status.gitnexus_dir,
+                generated=False,
+                state_before=state_before,
+                message="Dependency graph already current.",
+                agent_contract=AgentContract(
+                    next_tool="topos_evaluate_file",
+                    next_actions=["re-evaluate; COMPOSABLE is scorable"],
+                ),
+            )
+            return to_tool_result(model, _render_generate_md(model))
+        if state_before == DepgraphState.SCHEMA_MISMATCH:
+            message = (
+                status.detail
+                or "LadybugDB storage version mismatch; upgrade GitNexus/ladybug, "
+                "then retry with force=true if appropriate."
+            )
+            model = GenerateDepgraphResult(
+                ok=False,
+                returncode=1,
+                gitnexus_dir=status.gitnexus_dir,
+                generated=False,
+                state_before=state_before,
+                message=message,
+                agent_contract=AgentContract(
+                    blocked_by=["gitnexus_schema_mismatch"],
+                    risk_flags=["gitnexus_schema_mismatch", "composable_unavailable"],
+                    next_actions=[
+                        "upgrade/repair GitNexus or LadybugDB, then retry "
+                        "with force=true"
+                    ],
+                ),
+                error=message,
+            )
+            return to_tool_result(model, _render_generate_md(model))
+
     result = generate_depgraph(target_dir)
     if not result.ok:
         model = GenerateDepgraphResult(
             ok=False,
             returncode=result.returncode,
             message=result.message,
+            generated=False,
+            state_before=state_before,
             agent_contract=AgentContract(
                 blocked_by=["gitnexus_generate_failed"],
                 risk_flags=["composable_unavailable"],
@@ -147,6 +192,8 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
         ok=True,
         returncode=0,
         gitnexus_dir=str(result.gitnexus_path),
+        generated=True,
+        state_before=state_before,
         message=result.message,
         agent_contract=AgentContract(
             next_tool="topos_evaluate_file",
@@ -228,7 +275,13 @@ def _render_status_md(r: DepgraphStatusResult) -> str:
 def _render_generate_md(r: GenerateDepgraphResult) -> str:
     if r.error:
         return f"**Error:** {r.error}"
-    head = "Dependency graph generated." if r.ok else "Generation failed."
+    head = (
+        "Dependency graph generated."
+        if r.ok and r.generated
+        else "Dependency graph current."
+        if r.ok
+        else "Generation failed."
+    )
     lines = [f"**{head}**", r.message]
     if r.gitnexus_dir:
         lines.append(f"**.gitnexus:** `{r.gitnexus_dir}`")

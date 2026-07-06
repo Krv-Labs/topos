@@ -159,6 +159,20 @@ class EvaluateFileInput(_StrictModel):
         default=False,
         description="Include raw metrics.",
     )
+    include_refactor_targets: bool = Field(
+        default=False,
+        description="Include ranked edit targets.",
+    )
+    max_refactor_targets: int = Field(
+        default=5,
+        ge=1,
+        le=25,
+        description="Maximum targets to return.",
+    )
+    include_module_targets: bool = Field(
+        default=True,
+        description="Include module-level targets.",
+    )
 
 
 class EvaluateProjectInput(_StrictModel):
@@ -679,6 +693,26 @@ class AgentContract(BaseModel):
     risk_flags: list[str] = Field(default_factory=list)
 
 
+class RefactorTarget(BaseModel):
+    """One concrete source location for an agent refactor loop."""
+
+    target_id: str
+    kind: str = Field(description="function | module | security_call")
+    filepath: str
+    symbol: str | None = None
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
+    failing_generators: list[str] = Field(default_factory=list)
+    metric: str
+    current_value: float | None = None
+    threshold: float | None = None
+    severity: str = Field(description="fix | improve")
+    recommended_operations: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    verify_with: list[str] = Field(default_factory=list)
+    evidence: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
 class EvaluationResult(BaseModel):
     """Result of a single-unit evaluation on the Medal Podium."""
 
@@ -757,6 +791,10 @@ class EvaluationResult(BaseModel):
             "Encodes the targeted relaxation walk toward the ideal "
             "intersection."
         ),
+    )
+    refactor_targets: list[RefactorTarget] = Field(
+        default_factory=list,
+        description="Optional ranked edit targets, populated only when requested.",
     )
     error: str | None = None
 
@@ -1001,7 +1039,11 @@ class GenerateDepgraphInput(_StrictModel):
 
     directory: str | None = Field(
         default=None,
-        description="Repository root to analyze (default: the MCP file root).",
+        description="Repo root (default: MCP file root).",
+    )
+    force: bool = Field(
+        default=False,
+        description="Regenerate even when current.",
     )
 
 
@@ -1011,6 +1053,8 @@ class GenerateDepgraphResult(BaseModel):
     ok: bool
     returncode: int
     gitnexus_dir: str | None = None
+    generated: bool = False
+    state_before: DepgraphState | None = None
     message: str
     agent_contract: AgentContract | None = None
     error: str | None = None

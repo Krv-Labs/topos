@@ -118,6 +118,119 @@ def test_generate_success(tmp_path, monkeypatch) -> None:
     assert r.agent_contract.next_tool == "topos_evaluate_file"
 
 
+def test_generate_skips_when_graph_present(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.PRESENT.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=1.0,
+            detail=None,
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(
+        depgraph_tool,
+        "generate_depgraph",
+        lambda _d: pytest.fail("generate_depgraph should not be called"),
+    )
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert r.ok is True
+    assert r.generated is False
+    assert r.state_before == DepgraphState.PRESENT
+    assert r.gitnexus_dir == str(gitnexus)
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_force_runs_when_graph_present(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    monkeypatch.setattr(
+        depgraph_tool,
+        "depgraph_status",
+        lambda *_args: pytest.fail("force=True should skip the status precheck"),
+    )
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput(force=True)))
+
+    assert calls == [tmp_path]
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before is None
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_runs_once_when_graph_stale(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.STALE.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=2.0,
+            detail="stale",
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert calls == [tmp_path]
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before == DepgraphState.STALE
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_blocks_schema_mismatch_by_default(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.SCHEMA_MISMATCH.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=2.0,
+            detail="schema mismatch",
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(
+        depgraph_tool,
+        "generate_depgraph",
+        lambda _d: pytest.fail("schema mismatch should block by default"),
+    )
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert r.ok is False
+    assert r.generated is False
+    assert r.state_before == DepgraphState.SCHEMA_MISMATCH
+    assert "gitnexus_schema_mismatch" in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool is None
+
+
 def test_generate_failure_when_gitnexus_missing(tmp_path, monkeypatch) -> None:
     _use_root(tmp_path, monkeypatch)
     monkeypatch.setattr(
@@ -128,7 +241,9 @@ def test_generate_failure_when_gitnexus_missing(tmp_path, monkeypatch) -> None:
     r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
     assert r.ok is False
     assert r.error == "GitNexus not found."
+    assert r.generated is False
     assert "gitnexus_generate_failed" in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool is None
 
 
 def test_build_agent_contract_flags_stale_graph() -> None:

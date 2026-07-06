@@ -10,8 +10,10 @@ Maps CFG and AST observations into a
     score      = min(per-metric qualities)   # reporting only; does not gate achieved
 
 This is the categorical formulation of the math spec §3 "Policy
-Translation". Thresholds and normalization caps live in
-:mod:`topos.evaluation.policies.calibration`.
+Translation". Gate comparisons and interpretation prose live in
+:mod:`topos.evaluation.policies.gates`; thresholds and normalization caps in
+:mod:`topos.evaluation.policies.calibration`. Only the score-shaping quality
+curves remain local.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from topos.evaluation.policies.base import (
     ScoredDecision,
 )
 from topos.evaluation.policies.calibration import SIMPLE
+from topos.evaluation.policies.gates import evaluate_gates, interpret_metric
 
 
 def score_simple(
@@ -49,54 +52,41 @@ def score_simple(
         A ScoredDecision; ``achieved`` is the truth value of the SIMPLE
         generator for this program.
     """
-    achieved = True
-    interp: dict[str, str] = {}
-    qualities: list[float] = []
-
-    # 1. CFG Cyclomatic Complexity
-    if cyclomatic is not None:
-        quality = 1.0 - min(cyclomatic / SIMPLE.max_cyclomatic_cap, 1.0)
-        qualities.append(quality)
-        if cyclomatic > SIMPLE.max_cyclomatic:
-            achieved = False
-        interp["cfg.cyclomatic"] = _cyclomatic_interpretation(cyclomatic, quality)
-
-    # 2. AST Entropy
-    if entropy is not None:
-        quality = max(0.0, 1.0 - 2.0 * abs(entropy - SIMPLE.entropy_ideal))
-        qualities.append(quality)
-        if not (SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy) and not (
-            is_entrypoint_module and entropy < SIMPLE.min_entropy
-        ):
-            achieved = False
-        interp["ast.entropy"] = _entropy_interpretation(
-            entropy, quality, is_entrypoint_module=is_entrypoint_module
-        )
-
-    # 3. AST Max Function Complexity
-    if max_function_complexity is not None:
-        quality = 1.0 - min(
-            max_function_complexity / SIMPLE.max_function_complexity_cap, 1.0
-        )
-        qualities.append(quality)
-        if max_function_complexity > SIMPLE.max_function_complexity:
-            achieved = False
-        interp["ast.max_function_complexity"] = _max_func_interpretation(
-            max_function_complexity, quality
-        )
-
-    if not qualities:
+    metrics = {
+        key: value
+        for key, value in {
+            "cfg.cyclomatic": cyclomatic,
+            "ast.entropy": entropy,
+            "ast.max_function_complexity": max_function_complexity,
+        }.items()
+        if value is not None
+    }
+    results = evaluate_gates(
+        metrics, pillar="simple", is_entrypoint_module=is_entrypoint_module
+    )
+    if not results:
         # If no metrics are provided, we vacuously satisfy SIMPLE.
         return ScoredDecision(score=1.0, achieved=True, interpretation={})
 
-    # The combined score is the minimum of the individual qualities (conservative AND).
-    simple_score = min(qualities)
+    # Score shaping (reporting only): quality curves stay local to Φ_SIMPLE.
+    qualities = [_quality(r.spec.metric, r.value) for r in results]
 
     return ScoredDecision(
-        score=simple_score,
-        achieved=achieved,
-        interpretation=interp,
+        # The combined score is the minimum of the individual qualities
+        # (conservative AND).
+        score=min(qualities),
+        achieved=all(r.passed for r in results),
+        interpretation={r.spec.metric: r.interpretation for r in results},
     )
+
+
+def _quality(metric: str, value: float) -> float:
+    """Normalize one raw metric to a [0, 1] quality (never gates achieved)."""
+    if metric == "cfg.cyclomatic":
+        return 1.0 - min(value / SIMPLE.max_cyclomatic_cap, 1.0)
+    if metric == "ast.entropy":
+        return max(0.0, 1.0 - 2.0 * abs(value - SIMPLE.entropy_ideal))
+    return 1.0 - min(value / SIMPLE.max_function_complexity_cap, 1.0)
 
 
 def build_omega() -> Omega:
@@ -106,52 +96,4 @@ def build_omega() -> Omega:
 
 def describe_entropy_ratio(entropy: float) -> str:
     """Describe a raw AST entropy ratio using SIMPLE policy language."""
-    quality = max(0.0, 1.0 - 2.0 * abs(entropy - SIMPLE.entropy_ideal))
-    return _entropy_interpretation(entropy, quality)
-
-
-# ---------------------------------------------------------------------------
-# Private interpretation helpers
-# ---------------------------------------------------------------------------
-
-
-def _cyclomatic_interpretation(raw: float, quality: float) -> str:
-    if raw <= SIMPLE.max_cyclomatic:
-        return (
-            f"cyclomatic complexity ({raw:.0f}) within threshold "
-            f"(<= {SIMPLE.max_cyclomatic})"
-        )
-    return (
-        f"cyclomatic complexity ({raw:.0f}) exceeds threshold "
-        f"(> {SIMPLE.max_cyclomatic})"
-    )
-
-
-def _max_func_interpretation(raw: float, quality: float) -> str:
-    if raw <= SIMPLE.max_function_complexity:
-        return (
-            f"max function complexity ({raw:.0f}) within threshold "
-            f"(<= {SIMPLE.max_function_complexity})"
-        )
-    return (
-        f"max function complexity ({raw:.0f}) exceeds threshold "
-        f"(> {SIMPLE.max_function_complexity})"
-    )
-
-
-def _entropy_interpretation(
-    entropy: float, quality: float, *, is_entrypoint_module: bool = False
-) -> str:
-    if SIMPLE.min_entropy <= entropy <= SIMPLE.max_entropy:
-        return (
-            f"entropy ({entropy:.2f}) within structured range "
-            f"[{SIMPLE.min_entropy}, {SIMPLE.max_entropy}]"
-        )
-    if entropy < SIMPLE.min_entropy:
-        if is_entrypoint_module:
-            return (
-                f"entropy ({entropy:.2f}) is low, but tolerated for "
-                "import/export-only entrypoint modules"
-            )
-        return f"entropy ({entropy:.2f}) is too low; code may be repetitive or trivial"
-    return f"entropy ({entropy:.2f}) is too high; code may be unstructured"
+    return interpret_metric("ast.entropy", entropy)

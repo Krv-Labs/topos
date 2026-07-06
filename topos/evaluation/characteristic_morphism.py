@@ -169,6 +169,9 @@ class ClassificationResult:
         priority:        Generator emphasis label (metadata / guidance).
         raw_metrics:     All raw metric floats, namespaced by representation.
         interpretation:  Per-metric interpretation strings.
+        is_entrypoint_module: Whether the source is an import/export-only
+                         entrypoint module (drives gate exemptions; see
+                         :mod:`topos.evaluation.policies.gates`).
     """
 
     is_parseable: bool
@@ -178,6 +181,7 @@ class ClassificationResult:
     priority: Priority = field(default=Priority.SECURE)
     raw_metrics: dict[str, float] = field(default_factory=dict)
     interpretation: dict[str, str] = field(default_factory=dict)
+    is_entrypoint_module: bool = False
 
     def summary(self) -> EvaluationValue:
         """The overall Ω element χ_S(P)."""
@@ -301,6 +305,7 @@ class CharacteristicMorphism:
             priority=priority,
             raw_metrics=raw_metrics,
             interpretation=interpretation,
+            is_entrypoint_module=is_entrypoint,
         )
 
     def combine(self, *values: EvaluationValue) -> EvaluationValue:

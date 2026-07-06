@@ -16,7 +16,13 @@ from .security_findings import security_findings
 
 @dataclass(frozen=True)
 class SecurityOverlay:
-    """Allowlist-aware security diagnostics for one evaluation."""
+    """Allowlist-aware security diagnostics for one evaluation.
+
+    Always carries the true active findings — routing (agent contracts,
+    suggestions, refactor targets) must never be blinded by an output-size
+    preference. Payload gating (``include_security_findings``) is applied
+    where results are shaped, e.g. ``to_evaluation_result``.
+    """
 
     active_findings: list[SecurityFinding]
     acknowledged_risks: list[AcknowledgedRisk]
@@ -56,7 +62,6 @@ def overlay_for_file(
     result: ClassificationResult,
     *,
     allows: list[str] | None = None,
-    include_security_findings: bool,
 ) -> SecurityOverlay | None:
     """Apply the project/one-off allowlist over a file classification."""
     if not result.is_parseable:
@@ -68,9 +73,8 @@ def overlay_for_file(
     cpg = ProgramMorphism.from_file(path).build_cpg()
     findings = security_findings(cpg)
     verdict = apply_allowlist(result, findings, config, file_path=str(path), cpg=cpg)
-    active = verdict.active_findings if include_security_findings else []
     return SecurityOverlay(
-        active, _acknowledged_to_models(verdict.acknowledged), verdict
+        verdict.active_findings, _acknowledged_to_models(verdict.acknowledged), verdict
     )
 
 
@@ -81,7 +85,6 @@ def overlay_for_source(
     *,
     file_path: Path | None = None,
     allows: list[str] | None = None,
-    include_security_findings: bool,
 ) -> SecurityOverlay | None:
     """Apply the project/one-off allowlist over an in-memory classification."""
     if not result.is_parseable:
@@ -99,7 +102,6 @@ def overlay_for_source(
         file_path=str(file_path) if file_path is not None else None,
         cpg=cpg,
     )
-    active = verdict.active_findings if include_security_findings else []
     return SecurityOverlay(
-        active, _acknowledged_to_models(verdict.acknowledged), verdict
+        verdict.active_findings, _acknowledged_to_models(verdict.acknowledged), verdict
     )

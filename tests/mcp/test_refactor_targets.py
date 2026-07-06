@@ -138,6 +138,36 @@ def test_evaluate_file_returns_security_target_first_when_preferred(
     assert "replace_dynamic_execution" in target.recommended_operations
 
 
+def test_evaluate_file_hidden_security_findings_still_route_security_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp.schemas import UserPreferencesInput
+
+    _use_root(tmp_path, monkeypatch)
+    (tmp_path / "danger.py").write_text(
+        _COMPLEX_FN + "\ndef danger(expr):\n    return eval(expr)\n",
+        encoding="utf-8",
+    )
+
+    result = _eval(
+        topos_evaluate_file(
+            EvaluateFileInput(
+                filepath="danger.py",
+                include_security_findings=False,
+                refactor_targets=5,
+                preferences=UserPreferencesInput(ranking=_PREF_SECURE_FIRST),
+            )
+        )
+    )
+
+    assert result.security_findings == []
+    assert result.refactor_targets
+    assert result.refactor_targets[0].kind == "security_call"
+    assert result.agent_contract is not None
+    assert "active_security_findings" in result.agent_contract.risk_flags
+    assert any(s.pillar == "secure" for s in result.suggestions)
+
+
 def test_evaluate_file_refactor_targets_preserve_gitnexus_blocker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

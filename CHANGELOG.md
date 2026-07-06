@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Suggestion/remediation matching**: longest-key suffix matching fixes `subprocess.Popen` resolving to `os.popen` advice; deserialization (`pickle.loads`, `yaml.load`, `marshal.loads`) and JS timer APIs gain specific operation tokens.
 - `RefactorTarget.verify_with` removed — verification guidance lives once on `agent_contract.verification_gates`; per-target `constraints` slimmed to kind-specific lines.
 - Agent-contract invariant documented and enforced: `next_tool`/`next_actions` never contradict `blocked_by`; when a target coexists with a setup blocker, `next_actions` carries both the edit step and the setup remedy (regression-tested in `tests/mcp/test_contract_invariant.py`).
+- **`include_security_findings` is now a payload gate, never a routing gate**: the security overlay always carries the true active findings, and redaction happens only where results are shaped (`to_evaluation_result`, project file entries). Hiding findings no longer suppresses security refactor targets, secure suggestions, or the `active_security_findings` risk flag — assess and project contracts derive that flag from the allowlist-adjusted verdict (`secure_adjusted is False`) instead of the redactable payload list.
 
 ## [0.3.9] - 2026-07-06
 

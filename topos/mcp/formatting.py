@@ -394,6 +394,7 @@ def to_evaluation_result(
     metric_locations: dict[str, list[FunctionEntry]] | None = None,
     refactor_targets: list[RefactorTarget] | None = None,
     offer_refactor_targets: bool = False,
+    include_security_findings: bool = True,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
 
@@ -403,6 +404,11 @@ def to_evaluation_result(
     ``interpretation`` make up ~55% of the default structured payload, and
     clients routinely inject ``structured_content`` into context, so gating both
     channels (not just the markdown) is what earns the keep here.
+
+    ``include_security_findings`` gates only the ``security_findings`` payload
+    field (an output-size lever). Routing and guidance — the agent contract's
+    risk flags, suggestions, and refactor targets — always derive from the
+    true findings so a compact output can never misroute a secure-first agent.
     """
     summary = (
         adjusted_verdict.adjusted_element if adjusted_verdict else result.summary()
@@ -480,7 +486,8 @@ def to_evaluation_result(
         metric_locations=metric_locations or {},
         warnings=warnings or [],
         agent_contract=agent_contract,
-        security_findings=active_findings,
+        # Payload only: routing above always saw the true findings.
+        security_findings=active_findings if include_security_findings else [],
         acknowledged_risks=risks,
         raw_lattice_element=(
             lattice_to_str(adjusted_verdict.raw_element) if adjusted_verdict else None

@@ -96,15 +96,13 @@ def _evaluate_single_file(
 
     is_parse_failure = not result.is_parseable
     warnings: list[str] = []
-    overlay = overlay_for_file(
-        path,
-        result,
-        allows=allows,
-        include_security_findings=include_security_findings,
-    )
+    overlay = overlay_for_file(path, result, allows=allows)
     adjusted = overlay.verdict if overlay else None
     result_for_rollup = _adjusted_result(result, overlay)
 
+    # Payload gate only — the entry's secure_raw/secure_adjusted verdict
+    # fields still carry the routing signal when findings are hidden.
+    findings = overlay.active_findings if overlay else []
     entry = ProjectFileEntry(
         filepath=str(path.relative_to(resolved_root)),
         language=detect_language(path),
@@ -113,7 +111,7 @@ def _evaluate_single_file(
         pillars=build_pillars(result_for_rollup, dep_graph is not None),
         raw_metrics=dict(result.raw_metrics),
         warnings=warnings,
-        security_findings=overlay.active_findings if overlay else [],
+        security_findings=findings if include_security_findings else [],
         acknowledged_risks=overlay.acknowledged_risks if overlay else [],
         raw_lattice_element=(
             lattice_to_str(adjusted.raw_element) if adjusted else None
@@ -524,7 +522,10 @@ def _project_contract(
         risk_flags.append("warnings")
     if any(f.grade_capped for f in worst_files):
         risk_flags.append("grade_capped")
-    if any(f.security_findings for f in worst_files):
+    # Verdict-anchored, not payload-anchored: secure_adjusted is False exactly
+    # when active findings survive the allowlist, and it is unaffected by the
+    # include_security_findings payload gate.
+    if any(f.secure_adjusted is False for f in worst_files):
         risk_flags.append("active_security_findings")
 
     verification_gates = [

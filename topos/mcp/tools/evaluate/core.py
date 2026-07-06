@@ -98,7 +98,6 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
                 params.language,
                 result,
                 allows=params.allow,
-                include_security_findings=True,
             )
         ),
         verbose=params.verbose,
@@ -184,12 +183,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         gitnexus_dir,
         dep_graph_loaded=dep_graph is not None,
     )
-    overlay = overlay_for_file(
-        resolved,
-        result,
-        allows=params.allow,
-        include_security_findings=params.include_security_findings,
-    )
+    overlay = overlay_for_file(resolved, result, allows=params.allow)
     source, _ = read_safe_utf8_file(resolved)
     locations = (
         build_metric_locations(source, detect_language(resolved), result)
@@ -219,5 +213,6 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         metric_locations=locations,
         refactor_targets=targets,
         offer_refactor_targets=targets is None,
+        include_security_findings=params.include_security_findings,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

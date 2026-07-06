@@ -33,9 +33,19 @@ PYINSTALLER_ARGS=(
   --add-data topos/mcp/resources/content:topos/mcp/resources/content
 )
 
+# Derive hidden imports from the lazy-export table. Capture into a variable
+# first: a command substitution failure aborts under `set -e`, and the
+# emptiness guard catches a helper that exits 0 but prints nothing (a renamed
+# `_LAZY_EXPORTS`, an import error). Process substitution would hide both,
+# silently shipping a binary with no hidden imports.
+hidden_imports="$(uv run python scripts/lazy_exports.py)"
+if [[ -z "${hidden_imports}" ]]; then
+  echo "error: scripts/lazy_exports.py produced no hidden imports" >&2
+  exit 1
+fi
 while IFS= read -r module; do
   PYINSTALLER_ARGS+=(--hidden-import "${module}")
-done < <(uv run python scripts/lazy_exports.py)
+done <<< "${hidden_imports}"
 
 if [[ "$(uname -s)" == "Darwin" && -n "${CODESIGN_IDENTITY:-}" ]]; then
   PYINSTALLER_ARGS+=(

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **MCP refactor targets in `topos_evaluate_file`**: `refactor_targets: int = 0` (0 = off, N = cap) returns up to N ranked edit targets — concrete spans with the failing metric, current value vs. threshold, and `recommended_operations` tokens — without a new MCP tool. The agent contract routes targets natively (`next_tool = topos_assess_worktree_change` plus an `edit target …` action) and, when targets were not requested and the verdict is below IDEAL, advertises the option in `next_actions`.
+- **Canonical gate specs** (`topos/evaluation/policies/gates.py`): one structured table (pillar, band, granularity, exemption predicates, operation tokens, interpretation prose) now drives the scorers' gate decisions, the suggestion engine, interpretation strings, and refactor targets. Verdict-preserving by construction (characterization grid in `tests/evaluation/test_gate_parity.py`); the entrypoint-module carve-outs are expressed once, so suggestions and targets no longer fire on gates the scorer passes.
+- **Consolidated security guidance** (`topos/evaluation/security_guidance.py`): a single dangerous-API → (prose, operations) table, suffix-matched with the danger probe's own matcher, shared by suggestions and refactor targets. A registry-coverage test guarantees every `DANGEROUS_APIS` entry resolves to specific guidance.
+- **Ensure-style `topos_generate_depgraph(force=False)`**: no-ops when the graph is current, regenerates when missing/stale/unloadable, and blocks on schema mismatch; `force=true` always regenerates. Results carry `generated` and `state_before`.
+
+### Changed
+
+- **Depgraph freshness now sees the working tree** (fingerprint v2): generation records `{head_sha, generated_at}`, and staleness also triggers when any discovered source file was modified after generation — so the evaluate → edit-in-place → assess loop no longer scores COMPOSABLE against a pre-edit graph, and the ensure default regenerates instead of no-opping. v1 fingerprints keep the old SHA-only behavior; non-git dirs now get a sha-less marker so mtime freshness works there too.
+- **`SCHEMA_MISMATCH` guidance no longer routes to plain regeneration**: the store was written by a newer GitNexus than the embedded ladybug reads, so regenerating cannot fix it. `topos_depgraph_status` now sets `next_tool = None` with upgrade-Topos / downgrade-GitNexus guidance, matching the generate tool's block message.
+- **Suggestion/remediation matching**: longest-key suffix matching fixes `subprocess.Popen` resolving to `os.popen` advice; deserialization (`pickle.loads`, `yaml.load`, `marshal.loads`) and JS timer APIs gain specific operation tokens.
+- `RefactorTarget.verify_with` removed — verification guidance lives once on `agent_contract.verification_gates`; per-target `constraints` slimmed to kind-specific lines.
+- Agent-contract invariant documented and enforced: `next_tool`/`next_actions` never contradict `blocked_by`; when a target coexists with a setup blocker, `next_actions` carries both the edit step and the setup remedy (regression-tested in `tests/mcp/test_contract_invariant.py`).
+
 ## [0.3.8] - 2026-07-04
 
 ### Fixed

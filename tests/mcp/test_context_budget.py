@@ -30,7 +30,10 @@ from topos.mcp.server import _get_mcp
 
 # Ratchets: keep the tool discovery surface below the repo target while leaving
 # room for small schema changes; lower again as later phases shrink the schemas.
-TOTAL_CEILING_CHARS = 34_000
+# Baseline measured 2026-07-06: 33,736 chars. Ceiling = measured + ~750,
+# rounded to the nearest 250 — the headroom is deliberate; re-derive it the
+# same way whenever the measured surface moves.
+TOTAL_CEILING_CHARS = 34_500
 
 PER_TOOL_CEILING_CHARS = 4_500
 

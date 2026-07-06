@@ -11,10 +11,10 @@ def _coverage(tool_result) -> CoverageResult:
     return CoverageResult.model_validate(tool_result.structured_content)
 
 
-def test_calculate_coverage_uast_and_topological() -> None:
+def test_calculate_coverage_uast() -> None:
     inp = CalculateCoverageInput(
-        put_files=["tests/fixtures/ect_coverage/tiny_put.py"],
-        test_files=["tests/fixtures/ect_coverage/tiny_test.py"],
+        put_files=["tests/fixtures/coverage/tiny_put.py"],
+        test_files=["tests/fixtures/coverage/tiny_test.py"],
         k=3,
     )
     result = _coverage(topos_calculate_coverage(inp))
@@ -22,21 +22,12 @@ def test_calculate_coverage_uast_and_topological() -> None:
     assert result.error is None
     assert result.put_declaration_count >= 1
     assert result.mean_declaration_coverage >= 0.0
-    assert result.topological_coverage is not None
-
-    topo = result.topological_coverage
-    if topo.unavailable:
-        assert topo.reason
-        assert "ect-coverage" in topo.reason.lower()
-    else:
-        assert topo.coverage_score is not None
-        assert topo.scoped_node_count is not None
 
 
 def test_calculate_coverage_markdown_content_and_structured() -> None:
     inp = CalculateCoverageInput(
-        put_files=["tests/fixtures/ect_coverage/tiny_put.py"],
-        test_files=["tests/fixtures/ect_coverage/tiny_test.py"],
+        put_files=["tests/fixtures/coverage/tiny_put.py"],
+        test_files=["tests/fixtures/coverage/tiny_test.py"],
         k=3,
     )
     tr = topos_calculate_coverage(inp)

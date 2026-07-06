@@ -17,7 +17,7 @@ from topos.evaluation.characteristic_morphism import (
     ClassificationResult,
 )
 from topos.evaluation.policies.base import Priority
-from topos.graphs.ast.dispatch import LANGUAGE_FILE_SUFFIXES
+from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
 from topos.utils.discovery import collect_source_files
 
 from ...diagnostics import overlay_for_file

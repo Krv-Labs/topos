@@ -79,40 +79,19 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
         run: |
-          PYINSTALLER_ARGS=(
-            --name topos
-            --onefile
-            --clean
-            --collect-all tree_sitter
-            --collect-all tree_sitter_python
-            --collect-all tree_sitter_rust
-            --collect-all tree_sitter_javascript
-            --collect-all tree_sitter_cpp
-            --collect-all tree_sitter_typescript
-            --collect-all topos
-            --collect-all fastmcp
-            --collect-all ladybug
-            --collect-all onnxruntime
-            --collect-all fastembed
-            --collect-all trailed
-            --copy-metadata fastmcp
-            --copy-metadata fastembed
-            --add-data Cargo.toml:.
-          )
-
-          # onefile embeds dylibs in the archive; they must be signed during
-          # collection with the same Developer ID as the outer executable.
-          if [ "$(uname -s)" = "Darwin" ] && [ -n "${CODESIGN_IDENTITY:-}" ]; then
-            PYINSTALLER_ARGS+=(
-              --codesign-identity "${CODESIGN_IDENTITY}"
-              --osx-entitlements-file packaging/macos-entitlements.plist
-            )
-          fi
-
-          uv run --with pyinstaller pyinstaller "${PYINSTALLER_ARGS[@]}" topos/cli/main.py
+          chmod +x scripts/build-binary.sh
+          ./scripts/build-binary.sh
 
       - name: Rename binary with platform suffix
-        run: mv dist/topos dist/topos-${{ matrix.target }}
+        run: mv dist/topos "dist/topos-${{ matrix.target }}"
+
+      - name: Dogfood release binary
+        env:
+          TOPOS_BINARY: dist/topos-${{ matrix.target }}
+          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
+        run: |
+          chmod +x "$TOPOS_BINARY"
+          uv run pytest tests/packaging/ -v --no-cov
 
       - name: Sign macOS binary
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
@@ -123,10 +102,12 @@ jobs:
             exit 0
           fi
 
+          BINARY_PATH="dist/topos-${{ matrix.target }}"
+
           codesign --force --options runtime --timestamp \
             --entitlements packaging/macos-entitlements.plist \
-            --sign "$CODESIGN_IDENTITY" "dist/topos-${{ matrix.target }}"
-          codesign --verify --strict --verbose=2 "dist/topos-${{ matrix.target }}"
+            --sign "$CODESIGN_IDENTITY" "${BINARY_PATH}"
+          codesign --verify --strict --verbose=2 "${BINARY_PATH}"
 
       - name: Notarize macOS binary archive
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
@@ -140,8 +121,11 @@ jobs:
             exit 0
           fi
 
-          ditto -c -k --keepParent "dist/topos-${{ matrix.target }}" "$RUNNER_TEMP/topos-${{ matrix.target }}.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/topos-${{ matrix.target }}.zip" \
+          BINARY_PATH="dist/topos-${{ matrix.target }}"
+          ARCHIVE_NAME="topos-${{ matrix.target }}"
+
+          ditto -c -k --keepParent "${BINARY_PATH}" "$RUNNER_TEMP/${ARCHIVE_NAME}.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/${ARCHIVE_NAME}.zip" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \

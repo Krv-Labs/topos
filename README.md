@@ -44,7 +44,7 @@ topos --version
 topos --help
 ```
 
-Every command also accepts `-h` / `--help`.
+Every command also accepts `-h` / `--help`. See [`docs/cli-startup-benchmarks.md`](docs/cli-startup-benchmarks.md) for release binary size and startup benchmarks.
 
 #### Evaluate code — the 60-second tour
 
@@ -110,7 +110,7 @@ topos coverage --tests tests/test_a.py --tests tests/test_b.py src/a.py src/b.py
 topos coverage --tests tests/test_foo.py topos/foo.py --coverage-threshold 0.8 --json
 ```
 
-Reports UAST **declaration coverage** by default. With the optional extra, it also reports **topological ECT coverage**: `uv pip install 'topos-mcp[ect-coverage]'`.
+Reports UAST **declaration coverage**: bipartite matching between PUT and test declarations at the structural level.
 
 #### Steer the verdict
 

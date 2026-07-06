@@ -11,6 +11,7 @@ crashes the command.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
@@ -19,14 +20,16 @@ from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.suggestions import Suggestion, suggest_refactors
 from topos.evaluation.suppression import AdjustedVerdict, apply_allowlist
-from topos.mcp.schemas import SecurityFinding
+
+if TYPE_CHECKING:
+    from topos.mcp.schemas import SecurityFinding
 
 _RULE = "-" * 40
 _KIND_LABEL = {"dangerous_call": "Dangerous Call", "taint_flow": "Taint Flow"}
 
 FindingsVerdict = tuple[
-    list[SecurityFinding],
-    list[tuple[SecurityFinding, object]],
+    list["SecurityFinding"],
+    list[tuple["SecurityFinding", object]],
     AdjustedVerdict,
 ]
 
@@ -37,6 +40,7 @@ def collect_findings_and_verdict(
     config: ToposConfig,
 ) -> FindingsVerdict:
     """Build security findings (lazily) and the raw/adjusted verdict for *path*."""
+
     dangerous = result.raw_metrics.get("cpg.dangerous_calls", 0.0)
     taint = result.raw_metrics.get("cpg.taint_flows", 0.0)
 

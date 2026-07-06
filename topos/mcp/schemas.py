@@ -451,9 +451,7 @@ class CalculateCoverageInput(_StrictModel):
         default=0.5,
         ge=0.0,
         le=1.0,
-        description=(
-            "Minimum threshold for declaration and topological coverage policies."
-        ),
+        description="Minimum threshold for the declaration coverage policy.",
     )
 
 
@@ -907,23 +905,6 @@ class InspectionResult(BaseModel):
     error: str | None = None
 
 
-class TopologicalCoverageResult(BaseModel):
-    """ECT-based topological semantic coverage (Experimental optional extra)."""
-
-    unavailable: bool = False
-    reason: str | None = None
-    distance: float | None = None
-    coverage_score: float | None = None
-    tested_functions: list[str] = Field(default_factory=list)
-    untested_functions: list[str] = Field(default_factory=list)
-    put_node_count: int | None = None
-    test_node_count: int | None = None
-    scoped_node_count: int | None = None
-    achieved: bool | None = None
-    threshold: float | None = None
-    interpretation: dict[str, str] = Field(default_factory=dict)
-
-
 class CoverageResult(BaseModel):
     """Structural test coverage report (v2)."""
 
@@ -954,7 +935,6 @@ class CoverageResult(BaseModel):
     )
     put_declaration_count: int
     test_declaration_count: int
-    topological_coverage: TopologicalCoverageResult | None = None
     warnings: list[str] = Field(default_factory=list)
     error: str | None = None
 

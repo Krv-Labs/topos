@@ -25,10 +25,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from topos.core.object import ProgramObject
-from topos.graphs.ast.dispatch import AstBackend, parse_source
 
 if TYPE_CHECKING:
     from topos.core.omega import EvaluationValue
+    from topos.graphs.ast.dispatch import AstBackend
     from topos.graphs.base import Representation
     from topos.graphs.cfg.object import ControlFlowGraph
     from topos.graphs.cpg.object import CodePropertyGraph
@@ -85,6 +85,8 @@ class ProgramMorphism:
         Raises:
             ValueError: If the language is not supported.
         """
+        from topos.graphs.ast.dispatch import parse_source
+
         parse_result = parse_source(
             source=self.source,
             language=self.language,

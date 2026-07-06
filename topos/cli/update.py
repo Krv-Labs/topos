@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 import click
 
-from topos import __version__
+from topos._version import __version__
 from topos.cli.installation import (
     InstallInfo,
     detect_install_info,

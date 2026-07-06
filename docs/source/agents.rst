@@ -210,20 +210,6 @@ Choose an agent path
       ``topos_generate_depgraph``. ``topos_evaluate_code`` can only score SIMPLE
       and SECURE because raw strings do not carry dependency-graph context.
 
-Semantic coverage setup
-~~~~~~~~~~~~~~~~~~~~~~~
-
-``topos_calculate_coverage`` always returns UAST structural coverage. To include
-topological ECT semantic coverage, install the optional Python extra in the
-environment that runs ``topos mcp``.
-
-.. code-block:: bash
-
-   uv pip install "topos-mcp[ect-coverage]"
-
-If the extra is missing, the tool still returns structural coverage and reports
-topological coverage as unavailable with an install hint.
-
 Setting Preferences
 -------------------
 
@@ -371,13 +357,9 @@ Structure & Coverage
    AST edit distance (topological drift) between two code strings.
 
 ``topos_calculate_coverage({"params": {"put_files": ..., "test_files": ..., "language": ..., "k": ..., "include_unknown": ..., "coverage_threshold": ...}})``
-   Calculates structural test coverage (UAST declaration matching and k-gram recall).
-   When ``ect-coverage`` dependencies are available, the response also includes
-   ``topological_coverage`` (ECT score, tested/untested functions, node counts).
-   Without the extra, UAST metrics are returned and topological fields report
-   ``unavailable`` with an install hint. Prefer **file-pair or module-scoped**
-   PUT/test sets rather than whole-repository merges. Coverage is a separate
-   signal; it does not change the SIMPLE / COMPOSABLE / SECURE lattice verdict.
+   Calculates structural test coverage (UAST declaration matching and k-gram
+   recall). Coverage is a separate signal; it does not change the
+   SIMPLE / COMPOSABLE / SECURE lattice verdict.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

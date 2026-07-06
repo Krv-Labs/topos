@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from topos.graphs.ast.dispatch import SUPPORTED_LANGUAGES, parse_source
+from topos.graphs.ast.languages import SUPPORTED_LANGUAGES
 
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
 
@@ -69,7 +69,9 @@ def coverage_cmd(
     output_json_flag: bool,
     coverage_threshold: float,
 ) -> None:
-    """Measure structural (UAST) and semantic (CPG Topological) test coverage."""
+    """Measure structural (UAST) test coverage."""
+    from topos.graphs.ast.dispatch import parse_source
+
     if kgram_length < 1:
         click.echo("Error: --k must be >= 1.", err=True)
         sys.exit(1)
@@ -92,7 +94,7 @@ def coverage_cmd(
             sys.exit(1)
         test_roots.append(result.uast_root)
 
-    # 1. Existing UAST declaration bipartite coverage
+    # UAST declaration bipartite coverage
     from topos.evaluation.policies.coverage import score_declaration_coverage
     from topos.functors.profunctors.uast.structural_test_coverage import (
         declaration_coverage,
@@ -106,76 +108,8 @@ def coverage_cmd(
     )
     decision = score_declaration_coverage(report, threshold=coverage_threshold)
 
-    # 2. CPG topological ECT coverage (optional extra)
-    from topos.evaluation.policies.coverage import score_topological_coverage
-    from topos.functors.profunctors.cpg.topological_coverage import (
-        ECT_COVERAGE_INSTALL_HINT,
-        ECTCoverageUnavailableError,
-        calculate_topological_coverage,
-        ect_coverage_available,
-    )
-    from topos.graphs.cpg.object import CodePropertyGraph
-
-    topo_report = None
-    topo_decision = None
-    topo_unavailable_reason: str | None = None
-
-    if ect_coverage_available():
-        # Build and merge CodePropertyGraphs
-        put_cpgs = []
-        for path in put_paths:
-            source = Path(path).read_text(encoding="utf-8")
-            result = parse_source(source=source, language=language, file=str(path))
-            if result.uast_root is not None:
-                put_cpgs.append(
-                    CodePropertyGraph.from_uast(result.uast_root, source=source)
-                )
-
-        test_cpgs = []
-        for path in test_paths:
-            source = Path(path).read_text(encoding="utf-8")
-            result = parse_source(source=source, language=language, file=str(path))
-            if result.uast_root is not None:
-                test_cpgs.append(
-                    CodePropertyGraph.from_uast(result.uast_root, source=source)
-                )
-
-        def merge_cpgs(cpgs: list[CodePropertyGraph]) -> CodePropertyGraph:
-            if not cpgs:
-                return CodePropertyGraph()
-            merged_nodes = {}
-            merged_edges = []
-            sources = []
-            for c in cpgs:
-                merged_nodes.update(c.nodes)
-                merged_edges.extend(c.edges)
-                if c.source:
-                    sources.append(c.source)
-            return CodePropertyGraph(
-                nodes=merged_nodes,
-                edges=merged_edges,
-                language=cpgs[0].language,
-                source="\n".join(sources),
-            )
-
-        put_cpg = merge_cpgs(put_cpgs)
-        test_cpg = merge_cpgs(test_cpgs)
-
-        try:
-            topo_report = calculate_topological_coverage(put_cpg, test_cpg)
-            topo_decision = score_topological_coverage(
-                topo_report, threshold=coverage_threshold
-            )
-        except ECTCoverageUnavailableError as exc:
-            topo_unavailable_reason = str(exc)
-    else:
-        topo_unavailable_reason = (
-            "Topological (ECT) coverage requires the optional ect-coverage extra. "
-            f"Install with: {ECT_COVERAGE_INSTALL_HINT}"
-        )
-
     # Actionable next steps — ranked test targets + a coverage goal.
-    suggested_targets = _suggested_test_targets(decision, topo_report)
+    suggested_targets = _suggested_test_targets(decision)
     coverage_goal = _coverage_goal(report, decision)
 
     if output_json_flag:
@@ -183,24 +117,6 @@ def coverage_cmd(
         payload.update(asdict(decision))
         payload["coverage_goal"] = coverage_goal
         payload["suggested_test_targets"] = suggested_targets
-        if topo_report is not None and topo_decision is not None:
-            payload["topological_coverage"] = {
-                "distance": topo_report.topological_distance,
-                "coverage_score": topo_report.topological_coverage_score,
-                "tested_functions": list(topo_report.tested_functions),
-                "untested_functions": list(topo_report.untested_functions),
-                "put_node_count": topo_report.put_node_count,
-                "test_node_count": topo_report.test_node_count,
-                "scoped_node_count": topo_report.scoped_node_count,
-                "achieved": topo_decision.achieved,
-                "threshold": topo_decision.threshold,
-                "interpretation": topo_decision.interpretation,
-            }
-        else:
-            payload["topological_coverage"] = {
-                "unavailable": True,
-                "reason": topo_unavailable_reason,
-            }
         payload["language"] = language
         payload["put_paths"] = list(put_paths)
         payload["test_paths"] = list(test_paths)
@@ -208,7 +124,7 @@ def coverage_cmd(
         return
 
     # Human-readable CLI formatting
-    click.echo("Topos Structural & Semantic Test Coverage")
+    click.echo("Topos Structural Test Coverage")
     click.echo(f"Language: {language}")
     click.echo(f"PUT files ({len(put_paths)}): {', '.join(put_paths)}")
     click.echo(f"Test files ({len(test_paths)}): {', '.join(test_paths)}")
@@ -245,38 +161,6 @@ def coverage_cmd(
         for loc, score in uncovered:
             click.echo(f"  {loc}  (best score: {score:.3f})")
 
-    click.echo()
-    click.echo("Topological CPG Semantic Coverage")
-    click.echo("-" * 52)
-    if topo_report is not None and topo_decision is not None:
-        score = topo_report.topological_coverage_score
-        dist = topo_report.topological_distance
-        click.echo(f"  Topological coverage score: {score:.4f}")
-        click.echo(f"  Topological ECT distance:   {dist:.4f}")
-        click.echo(f"  Topological threshold:      {topo_decision.threshold:.2f}")
-        click.echo(f"  Topological target met:     {str(topo_decision.achieved)}")
-        click.echo(f"  PUT CPG node count:         {topo_report.put_node_count}")
-        click.echo(f"  Test CPG node count:        {topo_report.test_node_count}")
-        click.echo(f"  Scoped PUT nodes (reach):   {topo_report.scoped_node_count}")
-
-        if topo_report.tested_functions:
-            click.echo()
-            click.echo(f"Tested PUT Functions ({len(topo_report.tested_functions)})")
-            click.echo("-" * 52)
-            for func in topo_report.tested_functions:
-                click.echo(f"  {func}")
-
-        if topo_report.untested_functions:
-            click.echo()
-            click.echo(
-                f"Untested PUT Functions ({len(topo_report.untested_functions)})"
-            )
-            click.echo("-" * 52)
-            for func in topo_report.untested_functions:
-                click.echo(f"  {func}")
-    else:
-        click.echo(f"  Unavailable: {topo_unavailable_reason}")
-
     # Actionable next steps.
     click.echo()
     click.echo("Suggested Next Steps")
@@ -311,10 +195,8 @@ def _coverage_goal(report: object, decision: object) -> str:
     )
 
 
-def _suggested_test_targets(
-    decision: object, topo_report: object
-) -> list[dict[str, object]]:
-    """Rank test targets worst-first: uncovered declarations then untested funcs."""
+def _suggested_test_targets(decision: object) -> list[dict[str, object]]:
+    """Rank test targets worst-first: lowest-recall uncovered declarations first."""
     targets: list[dict[str, object]] = []
     uncovered = sorted(
         decision.uncovered_declarations,  # type: ignore[attr-defined]
@@ -324,7 +206,4 @@ def _suggested_test_targets(
         targets.append(
             {"target": loc, "kind": "declaration", "best_score": round(score, 3)}
         )
-    if topo_report is not None:
-        for func in topo_report.untested_functions:  # type: ignore[attr-defined]
-            targets.append({"target": func, "kind": "function", "best_score": None})
     return targets

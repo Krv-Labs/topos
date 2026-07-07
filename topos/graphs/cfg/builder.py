@@ -376,8 +376,13 @@ def _function_body(callable_node: UASTNode) -> list[UASTNode]:
 def _if_branches(stmt: UASTNode) -> tuple[list[UASTNode], list[UASTNode]]:
     """Return ``(then_statements, else_statements)`` for an IfStmt.
 
-    UAST shape is consistently: predicate, then-body, optional else-content.
-    Grammars differ only in how the else-content is shaped:
+    The then-block is located by *kind* (the first block-container child),
+    not by a fixed position — the children preceding it vary by grammar and
+    aren't otherwise meaningful here: a bare predicate (most grammars), a
+    predicate plus an init-clause (Go's ``if x := f(); cond {}``, C++17's
+    ``if (init; cond) {}``), or a predicate with an intervening comment.
+    Everything after the then-block is else-content, one level of
+    unwrapping happening via ``_unwrap_to_statements`` either way:
 
     * Python / JS wrap it in an explicit ``else_clause`` / ``elif_clause``
       node, whose own children are the actual else statements (or, for
@@ -385,22 +390,17 @@ def _if_branches(stmt: UASTNode) -> tuple[list[UASTNode], list[UASTNode]]:
       intentionally flattened into one ``else_body`` bucket rather than
       nested; this is an existing, accepted structural approximation).
     * Go / C++ / Rust have no such wrapper: the child *is* either a plain
-      block (``else { ... }``) or a nested ``if_statement`` (``else if``),
-      appearing directly as the third child.
-
-    Both shapes are handled uniformly: the second post-predicate child (and
-    any further siblings) form the else-body, one level of unwrapping
-    happening either way via ``_unwrap_to_statements``.
+      block (``else { ... }``) or a nested ``if_statement`` (``else if``).
     """
-    if not stmt.children:
-        return [], []
-
     children = list(stmt.children)
-    if len(children) < 2:
+    then_idx = next(
+        (i for i, child in enumerate(children) if _is_block_container(child)), None
+    )
+    if then_idx is None:
         return [], []
 
-    then_body = _unwrap_to_statements([children[1]])
-    else_body = _unwrap_to_statements(children[2:]) if len(children) > 2 else []
+    then_body = _unwrap_to_statements([children[then_idx]])
+    else_body = _unwrap_to_statements(children[then_idx + 1 :])
     return then_body, else_body
 
 

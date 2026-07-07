@@ -110,6 +110,24 @@ def test_go_select_statement_creates_one_arm_per_case():
     assert kinds.count(EdgeKind.RETURN) == 2
 
 
+def test_go_if_with_init_clause_keeps_then_branch():
+    """`if x := f(); cond {}` has no wrapper grouping the init statement
+    with the condition, so the then-block is not the second child — it
+    must be located by kind, not position."""
+    src = (
+        "package main\n\n"
+        "func f(err error) int {\n"
+        "\tif err := g(); err != nil {\n"
+        "\t\treturn 1\n"
+        "\t}\n"
+        "\treturn 0\n"
+        "}\n"
+    )
+    cfg = _cfg(src)
+    then_block = next(b for b in cfg.blocks.values() if b.label == "if_then")
+    assert any(s.kind == "ReturnStmt" for s in then_block.statements)
+
+
 def test_go_for_loop_break_continue_resolve_to_loop_targets():
     src = (
         "package main\n\n"

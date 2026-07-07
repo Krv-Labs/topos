@@ -141,6 +141,11 @@ def test_break_continue_resolve_to_loop_targets():
             "fn f(x: i32) -> i32 { return x; }\n",
             "fn f(x: i32) -> i32 { if x > 0 { return 1; } return 0; }\n",
         ),
+        (
+            "go",
+            "func f(x int) int { return x }\n",
+            "func f(x int) int {\n\tif x > 0 {\n\t\treturn 1\n\t}\n\treturn 0\n}\n",
+        ),
     ],
 )
 def test_cyclomatic_grows_with_branching_across_languages(language, linear, branchy):

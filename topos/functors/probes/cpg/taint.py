@@ -57,6 +57,13 @@ TAINT_SOURCES: dict[str, set[str]] = {
         "getenv",
         "scanf",
     },
+    "go": {
+        "os.Getenv",
+        "os.Args",
+        "r.FormValue",
+        "r.URL",
+        "flag.String",
+    },
 }
 
 

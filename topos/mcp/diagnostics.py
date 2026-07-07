@@ -65,7 +65,9 @@ def overlay_for_file(
     if not _secure_failed(result):
         return None
 
-    cpg = ProgramMorphism.from_file(path).build_cpg()
+    from .evaluation import detect_language
+
+    cpg = ProgramMorphism.from_file(path, language=detect_language(path)).build_cpg()
     findings = security_findings(cpg)
     verdict = apply_allowlist(result, findings, config, file_path=str(path), cpg=cpg)
     active = verdict.active_findings if include_security_findings else []

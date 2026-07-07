@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import tree_sitter_cpp as ts_cpp
+import tree_sitter_go as ts_go
 import tree_sitter_javascript as ts_javascript
 import tree_sitter_python as ts_python
 import tree_sitter_rust as ts_rust
@@ -181,12 +182,29 @@ class CppParser:
         return tree.root_node
 
 
+@dataclass
+class GoParser:
+    """Parser for Go source code using tree-sitter."""
+
+    language: str = "go"
+
+    def __post_init__(self) -> None:
+        self._language = Language(ts_go.language())
+        self._parser = Parser(self._language)
+
+    def parse(self, source: str) -> Node:
+        source_bytes = source.encode("utf-8")
+        tree = self._parser.parse(source_bytes)
+        return tree.root_node
+
+
 _default_python_parser: PythonParser | None = None
 _default_rust_parser: RustParser | None = None
 _default_javascript_parser: JavaScriptParser | None = None
 _default_cpp_parser: CppParser | None = None
 _default_typescript_parser: TypeScriptParser | None = None
 _default_tsx_parser: TypeScriptParser | None = None
+_default_go_parser: GoParser | None = None
 
 
 def get_python_parser() -> PythonParser:
@@ -247,6 +265,14 @@ def get_cpp_parser() -> CppParser:
     return _default_cpp_parser
 
 
+def get_go_parser() -> GoParser:
+    """Get the shared Go parser instance."""
+    global _default_go_parser
+    if _default_go_parser is None:
+        _default_go_parser = GoParser()
+    return _default_go_parser
+
+
 def parse_python(source: str) -> Node:
     """
     Parse Python source code into an AST.
@@ -290,6 +316,11 @@ def parse_typescript(source: str, file: str | None = None) -> Node:
 def parse_cpp(source: str) -> Node:
     """Parse C++ source code into an AST."""
     return get_cpp_parser().parse(source)
+
+
+def parse_go(source: str) -> Node:
+    """Parse Go source code into an AST."""
+    return get_go_parser().parse(source)
 
 
 def node_text(node: Node, source: str) -> str:

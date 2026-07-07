@@ -128,6 +128,30 @@ def test_go_if_with_init_clause_keeps_then_branch():
     assert any(s.kind == "ReturnStmt" for s in then_block.statements)
 
 
+def test_go_bare_for_loop_keeps_body():
+    """A condition-less `for { }` has a single named child (the block
+    itself), so slicing off "the first child" as the condition must not
+    slice away the entire body."""
+    src = (
+        "package main\n\n"
+        "func loop() int {\n"
+        "\ttotal := 0\n"
+        "\tfor {\n"
+        "\t\ttotal++\n"
+        "\t\tif total > 3 {\n"
+        "\t\t\tbreak\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\treturn total\n"
+        "}\n"
+    )
+    cfg = _cfg(src)
+    kinds = {e.kind for e in cfg.edges}
+    assert EdgeKind.BREAK in kinds
+    body_block = next(b for b in cfg.blocks.values() if b.label == "loop_body")
+    assert body_block.statements
+
+
 def test_go_for_loop_break_continue_resolve_to_loop_targets():
     src = (
         "package main\n\n"

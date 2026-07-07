@@ -405,12 +405,17 @@ def _if_branches(stmt: UASTNode) -> tuple[list[UASTNode], list[UASTNode]]:
 
 
 def _loop_body(stmt: UASTNode) -> list[UASTNode]:
-    """Extract loop-body statements, skipping test/iterator clauses."""
-    if not stmt.children:
-        return []
-    # The first child is the loop test / iterator binding.  Everything
-    # after is body — but the body is wrapped in a block.
-    return _unwrap_to_statements(stmt.children[1:])
+    """Extract loop-body statements, skipping test/iterator clauses.
+
+    The body is located by kind (the first block-container child), not by
+    position — a condition-less Go ``for { }`` has no leading test/clause
+    child at all, so the body is the *first* child rather than "everything
+    after the first child".
+    """
+    for child in stmt.children:
+        if _is_block_container(child):
+            return _unwrap_to_statements([child])
+    return []
 
 
 _CASE_ARM_NATIVE_KINDS = frozenset(

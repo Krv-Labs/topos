@@ -295,6 +295,7 @@ def inspect(
     from topos.core.morphism import ProgramMorphism
     from topos.evaluation.policies.simple import describe_entropy_ratio
     from topos.functors.probes.ast.entropy import calculate_kolmogorov_proxy
+    from topos.mcp.evaluation import detect_language
 
     # Use the first preference as the priority for CLI output
     if preferences:
@@ -303,7 +304,7 @@ def inspect(
             click.echo(f"Error: Invalid preference '{priority}'", err=True)
             sys.exit(1)
 
-    morphism = ProgramMorphism.from_file(path)
+    morphism = ProgramMorphism.from_file(path, language=detect_language(Path(path)))
     result = run_classify_file(Path(path), priority=priority, gitnexus_dir=gitnexus_dir)
 
     config = merge_cli_allows(load_topos_config(Path(path)), allows)

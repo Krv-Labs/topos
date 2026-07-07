@@ -270,6 +270,25 @@ def test_inspect_shows_security_findings_and_suggestions(tmp_path: Path):
     assert "Suggestions" in out
 
 
+def test_inspect_go_file_uses_go_cpg_for_security_findings(tmp_path: Path):
+    """`_build_cpg` must detect the file's language from its suffix, not
+    default to Python — otherwise a non-Python CPG build silently finds
+    nothing and every dangerous call goes unreported."""
+    f = tmp_path / "danger.go"
+    f.write_text(
+        'package main\n\nimport "os/exec"\n\n'
+        "func run(cmd string) {\n\texec.Command(cmd).Run()\n}\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["inspect", str(f)])
+    assert result.exit_code == 0
+    out = _strip_ansi(result.output)
+    assert "Security Findings" in out
+    assert "exec.Command" in out
+
+
 def test_inspect_allowlist_flips_verdict_and_caps_grade(tmp_path: Path):
     f = tmp_path / "conf.py"
     f.write_text("import yaml\ndef g(p):\n    return yaml.load(p)\n", encoding="utf-8")

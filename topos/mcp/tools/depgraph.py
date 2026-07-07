@@ -151,13 +151,11 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
             )
             return to_tool_result(model, _render_generate_md(model))
         if state_before == DepgraphState.SCHEMA_MISMATCH:
-            message = (
-                status.detail
-                or "Graph store was written by a newer GitNexus than this Topos "
-                "can read. Upgrade Topos (bundled ladybug), or downgrade "
-                "GitNexus and regenerate with force=true; regenerating with "
-                "the current GitNexus will not fix it."
-            )
+            # Single source of truth for the guidance text/blocked_by code:
+            # _STATE_GUIDANCE (also used by topos_depgraph_status), so the two
+            # tools can't drift apart on SCHEMA_MISMATCH wording again.
+            action, _, blocked_code = _STATE_GUIDANCE[state_before]
+            message = status.detail or action
             model = GenerateDepgraphResult(
                 ok=False,
                 returncode=1,
@@ -166,12 +164,9 @@ def topos_generate_depgraph(params: GenerateDepgraphInput) -> ToolResult:
                 state_before=state_before,
                 message=message,
                 agent_contract=AgentContract(
-                    blocked_by=["gitnexus_schema_mismatch"],
+                    blocked_by=[blocked_code] if blocked_code else [],
                     risk_flags=["gitnexus_schema_mismatch", "composable_unavailable"],
-                    next_actions=[
-                        "upgrade Topos (bundled ladybug) so the graph loads, or "
-                        "downgrade GitNexus and regenerate with force=true"
-                    ],
+                    next_actions=[action],
                 ),
                 error=message,
             )

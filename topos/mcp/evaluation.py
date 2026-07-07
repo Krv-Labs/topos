@@ -185,14 +185,26 @@ def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
 # monorepo walk. The SHA anchor still catches commit-level drift there.
 _FRESHNESS_WALK_CAP = 20_000
 
+# Tolerance for the mtime-vs-generated_at comparison: generated_at is a
+# sub-second time.time() stamp, but filesystem mtimes can be truncated to
+# whole seconds (older HFS+, some network/FUSE mounts), and clocks between
+# the process and the filesystem can drift slightly. Comparing with a small
+# grace window trades a rare unnecessary regenerate for not silently missing
+# a real in-place edit made moments after generation.
+_MTIME_SKEW_TOLERANCE_S = 2.0
+
 
 def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
-    """First source file modified after *generated_at*, or None.
+    """First source file (or directory) modified after *generated_at*, or None.
 
     Stat-only walk over the same discovery pruning the evaluators use (skips
     .git/.gitnexus/venvs/node_modules/build dirs). Deliberately avoids the
     git-aware ignore checker — it shells out per path, which is unaffordable
     on every freshness probe.
+
+    Directories are stat'd too: deleting or renaming a file leaves no file of
+    its own to catch, but it does bump its parent directory's mtime, which a
+    file-only walk would silently miss.
     """
     from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
     from topos.utils.discovery import iter_source_files
@@ -200,13 +212,16 @@ def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
     suffixes = tuple(
         {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
     )
+    threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
     seen = 0
-    for path in iter_source_files(project_root, suffixes=suffixes):
-        seen += 1
-        if seen > _FRESHNESS_WALK_CAP:
-            return None
+    for path in iter_source_files(project_root, suffixes=suffixes, include_dirs=True):
+        is_file = path.suffix in suffixes
+        if is_file:
+            seen += 1
+            if seen > _FRESHNESS_WALK_CAP:
+                return None
         try:
-            if path.stat().st_mtime > generated_at:
+            if path.stat().st_mtime > threshold:
                 return path
         except OSError:
             continue

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -472,6 +473,42 @@ def test_freshness_v2_sha_less_marker_works_in_non_git_dir(tmp_path) -> None:
 
     assert is_stale is True
     assert "mod.py" in detail
+
+
+def test_freshness_v2_deleted_file_is_stale(tmp_path) -> None:
+    # A file removed after generation leaves no mtime of its own to catch,
+    # but it does bump its parent directory's mtime — the walk must check
+    # that too, or a deletion silently reads as fresh forever.
+    head = _commit_repo(tmp_path)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    extra = sub / "extra.py"
+    extra.write_text("y = 2\n", encoding="utf-8")
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    generated_at = time.time() - 5.0
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=generated_at)
+
+    extra.unlink()
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+
+
+def test_freshness_v2_tolerates_small_mtime_skew(tmp_path) -> None:
+    # generated_at is a sub-second time.time() stamp; filesystem mtimes can
+    # be coarser or drift slightly against the process clock. An edit inside
+    # the tolerance window must still read as stale, not silently as fresh.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    source_mtime = (tmp_path / "f.py").stat().st_mtime
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=source_mtime + 1.0)
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "f.py" in detail
 
 
 def test_generate_ensure_regenerates_after_in_place_edit(tmp_path, monkeypatch) -> None:

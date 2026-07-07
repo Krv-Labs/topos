@@ -34,11 +34,11 @@ def test_go_if_else_if_chain_creates_nested_decision():
         "package main\n\n"
         "func classify(n int) string {\n"
         "\tif n < 0 {\n"
-        "\t\treturn \"neg\"\n"
+        '\t\treturn "neg"\n'
         "\t} else if n == 0 {\n"
-        "\t\treturn \"zero\"\n"
+        '\t\treturn "zero"\n'
         "\t} else {\n"
-        "\t\treturn \"other\"\n"
+        '\t\treturn "other"\n'
         "\t}\n"
         "}\n"
     )
@@ -60,11 +60,11 @@ def test_go_tagless_switch_creates_one_arm_per_case():
         "func classify(n int) string {\n"
         "\tswitch {\n"
         "\tcase n < 0:\n"
-        "\t\treturn \"neg\"\n"
+        '\t\treturn "neg"\n'
         "\tcase n == 0:\n"
-        "\t\treturn \"zero\"\n"
+        '\t\treturn "zero"\n'
         "\tdefault:\n"
-        "\t\treturn \"pos\"\n"
+        '\t\treturn "pos"\n'
         "\t}\n"
         "}\n"
     )
@@ -80,9 +80,9 @@ def test_go_type_switch_creates_one_arm_per_case():
         "func typesw(x interface{}) string {\n"
         "\tswitch x.(type) {\n"
         "\tcase int:\n"
-        "\t\treturn \"int\"\n"
+        '\t\treturn "int"\n'
         "\tdefault:\n"
-        "\t\treturn \"other\"\n"
+        '\t\treturn "other"\n'
         "\t}\n"
         "}\n"
     )

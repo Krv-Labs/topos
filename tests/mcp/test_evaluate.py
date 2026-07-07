@@ -364,7 +364,7 @@ def test_evaluate_file_go_clean_snippet_passes_secure(
     path = tmp_path / "clean.go"
     path.write_text(
         "package main\n\n"
-        "import \"fmt\"\n\n"
+        'import "fmt"\n\n'
         "func greet(name string) string {\n"
         '\treturn fmt.Sprintf("Hello, %s!", name)\n'
         "}\n",

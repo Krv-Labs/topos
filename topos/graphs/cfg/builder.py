@@ -325,24 +325,30 @@ _STATEMENT_KINDS = frozenset(
     }
 )
 
+# Native tree-sitter node kinds for a Go switch/select case arm (tagged,
+# tagless, or type-switch) — also block containers, since each arm holds
+# its own statement list.
+_CASE_ARM_NATIVE_KINDS = frozenset(
+    {"expression_case", "type_case", "default_case", "communication_case"}
+)
+
 # Native tree-sitter node kinds that act as transparent block containers
 # (no UAST kind of their own — mapped to "Unknown").
-_BLOCK_NATIVE_KINDS = frozenset(
-    {
-        "block",
-        "suite",
-        "compound_statement",
-        "statement_block",
-        "function_body",
-        "do_statement",
-        "else_clause",
-        "elif_clause",
-        "statement_list",  # Go wraps a `block`'s statements one level deeper
-        "expression_case",  # Go `switch` arm (tagged or tagless)
-        "type_case",  # Go `switch x.(type)` arm
-        "default_case",  # Go `switch`/`select` default arm
-        "communication_case",  # Go `select` arm
-    }
+_BLOCK_NATIVE_KINDS = (
+    frozenset(
+        {
+            "block",
+            "suite",
+            "compound_statement",
+            "statement_block",
+            "function_body",
+            "do_statement",
+            "else_clause",
+            "elif_clause",
+            "statement_list",  # Go wraps a `block`'s statements one level deeper
+        }
+    )
+    | _CASE_ARM_NATIVE_KINDS
 )
 
 
@@ -416,11 +422,6 @@ def _loop_body(stmt: UASTNode) -> list[UASTNode]:
         if _is_block_container(child):
             return _unwrap_to_statements([child])
     return []
-
-
-_CASE_ARM_NATIVE_KINDS = frozenset(
-    {"expression_case", "type_case", "default_case", "communication_case"}
-)
 
 
 def _match_arms(stmt: UASTNode) -> list[UASTNode]:

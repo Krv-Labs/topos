@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from topos.utils.gitnexus import (
     DEFAULT_ANALYZE_TIMEOUT_S,
     GITNEXUS_FINGERPRINT_FILE,
@@ -60,15 +61,16 @@ def _fake_analyze(cmd, *args, **kwargs):
     return _REAL_RUN(cmd, *args, **kwargs)
 
 
-def test_missing_gitnexus_returns_structured_failure() -> None:
+def test_missing_gitnexus_returns_structured_failure(tmp_path: Path) -> None:
     with patch("topos.utils.gitnexus.gitnexus_available", return_value=False):
-        result = generate_depgraph(Path("/tmp"))
+        result = generate_depgraph(tmp_path)
     assert result.ok is False
     assert result.returncode == 127
     assert "npm install -g gitnexus" in result.message
 
 
-def test_timeout_is_converted_to_structured_failure() -> None:
+def test_timeout_is_converted_to_structured_failure(tmp_path: Path) -> None:
+    (tmp_path / "main.py").write_text("", encoding="utf-8")
     with (
         patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
         patch(
@@ -76,31 +78,33 @@ def test_timeout_is_converted_to_structured_failure() -> None:
             side_effect=subprocess.TimeoutExpired(cmd="gitnexus", timeout=300.0),
         ),
     ):
-        result = generate_depgraph(Path("/tmp"))
+        result = generate_depgraph(tmp_path)
     assert result.ok is False
     assert result.returncode == 124
     assert "timed out" in result.message
 
 
-def test_oserror_is_converted_to_structured_failure() -> None:
+def test_oserror_is_converted_to_structured_failure(tmp_path: Path) -> None:
+    (tmp_path / "main.py").write_text("", encoding="utf-8")
     with (
         patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
         patch("subprocess.run", side_effect=OSError("permission denied")),
     ):
-        result = generate_depgraph(Path("/tmp"))
+        result = generate_depgraph(tmp_path)
     assert result.ok is False
     assert result.returncode == 126
     assert "could not be executed" in result.message
 
 
-def test_default_timeout_passed_to_subprocess() -> None:
+def test_default_timeout_passed_to_subprocess(tmp_path: Path) -> None:
+    (tmp_path / "main.py").write_text("", encoding="utf-8")
     with (
         patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
         patch("subprocess.run") as mock_run,
     ):
         mock_run.return_value.returncode = 0
         mock_run.return_value.stdout = "ok"
-        generate_depgraph(Path("/tmp"))
+        generate_depgraph(tmp_path)
     # The first subprocess call is the gitnexus analyze (a later call is the
     # best-effort git rev-parse for the fingerprint, which has its own timeout).
     assert mock_run.call_args_list[0].kwargs["timeout"] == DEFAULT_ANALYZE_TIMEOUT_S
@@ -151,4 +155,40 @@ def test_generate_in_non_git_dir_writes_sha_less_fingerprint(tmp_path) -> None:
     payload = json.loads(marker.read_text(encoding="utf-8"))
     assert payload["head_sha"] is None
     assert payload["generated_at"] > 0
+    assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash
+
+
+def test_generate_skips_unreadable_source_dirs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "main.py").write_text("", encoding="utf-8")
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    (blocked / "hidden.py").write_text("", encoding="utf-8")
+    (tmp_path / ".gitnexus").mkdir()
+    original_is_dir = Path.is_dir
+    original_is_file = Path.is_file
+
+    def fake_is_dir(path: Path) -> bool:
+        if path == blocked:
+            raise PermissionError("blocked")
+        return original_is_dir(path)
+
+    def fake_is_file(path: Path) -> bool:
+        if path == blocked:
+            raise PermissionError("blocked")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_dir", fake_is_dir)
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+    with (
+        patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
+        patch("subprocess.run", side_effect=_fake_analyze),
+    ):
+        result = generate_depgraph(tmp_path)
+
+    assert result.ok is True
+    marker = tmp_path / ".gitnexus" / GITNEXUS_FINGERPRINT_FILE
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    assert payload["source_file_count"] == 1
     assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash

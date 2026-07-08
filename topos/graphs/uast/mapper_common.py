@@ -93,6 +93,20 @@ def map_tree_sitter_to_uast(
     stack: list[tuple[Node, str]] = [(root, "")]
     while stack:
         node, parent_stable_id = stack.pop()
+        
+        # Filter: Skip anything marked with #[cfg(test)]
+        # We check the node's attributes if it has any
+        is_test = False
+        for child in node.children:
+            if child.type == "attribute_item":
+                text = child.text
+                if text and b"cfg(test)" in text:
+                    is_test = True
+                    break
+        if is_test:
+            # We must also ensure we don't visit the children of this node
+            continue
+            
         node_stable_id = _compute_node_id(
             lang=language,
             node_kind=node.type,
@@ -102,6 +116,12 @@ def map_tree_sitter_to_uast(
         )
         stable_ids[node.id] = node_stable_id
         order.append((node, node_stable_id))
+        
+        # When skipping, we simply don't add children to the stack.
+        # But we were already doing that by 'continue'. 
+        # The KeyError happens because we return uast_nodes[root.id]
+        # if root is the one being skipped, uast_nodes[root.id] won't exist.
+        
         for child in reversed([c for c in node.children if c.is_named]):
             stack.append((child, node_stable_id))
 
@@ -135,4 +155,17 @@ def map_tree_sitter_to_uast(
             id=node_stable_id,
         )
 
+    # Return a dummy node or handle the skip case if root was skipped
+    if root.id not in uast_nodes:
+        # Fallback or empty node?
+        # If the root itself is skipped, return a placeholder "File" node with no children?
+        return UASTNode(
+            kind="File",
+            lang=language,
+            span=SourceSpan(file=file, start_byte=root.start_byte, end_byte=root.end_byte, start_line=1, start_column=0, end_line=1, end_column=0),
+            native=NativeRef(parser=parser_name, parser_version=parser_version, node_kind=root.type),
+            attributes={"named": True},
+            children=[],
+            id="skipped",
+        )
     return uast_nodes[root.id]

@@ -15,6 +15,7 @@ SIMPLE (← CFG), COMPOSABLE (← ModuleDependencyGraph), SECURE (← CPG).
 
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +28,7 @@ from topos.evaluation.characteristic_morphism import (
 from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
-from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE
+from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, source_fingerprint
 
 from .cache import dep_graph_for
 
@@ -162,6 +163,8 @@ class GraphFingerprint:
     head_sha: str | None
     generated_at: float | None
     finished_at: float | None = None
+    source_hash: str | None = None
+    source_file_count: int | None = None
 
 
 def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
@@ -172,6 +175,8 @@ def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
         sha = payload.get("head_sha")
         generated_at = payload.get("generated_at")
         finished_at = payload.get("finished_at")
+        source_hash = payload.get("source_hash")
+        source_file_count = payload.get("source_file_count")
     except (OSError, ValueError, AttributeError):
         return None
     return GraphFingerprint(
@@ -181,6 +186,10 @@ def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
         ),
         finished_at=(
             float(finished_at) if isinstance(finished_at, (int, float)) else None
+        ),
+        source_hash=source_hash if isinstance(source_hash, str) else None,
+        source_file_count=(
+            int(source_file_count) if isinstance(source_file_count, int) else None
         ),
     )
 
@@ -223,8 +232,12 @@ def _newer_source_file(
         {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
     )
     if finished_at is not None and fingerprint_mtime is not None:
-        drift = finished_at - fingerprint_mtime
-        threshold = generated_at - drift
+        if fingerprint_mtime % 1.0 == 0.0:
+            drift = int(finished_at) - fingerprint_mtime
+            threshold = int(generated_at) - drift
+        else:
+            drift = finished_at - fingerprint_mtime
+            threshold = generated_at - drift
     else:
         threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
     seen = 0
@@ -257,6 +270,16 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     graph DB mtime to the latest commit's mtime. Returns ``(is_stale, detail)``.
     """
     fingerprint = _read_graph_fingerprint(gitnexus_dir)
+    if fingerprint is not None and fingerprint.source_hash is not None:
+        current = source_fingerprint(project_root)
+        if current.content_hash != fingerprint.source_hash:
+            return True, (
+                f"{STALE_GITNEXUS_MARKER} — source tree content changed since "
+                "the dependency graph was generated; run 'topos depgraph "
+                "generate' before trusting COMPOSABLE."
+            )
+        return False, None
+
     graph_sha = fingerprint.head_sha if fingerprint else None
     head_sha = _git_head_sha(project_root)
     sha_anchored = graph_sha is not None and head_sha is not None
@@ -271,10 +294,8 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
         fingerprint_file = gitnexus_dir / GITNEXUS_FINGERPRINT_FILE
         fingerprint_mtime = None
         if fingerprint_file.exists():
-            try:
+            with contextlib.suppress(OSError):
                 fingerprint_mtime = fingerprint_file.stat().st_mtime
-            except OSError:
-                pass
         newer = _newer_source_file(
             project_root,
             generated_at=fingerprint.generated_at,

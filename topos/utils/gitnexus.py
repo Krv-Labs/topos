@@ -223,16 +223,18 @@ def _write_fingerprint(
     with contextlib.suppress(OSError, TypeError, ValueError):
         now = time.time()
         (gitnexus_path / GITNEXUS_FINGERPRINT_FILE).write_text(
-            json.dumps({
-                "head_sha": sha or None,
-                "generated_at": start_time or now,
-                "finished_at": now,
-                "source_hash": (
-                    source_snapshot.content_hash if source_snapshot else None
-                ),
-                "source_file_count": (
-                    source_snapshot.file_count if source_snapshot else None
-                ),
-            }),
+            json.dumps(
+                {
+                    "head_sha": sha or None,
+                    "generated_at": start_time or now,
+                    "finished_at": now,
+                    "source_hash": (
+                        source_snapshot.content_hash if source_snapshot else None
+                    ),
+                    "source_file_count": (
+                        source_snapshot.file_count if source_snapshot else None
+                    ),
+                }
+            ),
             encoding="utf-8",
         )

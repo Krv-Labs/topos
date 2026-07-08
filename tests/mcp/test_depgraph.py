@@ -439,13 +439,15 @@ def _write_snapshot_fingerprint(
 ) -> None:
     snapshot = source_fingerprint(root)
     (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({
-            "head_sha": head_sha,
-            "generated_at": generated_at,
-            "finished_at": finished_at,
-            "source_hash": snapshot.content_hash,
-            "source_file_count": snapshot.file_count,
-        }),
+        json.dumps(
+            {
+                "head_sha": head_sha,
+                "generated_at": generated_at,
+                "finished_at": finished_at,
+                "source_hash": snapshot.content_hash,
+                "source_file_count": snapshot.file_count,
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -558,11 +560,13 @@ def test_freshness_v2_tolerates_small_mtime_skew(tmp_path) -> None:
 
     # Write fingerprint file with generated_at=100.0, finished_at=100.0
     (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({
-            "head_sha": head,
-            "generated_at": 100.0,
-            "finished_at": 100.0,
-        }),
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 100.0,
+            }
+        ),
         encoding="utf-8",
     )
     # Set the fingerprint file mtime to 95.0, simulating a slow filesystem.
@@ -592,11 +596,13 @@ def test_freshness_v2_handles_pre_generation_mtimes_without_false_positives(
 
     # Write fingerprint file with generated_at=100.0, finished_at=100.0
     (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({
-            "head_sha": head,
-            "generated_at": 100.0,
-            "finished_at": 100.0,
-        }),
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 100.0,
+            }
+        ),
         encoding="utf-8",
     )
     # Set the fingerprint file mtime to 95.0, simulating a slow filesystem.
@@ -629,11 +635,13 @@ def test_freshness_v2_truncated_mtime_pre_generation_false_positive(tmp_path) ->
     gitnexus = _graph_dir(tmp_path, fingerprint=None)
 
     (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({
-            "head_sha": head,
-            "generated_at": 100.1,
-            "finished_at": 102.9,
-        }),
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.1,
+                "finished_at": 102.9,
+            }
+        ),
         encoding="utf-8",
     )
     # Set fingerprint's filesystem mtime to truncated whole seconds (102.0)

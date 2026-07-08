@@ -12,6 +12,7 @@ from topos.utils.gitnexus import (
     GITNEXUS_FINGERPRINT_FILE,
     _resolve_timeout,
     generate_depgraph,
+    source_fingerprint,
 )
 
 _REAL_RUN = subprocess.run
@@ -132,6 +133,8 @@ def test_generate_writes_fingerprint_with_head_sha(tmp_path) -> None:
     # v2 marker: generation time enables working-tree freshness.
     assert isinstance(payload["generated_at"], float)
     assert payload["generated_at"] > 0
+    assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash
+    assert payload["source_file_count"] == 1
 
 
 def test_generate_in_non_git_dir_writes_sha_less_fingerprint(tmp_path) -> None:
@@ -148,3 +151,4 @@ def test_generate_in_non_git_dir_writes_sha_less_fingerprint(tmp_path) -> None:
     payload = json.loads(marker.read_text(encoding="utf-8"))
     assert payload["head_sha"] is None
     assert payload["generated_at"] > 0
+    assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash

@@ -169,8 +169,16 @@ def iter_source_files(
     suffixes: tuple[str, ...],
     recursive: bool = True,
     is_ignored: Callable[[Path], bool] | None = None,
+    include_dirs: bool = False,
 ) -> Iterator[Path]:
-    """Yield source files under *root*, pruning venvs and ignored directories."""
+    """Yield source files under *root*, pruning venvs and ignored directories.
+
+    With ``include_dirs``, also yields each visited (non-skipped) directory,
+    after its own direct file children — callers that need a directory-level
+    signal (e.g. detecting a deletion via a stale parent-directory mtime) get
+    it from the same walk, checked only once the files that would explain it
+    more precisely have already been ruled out.
+    """
     if root.is_file():
         if root.suffix in suffixes and not (is_ignored and is_ignored(root)):
             yield root
@@ -189,15 +197,19 @@ def iter_source_files(
         except OSError:
             continue
 
+        subdirs = []
         for entry in sorted(entries, key=lambda p: p.name):
             if entry.is_dir():
                 if should_skip_dir(entry) or ignore(entry):
                     continue
-                if recursive:
-                    stack.append(entry)
+                subdirs.append(entry)
             elif entry.is_file() and entry.suffix in suffixes:
                 if not ignore(entry):
                     yield entry
+        if include_dirs:
+            yield current
+        if recursive:
+            stack.extend(subdirs)
 
 
 def collect_source_files(

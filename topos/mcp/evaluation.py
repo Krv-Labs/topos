@@ -161,6 +161,7 @@ class GraphFingerprint:
 
     head_sha: str | None
     generated_at: float | None
+    finished_at: float | None = None
 
 
 def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
@@ -170,12 +171,16 @@ def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
         payload = json.loads(raw)
         sha = payload.get("head_sha")
         generated_at = payload.get("generated_at")
+        finished_at = payload.get("finished_at")
     except (OSError, ValueError, AttributeError):
         return None
     return GraphFingerprint(
         head_sha=sha if isinstance(sha, str) and sha else None,
         generated_at=(
             float(generated_at) if isinstance(generated_at, (int, float)) else None
+        ),
+        finished_at=(
+            float(finished_at) if isinstance(finished_at, (int, float)) else None
         ),
     )
 
@@ -194,7 +199,12 @@ _FRESHNESS_WALK_CAP = 20_000
 _MTIME_SKEW_TOLERANCE_S = 2.0
 
 
-def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
+def _newer_source_file(
+    project_root: Path,
+    generated_at: float,
+    finished_at: float | None = None,
+    fingerprint_mtime: float | None = None,
+) -> Path | None:
     """First source file (or directory) modified after *generated_at*, or None.
 
     Stat-only walk over the same discovery pruning the evaluators use (skips
@@ -212,7 +222,11 @@ def _newer_source_file(project_root: Path, generated_at: float) -> Path | None:
     suffixes = tuple(
         {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
     )
-    threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
+    if finished_at is not None and fingerprint_mtime is not None:
+        drift = finished_at - fingerprint_mtime
+        threshold = generated_at - drift
+    else:
+        threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
     seen = 0
     for path in iter_source_files(project_root, suffixes=suffixes, include_dirs=True):
         is_file = path.suffix in suffixes
@@ -254,7 +268,19 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
         )
 
     if fingerprint is not None and fingerprint.generated_at is not None:
-        newer = _newer_source_file(project_root, fingerprint.generated_at)
+        fingerprint_file = gitnexus_dir / GITNEXUS_FINGERPRINT_FILE
+        fingerprint_mtime = None
+        if fingerprint_file.exists():
+            try:
+                fingerprint_mtime = fingerprint_file.stat().st_mtime
+            except OSError:
+                pass
+        newer = _newer_source_file(
+            project_root,
+            generated_at=fingerprint.generated_at,
+            finished_at=fingerprint.finished_at,
+            fingerprint_mtime=fingerprint_mtime,
+        )
         if newer is not None:
             try:
                 rel = newer.relative_to(project_root)

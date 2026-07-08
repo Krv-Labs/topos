@@ -88,6 +88,7 @@ def generate_depgraph(
     if not gitnexus_available():
         return DepgraphGenerationResult(False, 127, None, _INSTALL_HINT)
 
+    start_time = time.time()
     effective_timeout = _resolve_timeout(timeout)
     try:
         proc = subprocess.run(
@@ -125,7 +126,7 @@ def generate_depgraph(
         )
 
     gitnexus_path = target_dir / ".gitnexus"
-    _write_fingerprint(target_dir, gitnexus_path)
+    _write_fingerprint(target_dir, gitnexus_path, start_time=start_time)
     detail = (proc.stdout or "").strip() if capture else ""
     return DepgraphGenerationResult(
         True,
@@ -157,7 +158,9 @@ def _head_sha(target_dir: Path) -> str | None:
     return sha or None
 
 
-def _write_fingerprint(target_dir: Path, gitnexus_path: Path) -> None:
+def _write_fingerprint(
+    target_dir: Path, gitnexus_path: Path, start_time: float | None = None
+) -> None:
     """Record what the graph was built from (best-effort).
 
     v2 marker: ``head_sha`` (null in non-git dirs — the ``generated_at`` stamp
@@ -171,7 +174,12 @@ def _write_fingerprint(target_dir: Path, gitnexus_path: Path) -> None:
     # Best-effort: a read-only FS (OSError) or unexpected payload (Type/ValueError
     # from json) must never turn a successful generation into a failure.
     with contextlib.suppress(OSError, TypeError, ValueError):
+        now = time.time()
         (gitnexus_path / GITNEXUS_FINGERPRINT_FILE).write_text(
-            json.dumps({"head_sha": sha or None, "generated_at": time.time()}),
+            json.dumps({
+                "head_sha": sha or None,
+                "generated_at": start_time or now,
+                "finished_at": now,
+            }),
             encoding="utf-8",
         )

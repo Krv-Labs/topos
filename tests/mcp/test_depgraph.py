@@ -497,18 +497,70 @@ def test_freshness_v2_deleted_file_is_stale(tmp_path) -> None:
 
 
 def test_freshness_v2_tolerates_small_mtime_skew(tmp_path) -> None:
-    # generated_at is a sub-second time.time() stamp; filesystem mtimes can
-    # be coarser or drift slightly against the process clock. An edit inside
-    # the tolerance window must still read as stale, not silently as fresh.
+    # Simulate a system with clock drift (e.g., filesystem clock is 5.0 seconds behind).
+    # We edit `f.py` after the graph was generated, but due to clock drift,
+    # the filesystem writes `f.py` with an mtime that appears earlier than the process's `generated_at`.
+    # With dynamic drift compensation, the drift is calculated using the fingerprint file's own mtime
+    # on the same filesystem, and the edit is still correctly detected as stale.
+    import os
     head = _commit_repo(tmp_path)
     gitnexus = _graph_dir(tmp_path, fingerprint=None)
-    source_mtime = (tmp_path / "f.py").stat().st_mtime
-    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=source_mtime + 1.0)
+    
+    # Write fingerprint file with generated_at=100.0, finished_at=100.0
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({
+            "head_sha": head,
+            "generated_at": 100.0,
+            "finished_at": 100.0,
+        }),
+        encoding="utf-8",
+    )
+    # Set fingerprint file's actual filesystem mtime to 95.0 (simulating 5.0s slow filesystem)
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (95.0, 95.0))
+    
+    # Set source file's mtime to 96.0 (modified 1.0s after generation on filesystem clock,
+    # but still less than the process's `generated_at` of 100.0).
+    os.utime(tmp_path / "f.py", (96.0, 96.0))
+    
+    # Set containing directories' mtime to 94.0 (before generation) so the staleness
+    # is correctly triggered by f.py itself rather than directory parent updates.
+    os.utime(tmp_path, (94.0, 94.0))
 
     is_stale, detail = _graph_freshness(tmp_path, gitnexus)
 
     assert is_stale is True
     assert "f.py" in detail
+
+
+def test_freshness_v2_handles_pre_generation_mtimes_without_false_positives(tmp_path) -> None:
+    # On the same clock-drifted system, a file modified BEFORE generation must NOT
+    # be considered stale, even if its mtime is close to generation.
+    import os
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    
+    # Write fingerprint file with generated_at=100.0, finished_at=100.0
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({
+            "head_sha": head,
+            "generated_at": 100.0,
+            "finished_at": 100.0,
+        }),
+        encoding="utf-8",
+    )
+    # Set fingerprint file's actual filesystem mtime to 95.0 (simulating 5.0s slow filesystem)
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (95.0, 95.0))
+    
+    # Set source file's mtime to 94.0 (modified BEFORE generation on filesystem clock)
+    os.utime(tmp_path / "f.py", (94.0, 94.0))
+    
+    # Set parent directory mtime to 94.0 as well (before generation)
+    os.utime(tmp_path, (94.0, 94.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is False
+    assert detail is None
 
 
 def test_generate_ensure_regenerates_after_in_place_edit(tmp_path, monkeypatch) -> None:

@@ -86,6 +86,16 @@ def test_while_loop_generates_back_edge():
     assert EdgeKind.LOOP_BACK in kinds
 
 
+def test_if_with_trailing_comment_on_condition_keeps_then_branch():
+    """A comment on the `if` line is a real named child in some grammars
+    (tree-sitter-python inserts it between the predicate and the block);
+    it must not be mistaken for the then-body, which would merge both
+    branches into "else" and leave "if_then" empty."""
+    cfg = _cfg("def f(x):\n    if x > 0:  # comment\n        return 1\n    return 0\n")
+    then_block = next(b for b in cfg.blocks.values() if b.label == "if_then")
+    assert any(s.kind == "ReturnStmt" for s in then_block.statements)
+
+
 def test_nested_callable_return_does_not_poison_outer_sequence():
     """
     Return inside a nested arrow/object method must not leave current_id=None
@@ -140,6 +150,11 @@ def test_break_continue_resolve_to_loop_targets():
             "rust",
             "fn f(x: i32) -> i32 { return x; }\n",
             "fn f(x: i32) -> i32 { if x > 0 { return 1; } return 0; }\n",
+        ),
+        (
+            "go",
+            "func f(x int) int { return x }\n",
+            "func f(x int) int {\n\tif x > 0 {\n\t\treturn 1\n\t}\n\treturn 0\n}\n",
         ),
     ],
 )

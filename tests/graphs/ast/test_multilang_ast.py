@@ -29,6 +29,16 @@ def test_parse_source_rust_hybrid_falls_back_to_tree_sitter():
     assert result.provenance.parser == "tree-sitter-rust"
 
 
+def test_parse_source_go_hybrid_falls_back_to_tree_sitter():
+    result = parse_source(
+        'package main\n\nfunc main() {\n\tif 1 > 0 {\n\t\tprintln("ok")\n\t}\n}\n',
+        language="go",
+    )
+    assert result.native_ast is None
+    assert result.uast_root is not None
+    assert result.provenance.parser == "tree-sitter-go"
+
+
 def test_parse_source_typescript_hybrid():
     result = parse_source("const x: number = 1;\n", language="typescript")
     assert result.native_ast is None
@@ -58,15 +68,21 @@ def test_program_morphism_supports_multiple_languages():
         source="interface A { x: number }\n",
         language="typescript",
     )
+    go_morphism = ProgramMorphism(
+        source="package main\n\nfunc main() {}\n",
+        language="go",
+    )
 
     assert rust_morphism.ast is not None
     assert js_morphism.ast is not None
     assert cpp_morphism.ast is not None
     assert ts_morphism.ast is not None
+    assert go_morphism.ast is not None
     assert rust_morphism.ast.language == "rust"
     assert js_morphism.ast.language == "javascript"
     assert cpp_morphism.ast.language == "cpp"
     assert ts_morphism.ast.language == "typescript"
+    assert go_morphism.ast.language == "go"
 
 
 def test_capability_matrix_tracks_native_and_uast_support():
@@ -76,6 +92,9 @@ def test_capability_matrix_tracks_native_and_uast_support():
     assert matrix["javascript"]["supports_uast"] is True
     assert matrix["typescript"]["supports_uast"] is True
     assert matrix["cpp"]["supports_tree_sitter"] is True
+    assert matrix["go"]["supports_native"] is False
+    assert matrix["go"]["supports_tree_sitter"] is True
+    assert matrix["go"]["supports_uast"] is True
 
 
 def test_native_ref_parser_identity_per_language():
@@ -85,6 +104,7 @@ def test_native_ref_parser_identity_per_language():
         ("javascript", "function x() { return 1; }", "tree-sitter-javascript"),
         ("typescript", "const x: number = 1;", "tree-sitter-typescript"),
         ("cpp", "int main() { return 0; }", "tree-sitter-cpp"),
+        ("go", "package main\n\nfunc main() {}\n", "tree-sitter-go"),
     ]
     for language, source, expected_parser in cases:
         result = parse_source(source, language=language)
@@ -132,6 +152,7 @@ def test_binarytrees_sources_produce_minimum_uast_invariants():
         ".js": "javascript",
         ".rs": "rust",
         ".cpp": "cpp",
+        ".go": "go",
     }
 
     for file in src_dir.iterdir():

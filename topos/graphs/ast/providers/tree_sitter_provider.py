@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from topos.graphs.ast.types import ParseResult, ParserProvenance
 from topos.graphs.uast.mapper_common import parser_identity
 from topos.graphs.uast.mapper_cpp import map_cpp_tree_to_uast
+from topos.graphs.uast.mapper_go import map_go_tree_to_uast
 from topos.graphs.uast.mapper_javascript import map_javascript_tree_to_uast
 from topos.graphs.uast.mapper_python import map_python_tree_to_uast
 from topos.graphs.uast.mapper_rust import map_rust_tree_to_uast
 from topos.graphs.uast.mapper_typescript import map_typescript_tree_to_uast
 from topos.utils.tree_sitter import (
     parse_cpp,
+    parse_go,
     parse_javascript,
     parse_python,
     parse_rust,
@@ -23,6 +25,7 @@ _TREE_SITTER_PARSE = {
     "javascript": parse_javascript,
     "typescript": parse_typescript,
     "cpp": parse_cpp,
+    "go": parse_go,
 }
 
 _TREE_SITTER_UAST = {
@@ -31,6 +34,7 @@ _TREE_SITTER_UAST = {
     "javascript": map_javascript_tree_to_uast,
     "typescript": map_typescript_tree_to_uast,
     "cpp": map_cpp_tree_to_uast,
+    "go": map_go_tree_to_uast,
 }
 
 

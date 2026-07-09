@@ -321,6 +321,67 @@ def test_evaluate_file_reports_security_findings(
     assert r.security_findings[0].line == 2
 
 
+def test_evaluate_file_reports_security_findings_for_go(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "danger.go"
+    path.write_text(
+        "package main\n\n"
+        "import (\n"
+        '\t"os"\n'
+        '\t"os/exec"\n'
+        ")\n\n"
+        "func run() {\n"
+        '\tcmd := exec.Command("sh", "-c", os.Getenv("USER_INPUT"))\n'
+        "\tcmd.Run()\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    r = _eval(
+        topos_evaluate_file(
+            EvaluateFileInput(filepath="danger.go", preferences=_PREFS, verbose=True)
+        )
+    )
+
+    assert r.security_findings
+    assert r.security_findings[0].callee == "exec.Command"
+    assert r.raw_metrics["cpg.dangerous_calls"] >= 1.0
+    assert "cpg.taint_flows" in r.raw_metrics
+
+
+def test_evaluate_file_go_clean_snippet_passes_secure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from topos.mcp import security
+
+    monkeypatch.setenv("TOPOS_MCP_FILE_ROOT", str(tmp_path))
+    security.reset_file_root_cache()
+    path = tmp_path / "clean.go"
+    path.write_text(
+        "package main\n\n"
+        'import "fmt"\n\n'
+        "func greet(name string) string {\n"
+        '\treturn fmt.Sprintf("Hello, %s!", name)\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    r = _eval(
+        topos_evaluate_file(
+            EvaluateFileInput(filepath="clean.go", preferences=_PREFS, verbose=True)
+        )
+    )
+
+    assert r.security_findings == []
+    assert r.raw_metrics["cpg.dangerous_calls"] == 0.0
+    assert r.pillars["secure"].achieved is True
+
+
 def test_evaluate_file_applies_topos_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -415,6 +476,47 @@ def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
             topos_evaluate_file(
                 EvaluateFileInput(
                     filepath="topos/__init__.py",
+                    gitnexus_dir="/fake/.gitnexus",
+                    preferences=_PREFS,
+                )
+            )
+        )
+    mock_load.assert_called_once()
+    assert r.coupling_available is True
+    assert "composable" in r.scores, (
+        "composable dimension must be present when a ModuleDependencyGraph is attached"
+    )
+
+
+def test_evaluate_go_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
+    """COMPOSABLE for Go: mocked GitNexus-shaped data, independent of whether
+    a live `gitnexus analyze` run is available in this environment (verified
+    separately — GitNexus 1.6.8 fully supports Go, producing File nodes with
+    correct filePath values and IMPORTS/CALLS edges across package
+    boundaries)."""
+    fake_graph = MagicMock()
+    fake_graph.name = "mdg"
+    fake_graph.dimension = "composable"
+    fake_graph.metrics.return_value = {
+        "mdg.coupling": 1.0,
+        "mdg.instability": 1.0,
+        "mdg.fan_in": 0.0,
+        "mdg.fan_out": 1.0,
+        "mdg.dep_depth": 1.0,
+    }
+    with (
+        patch(
+            "topos.mcp.evaluation.load_dep_graph", return_value=fake_graph
+        ) as mock_load,
+        patch(
+            "topos.mcp.evaluation.resolve_gitnexus_dir",
+            return_value=Path("/fake/.gitnexus"),
+        ),
+    ):
+        r = _eval(
+            topos_evaluate_file(
+                EvaluateFileInput(
+                    filepath="tests/fixtures/binarytrees/binarytrees.go",
                     gitnexus_dir="/fake/.gitnexus",
                     preferences=_PREFS,
                 )

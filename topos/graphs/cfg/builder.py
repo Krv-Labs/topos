@@ -325,19 +325,30 @@ _STATEMENT_KINDS = frozenset(
     }
 )
 
+# Native tree-sitter node kinds for a Go switch/select case arm (tagged,
+# tagless, or type-switch) — also block containers, since each arm holds
+# its own statement list.
+_CASE_ARM_NATIVE_KINDS = frozenset(
+    {"expression_case", "type_case", "default_case", "communication_case"}
+)
+
 # Native tree-sitter node kinds that act as transparent block containers
 # (no UAST kind of their own — mapped to "Unknown").
-_BLOCK_NATIVE_KINDS = frozenset(
-    {
-        "block",
-        "suite",
-        "compound_statement",
-        "statement_block",
-        "function_body",
-        "do_statement",
-        "else_clause",
-        "elif_clause",
-    }
+_BLOCK_NATIVE_KINDS = (
+    frozenset(
+        {
+            "block",
+            "suite",
+            "compound_statement",
+            "statement_block",
+            "function_body",
+            "do_statement",
+            "else_clause",
+            "elif_clause",
+            "statement_list",  # Go wraps a `block`'s statements one level deeper
+        }
+    )
+    | _CASE_ARM_NATIVE_KINDS
 )
 
 
@@ -371,55 +382,64 @@ def _function_body(callable_node: UASTNode) -> list[UASTNode]:
 def _if_branches(stmt: UASTNode) -> tuple[list[UASTNode], list[UASTNode]]:
     """Return ``(then_statements, else_statements)`` for an IfStmt.
 
-    UAST shape (Python / JS / TS / Rust / C++) is consistently:
-        IfStmt
-          ├── <predicate expression>
-          ├── Unknown[block]     ← then-body
-          └── (optional) Unknown[else_clause | block]  ← else-body
-                            └── (optional Unknown[block])
+    The then-block is located by *kind* (the first block-container child),
+    not by a fixed position — the children preceding it vary by grammar and
+    aren't otherwise meaningful here: a bare predicate (most grammars), a
+    predicate plus an init-clause (Go's ``if x := f(); cond {}``, C++17's
+    ``if (init; cond) {}``), or a predicate with an intervening comment.
+    Everything after the then-block is else-content, one level of
+    unwrapping happening via ``_unwrap_to_statements`` either way:
 
-    We treat the *first* child as the predicate, then walk the rest:
-    consecutive block-shaped Unknown nodes become the then-body until we
-    encounter an explicit else-clause-shaped node, after which content
-    becomes the else-body.
+    * Python / JS wrap it in an explicit ``else_clause`` / ``elif_clause``
+      node, whose own children are the actual else statements (or, for
+      ``elif``, another predicate + body — multiple ``elif`` clauses are
+      intentionally flattened into one ``else_body`` bucket rather than
+      nested; this is an existing, accepted structural approximation).
+    * Go / C++ / Rust have no such wrapper: the child *is* either a plain
+      block (``else { ... }``) or a nested ``if_statement`` (``else if``).
     """
-    if not stmt.children:
+    children = list(stmt.children)
+    then_idx = next(
+        (i for i, child in enumerate(children) if _is_block_container(child)), None
+    )
+    if then_idx is None:
         return [], []
 
-    children = list(stmt.children)
-    # Skip the predicate (children[0])
-    then_body: list[UASTNode] = []
-    else_body: list[UASTNode] = []
-    saw_else = False
-    for child in children[1:]:
-        if child.kind == "Unknown" and child.native.node_kind in {
-            "else_clause",
-            "elif_clause",
-        }:
-            saw_else = True
-            else_body.extend(_unwrap_to_statements(child.children))
-            continue
-        if saw_else:
-            else_body.extend(_unwrap_to_statements([child]))
-        else:
-            then_body.extend(_unwrap_to_statements([child]))
+    then_body = _unwrap_to_statements([children[then_idx]])
+    else_body = _unwrap_to_statements(children[then_idx + 1 :])
     return then_body, else_body
 
 
 def _loop_body(stmt: UASTNode) -> list[UASTNode]:
-    """Extract loop-body statements, skipping test/iterator clauses."""
-    if not stmt.children:
-        return []
-    # The first child is the loop test / iterator binding.  Everything
-    # after is body — but the body is wrapped in a block.
-    return _unwrap_to_statements(stmt.children[1:])
+    """Extract loop-body statements, skipping test/iterator clauses.
+
+    The body is located by kind (the first block-container child), not by
+    position — a condition-less Go ``for { }`` has no leading test/clause
+    child at all, so the body is the *first* child rather than "everything
+    after the first child".
+    """
+    for child in stmt.children:
+        if _is_block_container(child):
+            return _unwrap_to_statements([child])
+    return []
 
 
 def _match_arms(stmt: UASTNode) -> list[UASTNode]:
-    """Extract case arms from a MatchStmt; first child is the discriminant."""
+    """Extract case arms from a MatchStmt.
+
+    Usually the first child is the discriminant/subject (Python ``match``,
+    Rust ``match``, Go's tagged ``switch``/``type switch``) and is skipped.
+    Go also has discriminant-less forms (``switch { case ... }``,
+    ``select { case ... }``) where the first child is itself a case arm —
+    detected via its native node kind so every arm is kept.
+    """
     if not stmt.children:
         return []
-    return _unwrap_to_statements(stmt.children[1:])
+    children = list(stmt.children)
+    first = children[0]
+    if first.kind == "Unknown" and first.native.node_kind in _CASE_ARM_NATIVE_KINDS:
+        return _unwrap_to_statements(children)
+    return _unwrap_to_statements(children[1:])
 
 
 def _children_with_control_flow(node: UASTNode) -> list[UASTNode]:

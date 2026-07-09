@@ -60,8 +60,11 @@ def collect_findings_and_verdict(
 def _build_cpg(path: str | Path):  # type: ignore[no-untyped-def]
     try:
         from topos.core.morphism import ProgramMorphism
+        from topos.mcp.evaluation import detect_language
 
-        return ProgramMorphism.from_file(str(path)).build_cpg()
+        return ProgramMorphism.from_file(
+            str(path), language=detect_language(Path(path))
+        ).build_cpg()
     except (OSError, ValueError):
         return None
 

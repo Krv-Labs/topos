@@ -61,6 +61,13 @@ DANGEROUS_APIS: dict[str, set[str]] = {
         "scanf",
         "system",
     },
+    "go": {
+        "exec.Command",
+        "exec.CommandContext",
+        "os.StartProcess",
+        "syscall.Exec",
+        "syscall.ForkExec",
+    },
 }
 
 _CALL_PREFIX = re.compile(r"^([A-Za-z_][A-Za-z0-9_.]*)\s*\(")

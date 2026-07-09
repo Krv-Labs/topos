@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Go language support**: Added parsing, mapping, and evaluation support for Go across all three quality dimensions (SIMPLE, SECURE, COMPOSABLE). Introduces `tree-sitter-go` parsing, `GoParser`, a dedicated Go UAST mapper (`mapper_go.py`), and central provider registry dispatching. Registers Go entries in the CPG dangerous-API (`exec.Command`, `syscall.Exec`, etc.) and taint-source (`os.Getenv`, `os.Args`, etc.) registries, and integrates cross-package boundary `IMPORTS` and `CALLS` edge mapping via GitNexus. ([#123](https://github.com/Krv-Labs/topos/pull/123), closes [#72](https://github.com/Krv-Labs/topos/issues/72), [#73](https://github.com/Krv-Labs/topos/issues/73), [#74](https://github.com/Krv-Labs/topos/issues/74))
+
+### Fixed
+
+- **CFG parser `if` branch locating**: Fixed a bug where `_if_branches` used a fixed position to locate the `then` block, causing it to break on Go's `if x := f(); cond {}` init-clause statement, and independently, on any Python, C++, or Rust `if` condition containing a same-line trailing comment. The `then` block is now correctly located by node kind. ([#123](https://github.com/Krv-Labs/topos/pull/123))
+- **CFG parser loop body locating**: Fixed a bug where `_loop_body` unconditionally sliced off the first child as a loop condition/iterator, which silently dropped the entire body of Go's condition-less `for {}` loop. The loop body is now correctly located by node kind. ([#123](https://github.com/Krv-Labs/topos/pull/123))
+- **CLI language detection for non-Python files**: Fixed a bug where `topos inspect` and `topos evaluate` CPG building and entropy calculations defaulted non-Python files to Python parsing due to a default parameter in `ProgramMorphism.from_file`. Correctly threads `detect_language(path)` through the affected CLI paths. ([#123](https://github.com/Krv-Labs/topos/pull/123))
+
 ## [0.3.9] - 2026-07-06
 
 ### Changed

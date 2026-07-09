@@ -32,6 +32,7 @@ _TREE_SITTER_PACKAGE = {
     "javascript": "tree-sitter-javascript",
     "typescript": "tree-sitter-typescript",
     "cpp": "tree-sitter-cpp",
+    "go": "tree-sitter-go",
 }
 
 

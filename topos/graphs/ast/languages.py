@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-SUPPORTED_LANGUAGES = frozenset({"python", "rust", "javascript", "typescript", "cpp"})
+SUPPORTED_LANGUAGES = frozenset(
+    {"python", "rust", "javascript", "typescript", "cpp", "go"}
+)
 
 LANGUAGE_FILE_SUFFIXES: dict[str, tuple[str, ...]] = {
     "python": (".py",),
@@ -10,6 +12,7 @@ LANGUAGE_FILE_SUFFIXES: dict[str, tuple[str, ...]] = {
     "javascript": (".js", ".mjs", ".cjs"),
     "typescript": (".ts", ".tsx"),
     "cpp": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
+    "go": (".go",),
 }
 
 

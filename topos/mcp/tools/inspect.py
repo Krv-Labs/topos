@@ -107,7 +107,6 @@ def topos_inspect_code(params: InspectCodeInput) -> ToolResult:
                 result,
                 file_path=file_path,
                 allows=params.allow,
-                include_security_findings=True,
             )
         ),
         verbose=params.verbose,

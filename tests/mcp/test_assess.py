@@ -111,6 +111,28 @@ def test_assess_reports_security_findings() -> None:
     assert finding.callee == "eval"
 
 
+def test_assess_hidden_findings_keep_security_risk_flag() -> None:
+    """include_security_findings gates payload only — never routing signals."""
+    current = "def f(expr):\n    return eval(expr)\n"
+    r = _assess(
+        topos_assess_improvement(
+            AssessImprovementInput(
+                current_code=current,
+                proposed_code=current,
+                include_security_findings=False,
+                preferences=_PREFS,
+            )
+        )
+    )
+
+    assert r.current.security_findings == []
+    assert r.proposed.security_findings == []
+    # The verdict-anchored signal survives the payload gate.
+    assert r.proposed.secure_adjusted is False
+    assert r.agent_contract is not None
+    assert "active_security_findings" in r.agent_contract.risk_flags
+
+
 def test_assess_applies_allowlist_to_nested_evaluations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

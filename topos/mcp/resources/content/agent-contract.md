@@ -40,16 +40,29 @@ Evaluation, project, and assessment results may include `agent_contract`:
 
 - `next_tool` — the next Topos tool to call, if Topos can identify one.
 - `next_actions` — concise outcome-focused actions.
-- `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no graph)
-  or `stale_gitnexus_dir` (graph older than the latest commit). When COMPOSABLE
-  is blocked by setup, `next_tool` is `topos_generate_depgraph`. An
-  `invalid_gitnexus_dir` code means the supplied `gitnexus_dir` override is bad
-  (outside the file root or nonexistent) — fix the path rather than generating.
+- `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no
+  graph) or `stale_gitnexus_dir` (graph predates the latest commit or a source
+  file was modified after generation). An `invalid_gitnexus_dir` code means
+  the supplied `gitnexus_dir` override is bad (outside the file root or
+  nonexistent) — fix the path rather than generating.
 - `verification_gates` — checks required before accepting a patch.
 - `risk_flags` — compact labels such as `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.
 
+`next_tool`/`next_actions` never contradict `blocked_by`: when ranked refactor
+targets are returned alongside a setup blocker, `next_actions` carries both
+the edit step and the setup remedy (e.g. `topos_generate_depgraph`). A stale
+graph is advisory cadence, not a per-edit chore — refresh it before *trusting*
+COMPOSABLE (typically once per assess checkpoint), not after every edit.
+
 Prefer these fields over parsing prose guidance.
+
+## Refactor Targets
+
+`topos_evaluate_file(refactor_targets=N)` returns up to N ranked edit targets
+(`refactor_targets` on the result): concrete spans with the failing metric,
+current value vs. threshold, and `recommended_operations` tokens. Verification
+guidance lives once on `agent_contract.verification_gates`, not per target.
 
 ## Boundaries
 

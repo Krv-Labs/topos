@@ -79,6 +79,34 @@ def map_tree_sitter_to_uast(
 ) -> UASTNode:
     parser_name, parser_version = parser_identity(language)
 
+    def _filtered_named_children(node: Node) -> list[Node]:
+        """Named children of `node`, minus any Rust item annotated with
+        `#[cfg(test)]`.
+
+        Tree-sitter-rust represents an attribute as a *preceding sibling*
+        of the item it annotates (both children of the same parent), not
+        as a descendant of that item — so the check has to correlate
+        adjacent siblings, not scan a single node's own children.
+        """
+        named = [c for c in node.children if c.is_named]
+        if language != "rust":
+            return named
+        filtered: list[Node] = []
+        pending_test_attr = False
+        for child in named:
+            if child.type == "attribute_item":
+                text = child.text
+                if text and b"cfg(test)" in text:
+                    pending_test_attr = True
+                    continue
+                filtered.append(child)
+                continue
+            if pending_test_attr:
+                pending_test_attr = False
+                continue
+            filtered.append(child)
+        return filtered
+
     # Two-phase iterative traversal — avoids Python recursion limits on deeply
     # nested trees (macro-expanded Rust, minified JS, etc.).
     #
@@ -93,6 +121,7 @@ def map_tree_sitter_to_uast(
     stack: list[tuple[Node, str]] = [(root, "")]
     while stack:
         node, parent_stable_id = stack.pop()
+
         node_stable_id = _compute_node_id(
             lang=language,
             node_kind=node.type,
@@ -102,12 +131,13 @@ def map_tree_sitter_to_uast(
         )
         stable_ids[node.id] = node_stable_id
         order.append((node, node_stable_id))
-        for child in reversed([c for c in node.children if c.is_named]):
+
+        for child in reversed(_filtered_named_children(node)):
             stack.append((child, node_stable_id))
 
     uast_nodes: dict[int, UASTNode] = {}
     for node, node_stable_id in reversed(order):
-        named_children = [c for c in node.children if c.is_named]
+        named_children = _filtered_named_children(node)
         children = [uast_nodes[c.id] for c in named_children]
         start_point = node.start_point
         end_point = node.end_point

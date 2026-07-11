@@ -5,11 +5,16 @@ from pathlib import Path
 
 import click
 
-from topos.evaluation.policies.base import Priority
 from topos.graphs.ast.languages import SUPPORTED_LANGUAGES, language_file_suffixes
 
 _EVALUATE_LANGUAGE_CHOICE = click.Choice(sorted(SUPPORTED_LANGUAGES))
-_PRIORITY_CHOICE = click.Choice([p.value for p in Priority])
+
+# Mirrors topos.evaluation.policies.base.Priority's values without importing
+# the eval stack (and transitively numpy) at CLI-registration time. Covered
+# by a parity test asserting this literal cannot silently drift from the
+# enum.
+_PRIORITY_VALUES = ("simple", "composable", "secure")
+_PRIORITY_CHOICE = click.Choice(_PRIORITY_VALUES)
 _PRIORITY_HELP = (
     "Which quality generator to emphasize in result metadata "
     "(simple / composable / secure). Pass/fail uses fixed per-metric "
@@ -48,7 +53,7 @@ _ALLOW_HELP = (
 @click.option(
     "--priority",
     type=_PRIORITY_CHOICE,
-    default=Priority.SECURE.value,
+    default="secure",
     show_default=True,
     help=_PRIORITY_HELP,
 )
@@ -120,7 +125,7 @@ def evaluate(
     # Use the first preference as the priority for CLI output
     if preferences:
         priority = preferences.split(",")[0].strip().lower()
-        if priority not in [p.value for p in Priority]:
+        if priority not in _PRIORITY_VALUES:
             click.echo(f"Error: Invalid preference '{priority}'", err=True)
             sys.exit(1)
 
@@ -251,7 +256,7 @@ def compare(source: str, target: str, verbose: bool) -> None:
 @click.option(
     "--priority",
     type=_PRIORITY_CHOICE,
-    default=Priority.SECURE.value,
+    default="secure",
     show_default=True,
     help=_PRIORITY_HELP,
 )
@@ -300,7 +305,7 @@ def inspect(
     # Use the first preference as the priority for CLI output
     if preferences:
         priority = preferences.split(",")[0].strip().lower()
-        if priority not in [p.value for p in Priority]:
+        if priority not in _PRIORITY_VALUES:
             click.echo(f"Error: Invalid preference '{priority}'", err=True)
             sys.exit(1)
 

@@ -344,3 +344,14 @@ def test_evaluate_verbose_lists_findings(tmp_path: Path):
     out = _strip_ansi(result.output)
     assert "Security Findings" in out
     assert "eval" in out
+
+
+def test_priority_choice_matches_priority_enum():
+    """quality.py's module-level ``_PRIORITY_VALUES`` literal (kept import-free
+    to avoid eagerly loading the eval stack / numpy at CLI-registration time)
+    must not drift from ``Priority``, the enum it mirrors."""
+    from topos.cli.commands.quality import _PRIORITY_CHOICE, _PRIORITY_VALUES
+    from topos.evaluation.policies.base import Priority
+
+    assert set(_PRIORITY_VALUES) == {p.value for p in Priority}
+    assert set(_PRIORITY_CHOICE.choices) == {p.value for p in Priority}

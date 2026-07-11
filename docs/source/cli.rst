@@ -97,6 +97,37 @@ two different concepts:
 .. important::
    Without ``--gitnexus-dir``, Topos still scores **SIMPLE** and **SECURE**, but **COMPOSABLE** (and any medal requiring it) stays unreachable. Generate the graph once per repo with ``topos depgraph generate``.
 
+Directory digest
+~~~~~~~~~~~~~~~~
+
+Point ``evaluate`` at a directory with ``-r`` for a ranked, actionable digest
+instead of a per-file wall:
+
+.. code-block:: bash
+
+   topos evaluate src/ -r
+   topos evaluate src/mypackage -r
+
+The summary surfaces, in order:
+
+* **Pillars** — per-pillar PASS/FAIL with average & minimum scores across all files.
+* **Directory Floor Verdict** — the worst verdict any single file drags the codebase down to (the pointwise lattice meet).
+* **Needs attention** — the lowest-scoring files (where quality is *worst*).
+* **Lowest-hanging fruit** — the files closest to *flipping* a failing pillar, each with the concrete fix. Start here for the cheapest wins:
+
+.. code-block:: text
+
+   Lowest-hanging fruit
+     Smallest improvement that flips a failing pillar.
+     1.  src/mypackage/__init__.py
+         simple 59% → 60% (+1 pts)
+     2.  src/mypackage/util.py
+         simple 55% → 60% (+5 pts)
+         ↳ Extract helper functions to cut branching (cyclomatic 21 > 15).
+
+Add ``--json`` for a machine-readable rollup, or ``-v`` to expand every
+file's raw metrics.
+
 inspect
 -------
 

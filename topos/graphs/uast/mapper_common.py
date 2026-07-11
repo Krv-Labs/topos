@@ -13,6 +13,11 @@ This module provides the core transformation engine that:
     native Tree-sitter types into unified UNodeKinds.
 3.  **Preserves Fidelity**: Populates every UASTNode with the original byte
     spans and a NativeRef containing the parser identity and native node type.
+4.  **Excludes Test-Only Nodes**: Language mappers may supply an
+    `is_test_node` predicate (see `TestNodePredicate`) so test-only
+    constructs (e.g. Rust `#[cfg(test)]` modules, Python
+    `if __name__ == "__main__":` guards) are dropped from the SIMPLE-relevant
+    AST without the shared engine needing any language-specific knowledge.
 """
 
 from __future__ import annotations
@@ -25,6 +30,25 @@ from importlib.metadata import PackageNotFoundError, version
 from tree_sitter import Node
 
 from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
+
+# A per-language predicate deciding whether a node (and its whole subtree)
+# should be excluded from the UAST as test-only scaffolding.
+#
+# Signature: `(node, named_siblings) -> bool`, where `named_siblings` is the
+# full ordered list of `node`'s named siblings (including `node` itself) —
+# i.e. exactly what `node.parent`'s named children would be before any
+# filtering. Sibling context is required because some languages express a
+# "this is test code" marker as a *separate* sibling node rather than as
+# part of the node it applies to (e.g. Rust's `#[cfg(test)]` attribute
+# precedes — rather than wraps — the item it annotates). Languages that only
+# need the node itself (e.g. Python's `if __name__ == "__main__":` guard)
+# can simply ignore the second argument.
+#
+# Each language mapper owns its own predicate and passes it to
+# `map_tree_sitter_to_uast` via `is_test_node`, the same way `map_node_kind`
+# is threaded through today. Languages that don't (yet) filter test nodes
+# pass `None` (the default), which preserves today's "no filtering" behavior.
+TestNodePredicate = Callable[[Node, list[Node]], bool]
 
 _TREE_SITTER_PACKAGE = {
     "python": "tree-sitter-python",
@@ -76,36 +100,32 @@ def map_tree_sitter_to_uast(
     language: str,
     map_node_kind: Callable[[Node], str],
     file: str | None = None,
+    is_test_node: TestNodePredicate | None = None,
 ) -> UASTNode:
+    """Map a Tree-sitter CST to the normalized UAST representation.
+
+    `is_test_node`, when provided, is consulted for every named node to
+    decide whether that node (and its whole subtree) is test-only
+    scaffolding that should be excluded from the SIMPLE-relevant AST — see
+    `TestNodePredicate`. Languages that don't provide one keep today's
+    behavior of mapping every named node.
+    """
     parser_name, parser_version = parser_identity(language)
 
     def _filtered_named_children(node: Node) -> list[Node]:
-        """Named children of `node`, minus any Rust item annotated with
-        `#[cfg(test)]`.
+        """Named children of `node`, minus any the language's `is_test_node`
+        predicate flags as test-only.
 
-        Tree-sitter-rust represents an attribute as a *preceding sibling*
-        of the item it annotates (both children of the same parent), not
-        as a descendant of that item — so the check has to correlate
-        adjacent siblings, not scan a single node's own children.
+        The predicate receives the full named-sibling list (not just the
+        candidate node) so languages whose test markers live on a *separate*
+        sibling — e.g. Rust's `#[cfg(test)]` attribute preceding the item it
+        annotates — can correlate adjacent siblings rather than being
+        limited to a single node's own children.
         """
         named = [c for c in node.children if c.is_named]
-        if language != "rust":
+        if is_test_node is None:
             return named
-        filtered: list[Node] = []
-        pending_test_attr = False
-        for child in named:
-            if child.type == "attribute_item":
-                text = child.text
-                if text and b"cfg(test)" in text:
-                    pending_test_attr = True
-                    continue
-                filtered.append(child)
-                continue
-            if pending_test_attr:
-                pending_test_attr = False
-                continue
-            filtered.append(child)
-        return filtered
+        return [child for child in named if not is_test_node(child, named)]
 
     # Two-phase iterative traversal — avoids Python recursion limits on deeply
     # nested trees (macro-expanded Rust, minified JS, etc.).

@@ -16,37 +16,32 @@ def _is_cfg_test_attribute(node: Node) -> bool:
     )
 
 
-def is_test_node(node: Node, siblings: list[Node]) -> bool:
-    """Rust's `TestNodePredicate`: drop `#[cfg(test)]`-annotated items.
+def is_test_node(siblings: list[Node]) -> set[int]:
+    """Rust's `TestNodeFilter`: drop `#[cfg(test)]`-annotated items.
 
     Tree-sitter-rust represents an attribute as a *preceding sibling* of the
     item it annotates (both children of the same parent), not as a
-    descendant of that item — so this predicate replays the same
-    forward scan over `siblings` used before the introduction of the
-    language-agnostic filtering hook, evaluated per-candidate: the
-    `#[cfg(test)]` attribute itself is dropped, and so is the item
-    immediately following it (skipping over any intervening non-`cfg(test)`
-    attributes, mirroring the original single-pass behavior exactly).
+    descendant of that item — so this is a single forward scan over
+    `siblings`, not a per-node lookup: the `#[cfg(test)]` attribute itself
+    is dropped, and so is the item immediately following it (skipping over
+    any intervening non-`cfg(test)` attributes). This is the same O(n)
+    single-pass logic `map_tree_sitter_to_uast` used directly before the
+    language-agnostic filtering hook existed, just building a drop-set
+    instead of a filtered list so it can serve as one language's
+    `TestNodeFilter`.
     """
+    dropped: set[int] = set()
     pending_test_attr = False
     for sibling in siblings:
         if sibling.type == "attribute_item":
             if _is_cfg_test_attribute(sibling):
                 pending_test_attr = True
-                if sibling.id == node.id:
-                    return True
-                continue
-            if sibling.id == node.id:
-                return False
+                dropped.add(sibling.id)
             continue
         if pending_test_attr:
             pending_test_attr = False
-            if sibling.id == node.id:
-                return True
-            continue
-        if sibling.id == node.id:
-            return False
-    return False
+            dropped.add(sibling.id)
+    return dropped
 
 
 _DECLARATION_TYPES = {

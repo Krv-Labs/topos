@@ -34,19 +34,22 @@ def _is_name_equals_main(condition: Node) -> bool:
     return stripped == {_DUNDER_NAME, _DUNDER_MAIN}
 
 
-def is_test_node(node: Node, siblings: list[Node]) -> bool:
-    """Python's `TestNodePredicate`: drop `if __name__ == "__main__":` guards.
+def is_test_node(siblings: list[Node]) -> set[int]:
+    """Python's `TestNodeFilter`: drop `if __name__ == "__main__":` guards.
 
     The guard is fully self-contained (condition + body live under the
     `if_statement` node itself), so unlike Rust's `#[cfg(test)]` this needs
-    no sibling correlation — the whole subtree is dropped once the
-    condition matches, which takes the guard's body with it.
+    no cross-sibling correlation — each candidate is classified purely from
+    its own subtree, which takes the guard's body with it once dropped.
     """
-    del siblings  # unused: no sibling context needed for this predicate
-    if node.type != "if_statement":
-        return False
-    condition = node.child_by_field_name("condition")
-    return condition is not None and _is_name_equals_main(condition)
+
+    def _is_guard(node: Node) -> bool:
+        if node.type != "if_statement":
+            return False
+        condition = node.child_by_field_name("condition")
+        return condition is not None and _is_name_equals_main(condition)
+
+    return {sibling.id for sibling in siblings if _is_guard(sibling)}
 
 
 _DECLARATION_TYPES = {

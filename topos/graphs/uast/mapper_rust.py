@@ -71,12 +71,7 @@ def map_node_kind(node: Node) -> str:
     return "Unknown"
 
 
-def map_rust_tree_to_uast(root: Node, file: str | None = None) -> UASTNode | None:
-    # Skip unit test modules marked with #[cfg(test)]
-    text = root.text
-    if root.type == "attribute_item" and text and b"test" in text:
-        return None
-
+def map_rust_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
     return map_tree_sitter_to_uast(
         root=root,
         language="rust",

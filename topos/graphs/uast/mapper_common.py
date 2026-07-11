@@ -79,6 +79,34 @@ def map_tree_sitter_to_uast(
 ) -> UASTNode:
     parser_name, parser_version = parser_identity(language)
 
+    def _filtered_named_children(node: Node) -> list[Node]:
+        """Named children of `node`, minus any Rust item annotated with
+        `#[cfg(test)]`.
+
+        Tree-sitter-rust represents an attribute as a *preceding sibling*
+        of the item it annotates (both children of the same parent), not
+        as a descendant of that item — so the check has to correlate
+        adjacent siblings, not scan a single node's own children.
+        """
+        named = [c for c in node.children if c.is_named]
+        if language != "rust":
+            return named
+        filtered: list[Node] = []
+        pending_test_attr = False
+        for child in named:
+            if child.type == "attribute_item":
+                text = child.text
+                if text and b"cfg(test)" in text:
+                    pending_test_attr = True
+                    continue
+                filtered.append(child)
+                continue
+            if pending_test_attr:
+                pending_test_attr = False
+                continue
+            filtered.append(child)
+        return filtered
+
     # Two-phase iterative traversal — avoids Python recursion limits on deeply
     # nested trees (macro-expanded Rust, minified JS, etc.).
     #
@@ -93,20 +121,7 @@ def map_tree_sitter_to_uast(
     stack: list[tuple[Node, str]] = [(root, "")]
     while stack:
         node, parent_stable_id = stack.pop()
-        
-        # Filter: Skip anything marked with #[cfg(test)]
-        # We check the node's attributes if it has any
-        is_test = False
-        for child in node.children:
-            if child.type == "attribute_item":
-                text = child.text
-                if text and b"cfg(test)" in text:
-                    is_test = True
-                    break
-        if is_test:
-            # We must also ensure we don't visit the children of this node
-            continue
-            
+
         node_stable_id = _compute_node_id(
             lang=language,
             node_kind=node.type,
@@ -116,18 +131,13 @@ def map_tree_sitter_to_uast(
         )
         stable_ids[node.id] = node_stable_id
         order.append((node, node_stable_id))
-        
-        # When skipping, we simply don't add children to the stack.
-        # But we were already doing that by 'continue'. 
-        # The KeyError happens because we return uast_nodes[root.id]
-        # if root is the one being skipped, uast_nodes[root.id] won't exist.
-        
-        for child in reversed([c for c in node.children if c.is_named]):
+
+        for child in reversed(_filtered_named_children(node)):
             stack.append((child, node_stable_id))
 
     uast_nodes: dict[int, UASTNode] = {}
     for node, node_stable_id in reversed(order):
-        named_children = [c for c in node.children if c.is_named]
+        named_children = _filtered_named_children(node)
         children = [uast_nodes[c.id] for c in named_children]
         start_point = node.start_point
         end_point = node.end_point
@@ -155,17 +165,4 @@ def map_tree_sitter_to_uast(
             id=node_stable_id,
         )
 
-    # Return a dummy node or handle the skip case if root was skipped
-    if root.id not in uast_nodes:
-        # Fallback or empty node?
-        # If the root itself is skipped, return a placeholder "File" node with no children?
-        return UASTNode(
-            kind="File",
-            lang=language,
-            span=SourceSpan(file=file, start_byte=root.start_byte, end_byte=root.end_byte, start_line=1, start_column=0, end_line=1, end_column=0),
-            native=NativeRef(parser=parser_name, parser_version=parser_version, node_kind=root.type),
-            attributes={"named": True},
-            children=[],
-            id="skipped",
-        )
     return uast_nodes[root.id]

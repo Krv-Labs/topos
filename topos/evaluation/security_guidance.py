@@ -110,6 +110,31 @@ REMEDIATIONS: dict[str, Remediation] = {
         "Replace `system()` with an `exec*`-family call (no shell).",
         _SHELL,
     ),
+    "exec.command": Remediation(
+        "Pass a fixed argument list to `exec.Command`; never build the "
+        "command or its args from untrusted input.",
+        _SHELL,
+    ),
+    "exec.commandcontext": Remediation(
+        "Pass a fixed argument list to `exec.CommandContext`; never build "
+        "the command or its args from untrusted input.",
+        _SHELL,
+    ),
+    "os.startprocess": Remediation(
+        "Avoid `os.StartProcess` with untrusted paths or args; validate "
+        "and pass an explicit argument list.",
+        _SHELL,
+    ),
+    "syscall.exec": Remediation(
+        "Avoid `syscall.Exec`; validate the program path and argument "
+        "list before replacing the process image.",
+        _SHELL,
+    ),
+    "syscall.forkexec": Remediation(
+        "Avoid `syscall.ForkExec`; validate the program path and "
+        "argument list, or prefer `os/exec` with explicit arguments.",
+        _SHELL,
+    ),
     "innerhtml": Remediation(
         "Set text via `textContent`, or sanitize before assigning HTML.",
         _DOM,

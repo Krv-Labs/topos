@@ -586,6 +586,41 @@ def test_freshness_v2_tolerates_small_mtime_skew(tmp_path) -> None:
     assert "f.py" in detail
 
 
+def test_freshness_v2_distrusts_implausible_duration(tmp_path) -> None:
+    # finished_at < generated_at can't happen under normal generation (they're
+    # recorded in that order within the same call), so this simulates a
+    # corrupted/nonsensical fingerprint (e.g. a backward clock jump
+    # mid-generation). The single-sample drift calibration would extrapolate
+    # a bogus threshold from it; the duration clamp must instead fall back to
+    # the flat _MTIME_SKEW_TOLERANCE_S tolerance so a real edit still gets
+    # caught rather than silently trusted.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 40.0,  # negative duration: implausible
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (40.0, 40.0))
+
+    # Without the clamp, the (uncorrected) calibration would extrapolate a
+    # threshold of 100.0 here and miss this edit entirely. With the flat
+    # tolerance (generated_at - 2.0 = 98.0), it's correctly caught.
+    os.utime(tmp_path / "f.py", (99.0, 99.0))
+    os.utime(tmp_path, (39.0, 39.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "f.py" in detail
+
+
 def test_freshness_v2_handles_pre_generation_mtimes_without_false_positives(
     tmp_path,
 ) -> None:

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -31,6 +32,12 @@ from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependency
 from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, source_fingerprint
 
 from .cache import dep_graph_for
+
+# Debug-only: which freshness method decided a verdict, and the calibration
+# internals in _newer_source_file. Never rises above DEBUG — this exists so a
+# suspicious freshness verdict is diagnosable from logs instead of only from
+# reading this module's source, not to surface anything to MCP callers.
+_logger = logging.getLogger(__name__)
 
 _last_dep_graph_error: str | None = None
 
@@ -207,6 +214,17 @@ _FRESHNESS_WALK_CAP = 20_000
 # a real in-place edit made moments after generation.
 _MTIME_SKEW_TOLERANCE_S = 2.0
 
+# Sanity bound on the measured (finished_at - generated_at) duration used to
+# calibrate filesystem-clock drift. finished_at is always recorded after
+# generated_at within the same _write_fingerprint call, so a negative
+# duration means the system clock was adjusted backward mid-generation; an
+# implausibly large one means a forward jump or a corrupted field. Either way
+# the single-sample drift estimate can't be trusted — fall back to the flat
+# tolerance rather than calibrate against a bad sample. `gitnexus analyze`
+# can legitimately run for minutes on a large repo (see
+# DEFAULT_ANALYZE_TIMEOUT_S), so this ceiling is deliberately generous.
+_MAX_TRUSTED_GENERATION_DURATION_S = 3600.0
+
 
 def _newer_source_file(
     project_root: Path,
@@ -231,15 +249,31 @@ def _newer_source_file(
     suffixes = tuple(
         {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
     )
+    # Default to the flat-tolerance threshold; only override it with the
+    # clock-drift-calibrated value when finished_at/fingerprint_mtime are
+    # available *and* the duration they imply is plausible.
+    threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
     if finished_at is not None and fingerprint_mtime is not None:
-        if fingerprint_mtime % 1.0 == 0.0:
-            drift = int(finished_at) - fingerprint_mtime
-            threshold = int(generated_at) - drift
+        duration = finished_at - generated_at
+        if 0 <= duration <= _MAX_TRUSTED_GENERATION_DURATION_S:
+            if fingerprint_mtime % 1.0 == 0.0:
+                drift = int(finished_at) - fingerprint_mtime
+                threshold = int(generated_at) - drift
+            else:
+                drift = finished_at - fingerprint_mtime
+                threshold = generated_at - drift
+            _logger.debug(
+                "depgraph freshness: mtime-calibrated threshold=%.3f (duration=%.3fs)",
+                threshold,
+                duration,
+            )
         else:
-            drift = finished_at - fingerprint_mtime
-            threshold = generated_at - drift
-    else:
-        threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
+            _logger.debug(
+                "depgraph freshness: distrusting drift calibration "
+                "(duration=%.3fs outside [0, %.0f]s); using flat tolerance",
+                duration,
+                _MAX_TRUSTED_GENERATION_DURATION_S,
+            )
     seen = 0
     for path in iter_source_files(project_root, suffixes=suffixes, include_dirs=True):
         is_file = path.suffix in suffixes
@@ -272,7 +306,9 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     fingerprint = _read_graph_fingerprint(gitnexus_dir)
     if fingerprint is not None and fingerprint.source_hash is not None:
         current = source_fingerprint(project_root)
-        if current.content_hash != fingerprint.source_hash:
+        is_stale = current.content_hash != fingerprint.source_hash
+        _logger.debug("depgraph freshness: method=content_hash stale=%s", is_stale)
+        if is_stale:
             return True, (
                 f"{STALE_GITNEXUS_MARKER} — source tree content changed since "
                 "the dependency graph was generated; run 'topos depgraph "
@@ -284,6 +320,7 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     head_sha = _git_head_sha(project_root)
     sha_anchored = graph_sha is not None and head_sha is not None
     if sha_anchored and graph_sha != head_sha:
+        _logger.debug("depgraph freshness: method=sha_anchor stale=True")
         return True, (
             f"{STALE_GITNEXUS_MARKER} — graph was built from commit "
             f"{graph_sha[:7]} but HEAD is {head_sha[:7]}; run "
@@ -302,6 +339,9 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
             finished_at=fingerprint.finished_at,
             fingerprint_mtime=fingerprint_mtime,
         )
+        _logger.debug(
+            "depgraph freshness: method=mtime_calibrated stale=%s", newer is not None
+        )
         if newer is not None:
             try:
                 rel = newer.relative_to(project_root)
@@ -317,6 +357,7 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     if sha_anchored:
         # v1 fingerprint (SHA only, matching HEAD): no working-tree signal
         # available — preserve the legacy PRESENT verdict.
+        _logger.debug("depgraph freshness: method=sha_only_no_signal stale=False")
         return False, None
 
     # Legacy fallback: no fingerprint marker (or HEAD unresolvable) — compare the
@@ -324,8 +365,11 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     graph_mtime = _gitnexus_mtime(gitnexus_dir)
     head_mtime = _git_head_mtime(project_root)
     if graph_mtime <= 0 or head_mtime is None:
+        _logger.debug("depgraph freshness: method=legacy_dir_mtime unavailable")
         return False, None
-    if graph_mtime < head_mtime:
+    is_stale = graph_mtime < head_mtime
+    _logger.debug("depgraph freshness: method=legacy_dir_mtime stale=%s", is_stale)
+    if is_stale:
         return True, (
             f"{STALE_GITNEXUS_MARKER} — .gitnexus is older than the latest "
             "git commit; run 'topos depgraph generate' before trusting COMPOSABLE."

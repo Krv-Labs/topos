@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from topos.graphs.cpg.object import CodePropertyGraph
-from topos.graphs.uast.models import SourceSpan, NativeRef, UASTNode
+from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
 from topos.mcp.security_findings import security_findings
-from topos.utils.sighthound import run_sighthound_scan, count_findings
-
+from topos.utils.sighthound import count_findings, run_sighthound_scan
 
 MOCK_SIGHTHOUND_OUTPUT = [
     {
@@ -24,7 +20,7 @@ MOCK_SIGHTHOUND_OUTPUT = [
         "snippet": "eval(user_input)",
         "severity": "Critical",
         "confidence": "High",
-        "description": "Use of dangerous function eval"
+        "description": "Use of dangerous function eval",
     },
     {
         "file": "main.py",
@@ -38,14 +34,12 @@ MOCK_SIGHTHOUND_OUTPUT = [
         "severity": "High",
         "confidence": "Medium",
         "description": "Command injection vulnerability",
-        "source_info": {
-            "snippet": "user_input = input()"
-        },
+        "source_info": {"snippet": "user_input = input()"},
         "sink_info": {
             "snippet": "subprocess.run(cmd)",
-            "function_name": "subprocess.run"
-        }
-    }
+            "function_name": "subprocess.run",
+        },
+    },
 ]
 
 
@@ -71,7 +65,7 @@ def test_run_sighthound_scan_file(mock_run, tmp_path):
         ["sighthound", "--output-format", "json", str(target_file)],
         capture_output=True,
         text=True,
-        check=False
+        check=False,
     )
 
 
@@ -124,14 +118,14 @@ def test_security_findings_with_sighthound(mock_scan, mock_which):
 
     findings = security_findings(cpg)
     assert len(findings) == 2
-    
+
     # Verify Search-mode finding
     f1 = findings[0]
     assert f1.kind == "dangerous_call"
     assert f1.line == 10
     assert f1.snippet == "eval(user_input)"
     assert f1.callee == "eval"
-    
+
     # Verify Taint-mode finding
     f2 = findings[1]
     assert f2.kind == "taint_flow"

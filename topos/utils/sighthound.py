@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
+
 def run_sighthound_scan(
-    source: str,
-    language: str,
-    file_path: str | Path | None = None
+    source: str, language: str, file_path: str | Path | None = None
 ) -> list[dict[str, Any]]:
     """
     Run Sighthound SAST scanner on a source file or an in-memory source string.
@@ -17,7 +17,7 @@ def run_sighthound_scan(
     """
     if file_path and Path(file_path).exists():
         return _run_cli(Path(file_path))
-    
+
     # In-memory source: write to temporary file
     suffix_map = {
         "python": ".py",
@@ -28,16 +28,17 @@ def run_sighthound_scan(
         "go": ".go",
     }
     suffix = suffix_map.get(language.lower(), ".py")
-    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=suffix, delete=False, encoding="utf-8"
+    ) as f:
         f.write(source)
         temp_path = Path(f.name)
     try:
         return _run_cli(temp_path)
     finally:
-        try:
+        with contextlib.suppress(OSError):
             temp_path.unlink()
-        except OSError:
-            pass
+
 
 def _run_cli(target_path: Path) -> list[dict[str, Any]]:
     """Execute sighthound --output-format json and return parsed findings."""
@@ -46,7 +47,7 @@ def _run_cli(target_path: Path) -> list[dict[str, Any]]:
             ["sighthound", "--output-format", "json", str(target_path)],
             capture_output=True,
             text=True,
-            check=False
+            check=False,
         )
         if not result.stdout.strip():
             return []
@@ -58,8 +59,9 @@ def _run_cli(target_path: Path) -> list[dict[str, Any]]:
         # sighthound CLI is not installed / in PATH
         return []
 
+
 def count_findings(findings: list[dict[str, Any]]) -> tuple[int, int]:
-    """Count the number of dangerous calls (search mode) and taint flows (taint mode)."""
+    """Count dangerous calls (search mode) and taint flows (taint mode)."""
     dangerous_calls = 0
     taint_flows = 0
     for finding in findings:

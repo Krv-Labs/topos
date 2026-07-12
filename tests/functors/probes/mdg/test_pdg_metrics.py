@@ -738,6 +738,60 @@ def test_from_ladybugdb_schema_mismatch_raises_actionable_error() -> None:
             ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
 
 
+def _empty_query_result() -> MagicMock:
+    result = MagicMock()
+    result.has_next.return_value = False
+    return result
+
+
+def test_from_ladybugdb_retries_read_write_on_shadow_replay() -> None:
+    """Shadow pages pending replay (issue #136) retry with a read-write handle."""
+    shadow_error = RuntimeError(
+        "Runtime exception: Couldn't replay shadow pages under read-only mode. "
+        "Please re-open the database with read-write mode to replay shadow pages."
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        lbug_file = base / "lbug"
+        lbug_file.write_bytes(b"\x00")
+
+        mock_lb = MagicMock()
+        mock_db = MagicMock()
+        mock_lb.Database.side_effect = [shadow_error, mock_db]
+        mock_lb.Connection.return_value.execute.return_value = _empty_query_result()
+
+        with patch.dict("sys.modules", {"ladybug": mock_lb}):
+            graph = ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+
+        assert isinstance(graph, ModuleDependencyGraph)
+        assert mock_lb.Database.call_count == 2
+        first_call, second_call = mock_lb.Database.call_args_list
+        assert first_call.kwargs["read_only"] is True
+        assert second_call.kwargs["read_only"] is False
+
+
+def test_from_ladybugdb_shadow_replay_retry_failure_still_raises() -> None:
+    """If the read-write retry itself fails for an unrelated reason, propagate it."""
+    shadow_error = RuntimeError(
+        "Runtime exception: Couldn't replay shadow pages under read-only mode. "
+        "Please re-open the database with read-write mode to replay shadow pages."
+    )
+    permission_error = RuntimeError("Runtime exception: Permission denied")
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        lbug_file = base / "lbug"
+        lbug_file.write_bytes(b"\x00")
+
+        mock_lb = MagicMock()
+        mock_lb.Database.side_effect = [shadow_error, permission_error]
+
+        with (
+            patch.dict("sys.modules", {"ladybug": mock_lb}),
+            pytest.raises(RuntimeError, match="Permission denied"),
+        ):
+            ModuleDependencyGraph.from_gitnexus_dir(base, target_file="foo.py")
+
+
 def test_load_dep_graph_returns_none_on_schema_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -761,6 +815,39 @@ def test_load_dep_graph_returns_none_on_schema_mismatch(
     assert result is None
     assert mcp_evaluation.last_dep_graph_error() is not None
     assert "storage version mismatch" in mcp_evaluation.last_dep_graph_error().lower()
+
+
+def test_load_dep_graph_degrades_gracefully_on_unrecognized_runtime_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Ladybug RuntimeError with an unrecognized message must not crash the caller.
+
+    Regression test for issue #136: previously only "different version" /
+    "storage version" messages were tolerated, so any other Ladybug failure
+    (e.g. a corrupted WAL, or a failed shadow-page-replay retry) propagated
+    as an unhandled exception through the CLI and MCP tool surfaces.
+    """
+    from topos.mcp import evaluation as mcp_evaluation
+
+    monkeypatch.setattr(
+        mcp_evaluation,
+        "dep_graph_for",
+        MagicMock(
+            side_effect=RuntimeError(
+                "Runtime exception: Corrupted wal file. "
+                "Read out invalid WAL record type."
+            )
+        ),
+    )
+    mcp_evaluation.clear_dep_graph_error()
+    gitnexus_dir = tmp_path / ".gitnexus"
+    gitnexus_dir.mkdir()
+
+    result = mcp_evaluation.load_dep_graph(gitnexus_dir, "foo.py")
+
+    assert result is None
+    assert mcp_evaluation.last_dep_graph_error() is not None
+    assert "corrupted wal file" in mcp_evaluation.last_dep_graph_error().lower()
 
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,9 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-Passing unit tests proves your code works. **Topos** proves it's built to last. It measures program structure — complexity, coupling, and data-flow risk — not just syntax, so agents get a concrete target to optimize toward on every pass instead of a vague "clean it up."
+**Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
+architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
+establishing a precise, medal-scored (SLOP → GOLD) feedback loop to autonomously write clean, highly composable code.
 
 ---
 
@@ -46,12 +48,12 @@ Topos checks three independent pillars and awards a **Code Quality Medal** for h
 - **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
 - **SECURE** — free of dangerous API reachability and taint paths (CPG analysis)
 
-| Medal | Criteria |
-| :--- | :--- |
-| 🥇 **GOLD** | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
-| 🥈 **SILVER** | Passes 2 of 3 |
-| 🥉 **BRONZE** | Passes 1 of 3 |
-| ❌ **SLOP** | Passes 0 (or fails to parse) |
+| Medal         | Criteria                                    |
+| :------------ | :------------------------------------------ |
+| 🥇 **GOLD**   | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
+| 🥈 **SILVER** | Passes 2 of 3                               |
+| 🥉 **BRONZE** | Passes 1 of 3                               |
+| ❌ **SLOP**   | Passes 0 (or fails to parse)                |
 
 `COMPOSABLE` needs a cross-file dependency graph, which the CLI does not build automatically:
 

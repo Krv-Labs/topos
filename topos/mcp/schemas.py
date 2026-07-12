@@ -1063,3 +1063,75 @@ class ChangesetResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Refactoring suite (issues #83 cycles, #84 dependencies, #86 process) —
+# persistent-homology cycle detection and Forman-Ricci curvature. Purely
+# advisory: none of this feeds SIMPLE/COMPOSABLE/SECURE scoring.
+# ---------------------------------------------------------------------------
+
+
+class RefactorHotspot(BaseModel):
+    """One ranked hotspot row, shared across all ``topos_refactor_*`` tools."""
+
+    kind: str = Field(description="cycle | dependency_edge | process_transition")
+    label: str
+    filepath: str
+    line_start: int | None = None
+    line_end: int | None = None
+    score: float = Field(
+        description="Betti contribution or curvature (negative = stronger signal)."
+    )
+    suggestion: str
+    evidence: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class RefactorCyclesInput(_StrictModel):
+    """Arguments for ``topos_refactor_cycles``."""
+
+    filepath: str = Field(..., min_length=1, description="Source file path.")
+    max_cycles: int = Field(default=5, ge=1, le=50)
+
+
+class RefactorCyclesResult(BaseModel):
+    """Result of ``topos_refactor_cycles``."""
+
+    filepath: str
+    betti_1: int = 0
+    hotspots: list[RefactorHotspot] = Field(default_factory=list)
+    error: str | None = None
+
+
+class RefactorDependenciesInput(_StrictModel):
+    """Arguments for ``topos_refactor_dependencies``."""
+
+    filepath: str = Field(..., min_length=1, description="Source file path.")
+    gitnexus_dir: str | None = Field(default=None, description=".gitnexus directory.")
+    max_targets: int = Field(default=5, ge=1, le=50)
+
+
+class RefactorDependenciesResult(BaseModel):
+    """Result of ``topos_refactor_dependencies``."""
+
+    filepath: str
+    gitnexus_available: bool = False
+    hotspots: list[RefactorHotspot] = Field(default_factory=list)
+    error: str | None = None
+
+
+class RefactorProcessInput(_StrictModel):
+    """Arguments for ``topos_refactor_process``."""
+
+    filepath: str = Field(..., min_length=1, description="Source file path.")
+    gitnexus_dir: str | None = Field(default=None, description=".gitnexus directory.")
+    max_targets: int = Field(default=5, ge=1, le=50)
+
+
+class RefactorProcessResult(BaseModel):
+    """Result of ``topos_refactor_process``."""
+
+    filepath: str
+    gitnexus_available: bool = False
+    hotspots: list[RefactorHotspot] = Field(default_factory=list)
+    error: str | None = None

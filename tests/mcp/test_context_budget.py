@@ -31,8 +31,10 @@ from topos.mcp.server import _get_mcp
 # Ratchets: keep the tool discovery surface below the repo target while leaving
 # room for small schema changes. Bumped to absorb three workflow tools added in
 # v0.3.6 (topos_depgraph_status, topos_generate_depgraph, topos_assess_changeset);
-# lower again as later phases shrink the schemas.
-TOTAL_CEILING_CHARS = 34_000
+# bumped again for the unified refactoring suite (topos_refactor_cycles,
+# topos_refactor_dependencies, topos_refactor_process — Methods Upgrade
+# milestone, issues #83/#84/#86); lower again as later phases shrink the schemas.
+TOTAL_CEILING_CHARS = 37_000
 
 PER_TOOL_CEILING_CHARS = 4_500
 

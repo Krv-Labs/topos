@@ -123,6 +123,7 @@ class GraphRelationship:
     type: str
     confidence: float = 1.0
     reason: str = ""
+    properties: dict[str, object] = field(default_factory=dict)
 
 
 def _parse_node(item: dict) -> GraphNode:
@@ -141,6 +142,7 @@ def _parse_relationship(item: dict) -> GraphRelationship:
         type=item["type"],
         confidence=item.get("confidence", 1.0),
         reason=item.get("reason", ""),
+        properties=item.get("properties", {}),
     )
 
 
@@ -253,14 +255,31 @@ class ModuleDependencyGraph:
                 props = {k: v for k, v in node_data.items() if not k.startswith("_")}
                 graph.add_node(GraphNode(id=node_id, label=label, properties=props))
 
-        # Load all relationships from the single CodeRelation table.
-        result = conn.execute(
-            "MATCH (src)-[r:CodeRelation]->(dst) "
-            "RETURN src.id, dst.id, r.type, r.confidence, r.reason"
-        )
+        # Load all relationships from the single CodeRelation table. Also try
+        # to pull `step` (the 1-indexed STEP_IN_PROCESS ordering property, see
+        # topos/graphs/process/object.py) — not every ladybug schema version
+        # carries this column on CodeRelation, so fall back to the plain query
+        # if it isn't there rather than failing the whole load.
+        has_step = True
+        try:
+            result = conn.execute(
+                "MATCH (src)-[r:CodeRelation]->(dst) "
+                "RETURN src.id, dst.id, r.type, r.confidence, r.reason, r.step"
+            )
+        except RuntimeError:
+            has_step = False
+            result = conn.execute(
+                "MATCH (src)-[r:CodeRelation]->(dst) "
+                "RETURN src.id, dst.id, r.type, r.confidence, r.reason"
+            )
         idx = 0
         while result.has_next():
-            src_id, dst_id, rel_type, confidence, reason = result.get_next()
+            row = result.get_next()
+            if has_step:
+                src_id, dst_id, rel_type, confidence, reason, step = row
+            else:
+                src_id, dst_id, rel_type, confidence, reason = row
+                step = None
             if src_id is None or dst_id is None:
                 continue
             graph.add_relationship(
@@ -271,6 +290,7 @@ class ModuleDependencyGraph:
                     type=rel_type,
                     confidence=confidence or 1.0,
                     reason=reason or "",
+                    properties={"step": step} if step is not None else {},
                 )
             )
             idx += 1

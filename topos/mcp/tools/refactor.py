@@ -1,18 +1,18 @@
 """Unified refactoring-guidance suite (Methods Upgrade milestone).
 
-Three tools sharing one input/output shape (ranked hotspot list + suggested
-action), each surfacing a different structural-analysis engine:
+One tool, three targets (ranked hotspot list + suggested action), each
+surfacing a different structural-analysis engine:
 
-- ``topos_refactor_cycles`` (issue #83): cycle-basis extraction on the CFG,
+- ``target="cycles"`` (issue #83): cycle-basis extraction on the CFG,
   pointing cyclomatic complexity's count at the actual source loops.
-- ``topos_refactor_dependencies`` (issue #84): balanced Forman curvature on
+- ``target="dependencies"`` (issue #84): balanced Forman curvature on
   the MDG, naming concrete dependency edges worth strengthening.
-- ``topos_refactor_process`` (issue #86): directed Forman-Ricci curvature on
+- ``target="process"`` (issue #86): directed Forman-Ricci curvature on
   GitNexus process graphs, finding execution "choke points".
 
 All three are purely advisory — none of this feeds SIMPLE/COMPOSABLE/SECURE
 scoring; that's an explicit acceptance criterion carried over from #86 and
-applied consistently across the whole suite.
+applied consistently across the whole suite. Full details: docs/refactor-suite.md.
 """
 
 from __future__ import annotations
@@ -28,15 +28,7 @@ from topos.graphs.process.object import ProcessGraph
 from ..evaluation import detect_language, load_dep_graph, resolve_gitnexus_dir
 from ..formatting import to_tool_result
 from ..refactor_hotspots import render_hotspots_md
-from ..schemas import (
-    RefactorCyclesInput,
-    RefactorCyclesResult,
-    RefactorDependenciesInput,
-    RefactorDependenciesResult,
-    RefactorHotspot,
-    RefactorProcessInput,
-    RefactorProcessResult,
-)
+from ..schemas import RefactorHotspot, RefactorInput, RefactorResult
 from ..security import read_safe_utf8_file, resolve_file_root, resolve_within_root
 from ..server import mcp
 
@@ -50,30 +42,44 @@ _READ_ONLY_ANN = {
 
 
 @mcp.tool(
-    name="topos_refactor_cycles",
-    tags={"refactor", "cfg"},
+    name="topos_refactor",
+    tags={"refactor", "cfg", "mdg", "process"},
     annotations=_READ_ONLY_ANN,
 )
-def topos_refactor_cycles(params: RefactorCyclesInput) -> ToolResult:
-    """Cycle-basis hotspots on the CFG, mapped to source lines (read-only). See docs/refactor-suite.md."""
+def topos_refactor(params: RefactorInput) -> ToolResult:
+    """Refactor hotspots (read-only). docs/refactor-suite.md."""
+    if params.target == "cycles":
+        return _refactor_cycles(params)
+    if params.target == "dependencies":
+        return _refactor_dependencies(params)
+    return _refactor_process(params)
+
+
+def _refactor_cycles(params: RefactorInput) -> ToolResult:
     resolved, err = resolve_within_root(params.filepath)
     if err or resolved is None:
-        model = RefactorCyclesResult(
-            filepath=params.filepath, error=(err or {}).get("error", "path error")
+        model = RefactorResult(
+            target="cycles",
+            filepath=params.filepath,
+            error=(err or {}).get("error", "path error"),
         )
         return to_tool_result(model, render_hotspots_md("Cycle hotspots", []))
 
     source, read_err = read_safe_utf8_file(resolved)
     if read_err:
-        model = RefactorCyclesResult(filepath=params.filepath, error=read_err["error"])
+        model = RefactorResult(
+            target="cycles", filepath=params.filepath, error=read_err["error"]
+        )
         return to_tool_result(model, render_hotspots_md("Cycle hotspots", []))
 
     language = detect_language(resolved)
     morphism = ProgramMorphism(source=source, language=language)
     cfg = morphism.build_cfg()
     if cfg is None:
-        model = RefactorCyclesResult(
-            filepath=params.filepath, error="Could not build a control-flow graph."
+        model = RefactorResult(
+            target="cycles",
+            filepath=params.filepath,
+            error="Could not build a control-flow graph.",
         )
         return to_tool_result(model, render_hotspots_md("Cycle hotspots", []))
 
@@ -84,7 +90,7 @@ def topos_refactor_cycles(params: RefactorCyclesInput) -> ToolResult:
             return 0
         return cycle.end_line - cycle.start_line
 
-    ranked = sorted(result.cycles, key=_span, reverse=True)[: params.max_cycles]
+    ranked = sorted(result.cycles, key=_span, reverse=True)[: params.limit]
     hotspots = [
         RefactorHotspot(
             kind="cycle",
@@ -97,47 +103,46 @@ def topos_refactor_cycles(params: RefactorCyclesInput) -> ToolResult:
                 "Extract this loop/branch body into its own function to "
                 "isolate the cycle and shrink cyclomatic complexity."
             ),
-            evidence={"block_ids": str(cycle.block_ids)},
         )
         for cycle in ranked
     ]
 
-    model = RefactorCyclesResult(
-        filepath=params.filepath, betti_1=result.betti_1, hotspots=hotspots
+    model = RefactorResult(
+        target="cycles",
+        filepath=params.filepath,
+        betti_1=result.betti_1,
+        hotspots=hotspots,
     )
     title = f"Cycle hotspots (betti_1={result.betti_1})"
     return to_tool_result(model, render_hotspots_md(title, hotspots))
 
 
-@mcp.tool(
-    name="topos_refactor_dependencies",
-    tags={"refactor", "mdg"},
-    annotations=_READ_ONLY_ANN,
-)
-def topos_refactor_dependencies(params: RefactorDependenciesInput) -> ToolResult:
-    """MDG curvature hotspots to strengthen (read-only). See docs/refactor-suite.md."""
+def _refactor_dependencies(params: RefactorInput) -> ToolResult:
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
     mdg = load_dep_graph(gitnexus_dir, params.filepath)
     if mdg is None:
-        model = RefactorDependenciesResult(
-            filepath=params.filepath, gitnexus_available=False
+        model = RefactorResult(
+            target="dependencies", filepath=params.filepath, gitnexus_available=False
         )
         return to_tool_result(model, render_hotspots_md("Dependency hotspots", []))
 
     file_id = mdg.file_node_id()
     if file_id is None:
-        model = RefactorDependenciesResult(
-            filepath=params.filepath, gitnexus_available=True, hotspots=[]
+        model = RefactorResult(
+            target="dependencies",
+            filepath=params.filepath,
+            gitnexus_available=True,
+            hotspots=[],
         )
         return to_tool_result(model, render_hotspots_md("Dependency hotspots", []))
 
     curvature = calculate_mdg_curvature(mdg, file_id)
-    ranked = curvature.edges[: params.max_targets]
+    ranked = curvature.edges[: params.limit]
     hotspots = [
         RefactorHotspot(
             kind="dependency_edge",
-            label=f"{source} -> {target}",
+            label=f"{src} -> {dst}",
             filepath=params.filepath,
             score=score,
             suggestion=(
@@ -148,37 +153,36 @@ def topos_refactor_dependencies(params: RefactorDependenciesInput) -> ToolResult
                 if score < 0
                 else "Well-supported dependency edge; no action needed."
             ),
-            evidence={"source": source, "target": target},
         )
-        for source, target, score in ranked
+        for src, dst, score in ranked
     ]
 
-    model = RefactorDependenciesResult(
-        filepath=params.filepath, gitnexus_available=True, hotspots=hotspots
+    model = RefactorResult(
+        target="dependencies",
+        filepath=params.filepath,
+        gitnexus_available=True,
+        hotspots=hotspots,
     )
     return to_tool_result(model, render_hotspots_md("Dependency hotspots", hotspots))
 
 
-@mcp.tool(
-    name="topos_refactor_process",
-    tags={"refactor", "process"},
-    annotations=_READ_ONLY_ANN,
-)
-def topos_refactor_process(params: RefactorProcessInput) -> ToolResult:
-    """Process-graph choke-point hotspots (read-only). See docs/refactor-suite.md."""
+def _refactor_process(params: RefactorInput) -> ToolResult:
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
     mdg = load_dep_graph(gitnexus_dir, params.filepath)
     if mdg is None:
-        model = RefactorProcessResult(
-            filepath=params.filepath, gitnexus_available=False
+        model = RefactorResult(
+            target="process", filepath=params.filepath, gitnexus_available=False
         )
         return to_tool_result(model, render_hotspots_md("Process choke points", []))
 
     file_id = mdg.file_node_id()
     if file_id is None:
-        model = RefactorProcessResult(
-            filepath=params.filepath, gitnexus_available=True, hotspots=[]
+        model = RefactorResult(
+            target="process",
+            filepath=params.filepath,
+            gitnexus_available=True,
+            hotspots=[],
         )
         return to_tool_result(model, render_hotspots_md("Process choke points", []))
 
@@ -187,11 +191,11 @@ def topos_refactor_process(params: RefactorProcessInput) -> ToolResult:
     subgraph = ProcessGraph(target_file=params.filepath, paths=touching)
     curvature = calculate_process_curvature(subgraph)
 
-    ranked = curvature.edges[: params.max_targets]
+    ranked = curvature.edges[: params.limit]
     hotspots = [
         RefactorHotspot(
             kind="process_transition",
-            label=f"{source} -> {target}",
+            label=f"{src} -> {dst}",
             filepath=params.filepath,
             score=score,
             suggestion=(
@@ -202,12 +206,14 @@ def topos_refactor_process(params: RefactorProcessInput) -> ToolResult:
                 if score < 0
                 else "Well-distributed transition; no action needed."
             ),
-            evidence={"source": source, "target": target},
         )
-        for source, target, score in ranked
+        for src, dst, score in ranked
     ]
 
-    model = RefactorProcessResult(
-        filepath=params.filepath, gitnexus_available=True, hotspots=hotspots
+    model = RefactorResult(
+        target="process",
+        filepath=params.filepath,
+        gitnexus_available=True,
+        hotspots=hotspots,
     )
     return to_tool_result(model, render_hotspots_md("Process choke points", hotspots))

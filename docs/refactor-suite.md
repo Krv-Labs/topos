@@ -1,9 +1,19 @@
 # Refactoring Suite: Cycles, Dependencies, Process (Methods Upgrade)
 
-Three advisory tools, exposed as both CLI subcommands (`topos refactor
-cycles|dependencies|process`) and MCP tools
-(`topos_refactor_cycles`/`_dependencies`/`_process`). They implement the
-Methods Upgrade milestone (issues
+Three advisory targets, exposed as CLI subcommands
+(`topos refactor cycles|dependencies|process`) and as one MCP tool,
+`topos_refactor(target="cycles"|"dependencies"|"process", ...)`. The MCP
+surface is collapsed into a single tool — rather than three — specifically
+to stay under the tool-definition wire-size ratchet
+(`tests/mcp/test_context_budget.py`): each of three separate tools would
+carry its own self-contained `outputSchema`, tripling the embedded
+`RefactorHotspot` schema on the wire. One tool means one embed. The CLI is
+unaffected by this — it still has three distinct subcommands, each calling
+straight into the relevant Python probe (`calculate_cycle_basis` /
+`calculate_mdg_curvature` / `calculate_process_curvature`), not through the
+MCP tool at all.
+
+They implement the Methods Upgrade milestone (issues
 [#83](https://github.com/Krv-Labs/topos/issues/83),
 [#84](https://github.com/Krv-Labs/topos/issues/84),
 [#86](https://github.com/Krv-Labs/topos/issues/86)).
@@ -18,14 +28,24 @@ independent structural-analysis engines (persistent-homology-flavored cycle
 detection, discrete Ricci curvature) that don't participate in scoring at
 all.
 
-The MCP tool-surface size is under an active regression ratchet
-(`tests/mcp/test_context_budget.py`), so the in-code docstrings and schema
-`Field(description=...)` text for these three tools are deliberately terse.
+The tool's in-code docstring and schema field set are deliberately terse for
+the same wire-size reason (no `Field(description=...)` text at all — see
+`topos/mcp/schemas.py`'s `RefactorInput`/`RefactorResult`/`RefactorHotspot`).
 This document carries the fuller explanation that didn't fit.
 
-## Shared result shape
+## Shared input/result shape (MCP)
 
-All three tools return a ranked list of `RefactorHotspot` rows:
+`RefactorInput`: `target` (`"cycles"` | `"dependencies"` | `"process"`,
+required), `filepath` (required), `gitnexus_dir` (optional, ignored for
+`target="cycles"`), `limit` (default 5, 1–50 — caps how many hotspots come
+back; replaces the old per-tool `max_cycles`/`max_targets` names now that
+there's one shared input schema).
+
+`RefactorResult`: `target`, `filepath`, `betti_1` (set only for
+`target="cycles"`), `gitnexus_available` (set only for `dependencies`/
+`process`), `hotspots`, `error`.
+
+Every result carries a ranked list of `RefactorHotspot` rows:
 
 | Field | Meaning |
 | --- | --- |
@@ -35,12 +55,16 @@ All three tools return a ranked list of `RefactorHotspot` rows:
 | `line_start` / `line_end` | Source range, when known (cycles only today) |
 | `score` | Betti contribution (cycles) or curvature value (dependencies/process). **Sign matters for curvature: more negative means a stronger bottleneck/choke-point signal.** Cycles use a non-negative "span" score (larger = bigger hotspot). |
 | `suggestion` | An imperative, one-line refactor suggestion |
-| `evidence` | A small dict of supporting detail (e.g. the raw block-id list, or the two endpoint ids) |
+
+(An earlier revision also carried a per-hotspot `evidence` dict of raw
+supporting detail — dropped to claw back wire-size margin; `label` already
+carries the same information, e.g. the block-id list or the two endpoint
+ids, just formatted as text instead of structured key/value pairs.)
 
 Hotspots are always returned pre-sorted so the most actionable row is first
 (largest cycle span; most negative curvature).
 
-## `topos refactor cycles` / `topos_refactor_cycles` (issue #83)
+## `topos refactor cycles` / `topos_refactor(target="cycles")` (issue #83)
 
 **What it replaces:** cyclomatic complexity (`cfg.cyclomatic`, `E - N + 2P`)
 is a single summary number — it tells you *how many* independent cycles a
@@ -76,11 +100,11 @@ confirmed with the user before implementation.
 max end_line)` range — the smallest source span that covers every statement
 in every block the cycle touches.
 
-**Params:** `filepath` (required), `max_cycles` (default 5, 1–50) caps how
-many hotspots come back, ranked by span size (`end_line - start_line`)
-descending.
+**Params:** `filepath` (required), `limit` (default 5, 1–50) caps how many
+hotspots come back, ranked by span size (`end_line - start_line`)
+descending. `gitnexus_dir` is accepted but ignored for this target.
 
-## `topos refactor dependencies` / `topos_refactor_dependencies` (issue #84)
+## `topos refactor dependencies` / `topos_refactor(target="dependencies")` (issue #84)
 
 **Engine:** balanced Forman curvature (Topping, Di Giovanni, Chamberlain,
 Dong & Bronstein, "Understanding over-squashing and bottlenecks on graphs
@@ -115,7 +139,7 @@ requested file.
 
 **Params:** `filepath` (required), `gitnexus_dir` (optional, auto-detected
 from `<project_root>/.gitnexus` when omitted — matching
-`topos_evaluate_file`'s behavior), `max_targets` (default 5, 1–50).
+`topos_evaluate_file`'s behavior), `limit` (default 5, 1–50).
 `gitnexus_available: false` is returned (no error) when no `.gitnexus`
 graph is present, the same graceful-degradation contract
 `topos_evaluate_file` uses for COMPOSABLE.
@@ -127,7 +151,7 @@ already gives the triangle + 4-cycle terms from Topping et al.'s Definition
 procedure (add/remove edges to flatten curvature), which is out of scope
 for an advisory reporting tool.
 
-## `topos refactor process` / `topos_refactor_process` (issue #86)
+## `topos refactor process` / `topos_refactor(target="process")` (issue #86)
 
 **Engine:** directed Forman-Ricci curvature (Samal et al.) applied to
 GitNexus process graphs (`src/frc.rs::directed_forman_curvature`):
@@ -158,7 +182,7 @@ discovery order if a given `.gitnexus` build doesn't carry that property —
 see the docstring on `ProcessGraph.from_mdg` for the exact fallback logic).
 
 **Params:** `filepath` (required), `gitnexus_dir` (optional, same
-auto-detection as `dependencies`), `max_targets` (default 5, 1–50). Same
+auto-detection as `dependencies`), `limit` (default 5, 1–50). Same
 `gitnexus_available: false` graceful-degradation contract. Curvature is
 computed only over the process paths that touch the requested file
 (`ProcessGraph.paths_touching_file`), not the whole project's process

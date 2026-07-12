@@ -1119,42 +1119,19 @@ class RefactorHotspot(BaseModel):
     line_end: int | None = None
     score: float
     suggestion: str
-    evidence: dict[str, str] = Field(default_factory=dict)
 
 
-class RefactorCyclesInput(_StrictModel):
-    filepath: str = Field(..., min_length=1)
-    max_cycles: int = Field(default=5, ge=1, le=50)
-
-
-class RefactorCyclesResult(BaseModel):
-    filepath: str
-    betti_1: int = 0
-    hotspots: list[RefactorHotspot] = Field(default_factory=list)
-    error: str | None = None
-
-
-class RefactorDependenciesInput(_StrictModel):
+class RefactorInput(_StrictModel):
+    target: Literal["cycles", "dependencies", "process"]
     filepath: str = Field(..., min_length=1)
     gitnexus_dir: str | None = None
-    max_targets: int = Field(default=5, ge=1, le=50)
+    limit: int = Field(default=5, ge=1, le=50)
 
 
-class RefactorDependenciesResult(BaseModel):
+class RefactorResult(BaseModel):
+    target: Literal["cycles", "dependencies", "process"]
     filepath: str
-    gitnexus_available: bool = False
-    hotspots: list[RefactorHotspot] = Field(default_factory=list)
-    error: str | None = None
-
-
-class RefactorProcessInput(_StrictModel):
-    filepath: str = Field(..., min_length=1)
-    gitnexus_dir: str | None = None
-    max_targets: int = Field(default=5, ge=1, le=50)
-
-
-class RefactorProcessResult(BaseModel):
-    filepath: str
-    gitnexus_available: bool = False
+    betti_1: int | None = None
+    gitnexus_available: bool | None = None
     hotspots: list[RefactorHotspot] = Field(default_factory=list)
     error: str | None = None

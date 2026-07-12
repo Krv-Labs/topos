@@ -1,20 +1,9 @@
-"""Tests for the unified refactoring suite MCP tools (issues #83, #84, #86)."""
+"""Tests for the unified refactoring suite MCP tool (issues #83, #84, #86)."""
 
 from __future__ import annotations
 
-from topos.mcp.schemas import (
-    RefactorCyclesInput,
-    RefactorCyclesResult,
-    RefactorDependenciesInput,
-    RefactorDependenciesResult,
-    RefactorProcessInput,
-    RefactorProcessResult,
-)
-from topos.mcp.tools.refactor import (
-    topos_refactor_cycles,
-    topos_refactor_dependencies,
-    topos_refactor_process,
-)
+from topos.mcp.schemas import RefactorInput, RefactorResult
+from topos.mcp.tools.refactor import topos_refactor
 
 
 def _use_root(tmp_path, monkeypatch) -> None:
@@ -24,16 +13,8 @@ def _use_root(tmp_path, monkeypatch) -> None:
     security.reset_file_root_cache()
 
 
-def _cycles(tool_result) -> RefactorCyclesResult:
-    return RefactorCyclesResult.model_validate(tool_result.structured_content)
-
-
-def _dependencies(tool_result) -> RefactorDependenciesResult:
-    return RefactorDependenciesResult.model_validate(tool_result.structured_content)
-
-
-def _process(tool_result) -> RefactorProcessResult:
-    return RefactorProcessResult.model_validate(tool_result.structured_content)
+def _result(tool_result) -> RefactorResult:
+    return RefactorResult.model_validate(tool_result.structured_content)
 
 
 def test_refactor_cycles_finds_loop_and_maps_source_lines(tmp_path, monkeypatch):
@@ -47,8 +28,11 @@ def test_refactor_cycles_finds_loop_and_maps_source_lines(tmp_path, monkeypatch)
     )
     (tmp_path / "loopy.py").write_text(source)
 
-    result = _cycles(topos_refactor_cycles(RefactorCyclesInput(filepath="loopy.py")))
+    result = _result(
+        topos_refactor(RefactorInput(target="cycles", filepath="loopy.py"))
+    )
 
+    assert result.target == "cycles"
     assert result.error is None
     assert result.betti_1 == 1
     assert len(result.hotspots) == 1
@@ -62,14 +46,16 @@ def test_refactor_cycles_no_loop_yields_no_hotspots(tmp_path, monkeypatch):
     _use_root(tmp_path, monkeypatch)
     (tmp_path / "flat.py").write_text("def f():\n    return 1\n")
 
-    result = _cycles(topos_refactor_cycles(RefactorCyclesInput(filepath="flat.py")))
+    result = _result(topos_refactor(RefactorInput(target="cycles", filepath="flat.py")))
     assert result.betti_1 == 0
     assert result.hotspots == []
 
 
 def test_refactor_cycles_rejects_path_outside_root(tmp_path, monkeypatch):
     _use_root(tmp_path, monkeypatch)
-    result = _cycles(topos_refactor_cycles(RefactorCyclesInput(filepath="/etc/passwd")))
+    result = _result(
+        topos_refactor(RefactorInput(target="cycles", filepath="/etc/passwd"))
+    )
     assert result.error is not None
 
 
@@ -79,9 +65,10 @@ def test_refactor_dependencies_degrades_gracefully_without_gitnexus(
     _use_root(tmp_path, monkeypatch)
     (tmp_path / "a.py").write_text("x = 1\n")
 
-    result = _dependencies(
-        topos_refactor_dependencies(RefactorDependenciesInput(filepath="a.py"))
+    result = _result(
+        topos_refactor(RefactorInput(target="dependencies", filepath="a.py"))
     )
+    assert result.target == "dependencies"
     assert result.gitnexus_available is False
     assert result.hotspots == []
     assert result.error is None
@@ -91,7 +78,19 @@ def test_refactor_process_degrades_gracefully_without_gitnexus(tmp_path, monkeyp
     _use_root(tmp_path, monkeypatch)
     (tmp_path / "a.py").write_text("x = 1\n")
 
-    result = _process(topos_refactor_process(RefactorProcessInput(filepath="a.py")))
+    result = _result(topos_refactor(RefactorInput(target="process", filepath="a.py")))
+    assert result.target == "process"
     assert result.gitnexus_available is False
     assert result.hotspots == []
     assert result.error is None
+
+
+def test_refactor_limit_defaults_and_caps():
+    params = RefactorInput(target="cycles", filepath="x.py")
+    assert params.limit == 5
+    for bad in (0, 51):
+        try:
+            RefactorInput(target="cycles", filepath="x.py", limit=bad)
+        except Exception:
+            continue
+        raise AssertionError(f"limit={bad} should have been rejected")

@@ -514,11 +514,12 @@ def _handle_dep_graph_error(exc: Exception) -> ModuleDependencyGraph | None:
         _last_dep_graph_error = str(exc)
         return None
     if isinstance(exc, RuntimeError):
-        msg = str(exc).lower()
-        if "different version" in msg or "storage version" in msg:
-            _last_dep_graph_error = str(exc)
-            return None
-        raise exc
+        # Every RuntimeError reaching here originates from LadybugDB loading
+        # (ModuleDependencyGraph._from_ladybugdb) — e.g. a corrupted WAL or a
+        # shadow-page replay that failed even read-write. Degrade COMPOSABLE
+        # rather than aborting the whole evaluate/MCP invocation.
+        _last_dep_graph_error = str(exc)
+        return None
     if isinstance(exc, (FileNotFoundError, ImportError, OSError)):
         _last_dep_graph_error = str(exc)
         return None

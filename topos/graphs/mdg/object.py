@@ -71,6 +71,17 @@ class LadybugSchemaMismatchError(RuntimeError):
         self.original = original
 
 
+def _is_shadow_replay_error(exc: BaseException) -> bool:
+    """Whether *exc* is Ladybug refusing to replay shadow pages read-only.
+
+    Incrementally-updated ``.gitnexus`` stores can be left with pending
+    shadow pages (e.g. after ``gitnexus analyze`` without a full wipe).
+    Ladybug requires a read-write handle to replay them.
+    """
+    msg = str(exc).lower()
+    return "shadow page" in msg and "read-only" in msg
+
+
 def _raise_schema_mismatch(exc: BaseException) -> None:
     msg = str(exc).lower()
     if "different version" not in msg and "storage version" not in msg:
@@ -231,7 +242,14 @@ class ModuleDependencyGraph:
         try:
             db = lb.Database(str(lbug_path), read_only=True)
         except RuntimeError as exc:
-            _raise_schema_mismatch(exc)
+            if not _is_shadow_replay_error(exc):
+                _raise_schema_mismatch(exc)
+            # Pending shadow pages (e.g. incremental `gitnexus analyze` without
+            # a full wipe) can only be replayed with a read-write handle.
+            try:
+                db = lb.Database(str(lbug_path), read_only=False)
+            except RuntimeError as retry_exc:
+                _raise_schema_mismatch(retry_exc)
         conn = lb.Connection(db)
 
         # Discover node tables at runtime so we're not tied to a fixed schema.

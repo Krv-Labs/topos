@@ -55,11 +55,7 @@ _READ_ONLY_ANN = {
     annotations=_READ_ONLY_ANN,
 )
 def topos_refactor_cycles(params: RefactorCyclesInput) -> ToolResult:
-    """List CFG cycle generators mapped to source line ranges (read-only).
-
-    Points cyclomatic complexity's count at the specific loops/branches that
-    make it up. Never alters SIMPLE scoring.
-    """
+    """Cycle-basis hotspots on the CFG, mapped to source lines (read-only). See docs/refactor-suite.md."""
     resolved, err = resolve_within_root(params.filepath)
     if err or resolved is None:
         model = RefactorCyclesResult(
@@ -119,11 +115,7 @@ def topos_refactor_cycles(params: RefactorCyclesInput) -> ToolResult:
     annotations=_READ_ONLY_ANN,
 )
 def topos_refactor_dependencies(params: RefactorDependenciesInput) -> ToolResult:
-    """List dependency edges worth strengthening (read-only, balanced Forman curvature).
-
-    Requires ``.gitnexus`` (auto-detected, or pass ``gitnexus_dir``); returns
-    ``gitnexus_available: false`` when absent. Never alters COMPOSABLE scoring.
-    """
+    """MDG curvature hotspots to strengthen (read-only). See docs/refactor-suite.md."""
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
     mdg = load_dep_graph(gitnexus_dir, params.filepath)
@@ -173,12 +165,7 @@ def topos_refactor_dependencies(params: RefactorDependenciesInput) -> ToolResult
     annotations=_READ_ONLY_ANN,
 )
 def topos_refactor_process(params: RefactorProcessInput) -> ToolResult:
-    """List process-graph choke points via directed Forman-Ricci curvature (read-only).
-
-    Requires ``.gitnexus`` Process/STEP_IN_PROCESS data (auto-detected, or
-    pass ``gitnexus_dir``); returns ``gitnexus_available: false`` when
-    absent. Never alters scoring.
-    """
+    """Process-graph choke-point hotspots (read-only). See docs/refactor-suite.md."""
     project_root = resolve_file_root()
     gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir, project_root)
     mdg = load_dep_graph(gitnexus_dir, params.filepath)

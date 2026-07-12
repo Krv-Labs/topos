@@ -264,7 +264,6 @@ def _assess_core(
         baseline_res,
         file_path=file_path,
         allows=allow,
-        include_security_findings=include_security_findings,
     )
     proposed_overlay = overlay_for_source(
         proposed_src,
@@ -272,7 +271,6 @@ def _assess_core(
         proposed_res,
         file_path=file_path,
         allows=allow,
-        include_security_findings=include_security_findings,
     )
     current_eval = to_evaluation_result(
         baseline_res,
@@ -281,6 +279,7 @@ def _assess_core(
         priority_source=priority_source,
         include_agent_contract=False,
         **_overlay_kwargs(current_overlay),
+        include_security_findings=include_security_findings,
     )
     proposed_eval = to_evaluation_result(
         proposed_res,
@@ -289,6 +288,7 @@ def _assess_core(
         priority_source=priority_source,
         include_agent_contract=False,
         **_overlay_kwargs(proposed_overlay),
+        include_security_findings=include_security_findings,
     )
 
     score_deltas, metric_deltas = _calculate_deltas(
@@ -461,7 +461,10 @@ def _assessment_contract(
         risk_flags.append("warnings")
     if proposed_eval.grade_capped:
         risk_flags.append("grade_capped")
-    if proposed_eval.security_findings:
+    # Verdict-anchored, not payload-anchored: secure_adjusted is False exactly
+    # when active findings survive the allowlist, and it is unaffected by the
+    # include_security_findings payload gate.
+    if proposed_eval.secure_adjusted is False:
         risk_flags.append("active_security_findings")
 
     if composable.next_action:

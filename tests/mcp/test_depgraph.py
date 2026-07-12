@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
+from pathlib import Path
 
 import pytest
 from topos.core.omega import EvaluationValue
@@ -26,7 +28,11 @@ from topos.mcp.schemas import (
 )
 from topos.mcp.tools import depgraph as depgraph_tool
 from topos.mcp.tools.depgraph import topos_depgraph_status, topos_generate_depgraph
-from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, DepgraphGenerationResult
+from topos.utils.gitnexus import (
+    GITNEXUS_FINGERPRINT_FILE,
+    DepgraphGenerationResult,
+    source_fingerprint,
+)
 
 
 def _status(tool_result) -> DepgraphStatusResult:
@@ -64,11 +70,14 @@ def test_status_missing_points_to_generate(tmp_path, monkeypatch) -> None:
             False,
             "topos_generate_depgraph",
         ),
+        # A schema mismatch means the store was written by a NEWER GitNexus
+        # than the embedded reader — regenerating cannot fix it, so status must
+        # not route to generation (the generate default refuses this state).
         (
             DepgraphState.SCHEMA_MISMATCH,
             ["gitnexus_schema_mismatch"],
             False,
-            "topos_generate_depgraph",
+            None,
         ),
         # An invalid override must NOT route to generation (a bad path won't be
         # fixed by regenerating); next_tool is None so the agent fixes the path.
@@ -118,6 +127,119 @@ def test_generate_success(tmp_path, monkeypatch) -> None:
     assert r.agent_contract.next_tool == "topos_evaluate_file"
 
 
+def test_generate_skips_when_graph_present(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.PRESENT.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=1.0,
+            detail=None,
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(
+        depgraph_tool,
+        "generate_depgraph",
+        lambda _d: pytest.fail("generate_depgraph should not be called"),
+    )
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert r.ok is True
+    assert r.generated is False
+    assert r.state_before == DepgraphState.PRESENT
+    assert r.gitnexus_dir == str(gitnexus)
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_force_runs_when_graph_present(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    monkeypatch.setattr(
+        depgraph_tool,
+        "depgraph_status",
+        lambda *_args: pytest.fail("force=True should skip the status precheck"),
+    )
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput(force=True)))
+
+    assert calls == [tmp_path]
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before is None
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_runs_once_when_graph_stale(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.STALE.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=2.0,
+            detail="stale",
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert calls == [tmp_path]
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before == DepgraphState.STALE
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_generate_blocks_schema_mismatch_by_default(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.SCHEMA_MISMATCH.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=2.0,
+            detail="schema mismatch",
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(
+        depgraph_tool,
+        "generate_depgraph",
+        lambda _d: pytest.fail("schema mismatch should block by default"),
+    )
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert r.ok is False
+    assert r.generated is False
+    assert r.state_before == DepgraphState.SCHEMA_MISMATCH
+    assert "gitnexus_schema_mismatch" in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool is None
+
+
 def test_generate_failure_when_gitnexus_missing(tmp_path, monkeypatch) -> None:
     _use_root(tmp_path, monkeypatch)
     monkeypatch.setattr(
@@ -128,7 +250,9 @@ def test_generate_failure_when_gitnexus_missing(tmp_path, monkeypatch) -> None:
     r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
     assert r.ok is False
     assert r.error == "GitNexus not found."
+    assert r.generated is False
     assert "gitnexus_generate_failed" in r.agent_contract.blocked_by
+    assert r.agent_contract.next_tool is None
 
 
 def test_build_agent_contract_flags_stale_graph() -> None:
@@ -291,3 +415,321 @@ def test_freshness_non_git_is_fresh(tmp_path) -> None:
     # No .git and no marker: nothing to be stale against → fresh, no crash.
     gitnexus = _graph_dir(tmp_path, fingerprint=None)
     assert _graph_freshness(tmp_path, gitnexus) == (False, None)
+
+
+# --- fingerprint v2: working-tree freshness via generated_at ------------------
+
+
+def _write_v2_fingerprint(
+    gitnexus, *, head_sha: str | None, generated_at: float
+) -> None:
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({"head_sha": head_sha, "generated_at": generated_at}),
+        encoding="utf-8",
+    )
+
+
+def _write_snapshot_fingerprint(
+    root: Path,
+    gitnexus: Path,
+    *,
+    head_sha: str | None,
+    generated_at: float = 100.0,
+    finished_at: float = 100.0,
+) -> None:
+    snapshot = source_fingerprint(root)
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head_sha,
+                "generated_at": generated_at,
+                "finished_at": finished_at,
+                "source_hash": snapshot.content_hash,
+                "source_file_count": snapshot.file_count,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_freshness_v2_source_edited_after_generation_is_stale(tmp_path) -> None:
+    # The in-place-edit loop: HEAD unchanged, but a source file was modified
+    # after the graph was generated — COMPOSABLE reflects the pre-edit tree.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    source_mtime = (tmp_path / "f.py").stat().st_mtime
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=source_mtime - 10)
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+    assert "f.py" in detail
+    assert "modified after the dependency graph was generated" in detail
+
+
+def test_freshness_v2_untouched_tree_is_fresh(tmp_path) -> None:
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    source_mtime = (tmp_path / "f.py").stat().st_mtime
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=source_mtime + 10)
+
+    assert _graph_freshness(tmp_path, gitnexus) == (False, None)
+
+
+def test_freshness_v2_sha_mismatch_wins_over_mtime(tmp_path) -> None:
+    _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    _write_v2_fingerprint(gitnexus, head_sha="0" * 40, generated_at=2**53)
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "built from commit" in detail
+
+
+def test_freshness_v2_sha_less_marker_works_in_non_git_dir(tmp_path) -> None:
+    # Non-git analysis dirs get a sha-less v2 marker; the mtime pass still
+    # detects post-generation edits there.
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    (tmp_path / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    source_mtime = (tmp_path / "mod.py").stat().st_mtime
+    _write_v2_fingerprint(gitnexus, head_sha=None, generated_at=source_mtime - 10)
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "mod.py" in detail
+
+
+def test_freshness_v2_deleted_file_is_stale(tmp_path) -> None:
+    # A file removed after generation leaves no mtime of its own to catch,
+    # but it does bump its parent directory's mtime — the walk must check
+    # that too, or a deletion silently reads as fresh forever.
+    head = _commit_repo(tmp_path)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    extra = sub / "extra.py"
+    extra.write_text("y = 2\n", encoding="utf-8")
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    generated_at = time.time() - 5.0
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=generated_at)
+
+    extra.unlink()
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+
+
+def test_freshness_snapshot_allows_dirty_tree_after_regeneration(tmp_path) -> None:
+    # A dirty worktree relative to HEAD is not stale if this is the exact source
+    # content GitNexus just analyzed.
+    head = _commit_repo(tmp_path)
+    (tmp_path / "f.py").write_text("x = 2\n", encoding="utf-8")
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    _write_snapshot_fingerprint(tmp_path, gitnexus, head_sha=head)
+
+    assert _graph_freshness(tmp_path, gitnexus) == (False, None)
+
+
+def test_freshness_snapshot_detects_same_mtime_content_edit(tmp_path) -> None:
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    _write_snapshot_fingerprint(tmp_path, gitnexus, head_sha=head)
+
+    os.utime(tmp_path / "f.py", (100.0, 100.0))
+    (tmp_path / "f.py").write_text("x = 2\n", encoding="utf-8")
+    os.utime(tmp_path / "f.py", (100.0, 100.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert STALE_GITNEXUS_MARKER in detail
+
+
+def test_freshness_v2_tolerates_small_mtime_skew(tmp_path) -> None:
+    # Simulate a system with clock drift.
+    # We edit `f.py` after the graph was generated, but due to clock drift,
+    # the filesystem mtime appears earlier than the process's `generated_at`.
+    # Drift compensation uses the fingerprint file's mtime on the same FS, and
+    # the edit is still correctly detected as stale.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+
+    # Write fingerprint file with generated_at=100.0, finished_at=100.0
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 100.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Set the fingerprint file mtime to 95.0, simulating a slow filesystem.
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (95.0, 95.0))
+
+    # Set source mtime to 96.0: after generation on the filesystem clock,
+    # but still less than the process's `generated_at` of 100.0.
+    os.utime(tmp_path / "f.py", (96.0, 96.0))
+
+    # Set containing directories' mtime to 94.0 (before generation) so the staleness
+    # is correctly triggered by f.py itself rather than directory parent updates.
+    os.utime(tmp_path, (94.0, 94.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "f.py" in detail
+
+
+def test_freshness_v2_distrusts_implausible_duration(tmp_path) -> None:
+    # finished_at < generated_at can't happen under normal generation (they're
+    # recorded in that order within the same call), so this simulates a
+    # corrupted/nonsensical fingerprint (e.g. a backward clock jump
+    # mid-generation). The single-sample drift calibration would extrapolate
+    # a bogus threshold from it; the duration clamp must instead fall back to
+    # the flat _MTIME_SKEW_TOLERANCE_S tolerance so a real edit still gets
+    # caught rather than silently trusted.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 40.0,  # negative duration: implausible
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (40.0, 40.0))
+
+    # Without the clamp, the (uncorrected) calibration would extrapolate a
+    # threshold of 100.0 here and miss this edit entirely. With the flat
+    # tolerance (generated_at - 2.0 = 98.0), it's correctly caught.
+    os.utime(tmp_path / "f.py", (99.0, 99.0))
+    os.utime(tmp_path, (39.0, 39.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is True
+    assert "f.py" in detail
+
+
+def test_freshness_v2_handles_pre_generation_mtimes_without_false_positives(
+    tmp_path,
+) -> None:
+    # On the same clock-drifted system, a file modified BEFORE generation must NOT
+    # be considered stale, even if its mtime is close to generation.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+
+    # Write fingerprint file with generated_at=100.0, finished_at=100.0
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.0,
+                "finished_at": 100.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Set the fingerprint file mtime to 95.0, simulating a slow filesystem.
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (95.0, 95.0))
+
+    # Set source file's mtime to 94.0 (modified BEFORE generation on filesystem clock)
+    os.utime(tmp_path / "f.py", (94.0, 94.0))
+
+    # Set parent directory mtime to 94.0 as well (before generation)
+    os.utime(tmp_path, (94.0, 94.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    assert is_stale is False
+    assert detail is None
+
+
+def test_freshness_v2_truncated_mtime_pre_generation_false_positive(tmp_path) -> None:
+    # Simulates a system with whole-second mtime truncation (e.g. FUSE/HFS+).
+    # generated_at = 100.1 (float)
+    # finished_at = 102.9 (float)
+    # fingerprint mtime is truncated to whole seconds -> 102.0
+    # A source file is edited BEFORE generation, at process clock 100.0.
+    # Its mtime is truncated to whole seconds -> 100.0.
+    # The current dynamic threshold logic pushes threshold to:
+    #   threshold = 100.1 - (102.9 - 102.0) = 99.2.
+    # Since 100.0 > 99.2, it is falsely flagged as stale under the old logic.
+    # With truncation-aware logic, it is correctly handled and not flagged.
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps(
+            {
+                "head_sha": head,
+                "generated_at": 100.1,
+                "finished_at": 102.9,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Set fingerprint's filesystem mtime to truncated whole seconds (102.0)
+    os.utime(gitnexus / GITNEXUS_FINGERPRINT_FILE, (102.0, 102.0))
+
+    # Set f.py's mtime to truncated 100.0 (process time 100.0, before 100.1 generation)
+    os.utime(tmp_path / "f.py", (100.0, 100.0))
+    os.utime(tmp_path, (100.0, 100.0))
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+
+    # Under the old logic, this was True (falsely flagged as stale).
+    # Under our new logic, it must be False.
+    assert is_stale is False
+    assert detail is None
+
+
+def test_generate_ensure_regenerates_after_in_place_edit(tmp_path, monkeypatch) -> None:
+    # End-to-end loop fix: with a v2 fingerprint and a post-generation edit,
+    # the ensure default must regenerate instead of no-opping on PRESENT.
+    _use_root(tmp_path, monkeypatch)
+    head = _commit_repo(tmp_path)
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    source_mtime = (tmp_path / "f.py").stat().st_mtime
+    _write_v2_fingerprint(gitnexus, head_sha=head, generated_at=source_mtime - 10)
+
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    # Real depgraph_status would try to load the stub lbug; freshness is what
+    # this test exercises, so patch only the load, not the status pipeline.
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    def fake_status(_override, project_root, _target_file):
+        from topos.mcp.evaluation import _graph_freshness
+
+        stale, detail = _graph_freshness(Path(project_root), gitnexus)
+        return DepgraphStatus(
+            state=(DepgraphState.STALE if stale else DepgraphState.PRESENT).value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=1.0,
+            detail=detail,
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert calls, "ensure default must regenerate a working-tree-stale graph"
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before == DepgraphState.STALE

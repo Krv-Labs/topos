@@ -8,21 +8,22 @@ stay in lockstep.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 GITNEXUS_CMD = "gitnexus"
 _INSTALL_HINT = "GitNexus not found. Install it with: npm install -g gitnexus"
 
-# Topos-owned marker written inside ``.gitnexus`` recording the HEAD commit the
-# graph was built from. Freshness is anchored to this commit rather than file
-# mtimes (``gitnexus analyze`` does not reliably bump its DB mtime on re-index),
-# so a regenerate always clears the "stale" signal. Read back by
-# ``topos.mcp.evaluation`` — keep the filename here as the single source of truth.
+# Topos-owned marker written inside ``.gitnexus`` recording what source snapshot
+# the graph was built from. v1 markers carried only ``head_sha``; v2 added
+# ``generated_at``/``finished_at``; current markers add a source content hash so
+# freshness is not decided by fragile filesystem clocks.
 GITNEXUS_FINGERPRINT_FILE = ".topos-fingerprint.json"
 
 # ``gitnexus analyze`` can legitimately run for minutes on a large repo, so the
@@ -66,6 +67,50 @@ class DepgraphGenerationResult:
     message: str
 
 
+@dataclass(frozen=True)
+class SourceFingerprint:
+    """Stable content identity for source files seen by GitNexus/Topos."""
+
+    content_hash: str
+    file_count: int
+
+
+def source_fingerprint(root: Path) -> SourceFingerprint:
+    """Hash source-file paths and bytes under ``root`` using existing discovery."""
+    from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
+    from topos.utils.discovery import iter_source_files
+
+    root = root.resolve()
+    suffixes = tuple(
+        {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
+    )
+    digest = hashlib.sha256()
+    count = 0
+    files = sorted(
+        iter_source_files(root, suffixes=suffixes),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+    for path in files:
+        try:
+            rel = path.relative_to(root).as_posix()
+            stat = path.stat()
+        except OSError:
+            continue
+        count += 1
+        digest.update(rel.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(b"\0")
+        try:
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError:
+            continue
+        digest.update(b"\0")
+    return SourceFingerprint(content_hash=digest.hexdigest(), file_count=count)
+
+
 def generate_depgraph(
     target_dir: Path, *, capture: bool = True, timeout: float | None = None
 ) -> DepgraphGenerationResult:
@@ -83,6 +128,8 @@ def generate_depgraph(
     if not gitnexus_available():
         return DepgraphGenerationResult(False, 127, None, _INSTALL_HINT)
 
+    start_time = time.time()
+    source_snapshot = source_fingerprint(target_dir)
     effective_timeout = _resolve_timeout(timeout)
     try:
         proc = subprocess.run(
@@ -120,7 +167,12 @@ def generate_depgraph(
         )
 
     gitnexus_path = target_dir / ".gitnexus"
-    _write_fingerprint(target_dir, gitnexus_path)
+    _write_fingerprint(
+        target_dir,
+        gitnexus_path,
+        start_time=start_time,
+        source_snapshot=source_snapshot,
+    )
     detail = (proc.stdout or "").strip() if capture else ""
     return DepgraphGenerationResult(
         True,
@@ -152,19 +204,37 @@ def _head_sha(target_dir: Path) -> str | None:
     return sha or None
 
 
-def _write_fingerprint(target_dir: Path, gitnexus_path: Path) -> None:
-    """Record the HEAD commit the graph was built from (best-effort).
+def _write_fingerprint(
+    target_dir: Path,
+    gitnexus_path: Path,
+    start_time: float | None = None,
+    source_snapshot: SourceFingerprint | None = None,
+) -> None:
+    """Record what the graph was built from (best-effort).
 
-    Never raises: a non-git directory simply gets no marker (freshness falls back
-    to mtime), and a write failure must not turn a successful generation into a
+    Never raises: a write failure must not turn a successful generation into a
     failure.
     """
     sha = _head_sha(target_dir)
-    if not isinstance(sha, str) or not sha:
-        return
+    if not isinstance(sha, str):
+        sha = None
     # Best-effort: a read-only FS (OSError) or unexpected payload (Type/ValueError
     # from json) must never turn a successful generation into a failure.
     with contextlib.suppress(OSError, TypeError, ValueError):
+        now = time.time()
         (gitnexus_path / GITNEXUS_FINGERPRINT_FILE).write_text(
-            json.dumps({"head_sha": sha}), encoding="utf-8"
+            json.dumps(
+                {
+                    "head_sha": sha or None,
+                    "generated_at": start_time or now,
+                    "finished_at": now,
+                    "source_hash": (
+                        source_snapshot.content_hash if source_snapshot else None
+                    ),
+                    "source_file_count": (
+                        source_snapshot.file_count if source_snapshot else None
+                    ),
+                }
+            ),
+            encoding="utf-8",
         )

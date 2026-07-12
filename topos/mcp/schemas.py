@@ -8,6 +8,7 @@ Input models validate tool arguments; return models give FastMCP the
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -158,6 +159,12 @@ class EvaluateFileInput(_StrictModel):
     verbose: bool = Field(
         default=False,
         description="Include raw metrics.",
+    )
+    refactor_targets: int = Field(
+        default=0,
+        ge=0,
+        le=25,
+        description="Ranked edit targets to return (0 = off).",
     )
 
 
@@ -677,6 +684,27 @@ class AgentContract(BaseModel):
     risk_flags: list[str] = Field(default_factory=list)
 
 
+class RefactorTarget(BaseModel):
+    """One concrete source location for an agent refactor loop."""
+
+    target_id: str
+    kind: str = Field(description="function | module | security_call")
+    filepath: str
+    symbol: str | None = None
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
+    failing_generators: list[str] = Field(default_factory=list)
+    metric: str
+    current_value: float | None = None
+    threshold: float | None = None
+    severity: str = Field(description="fix | improve")
+    recommended_operations: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    # Verification guidance intentionally lives once on the agent contract
+    # (``verification_gates``), not repeated per target.
+    evidence: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
 class EvaluationResult(BaseModel):
     """Result of a single-unit evaluation on the Medal Podium."""
 
@@ -755,6 +783,10 @@ class EvaluationResult(BaseModel):
             "Encodes the targeted relaxation walk toward the ideal "
             "intersection."
         ),
+    )
+    refactor_targets: list[RefactorTarget] = Field(
+        default_factory=list,
+        description="Optional ranked edit targets, populated only when requested.",
     )
     error: str | None = None
 
@@ -981,7 +1013,11 @@ class GenerateDepgraphInput(_StrictModel):
 
     directory: str | None = Field(
         default=None,
-        description="Repository root to analyze (default: the MCP file root).",
+        description="Repo root (default: MCP file root).",
+    )
+    force: bool = Field(
+        default=False,
+        description="Regenerate even when current.",
     )
 
 
@@ -991,6 +1027,8 @@ class GenerateDepgraphResult(BaseModel):
     ok: bool
     returncode: int
     gitnexus_dir: str | None = None
+    generated: bool = False
+    state_before: DepgraphState | None = None
     message: str
     agent_contract: AgentContract | None = None
     error: str | None = None
@@ -1073,30 +1111,23 @@ class ChangesetResult(BaseModel):
 
 
 class RefactorHotspot(BaseModel):
-    """One ranked hotspot row, shared across all ``topos_refactor_*`` tools."""
-
-    kind: str = Field(description="cycle | dependency_edge | process_transition")
+    # Full field semantics: docs/refactor-suite.md (trimmed here — wire-size ratchet).
+    kind: Literal["cycle", "dependency_edge", "process_transition"]
     label: str
     filepath: str
     line_start: int | None = None
     line_end: int | None = None
-    score: float = Field(
-        description="Betti contribution or curvature (negative = stronger signal)."
-    )
+    score: float
     suggestion: str
-    evidence: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    evidence: dict[str, str] = Field(default_factory=dict)
 
 
 class RefactorCyclesInput(_StrictModel):
-    """Arguments for ``topos_refactor_cycles``."""
-
-    filepath: str = Field(..., min_length=1, description="Source file path.")
+    filepath: str = Field(..., min_length=1)
     max_cycles: int = Field(default=5, ge=1, le=50)
 
 
 class RefactorCyclesResult(BaseModel):
-    """Result of ``topos_refactor_cycles``."""
-
     filepath: str
     betti_1: int = 0
     hotspots: list[RefactorHotspot] = Field(default_factory=list)
@@ -1104,16 +1135,12 @@ class RefactorCyclesResult(BaseModel):
 
 
 class RefactorDependenciesInput(_StrictModel):
-    """Arguments for ``topos_refactor_dependencies``."""
-
-    filepath: str = Field(..., min_length=1, description="Source file path.")
-    gitnexus_dir: str | None = Field(default=None, description=".gitnexus directory.")
+    filepath: str = Field(..., min_length=1)
+    gitnexus_dir: str | None = None
     max_targets: int = Field(default=5, ge=1, le=50)
 
 
 class RefactorDependenciesResult(BaseModel):
-    """Result of ``topos_refactor_dependencies``."""
-
     filepath: str
     gitnexus_available: bool = False
     hotspots: list[RefactorHotspot] = Field(default_factory=list)
@@ -1121,16 +1148,12 @@ class RefactorDependenciesResult(BaseModel):
 
 
 class RefactorProcessInput(_StrictModel):
-    """Arguments for ``topos_refactor_process``."""
-
-    filepath: str = Field(..., min_length=1, description="Source file path.")
-    gitnexus_dir: str | None = Field(default=None, description=".gitnexus directory.")
+    filepath: str = Field(..., min_length=1)
+    gitnexus_dir: str | None = None
     max_targets: int = Field(default=5, ge=1, le=50)
 
 
 class RefactorProcessResult(BaseModel):
-    """Result of ``topos_refactor_process``."""
-
     filepath: str
     gitnexus_available: bool = False
     hotspots: list[RefactorHotspot] = Field(default_factory=list)

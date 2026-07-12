@@ -57,6 +57,9 @@ class ComposablePolicyThresholds:
     instability_high: float = 0.7
     max_fan_in: float = 15.0
     max_fan_out: float = 15.0
+    # Entrypoint carve-out: import/export-only entrypoint modules with zero
+    # fan-in may sit at or above this instability without failing the gate.
+    entrypoint_instability_min: float = 0.95
     # Normalization (score only)
     max_fan_in_cap: float = 40.0
     max_fan_out_cap: float = 40.0

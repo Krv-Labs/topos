@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-07-11
+
 ### Added
 
 - **MCP refactor targets in `topos_evaluate_file`**: `refactor_targets: int = 0` (0 = off, N = cap) returns up to N ranked edit targets — concrete spans with the failing metric, current value vs. threshold, and `recommended_operations` tokens — without a new MCP tool. The agent contract routes targets natively (`next_tool = topos_assess_worktree_change` plus an `edit target …` action) and, when targets were not requested and the verdict is below IDEAL, advertises the option in `next_actions`.
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI language detection for non-Python files**: Fixed a bug where `topos inspect` and `topos evaluate` CPG building and entropy calculations defaulted non-Python files to Python parsing due to a default parameter in `ProgramMorphism.from_file`. Correctly threads `detect_language(path)` through the affected CLI paths. ([#123](https://github.com/Krv-Labs/topos/pull/123))
 - **Rust `#[cfg(test)]` modules leaked into the UAST**: the filter checked a node's own children for a `cfg(test)` attribute, but tree-sitter-rust places that attribute as a *preceding sibling* of the item it annotates — the check could match the wrong node entirely, including the file root itself, which then dropped the whole file (not just the test module) from the AST. Attribute-to-sibling correlation now scopes the filter to the correct item. ([#126](https://github.com/Krv-Labs/topos/pull/126))
 - **Go entries missing from consolidated security guidance**: merging Go language support (#123) into this branch added `exec.Command`, `exec.CommandContext`, `os.StartProcess`, `syscall.Exec`, and `syscall.ForkExec` to the CPG dangerous-API registry, but the new canonical `security_guidance.py` table (above) predates that merge and had no matching entries — those callees fell through to generic default guidance instead of Go-specific advice. The registry-coverage test caught the gap as designed; added the five missing entries.
+- **`evaluate --gitnexus-dir` crashed on a LadybugDB store with pending shadow pages**: Topos always opens `.gitnexus/lbug` read-only, but Ladybug refuses to replay pending shadow pages (left behind by an incremental `gitnexus analyze` without a full wipe) unless opened read-write, raising an unhandled `RuntimeError`. `_from_ladybugdb` now retries with a read-write handle when the read-only open fails specifically because of shadow-page replay. Also broadened `_handle_dep_graph_error`'s catch-all so any other unrecognized Ladybug `RuntimeError` (e.g. a corrupted WAL) degrades COMPOSABLE gracefully instead of crashing the CLI/MCP invocation — the previous check only tolerated "different version" / "storage version" messages. ([#136](https://github.com/Krv-Labs/topos/issues/136))
 
 ## [0.3.9] - 2026-07-06
 

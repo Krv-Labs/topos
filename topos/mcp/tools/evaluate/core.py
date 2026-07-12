@@ -22,6 +22,7 @@ from ...formatting import (
     to_tool_result,
 )
 from ...metric_locations import build_metric_locations
+from ...refactor_targets import build_refactor_targets
 from ...schemas import (
     EvaluateCodeInput,
     EvaluateFileInput,
@@ -97,7 +98,6 @@ def topos_evaluate_code(params: EvaluateCodeInput) -> ToolResult:
                 params.language,
                 result,
                 allows=params.allow,
-                include_security_findings=True,
             )
         ),
         verbose=params.verbose,
@@ -183,18 +183,25 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         gitnexus_dir,
         dep_graph_loaded=dep_graph is not None,
     )
-    overlay = overlay_for_file(
-        resolved,
-        result,
-        allows=params.allow,
-        include_security_findings=params.include_security_findings,
-    )
+    overlay = overlay_for_file(resolved, result, allows=params.allow)
     source, _ = read_safe_utf8_file(resolved)
     locations = (
         build_metric_locations(source, detect_language(resolved), result)
         if source is not None
         else {}
     )
+    # Targets are computed before the result model so build_agent_contract can
+    # route them natively — the contract is never mutated after construction.
+    targets = None
+    if params.refactor_targets:
+        targets = build_refactor_targets(
+            filepath=str(resolved),
+            result=result,
+            security_findings=overlay.active_findings if overlay else [],
+            locations=locations,
+            ranking=params.preferences.ranking if params.preferences else None,
+            max_targets=params.refactor_targets,
+        )
     model = to_evaluation_result(
         result,
         coupling_available=dep_graph is not None,
@@ -204,5 +211,8 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
         **_overlay_kwargs(overlay),
         verbose=params.verbose,
         metric_locations=locations,
+        refactor_targets=targets,
+        offer_refactor_targets=targets is None,
+        include_security_findings=params.include_security_findings,
     )
     return to_tool_result(model, render_evaluation_md(model, verbose=params.verbose))

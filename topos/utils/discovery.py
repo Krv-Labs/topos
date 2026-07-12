@@ -41,15 +41,36 @@ SKIP_DIR_NAMES: frozenset[str] = frozenset(
 _TOPOSIGNORE_NAME = ".toposignore"
 
 
+def _is_file(path: Path) -> bool:
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
+def _is_dir(path: Path) -> bool:
+    try:
+        return path.is_dir()
+    except OSError:
+        return False
+
+
+def _exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def is_virtualenv_root(dir_path: Path) -> bool:
     """True when *dir_path* looks like a Python virtual environment root."""
-    if (dir_path / "pyvenv.cfg").is_file():
+    if _is_file(dir_path / "pyvenv.cfg"):
         return True
     bin_dir = dir_path / "bin"
-    if (bin_dir / "python").exists() or (bin_dir / "python3").exists():
+    if _exists(bin_dir / "python") or _exists(bin_dir / "python3"):
         return True
     scripts = dir_path / "Scripts"
-    return (scripts / "python.exe").is_file()
+    return _is_file(scripts / "python.exe")
 
 
 def should_skip_dir(dir_path: Path) -> bool:
@@ -63,16 +84,20 @@ def find_git_root(start: Path) -> Path | None:
     """Return the repository root containing ``.git``, if any."""
     resolved = start.resolve()
     for candidate in (resolved, *resolved.parents):
-        if (candidate / ".git").exists():
+        if _exists(candidate / ".git"):
             return candidate
     return None
 
 
 def _load_ignore_patterns(ignore_file: Path) -> list[str]:
-    if not ignore_file.is_file():
+    if not _is_file(ignore_file):
         return []
     patterns: list[str] = []
-    for raw in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
+    try:
+        lines = ignore_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for raw in lines:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -169,14 +194,22 @@ def iter_source_files(
     suffixes: tuple[str, ...],
     recursive: bool = True,
     is_ignored: Callable[[Path], bool] | None = None,
+    include_dirs: bool = False,
 ) -> Iterator[Path]:
-    """Yield source files under *root*, pruning venvs and ignored directories."""
-    if root.is_file():
+    """Yield source files under *root*, pruning venvs and ignored directories.
+
+    With ``include_dirs``, also yields each visited (non-skipped) directory,
+    after its own direct file children — callers that need a directory-level
+    signal (e.g. detecting a deletion via a stale parent-directory mtime) get
+    it from the same walk, checked only once the files that would explain it
+    more precisely have already been ruled out.
+    """
+    if _is_file(root):
         if root.suffix in suffixes and not (is_ignored and is_ignored(root)):
             yield root
         return
 
-    if not root.is_dir():
+    if not _is_dir(root):
         return
 
     ignore = is_ignored or (lambda _p: False)
@@ -189,15 +222,19 @@ def iter_source_files(
         except OSError:
             continue
 
+        subdirs = []
         for entry in sorted(entries, key=lambda p: p.name):
-            if entry.is_dir():
+            if _is_dir(entry):
                 if should_skip_dir(entry) or ignore(entry):
                     continue
-                if recursive:
-                    stack.append(entry)
-            elif entry.is_file() and entry.suffix in suffixes:
+                subdirs.append(entry)
+            elif _is_file(entry) and entry.suffix in suffixes:
                 if not ignore(entry):
                     yield entry
+        if include_dirs:
+            yield current
+        if recursive:
+            stack.extend(subdirs)
 
 
 def collect_source_files(
@@ -211,11 +248,11 @@ def collect_source_files(
 
     for path_str in paths:
         path = Path(path_str)
-        if path.is_file():
+        if _is_file(path):
             if path.suffix in suffixes:
                 files.add(path)
             continue
-        if not path.is_dir():
+        if not _is_dir(path):
             continue
 
         is_ignored = build_path_skip_checker(path)

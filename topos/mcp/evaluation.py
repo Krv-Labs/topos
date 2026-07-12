@@ -15,7 +15,9 @@ SIMPLE (← CFG), COMPOSABLE (← ModuleDependencyGraph), SECURE (← CPG).
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,9 +29,15 @@ from topos.evaluation.characteristic_morphism import (
 from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
-from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE
+from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, source_fingerprint
 
 from .cache import dep_graph_for
+
+# Debug-only: which freshness method decided a verdict, and the calibration
+# internals in _newer_source_file. Never rises above DEBUG — this exists so a
+# suspicious freshness verdict is diagnosable from logs instead of only from
+# reading this module's source, not to surface anything to MCP callers.
+_logger = logging.getLogger(__name__)
 
 _last_dep_graph_error: str | None = None
 
@@ -151,42 +159,217 @@ def gitnexus_warnings(
 STALE_GITNEXUS_MARKER = "gitnexus index may be stale"
 
 
-def _read_graph_fingerprint(gitnexus_dir: Path) -> str | None:
-    """HEAD SHA the graph was built from, from the topos-owned marker (or None)."""
+@dataclass(frozen=True)
+class GraphFingerprint:
+    """Topos-owned generation marker: what and when the graph was built from.
+
+    v1 markers carry only ``head_sha``; ``generated_at`` is the v2 field that
+    enables working-tree freshness (in-place edits never move HEAD).
+    """
+
+    head_sha: str | None
+    generated_at: float | None
+    finished_at: float | None = None
+    source_hash: str | None = None
+    source_file_count: int | None = None
+
+
+def _read_graph_fingerprint(gitnexus_dir: Path) -> GraphFingerprint | None:
+    """The graph's generation marker, tolerant of v1 payloads (or None)."""
     try:
         raw = (gitnexus_dir / GITNEXUS_FINGERPRINT_FILE).read_text(encoding="utf-8")
-        sha = json.loads(raw).get("head_sha")
+        payload = json.loads(raw)
+        sha = payload.get("head_sha")
+        generated_at = payload.get("generated_at")
+        finished_at = payload.get("finished_at")
+        source_hash = payload.get("source_hash")
+        source_file_count = payload.get("source_file_count")
     except (OSError, ValueError, AttributeError):
         return None
-    return sha or None
+    return GraphFingerprint(
+        head_sha=sha if isinstance(sha, str) and sha else None,
+        generated_at=(
+            float(generated_at) if isinstance(generated_at, (int, float)) else None
+        ),
+        finished_at=(
+            float(finished_at) if isinstance(finished_at, (int, float)) else None
+        ),
+        source_hash=source_hash if isinstance(source_hash, str) else None,
+        source_file_count=(
+            int(source_file_count) if isinstance(source_file_count, int) else None
+        ),
+    )
+
+
+# Freshness stat-walk ceiling: beyond this many source files the mtime pass
+# returns "fresh" rather than making every evaluate call pay for a pathological
+# monorepo walk. The SHA anchor still catches commit-level drift there.
+_FRESHNESS_WALK_CAP = 20_000
+
+# Tolerance for the mtime-vs-generated_at comparison: generated_at is a
+# sub-second time.time() stamp, but filesystem mtimes can be truncated to
+# whole seconds (older HFS+, some network/FUSE mounts), and clocks between
+# the process and the filesystem can drift slightly. Comparing with a small
+# grace window trades a rare unnecessary regenerate for not silently missing
+# a real in-place edit made moments after generation.
+_MTIME_SKEW_TOLERANCE_S = 2.0
+
+# Sanity bound on the measured (finished_at - generated_at) duration used to
+# calibrate filesystem-clock drift. finished_at is always recorded after
+# generated_at within the same _write_fingerprint call, so a negative
+# duration means the system clock was adjusted backward mid-generation; an
+# implausibly large one means a forward jump or a corrupted field. Either way
+# the single-sample drift estimate can't be trusted — fall back to the flat
+# tolerance rather than calibrate against a bad sample. `gitnexus analyze`
+# can legitimately run for minutes on a large repo (see
+# DEFAULT_ANALYZE_TIMEOUT_S), so this ceiling is deliberately generous.
+_MAX_TRUSTED_GENERATION_DURATION_S = 3600.0
+
+
+def _newer_source_file(
+    project_root: Path,
+    generated_at: float,
+    finished_at: float | None = None,
+    fingerprint_mtime: float | None = None,
+) -> Path | None:
+    """First source file (or directory) modified after *generated_at*, or None.
+
+    Stat-only walk over the same discovery pruning the evaluators use (skips
+    .git/.gitnexus/venvs/node_modules/build dirs). Deliberately avoids the
+    git-aware ignore checker — it shells out per path, which is unaffordable
+    on every freshness probe.
+
+    Directories are stat'd too: deleting or renaming a file leaves no file of
+    its own to catch, but it does bump its parent directory's mtime, which a
+    file-only walk would silently miss.
+    """
+    from topos.graphs.ast.languages import LANGUAGE_FILE_SUFFIXES
+    from topos.utils.discovery import iter_source_files
+
+    suffixes = tuple(
+        {suffix for group in LANGUAGE_FILE_SUFFIXES.values() for suffix in group}
+    )
+    # Default to the flat-tolerance threshold; only override it with the
+    # clock-drift-calibrated value when finished_at/fingerprint_mtime are
+    # available *and* the duration they imply is plausible.
+    threshold = generated_at - _MTIME_SKEW_TOLERANCE_S
+    if finished_at is not None and fingerprint_mtime is not None:
+        duration = finished_at - generated_at
+        if 0 <= duration <= _MAX_TRUSTED_GENERATION_DURATION_S:
+            if fingerprint_mtime % 1.0 == 0.0:
+                drift = int(finished_at) - fingerprint_mtime
+                threshold = int(generated_at) - drift
+            else:
+                drift = finished_at - fingerprint_mtime
+                threshold = generated_at - drift
+            _logger.debug(
+                "depgraph freshness: mtime-calibrated threshold=%.3f (duration=%.3fs)",
+                threshold,
+                duration,
+            )
+        else:
+            _logger.debug(
+                "depgraph freshness: distrusting drift calibration "
+                "(duration=%.3fs outside [0, %.0f]s); using flat tolerance",
+                duration,
+                _MAX_TRUSTED_GENERATION_DURATION_S,
+            )
+    seen = 0
+    for path in iter_source_files(project_root, suffixes=suffixes, include_dirs=True):
+        is_file = path.suffix in suffixes
+        if is_file:
+            seen += 1
+            if seen > _FRESHNESS_WALK_CAP:
+                return None
+        try:
+            if path.stat().st_mtime > threshold:
+                return path
+        except OSError:
+            continue
+    return None
 
 
 def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str | None]:
-    """Whether the dependency graph is stale w.r.t. the current commit.
+    """Whether the dependency graph is stale w.r.t. the working tree.
 
-    Prefers a commit-SHA anchor (the graph records the HEAD it was built from) so
-    a regenerate reliably clears staleness and a checkout to a different commit is
-    caught. Falls back to an mtime comparison for graphs generated before the
-    fingerprint marker existed. Returns ``(is_stale, detail)``.
+    Two anchors, both recorded at generation time:
+
+    1. Commit SHA — catches checkouts and new commits; a regenerate reliably
+       clears it.
+    2. ``generated_at`` — the graph's content reflects the working tree at
+       generation, so any source file modified afterwards (an in-place edit
+       that never moves HEAD) also invalidates COMPOSABLE.
+
+    Graphs from before the fingerprint marker fall back to comparing the
+    graph DB mtime to the latest commit's mtime. Returns ``(is_stale, detail)``.
     """
-    graph_sha = _read_graph_fingerprint(gitnexus_dir)
+    fingerprint = _read_graph_fingerprint(gitnexus_dir)
+    if fingerprint is not None and fingerprint.source_hash is not None:
+        current = source_fingerprint(project_root)
+        is_stale = current.content_hash != fingerprint.source_hash
+        _logger.debug("depgraph freshness: method=content_hash stale=%s", is_stale)
+        if is_stale:
+            return True, (
+                f"{STALE_GITNEXUS_MARKER} — source tree content changed since "
+                "the dependency graph was generated; run 'topos depgraph "
+                "generate' before trusting COMPOSABLE."
+            )
+        return False, None
+
+    graph_sha = fingerprint.head_sha if fingerprint else None
     head_sha = _git_head_sha(project_root)
-    if graph_sha is not None and head_sha is not None:
-        if graph_sha == head_sha:
-            return False, None
+    sha_anchored = graph_sha is not None and head_sha is not None
+    if sha_anchored and graph_sha != head_sha:
+        _logger.debug("depgraph freshness: method=sha_anchor stale=True")
         return True, (
             f"{STALE_GITNEXUS_MARKER} — graph was built from commit "
             f"{graph_sha[:7]} but HEAD is {head_sha[:7]}; run "
             "'topos depgraph generate' before trusting COMPOSABLE."
         )
 
+    if fingerprint is not None and fingerprint.generated_at is not None:
+        fingerprint_file = gitnexus_dir / GITNEXUS_FINGERPRINT_FILE
+        fingerprint_mtime = None
+        if fingerprint_file.exists():
+            with contextlib.suppress(OSError):
+                fingerprint_mtime = fingerprint_file.stat().st_mtime
+        newer = _newer_source_file(
+            project_root,
+            generated_at=fingerprint.generated_at,
+            finished_at=fingerprint.finished_at,
+            fingerprint_mtime=fingerprint_mtime,
+        )
+        _logger.debug(
+            "depgraph freshness: method=mtime_calibrated stale=%s", newer is not None
+        )
+        if newer is not None:
+            try:
+                rel = newer.relative_to(project_root)
+            except ValueError:
+                rel = newer
+            return True, (
+                f"{STALE_GITNEXUS_MARKER} — {rel} was modified after the "
+                "dependency graph was generated; run 'topos depgraph generate' "
+                "before trusting COMPOSABLE."
+            )
+        return False, None
+
+    if sha_anchored:
+        # v1 fingerprint (SHA only, matching HEAD): no working-tree signal
+        # available — preserve the legacy PRESENT verdict.
+        _logger.debug("depgraph freshness: method=sha_only_no_signal stale=False")
+        return False, None
+
     # Legacy fallback: no fingerprint marker (or HEAD unresolvable) — compare the
     # graph DB mtime to the latest commit's mtime.
     graph_mtime = _gitnexus_mtime(gitnexus_dir)
     head_mtime = _git_head_mtime(project_root)
     if graph_mtime <= 0 or head_mtime is None:
+        _logger.debug("depgraph freshness: method=legacy_dir_mtime unavailable")
         return False, None
-    if graph_mtime < head_mtime:
+    is_stale = graph_mtime < head_mtime
+    _logger.debug("depgraph freshness: method=legacy_dir_mtime stale=%s", is_stale)
+    if is_stale:
         return True, (
             f"{STALE_GITNEXUS_MARKER} — .gitnexus is older than the latest "
             "git commit; run 'topos depgraph generate' before trusting COMPOSABLE."
@@ -331,11 +514,12 @@ def _handle_dep_graph_error(exc: Exception) -> ModuleDependencyGraph | None:
         _last_dep_graph_error = str(exc)
         return None
     if isinstance(exc, RuntimeError):
-        msg = str(exc).lower()
-        if "different version" in msg or "storage version" in msg:
-            _last_dep_graph_error = str(exc)
-            return None
-        raise exc
+        # Every RuntimeError reaching here originates from LadybugDB loading
+        # (ModuleDependencyGraph._from_ladybugdb) — e.g. a corrupted WAL or a
+        # shadow-page replay that failed even read-write. Degrade COMPOSABLE
+        # rather than aborting the whole evaluate/MCP invocation.
+        _last_dep_graph_error = str(exc)
+        return None
     if isinstance(exc, (FileNotFoundError, ImportError, OSError)):
         _last_dep_graph_error = str(exc)
         return None

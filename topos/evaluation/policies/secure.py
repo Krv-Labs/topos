@@ -12,7 +12,8 @@ Quality functions:
     taint_quality  = exp(-taint_flows / taint_scale)
 
 The SECURE badge is achieved if and only if there are zero dangerous calls
-and zero taint flows (strict security). Thresholds live in
+and zero taint flows (strict security). Gate comparisons and interpretation
+prose live in :mod:`topos.evaluation.policies.gates`; thresholds in
 :mod:`topos.evaluation.policies.calibration`.
 """
 
@@ -25,6 +26,7 @@ from topos.evaluation.policies.base import (
     ScoredDecision,
 )
 from topos.evaluation.policies.calibration import SECURE
+from topos.evaluation.policies.gates import evaluate_gates
 
 
 def score_secure(
@@ -46,55 +48,30 @@ def score_secure(
         A ScoredDecision; ``achieved`` is the truth value of the SECURE
         generator for this program.
     """
-    achieved = True
-    interp: dict[str, str] = {}
-    qualities: list[float] = []
-
-    # 1. Dangerous API Calls
-    if dangerous_calls is not None:
-        quality = exp(-max(dangerous_calls, 0.0) / SECURE.danger_scale)
-        qualities.append(quality)
-        if dangerous_calls > SECURE.max_dangerous_calls:
-            achieved = False
-        interp["cpg.dangerous_calls"] = _danger_interpretation(dangerous_calls, quality)
-
-    # 2. Taint Flows
-    if taint_flows is not None:
-        quality = exp(-max(taint_flows, 0.0) / SECURE.taint_scale)
-        qualities.append(quality)
-        if taint_flows > SECURE.max_taint_flows:
-            achieved = False
-        interp["cpg.taint_flows"] = _taint_interpretation(taint_flows, quality)
-
-    if not qualities:
+    metrics = {
+        key: value
+        for key, value in {
+            "cpg.dangerous_calls": dangerous_calls,
+            "cpg.taint_flows": taint_flows,
+        }.items()
+        if value is not None
+    }
+    results = evaluate_gates(metrics, pillar="secure")
+    if not results:
         # If no metrics are provided, we vacuously satisfy SECURE.
         return ScoredDecision(score=1.0, achieved=True, interpretation={})
 
-    # The combined score is the minimum of the individual qualities (conservative AND).
-    secure_score = min(qualities)
+    # Score shaping (reporting only): exponential decay stays local to Φ_SECURE.
+    scale = {
+        "cpg.dangerous_calls": SECURE.danger_scale,
+        "cpg.taint_flows": SECURE.taint_scale,
+    }
+    qualities = [exp(-max(r.value, 0.0) / scale[r.spec.metric]) for r in results]
 
     return ScoredDecision(
-        score=secure_score,
-        achieved=achieved,
-        interpretation=interp,
-    )
-
-
-def _danger_interpretation(count: float, quality: float) -> str:
-    if count <= SECURE.max_dangerous_calls:
-        return (
-            f"no reachable dangerous-API calls "
-            f"({count:.0f} <= {SECURE.max_dangerous_calls})"
-        )
-    return (
-        f"{int(count)} dangerous-API call site(s) exceeds threshold "
-        f"({SECURE.max_dangerous_calls})"
-    )
-
-
-def _taint_interpretation(count: float, quality: float) -> str:
-    if count <= SECURE.max_taint_flows:
-        return f"no source→sink taint paths ({count:.0f} <= {SECURE.max_taint_flows})"
-    return (
-        f"{int(count)} taint flow path(s) exceeds threshold ({SECURE.max_taint_flows})"
+        # The combined score is the minimum of the individual qualities
+        # (conservative AND).
+        score=min(qualities),
+        achieved=all(r.passed for r in results),
+        interpretation={r.spec.metric: r.interpretation for r in results},
     )

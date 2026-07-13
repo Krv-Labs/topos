@@ -33,25 +33,31 @@ def is_entrypoint_module(morphism: ProgramMorphism) -> bool:
 
 
 def is_stable_leaf_module(morphism: ProgramMorphism) -> bool:
-    """True iff *morphism* is a declarations-only module with no branching
-    control flow — Martin's accepted "Zone of Pain" exception for frozen,
-    rarely-changing foundation/utility code (constants, error types).
+    """True iff *morphism* is a declarations-only module with no executable
+    control/call flow — Martin's accepted "Zone of Pain" exception for
+    frozen, rarely-changing foundation/utility code (constants, error types).
 
     Deliberately filename-agnostic (unlike :func:`is_entrypoint_module`):
     the whole point of pairing Abstractness with Instability is to avoid
     per-language filename lists, and that principle extends here where
-    possible. ``CallExpr``/``ReturnStmt`` are excluded from the
-    disqualifying set on purpose — a ``constants.py`` computing a default
-    via a function call, or a trivial ``def get_x(): return X``, should
-    still qualify.
+    possible.
     """
     if morphism.ast is None or morphism.ast.uast_root is None:
         return False
     from topos.functors.probes.uast.signature import control_flow_profile
 
     profile = control_flow_profile(morphism.ast.uast_root)
-    branching_kinds = ("IfStmt", "ForStmt", "WhileStmt", "MatchStmt", "TryStmt")
-    return all(profile.get(kind, 0) == 0 for kind in branching_kinds)
+    disqualifying_kinds = (
+        "IfStmt",
+        "ForStmt",
+        "WhileStmt",
+        "MatchStmt",
+        "TryStmt",
+        "CallExpr",
+        "FunctionDecl",
+        "MethodDecl",
+    )
+    return all(profile.get(kind, 0) == 0 for kind in disqualifying_kinds)
 
 
 def _entrypoint_filename_hint(path: Path, language: str) -> bool:

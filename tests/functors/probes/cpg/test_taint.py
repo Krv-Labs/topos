@@ -55,6 +55,11 @@ def test_taint_flow_paths_no_flow_when_source_and_sink_unrelated():
     assert taint_flow_paths(cpg) == 0
 
 
+def test_taint_flow_paths_do_not_cross_function_scope_by_name_only():
+    cpg = _cpg("def source_func():\n    x = input()\n\ndef sink_func():\n    eval(x)\n")
+    assert taint_flow_paths(cpg) == 0
+
+
 def test_taint_flow_paths_clean_code_has_no_flows():
     cpg = _cpg("def f(a, b):\n    return a + b\n")
     assert taint_flow_paths(cpg) == 0

@@ -85,6 +85,17 @@ def test_refactor_process_degrades_gracefully_without_gitnexus(tmp_path, monkeyp
     assert result.error is None
 
 
+def test_refactor_unexpected_exception_returns_structured_error(monkeypatch):
+    def boom(params):
+        raise ValueError("bad legacy step")
+
+    monkeypatch.setattr("topos.mcp.tools.refactor._refactor_process", boom)
+
+    result = _result(topos_refactor(RefactorInput(target="process", filepath="a.py")))
+    assert result.target == "process"
+    assert result.error == "bad legacy step"
+
+
 def test_refactor_limit_defaults_and_caps():
     params = RefactorInput(target="cycles", filepath="x.py")
     assert params.limit == 5

@@ -3,12 +3,11 @@ use pyo3::prelude::*;
 const ENTROPY_SIZE_FLOOR_BYTES: usize = 200;
 const ENTROPY_NEUTRAL_RATIO: f64 = 0.5; // mirrors SIMPLE.entropy_ideal
 
-/// Raw zlib compressed/original byte ratio, blended toward a neutral
-/// baseline below `ENTROPY_SIZE_FLOOR_BYTES`.  zlib's fixed per-stream
-/// overhead (header + Adler-32 trailer + minimum block cost) dominates the
-/// ratio on tiny inputs, so below the floor the raw ratio isn't trusted
-/// outright — it's blended proportionally toward `ENTROPY_NEUTRAL_RATIO`
-/// instead of gating a handful of source bytes on compression trivia.
+/// Raw zlib compressed/original byte ratio with a tiny-input correction for
+/// zlib's fixed per-stream overhead.  Below `ENTROPY_SIZE_FLOOR_BYTES`, only
+/// ratios above the neutral baseline are blended down toward neutral: this
+/// removes false high-entropy failures on tiny dense snippets without hiding
+/// genuinely low-entropy repetitive code.
 fn compressed_ratio(source_bytes: &[u8]) -> (usize, f64) {
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
     use std::io::Write;
@@ -17,7 +16,9 @@ fn compressed_ratio(source_bytes: &[u8]) -> (usize, f64) {
     let compressed_len = compressed.len();
 
     let raw_ratio = compressed_len as f64 / source_bytes.len() as f64;
-    let ratio = if source_bytes.len() >= ENTROPY_SIZE_FLOOR_BYTES {
+    let ratio = if source_bytes.len() >= ENTROPY_SIZE_FLOOR_BYTES
+        || raw_ratio <= ENTROPY_NEUTRAL_RATIO
+    {
         raw_ratio
     } else {
         let confidence = source_bytes.len() as f64 / ENTROPY_SIZE_FLOOR_BYTES as f64;
@@ -197,5 +198,15 @@ mod tests {
         assert!(raw_ratio > ENTROPY_NEUTRAL_RATIO);
         assert!(blended < raw_ratio);
         assert!(blended > ENTROPY_NEUTRAL_RATIO);
+    }
+
+    /// Below-floor repetitive code should keep its raw low-entropy signal.
+    #[test]
+    fn test_kolmogorov_proxy_does_not_lift_low_entropy_below_floor() {
+        let s = "a".repeat(100);
+        let (compressed_len, ratio) = compressed_ratio(s.as_bytes());
+        let raw_ratio = compressed_len as f64 / s.len() as f64;
+        assert!(raw_ratio < ENTROPY_NEUTRAL_RATIO);
+        assert_eq!(ratio, raw_ratio);
     }
 }

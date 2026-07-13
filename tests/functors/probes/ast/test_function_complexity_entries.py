@@ -109,3 +109,33 @@ def test_fallback_path_used_when_uast_root_is_none() -> None:
     assert foo.kind == "function"
     assert foo.complexity == 2  # one `if`
     assert calculate_max_function_complexity(obj) == 2
+
+
+def test_python_program_morphism_keeps_native_decision_coverage() -> None:
+    code = (
+        "def f(xs):\n"
+        "    if xs:\n"
+        "        pass\n"
+        "    for x in xs:\n"
+        "        pass\n"
+        "    while xs:\n"
+        "        break\n"
+        "    try:\n"
+        "        risky()\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "    with open('x') as fh:\n"
+        "        pass\n"
+        "    assert xs\n"
+        "    y = 1 if xs else 0\n"
+        "    z = [i for i in xs if i]\n"
+        "    match y:\n"
+        "        case 1:\n"
+        "            return 1\n"
+        "        case 2:\n"
+        "            return 2\n"
+        "        case _:\n"
+        "            return 3\n"
+    )
+    ast = ProgramMorphism(source=code, language="python").ast
+    assert calculate_max_function_complexity(ast) == 13

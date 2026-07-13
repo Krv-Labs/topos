@@ -68,6 +68,15 @@ def test_kolmogorov_proxy_tiny_dense_function_passes_simple_gate():
     assert array_ratio <= match_ratio + 0.1
 
 
+def test_kolmogorov_proxy_tiny_repetitive_code_still_fails_low_entropy():
+    """The tiny-input correction must not lift genuinely repetitive code over
+    the SIMPLE low-entropy floor."""
+    from topos.evaluation.policies.calibration import SIMPLE
+
+    repetitive = "x=1\n" * 40
+    assert calculate_kolmogorov_proxy(repetitive) < SIMPLE.min_entropy
+
+
 def test_distance_metrics():
     source1 = "x = 1"
     source2 = "y = 2"

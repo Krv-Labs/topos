@@ -48,11 +48,24 @@ _READ_ONLY_ANN = {
 )
 def topos_refactor(params: RefactorInput) -> ToolResult:
     """Refactor hotspots (read-only). docs/refactor-suite.md."""
-    if params.target == "cycles":
-        return _refactor_cycles(params)
-    if params.target == "dependencies":
-        return _refactor_dependencies(params)
-    return _refactor_process(params)
+    try:
+        if params.target == "cycles":
+            return _refactor_cycles(params)
+        if params.target == "dependencies":
+            return _refactor_dependencies(params)
+        return _refactor_process(params)
+    except Exception as exc:
+        titles = {
+            "cycles": "Cycle hotspots",
+            "dependencies": "Dependency hotspots",
+            "process": "Process choke points",
+        }
+        model = RefactorResult(
+            target=params.target,
+            filepath=params.filepath,
+            error=str(exc),
+        )
+        return to_tool_result(model, render_hotspots_md(titles[params.target], []))
 
 
 def _refactor_cycles(params: RefactorInput) -> ToolResult:

@@ -6,11 +6,13 @@ aggregation over a parsed tree.
 from __future__ import annotations
 
 from topos.functors.probes.uast.abstractness import calculate_abstractness
+from topos.graphs.uast.mapper_cpp import map_cpp_tree_to_uast
 from topos.graphs.uast.mapper_go import map_go_tree_to_uast
 from topos.graphs.uast.mapper_python import map_python_tree_to_uast
 from topos.graphs.uast.mapper_rust import map_rust_tree_to_uast
 from topos.graphs.uast.mapper_typescript import map_typescript_tree_to_uast
 from topos.utils.tree_sitter import (
+    parse_cpp,
     parse_go,
     parse_python,
     parse_rust,
@@ -130,4 +132,16 @@ enum Color { Red, Blue }
     assert kinds.count("abstractClass") == 1
     assert kinds.count("class") == 1
     assert kinds.count("enum") == 1
+    assert calculate_abstractness(root) == 0.5
+
+
+def test_cpp_pure_virtual_class_is_abstract_function_pointer_is_not_type():
+    src = """
+class Shape { public: virtual double area() const = 0; };
+struct Circle { double r; };
+void (*handler)(int);
+"""
+    root = map_cpp_tree_to_uast(parse_cpp(src))
+    kinds = _type_kinds(root)
+    assert kinds == ["abstractClass", "struct"]
     assert calculate_abstractness(root) == 0.5

@@ -81,9 +81,7 @@ class ProcessGraph:
                 target_node = mdg.get_node(rel.target_id)
                 label = target_node.label if target_node is not None else ""
                 step_value = rel.properties.get("step")
-                step_index = (
-                    int(step_value) if step_value is not None else fallback_order
-                )
+                step_index = _step_index(step_value, fallback_order)
                 steps.append(
                     ProcessStep(
                         node_id=rel.target_id,
@@ -127,3 +125,12 @@ class ProcessGraph:
             for a, b in zip(path.steps, path.steps[1:], strict=False):
                 result.append((a.node_id, b.node_id))
         return result
+
+
+def _step_index(step_value: object, fallback_order: int) -> int:
+    if step_value is None:
+        return fallback_order
+    try:
+        return int(step_value)
+    except (TypeError, ValueError):
+        return fallback_order

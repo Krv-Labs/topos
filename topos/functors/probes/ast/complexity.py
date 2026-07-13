@@ -6,20 +6,11 @@ Provides a function-level breakdown of complexity using the AST.
 This is separate from the CFG-based module-level cyclomatic complexity used
 in the main program evaluation (SIMPLE generator).
 
-Every ``ProgramObject`` produced by a real parse (``ProgramMorphism`` /
-``parse_source``) carries a populated, language-neutral ``uast_root``
-(see ``topos.graphs.ast.providers.tree_sitter_provider``), so the primary
-implementation below walks that UAST directly to find ``FunctionDecl`` /
-``MethodDecl`` nodes -- this works uniformly across every language with a
-UAST mapper (Python, Rust, Go, JavaScript, TypeScript, C++), unlike the
-previous approach of re-querying Python-specific tree-sitter native node
-type strings (``function_definition``/``async_function_definition``),
-which silently found zero functions for every other language.
-
-A ``uast_root``-less native tree-sitter fallback is retained for callers
-that construct a ``ProgramObject`` directly without populating
-``uast_root`` (e.g. lightweight test fixtures); it remains Python-only,
-same as before this fix.
+Python keeps the native tree-sitter path so the established gate continues
+to count Python-specific decision forms (``with``, ``assert``, ternaries,
+comprehensions, and match arms) that are not represented in today's UAST.
+Other languages use the language-neutral UAST path to avoid the old
+vacuous-zero behavior outside Python.
 """
 
 from __future__ import annotations
@@ -90,6 +81,15 @@ _NAME_NATIVE_KINDS = frozenset(
         "field_identifier",
         "type_identifier",
         "package_identifier",
+    }
+)
+
+_DECLARATOR_WRAPPER_NATIVE_KINDS = frozenset(
+    {
+        "function_declarator",
+        "pointer_declarator",
+        "reference_declarator",
+        "parenthesized_declarator",
     }
 )
 
@@ -168,6 +168,11 @@ def _extract_uast_name(node: UASTNode, source_bytes: bytes) -> str | None:
             return source_bytes[child.span.start_byte : child.span.end_byte].decode(
                 "utf-8", errors="replace"
             )
+    for child in node.children:
+        if child.native.node_kind in _DECLARATOR_WRAPPER_NATIVE_KINDS:
+            nested = _extract_uast_name(child, source_bytes)
+            if nested is not None:
+                return nested
     return None
 
 
@@ -264,17 +269,15 @@ def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
     Returns:
         A dictionary mapping function names to their complexity scores.
     """
-    if ast.uast_root is not None:
+    if ast.uast_root is not None and ast.language != "python":
         source_bytes = ast.source.encode("utf-8")
         return {
             entry.name: _calculate_cyclomatic_complexity_uast(entry.node)
             for entry in _iter_uast_function_entries(ast.uast_root, source_bytes)
         }
 
-    # Legacy fallback for ProgramObjects constructed without a uast_root.
-    # Python-only, same as before this fix; unreachable for any ProgramObject
-    # produced by ProgramMorphism / parse_source, which always populate
-    # uast_root for every supported language.
+    # Python native path, also used as a fallback for ProgramObjects
+    # constructed without a uast_root.
     complexities: dict[str, int] = {}
     source_bytes = ast.source.encode("utf-8")
 
@@ -361,7 +364,7 @@ def calculate_function_complexity_entries(
     retains every callable (including same-named ones) plus its span, dotted
     qualified name, and scope kind.
     """
-    if ast.uast_root is not None:
+    if ast.uast_root is not None and ast.language != "python":
         source_bytes = ast.source.encode("utf-8")
         return [
             FunctionComplexity(
@@ -375,8 +378,8 @@ def calculate_function_complexity_entries(
             for entry in _iter_uast_function_entries(ast.uast_root, source_bytes)
         ]
 
-    # Legacy fallback for ProgramObjects constructed without a uast_root.
-    # Python-only, same as before this fix; see calculate_function_complexities.
+    # Python native path, also used as a fallback for ProgramObjects
+    # constructed without a uast_root.
     source_bytes = ast.source.encode("utf-8")
     entries: list[FunctionComplexity] = []
 

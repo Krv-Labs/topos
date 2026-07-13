@@ -77,6 +77,13 @@ def test_forward_declaration_is_function_decl_not_var_decl():
     assert "VarDecl" not in _kinds(root)
 
 
+def test_function_pointer_declaration_is_var_decl_not_function_decl():
+    src = "void (*handler)(int);"
+    root = map_cpp_tree_to_uast(parse_cpp(src))
+    assert _kinds(root).count("VarDecl") == 1
+    assert "FunctionDecl" not in _kinds(root)
+
+
 def test_global_variable_declaration_is_var_decl():
     src = "int global_x = 5;"
     root = map_cpp_tree_to_uast(parse_cpp(src))

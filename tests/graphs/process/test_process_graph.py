@@ -77,6 +77,24 @@ def test_from_mdg_falls_back_to_discovery_order_without_step_property():
     assert [s.node_id for s in graph.paths[0].steps] == ["fnA", "fnB"]
 
 
+def test_from_mdg_falls_back_to_discovery_order_for_nonnumeric_step():
+    mdg = ModuleDependencyGraph(target_file="f.py")
+    mdg.add_node(GraphNode(id="proc1", label="Process"))
+    mdg.add_node(GraphNode(id="fnA", label="Function"))
+    mdg.add_relationship(
+        GraphRelationship(
+            id="s1",
+            source_id="proc1",
+            target_id="fnA",
+            type="STEP_IN_PROCESS",
+            properties={"step": "first"},
+        )
+    )
+
+    graph = ProcessGraph.from_mdg(mdg, "f.py")
+    assert graph.paths[0].steps[0].step == 0
+
+
 def test_edges_flattens_consecutive_steps():
     mdg = _mdg_with_process()
     graph = ProcessGraph.from_mdg(mdg, "f.py")

@@ -238,3 +238,13 @@ def test_nested_closure_classified_for_javascript() -> None:
     assert entries["outer"].kind == "function"
     assert entries["outer.inner"].kind == "closure"
     assert entries["outer.inner"].complexity == 2
+
+
+def test_cpp_function_name_is_recovered_through_declarator() -> None:
+    source = "int classify(int x) { if (x > 0) { return 1; } return 0; }\n"
+    ast = ProgramMorphism(source=source, language="cpp").ast
+    entries = calculate_function_complexity_entries(ast)
+    assert len(entries) == 1
+    assert entries[0].name == "classify"
+    assert entries[0].complexity == 2
+    assert calculate_max_function_complexity(ast) == 2

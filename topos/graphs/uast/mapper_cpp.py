@@ -32,8 +32,24 @@ _DECLARATION_ONLY_KINDS = {
 }
 
 
+def _is_named_function_declarator(node: Node) -> bool:
+    """True for real function/method declarations, false for function pointers.
+
+    tree-sitter-cpp represents both ``void f(int);`` and
+    ``void (*handler)(int);`` with a ``function_declarator`` wrapper.  A real
+    prototype has the function name directly under that wrapper; a function
+    pointer nests the identifier under ``pointer_declarator`` /
+    ``parenthesized_declarator`` and should remain a ``VarDecl``.
+    """
+    if node.type != "function_declarator":
+        return False
+    return any(
+        child.type in {"identifier", "field_identifier"} for child in node.children
+    )
+
+
 def _has_function_declarator(node: Node) -> bool:
-    return any(child.type == "function_declarator" for child in node.children)
+    return any(_is_named_function_declarator(child) for child in node.children)
 
 
 _STATEMENT_TYPES = {

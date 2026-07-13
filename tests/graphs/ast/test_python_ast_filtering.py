@@ -12,11 +12,6 @@ if __name__ == "__main__":
 """
     result = parse_source(source, language="python")
 
-    # Debug: Print the S-expression or structure to see if it is still there
-    from topos.utils.tree_sitter import node_to_sexp
-
-    print(f"DEBUG: SEXP: {node_to_sexp(result.root)}")
-
     assert result.uast_root is not None
 
     # Walk the UAST by native node kind rather than span text: every node's

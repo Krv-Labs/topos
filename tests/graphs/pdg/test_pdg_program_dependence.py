@@ -66,6 +66,12 @@ def test_pdg_emits_data_dependence_across_statements():
     assert pdg.metrics()["pdg.data_deps"] >= 1.0
 
 
+def test_pdg_data_dependence_does_not_cross_function_scope():
+    pdg = _pdg("def a():\n    x = input()\n\ndef b():\n    eval(x)\n")
+    data_edges = [e for e in pdg.edges if e.kind is DependenceKind.DATA]
+    assert not any(e.var == "x" for e in data_edges)
+
+
 def test_pdg_data_dependence_without_source_falls_back_gracefully():
     """Building a PDG directly from a UAST with no source text must not
     crash, and simply yields no data-dependence edges (the pre-fix

@@ -89,7 +89,8 @@ class ProgramDependenceGraph:
             statements.extend(block.statements)
 
         edges: list[DependenceEdge] = []
-        edges.extend(_compute_data_dependence(statements, source))
+        for procedure_statements in _statements_by_procedure(cfg):
+            edges.extend(_compute_data_dependence(procedure_statements, source))
         edges.extend(_compute_control_dependence(cfg))
 
         return cls(statements=statements, edges=edges, cfg=cfg)
@@ -112,6 +113,51 @@ class ProgramDependenceGraph:
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _statements_by_procedure(cfg: ControlFlowGraph) -> list[list[UASTNode]]:
+    """Return CFG statements grouped by callable/module entry.
+
+    The CFG builder wires the synthetic entry block to one ``call_*`` entry
+    block per callable (and one implicit module-level callable when needed).
+    Data dependence is intra-procedural, so each group gets its own
+    reaching-definitions map instead of sharing file-global variable names.
+    """
+    procedure_entries = [
+        edge.target
+        for edge in cfg.edges
+        if edge.source == cfg.entry_id and edge.target != cfg.exit_id
+    ]
+    if not procedure_entries:
+        return [[stmt for block in cfg.blocks.values() for stmt in block.statements]]
+
+    entry_set = set(procedure_entries)
+    groups: list[list[UASTNode]] = []
+    for entry_id in procedure_entries:
+        reachable = _reachable_procedure_blocks(cfg, entry_id, entry_set)
+        group: list[UASTNode] = []
+        for block_id, block in cfg.blocks.items():
+            if block_id in reachable:
+                group.extend(block.statements)
+        groups.append(group)
+    return groups
+
+
+def _reachable_procedure_blocks(
+    cfg: ControlFlowGraph, entry_id: int, procedure_entries: set[int]
+) -> set[int]:
+    reachable: set[int] = set()
+    stack = [entry_id]
+    while stack:
+        block_id = stack.pop()
+        if block_id in reachable or block_id == cfg.exit_id:
+            continue
+        reachable.add(block_id)
+        for edge in cfg.successors(block_id):
+            if edge.target in procedure_entries and edge.target != entry_id:
+                continue
+            stack.append(edge.target)
+    return reachable
 
 
 def _compute_data_dependence(

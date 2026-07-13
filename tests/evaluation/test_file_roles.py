@@ -23,15 +23,20 @@ def test_module_with_branching_control_flow_is_not_stable_leaf():
     assert is_stable_leaf_module(morphism) is False
 
 
-def test_trivial_return_only_function_is_still_stable_leaf():
-    # CallExpr/ReturnStmt are deliberately excluded from the disqualifying
-    # set — a trivial accessor shouldn't disqualify an otherwise frozen
-    # leaf module.
+def test_trivial_return_only_function_is_not_stable_leaf():
     morphism = ProgramMorphism(
         source="def get_x():\n    return compute_default()\n",
         language="python",
     )
-    assert is_stable_leaf_module(morphism) is True
+    assert is_stable_leaf_module(morphism) is False
+
+
+def test_straight_line_side_effects_are_not_stable_leaf():
+    morphism = ProgramMorphism(
+        source="def ship(order):\n    charge(order)\n    notify(order)\n",
+        language="python",
+    )
+    assert is_stable_leaf_module(morphism) is False
 
 
 def test_module_with_loop_is_not_stable_leaf():

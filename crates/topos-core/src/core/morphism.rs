@@ -23,6 +23,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::graphs::ast::dispatch::parse_source;
 use crate::graphs::base::Representation;
 
 use super::object::ProgramObject;
@@ -47,8 +48,8 @@ pub struct ProgramMorphism {
     pub language: String,
     /// Optional path to the source file.
     pub filepath: Option<PathBuf>,
-    /// The parsed AST representation. Only `None` for a language the
-    /// bootstrap parser (see [`ProgramMorphism::new`]) doesn't cover yet.
+    /// The parsed AST representation. Only `None` for a language
+    /// [`crate::graphs::ast::dispatch`] doesn't support.
     pub ast: Option<ProgramObject>,
     /// Additional representations (dep graph, etc.) attached to this
     /// morphism for multi-axis evaluation.
@@ -66,18 +67,14 @@ impl ProgramMorphism {
     /// always attempted before this returns (mirrors the Python
     /// `__post_init__` auto-parse).
     ///
-    /// # Bootstrap limitation
-    ///
-    /// Parsing here goes straight to `tree-sitter-python`. The
-    /// multi-language dispatch (`graphs::ast::dispatch::parse_source`,
-    /// covering rust/js/ts/cpp/go) is issue #142. Non-Python languages
-    /// currently produce `ast: None` rather than panicking, so callers
-    /// can still hold a `ProgramMorphism` for them; [`Self::is_valid`]
-    /// correctly reports `false` in that case.
+    /// `ast` is `None` only if `language` isn't one of the six
+    /// [`crate::graphs::ast::languages::SUPPORTED_LANGUAGES`] — callers
+    /// can still hold a `ProgramMorphism` for an unsupported language;
+    /// [`Self::is_valid`] correctly reports `false` in that case.
     pub fn new(source: impl Into<String>, language: impl Into<String>) -> Self {
         let source = source.into();
         let language = language.into();
-        let ast = Self::parse(&source, &language);
+        let ast = Self::parse(&source, &language, None);
         ProgramMorphism {
             source,
             language,
@@ -87,16 +84,13 @@ impl ProgramMorphism {
         }
     }
 
-    fn parse(source: &str, language: &str) -> Option<ProgramObject> {
-        if language != "python" {
-            return None;
-        }
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&tree_sitter_python::LANGUAGE.into())
-            .expect("tree-sitter-python grammar should load");
-        let tree = parser.parse(source, None)?;
-        Some(ProgramObject::new(tree, source, language))
+    fn parse(source: &str, language: &str, file: Option<&str>) -> Option<ProgramObject> {
+        let result = parse_source(source, language, file).ok()?;
+        Some(ProgramObject::new(
+            result.tree,
+            result.source,
+            result.language,
+        ))
     }
 
     /// Create a morphism from a source file.
@@ -106,9 +100,16 @@ impl ProgramMorphism {
     ) -> std::io::Result<Self> {
         let filepath = filepath.as_ref();
         let source = std::fs::read_to_string(filepath)?;
-        let mut morphism = Self::new(source, language);
-        morphism.filepath = Some(filepath.to_path_buf());
-        Ok(morphism)
+        let language = language.into();
+        let file = filepath.to_string_lossy().into_owned();
+        let ast = Self::parse(&source, &language, Some(&file));
+        Ok(ProgramMorphism {
+            source,
+            language,
+            filepath: Some(filepath.to_path_buf()),
+            ast,
+            representations: Vec::new(),
+        })
     }
 
     /// Whether the morphism represents syntactically valid code.
@@ -171,11 +172,20 @@ mod tests {
 
     #[test]
     fn program_morphism_unsupported_language_is_none_not_panic() {
-        // Bootstrap limitation, documented on `ProgramMorphism::new`:
-        // non-Python languages get `ast: None` until issue #142 lands.
-        let morphism = ProgramMorphism::new("fn main() {}", "rust");
+        let morphism = ProgramMorphism::new("PROGRAM. HELLO.", "cobol");
         assert!(morphism.ast.is_none());
         assert!(!morphism.is_valid());
+    }
+
+    #[test]
+    fn program_morphism_supports_all_six_dispatch_languages() {
+        // "rust" was the one language the temporary bootstrap parser
+        // (issue #141) didn't support; graphs::ast::dispatch (#142) now
+        // covers all six.
+        for language in ["python", "rust", "javascript", "typescript", "cpp", "go"] {
+            let morphism = ProgramMorphism::new("", language);
+            assert!(morphism.ast.is_some(), "{language} should parse");
+        }
     }
 
     #[test]

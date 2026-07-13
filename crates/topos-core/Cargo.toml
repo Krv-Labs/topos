@@ -8,8 +8,13 @@ description = "Structural code quality engine for Topos: category-theoretic eval
 
 [dependencies]
 tree-sitter = "0.23"
-# Temporary: core::morphism bootstraps single-language (Python) parsing
-# directly until graphs::ast::dispatch lands (issue #142) and takes over
-# multi-language parsing. Drop this dependency from topos-core once that
-# module owns all tree-sitter-python usage.
 tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.23"
+# UASTNode::id is a BLAKE2b-8-byte hash, matching Python's
+# hashlib.blake2b(..., digest_size=8) byte-for-byte (see the parity test
+# in graphs::uast::mapper_common).
+blake2 = "0.10"

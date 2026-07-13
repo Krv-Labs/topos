@@ -35,7 +35,7 @@ def _cargo_version() -> str | None:
     for cargo_toml in _cargo_toml_candidates():
         try:
             with cargo_toml.open("rb") as f:
-                return tomllib.load(f)["package"]["version"]
+                return tomllib.load(f)["workspace"]["package"]["version"]
         except (OSError, KeyError, tomllib.TOMLDecodeError):
             continue
     return None

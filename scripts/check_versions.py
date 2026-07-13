@@ -35,6 +35,23 @@ def main() -> int:
             f"has {package_json['version']!r}, expected {expected!r}"
         )
 
+    mcp_manifest = json.loads(
+        (ROOT / ".mcp/server.json").read_text(encoding="utf-8")
+    )
+    if mcp_manifest["version"] != expected:
+        errors.append(
+            ".mcp/server.json "
+            f"has {mcp_manifest['version']!r}, expected {expected!r}"
+        )
+
+    for package in mcp_manifest["packages"]:
+        if package["version"] != expected:
+            errors.append(
+                ".mcp/server.json package "
+                f"{package['identifier']!r} has {package['version']!r}, "
+                f"expected {expected!r}"
+            )
+
     python_version = python_source_version()
     if python_version != expected:
         errors.append(

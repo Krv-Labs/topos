@@ -20,7 +20,10 @@
 //! - [`graphs`] — the `Representation` protocol and (eventually) every
 //!   structural view of a program. `base` landed in #141; concrete
 //!   representations land in #142/#143.
+//! - [`adapters`] — filesystem/subprocess edges of the model: source-file
+//!   discovery and GitNexus dependency-graph generation. Landed in #146.
 
+pub mod adapters;
 pub mod core;
 pub mod evaluation;
 pub mod functors;

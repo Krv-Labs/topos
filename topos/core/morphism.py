@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from topos.graphs.cfg.object import ControlFlowGraph
     from topos.graphs.cpg.object import CodePropertyGraph
     from topos.graphs.pdg.object import ProgramDependenceGraph
+    from topos.graphs.uast.object import AbstractnessRepresentation
 
 
 @dataclass
@@ -69,6 +70,9 @@ class ProgramMorphism:
     _cfg: ControlFlowGraph | None = field(default=None, repr=False, compare=False)
     _pdg: ProgramDependenceGraph | None = field(default=None, repr=False, compare=False)
     _cpg: CodePropertyGraph | None = field(default=None, repr=False, compare=False)
+    _abstractness: AbstractnessRepresentation | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         """Parse the source code into an AST if not provided."""
@@ -174,6 +178,17 @@ class ProgramMorphism:
 
         self._cpg = CodePropertyGraph.from_uast(self.ast.uast_root, source=self.source)
         return self._cpg
+
+    def build_abstractness(self) -> AbstractnessRepresentation | None:
+        """Build (and cache) the Abstractness representation."""
+        if self._abstractness is not None:
+            return self._abstractness
+        if self.ast is None or self.ast.uast_root is None:
+            return None
+        from topos.graphs.uast.object import AbstractnessRepresentation
+
+        self._abstractness = AbstractnessRepresentation(uast_root=self.ast.uast_root)
+        return self._abstractness
 
     @property
     def name(self) -> str:

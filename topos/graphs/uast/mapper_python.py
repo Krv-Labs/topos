@@ -91,6 +91,42 @@ _EXPRESSION_TYPES = {
 }
 
 
+# First-pass, name-based Abstractness heuristic — no import-alias resolution,
+# so `from foo import ABC as Base` won't be recognized. Good enough for the
+# overwhelmingly common `abc.ABC` / `typing.Protocol` spellings.
+_ABSTRACT_BASE_MARKERS = (b"ABC", b"Protocol", b"ABCMeta")
+
+
+def _has_abstract_base(node: Node) -> bool:
+    superclasses = node.child_by_field_name("superclasses")
+    if superclasses is None:
+        return False
+    text = superclasses.text or b""
+    return any(marker in text for marker in _ABSTRACT_BASE_MARKERS)
+
+
+def _has_abstractmethod(node: Node) -> bool:
+    body = node.child_by_field_name("body")
+    if body is None:
+        return False
+    for child in body.named_children:
+        if child.type != "decorated_definition":
+            continue
+        for grandchild in child.named_children:
+            if grandchild.type == "decorator" and b"abstractmethod" in (
+                grandchild.text or b""
+            ):
+                return True
+    return False
+
+
+def extract_type_attributes(node: Node) -> dict[str, object]:
+    if node.type != "class_definition":
+        return {}
+    is_abstract = _has_abstract_base(node) or _has_abstractmethod(node)
+    return {"typeKind": "abstractClass" if is_abstract else "class"}
+
+
 def map_node_kind(node: Node) -> str:
     if node.type in _DECLARATION_TYPES:
         return _DECLARATION_TYPES[node.type]
@@ -114,4 +150,5 @@ def map_python_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
         map_node_kind=map_node_kind,
         file=file,
         is_test_node=is_test_node,
+        extract_attributes=extract_type_attributes,
     )

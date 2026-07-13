@@ -14,10 +14,12 @@ This module provides the core transformation engine that:
 3.  **Preserves Fidelity**: Populates every UASTNode with the original byte
     spans and a NativeRef containing the parser identity and native node type.
 4.  **Excludes Test-Only Nodes**: Language mappers may supply an
-    `is_test_node` predicate (see `TestNodePredicate`) so test-only
+    `is_test_node` predicate (see `TestNodeFilter`) so test-only
     constructs (e.g. Rust `#[cfg(test)]` modules, Python
     `if __name__ == "__main__":` guards) are dropped from the SIMPLE-relevant
     AST without the shared engine needing any language-specific knowledge.
+5.  **Attaches Language Attributes**: Language mappers may supply
+    `extract_attributes` to add normalized metadata such as `typeKind`.
 """
 
 from __future__ import annotations
@@ -110,6 +112,7 @@ def map_tree_sitter_to_uast(
     map_node_kind: Callable[[Node], str],
     file: str | None = None,
     is_test_node: TestNodeFilter | None = None,
+    extract_attributes: Callable[[Node], dict[str, object]] | None = None,
 ) -> UASTNode:
     """Map a Tree-sitter CST to the normalized UAST representation.
 
@@ -118,6 +121,9 @@ def map_tree_sitter_to_uast(
     excluded from the SIMPLE-relevant AST — see `TestNodeFilter`. Languages
     that don't provide one keep today's behavior of mapping every named
     node.
+
+    `extract_attributes`, when provided, contributes language-specific
+    normalized attributes to each mapped UAST node.
     """
     parser_name, parser_version = parser_identity(language)
 
@@ -185,12 +191,15 @@ def map_tree_sitter_to_uast(
             parser_version=parser_version,
             node_kind=node.type,
         )
+        attributes: dict[str, object] = {"named": node.is_named}
+        if extract_attributes is not None:
+            attributes.update(extract_attributes(node) or {})
         uast_nodes[node.id] = UASTNode(
             kind=map_node_kind(node),
             lang=language,
             span=span,
             native=native,
-            attributes={"named": node.is_named},
+            attributes=attributes,
             children=children,
             id=node_stable_id,
         )

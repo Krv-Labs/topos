@@ -44,6 +44,14 @@ class GateContext:
     value: float
     metrics: Mapping[str, float]
     is_entrypoint_module: bool
+    is_stable_leaf_module: bool = False
+    # Raw Martin instability, threaded separately from `metrics` because
+    # `mdg.instability` is deliberately absent from the gated metrics dict
+    # whenever `mdg.main_sequence_distance` is active (see
+    # topos.evaluation.policies.composable.score_coupling) — re-adding it
+    # under its own key would re-trigger the (now-superseded)
+    # `mdg.instability` GateSpec for the same file.
+    instability: float | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +129,19 @@ def _instability_entrypoint_exempt(ctx: GateContext) -> bool:
     )
 
 
+def _distance_stable_leaf_exempt(ctx: GateContext) -> bool:
+    """Frozen, declarations-only leaf modules may sit at maximal distance
+    from the main sequence — Martin's accepted "Zone of Pain" exception for
+    foundation/utility code (constants, error types) that is stable *and*
+    concrete by design, not because it's poorly layered.
+    """
+    return (
+        ctx.is_stable_leaf_module
+        and ctx.instability is not None
+        and ctx.instability <= COMPOSABLE.stable_leaf_instability_max
+    )
+
+
 # ---------------------------------------------------------------------------
 # Interpretation renderers (canonical prose, byte-identical to the legacy
 # per-scorer helpers)
@@ -179,6 +200,25 @@ def _interpret_instability(value: float, outcome: GateOutcome) -> str:
             "import/export-only entrypoint modules"
         )
     return f"instability ({value:.2f}) is too high (module depends on too many things)"
+
+
+def _interpret_main_sequence_distance(value: float, outcome: GateOutcome) -> str:
+    max_d = COMPOSABLE.main_sequence_distance_max
+    if outcome is GateOutcome.PASS:
+        return (
+            f"main-sequence distance ({value:.2f}) within tolerance "
+            f"(<= {max_d}) — instability and abstractness are balanced"
+        )
+    if outcome is GateOutcome.EXEMPT_HIGH:
+        return (
+            f"main-sequence distance ({value:.2f}) is high, but tolerated "
+            "for frozen, declarations-only leaf modules"
+        )
+    return (
+        f"main-sequence distance ({value:.2f}) exceeds threshold (> {max_d}) "
+        "— module is too concrete-and-stable (rigid) or too abstract-and-"
+        "unstable (speculative) for its role"
+    )
 
 
 def _interpret_fan_in(value: float, outcome: GateOutcome) -> str:
@@ -259,6 +299,16 @@ GATE_SPECS: tuple[GateSpec, ...] = (
         operations_high=("rebalance_dependencies", "extract_boundary"),
     ),
     GateSpec(
+        metric="mdg.main_sequence_distance",
+        pillar="composable",
+        low=None,
+        high=COMPOSABLE.main_sequence_distance_max,
+        granularity="module",
+        interpret=_interpret_main_sequence_distance,
+        exempt=_distance_stable_leaf_exempt,
+        operations_high=("rebalance_dependencies", "extract_boundary"),
+    ),
+    GateSpec(
         metric="mdg.fan_in",
         pillar="composable",
         low=None,
@@ -317,6 +367,8 @@ def evaluate_gates(
     *,
     pillar: str | None = None,
     is_entrypoint_module: bool = False,
+    is_stable_leaf_module: bool = False,
+    instability: float | None = None,
 ) -> list[GateResult]:
     """Apply every (optionally pillar-filtered) spec whose metric is present."""
     results: list[GateResult] = []
@@ -330,7 +382,14 @@ def evaluate_gates(
             GateResult(
                 spec=spec,
                 value=value,
-                outcome=_classify(spec, value, metrics, is_entrypoint_module),
+                outcome=_classify(
+                    spec,
+                    value,
+                    metrics,
+                    is_entrypoint_module,
+                    is_stable_leaf_module,
+                    instability,
+                ),
             )
         )
     return results
@@ -339,7 +398,7 @@ def evaluate_gates(
 def interpret_metric(metric: str, value: float) -> str:
     """Canonical prose for a single metric value (no exemption context)."""
     spec = GATES_BY_METRIC[metric]
-    return spec.interpret(value, _classify(spec, value, {}, False))
+    return spec.interpret(value, _classify(spec, value, {}, False, False, None))
 
 
 def _classify(
@@ -347,6 +406,8 @@ def _classify(
     value: float,
     metrics: Mapping[str, float],
     is_entrypoint_module: bool,
+    is_stable_leaf_module: bool = False,
+    instability: float | None = None,
 ) -> GateOutcome:
     if spec.low is not None and value < spec.low:
         fail, exempt = GateOutcome.FAIL_LOW, GateOutcome.EXEMPT_LOW
@@ -354,7 +415,9 @@ def _classify(
         fail, exempt = GateOutcome.FAIL_HIGH, GateOutcome.EXEMPT_HIGH
     else:
         return GateOutcome.PASS
-    ctx = GateContext(value, metrics, is_entrypoint_module)
+    ctx = GateContext(
+        value, metrics, is_entrypoint_module, is_stable_leaf_module, instability
+    )
     if spec.exempt is not None and spec.exempt(ctx):
         return exempt
     return fail

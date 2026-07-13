@@ -65,6 +65,14 @@ def map_node_kind(node: Node) -> str:
 
 
 def map_javascript_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
+    # Deliberately no `extract_attributes`/`typeKind` hook here, unlike the
+    # Rust/Python/Go/TypeScript mappers: plain JS has no `interface` or
+    # `abstract class` syntax at all (that's a TypeScript-only extension of
+    # this shared grammar — see mapper_typescript.py), so there's nothing
+    # in a .js file's grammar to ever classify as abstract vs. concrete.
+    # Martin's Abstractness metric (mdg.abstractness, issue #124) is
+    # therefore not meaningful for JavaScript; see the language allowlist
+    # in topos/graphs/uast/object.py.
     return map_tree_sitter_to_uast(
         root=root,
         language="javascript",

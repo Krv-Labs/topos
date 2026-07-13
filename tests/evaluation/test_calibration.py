@@ -172,3 +172,63 @@ def test_composable_high_instability_still_fails_without_entrypoint_flag():
         fan_out=2.0,
     )
     assert decision.achieved is False
+
+
+# ---------------------------------------------------------------------------
+# Distance-from-Main-Sequence gate (issue #124) — abstractness present
+# ---------------------------------------------------------------------------
+
+
+def test_composable_orchestrator_passes_via_distance_without_entrypoint_flag():
+    # I=1, A=0 (concrete, unstable orchestrator, e.g. main.rs) sits on the
+    # main sequence (D=0) — should pass without needing is_entrypoint_module.
+    decision = score_coupling(instability=1.0, abstractness=0.0, fan_in=0.0)
+    assert decision.achieved is True
+    assert "within tolerance" in decision.interpretation["mdg.main_sequence_distance"]
+    # Informational only — mdg.instability itself is not gated here, but is
+    # still surfaced so users see why a "too high" reading isn't a failure.
+    assert "too high" in decision.interpretation["mdg.instability"]
+
+
+def test_composable_stable_leaf_fails_distance_without_exemption():
+    # I=0, A=0 (concrete, stable leaf, e.g. constants.rs) is Martin's "Zone
+    # of Pain" — D=1, maximal distance — and fails without the leaf role.
+    decision = score_coupling(instability=0.0, abstractness=0.0)
+    assert decision.achieved is False
+
+
+def test_composable_stable_leaf_passes_with_exemption():
+    decision = score_coupling(
+        instability=0.0, abstractness=0.0, is_stable_leaf_module=True
+    )
+    assert decision.achieved is True
+    assert "tolerated" in decision.interpretation["mdg.main_sequence_distance"]
+
+
+def test_composable_tangled_module_still_fails_with_abstractness():
+    # I=0.9, A=0.9 -> D=0.8, well past the distance gate: neither role
+    # exemption applies, so this must still fail.
+    decision = score_coupling(instability=0.9, abstractness=0.9)
+    assert decision.achieved is False
+
+
+def test_composable_distance_boundary_uses_calibration():
+    max_d = COMPOSABLE.main_sequence_distance_max
+    # A + I - 1 = max_d exactly, at the boundary -> should pass (inclusive).
+    instability = 1.0
+    abstractness = max_d  # |A + I - 1| = |max_d + 1 - 1| = max_d
+    decision = score_coupling(instability=instability, abstractness=abstractness)
+    assert decision.achieved is True
+
+    # Just past the boundary -> should fail.
+    decision = score_coupling(instability=instability, abstractness=abstractness + 0.01)
+    assert decision.achieved is False
+
+
+def test_composable_without_abstractness_keeps_instability_gate_untouched():
+    # No abstractness supplied -> mdg.instability remains the gated metric,
+    # byte-identical to pre-issue-124 behavior (fallback path).
+    decision = score_coupling(instability=1.0, fan_in=0.0, fan_out=2.0)
+    assert decision.achieved is False
+    assert "mdg.main_sequence_distance" not in decision.interpretation
+    assert "mdg.instability" in decision.interpretation

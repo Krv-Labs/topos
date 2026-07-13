@@ -546,9 +546,10 @@ def _intrinsic_representations(
     morphism: ProgramMorphism,
 ) -> list[Representation]:
     """
-    Build the three intrinsic representations derived from the UAST: CFG,
-    academic PDG, CPG.  These require no external tooling so they are
-    always attached.  Missing UAST (parse failure) yields an empty list.
+    Build the intrinsic representations derived from the UAST: CFG,
+    academic PDG, CPG, Abstractness.  These require no external tooling so
+    they are always attached.  Missing UAST (parse failure) yields an
+    empty list.
     """
     reps: list[Representation] = []
     cfg = morphism.build_cfg()
@@ -560,6 +561,9 @@ def _intrinsic_representations(
     cpg = morphism.build_cpg()
     if cpg is not None:
         reps.append(cpg)
+    abstractness = morphism.build_abstractness()
+    if abstractness is not None:
+        reps.append(abstractness)
     return reps
 
 

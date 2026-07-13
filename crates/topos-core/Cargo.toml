@@ -19,3 +19,5 @@ tree-sitter-go = "0.23"
 # in graphs::uast::mapper_common).
 blake2 = "0.10"
 petgraph = "0.6"
+# GraphNode::properties holds arbitrary GitNexus JSON payload values.
+serde_json = "1.0"

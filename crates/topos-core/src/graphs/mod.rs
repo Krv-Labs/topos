@@ -9,5 +9,6 @@ pub mod ast;
 pub mod base;
 pub mod cfg;
 pub mod cpg;
+pub mod mdg;
 pub mod pdg;
 pub mod uast;

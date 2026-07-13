@@ -2,3 +2,4 @@
 //! the leaves `graphs::*::object` representations call from `metrics()`.
 
 pub mod ast;
+pub mod cpg;

@@ -1,10 +1,12 @@
 //! `CodePropertyGraph` — implements [`Representation`] on the SECURE
 //! generator.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::builder::build_cpg;
 use super::models::{CPGEdge, CPGNode};
+use crate::functors::probes::cpg::danger::dangerous_api_reachable;
+use crate::functors::probes::cpg::taint::taint_flow_paths;
 use crate::graphs::base::Representation;
 use crate::graphs::uast::models::UASTNode;
 
@@ -63,9 +65,17 @@ impl Representation for CodePropertyGraph {
     }
 
     fn metrics(&self) -> HashMap<String, f64> {
-        unimplemented!(
-            "CodePropertyGraph::metrics depends on functors::probes::cpg::{{danger, taint}} (issue #145)"
-        )
+        let allow = HashSet::new();
+        HashMap::from([
+            (
+                "cpg.dangerous_calls".to_string(),
+                dangerous_api_reachable(self, &allow) as f64,
+            ),
+            (
+                "cpg.taint_flows".to_string(),
+                taint_flow_paths(self, &allow) as f64,
+            ),
+        ])
     }
 }
 

@@ -12,3 +12,4 @@ path = "src/main.rs"
 
 [dependencies]
 topos-core = { path = "../topos-core" }
+clap = { version = "4", features = ["derive"] }

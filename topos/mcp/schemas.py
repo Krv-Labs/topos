@@ -8,6 +8,7 @@ Input models validate tool arguments; return models give FastMCP the
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -1099,4 +1100,38 @@ class ChangesetResult(BaseModel):
     priority_source: PrioritySource = PrioritySource.DEFAULT
     warnings: list[str] = Field(default_factory=list)
     agent_contract: AgentContract | None = None
+    error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Refactoring suite (issues #83 cycles, #84 dependencies, #86 process) —
+# persistent-homology cycle detection and Forman-Ricci curvature. Purely
+# advisory: none of this feeds SIMPLE/COMPOSABLE/SECURE scoring.
+# ---------------------------------------------------------------------------
+
+
+class RefactorHotspot(BaseModel):
+    # Full field semantics: docs/refactor-suite.md (trimmed here — wire-size ratchet).
+    kind: Literal["cycle", "dependency_edge", "process_transition"]
+    label: str
+    filepath: str
+    line_start: int | None = None
+    line_end: int | None = None
+    score: float
+    suggestion: str
+
+
+class RefactorInput(_StrictModel):
+    target: Literal["cycles", "dependencies", "process"]
+    filepath: str = Field(..., min_length=1)
+    gitnexus_dir: str | None = None
+    limit: int = Field(default=5, ge=1, le=50)
+
+
+class RefactorResult(BaseModel):
+    target: Literal["cycles", "dependencies", "process"]
+    filepath: str
+    betti_1: int | None = None
+    gitnexus_available: bool | None = None
+    hotspots: list[RefactorHotspot] = Field(default_factory=list)
     error: str | None = None

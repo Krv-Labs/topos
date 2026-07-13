@@ -27,6 +27,7 @@ Commands:
   evaluate   Evaluate code quality using the characteristic morphism χ_S :...
   inspect    Inspect detailed metrics for a single file.
   mcp        Run the Topos MCP server (stdio).
+  refactor   Actionable refactor suggestions: cycles, dependencies, process...
   uninstall  Safely uninstall topos based on installation provenance.
   update     Upgrade Topos using the detected install channel.
 """
@@ -53,10 +54,12 @@ def _register_commands() -> None:
     if _commands_registered:
         return
     from topos.cli.commands.quality import register_quality_commands
+    from topos.cli.commands.refactor import register_refactor_commands
     from topos.cli.commands.system import register_system_commands
 
     register_quality_commands(cli)
     register_system_commands(cli)
+    register_refactor_commands(cli)
     _commands_registered = True
 
 

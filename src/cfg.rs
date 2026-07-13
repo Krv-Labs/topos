@@ -30,7 +30,7 @@ pub struct BasicBlock {
 impl BasicBlock {
     #[new]
     #[pyo3(signature = (id, statements=None, label=String::new()))]
-    fn new(id: usize, statements: Option<Vec<UASTNode>>, label: String) -> Self {
+    pub fn new(id: usize, statements: Option<Vec<UASTNode>>, label: String) -> Self {
         Self {
             id,
             statements: statements.unwrap_or_default(),
@@ -50,7 +50,7 @@ pub struct CFGEdge {
 #[pymethods]
 impl CFGEdge {
     #[new]
-    fn new(source: usize, target: usize, kind: EdgeKind) -> Self {
+    pub fn new(source: usize, target: usize, kind: EdgeKind) -> Self {
         Self {
             source,
             target,
@@ -72,7 +72,7 @@ pub struct ControlFlowGraph {
 impl ControlFlowGraph {
     #[new]
     #[pyo3(signature = (blocks=None, edges=None, entry_id=0, exit_id=1))]
-    fn new(
+    pub fn new(
         blocks: Option<HashMap<usize, BasicBlock>>,
         edges: Option<Vec<CFGEdge>>,
         entry_id: usize,
@@ -84,6 +84,15 @@ impl ControlFlowGraph {
             entry_id,
             exit_id,
         }
+    }
+
+    /// Fundamental cycle basis (spanning tree + back-edge closure) — see
+    /// `crate::ph` for the algorithm. Exposed here (rather than via a second
+    /// `#[pymethods]` block in `ph.rs`) because PyO3's `multiple-pymethods`
+    /// feature required for that pattern breaks `cargo test` linking on
+    /// macOS/arm64 in this workspace.
+    pub fn cycle_basis(&self) -> crate::ph::CycleBasisResult {
+        crate::ph::compute_cycle_basis(self)
     }
 
     pub fn cyclomatic_complexity(&self) -> usize {

@@ -1,8 +1,59 @@
-//! topos-cli: standalone `topos` binary, port target for v0.4.0.
+//! `topos` — standalone CLI binary for Topos structural code quality
+//! evaluation, built directly on `topos-core` (issue #147).
 //!
-//! Will call into `topos_core::cli::run` once that module lands; the same
-//! entry point is reused by the Python shim in `topos-pyo3`.
+//! Mirrors the command surface of `topos/cli/main.py` /
+//! `topos/cli/commands/quality.py`, but is a fresh idiomatic-Rust
+//! implementation rather than a line-for-line port: the Python CLI's
+//! rich terminal styling (`click.style`) and its "Suggestions" /
+//! "Security Findings" sections depend on `topos/mcp/schemas.py`
+//! (Pydantic) and `topos.evaluation.{suggestions,suppression,
+//! security_guidance}`, which stay out of `topos-core`'s scope for this
+//! pass — see each command module's doc comment for what is
+//! deliberately not ported yet.
+//!
+//! Skipped entirely for this pass (see individual command docs / final
+//! report for why): `mcp` (server stays Python), `depgraph` (needs
+//! GitNexus wiring), `update`/`uninstall` (pip-specific self-update).
+
+mod commands;
+
+use clap::{Parser, Subcommand};
+
+use commands::{compare, coverage, evaluate, inspect};
+
+#[derive(Parser)]
+#[command(
+    name = "topos",
+    version,
+    about = "Topos: category-theoretic code quality evaluation."
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Evaluate code quality using the characteristic morphism χ_S : P → Ω.
+    Evaluate(evaluate::EvaluateArgs),
+    /// Inspect detailed metrics for a single file.
+    Inspect(inspect::InspectArgs),
+    /// Compare structural distance between two programs.
+    Compare(compare::CompareArgs),
+    /// Measure structural (UAST) test coverage.
+    Coverage(coverage::CoverageArgs),
+}
 
 fn main() {
-    eprintln!("topos-cli: Rust port in progress — see milestone \"Release v0.4.0\"");
+    let cli = Cli::parse();
+    let result = match cli.command {
+        Command::Evaluate(args) => evaluate::run(args),
+        Command::Inspect(args) => inspect::run(args),
+        Command::Compare(args) => compare::run(args),
+        Command::Coverage(args) => coverage::run(args),
+    };
+    if let Err(message) = result {
+        eprintln!("Error: {message}");
+        std::process::exit(1);
+    }
 }

@@ -40,6 +40,10 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::models::{parse_node, parse_relationship, GraphNode, GraphRelationship};
+use crate::functors::probes::mdg::coupling::{
+    calculate_coupling, calculate_dependency_depth, calculate_instability_from_result,
+};
+use crate::functors::probes::mdg::fan::calculate_fan_in_out;
 use crate::graphs::base::Representation;
 
 #[derive(Debug)]
@@ -287,9 +291,37 @@ impl Representation for ModuleDependencyGraph {
     }
 
     fn metrics(&self) -> HashMap<String, f64> {
-        unimplemented!(
-            "ModuleDependencyGraph::metrics depends on functors::probes::mdg::{{coupling, fan}} (issue #145)"
-        )
+        let Some(file_node_id) = self.file_node_id().map(str::to_string) else {
+            // No matching File node in the graph — matches the Python
+            // original's default (zero coupling, neutral 0.5
+            // instability) rather than omitting the keys entirely.
+            return HashMap::from([
+                ("mdg.coupling".to_string(), 0.0),
+                ("mdg.instability".to_string(), 0.5),
+                ("mdg.fan_in".to_string(), 0.0),
+                ("mdg.fan_out".to_string(), 0.0),
+                ("mdg.dep_depth".to_string(), 0.0),
+            ]);
+        };
+
+        let mut symbol_ids: std::collections::HashSet<String> = self
+            .all_contained_symbols(&file_node_id)
+            .into_iter()
+            .collect();
+        symbol_ids.insert(file_node_id.clone());
+
+        let coupling = calculate_coupling(self, &file_node_id, Some(&symbol_ids));
+        let instability = calculate_instability_from_result(&coupling);
+        let fan = calculate_fan_in_out(self, &file_node_id, Some(&symbol_ids));
+        let dep_depth = calculate_dependency_depth(self, &file_node_id);
+
+        HashMap::from([
+            ("mdg.coupling".to_string(), coupling.total() as f64),
+            ("mdg.instability".to_string(), instability),
+            ("mdg.fan_in".to_string(), fan.fan_in as f64),
+            ("mdg.fan_out".to_string(), fan.fan_out as f64),
+            ("mdg.dep_depth".to_string(), dep_depth as f64),
+        ])
     }
 }
 
@@ -357,5 +389,31 @@ mod tests {
         assert!(matches!(result, Err(MdgError::LadybugBinaryUnsupported(_))));
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn metrics_reports_coupling_instability_fan_and_depth() {
+        let mut g = ModuleDependencyGraph::new("a.py");
+        g.add_node(node("File:a.py", "File", Some("a.py")));
+        g.add_node(node("File:b.py", "File", Some("b.py")));
+        g.add_relationship(rel("i1", "File:a.py", "File:b.py", "IMPORTS"));
+
+        let metrics = g.metrics();
+        assert_eq!(metrics["mdg.coupling"], 1.0);
+        assert_eq!(metrics["mdg.instability"], 1.0); // pure efferent
+        assert_eq!(metrics["mdg.fan_in"], 0.0);
+        assert_eq!(metrics["mdg.fan_out"], 0.0);
+        assert_eq!(metrics["mdg.dep_depth"], 1.0);
+    }
+
+    #[test]
+    fn metrics_defaults_when_target_file_has_no_matching_node() {
+        let g = ModuleDependencyGraph::new("missing.py");
+        let metrics = g.metrics();
+        assert_eq!(metrics["mdg.coupling"], 0.0);
+        assert_eq!(metrics["mdg.instability"], 0.5);
+        assert_eq!(metrics["mdg.fan_in"], 0.0);
+        assert_eq!(metrics["mdg.fan_out"], 0.0);
+        assert_eq!(metrics["mdg.dep_depth"], 0.0);
     }
 }

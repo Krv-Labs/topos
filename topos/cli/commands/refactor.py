@@ -94,7 +94,6 @@ def cycles_cmd(path: str, output_json_flag: bool, max_cycles: int) -> None:
                 "Extract this loop/branch body into its own function to "
                 "isolate the cycle and shrink cyclomatic complexity."
             ),
-            evidence={"block_ids": str(cycle.block_ids)},
         )
         for cycle in ranked
     ]
@@ -165,7 +164,6 @@ def dependencies_cmd(
                 if score < 0
                 else "Well-supported dependency edge; no action needed."
             ),
-            evidence={"source": source, "target": target},
         )
         for source, target, score in ranked
     ]
@@ -240,7 +238,6 @@ def process_cmd(
                 if score < 0
                 else "Well-distributed transition; no action needed."
             ),
-            evidence={"source": source, "target": target},
         )
         for source, target, score in ranked
     ]

@@ -76,9 +76,13 @@ def score_coupling(
             docstring.
         priority:    Retained for API compatibility; not read by this Φᵢ.
         threshold:   Retained for API compatibility; not read by this Φᵢ.
-        is_entrypoint_module: When True, tolerate high instability (or high
-            main-sequence distance) for import/export-only entrypoint
-            modules with zero fan-in.
+        is_entrypoint_module: When True, tolerate high instability for
+            import/export-only entrypoint modules with zero fan-in. Applies
+            only to the raw-instability gate (no abstractness available);
+            in distance mode a concrete, unstable entrypoint already sits on
+            the main sequence (D≈0), so no distance carve-out is needed — and
+            an abstract, unstable entrypoint (D≈1) is Martin's "Zone of
+            Uselessness", which has no accepted exception.
         is_stable_leaf_module: When True, tolerate maximal main-sequence
             distance for frozen, declarations-only leaf modules (Martin's
             "Zone of Pain" exception).

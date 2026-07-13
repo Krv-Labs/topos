@@ -47,7 +47,15 @@ def is_test_node(siblings: list[Node]) -> set[int]:
         if node.type != "if_statement":
             return False
         condition = node.child_by_field_name("condition")
-        return condition is not None and _is_name_equals_main(condition)
+        if condition is None or not _is_name_equals_main(condition):
+            return False
+        # Only a bare guard is pure entrypoint scaffolding. A guard carrying
+        # an `else`/`elif` holds real fallback logic; dropping the whole
+        # `if_statement` would silently discard that branch, so keep it.
+        # (A full fix — drop only the `__main__` consequence while retaining
+        # the alternative — needs subtree rewriting, which this drop-by-id
+        # filter interface intentionally doesn't support.)
+        return node.child_by_field_name("alternative") is None
 
     return {sibling.id for sibling in siblings if _is_guard(sibling)}
 

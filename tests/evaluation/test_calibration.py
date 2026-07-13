@@ -205,6 +205,21 @@ def test_composable_stable_leaf_passes_with_exemption():
     assert "tolerated" in decision.interpretation["mdg.main_sequence_distance"]
 
 
+def test_composable_abstract_unstable_entrypoint_still_fails_distance():
+    # I=1, A=1 -> D=1 is Martin's "Zone of Uselessness" (abstract types that
+    # nothing depends on). Unlike the "Zone of Pain", it has no accepted
+    # exception, so `is_entrypoint_module` deliberately grants NO distance
+    # carve-out here (issue #157). The entrypoint exemption applies only to
+    # the raw-instability gate; a concrete unstable entrypoint already passes
+    # distance via geometry (see the orchestrator test above), so distance
+    # mode needs no entrypoint exemption. This pins that intent against the
+    # instability-mode docstring being copied back into the distance gate.
+    decision = score_coupling(
+        instability=1.0, abstractness=1.0, fan_in=0.0, is_entrypoint_module=True
+    )
+    assert decision.achieved is False
+
+
 def test_composable_tangled_module_still_fails_with_abstractness():
     # I=0.9, A=0.9 -> D=0.8, well past the distance gate: neither role
     # exemption applies, so this must still fail.

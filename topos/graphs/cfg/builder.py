@@ -454,10 +454,16 @@ def _match_arms(stmt: UASTNode) -> list[UASTNode]:
         return _unwrap_to_statements(children)
 
     rest = children[1:]
-    if len(rest) == 1 and rest[0].kind == "Unknown":
+    # Locate the arm-container by kind, not by position: a comment (or any
+    # other extra node) between the subject and the `match_block`/`block`
+    # would otherwise push it out of the fixed `rest[0]` slot and collapse
+    # the whole match to a single edge.
+    for node in rest:
+        if node.kind != "Unknown":
+            continue
         arm_nodes = [
             c
-            for c in rest[0].children
+            for c in node.children
             if c.kind == "Unknown" and c.native.node_kind in _MATCH_ARM_NATIVE_KINDS
         ]
         if arm_nodes:

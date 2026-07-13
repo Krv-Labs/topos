@@ -85,3 +85,22 @@ def test_rust_match_surfaces_nested_if_inside_arm():
     assert kinds[EdgeKind.TRUE] == 1
     assert kinds[EdgeKind.FALSE] == 1
     assert cfg.metrics()["cfg.cyclomatic"] == 4.0
+
+
+def test_rust_match_with_comment_before_block_keeps_arms():
+    """A comment between the scrutinee and the `match_block` must not push the
+    arm container out of position and collapse the match to a single edge
+    (issue #155): arms are located by kind, not by a fixed child slot."""
+    src = (
+        "pub fn probe(x: u8) -> &'static str {\n"
+        "    match x /* pick */ {\n"
+        '        0 => "a",\n'
+        '        1 => "b",\n'
+        '        _ => "c",\n'
+        "    }\n"
+        "}\n"
+    )
+    cfg = _cfg(src)
+    kinds = Counter(e.kind for e in cfg.edges)
+    assert kinds[EdgeKind.SWITCH_CASE] == 3
+    assert cfg.metrics()["cfg.cyclomatic"] == 3.0

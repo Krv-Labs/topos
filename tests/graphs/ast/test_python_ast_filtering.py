@@ -33,6 +33,35 @@ if __name__ == "__main__":
     assert "comparison_operator" not in kinds
 
 
+def test_python_keeps_guard_with_else_branch():
+    # A `__main__` guard carrying an `else`/`elif` holds real fallback logic;
+    # dropping the whole `if_statement` would silently discard that branch
+    # (issue #133). Such a guard is not treated as pure test scaffolding.
+    source = """
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()
+else:
+    if configured():
+        register()
+"""
+    result = parse_source(source, language="python")
+    assert result.uast_root is not None
+
+    def collect_node_kinds(node):
+        kinds = {node.native.node_kind}
+        for child in node.children:
+            kinds |= collect_node_kinds(child)
+        return kinds
+
+    kinds = collect_node_kinds(result.uast_root)
+    # The guard (and therefore its `else` branch's nested decision) survives.
+    assert "if_statement" in kinds
+
+
 def test_python_keeps_main_function():
     source = """
 def main():

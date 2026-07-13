@@ -325,8 +325,15 @@ def test_assess_improvement_has_no_regression_diff() -> None:
         )
     )
     r = _assess(tr)
-    # Unpatched, added branching scores as an improvement here.
-    assert r.status == AssessmentStatus.IMPROVEMENT
+    # Unpatched, added branching scores as an improvement here. _SIMPLE_FN
+    # already legitimately achieves SIMPLE on its own (a correctly-scored
+    # tiny function), so whether _BRANCHY_FN crosses a lattice tier
+    # (IMPROVEMENT) or stays within the same tier with a better score
+    # (IMPROVEMENT_SCORE) is incidental — either is a non-regression verdict.
+    assert r.status in {
+        AssessmentStatus.IMPROVEMENT,
+        AssessmentStatus.IMPROVEMENT_SCORE,
+    }
     assert r.regression_diff is None
     assert "## Regression diff" not in _content_text(tr)
 

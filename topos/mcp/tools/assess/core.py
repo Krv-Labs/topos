@@ -16,10 +16,8 @@ from pathlib import Path
 from fastmcp.tools.base import ToolResult
 
 from topos.core.morphism import ProgramMorphism
-from topos.evaluation.characteristic_morphism import (
-    CharacteristicMorphism,
-    ClassificationResult,
-)
+from topos.core.omega import Omega
+from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
 from topos.functors.profunctors.ast.compare import calculate_ast_distance
 
@@ -113,7 +111,7 @@ def _is_suspicious(
 def _determine_lattice_status(
     cur_summary, prop_summary, score_deltas
 ) -> AssessmentStatus:
-    lattice = CharacteristicMorphism().omega
+    lattice = Omega()
     if cur_summary == prop_summary:
         score_improved = any(d > 0 for d in score_deltas.values())
         score_regressed = any(d < 0 for d in score_deltas.values())

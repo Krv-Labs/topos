@@ -1,31 +1,4 @@
 from topos.core.morphism import ProgramMorphism
-from topos.core.object import ProgramObject
-from topos.utils.tree_sitter import parse_python
-
-
-def test_program_object_basic():
-    source = "def hello():\n    print('world')"
-    root = parse_python(source)
-    obj = ProgramObject(root=root, source=source)
-
-    assert obj.source == source
-    assert obj.language == "python"
-    assert obj.is_valid is True
-    assert obj.node_count > 0
-    assert obj.depth > 0
-
-
-def test_program_object_traversal():
-    source = "x = 1 + 2"
-    root = parse_python(source)
-    obj = ProgramObject(root=root, source=source)
-
-    nodes = list(obj.traverse())
-    assert len(nodes) == obj.node_count
-
-    # Check for specific node types
-    assignments = list(obj.nodes_of_type("assignment"))
-    assert len(assignments) == 1
 
 
 def test_program_morphism_basic():
@@ -66,7 +39,7 @@ def test_program_morphism_from_file_and_classify(tmp_path):
     p = tmp_path / "hello.py"
     p.write_text("print('hello world')", encoding="utf-8")
     morphism = ProgramMorphism.from_file(p)
-    assert morphism.filepath == p
+    assert morphism.filepath == str(p)
     assert morphism.name == "hello.py"
 
     from topos.core.omega import EvaluationValue
@@ -78,9 +51,3 @@ def test_program_morphism_from_file_and_classify(tmp_path):
 def test_program_morphism_eq_not_implemented():
     morphism = ProgramMorphism(source="x = 1")
     assert morphism != "not a morphism"
-
-
-def test_program_object_eq_not_implemented():
-    root = parse_python("x = 1")
-    obj = ProgramObject(root=root, source="x = 1")
-    assert obj != "not a program object"

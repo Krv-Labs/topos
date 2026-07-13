@@ -193,7 +193,7 @@ def remediation_for(finding: SecurityFinding) -> tuple[str, tuple[str, ...]]:
             TAINT_OPERATIONS,
         )
     callee = (finding.callee or "").lower()
-    key = match_registry_key(callee, REMEDIATIONS) if callee else None
+    key = match_registry_key(callee, list(REMEDIATIONS)) if callee else None
     if key is not None:
         entry = REMEDIATIONS[key]
         return entry.advice, entry.operations

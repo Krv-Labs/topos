@@ -39,6 +39,7 @@ use crate::graphs::uast::models::UASTNode;
 /// lean on: a [`tree_sitter::Node`] borrows from the [`tree_sitter::Tree`]
 /// that produced it, so this struct owns the `Tree` and hands out a
 /// `Node` on demand via [`ProgramObject::root`] instead of storing one.
+#[derive(Clone)]
 pub struct ProgramObject {
     tree: Tree,
     /// The original source code (for reference).

@@ -5,7 +5,6 @@ Evaluation tool: whole project.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import replace
 from pathlib import Path
 
 from fastmcp import Context
@@ -73,11 +72,15 @@ def _adjusted_result(result: ClassificationResult, overlay):
         else EvaluationValue.SLOP
     )
     scores["secure"] = 1.0 if overlay.verdict.adjusted_secure_pass else 0.0
-    return replace(
-        result,
+    return ClassificationResult(
+        is_parseable=result.is_parseable,
         dimensions=dimensions,
         scores=scores,
         lattice_element=overlay.verdict.adjusted_element,
+        priority=result.priority,
+        raw_metrics=result.raw_metrics,
+        interpretation=result.interpretation,
+        is_entrypoint_module=result.is_entrypoint_module,
     )
 
 

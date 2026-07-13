@@ -1,11 +1,41 @@
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+use crate::core::{PyProgramMorphism, PyProgramObject};
+use topos_core::functors::profunctors::ast::compare::{
+    calculate_ast_distance as core_ast_distance, calculate_ghw_distance as core_ghw_distance,
+    calculate_similarity as core_similarity, structural_distance as core_structural_distance,
+    GhwOptions,
+};
+
 #[pyclass(get_all)]
 pub struct DistanceResult {
     pub raw_distance: usize,
     pub normalized_distance: f64,
     pub operations: HashMap<String, usize>,
+}
+
+#[pymethods]
+impl DistanceResult {
+    #[new]
+    fn new(
+        raw_distance: usize,
+        normalized_distance: f64,
+        operations: HashMap<String, usize>,
+    ) -> Self {
+        DistanceResult {
+            raw_distance,
+            normalized_distance,
+            operations,
+        }
+    }
+
+    fn __str__(&self) -> String {
+        format!(
+            "Distance: {} (normalized: {:.3})",
+            self.raw_distance, self.normalized_distance
+        )
+    }
 }
 
 #[pyfunction]
@@ -68,6 +98,67 @@ pub fn compute_sequence_distance(
     operations.insert("substitutions".to_string(), substitutions);
 
     (dp[m][n], operations)
+}
+
+#[pyfunction]
+pub fn calculate_ast_distance(
+    source: &PyProgramObject,
+    target: &PyProgramObject,
+) -> DistanceResult {
+    let result = core_ast_distance(&source.inner, &target.inner);
+    DistanceResult {
+        raw_distance: result.raw_distance,
+        normalized_distance: result.normalized_distance,
+        operations: result.operations,
+    }
+}
+
+#[pyfunction]
+pub fn calculate_similarity(source: &PyProgramObject, target: &PyProgramObject) -> f64 {
+    core_similarity(&source.inner, &target.inner)
+}
+
+#[pyfunction]
+pub fn structural_distance(source: &PyProgramMorphism, target: &PyProgramMorphism) -> f64 {
+    core_structural_distance(&source.inner.borrow(), &target.inner.borrow())
+}
+
+#[pyclass(get_all)]
+pub struct GHWDistanceResult {
+    pub gw_distance: f64,
+    pub raw_gw_cost: f64,
+    pub n_nodes_source: usize,
+    pub n_nodes_target: usize,
+    pub n_iterations: usize,
+    pub converged: bool,
+}
+
+#[pyfunction]
+#[pyo3(signature = (source, target, max_nodes=200, n_iter=50, reg=0.5, tol=1e-6))]
+#[allow(clippy::too_many_arguments)]
+pub fn calculate_ghw_distance(
+    source: &PyProgramObject,
+    target: &PyProgramObject,
+    max_nodes: usize,
+    n_iter: usize,
+    reg: f64,
+    tol: f64,
+) -> GHWDistanceResult {
+    let options = GhwOptions {
+        max_nodes,
+        n_iter,
+        reg,
+        tol,
+    };
+    let result = core_ghw_distance(&source.inner, &target.inner, options);
+    GHWDistanceResult {
+        gw_distance: result.gw_distance,
+        raw_gw_cost: result.raw_gw_cost,
+        n_nodes_source: result.n_nodes_source,
+        n_nodes_target: result.n_nodes_target,
+        n_iterations: result.n_iterations,
+        converged: result.converged,
+    }
 }
 
 #[cfg(test)]

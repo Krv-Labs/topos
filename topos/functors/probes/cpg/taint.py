@@ -1,131 +1,17 @@
-"""
-Taint-flow probe (CPG → ℝ).
-
-A *taint flow* is a source → sink data-flow path along DDG edges in the
-CPG, optionally interrupted by a sanitizer.  v1 implements a purely
-syntactic version: we mark every input-like identifier as a *source* and
-every dangerous-API call site as a *sink*; the probe counts DDG paths
-between them.
-
-Per-language source / sink registries are intentionally tiny — refine
-when real applications surface false negatives.
-"""
+"""CPG taint probes — thin wrappers over the Rust engine."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from topos.topos_functors import taint_flow_paths_py as taint_flow_paths
+from topos.topos_functors import taint_sources_for_language
 
-from topos.functors.probes.cpg.danger import (
-    _callee_from_text,
-    _matches_registry,
-    effective_registry,
-)
-
-if TYPE_CHECKING:
-    from topos.graphs.cpg.object import CodePropertyGraph
-
-# Names whose value should be treated as untrusted input.
 TAINT_SOURCES: dict[str, set[str]] = {
-    "python": {
-        "input",
-        "sys.argv",
-        "request.args",
-        "request.form",
-        "request.json",
-        "os.environ",
-    },
-    "javascript": {
-        "process.argv",
-        "process.env",
-        "req.body",
-        "req.query",
-        "document.location",
-        "window.location",
-    },
-    "typescript": {
-        "process.argv",
-        "process.env",
-        "req.body",
-        "req.query",
-    },
-    "rust": {
-        "std::env::args",
-        "std::env::var",
-    },
-    "cpp": {
-        "argv",
-        "getenv",
-        "scanf",
-    },
-    "go": {
-        "os.Getenv",
-        "os.Args",
-        "r.FormValue",
-        "r.URL",
-        "flag.String",
-    },
+    "python": taint_sources_for_language("python"),
+    "javascript": taint_sources_for_language("javascript"),
+    "typescript": taint_sources_for_language("typescript"),
+    "rust": taint_sources_for_language("rust"),
+    "cpp": taint_sources_for_language("cpp"),
+    "go": taint_sources_for_language("go"),
 }
 
-
-def taint_flow_paths(cpg: CodePropertyGraph, allow: set[str] | None = None) -> int:
-    """
-    Count DDG paths from any taint source to any dangerous-API sink.
-
-    A DDG path here is a chain of CPG nodes connected by DDG edges; we
-    count distinct ``(source_node, sink_node)`` pairs that are reachable.
-
-    When *allow* is given, allowlisted sink patterns are excluded; the
-    default ``allow=None`` preserves the canonical metrics behavior.
-    """
-    source_registry = TAINT_SOURCES.get(cpg.language, set())
-    sink_registry = effective_registry(cpg.language, allow)
-    if not source_registry or not sink_registry:
-        return 0
-
-    # Build DDG adjacency (forward).
-    from topos.graphs.cpg.models import CPGEdgeKind
-
-    forward: dict[str, list[str]] = {}
-    for edge in cpg.edges:
-        if edge.kind is not CPGEdgeKind.DDG:
-            continue
-        forward.setdefault(edge.source, []).append(edge.target)
-
-    if not forward:
-        return 0
-
-    sources: list[str] = []
-    sinks: set[str] = set()
-    for nid, node in cpg.nodes.items():
-        text = cpg.node_text(node)
-        if not text:
-            continue
-        snippet = text.strip()
-        if node.kind == "CallExpr":
-            callee = _callee_from_text(snippet)
-            if callee and _matches_registry(callee, sink_registry):
-                sinks.add(nid)
-        if node.kind in ("Identifier", "MemberExpr") and snippet in source_registry:
-            sources.append(nid)
-
-    if not sources or not sinks:
-        return 0
-
-    total = 0
-    for src in sources:
-        reachable = _bfs_reachable(forward, src)
-        total += sum(1 for s in sinks if s in reachable)
-    return total
-
-
-def _bfs_reachable(adj: dict[str, list[str]], start: str) -> set[str]:
-    visited: set[str] = {start}
-    frontier = [start]
-    while frontier:
-        node = frontier.pop()
-        for nxt in adj.get(node, []):
-            if nxt in visited:
-                continue
-            visited.add(nxt)
-            frontier.append(nxt)
-    return visited
+__all__ = ["TAINT_SOURCES", "taint_flow_paths", "taint_sources_for_language"]

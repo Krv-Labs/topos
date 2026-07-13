@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.preferences import Generator
 from topos.mcp.schemas import (
     AssessImprovementInput,
@@ -223,8 +224,21 @@ def test_assess_flags_suspicious_no_structural_change() -> None:
         if call_count["n"] == 2:
             # Boost the "proposed" scores without changing the morphism.
             # Only nudge SIMPLE — keep other dims so deltas don't show
-            # spurious regressions on unchanged generators.
-            result.scores["simple"] = result.scores.get("simple", 0.5) + 0.15
+            # spurious regressions on unchanged generators. `result.scores`
+            # is a fresh dict copy on every access (Rust owns the map), so
+            # mutating it in place wouldn't persist — rebuild the result.
+            scores = dict(result.scores)
+            scores["simple"] = scores.get("simple", 0.5) + 0.15
+            result = ClassificationResult(
+                is_parseable=result.is_parseable,
+                dimensions=result.dimensions,
+                scores=scores,
+                lattice_element=result.lattice_element,
+                priority=result.priority,
+                raw_metrics=result.raw_metrics,
+                interpretation=result.interpretation,
+                is_entrypoint_module=result.is_entrypoint_module,
+            )
         return result
 
     code = "def f(x):\n    return x + 1\n"

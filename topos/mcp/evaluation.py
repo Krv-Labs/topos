@@ -27,6 +27,7 @@ from topos.evaluation.characteristic_morphism import (
     ClassificationResult,
 )
 from topos.evaluation.policies.base import Priority
+from topos.graphs.ast.languages import SUPPORTED_LANGUAGES
 from topos.graphs.base import Representation
 from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
 from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, source_fingerprint
@@ -587,6 +588,11 @@ def classify_code_string(
     Classify raw source.  CFG / PDG / CPG always run; the COMPOSABLE
     generator is unreachable without a ModuleDependencyGraph.
     """
+    if language not in SUPPORTED_LANGUAGES:
+        raise ValueError(
+            f"Unsupported language {language!r}; expected one of "
+            f"{sorted(SUPPORTED_LANGUAGES)}"
+        )
     morphism = ProgramMorphism(source=code, language=language)
     return classify_morphism(morphism, priority)
 

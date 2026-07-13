@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from topos.graphs.cpg.models import CPGEdgeKind
+from topos.topos_functors import all_cpg_edge_kinds
 
 if TYPE_CHECKING:
     from topos.graphs.cpg.object import CodePropertyGraph
@@ -73,7 +73,7 @@ def family_jaccards(
     enum values (``ast``, ``cfg``, ``ddg``, ``cdg``).
     """
     out: dict[str, float] = {}
-    for kind in CPGEdgeKind:
+    for kind in all_cpg_edge_kinds():
         a = {(e.source, e.target, e.label) for e in source.edges if e.kind is kind}
         b = {(e.source, e.target, e.label) for e in target.edges if e.kind is kind}
         out[str(kind)] = _jaccard(a, b)

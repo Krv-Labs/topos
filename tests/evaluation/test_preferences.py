@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from topos.core.omega import EvaluationValue
+from topos.core.omega import EvaluationValue, all_evaluation_values
 from topos.evaluation.preferences import (
     Generator,
     UserPreferences,
@@ -66,8 +66,8 @@ def test_induced_order_refines_heyting():
         (Generator.COMPOSABLE, Generator.SIMPLE, Generator.SECURE),
     ):
         prefs = _prefs(*ranking)
-        for a in EvaluationValue:
-            for b in EvaluationValue:
+        for a in all_evaluation_values():
+            for b in all_evaluation_values():
                 if omega.leq(a, b):
                     assert prefs.score(a) <= prefs.score(b)
 

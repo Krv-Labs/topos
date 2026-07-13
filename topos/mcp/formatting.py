@@ -7,7 +7,7 @@ return models defined in ``schemas.py``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from fastmcp.tools.base import ToolResult
 from pydantic import BaseModel
@@ -432,7 +432,16 @@ def to_evaluation_result(
     dimensions = dict(result.dimensions)
     if adjusted_verdict is not None and adjusted_verdict.adjusted_secure_pass:
         dimensions["secure"] = EvaluationValue.SECURE
-    display_result = replace(result, dimensions=dimensions, lattice_element=summary)
+    display_result = ClassificationResult(
+        is_parseable=result.is_parseable,
+        dimensions=dimensions,
+        scores=result.scores,
+        lattice_element=summary,
+        priority=result.priority,
+        raw_metrics=result.raw_metrics,
+        interpretation=result.interpretation,
+        is_entrypoint_module=result.is_entrypoint_module,
+    )
 
     active_findings = security_findings or []
     risks = acknowledged_risks or []

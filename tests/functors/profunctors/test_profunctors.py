@@ -12,11 +12,7 @@ from topos.core.morphism import ProgramMorphism
 from topos.functors.profunctors.cfg import compare_cfg, cyclomatic_delta
 from topos.functors.profunctors.cpg import compare_cpg
 from topos.functors.profunctors.pdg import compare_pdg, data_dep_jaccard
-from topos.graphs.mdg.object import (
-    GraphNode,
-    GraphRelationship,
-    ModuleDependencyGraph,
-)
+from topos.topos_functors import GraphNode, GraphRelationship, ModuleDependencyGraph
 
 # ---------------------------------------------------------------------------
 # CFG profunctor
@@ -84,35 +80,43 @@ def test_pdg_control_dep_jaccard_drops_when_branch_added():
 
 
 def _empty_mdg(target_file: str) -> ModuleDependencyGraph:
-    g = ModuleDependencyGraph(target_file=target_file)
-    g.add_node(
-        GraphNode(
-            id=f"File:{target_file}",
-            label="File",
-            properties={"filePath": target_file},
-        )
+    return ModuleDependencyGraph.from_parts(
+        target_file,
+        [
+            GraphNode(
+                id=f"File:{target_file}",
+                label="File",
+                properties={"filePath": target_file},
+            )
+        ],
+        [],
     )
-    return g
 
 
 def _mdg_with_outgoing_import(target_file: str) -> ModuleDependencyGraph:
-    g = _empty_mdg(target_file)
-    g.add_node(
-        GraphNode(
-            id="File:other.py",
-            label="File",
-            properties={"filePath": "other.py"},
-        )
+    return ModuleDependencyGraph.from_parts(
+        target_file,
+        [
+            GraphNode(
+                id=f"File:{target_file}",
+                label="File",
+                properties={"filePath": target_file},
+            ),
+            GraphNode(
+                id="File:other.py",
+                label="File",
+                properties={"filePath": "other.py"},
+            ),
+        ],
+        [
+            GraphRelationship(
+                id="i1",
+                source_id=f"File:{target_file}",
+                target_id="File:other.py",
+                type="IMPORTS",
+            )
+        ],
     )
-    g.add_relationship(
-        GraphRelationship(
-            id="i1",
-            source_id=f"File:{target_file}",
-            target_id="File:other.py",
-            type="IMPORTS",
-        )
-    )
-    return g
 
 
 def test_mdg_compare_identical_isolated():

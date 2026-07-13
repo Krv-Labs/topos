@@ -50,12 +50,14 @@ def test_probe_guidance_parity_for_qualified_callees(api: str) -> None:
     assert operations != DEFAULT_OPERATIONS, qualified
 
 
-DANGEROUS_APIS_UNION = {api for apis in DANGEROUS_APIS.values() for api in apis}
+DANGEROUS_APIS_UNION = sorted({api for apis in DANGEROUS_APIS.values() for api in apis})
 
 
 def test_subprocess_popen_prefers_longest_key() -> None:
     """Longest-key matching: subprocess.popen must not match os.popen."""
-    assert match_registry_key("subprocess.popen", REMEDIATIONS) == "subprocess.popen"
+    assert (
+        match_registry_key("subprocess.popen", list(REMEDIATIONS)) == "subprocess.popen"
+    )
 
 
 def test_deserialization_apis_get_safe_deserializer_ops() -> None:

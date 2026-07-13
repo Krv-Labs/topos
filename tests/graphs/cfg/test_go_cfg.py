@@ -18,8 +18,8 @@ builder changes don't silently regress them.
 from __future__ import annotations
 
 from topos.core.morphism import ProgramMorphism
-from topos.graphs.cfg.models import EdgeKind
 from topos.graphs.cfg.object import ControlFlowGraph
+from topos.topos_functors import EdgeKind
 
 
 def _cfg(source: str) -> ControlFlowGraph:
@@ -70,7 +70,7 @@ def test_go_tagless_switch_creates_one_arm_per_case():
     )
     cfg = _cfg(src)
     kinds = [e.kind for e in cfg.edges]
-    assert kinds.count(EdgeKind.SWITCH_CASE) == 3
+    assert kinds.count(EdgeKind.SWITCHCASE) == 3
     assert kinds.count(EdgeKind.RETURN) == 3
 
 
@@ -88,7 +88,7 @@ def test_go_type_switch_creates_one_arm_per_case():
     )
     cfg = _cfg(src)
     kinds = [e.kind for e in cfg.edges]
-    assert kinds.count(EdgeKind.SWITCH_CASE) == 2
+    assert kinds.count(EdgeKind.SWITCHCASE) == 2
     assert kinds.count(EdgeKind.RETURN) == 2
 
 
@@ -106,7 +106,7 @@ def test_go_select_statement_creates_one_arm_per_case():
     )
     cfg = _cfg(src)
     kinds = [e.kind for e in cfg.edges]
-    assert kinds.count(EdgeKind.SWITCH_CASE) == 2
+    assert kinds.count(EdgeKind.SWITCHCASE) == 2
     assert kinds.count(EdgeKind.RETURN) == 2
 
 
@@ -171,6 +171,6 @@ def test_go_for_loop_break_continue_resolve_to_loop_targets():
     )
     cfg = _cfg(src)
     kinds = {e.kind for e in cfg.edges}
-    assert EdgeKind.LOOP_BACK in kinds
+    assert EdgeKind.LOOPBACK in kinds
     assert EdgeKind.BREAK in kinds
     assert EdgeKind.CONTINUE in kinds

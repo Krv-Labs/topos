@@ -6,16 +6,15 @@ Covers nested functions / closures, methods, and module-level code so the
 
 from __future__ import annotations
 
-from topos.core.object import ProgramObject
+from topos.core.morphism import ProgramMorphism
 from topos.functors.probes.ast.complexity import (
     calculate_function_complexity_entries,
     calculate_max_function_complexity,
 )
-from topos.utils.tree_sitter import parse_python
 
 
 def _entries(code: str):
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     return {e.qualified_name: e for e in calculate_function_complexity_entries(obj)}
 
 
@@ -70,7 +69,7 @@ def test_nested_closure_is_dotted_and_outer_includes_nested() -> None:
 
 def test_module_level_only_has_no_function_entries() -> None:
     code = "x = 1\nif x:\n    y = 2\nelse:\n    y = 3\n"
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     assert calculate_function_complexity_entries(obj) == []
 
 
@@ -78,6 +77,6 @@ def test_max_entry_matches_gate_metric() -> None:
     code = "def big(x):\n" + "".join(
         f"    if x == {i}:\n        return {i}\n" for i in range(12)
     )
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     entries = calculate_function_complexity_entries(obj)
     assert max(e.complexity for e in entries) == calculate_max_function_complexity(obj)

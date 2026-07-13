@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
 
 def _get_rust_cfg(cfg: ControlFlowGraph):
+    # `ProgramMorphism.build_cfg()` already returns a Rust-native CFG
+    # (`topos.topos_functors.CoreControlFlowGraph`) with these methods
+    # built in — nothing to convert. Only the plain, pure-Python container
+    # from `topos.graphs.cfg.builder.build_cfg_from_uast` (used by the
+    # regression-diff subtree-CFG path) needs converting below.
+    if hasattr(cfg, "cyclomatic_complexity"):
+        return cfg
+
     if hasattr(cfg, "_rust_cfg") and cfg._rust_cfg is not None:
         return cfg._rust_cfg
 

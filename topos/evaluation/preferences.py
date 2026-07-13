@@ -62,7 +62,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from topos.core.omega import EvaluationValue, verdict_from_generators
+from topos.core.omega import (
+    EvaluationValue,
+    all_evaluation_values,
+    verdict_from_generators,
+)
 
 
 class Generator(StrEnum):
@@ -140,7 +144,7 @@ class UserPreferences:
 
     def induced_total_order(self) -> list[EvaluationValue]:
         """All 8 verdicts sorted by descending preference."""
-        return sorted(EvaluationValue, key=self.score, reverse=True)
+        return sorted(all_evaluation_values(), key=self.score, reverse=True)
 
     # ------------------------------------------------------------------ #
     # Target + relaxation walk                                            #

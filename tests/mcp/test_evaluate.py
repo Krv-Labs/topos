@@ -22,6 +22,7 @@ from topos.mcp.tools.evaluate.core import (
     topos_evaluate_file,
 )
 from topos.mcp.tools.evaluate.project import topos_evaluate_project
+from topos.topos_functors import GraphNode, GraphRelationship, ModuleDependencyGraph
 
 
 def _eval(tool_result) -> EvaluationResult:
@@ -453,16 +454,21 @@ def test_evaluate_file_missing_file_errors() -> None:
 
 def test_evaluate_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     """P0 regression guard — this test would have caught the original bug."""
-    fake_graph = MagicMock()
-    fake_graph.name = "mdg"
-    fake_graph.dimension = "composable"
-    fake_graph.metrics.return_value = {
-        "mdg.coupling": 5.0,
-        "mdg.instability": 0.5,
-        "mdg.fan_in": 2.0,
-        "mdg.fan_out": 3.0,
-        "mdg.dep_depth": 1.0,
-    }
+    fake_graph = ModuleDependencyGraph.from_parts(
+        "topos/__init__.py",
+        [
+            GraphNode(id="File:topos/__init__.py", label="File", properties={}),
+            GraphNode(id="File:topos/other.py", label="File", properties={}),
+        ],
+        [
+            GraphRelationship(
+                id="i1",
+                source_id="File:topos/__init__.py",
+                target_id="File:topos/other.py",
+                type="IMPORTS",
+            )
+        ],
+    )
     with (
         patch(
             "topos.mcp.evaluation.load_dep_graph", return_value=fake_graph
@@ -494,16 +500,25 @@ def test_evaluate_go_file_uses_depgraph_when_gitnexus_dir_exists() -> None:
     separately — GitNexus 1.6.8 fully supports Go, producing File nodes with
     correct filePath values and IMPORTS/CALLS edges across package
     boundaries)."""
-    fake_graph = MagicMock()
-    fake_graph.name = "mdg"
-    fake_graph.dimension = "composable"
-    fake_graph.metrics.return_value = {
-        "mdg.coupling": 1.0,
-        "mdg.instability": 1.0,
-        "mdg.fan_in": 0.0,
-        "mdg.fan_out": 1.0,
-        "mdg.dep_depth": 1.0,
-    }
+    fake_graph = ModuleDependencyGraph.from_parts(
+        "tests/fixtures/binarytrees/binarytrees.go",
+        [
+            GraphNode(
+                id="File:tests/fixtures/binarytrees/binarytrees.go",
+                label="File",
+                properties={},
+            ),
+            GraphNode(id="File:other.go", label="File", properties={}),
+        ],
+        [
+            GraphRelationship(
+                id="i1",
+                source_id="File:tests/fixtures/binarytrees/binarytrees.go",
+                target_id="File:other.go",
+                type="IMPORTS",
+            )
+        ],
+    )
     with (
         patch(
             "topos.mcp.evaluation.load_dep_graph", return_value=fake_graph

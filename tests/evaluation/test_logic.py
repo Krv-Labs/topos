@@ -10,6 +10,7 @@ from topos.core.morphism import ProgramMorphism
 from topos.core.omega import (
     EvaluationValue,
     Omega,
+    all_evaluation_values,
     verdict_from_generators,
 )
 from topos.evaluation.characteristic_morphism import (
@@ -197,7 +198,7 @@ def test_lattice_implies_and_negation():
     # negation(IDEAL) = SLOP
     assert lattice.negation(EvaluationValue.IDEAL) == EvaluationValue.SLOP
 
-    for val in EvaluationValue:
+    for val in all_evaluation_values():
         assert lattice.equivalent(val, val)
 
 

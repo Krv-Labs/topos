@@ -11,6 +11,7 @@ from topos.functors.probes.cfg.complexity import (
 )
 from topos.functors.probes.cfg.paths import longest_acyclic_path
 from topos.functors.profunctors.ast.compare import _compute_sequence_distance
+from topos.graphs.cfg.builder import build_cfg_from_uast
 from topos.graphs.cfg.object import ControlFlowGraph
 from topos.graphs.uast.mapper_python import map_python_tree_to_uast
 from topos.utils.tree_sitter import parse_python
@@ -48,7 +49,10 @@ def complex_func(x):
 def branchy_cfg():
     root = parse_python(BRANCHY_PYTHON)
     uast = map_python_tree_to_uast(root)
-    return ControlFlowGraph.from_uast(uast)
+    blocks, edges, entry_id, exit_id = build_cfg_from_uast(uast)
+    return ControlFlowGraph(
+        blocks=blocks, edges=edges, entry_id=entry_id, exit_id=exit_id
+    )
 
 
 # --- CFG Parity ---

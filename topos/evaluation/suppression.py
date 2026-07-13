@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from topos.config import AllowEntry, ToposConfig
-from topos.core.omega import EvaluationValue
+from topos.core.omega import EvaluationValue, verdict_from_generators
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.functors.probes.cpg.danger import _matches_registry, dangerous_api_reachable
 from topos.functors.probes.cpg.taint import taint_flow_paths
@@ -101,8 +101,8 @@ def apply_allowlist(
     # Grade cap: acknowledged risk can never buy the top medal.
     grade_capped = False
     if acknowledged and adjusted_element == EvaluationValue.IDEAL:
-        adjusted_element = EvaluationValue(
-            int(adjusted_element) & ~int(EvaluationValue.SECURE)
+        adjusted_element = verdict_from_generators(
+            simple=True, composable=True, secure=False
         )
         grade_capped = True
 
@@ -121,11 +121,8 @@ def _recompute_element(
     result: ClassificationResult, secure_pass: bool
 ) -> EvaluationValue:
     """Rebuild the Ω element from dimensions, overriding the SECURE bit."""
-    mask = 0
-    if result.dimensions.get("simple") == EvaluationValue.SIMPLE:
-        mask |= int(EvaluationValue.SIMPLE)
-    if result.dimensions.get("composable") == EvaluationValue.COMPOSABLE:
-        mask |= int(EvaluationValue.COMPOSABLE)
-    if secure_pass:
-        mask |= int(EvaluationValue.SECURE)
-    return EvaluationValue(mask)
+    return verdict_from_generators(
+        simple=result.dimensions.get("simple") == EvaluationValue.SIMPLE,
+        composable=result.dimensions.get("composable") == EvaluationValue.COMPOSABLE,
+        secure=secure_pass,
+    )

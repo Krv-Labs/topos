@@ -15,8 +15,8 @@ from __future__ import annotations
 import pytest
 from topos.core.morphism import ProgramMorphism
 from topos.graphs.base import Representation
-from topos.graphs.cfg.models import EdgeKind
 from topos.graphs.cfg.object import ControlFlowGraph
+from topos.topos_functors import EdgeKind
 
 
 def _cfg(source: str, language: str = "python") -> ControlFlowGraph:
@@ -83,7 +83,7 @@ def test_if_statement_generates_true_and_false_edges():
 def test_while_loop_generates_back_edge():
     cfg = _cfg("def f(x):\n    while x > 0:\n        x -= 1\n    return x\n")
     kinds = {e.kind for e in cfg.edges}
-    assert EdgeKind.LOOP_BACK in kinds
+    assert EdgeKind.LOOPBACK in kinds
 
 
 def test_if_with_trailing_comment_on_condition_keeps_then_branch():

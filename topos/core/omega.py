@@ -70,107 +70,20 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from enum import IntEnum
 from typing import ClassVar
 
+from topos.topos_functors import (
+    EvaluationValue,
+    all_evaluation_values,
+    verdict_from_generators,
+)
 
-class EvaluationValue(IntEnum):
-    """
-    The eight elements of the free Heyting algebra H(G_qual) on three
-    quality generators (SIMPLE, COMPOSABLE, SECURE).
-
-    Each value corresponds to the subset of generators a program satisfies.
-    Ordering is by *superset of satisfied generators*: ``a ≤ b`` iff every
-    generator satisfied by ``b`` is also satisfied by ``a``.  Thus
-    ``IDEAL = ⊤`` (everything satisfied) and ``SLOP = ⊥`` (nothing
-    satisfied).
-
-    Encoding (integer value = bitmask SIMPLE|COMPOSABLE|SECURE)::
-
-        - bit 0 = SIMPLE satisfied
-        - bit 1 = COMPOSABLE satisfied
-        - bit 2 = SECURE satisfied
-
-    Values:
-
-        ``SLOP``:
-            ⊥ - no generator satisfied. The unconstrained universe; total
-            structural chaos.
-        ``SIMPLE``:
-            Only the SIMPLE generator is satisfied.
-        ``COMPOSABLE``:
-            Only the COMPOSABLE generator is satisfied.
-        ``SIMPLE_COMPOSABLE``:
-            Meet of SIMPLE and COMPOSABLE.
-        ``SECURE``:
-            Only the SECURE generator is satisfied.
-        ``SIMPLE_SECURE``:
-            Meet of SIMPLE and SECURE.
-        ``COMPOSABLE_SECURE``:
-            Meet of COMPOSABLE and SECURE.
-        ``IDEAL``:
-            ⊤ - all three generators satisfied.
-    """
-
-    SLOP = 0b000  # ⊥
-    SIMPLE = 0b001
-    COMPOSABLE = 0b010
-    SIMPLE_COMPOSABLE = 0b011
-    SECURE = 0b100
-    SIMPLE_SECURE = 0b101
-    COMPOSABLE_SECURE = 0b110
-    IDEAL = 0b111  # ⊤
-
-    @property
-    def symbol(self) -> str:
-        """Unicode symbol representation."""
-        symbols = {
-            EvaluationValue.SLOP: "❌",
-            EvaluationValue.SIMPLE: "🥉",
-            EvaluationValue.COMPOSABLE: "🥉",
-            EvaluationValue.SECURE: "🥉",
-            EvaluationValue.SIMPLE_COMPOSABLE: "🥈",
-            EvaluationValue.SIMPLE_SECURE: "🥈",
-            EvaluationValue.COMPOSABLE_SECURE: "🥈",
-            EvaluationValue.IDEAL: "🥇",
-        }
-        return symbols[self]
-
-    @property
-    def description(self) -> str:
-        """Human-readable description of this evaluation value."""
-        descriptions = {
-            EvaluationValue.SLOP: (
-                "❌ NO MEDAL - Fails every generator; unconstrained code"
-            ),
-            EvaluationValue.SIMPLE: (
-                "🥉 BRONZE - Low complexity; SIMPLE generator satisfied"
-            ),
-            EvaluationValue.COMPOSABLE: (
-                "🥉 BRONZE - Composes well; COMPOSABLE generator satisfied"
-            ),
-            EvaluationValue.SECURE: (
-                "🥉 BRONZE - Safe data flow; SECURE generator satisfied"
-            ),
-            EvaluationValue.SIMPLE_COMPOSABLE: (
-                "🥈 SILVER - SIMPLE ∧ COMPOSABLE — clean structure and clean coupling"
-            ),
-            EvaluationValue.SIMPLE_SECURE: (
-                "🥈 SILVER - SIMPLE ∧ SECURE — clean structure and safe patterns"
-            ),
-            EvaluationValue.COMPOSABLE_SECURE: (
-                "🥈 SILVER - COMPOSABLE ∧ SECURE — well-coupled and safe patterns"
-            ),
-            EvaluationValue.IDEAL: (
-                "🥇 GOLD - Joint satisfaction of all three quality pillars"
-            ),
-        }
-        return descriptions[self]
-
-    def __str__(self) -> str:
-        return f"{self.symbol} {self.name}"
-
-
+__all__ = [
+    "EvaluationValue",
+    "all_evaluation_values",
+    "verdict_from_generators",
+    "Omega",
+]
 # ---------------------------------------------------------------------------
 # Cover relation for the 3-cube
 # ---------------------------------------------------------------------------
@@ -201,28 +114,6 @@ _CUBE_COVER: dict[EvaluationValue, list[EvaluationValue]] = {
     EvaluationValue.COMPOSABLE_SECURE: [EvaluationValue.IDEAL],
     EvaluationValue.IDEAL: [],
 }
-
-
-def verdict_from_generators(
-    *, simple: bool, composable: bool, secure: bool
-) -> EvaluationValue:
-    """
-    Map a satisfied-generator triple to its free-algebra verdict.
-
-    This is the concrete encoding of the truth table from ``README.md``:
-    every subset of ``G_qual`` is a unique verdict.
-
-    Args:
-        simple:     True iff the SIMPLE generator is satisfied.
-        composable: True iff the COMPOSABLE generator is satisfied.
-        secure:     True iff the SECURE generator is satisfied.
-    """
-    bits = (
-        (0b001 if simple else 0)
-        | (0b010 if composable else 0)
-        | (0b100 if secure else 0)
-    )
-    return EvaluationValue(bits)
 
 
 @dataclass
@@ -265,7 +156,7 @@ class Omega:
             self._set_default_cover()
 
         self._closure = {}
-        for value in EvaluationValue:
+        for value in all_evaluation_values():
             for dominated in self._collect_dominates(value):
                 self._closure[(value, dominated)] = True
             self._closure[(value, value)] = True
@@ -331,7 +222,9 @@ class Omega:
 
         a → b is the largest x such that a ∧ x ≤ b.
         """
-        candidates = [x for x in EvaluationValue if self.leq(self.meet(a, x), b)]
+        candidates = [
+            x for x in all_evaluation_values() if self.leq(self.meet(a, x), b)
+        ]
         extrema = self._select_extrema(candidates, minimal=False)
         if len(extrema) != 1:
             raise ValueError(f"Cannot compute implies for {a} and {b}")
@@ -385,7 +278,7 @@ class Omega:
         *,
         maximize: bool,
     ) -> EvaluationValue:
-        all_values = tuple(EvaluationValue)
+        all_values = tuple(all_evaluation_values())
         if maximize:
             bounds = [v for v in all_values if self.leq(a, v) and self.leq(b, v)]
             candidates = self._select_extrema(bounds, minimal=True)

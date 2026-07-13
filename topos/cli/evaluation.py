@@ -52,7 +52,7 @@ def result_to_row(filepath: Path, result: ClassificationResult) -> dict[str, obj
             dim: val.symbol for dim, val in result.dimensions.items()
         },
         "scores": {dim: round(s * 100.0, 1) for dim, s in result.scores.items()},
-        "priority": result.priority.value,
+        "priority": result.priority,
         "raw_metrics": result.raw_metrics,
         "entropy": entropy,
         "valid": result.is_parseable,
@@ -426,16 +426,14 @@ def output_text(results: list[dict[str, object]], verbose: bool) -> None:
     avg_styled = click.style(f"{average:.0f}%", bold=True)
     click.echo(f"  Directory Average Score: {avg_styled} (Mean across all files)")
 
-    from topos.core.omega import EvaluationValue
+    from topos.core.omega import EvaluationValue, verdict_from_generators
 
-    meet_mask = 0
-    if overall.get("simple", EvaluationValue.SLOP) != EvaluationValue.SLOP:
-        meet_mask |= EvaluationValue.SIMPLE
-    if overall.get("composable", EvaluationValue.SLOP) != EvaluationValue.SLOP:
-        meet_mask |= EvaluationValue.COMPOSABLE
-    if overall.get("secure", EvaluationValue.SLOP) != EvaluationValue.SLOP:
-        meet_mask |= EvaluationValue.SECURE
-    meet_val = EvaluationValue(meet_mask)
+    meet_val = verdict_from_generators(
+        simple=overall.get("simple", EvaluationValue.SLOP) != EvaluationValue.SLOP,
+        composable=overall.get("composable", EvaluationValue.SLOP)
+        != EvaluationValue.SLOP,
+        secure=overall.get("secure", EvaluationValue.SLOP) != EvaluationValue.SLOP,
+    )
 
     meet_styled = click.style(
         f"{meet_val.symbol} {meet_val.name}",

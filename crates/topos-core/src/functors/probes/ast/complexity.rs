@@ -115,3 +115,199 @@ mod tests {
         assert_eq!(calculate_max_function_complexity(&result.uast_root), 0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-function complexity *entries* — name/span-aware, still UAST-only
+// ---------------------------------------------------------------------------
+//
+// `calculate_function_complexities` above answers "what's the worst
+// complexity" (keyed by opaque node id, fine for a gate check).
+// `calculate_function_complexity_entries` answers "which function, at
+// which lines" for agent-facing reporting — it needs a real name and a
+// span. Both requirements are satisfiable straight from the UAST: UAST
+// spans already carry real line numbers, and a `FunctionDecl`'s name is
+// its first `Identifier`-kind child (the mappers preserve that child;
+// they just don't duplicate its text into an attribute) — so this reuses
+// `node_complexity` above rather than re-deriving complexity via a
+// second, tree-sitter-native pass. Genuinely multi-language, same as
+// `calculate_function_complexities`.
+
+const SCOPE_UAST_KINDS: &[&str] = &["FunctionDecl", "MethodDecl", "TypeDecl"];
+
+/// One function/method/closure's complexity, name, span, and scope kind.
+pub struct FunctionComplexityEntry {
+    pub name: String,
+    pub qualified_name: String,
+    pub kind: &'static str,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub complexity: usize,
+}
+
+/// A UAST node's own name, if its first child is an `Identifier` (the
+/// mappers place the declared name there for `FunctionDecl` /
+/// `MethodDecl` / `TypeDecl`). Sliced from `source` by the child's span,
+/// since UAST nodes don't carry token text themselves.
+fn uast_node_name(node: &UASTNode, source: &str) -> Option<String> {
+    let ident = node.children.first()?;
+    if ident.kind != "Identifier" {
+        return None;
+    }
+    source
+        .get(ident.span.start_byte..ident.span.end_byte)
+        .map(|s| s.to_string())
+}
+
+fn classify_kind(node: &UASTNode, source: &str, chain: &[(String, String)]) -> &'static str {
+    if let Some((enclosing_kind, _)) = chain.last() {
+        if enclosing_kind == "TypeDecl" {
+            return "method";
+        }
+        if enclosing_kind == "FunctionDecl" || enclosing_kind == "MethodDecl" {
+            return "closure";
+        }
+    }
+    if node.kind == "MethodDecl" {
+        return "method";
+    }
+    if is_async(node, source) {
+        "async_function"
+    } else {
+        "function"
+    }
+}
+
+/// Best-effort `async` detection: the mappers only keep *named* tree-sitter
+/// children (see `mapper_common::filtered_named_children`), and `async` is
+/// an anonymous keyword token in tree-sitter-python's grammar — the node
+/// kind stays `function_definition` either way, but its *span* still
+/// starts at `async` (tree-sitter includes leading anonymous tokens in the
+/// parent's span), so it never survives as a UAST child. Checking whether
+/// the node's own span starts with the `async` keyword recovers it without
+/// touching the shared mapper.
+fn is_async(node: &UASTNode, source: &str) -> bool {
+    source.get(node.span.start_byte..).is_some_and(|text| {
+        text.strip_prefix("async")
+            .is_some_and(|rest| rest.starts_with(char::is_whitespace))
+    })
+}
+
+fn collect_entries(
+    node: &UASTNode,
+    source: &str,
+    chain: &mut Vec<(String, String)>,
+    entries: &mut Vec<FunctionComplexityEntry>,
+) {
+    let is_function = matches!(node.kind.as_str(), "FunctionDecl" | "MethodDecl");
+    let is_scope = SCOPE_UAST_KINDS.contains(&node.kind.as_str());
+
+    if is_function {
+        if let Some(name) = uast_node_name(node, source) {
+            let mut qualified_parts: Vec<&str> = chain.iter().map(|(_, n)| n.as_str()).collect();
+            qualified_parts.push(&name);
+            entries.push(FunctionComplexityEntry {
+                name: name.clone(),
+                qualified_name: qualified_parts.join("."),
+                kind: classify_kind(node, source, chain),
+                start_line: node.span.start_line,
+                end_line: node.span.end_line,
+                complexity: node_complexity(node),
+            });
+        }
+    }
+
+    let pushed = if is_scope {
+        uast_node_name(node, source).map(|name| {
+            chain.push((node.kind.clone(), name));
+        })
+    } else {
+        None
+    };
+
+    for child in &node.children {
+        collect_entries(child, source, chain, entries);
+    }
+
+    if pushed.is_some() {
+        chain.pop();
+    }
+}
+
+/// Per-function complexity with locations, parallel to the gate metric.
+///
+/// Same decision-node counting as [`calculate_function_complexities`],
+/// but keyed by real (dotted, qualified) names with spans. `source` is
+/// needed to slice out identifier text (see [`uast_node_name`]).
+pub fn calculate_function_complexity_entries(
+    uast_root: &UASTNode,
+    source: &str,
+) -> Vec<FunctionComplexityEntry> {
+    let mut entries = Vec::new();
+    let mut chain = Vec::new();
+    collect_entries(uast_root, source, &mut chain, &mut entries);
+    entries
+}
+
+#[cfg(test)]
+mod entries_tests {
+    use super::*;
+    use crate::graphs::ast::dispatch::parse_source;
+
+    fn entries(source: &str, language: &str) -> Vec<FunctionComplexityEntry> {
+        let result = parse_source(source, language, None).expect("parse should not fail");
+        calculate_function_complexity_entries(&result.uast_root, source)
+    }
+
+    #[test]
+    fn top_level_function_kind_and_span() {
+        let source = "def foo(x):\n    if x:\n        return 1\n    return 0\n";
+        let es = entries(source, "python");
+        assert_eq!(es.len(), 1);
+        let foo = &es[0];
+        assert_eq!(foo.name, "foo");
+        assert_eq!(foo.qualified_name, "foo");
+        assert_eq!(foo.kind, "function");
+        assert_eq!(foo.start_line, 1);
+        assert_eq!(foo.complexity, 2);
+    }
+
+    #[test]
+    fn method_inside_class_is_qualified_and_kind_method() {
+        let source = "class C:\n    def m(self):\n        return 1\n";
+        let es = entries(source, "python");
+        let m = es.iter().find(|e| e.name == "m").unwrap();
+        assert_eq!(m.qualified_name, "C.m");
+        assert_eq!(m.kind, "method");
+    }
+
+    #[test]
+    fn nested_closure_is_dotted_and_outer_includes_nested_count() {
+        let source = "def outer():\n    def inner():\n        if True:\n            return 1\n    return inner\n";
+        let es = entries(source, "python");
+        let inner = es.iter().find(|e| e.name == "inner").unwrap();
+        let outer = es.iter().find(|e| e.name == "outer").unwrap();
+        assert_eq!(inner.qualified_name, "outer.inner");
+        assert_eq!(inner.kind, "closure");
+        assert!(outer.complexity >= inner.complexity);
+    }
+
+    #[test]
+    fn module_level_only_has_no_entries() {
+        assert!(entries("x = 1\n", "python").is_empty());
+    }
+
+    #[test]
+    fn async_function_kind_is_detected() {
+        let es = entries("async def bar():\n    return 1\n", "python");
+        assert_eq!(es[0].kind, "async_function");
+    }
+
+    #[test]
+    fn works_across_languages_unlike_the_python_original() {
+        let source = "fn f(x: i32) -> i32 {\n    if x > 0 {\n        return x;\n    }\n    0\n}\n";
+        let es = entries(source, "rust");
+        assert_eq!(es.len(), 1);
+        assert_eq!(es[0].name, "f");
+        assert_eq!(es[0].complexity, 2);
+    }
+}

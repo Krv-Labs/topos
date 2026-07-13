@@ -108,11 +108,15 @@ impl fmt::Display for ClassificationResult {
             return write!(f, "Classification: ⊥ SLOP (parse failure)");
         }
         writeln!(f, "Classification: {}", self.lattice_element)?;
-        for (dim, val) in &self.dimensions {
+        let mut dims: Vec<_> = self.dimensions.iter().collect();
+        dims.sort_by_key(|(dim, _)| dim.as_str());
+        for (dim, val) in dims {
             let score_pct = self.scores.get(dim).copied().unwrap_or(0.0) * 100.0;
             writeln!(f, "  {dim}: {val}  [{score_pct:.0}%]")?;
         }
-        for (k, v) in &self.raw_metrics {
+        let mut metrics: Vec<_> = self.raw_metrics.iter().collect();
+        metrics.sort_by_key(|(k, _)| k.as_str());
+        for (k, v) in metrics {
             writeln!(f, "    {k}: {v:.3}")?;
         }
         Ok(())

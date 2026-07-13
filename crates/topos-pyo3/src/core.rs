@@ -234,11 +234,15 @@ impl PyClassificationResult {
             "Classification: {}",
             self.lattice_element.__str__()
         )];
-        for (dim, val) in &self.dimensions {
+        let mut dims: Vec<_> = self.dimensions.iter().collect();
+        dims.sort_by_key(|(dim, _)| dim.as_str());
+        for (dim, val) in dims {
             let score_pct = self.scores.get(dim).copied().unwrap_or(0.0) * 100.0;
             lines.push(format!("  {dim}: {}  [{score_pct:.0}%]", val.__str__()));
         }
-        for (k, v) in &self.raw_metrics {
+        let mut metrics: Vec<_> = self.raw_metrics.iter().collect();
+        metrics.sort_by_key(|(k, _)| k.as_str());
+        for (k, v) in metrics {
             lines.push(format!("    {k}: {v:.3}"));
         }
         lines.join("\n")

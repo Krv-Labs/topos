@@ -1,4 +1,5 @@
 pub mod cfg;
+pub mod core;
 pub mod probes_ast;
 pub mod profunctors;
 pub mod uast;
@@ -24,6 +25,14 @@ fn topos_functors(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<profunctors::DistanceResult>()?;
     m.add_function(wrap_pyfunction!(profunctors::compute_sequence_distance, m)?)?;
+
+    // topos-core bindings (issue #148) — the categorical core, scoped;
+    // see crates/topos-pyo3/src/core.rs's doc comment for what's not
+    // bound yet and why.
+    m.add_class::<core::PyEvaluationValue>()?;
+    m.add_class::<core::PyProgramMorphism>()?;
+    m.add_class::<core::PyClassificationResult>()?;
+    m.add_class::<core::PyCharacteristicMorphism>()?;
 
     Ok(())
 }

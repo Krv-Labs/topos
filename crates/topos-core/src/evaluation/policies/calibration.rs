@@ -21,9 +21,8 @@
 //! Calibration provenance: PyPI corpus ECDF calibration (June 2026). See
 //! `topos-leaderboard/CALIBRATION_REPORT.md` and `calibration.json`.
 //!
-//! `CoveragePolicyThresholds`/`ClonePolicyThresholds` (auxiliary,
-//! outside `Ω`) aren't ported yet — `policies::{clones,coverage}` are
-//! remaining work within issue #144.
+//! `CoveragePolicyThresholds`/`ClonePolicyThresholds` — auxiliary,
+//! outside `Ω` — back `policies::{clones,coverage}` (issue #145).
 
 use crate::evaluation::preferences::Generator;
 
@@ -94,6 +93,32 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
     max_taint_flows: 0.0,
     danger_scale: 3.0,
     taint_scale: 3.0,
+};
+
+/// Structural test-coverage policy (outside `Ω`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CoveragePolicyThresholds {
+    pub declaration_recall: f64,
+    /// "strong" band above gate.
+    pub strong_offset: f64,
+    /// "partial" band = gate × this.
+    pub partial_factor: f64,
+}
+
+/// Pairwise clone detection (outside `Ω`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClonePolicyThresholds {
+    pub max_normalized_distance: f64,
+}
+
+pub const COVERAGE: CoveragePolicyThresholds = CoveragePolicyThresholds {
+    declaration_recall: 0.5,
+    strong_offset: 0.25,
+    partial_factor: 0.5,
+};
+
+pub const CLONE: ClonePolicyThresholds = ClonePolicyThresholds {
+    max_normalized_distance: 0.1,
 };
 
 /// Score-floor alternate path (`meet_satisfied` + multi-file

@@ -1,6 +1,8 @@
 //! Functors and profunctors over program representations: probes
-//! (metrics) and comparisons. Only `probes::ast` has landed so far
-//! (pulled forward from issue #145 as a dependency of #144's
-//! `AstRepresentation`); the rest of #145 follows separately.
+//! (metrics) and comparisons.
+//!
+//! [`probes`] holds the single-program probes `P : E → ℝ`; [`profunctors`]
+//! holds the two-program comparisons `D : E × E^op → ℝ` (issue #145).
 
 pub mod probes;
+pub mod profunctors;

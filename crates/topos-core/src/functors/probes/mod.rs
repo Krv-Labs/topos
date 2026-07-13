@@ -3,3 +3,5 @@
 
 pub mod ast;
 pub mod cpg;
+pub mod mdg;
+pub mod uast;

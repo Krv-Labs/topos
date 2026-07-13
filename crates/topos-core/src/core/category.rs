@@ -21,6 +21,7 @@ use std::fmt;
 use super::morphism::ProgramMorphism;
 use super::object::ProgramObject;
 use super::omega::Omega;
+use crate::functors::profunctors::ast::compare::structural_distance;
 
 /// Raised when category axioms (like composition domain mismatches) are
 /// broken.
@@ -90,19 +91,16 @@ impl ProgramCategory {
     ///
     /// In the context of program transformations, decides if a direct
     /// refactoring/shortcut (`h`) is structurally identical to a
-    /// multi-step pipeline (`g ∘ f`).
-    ///
-    /// Pending issue #145
-    /// (`functors::profunctors::ast::compare::structural_distance`).
+    /// multi-step pipeline (`g ∘ f`), via zero normalized AST edit
+    /// distance ([`structural_distance`]).
     pub fn verify_commutativity(
         &self,
-        _f: &ProgramMorphism,
-        _g: &ProgramMorphism,
-        _h: &ProgramMorphism,
+        f: &ProgramMorphism,
+        g: &ProgramMorphism,
+        h: &ProgramMorphism,
     ) -> bool {
-        unimplemented!(
-            "verify_commutativity depends on functors::profunctors::ast::compare (issue #145)"
-        )
+        let composed_gf = Self::compose(g, f);
+        structural_distance(h, &composed_gf) == 0.0
     }
 
     // --- Internal logic: convenience access to Ω and χ_S --------------
@@ -142,6 +140,24 @@ mod tests {
         assert!(gf.source.contains("def f"));
         assert!(gf.source.contains("def g"));
         assert!(gf.source.contains("composed_pipeline"));
+    }
+
+    #[test]
+    fn verify_commutativity_true_for_exact_composition() {
+        let f = ProgramMorphism::new("def f(x): return x + 1", "python");
+        let g = ProgramMorphism::new("def g(x): return x * 2", "python");
+        let h = ProgramCategory::compose(&g, &f);
+        let category = ProgramCategory::default();
+        assert!(category.verify_commutativity(&f, &g, &h));
+    }
+
+    #[test]
+    fn verify_commutativity_false_for_unrelated_shortcut() {
+        let f = ProgramMorphism::new("def f(x): return x + 1", "python");
+        let g = ProgramMorphism::new("def g(x): return x * 2", "python");
+        let h = ProgramMorphism::new("def h(x): return x - 99", "python");
+        let category = ProgramCategory::default();
+        assert!(!category.verify_commutativity(&f, &g, &h));
     }
 
     #[test]

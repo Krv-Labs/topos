@@ -18,6 +18,27 @@ pub enum CPGEdgeKind {
     Cdg,
 }
 
+impl CPGEdgeKind {
+    /// Every edge family, in a stable order — the Rust equivalent of
+    /// Python iterating its `CPGEdgeKind` `StrEnum` directly.
+    pub const ALL: [CPGEdgeKind; 4] = [
+        CPGEdgeKind::Ast,
+        CPGEdgeKind::Cfg,
+        CPGEdgeKind::Ddg,
+        CPGEdgeKind::Cdg,
+    ];
+
+    /// Matches Python's `CPGEdgeKind` `StrEnum` values (`str(kind)`).
+    pub fn label(self) -> &'static str {
+        match self {
+            CPGEdgeKind::Ast => "ast",
+            CPGEdgeKind::Cfg => "cfg",
+            CPGEdgeKind::Ddg => "ddg",
+            CPGEdgeKind::Cdg => "cdg",
+        }
+    }
+}
+
 /// A typed, labeled edge in the CPG multigraph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CPGEdge {

@@ -80,4 +80,23 @@ impl CFGEdge {
     }
 }
 
+impl EdgeKind {
+    /// Matches Python's `EdgeKind` `StrEnum` values — used as the CPG
+    /// edge label when a block-level CFG edge is projected down to
+    /// statement level (see `graphs::cpg::builder`).
+    pub fn label(self) -> &'static str {
+        match self {
+            EdgeKind::Unconditional => "unconditional",
+            EdgeKind::True => "true",
+            EdgeKind::False => "false",
+            EdgeKind::Loopback => "loop_back",
+            EdgeKind::Break => "break",
+            EdgeKind::Continue => "continue",
+            EdgeKind::Return => "return",
+            EdgeKind::Exception => "exception",
+            EdgeKind::SwitchCase => "switch_case",
+        }
+    }
+}
+
 pub type Blocks = HashMap<usize, BasicBlock>;

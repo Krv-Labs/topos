@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def expected_cargo_version() -> str:
     """Version string from Cargo.toml — canonical release version."""
     with (REPO_ROOT / "Cargo.toml").open("rb") as f:
-        return tomllib.load(f)["package"]["version"]
+        return tomllib.load(f)["workspace"]["package"]["version"]
 
 
 def run_topos_binary(

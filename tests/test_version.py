@@ -29,7 +29,7 @@ def test_cargo_version_matches_repo():
 
     cargo_path = Path(__file__).resolve().parent.parent / "Cargo.toml"
     with cargo_path.open("rb") as f:
-        expected = tomllib.load(f)["package"]["version"]
+        expected = tomllib.load(f)["workspace"]["package"]["version"]
     assert version_mod._cargo_version() == expected
 
 

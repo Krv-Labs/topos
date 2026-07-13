@@ -29,6 +29,18 @@ pub struct NativeRef {
     pub node_kind: String,
 }
 
+/// A UAST node attribute value.
+///
+/// Narrows Python's `dict[str, Any]` — the two concrete uses seen so far
+/// are `mapper_common`'s `"named": bool` and `graphs::cfg::builder`'s
+/// synthetic module-callable node (`"synthetic": bool`, `"scope": str`).
+/// Widen with another variant if a future attribute needs a richer value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeValue {
+    Bool(bool),
+    Str(String),
+}
+
 /// Language-normalized node carrying provenance and source spans.
 ///
 /// `UASTNode` acts as a normalization layer over language-specific
@@ -53,10 +65,7 @@ pub struct UASTNode {
     pub lang: String,
     pub span: SourceSpan,
     pub native: NativeRef,
-    /// Narrows Python's `dict[str, Any]` to `bool` values — the mapper
-    /// engine only ever sets `"named"` today. Widen to an enum if a
-    /// future attribute needs a richer value.
-    pub attributes: HashMap<String, bool>,
+    pub attributes: HashMap<String, AttributeValue>,
     pub children: Vec<UASTNode>,
     pub id: String,
 }

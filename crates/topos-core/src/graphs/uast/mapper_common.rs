@@ -22,7 +22,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 use tree_sitter::Node;
 
-use super::models::{NativeRef, SourceSpan, UASTNode};
+use super::models::{AttributeValue, NativeRef, SourceSpan, UASTNode};
 
 /// A per-language classifier deciding which of a node's named siblings
 /// are test-only scaffolding that should be excluded from the UAST
@@ -212,7 +212,7 @@ pub fn map_tree_sitter_to_uast(
         let start = node.start_position();
         let end = node.end_position();
         let mut attributes = HashMap::new();
-        attributes.insert("named".to_string(), node.is_named());
+        attributes.insert("named".to_string(), AttributeValue::Bool(node.is_named()));
 
         uast_nodes.insert(
             node.id(),

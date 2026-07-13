@@ -18,3 +18,4 @@ tree-sitter-go = "0.23"
 # hashlib.blake2b(..., digest_size=8) byte-for-byte (see the parity test
 # in graphs::uast::mapper_common).
 blake2 = "0.10"
+petgraph = "0.6"

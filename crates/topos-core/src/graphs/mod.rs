@@ -7,4 +7,5 @@
 
 pub mod ast;
 pub mod base;
+pub mod cfg;
 pub mod uast;

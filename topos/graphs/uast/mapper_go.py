@@ -61,6 +61,29 @@ _IDENTIFIER_TYPES = {
 }
 
 
+_TYPE_SPEC_KIND = {
+    "interface_type": "interface",
+    "struct_type": "struct",
+}
+
+
+def extract_type_attributes(node: Node) -> dict[str, object]:
+    """Classify a `type_declaration` as interface/struct via its `type_spec`
+    grandchild — the discriminating grammar node lives one level below the
+    `TypeDecl`-mapped node itself (Go wraps every type declaration, whether
+    interface, struct, or alias, in the same outer `type_declaration`)."""
+    if node.type != "type_declaration":
+        return {}
+    for child in node.named_children:
+        if child.type != "type_spec":
+            continue
+        for grandchild in child.named_children:
+            type_kind = _TYPE_SPEC_KIND.get(grandchild.type)
+            if type_kind is not None:
+                return {"typeKind": type_kind}
+    return {}
+
+
 def map_node_kind(node: Node) -> str:
     if node.type in _DECLARATION_TYPES:
         return _DECLARATION_TYPES[node.type]
@@ -83,4 +106,5 @@ def map_go_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
         language="go",
         map_node_kind=map_node_kind,
         file=file,
+        extract_attributes=extract_type_attributes,
     )

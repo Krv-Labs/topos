@@ -11,10 +11,20 @@ _DECLARATION_TYPES = {
     "struct_item": "TypeDecl",
     "enum_item": "TypeDecl",
     "impl_item": "TypeDecl",
+    "trait_item": "TypeDecl",
     "function_item": "FunctionDecl",
     "method_definition": "MethodDecl",
     "lexical_declaration": "VarDecl",
     "variable_declaration": "VarDecl",
+}
+
+# Martin Abstractness classification for TypeDecl nodes. `impl_item` is
+# intentionally absent: it implements an existing type rather than declaring
+# a new one, so it must not be double-counted in the abstract/concrete ratio.
+_TYPE_KIND = {
+    "trait_item": "trait",
+    "struct_item": "struct",
+    "enum_item": "enum",
 }
 
 _STATEMENT_TYPES = {
@@ -71,10 +81,16 @@ def map_node_kind(node: Node) -> str:
     return "Unknown"
 
 
+def extract_type_attributes(node: Node) -> dict[str, object]:
+    type_kind = _TYPE_KIND.get(node.type)
+    return {"typeKind": type_kind} if type_kind is not None else {}
+
+
 def map_rust_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
     return map_tree_sitter_to_uast(
         root=root,
         language="rust",
         map_node_kind=map_node_kind,
         file=file,
+        extract_attributes=extract_type_attributes,
     )

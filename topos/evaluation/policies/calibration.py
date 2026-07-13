@@ -60,6 +60,20 @@ class ComposablePolicyThresholds:
     # Entrypoint carve-out: import/export-only entrypoint modules with zero
     # fan-in may sit at or above this instability without failing the gate.
     entrypoint_instability_min: float = 0.95
+    # Distance from Martin's Main Sequence (D = |A + I - 1|), gated in place
+    # of raw instability whenever Abstractness (mdg.abstractness) is
+    # available — see topos.evaluation.policies.composable.score_coupling
+    # and issue #124. PROVISIONAL: a first-pass estimate (roughly Martin's
+    # commonly-cited "principal zone" radius), not yet run through the PyPI
+    # corpus ECDF calibration the other constants in this class received.
+    main_sequence_distance_max: float = 0.5
+    # Zone-of-Pain carve-out: a declarations-only, no-branching "stable
+    # leaf" module (constants, error types — see
+    # topos.evaluation.file_roles.is_stable_leaf_module) may sit at or
+    # below this instability without failing the gate, mirroring
+    # entrypoint_instability_min for the low-instability extreme. Also
+    # PROVISIONAL.
+    stable_leaf_instability_max: float = 0.05
     # Normalization (score only)
     max_fan_in_cap: float = 40.0
     max_fan_out_cap: float = 40.0

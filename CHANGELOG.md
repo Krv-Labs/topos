@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **COMPOSABLE no longer gates raw instability alone for languages with Abstractness support**: the `mdg.instability` gate (fixed `[0.3, 0.7]` band) flagged well-structured layered modules as failing — stable leaves (constants, error types, I≈0) and unstable orchestrators (`main.rs`/bootstrap wiring, I≈1) both got penalized even when architecturally intentional, because a raw-instability band ignores Robert Martin's own second axis. `Φ_COMPOSABLE` now pairs instability with a new `mdg.abstractness` metric (fraction of a module's type declarations that are abstract — trait/interface/protocol vs. concrete struct/class/enum) and gates on Distance from the Main Sequence (`mdg.main_sequence_distance = |A + I - 1|`, threshold `≤ 0.5`) instead, whenever abstractness is available. A concrete, unstable orchestrator now sits on the main sequence (D≈0) and is not penalized. Added a symmetric role-based exemption (`is_stable_leaf_module`: a declarations-only module with no branching control flow) for the "stable concrete leaf" case, which distance alone doesn't resolve — mirroring Martin's own accepted "Zone of Pain" exception. Scoped to Python, Rust, Go, and TypeScript files with countable type declarations; JavaScript and C++ (whose UAST mapper has an independent, pre-existing type-declaration bug) keep the original instability-band gate unchanged. `main_sequence_distance_max` (0.5) and `stable_leaf_instability_max` (0.05) are first-pass provisional thresholds, not yet run through the PyPI corpus ECDF calibration the other COMPOSABLE constants received. Closes [#124](https://github.com/Krv-Labs/topos/issues/124).
+
 ## [0.3.10] - 2026-07-11
 
 ### Added

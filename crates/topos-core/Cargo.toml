@@ -7,6 +7,9 @@ repository.workspace = true
 description = "Structural code quality engine for Topos: category-theoretic evaluation (SIMPLE/COMPOSABLE/SECURE), graph representations, and refactoring probes. No Python bindings — see topos-pyo3."
 
 [dependencies]
-petgraph = "0.6"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+tree-sitter = "0.23"
+# Temporary: core::morphism bootstraps single-language (Python) parsing
+# directly until graphs::ast::dispatch lands (issue #142) and takes over
+# multi-language parsing. Drop this dependency from topos-core once that
+# module owns all tree-sitter-python usage.
+tree-sitter-python = "0.23"

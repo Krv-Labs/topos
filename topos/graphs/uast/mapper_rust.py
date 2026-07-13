@@ -5,6 +5,45 @@ from tree_sitter import Node
 from topos.graphs.uast.mapper_common import map_tree_sitter_to_uast
 from topos.graphs.uast.models import UASTNode
 
+_CFG_TEST_MARKER = b"cfg(test)"
+
+
+def _is_cfg_test_attribute(node: Node) -> bool:
+    return (
+        node.type == "attribute_item"
+        and bool(node.text)
+        and _CFG_TEST_MARKER in node.text
+    )
+
+
+def is_test_node(siblings: list[Node]) -> set[int]:
+    """Rust's `TestNodeFilter`: drop `#[cfg(test)]`-annotated items.
+
+    Tree-sitter-rust represents an attribute as a *preceding sibling* of the
+    item it annotates (both children of the same parent), not as a
+    descendant of that item — so this is a single forward scan over
+    `siblings`, not a per-node lookup: the `#[cfg(test)]` attribute itself
+    is dropped, and so is the item immediately following it (skipping over
+    any intervening non-`cfg(test)` attributes). This is the same O(n)
+    single-pass logic `map_tree_sitter_to_uast` used directly before the
+    language-agnostic filtering hook existed, just building a drop-set
+    instead of a filtered list so it can serve as one language's
+    `TestNodeFilter`.
+    """
+    dropped: set[int] = set()
+    pending_test_attr = False
+    for sibling in siblings:
+        if sibling.type == "attribute_item":
+            if _is_cfg_test_attribute(sibling):
+                pending_test_attr = True
+                dropped.add(sibling.id)
+            continue
+        if pending_test_attr:
+            pending_test_attr = False
+            dropped.add(sibling.id)
+    return dropped
+
+
 _DECLARATION_TYPES = {
     "function_definition": "FunctionDecl",
     "class_definition": "TypeDecl",
@@ -77,4 +116,5 @@ def map_rust_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
         language="rust",
         map_node_kind=map_node_kind,
         file=file,
+        is_test_node=is_test_node,
     )

@@ -5,6 +5,53 @@ from tree_sitter import Node
 from topos.graphs.uast.mapper_common import map_tree_sitter_to_uast
 from topos.graphs.uast.models import UASTNode
 
+_DUNDER_NAME = b"__name__"
+_DUNDER_MAIN = b"__main__"
+
+
+def _is_name_equals_main(condition: Node) -> bool:
+    """True if `condition` is `__name__ == "__main__"` (in either order).
+
+    Tree-sitter-python's `comparison_operator` node stores its operator(s)
+    under the `operators` field and leaves the operand nodes unlabeled, so
+    operands are everything that *isn't* the `operators` field.
+    """
+    if condition.type != "comparison_operator":
+        return False
+
+    operators: list[str] = []
+    operands: list[Node] = []
+    for index, child in enumerate(condition.children):
+        if condition.field_name_for_child(index) == "operators":
+            operators.append(child.type)
+        else:
+            operands.append(child)
+
+    if operators != ["=="] or len(operands) != 2:
+        return False
+
+    stripped = {(operand.text or b"").strip(b"'\"") for operand in operands}
+    return stripped == {_DUNDER_NAME, _DUNDER_MAIN}
+
+
+def is_test_node(siblings: list[Node]) -> set[int]:
+    """Python's `TestNodeFilter`: drop `if __name__ == "__main__":` guards.
+
+    The guard is fully self-contained (condition + body live under the
+    `if_statement` node itself), so unlike Rust's `#[cfg(test)]` this needs
+    no cross-sibling correlation — each candidate is classified purely from
+    its own subtree, which takes the guard's body with it once dropped.
+    """
+
+    def _is_guard(node: Node) -> bool:
+        if node.type != "if_statement":
+            return False
+        condition = node.child_by_field_name("condition")
+        return condition is not None and _is_name_equals_main(condition)
+
+    return {sibling.id for sibling in siblings if _is_guard(sibling)}
+
+
 _DECLARATION_TYPES = {
     "function_definition": "FunctionDecl",
     "class_definition": "TypeDecl",
@@ -66,4 +113,5 @@ def map_python_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
         language="python",
         map_node_kind=map_node_kind,
         file=file,
+        is_test_node=is_test_node,
     )

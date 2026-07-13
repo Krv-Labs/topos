@@ -25,6 +25,9 @@ use std::path::{Path, PathBuf};
 
 use crate::graphs::ast::dispatch::parse_source;
 use crate::graphs::base::Representation;
+use crate::graphs::cfg::object::ControlFlowGraph;
+use crate::graphs::cpg::object::CodePropertyGraph;
+use crate::graphs::pdg::object::ProgramDependenceGraph;
 
 use super::object::ProgramObject;
 
@@ -54,9 +57,9 @@ pub struct ProgramMorphism {
     /// Additional representations (dep graph, etc.) attached to this
     /// morphism for multi-axis evaluation.
     pub representations: Vec<Box<dyn Representation>>,
-    // `_cfg` / `_pdg` / `_cpg` caches land with issue #143, once
-    // `ControlFlowGraph` / `ProgramDependenceGraph` / `CodePropertyGraph`
-    // exist to cache. `build_cfg` / `build_pdg` / `build_cpg` follow them.
+    cfg: Option<ControlFlowGraph>,
+    pdg: Option<ProgramDependenceGraph>,
+    cpg: Option<CodePropertyGraph>,
     // `classify` lands with issue #144
     // (`evaluation::characteristic_morphism::CharacteristicMorphism`).
 }
@@ -81,6 +84,9 @@ impl ProgramMorphism {
             filepath: None,
             ast,
             representations: Vec::new(),
+            cfg: None,
+            pdg: None,
+            cpg: None,
         }
     }
 
@@ -90,6 +96,7 @@ impl ProgramMorphism {
             result.tree,
             result.source,
             result.language,
+            result.uast_root,
         ))
     }
 
@@ -109,7 +116,38 @@ impl ProgramMorphism {
             filepath: Some(filepath.to_path_buf()),
             ast,
             representations: Vec::new(),
+            cfg: None,
+            pdg: None,
+            cpg: None,
         })
+    }
+
+    /// Build (and cache) the Control Flow Graph representation.
+    pub fn build_cfg(&mut self) -> Option<&ControlFlowGraph> {
+        if self.cfg.is_none() {
+            let cfg = ControlFlowGraph::from_uast(&self.ast.as_ref()?.uast_root);
+            self.cfg = Some(cfg);
+        }
+        self.cfg.as_ref()
+    }
+
+    /// Build (and cache) the academic Program Dependence Graph.
+    pub fn build_pdg(&mut self) -> Option<&ProgramDependenceGraph> {
+        if self.pdg.is_none() {
+            let pdg = ProgramDependenceGraph::from_uast(&self.ast.as_ref()?.uast_root);
+            self.pdg = Some(pdg);
+        }
+        self.pdg.as_ref()
+    }
+
+    /// Build (and cache) the Code Property Graph.
+    pub fn build_cpg(&mut self) -> Option<&CodePropertyGraph> {
+        if self.cpg.is_none() {
+            let ast = self.ast.as_ref()?;
+            let cpg = CodePropertyGraph::from_uast(&ast.uast_root, self.source.clone());
+            self.cpg = Some(cpg);
+        }
+        self.cpg.as_ref()
     }
 
     /// Whether the morphism represents syntactically valid code.

@@ -22,4 +22,6 @@
 //!   representations land in #142/#143.
 
 pub mod core;
+pub mod evaluation;
+pub mod functors;
 pub mod graphs;

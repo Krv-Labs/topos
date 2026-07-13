@@ -18,6 +18,8 @@
 use std::cell::Cell;
 use tree_sitter::{Node, Tree};
 
+use crate::graphs::uast::models::UASTNode;
+
 /// The AST lifted into the category of programs.
 ///
 /// A `ProgramObject` wraps a parsed tree-sitter AST and provides methods
@@ -49,15 +51,24 @@ pub struct ProgramObject {
     pub parser_version: String,
     /// The tree-sitter node kind of the root (e.g. `"module"`).
     pub native_node_kind: String,
+    /// The language-neutral UAST tree for this source — `Any` on the
+    /// Python side (deferred here until `graphs::uast` landed in issue
+    /// #142; now a concrete type).
+    pub uast_root: UASTNode,
     node_count: Cell<Option<usize>>,
-    // `native_ast` / `uast_root` are `Any` on the Python side — the
-    // language-neutral UAST tree they'd point to has no concrete Rust
-    // type until `graphs::uast` lands (issue #142).
+    // `native_ast` (Python's optional CPython `ast.Module`) has no Rust
+    // equivalent and isn't ported — see `graphs::ast::dispatch`'s doc
+    // comment for why there's no "native provider" on this side.
 }
 
 impl ProgramObject {
-    /// Wrap an already-parsed tree with its source metadata.
-    pub fn new(tree: Tree, source: impl Into<String>, language: impl Into<String>) -> Self {
+    /// Wrap an already-parsed tree with its source metadata and UAST.
+    pub fn new(
+        tree: Tree,
+        source: impl Into<String>,
+        language: impl Into<String>,
+        uast_root: UASTNode,
+    ) -> Self {
         ProgramObject {
             tree,
             source: source.into(),
@@ -65,6 +76,7 @@ impl ProgramObject {
             parser_name: "tree-sitter".to_string(),
             parser_version: "tree-sitter>=0.23".to_string(),
             native_node_kind: "module".to_string(),
+            uast_root,
             node_count: Cell::new(None),
         }
     }
@@ -173,20 +185,22 @@ impl std::hash::Hash for ProgramObject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tree_sitter::Parser;
+    use crate::graphs::ast::dispatch::parse_source;
 
-    fn parse_python(source: &str) -> Tree {
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_python::LANGUAGE.into())
-            .expect("tree-sitter-python grammar should load");
-        parser.parse(source, None).expect("parse should not fail")
+    fn build(source: &str) -> ProgramObject {
+        let result = parse_source(source, "python", None).expect("parse should not fail");
+        ProgramObject::new(
+            result.tree,
+            result.source,
+            result.language,
+            result.uast_root,
+        )
     }
 
     #[test]
     fn program_object_basic() {
         let source = "def hello():\n    print('world')";
-        let obj = ProgramObject::new(parse_python(source), source, "python");
+        let obj = build(source);
 
         assert_eq!(obj.source, source);
         assert_eq!(obj.language, "python");
@@ -197,8 +211,7 @@ mod tests {
 
     #[test]
     fn program_object_traversal() {
-        let source = "x = 1 + 2";
-        let obj = ProgramObject::new(parse_python(source), source, "python");
+        let obj = build("x = 1 + 2");
 
         let nodes = obj.traverse();
         assert_eq!(nodes.len(), obj.node_count());
@@ -209,16 +222,15 @@ mod tests {
 
     #[test]
     fn program_object_invalid_syntax() {
-        let source = "def incomplete_func(";
-        let obj = ProgramObject::new(parse_python(source), source, "python");
+        let obj = build("def incomplete_func(");
         assert!(!obj.is_valid());
     }
 
     #[test]
     fn program_object_equality() {
-        let a = ProgramObject::new(parse_python("x = 1"), "x = 1", "python");
-        let b = ProgramObject::new(parse_python("x = 1"), "x = 1", "python");
-        let c = ProgramObject::new(parse_python("y = 2"), "y = 2", "python");
+        let a = build("x = 1");
+        let b = build("x = 1");
+        let c = build("y = 2");
         assert!(a == b);
         assert!(a != c);
     }

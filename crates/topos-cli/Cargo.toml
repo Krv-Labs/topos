@@ -13,3 +13,5 @@ path = "src/main.rs"
 [dependencies]
 topos-core = { path = "../topos-core" }
 clap = { version = "4", features = ["derive"] }
+# Already a topos-core dependency; used here for --json output.
+serde_json = "1.0"

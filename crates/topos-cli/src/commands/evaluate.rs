@@ -14,16 +14,21 @@
 //!
 //! The Python CLI always attempts to attach a [`ModuleDependencyGraph`]
 //! (COMPOSABLE generator) via `--gitnexus-dir`, shelling out to the
-//! `gitnexus` CLI. This command only builds the CFG (SIMPLE) and CPG
-//! (SECURE) representations — both derivable from a single file with no
-//! external process. `combine_dimensions`/`classify_detailed` already
-//! treat a missing dimension as "not measured" rather than "failed", so
-//! the COMPOSABLE row simply never appears in this pass's output. Wiring
+//! `gitnexus` CLI. This command builds the same three UAST-intrinsic
+//! representations Python's `_intrinsic_representations` always attaches
+//! — CFG, [`ProgramDependenceGraph`] (diagnostic-only; feeds no `Φᵢ` but
+//! still contributes `pdg.*` to `raw_metrics`, see
+//! [`ProgramDependenceGraph`]'s doc comment), and CPG — but not MDG,
+//! since that needs an external `gitnexus` process.
+//! `combine_dimensions`/`classify_detailed` already treat a missing
+//! dimension as "not measured" rather than "failed", so the COMPOSABLE
+//! row simply never appears in this pass's output. Wiring
 //! `--gitnexus-dir` through to `adapters::gitnexus` is real follow-up
 //! work, not a bug: the `depgraph` subcommand it depends on is
 //! explicitly out of scope for issue #147.
 //!
 //! [`ModuleDependencyGraph`]: topos_core::graphs::mdg::object::ModuleDependencyGraph
+//! [`ProgramDependenceGraph`]: topos_core::graphs::pdg::object::ProgramDependenceGraph
 
 use std::path::PathBuf;
 
@@ -94,18 +99,24 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     Ok(())
 }
 
-/// Build the CFG (SIMPLE) and CPG (SECURE) representations for `morphism`
-/// and classify it. See this module's "Deviation" note for why MDG
+/// Build the CFG (SIMPLE), PDG (diagnostic), and CPG (SECURE)
+/// representations for `morphism` and classify it — the same three
+/// UAST-intrinsic representations Python's `_intrinsic_representations`
+/// always attaches. See this module's "Deviation" note for why MDG
 /// (COMPOSABLE) is not attached here.
 pub(crate) fn classify_with_representations(
     classifier: &CharacteristicMorphism,
     morphism: &mut ProgramMorphism,
 ) -> ClassificationResult {
     let cfg = morphism.build_cfg().cloned();
+    let pdg = morphism.build_pdg().cloned();
     let cpg = morphism.build_cpg().cloned();
     let mut representations: Vec<&dyn Representation> = Vec::new();
     if let Some(cfg) = &cfg {
         representations.push(cfg);
+    }
+    if let Some(pdg) = &pdg {
+        representations.push(pdg);
     }
     if let Some(cpg) = &cpg {
         representations.push(cpg);

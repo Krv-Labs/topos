@@ -16,14 +16,13 @@ fn compressed_ratio(source_bytes: &[u8]) -> (usize, f64) {
     let compressed_len = compressed.len();
 
     let raw_ratio = compressed_len as f64 / source_bytes.len() as f64;
-    let ratio = if source_bytes.len() >= ENTROPY_SIZE_FLOOR_BYTES
-        || raw_ratio <= ENTROPY_NEUTRAL_RATIO
-    {
-        raw_ratio
-    } else {
-        let confidence = source_bytes.len() as f64 / ENTROPY_SIZE_FLOOR_BYTES as f64;
-        confidence * raw_ratio + (1.0 - confidence) * ENTROPY_NEUTRAL_RATIO
-    };
+    let ratio =
+        if source_bytes.len() >= ENTROPY_SIZE_FLOOR_BYTES || raw_ratio <= ENTROPY_NEUTRAL_RATIO {
+            raw_ratio
+        } else {
+            let confidence = source_bytes.len() as f64 / ENTROPY_SIZE_FLOOR_BYTES as f64;
+            confidence * raw_ratio + (1.0 - confidence) * ENTROPY_NEUTRAL_RATIO
+        };
     (compressed_len, ratio)
 }
 

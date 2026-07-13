@@ -122,9 +122,13 @@ impl ControlFlowGraph {
     /// ever uses to jump backward to an already-visited block (both
     /// target a loop header). Stripping them makes the remaining graph a
     /// true DAG, so a topological-sort DP replaces what used to be
-    /// exponential path enumeration — see the
-    /// `longest_acyclic_path_panics_on_untagged_cycle` test below for
-    /// what happens if that invariant is ever broken.
+    /// exponential path enumeration.
+    ///
+    /// If that invariant is ever violated by an edge case the builder
+    /// doesn't tag correctly, we degrade to `0` rather than panic — see
+    /// the `longest_acyclic_path_returns_zero_on_untagged_cycle` test
+    /// below. A single file with an unusual control-flow shape shouldn't
+    /// be able to crash a whole `evaluate`/`inspect` run.
     pub fn longest_acyclic_path(&self) -> usize {
         let mut graph = DiGraph::<usize, ()>::new();
         let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
@@ -140,9 +144,9 @@ impl ControlFlowGraph {
             }
         }
 
-        let order = petgraph::algo::toposort(&graph, None).expect(
-            "CFG has a back-edge not tagged Loopback/Continue — builder invariant violated",
-        );
+        let Ok(order) = petgraph::algo::toposort(&graph, None) else {
+            return 0;
+        };
 
         let Some(&entry_idx) = indices.get(&self.entry_id) else {
             return 0;
@@ -334,8 +338,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "builder invariant violated")]
-    fn longest_acyclic_path_panics_on_untagged_cycle() {
+    fn longest_acyclic_path_returns_zero_on_untagged_cycle() {
         let blocks = blocks_from(&[(0, "a"), (1, "b"), (2, "c")]);
         let edges = vec![
             CFGEdge::new(0, 1, EdgeKind::True),
@@ -343,7 +346,7 @@ mod tests {
             CFGEdge::new(2, 0, EdgeKind::True),
         ];
         let cfg = ControlFlowGraph::new(blocks, edges, 0, 2);
-        cfg.longest_acyclic_path();
+        assert_eq!(cfg.longest_acyclic_path(), 0);
     }
 
     #[test]

@@ -1,0 +1,12 @@
+[package]
+name = "topos-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Structural code quality engine for Topos: category-theoretic evaluation (SIMPLE/COMPOSABLE/SECURE), graph representations, and refactoring probes. No Python bindings — see topos-pyo3."
+
+[dependencies]
+petgraph = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

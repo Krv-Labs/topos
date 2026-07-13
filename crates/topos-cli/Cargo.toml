@@ -1,0 +1,14 @@
+[package]
+name = "topos-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust CLI for Topos structural code quality evaluation (binary name: topos)."
+
+[[bin]]
+name = "topos"
+path = "src/main.rs"
+
+[dependencies]
+topos-core = { path = "../topos-core" }

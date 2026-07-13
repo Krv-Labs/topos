@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def cargo_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as f:
-        return tomllib.load(f)["package"]["version"]
+        return tomllib.load(f)["workspace"]["package"]["version"]
 
 
 def python_source_version() -> str:

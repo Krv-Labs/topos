@@ -22,8 +22,11 @@
 //!   representations land in #142/#143.
 //! - [`adapters`] — filesystem/subprocess edges of the model: source-file
 //!   discovery and GitNexus dependency-graph generation. Landed in #146.
+//! - [`config`] — the `.topos.toml` allowlist ([`config::ToposConfig`]),
+//!   consumed by [`evaluation::suppression`].
 
 pub mod adapters;
+pub mod config;
 pub mod core;
 pub mod evaluation;
 pub mod functors;

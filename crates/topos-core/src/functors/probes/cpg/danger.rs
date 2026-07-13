@@ -16,7 +16,7 @@ use crate::graphs::cpg::object::CodePropertyGraph;
 
 /// Per-language registry of forbidden symbol names. Conservative — meant
 /// to flag the obvious footguns, not to compete with a full SAST.
-fn dangerous_apis(language: &str) -> &'static [&'static str] {
+pub(crate) fn dangerous_apis(language: &str) -> &'static [&'static str] {
     match language {
         "python" => &[
             "eval",

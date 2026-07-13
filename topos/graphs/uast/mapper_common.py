@@ -76,6 +76,7 @@ def map_tree_sitter_to_uast(
     language: str,
     map_node_kind: Callable[[Node], str],
     file: str | None = None,
+    extract_attributes: Callable[[Node], dict[str, object]] | None = None,
 ) -> UASTNode:
     parser_name, parser_version = parser_identity(language)
 
@@ -155,12 +156,15 @@ def map_tree_sitter_to_uast(
             parser_version=parser_version,
             node_kind=node.type,
         )
+        attributes: dict[str, object] = {"named": node.is_named}
+        if extract_attributes is not None:
+            attributes.update(extract_attributes(node) or {})
         uast_nodes[node.id] = UASTNode(
             kind=map_node_kind(node),
             lang=language,
             span=span,
             native=native,
-            attributes={"named": node.is_named},
+            attributes=attributes,
             children=children,
             id=node_stable_id,
         )

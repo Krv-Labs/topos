@@ -161,7 +161,9 @@ class ProgramMorphism:
             return None
         from topos.graphs.pdg.object import ProgramDependenceGraph
 
-        self._pdg = ProgramDependenceGraph.from_uast(self.ast.uast_root)
+        self._pdg = ProgramDependenceGraph.from_uast(
+            self.ast.uast_root, source=self.source
+        )
         return self._pdg
 
     def build_cpg(self) -> CodePropertyGraph | None:

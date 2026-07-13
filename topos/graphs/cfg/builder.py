@@ -351,6 +351,13 @@ _BLOCK_NATIVE_KINDS = (
     | _CASE_ARM_NATIVE_KINDS
 )
 
+# Native tree-sitter node kinds for an individual match arm whose body may
+# itself be a multi-statement block (Rust `match_arm`, Python `case_clause`).
+# Kept out of _BLOCK_NATIVE_KINDS deliberately: unlike Go's single-statement
+# case arms, unwrapping these further would flatten a multi-statement arm
+# body into the surrounding list and lose the arm boundary the CFG needs.
+_MATCH_ARM_NATIVE_KINDS = frozenset({"match_arm", "case_clause"})
+
 
 def _is_block_container(node: UASTNode) -> bool:
     return node.kind == "Unknown" and node.native.node_kind in _BLOCK_NATIVE_KINDS
@@ -432,6 +439,12 @@ def _match_arms(stmt: UASTNode) -> list[UASTNode]:
     Go also has discriminant-less forms (``switch { case ... }``,
     ``select { case ... }``) where the first child is itself a case arm —
     detected via its native node kind so every arm is kept.
+
+    Rust (``match_expression`` -> [scrutinee, match_block]) and Python
+    (``match_statement`` -> [subject, block]) both wrap their arms one level
+    deeper in a container whose *direct* children are ``match_arm`` /
+    ``case_clause`` nodes.  Those arm nodes are returned as one opaque unit
+    each rather than unwrapped further (see ``_MATCH_ARM_NATIVE_KINDS``).
     """
     if not stmt.children:
         return []
@@ -439,7 +452,18 @@ def _match_arms(stmt: UASTNode) -> list[UASTNode]:
     first = children[0]
     if first.kind == "Unknown" and first.native.node_kind in _CASE_ARM_NATIVE_KINDS:
         return _unwrap_to_statements(children)
-    return _unwrap_to_statements(children[1:])
+
+    rest = children[1:]
+    if len(rest) == 1 and rest[0].kind == "Unknown":
+        arm_nodes = [
+            c
+            for c in rest[0].children
+            if c.kind == "Unknown" and c.native.node_kind in _MATCH_ARM_NATIVE_KINDS
+        ]
+        if arm_nodes:
+            return arm_nodes
+
+    return _unwrap_to_statements(rest)
 
 
 def _children_with_control_flow(node: UASTNode) -> list[UASTNode]:

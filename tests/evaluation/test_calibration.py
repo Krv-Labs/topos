@@ -247,3 +247,20 @@ def test_composable_without_abstractness_keeps_instability_gate_untouched():
     assert decision.achieved is False
     assert "mdg.main_sequence_distance" not in decision.interpretation
     assert "mdg.instability" in decision.interpretation
+
+
+def test_composable_zero_coupling_signal_falls_back_to_instability_gate():
+    # A file with zero *measured* fan-in/fan-out gets instability=0.5 from
+    # calculate_coupling's "no signal" fallback (see coupling.py), which
+    # sits mid the optimal instability band. Pairing that fallback with the
+    # common abstractness=0.0 case (no type declarations) would otherwise
+    # land main_sequence_distance exactly on main_sequence_distance_max --
+    # passing the hard gate at the boundary but scoring 0.0 on the quality
+    # curve. Distance mode must not activate without a real coupling signal.
+    decision = score_coupling(
+        instability=0.5, abstractness=0.0, fan_in=0.0, fan_out=0.0
+    )
+    assert decision.achieved is True
+    assert decision.score == 1.0
+    assert "mdg.main_sequence_distance" not in decision.interpretation
+    assert "mdg.instability" in decision.interpretation

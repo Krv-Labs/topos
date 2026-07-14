@@ -40,6 +40,16 @@ languages without Abstractness data (``abstractness is None``) keep
 gating on ``mdg.instability`` exactly as before — this is what makes the
 change non-flag-day: it only changes behavior for files where Abstractness
 is actually measured.
+
+Files with zero *measured* coupling (``fan_in == 0`` and ``fan_out == 0``)
+also keep gating on raw instability, even when ``abstractness`` is present.
+``calculate_coupling`` returns ``instability = 0.5`` as a "no signal"
+fallback for such files — optimal under the old flat-top instability band,
+but combined with the common ``abstractness = 0.0`` case (no type
+declarations) it lands ``main_sequence_distance`` exactly on
+``main_sequence_distance_max``, passing the hard gate at the boundary while
+scoring 0.0 on the distance quality curve. Excluding the no-signal case from
+distance mode preserves the non-flag-day invariant above for coupling too.
 """
 
 from __future__ import annotations
@@ -91,7 +101,10 @@ def score_coupling(
         A ScoredDecision; ``achieved`` is the truth value of the COMPOSABLE
         generator for this program.
     """
-    use_distance = instability is not None and abstractness is not None
+    has_coupling_signal = not (fan_in == 0.0 and fan_out == 0.0)
+    use_distance = (
+        instability is not None and abstractness is not None and has_coupling_signal
+    )
     metrics = {
         key: value
         for key, value in {

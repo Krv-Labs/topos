@@ -2,7 +2,7 @@
 
 COMPOSABLE depends on a ``.gitnexus`` index. ``topos_depgraph_status`` lets an
 agent discover graph state (missing / present / stale / load_error /
-schema_mismatch / invalid_dir) without shelling out, and
+schema_mismatch / invalid_dir / branch_not_indexed) without shelling out, and
 ``topos_generate_depgraph`` performs
 the side-effecting regeneration behind an approval-gated annotation.
 """
@@ -79,6 +79,13 @@ _STATE_GUIDANCE: dict[DepgraphState, tuple[str, str | None, str | None]] = {
         "exist); fix the path, then retry. Generating won't help.",
         None,
         "invalid_gitnexus_dir",
+    ),
+    DepgraphState.BRANCH_NOT_INDEXED: (
+        "No GitNexus store is indexed for the currently checked-out branch "
+        "(other branches may be indexed). Run topos_generate_depgraph to "
+        "index this branch.",
+        "topos_generate_depgraph",
+        "branch_not_indexed_gitnexus_dir",
     ),
     DepgraphState.PRESENT: (
         "COMPOSABLE is scorable; proceed with topos_evaluate_file.",

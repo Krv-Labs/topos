@@ -357,6 +357,13 @@ const CASE_ARM_NATIVE_KINDS: &[&str] = &[
     "communication_case",
 ];
 
+/// Native tree-sitter node kinds for an individual match arm whose body may
+/// itself be a multi-statement block (Rust `match_arm`, Python `case_clause`).
+/// Kept out of [`BLOCK_NATIVE_KINDS`] deliberately: unlike Go's single-statement
+/// case arms, unwrapping these further would flatten a multi-statement arm
+/// body into the surrounding list and lose the arm boundary the CFG needs.
+const MATCH_ARM_NATIVE_KINDS: &[&str] = &["match_arm", "case_clause"];
+
 /// Native tree-sitter node kinds that act as transparent block
 /// containers (no UAST kind of their own — mapped to `"Unknown"`).
 const BLOCK_NATIVE_KINDS: &[&str] = &[
@@ -451,15 +458,43 @@ fn loop_body(stmt: &UASTNode) -> Vec<&UASTNode> {
 /// also has discriminant-less forms (`switch { case ... }`, `select {
 /// case ... }`) where the first child is itself a case arm — detected
 /// via its native node kind so every arm is kept.
+///
+/// Rust (`match_expression` -> [scrutinee, match_block]) and Python
+/// (`match_statement` -> [subject, block]) both wrap their arms one level
+/// deeper in a container whose *direct* children are `match_arm` /
+/// `case_clause` nodes. Those arm nodes are returned as one opaque unit
+/// each rather than unwrapped further (see [`MATCH_ARM_NATIVE_KINDS`]).
 fn match_arms(stmt: &UASTNode) -> Vec<&UASTNode> {
     let Some(first) = stmt.children.first() else {
         return Vec::new();
     };
-    if first.kind == "Unknown" && CASE_ARM_NATIVE_KINDS.contains(&first.native.node_kind.as_str()) {
-        unwrap_to_statements(stmt.children.iter())
-    } else {
-        unwrap_to_statements(stmt.children.iter().skip(1))
+    if first.kind == "Unknown" && CASE_ARM_NATIVE_KINDS.contains(&first.native.node_kind.as_str())
+    {
+        return unwrap_to_statements(stmt.children.iter());
     }
+
+    let rest = &stmt.children[1..];
+    // Locate the arm-container by kind, not by position: a comment (or any
+    // other extra node) between the subject and the `match_block`/`block`
+    // would otherwise push it out of the fixed first slot and collapse the
+    // whole match to a single edge.
+    for node in rest {
+        if node.kind != "Unknown" {
+            continue;
+        }
+        let arm_nodes: Vec<&UASTNode> = node
+            .children
+            .iter()
+            .filter(|c| {
+                c.kind == "Unknown" && MATCH_ARM_NATIVE_KINDS.contains(&c.native.node_kind.as_str())
+            })
+            .collect();
+        if !arm_nodes.is_empty() {
+            return arm_nodes;
+        }
+    }
+
+    unwrap_to_statements(rest.iter())
 }
 
 /// Return child statements whose kind affects control flow.

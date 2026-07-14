@@ -21,7 +21,11 @@ from topos.evaluation.policies.gates import (
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
-from .evaluation import INVALID_GITNEXUS_MARKERS, STALE_GITNEXUS_MARKER
+from .evaluation import (
+    BRANCH_NOT_INDEXED_MARKER,
+    INVALID_GITNEXUS_MARKERS,
+    STALE_GITNEXUS_MARKER,
+)
 from .schemas import (
     AcknowledgedRisk,
     AgentContract,
@@ -85,15 +89,19 @@ def composable_contract_signals(
     invalid_override = any(
         marker in w for w in messages for marker in INVALID_GITNEXUS_MARKERS
     )
+    branch_not_indexed = any(BRANCH_NOT_INDEXED_MARKER in w.lower() for w in messages)
     stale_graph = any(STALE_GITNEXUS_MARKER in w for w in messages)
 
     if not coupling_available:
         if invalid_override:
             blocked_by.append("invalid_gitnexus_dir")
             risk_flags.append("invalid_gitnexus_dir")
+        elif branch_not_indexed:
+            blocked_by.append("branch_not_indexed_gitnexus_dir")
+            risk_flags.append("branch_not_indexed_gitnexus_dir")
         elif include_missing:
             blocked_by.append("missing_gitnexus_dir")
-        if invalid_override or include_missing:
+        if invalid_override or branch_not_indexed or include_missing:
             risk_flags.append("composable_unavailable")
 
     if stale_graph:
@@ -108,6 +116,13 @@ def composable_contract_signals(
                 "fix gitnexus_dir — it must be an existing directory inside "
                 "the file root"
             ),
+        )
+    if "branch_not_indexed_gitnexus_dir" in blocked_by:
+        return ComposableContractSignals(
+            blocked_by=blocked_by,
+            risk_flags=risk_flags,
+            next_tool="topos_generate_depgraph",
+            next_action="run topos_generate_depgraph to index the current branch",
         )
     if "stale_gitnexus_dir" in blocked_by:
         return ComposableContractSignals(

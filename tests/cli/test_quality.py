@@ -125,20 +125,24 @@ def test_evaluate_progress_bar_for_interactive_text(tmp_path: Path, monkeypatch)
 def test_evaluate_lowest_hanging_fruit(tmp_path: Path):
     d = tmp_path / "src"
     d.mkdir()
-    # Five hard failures on `simple` (score 0%, gap 60).
+    # Five hard failures on `simple` (score 24%, gap 36) via genuinely
+    # redundant boilerplate — large enough (240 bytes) to be well above the
+    # entropy probe's tiny-input size floor, so this fails on real
+    # repetitiveness rather than a single-line file's fixed-overhead
+    # artifact.
     for idx in range(5):
-        (d / f"trivial_{idx}.py").write_text(f"x = {idx}\n", encoding="utf-8")
-    # One clear near-miss on `simple` (~52%, the smallest failing gap).
+        (d / f"trivial_{idx}.py").write_text("x = 1\n" * 40, encoding="utf-8")
+    # One clear near-miss on `simple` (55%, the smallest failing gap) via a
+    # chain of 8 independent ifs — cyclomatic/max-function-complexity carry
+    # the score down close to (but under) the 60% threshold, comfortably
+    # sized (276 bytes) to be unaffected by the entropy size floor too.
     near = d / "near_miss.py"
-    near.write_text(
-        "def f(a, b):\n"
-        "    if a:\n"
-        "        return b\n"
-        "    if b:\n"
-        "        return a\n"
-        "    return 0\n",
-        encoding="utf-8",
-    )
+    near_lines = ["def f(" + ", ".join(f"a{i}" for i in range(1, 9)) + "):"]
+    for i in range(1, 9):
+        near_lines.append(f"    if a{i}:")
+        near_lines.append(f"        return {i}")
+    near_lines.append("    return 0")
+    near.write_text("\n".join(near_lines) + "\n", encoding="utf-8")
 
     runner = CliRunner()
     result = runner.invoke(cli, ["evaluate", str(d), "-r"])
@@ -151,7 +155,7 @@ def test_evaluate_lowest_hanging_fruit(tmp_path: Path):
     assert "near_miss.py" in fruit_section
     # The near-miss is the cheapest win: ranked first with the smallest gap.
     assert re.search(r"1\.\s+.*near_miss\.py", fruit_section)
-    assert "simple 52% → 60%" in fruit_section
+    assert "simple 55% → 60%" in fruit_section
 
 
 def test_evaluate_lowest_hanging_fruit_all_pass_message(tmp_path: Path):

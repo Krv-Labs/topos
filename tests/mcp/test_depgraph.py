@@ -12,6 +12,7 @@ import pytest
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
+from topos.mcp.cache import clear_caches, dep_graph_for
 from topos.mcp.evaluation import (
     STALE_GITNEXUS_MARKER,
     DepgraphStatus,
@@ -82,6 +83,14 @@ def test_status_missing_points_to_generate(tmp_path, monkeypatch) -> None:
         # An invalid override must NOT route to generation (a bad path won't be
         # fixed by regenerating); next_tool is None so the agent fixes the path.
         (DepgraphState.INVALID_DIR, ["invalid_gitnexus_dir"], False, None),
+        # A branch with no indexed store (others may be indexed) routes to
+        # generation, same shape as MISSING/STALE.
+        (
+            DepgraphState.BRANCH_NOT_INDEXED,
+            ["branch_not_indexed_gitnexus_dir"],
+            False,
+            "topos_generate_depgraph",
+        ),
     ],
 )
 def test_status_maps_each_state(
@@ -733,3 +742,160 @@ def test_generate_ensure_regenerates_after_in_place_edit(tmp_path, monkeypatch) 
     assert r.ok is True
     assert r.generated is True
     assert r.state_before == DepgraphState.STALE
+
+
+def _checkout_branch(root, name: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(root), "checkout", "-b", name],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _rename_branch(root, name: str) -> None:
+    """Deterministically name the current branch, independent of the
+    system's init.defaultBranch config (main vs master vs anything else)."""
+    subprocess.run(
+        ["git", "-C", str(root), "branch", "-m", name],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _write_meta(store_dir: Path, *, branch: str) -> None:
+    store_dir.mkdir(parents=True, exist_ok=True)
+    (store_dir / "meta.json").write_text(
+        json.dumps({"branch": branch, "lastCommit": "abc123"}), encoding="utf-8"
+    )
+
+
+def test_generate_runs_once_when_branch_not_indexed(tmp_path, monkeypatch) -> None:
+    _use_root(tmp_path, monkeypatch)
+    gitnexus = tmp_path / ".gitnexus"
+    calls = []
+
+    def fake_generate(d):
+        calls.append(d)
+        return DepgraphGenerationResult(True, 0, gitnexus, "done")
+
+    def fake_status(_override, _project_root, _target_file):
+        return DepgraphStatus(
+            state=DepgraphState.BRANCH_NOT_INDEXED.value,
+            gitnexus_dir=str(gitnexus),
+            gitnexus_mtime=1.0,
+            git_head_mtime=2.0,
+            detail="no gitnexus store indexed for branch 'feature-x'",
+        )
+
+    monkeypatch.setattr(depgraph_tool, "depgraph_status", fake_status)
+    monkeypatch.setattr(depgraph_tool, "generate_depgraph", fake_generate)
+
+    r = _generate(topos_generate_depgraph(GenerateDepgraphInput()))
+
+    assert calls == [tmp_path]
+    assert r.ok is True
+    assert r.generated is True
+    assert r.state_before == DepgraphState.BRANCH_NOT_INDEXED
+    assert r.agent_contract.next_tool == "topos_evaluate_file"
+
+
+def test_depgraph_status_detects_branch_not_indexed_end_to_end(tmp_path) -> None:
+    """Real depgraph_status() (no monkeypatching of the function itself):
+    flat store belongs to 'main', current branch is 'feature-x', no
+    branches/* store exists for it -> state must be branch_not_indexed, not
+    a generic load_error."""
+    from topos.mcp.evaluation import depgraph_status
+
+    _commit_repo(tmp_path)
+    _checkout_branch(tmp_path, "feature-x")
+    gitnexus = _graph_dir(tmp_path, fingerprint=None)
+    _write_meta(gitnexus, branch="main")
+
+    status = depgraph_status(None, tmp_path, "f.py")
+    assert status.state == "branch_not_indexed"
+    assert "feature-x" in status.detail
+
+
+def test_graph_freshness_uses_resolved_branch_store_not_stale_flat(tmp_path) -> None:
+    """The fingerprint-desync bug: flat slot (main) carries a fingerprint that
+    would read as STALE if consulted; the branches/feature-x store (current
+    branch) carries a fingerprint that matches HEAD. _graph_freshness must
+    resolve to the branch store, not the flat one."""
+    head = _commit_repo(tmp_path)
+    _checkout_branch(tmp_path, "feature-x")
+
+    gitnexus = tmp_path / ".gitnexus"
+    gitnexus.mkdir()
+    flat_lbug = gitnexus / "lbug"
+    flat_lbug.write_text("", encoding="utf-8")
+    _write_meta(gitnexus, branch="main")
+    (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({"head_sha": "0" * 40}),
+        encoding="utf-8",  # would read stale
+    )
+
+    branch_dir = gitnexus / "branches" / "feature-x-deadbeef"
+    branch_dir.mkdir(parents=True)
+    (branch_dir / "lbug").write_text("", encoding="utf-8")
+    _write_meta(branch_dir, branch="feature-x")
+    (branch_dir / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({"head_sha": head}),
+        encoding="utf-8",  # matches current HEAD
+    )
+
+    is_stale, detail = _graph_freshness(tmp_path, gitnexus)
+    assert is_stale is False
+    assert detail is None
+
+
+def _write_json_lbug(store_dir: Path, *, file_path: str) -> None:
+    lbug = store_dir / "lbug"
+    lbug.mkdir(parents=True, exist_ok=True)
+    (lbug / "graph.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": f"File:{file_path}",
+                    "label": "File",
+                    "properties": {"filePath": file_path},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_dep_graph_for_cache_key_includes_branch_not_just_mtime(tmp_path) -> None:
+    """Two branch-scoped stores sharing an identical mtime (coarse filesystem
+    resolution, or a same-second CI run) must not collide in the cache --
+    the branch itself has to be part of the key, not just the mtime."""
+    clear_caches()
+    _commit_repo(tmp_path)
+    _rename_branch(tmp_path, "main")  # deterministic, regardless of system default
+    gitnexus = tmp_path / ".gitnexus"
+
+    main_dir = gitnexus / "branches" / "main-aaa"
+    _write_json_lbug(main_dir, file_path="main.py")
+    _write_meta(main_dir, branch="main")
+
+    feature_dir = gitnexus / "branches" / "feature-x-bbb"
+    _write_json_lbug(feature_dir, file_path="feature.py")
+    _write_meta(feature_dir, branch="feature-x")
+
+    same_time = 12345.0
+    os.utime(main_dir / "lbug", (same_time, same_time))
+    os.utime(feature_dir / "lbug", (same_time, same_time))
+
+    _checkout_branch(tmp_path, "feature-x")
+    on_feature = dep_graph_for(gitnexus, "feature.py")
+    assert on_feature.get_node("File:feature.py") is not None
+    assert on_feature.get_node("File:main.py") is None
+
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "checkout", "main"],
+        check=True,
+        capture_output=True,
+    )
+    on_main = dep_graph_for(gitnexus, "main.py")
+    assert on_main.get_node("File:main.py") is not None
+    assert on_main.get_node("File:feature.py") is None

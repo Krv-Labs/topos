@@ -32,6 +32,34 @@ def is_entrypoint_module(morphism: ProgramMorphism) -> bool:
     return _is_entrypoint_source_only(morphism.source, morphism.language)
 
 
+def is_stable_leaf_module(morphism: ProgramMorphism) -> bool:
+    """True iff *morphism* is a declarations-only module with no executable
+    control/call flow — Martin's accepted "Zone of Pain" exception for
+    frozen, rarely-changing foundation/utility code (constants, error types).
+
+    Deliberately filename-agnostic (unlike :func:`is_entrypoint_module`):
+    the whole point of pairing Abstractness with Instability is to avoid
+    per-language filename lists, and that principle extends here where
+    possible.
+    """
+    if morphism.ast is None or morphism.ast.uast_root is None:
+        return False
+    from topos.functors.probes.uast.signature import control_flow_profile
+
+    profile = control_flow_profile(morphism.ast.uast_root)
+    disqualifying_kinds = (
+        "IfStmt",
+        "ForStmt",
+        "WhileStmt",
+        "MatchStmt",
+        "TryStmt",
+        "CallExpr",
+        "FunctionDecl",
+        "MethodDecl",
+    )
+    return all(profile.get(kind, 0) == 0 for kind in disqualifying_kinds)
+
+
 def _entrypoint_filename_hint(path: Path, language: str) -> bool:
     filename = path.name
     lower_name = filename.lower()

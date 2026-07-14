@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/topos-core", "crates/topos-cli", "crates/topos-pyo3"]
 
 [workspace.package]
-version = "0.3.10"
+version = "0.3.11"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/Krv-Labs/topos"

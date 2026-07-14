@@ -26,6 +26,15 @@ _INSTALL_HINT = "GitNexus not found. Install it with: npm install -g gitnexus"
 # freshness is not decided by fragile filesystem clocks.
 GITNEXUS_FINGERPRINT_FILE = ".topos-fingerprint.json"
 
+# GitNexus-owned files/dirs (not Topos-authored, unlike the fingerprint above).
+# GitNexus writes the first-ever `gitnexus analyze` for a repo to the flat
+# slot (`.gitnexus/lbug` + `.gitnexus/meta.json`). Re-running `analyze` on a
+# *different* branch than the one recorded in the flat `meta.json` does not
+# update the flat slot -- it creates `.gitnexus/branches/<branch>-<hash>/lbug`
+# instead, each with its own `meta.json`.
+GITNEXUS_META_FILE = "meta.json"
+GITNEXUS_BRANCHES_DIR = "branches"
+
 # ``gitnexus analyze`` can legitimately run for minutes on a large repo, so the
 # default ceiling is deliberately generous. Operators can override it via the
 # ``TOPOS_DEPGRAPH_TIMEOUT`` env var (seconds); set it to 0 to disable entirely.
@@ -55,6 +64,119 @@ def _resolve_timeout(timeout: float | None) -> float | None:
 def gitnexus_available() -> bool:
     """Whether the ``gitnexus`` CLI is on PATH."""
     return shutil.which(GITNEXUS_CMD) is not None
+
+
+@dataclass(frozen=True)
+class LbugStoreMeta:
+    """The subset of GitNexus's own ``meta.json`` Topos cares about."""
+
+    branch: str | None
+    last_commit: str | None
+
+
+def _read_store_meta(store_dir: Path) -> LbugStoreMeta | None:
+    """Best-effort parse of GitNexus's ``meta.json`` next to a store.
+
+    Returns ``None`` on any read/parse error or a missing ``"branch"`` key --
+    callers treat that identically to "no metadata, can't branch-match."
+    """
+    try:
+        raw = json.loads((store_dir / GITNEXUS_META_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    branch = raw.get("branch")
+    if not isinstance(branch, str):
+        return None
+    last_commit = raw.get("lastCommit")
+    return LbugStoreMeta(
+        branch=branch,
+        last_commit=last_commit if isinstance(last_commit, str) else None,
+    )
+
+
+def current_git_branch(project_root: Path) -> str | None:
+    """Current branch name, parsed from ``.git/HEAD`` without shelling out.
+
+    Mirrors ``topos.mcp.evaluation._git_head_sha``'s no-subprocess approach
+    exactly, since this is called on every dependency-graph read, not just at
+    generate time. Returns ``None`` for a non-git dir, a detached HEAD (HEAD
+    holds a raw SHA, not a ``ref:`` line), or a ref outside ``refs/heads/``
+    (e.g. a tag checkout) -- all of which mean "no branch identity to match
+    against," and callers fall back to the flat store unconditionally.
+    """
+    git_dir = project_root / ".git"
+    try:
+        head_text = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not head_text.startswith("ref: "):
+        return None  # detached HEAD: contents are a SHA, not a branch name
+    ref = head_text.removeprefix("ref: ").strip()
+    prefix = "refs/heads/"
+    if not ref.startswith(prefix):
+        return None
+    return ref.removeprefix(prefix) or None
+
+
+@dataclass(frozen=True)
+class ResolvedLbugStore:
+    """The ``lbug`` store to load for a given branch, or a "no match" report."""
+
+    path: Path | None
+    matched_branch: str | None
+    available_branches: tuple[str, ...] = ()
+
+
+def resolve_lbug_store(
+    gitnexus_dir: Path, current_branch: str | None
+) -> ResolvedLbugStore:
+    """Pick the ``lbug`` store under ``gitnexus_dir`` matching *current_branch*.
+
+    1. ``current_branch`` is ``None`` (no git / detached HEAD), or the flat
+       store exists with no ``meta.json`` (a legacy, pre-branch-aware store)
+       -> the flat slot unconditionally. This is what keeps the change fully
+       backward compatible with every store GitNexus wrote before it started
+       branch-scoping, and with detached-HEAD checkouts, which have no branch
+       identity to match against.
+    2. The flat store's ``meta.json`` records ``current_branch`` -> flat slot.
+    3. Otherwise scan ``branches/*/meta.json`` for one recording
+       ``current_branch`` (matched on the ``meta.json`` content, never on the
+       opaque ``<hash>`` suffix GitNexus appends to the directory name -- we
+       don't control how that hash is derived, and a branch name containing
+       ``/`` may not round-trip through a directory-name-safe encoding).
+    4. No match anywhere -> ``path=None``, ``available_branches`` populated
+       (sorted) so the caller can build an actionable error message.
+    """
+    flat_lbug = gitnexus_dir / "lbug"
+    flat_meta = _read_store_meta(gitnexus_dir)
+
+    if current_branch is None or (flat_lbug.exists() and flat_meta is None):
+        return ResolvedLbugStore(
+            path=flat_lbug if flat_lbug.exists() else None,
+            matched_branch=flat_meta.branch if flat_meta else None,
+        )
+
+    if flat_meta is not None and flat_meta.branch == current_branch:
+        return ResolvedLbugStore(path=flat_lbug, matched_branch=current_branch)
+
+    available: list[str] = [flat_meta.branch] if flat_meta is not None else []
+    branches_dir = gitnexus_dir / GITNEXUS_BRANCHES_DIR
+    if branches_dir.is_dir():
+        for candidate in sorted(branches_dir.iterdir()):
+            meta = _read_store_meta(candidate)
+            if meta is None:
+                continue
+            available.append(meta.branch)
+            if meta.branch == current_branch:
+                lbug = candidate / "lbug"
+                if lbug.exists():
+                    return ResolvedLbugStore(path=lbug, matched_branch=current_branch)
+
+    return ResolvedLbugStore(
+        path=None,
+        matched_branch=None,
+        available_branches=tuple(sorted({b for b in available if b})),
+    )
 
 
 @dataclass(frozen=True)
@@ -167,9 +289,14 @@ def generate_depgraph(
         )
 
     gitnexus_path = target_dir / ".gitnexus"
+    branch = current_git_branch(target_dir)
+    resolved = resolve_lbug_store(gitnexus_path, branch)
+    fingerprint_dir = (
+        resolved.path.parent if resolved.path is not None else gitnexus_path
+    )
     _write_fingerprint(
         target_dir,
-        gitnexus_path,
+        fingerprint_dir,
         start_time=start_time,
         source_snapshot=source_snapshot,
     )

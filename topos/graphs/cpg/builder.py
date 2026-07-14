@@ -31,15 +31,20 @@ def build_cpg(
     uast_root: UASTNode,
     cfg: ControlFlowGraph | None = None,
     pdg: ProgramDependenceGraph | None = None,
+    source: str = "",
 ) -> tuple[dict[str, CPGNode], list[CPGEdge]]:
     """Return ``(nodes, edges)`` for the CPG.
 
     Reuses pre-built CFG / PDG when supplied; otherwise builds them.
+    ``source`` (when given) is forwarded to a freshly-built PDG so its
+    data-dependence pass can recover real identifier text instead of
+    falling back to per-occurrence node ids (see
+    ``topos.graphs.pdg.object._identifier_name``).
     """
     if cfg is None:
         cfg = ControlFlowGraph.from_uast(uast_root)
     if pdg is None:
-        pdg = ProgramDependenceGraph.from_uast(uast_root)
+        pdg = ProgramDependenceGraph.from_uast(uast_root, source=source)
 
     nodes: dict[str, CPGNode] = {}
     _collect_nodes(uast_root, nodes)

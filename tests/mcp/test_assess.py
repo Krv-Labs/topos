@@ -269,9 +269,9 @@ _BRANCHY_FN = (
 def _force_regression_score():
     """Patch the classifier so the *proposed* eval scores worse.
 
-    Decouples the regression-status trigger from the lattice scoring model's
-    quirks (added branching can score as an improvement under SIMPLE), so the
-    test exercises the additive regression-diff path on a true regression.
+    Forces the regression deterministically (independent of the natural
+    SIMPLE score for this particular snippet pair) so the test exercises
+    the additive regression-diff path without depending on exact scoring.
     """
     import topos.mcp.evaluation as ev_mod
     from topos.core.omega import EvaluationValue
@@ -319,14 +319,19 @@ def test_assess_regression_emits_function_scoped_diff() -> None:
 
 def test_assess_improvement_has_no_regression_diff() -> None:
     """A non-regression verdict leaves regression_diff None."""
+    # Removing the branching is a genuine simplification (cyclomatic 4 -> 1),
+    # not reliant on any scoring quirk -- see _force_regression_score's note
+    # on the reverse direction.
     tr = topos_assess_improvement(
         AssessImprovementInput(
-            current_code=_SIMPLE_FN, proposed_code=_BRANCHY_FN, preferences=_PREFS
+            current_code=_BRANCHY_FN, proposed_code=_SIMPLE_FN, preferences=_PREFS
         )
     )
     r = _assess(tr)
-    # Unpatched, added branching scores as an improvement here.
-    assert r.status == AssessmentStatus.IMPROVEMENT
+    assert r.status in {
+        AssessmentStatus.IMPROVEMENT,
+        AssessmentStatus.IMPROVEMENT_SCORE,
+    }
     assert r.regression_diff is None
     assert "## Regression diff" not in _content_text(tr)
 

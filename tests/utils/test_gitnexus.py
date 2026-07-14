@@ -12,7 +12,9 @@ from topos.utils.gitnexus import (
     DEFAULT_ANALYZE_TIMEOUT_S,
     GITNEXUS_FINGERPRINT_FILE,
     _resolve_timeout,
+    current_git_branch,
     generate_depgraph,
+    resolve_lbug_store,
     source_fingerprint,
 )
 
@@ -192,3 +194,163 @@ def test_generate_skips_unreadable_source_dirs(
     payload = json.loads(marker.read_text(encoding="utf-8"))
     assert payload["source_file_count"] == 1
     assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash
+
+
+def _checkout_branch(root: Path, name: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(root), "checkout", "-b", name],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _write_meta(store_dir: Path, *, branch: str, last_commit: str = "abc123") -> None:
+    store_dir.mkdir(parents=True, exist_ok=True)
+    (store_dir / "meta.json").write_text(
+        json.dumps({"branch": branch, "lastCommit": last_commit}), encoding="utf-8"
+    )
+
+
+def _write_flat_store(gitnexus_dir: Path, *, branch: str | None) -> Path:
+    gitnexus_dir.mkdir(parents=True, exist_ok=True)
+    lbug = gitnexus_dir / "lbug"
+    lbug.write_bytes(b"\x00")
+    if branch is not None:
+        _write_meta(gitnexus_dir, branch=branch)
+    return lbug
+
+
+def _write_branch_store(
+    gitnexus_dir: Path, *, branch: str, suffix: str = "deadbeef"
+) -> Path:
+    store_dir = gitnexus_dir / "branches" / f"{branch}-{suffix}"
+    store_dir.mkdir(parents=True, exist_ok=True)
+    lbug = store_dir / "lbug"
+    lbug.write_bytes(b"\x00")
+    _write_meta(store_dir, branch=branch)
+    return lbug
+
+
+# ---------------------------------------------------------------------------
+# current_git_branch
+# ---------------------------------------------------------------------------
+
+
+def test_current_git_branch_reads_symbolic_ref(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    _checkout_branch(tmp_path, "feature-x")
+    assert current_git_branch(tmp_path) == "feature-x"
+
+
+def test_current_git_branch_none_for_detached_head(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    head_sha = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "checkout", head_sha],
+        check=True,
+        capture_output=True,
+    )
+    assert current_git_branch(tmp_path) is None
+
+
+def test_current_git_branch_none_without_git_dir(tmp_path: Path) -> None:
+    assert current_git_branch(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_lbug_store
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_lbug_store_flat_matches_current_branch(tmp_path: Path) -> None:
+    gitnexus_dir = tmp_path / ".gitnexus"
+    flat = _write_flat_store(gitnexus_dir, branch="main")
+    resolved = resolve_lbug_store(gitnexus_dir, "main")
+    assert resolved.path == flat
+    assert resolved.matched_branch == "main"
+
+
+def test_resolve_lbug_store_prefers_branch_dir_over_wrong_flat(tmp_path: Path) -> None:
+    gitnexus_dir = tmp_path / ".gitnexus"
+    _write_flat_store(gitnexus_dir, branch="main")
+    branch_lbug = _write_branch_store(gitnexus_dir, branch="feature-x")
+    resolved = resolve_lbug_store(gitnexus_dir, "feature-x")
+    assert resolved.path == branch_lbug
+    assert resolved.matched_branch == "feature-x"
+
+
+def test_resolve_lbug_store_no_match_reports_available_branches(tmp_path: Path) -> None:
+    gitnexus_dir = tmp_path / ".gitnexus"
+    _write_flat_store(gitnexus_dir, branch="main")
+    _write_branch_store(gitnexus_dir, branch="feature-x")
+    resolved = resolve_lbug_store(gitnexus_dir, "feature-y")
+    assert resolved.path is None
+    assert resolved.available_branches == ("feature-x", "main")
+
+
+def test_resolve_lbug_store_none_branch_uses_flat_unconditionally(
+    tmp_path: Path,
+) -> None:
+    gitnexus_dir = tmp_path / ".gitnexus"
+    flat = _write_flat_store(gitnexus_dir, branch="main")
+    _write_branch_store(gitnexus_dir, branch="feature-x")
+    resolved = resolve_lbug_store(gitnexus_dir, None)
+    assert resolved.path == flat
+
+
+def test_resolve_lbug_store_legacy_flat_with_no_meta_used_unconditionally(
+    tmp_path: Path,
+) -> None:
+    gitnexus_dir = tmp_path / ".gitnexus"
+    flat = _write_flat_store(gitnexus_dir, branch=None)  # no meta.json at all
+    resolved = resolve_lbug_store(gitnexus_dir, "feature-x")
+    assert resolved.path == flat
+
+
+def test_resolve_lbug_store_missing_gitnexus_dir(tmp_path: Path) -> None:
+    resolved = resolve_lbug_store(tmp_path / ".gitnexus", "main")
+    assert resolved.path is None
+    assert resolved.available_branches == ()
+
+
+# ---------------------------------------------------------------------------
+# Fingerprint colocation (the false-negative regression from the bug report)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_writes_fingerprint_beside_resolved_branch_store(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    _checkout_branch(tmp_path, "feature-x")
+    gitnexus_dir = tmp_path / ".gitnexus"
+    # Flat slot already belongs to another branch (main) with its own stale
+    # fingerprint; a branch-scoped store for feature-x already exists (as if
+    # GitNexus had just written it) but has no fingerprint yet.
+    _write_flat_store(gitnexus_dir, branch="main")
+    (gitnexus_dir / GITNEXUS_FINGERPRINT_FILE).write_text(
+        json.dumps({"head_sha": "stale-main-sha"}), encoding="utf-8"
+    )
+    branch_lbug = _write_branch_store(gitnexus_dir, branch="feature-x")
+
+    with (
+        patch("topos.utils.gitnexus.gitnexus_available", return_value=True),
+        patch("subprocess.run", side_effect=_fake_analyze),
+    ):
+        result = generate_depgraph(tmp_path)
+
+    assert result.ok is True
+    branch_fingerprint = branch_lbug.parent / GITNEXUS_FINGERPRINT_FILE
+    assert branch_fingerprint.exists()
+    payload = json.loads(branch_fingerprint.read_text(encoding="utf-8"))
+    assert payload["head_sha"] is not None
+    # The flat slot's fingerprint must be left untouched (still main's stale sha).
+    flat_payload = json.loads(
+        (gitnexus_dir / GITNEXUS_FINGERPRINT_FILE).read_text(encoding="utf-8")
+    )
+    assert flat_payload["head_sha"] == "stale-main-sha"

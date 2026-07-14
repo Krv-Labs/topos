@@ -28,10 +28,19 @@ from topos.evaluation.characteristic_morphism import (
 )
 from topos.evaluation.policies.base import Priority
 from topos.graphs.base import Representation
-from topos.graphs.mdg.object import LadybugSchemaMismatchError, ModuleDependencyGraph
-from topos.utils.gitnexus import GITNEXUS_FINGERPRINT_FILE, source_fingerprint
+from topos.graphs.mdg.object import (
+    LadybugBranchMismatchError,
+    LadybugSchemaMismatchError,
+    ModuleDependencyGraph,
+)
+from topos.utils.gitnexus import (
+    GITNEXUS_FINGERPRINT_FILE,
+    current_git_branch,
+    resolve_lbug_store,
+    source_fingerprint,
+)
 
-from .cache import dep_graph_for
+from .cache import _gitnexus_mtime, dep_graph_for
 
 # Debug-only: which freshness method decided a verdict, and the calibration
 # internals in _newer_source_file. Never rises above DEBUG — this exists so a
@@ -109,10 +118,22 @@ def _is_schema_mismatch(message: str | None) -> bool:
     )
 
 
+BRANCH_NOT_INDEXED_MARKER = "no gitnexus store indexed for branch"
+
+
+def _is_branch_not_indexed(message: str | None) -> bool:
+    """Whether a dep-graph load error is LadybugBranchMismatchError's message."""
+    if not message:
+        return False
+    return BRANCH_NOT_INDEXED_MARKER in message.lower()
+
+
 def _dep_graph_load_warning(gitnexus_dir: Path, dep_graph_loaded: bool) -> list[str]:
     if dep_graph_loaded:
         return []
     load_error = last_dep_graph_error()
+    if _is_branch_not_indexed(load_error):
+        return [f"COMPOSABLE not scored — {load_error}"]
     is_schema_mismatch = _is_schema_mismatch(load_error)
     if is_schema_mismatch:
         return [
@@ -303,7 +324,11 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
     Graphs from before the fingerprint marker fall back to comparing the
     graph DB mtime to the latest commit's mtime. Returns ``(is_stale, detail)``.
     """
-    fingerprint = _read_graph_fingerprint(gitnexus_dir)
+    branch = current_git_branch(project_root)
+    resolved = resolve_lbug_store(gitnexus_dir, branch)
+    store_dir = resolved.path.parent if resolved.path is not None else gitnexus_dir
+
+    fingerprint = _read_graph_fingerprint(store_dir)
     if fingerprint is not None and fingerprint.source_hash is not None:
         current = source_fingerprint(project_root)
         is_stale = current.content_hash != fingerprint.source_hash
@@ -328,7 +353,7 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
         )
 
     if fingerprint is not None and fingerprint.generated_at is not None:
-        fingerprint_file = gitnexus_dir / GITNEXUS_FINGERPRINT_FILE
+        fingerprint_file = store_dir / GITNEXUS_FINGERPRINT_FILE
         fingerprint_mtime = None
         if fingerprint_file.exists():
             with contextlib.suppress(OSError):
@@ -362,7 +387,7 @@ def _graph_freshness(project_root: Path, gitnexus_dir: Path) -> tuple[bool, str 
 
     # Legacy fallback: no fingerprint marker (or HEAD unresolvable) — compare the
     # graph DB mtime to the latest commit's mtime.
-    graph_mtime = _gitnexus_mtime(gitnexus_dir)
+    graph_mtime = _gitnexus_mtime(gitnexus_dir, branch)
     head_mtime = _git_head_mtime(project_root)
     if graph_mtime <= 0 or head_mtime is None:
         _logger.debug("depgraph freshness: method=legacy_dir_mtime unavailable")
@@ -441,16 +466,6 @@ def _git_head_sha(project_root: Path) -> str | None:
         return _packed_ref_sha(git_dir, ref)
 
 
-def _gitnexus_mtime(gitnexus_dir: Path) -> float:
-    lbug = gitnexus_dir / "lbug"
-    try:
-        if lbug.exists():
-            return lbug.stat().st_mtime
-        return gitnexus_dir.stat().st_mtime
-    except OSError:
-        return 0.0
-
-
 @dataclass(frozen=True)
 class DepgraphStatus:
     """Structured ``.gitnexus`` state for the depgraph status MCP tool."""
@@ -486,7 +501,8 @@ def depgraph_status(
             detail="No .gitnexus directory found; run topos_generate_depgraph.",
         )
 
-    graph_mtime = _gitnexus_mtime(gitnexus_dir)
+    branch = current_git_branch(project_root)
+    graph_mtime = _gitnexus_mtime(gitnexus_dir, branch)
     head_mtime = _git_head_mtime(project_root)
     dir_str = str(gitnexus_dir)
 
@@ -495,7 +511,12 @@ def depgraph_status(
         dep_graph_for(gitnexus_dir, target_file)
     except Exception as exc:  # noqa: BLE001 — surface any load failure as state
         msg = str(exc)
-        state = "schema_mismatch" if _is_schema_mismatch(msg) else "load_error"
+        if isinstance(exc, LadybugBranchMismatchError):
+            state = "branch_not_indexed"
+        elif _is_schema_mismatch(msg):
+            state = "schema_mismatch"
+        else:
+            state = "load_error"
         return DepgraphStatus(state, dir_str, graph_mtime, head_mtime, detail=msg)
 
     stale, detail = _graph_freshness(project_root, gitnexus_dir)
@@ -546,9 +567,10 @@ def _intrinsic_representations(
     morphism: ProgramMorphism,
 ) -> list[Representation]:
     """
-    Build the three intrinsic representations derived from the UAST: CFG,
-    academic PDG, CPG.  These require no external tooling so they are
-    always attached.  Missing UAST (parse failure) yields an empty list.
+    Build the intrinsic representations derived from the UAST: CFG,
+    academic PDG, CPG, Abstractness.  These require no external tooling so
+    they are always attached.  Missing UAST (parse failure) yields an
+    empty list.
     """
     reps: list[Representation] = []
     cfg = morphism.build_cfg()
@@ -560,6 +582,9 @@ def _intrinsic_representations(
     cpg = morphism.build_cpg()
     if cpg is not None:
         reps.append(cpg)
+    abstractness = morphism.build_abstractness()
+    if abstractness is not None:
+        reps.append(abstractness)
     return reps
 
 

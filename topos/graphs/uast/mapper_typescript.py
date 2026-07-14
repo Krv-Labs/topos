@@ -26,10 +26,24 @@ _TS_EXTRA = {
 }
 
 
+_TYPE_KIND = {
+    "interface_declaration": "interface",
+    "abstract_class_declaration": "abstractClass",
+    "class_declaration": "class",
+    "enum_declaration": "enum",
+    "type_alias_declaration": "typeAlias",
+}
+
+
 def map_node_kind(node: Node) -> str:
     if node.type in _TS_EXTRA:
         return _TS_EXTRA[node.type]
     return map_javascript_node_kind(node)
+
+
+def extract_type_attributes(node: Node) -> dict[str, object]:
+    type_kind = _TYPE_KIND.get(node.type)
+    return {"typeKind": type_kind} if type_kind is not None else {}
 
 
 def map_typescript_tree_to_uast(root: Node, file: str | None = None) -> UASTNode:
@@ -38,4 +52,5 @@ def map_typescript_tree_to_uast(root: Node, file: str | None = None) -> UASTNode
         language="typescript",
         map_node_kind=map_node_kind,
         file=file,
+        extract_attributes=extract_type_attributes,
     )

@@ -13,6 +13,13 @@ This module provides the core transformation engine that:
     native Tree-sitter types into unified UNodeKinds.
 3.  **Preserves Fidelity**: Populates every UASTNode with the original byte
     spans and a NativeRef containing the parser identity and native node type.
+4.  **Excludes Test-Only Nodes**: Language mappers may supply an
+    `is_test_node` predicate (see `TestNodeFilter`) so test-only
+    constructs (e.g. Rust `#[cfg(test)]` modules, Python
+    `if __name__ == "__main__":` guards) are dropped from the SIMPLE-relevant
+    AST without the shared engine needing any language-specific knowledge.
+5.  **Attaches Language Attributes**: Language mappers may supply
+    `extract_attributes` to add normalized metadata such as `typeKind`.
 """
 
 from __future__ import annotations
@@ -25,6 +32,34 @@ from importlib.metadata import PackageNotFoundError, version
 from tree_sitter import Node
 
 from topos.graphs.uast.models import NativeRef, SourceSpan, UASTNode
+
+# A per-language classifier deciding which of a node's named siblings are
+# test-only scaffolding that should be excluded from the UAST (along with
+# their whole subtrees).
+#
+# Signature: `(named_siblings) -> {id, ...}`, where `named_siblings` is the
+# full ordered list of named children of one parent — i.e. exactly what
+# `node.parent`'s named children are before any filtering — and the return
+# value is the set of `Node.id`s (tree-sitter's stable per-node identity)
+# to drop.
+#
+# This is a *batch* classifier, not a per-node predicate, because some
+# languages need positional/stateful context to classify a single node: Rust
+# expresses "this is test code" as a *separate preceding sibling* attribute
+# rather than as part of the node it applies to, so answering "is this node
+# dropped?" requires knowing what came immediately before it in the sibling
+# list. A per-node query interface would force that scan to be repeated from
+# scratch for every sibling (O(n) work × n nodes = O(n²) per parent); a
+# single pass over the whole list computes the same classification in O(n).
+# Languages whose test markers are self-contained within one node (e.g.
+# Python's `if __name__ == "__main__":` guard) still do a single O(n) pass,
+# just without needing any cross-node state.
+#
+# Each language mapper owns its own classifier and passes it to
+# `map_tree_sitter_to_uast` via `is_test_node`, the same way `map_node_kind`
+# is threaded through today. Languages that don't (yet) filter test nodes
+# pass `None` (the default), which preserves today's "no filtering" behavior.
+TestNodeFilter = Callable[[list[Node]], set[int]]
 
 _TREE_SITTER_PACKAGE = {
     "python": "tree-sitter-python",
@@ -76,36 +111,37 @@ def map_tree_sitter_to_uast(
     language: str,
     map_node_kind: Callable[[Node], str],
     file: str | None = None,
+    is_test_node: TestNodeFilter | None = None,
+    extract_attributes: Callable[[Node], dict[str, object]] | None = None,
 ) -> UASTNode:
+    """Map a Tree-sitter CST to the normalized UAST representation.
+
+    `is_test_node`, when provided, classifies each node's named siblings in
+    one pass to decide which are test-only scaffolding that should be
+    excluded from the SIMPLE-relevant AST — see `TestNodeFilter`. Languages
+    that don't provide one keep today's behavior of mapping every named
+    node.
+
+    `extract_attributes`, when provided, contributes language-specific
+    normalized attributes to each mapped UAST node.
+    """
     parser_name, parser_version = parser_identity(language)
 
     def _filtered_named_children(node: Node) -> list[Node]:
-        """Named children of `node`, minus any Rust item annotated with
-        `#[cfg(test)]`.
+        """Named children of `node`, minus any the language's `is_test_node`
+        classifier flags as test-only.
 
-        Tree-sitter-rust represents an attribute as a *preceding sibling*
-        of the item it annotates (both children of the same parent), not
-        as a descendant of that item — so the check has to correlate
-        adjacent siblings, not scan a single node's own children.
+        The classifier sees the full named-sibling list in one pass (not a
+        single candidate node queried repeatedly) so languages whose test
+        markers live on a *separate* sibling — e.g. Rust's `#[cfg(test)]`
+        attribute preceding the item it annotates — can correlate adjacent
+        siblings in O(n) instead of re-scanning per candidate.
         """
         named = [c for c in node.children if c.is_named]
-        if language != "rust":
+        if is_test_node is None:
             return named
-        filtered: list[Node] = []
-        pending_test_attr = False
-        for child in named:
-            if child.type == "attribute_item":
-                text = child.text
-                if text and b"cfg(test)" in text:
-                    pending_test_attr = True
-                    continue
-                filtered.append(child)
-                continue
-            if pending_test_attr:
-                pending_test_attr = False
-                continue
-            filtered.append(child)
-        return filtered
+        dropped = is_test_node(named)
+        return [child for child in named if child.id not in dropped]
 
     # Two-phase iterative traversal — avoids Python recursion limits on deeply
     # nested trees (macro-expanded Rust, minified JS, etc.).
@@ -155,12 +191,15 @@ def map_tree_sitter_to_uast(
             parser_version=parser_version,
             node_kind=node.type,
         )
+        attributes: dict[str, object] = {"named": node.is_named}
+        if extract_attributes is not None:
+            attributes.update(extract_attributes(node) or {})
         uast_nodes[node.id] = UASTNode(
             kind=map_node_kind(node),
             lang=language,
             span=span,
             native=native,
-            attributes={"named": node.is_named},
+            attributes=attributes,
             children=children,
             id=node_stable_id,
         )

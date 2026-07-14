@@ -503,6 +503,134 @@ def test_from_gitnexus_dir_missing_lbug_raises():
         ModuleDependencyGraph.from_gitnexus_dir(tmp, target_file="x.py")
 
 
+# ---------------------------------------------------------------------------
+# from_gitnexus_dir — branch-scoped stores (GitNexus writes
+# .gitnexus/branches/<branch>-<hash>/lbug instead of updating the flat slot
+# once a second branch is analyzed; see topos.utils.gitnexus.resolve_lbug_store)
+# ---------------------------------------------------------------------------
+
+
+def _write_git_head(project_root: Path, branch: str | None) -> None:
+    git_dir = project_root / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    if branch is None:
+        (git_dir / "HEAD").write_text("deadbeef" * 5, encoding="utf-8")  # detached
+    else:
+        (git_dir / "HEAD").write_text(f"ref: refs/heads/{branch}\n", encoding="utf-8")
+
+
+def _write_meta(store_dir: Path, *, branch: str) -> None:
+    (store_dir / "meta.json").write_text(
+        json.dumps({"branch": branch, "lastCommit": "abc123"}), encoding="utf-8"
+    )
+
+
+def test_from_gitnexus_dir_uses_branch_scoped_store_over_stale_flat():
+    """The literal bug from the report: flat holds main's stale data, a
+    branches/feature-x-* store holds feature-x's data, HEAD is on feature-x
+    -> must load feature-x's data, not main's."""
+    with tempfile.TemporaryDirectory() as tmp:
+        project_root = Path(tmp)
+        gitnexus_dir = project_root / ".gitnexus"
+        _write_git_head(project_root, "feature-x")
+
+        # Flat slot: main's (stale) data.
+        _write_lbug_dir(
+            gitnexus_dir,
+            [
+                {
+                    "id": "File:main.py",
+                    "label": "File",
+                    "properties": {"filePath": "main.py"},
+                }
+            ],
+        )
+        _write_meta(gitnexus_dir, branch="main")
+
+        # branches/feature-x-<hash>/: feature-x's data.
+        branch_dir = gitnexus_dir / "branches" / "feature-x-deadbeef"
+        _write_lbug_dir(
+            branch_dir,
+            [
+                {
+                    "id": "File:feature.py",
+                    "label": "File",
+                    "properties": {"filePath": "feature.py"},
+                }
+            ],
+        )
+        _write_meta(branch_dir, branch="feature-x")
+
+        g = ModuleDependencyGraph.from_gitnexus_dir(
+            gitnexus_dir, target_file="feature.py"
+        )
+
+    assert g.get_node("File:feature.py") is not None
+    assert g.get_node("File:main.py") is None
+
+
+def test_from_gitnexus_dir_branch_not_indexed_raises_branch_mismatch_error():
+    from topos.graphs.mdg.object import LadybugBranchMismatchError
+
+    with tempfile.TemporaryDirectory() as tmp:
+        project_root = Path(tmp)
+        gitnexus_dir = project_root / ".gitnexus"
+        _write_git_head(project_root, "feature-y")
+
+        _write_lbug_dir(
+            gitnexus_dir,
+            [
+                {
+                    "id": "File:main.py",
+                    "label": "File",
+                    "properties": {"filePath": "main.py"},
+                }
+            ],
+        )
+        _write_meta(gitnexus_dir, branch="main")
+
+        with pytest.raises(LadybugBranchMismatchError, match="feature-y"):
+            ModuleDependencyGraph.from_gitnexus_dir(gitnexus_dir, target_file="x.py")
+
+
+def test_from_gitnexus_dir_detached_head_uses_flat_unconditionally():
+    """A detached HEAD has no branch identity to match -- fall back to the
+    flat slot even when other branch-scoped stores exist."""
+    with tempfile.TemporaryDirectory() as tmp:
+        project_root = Path(tmp)
+        gitnexus_dir = project_root / ".gitnexus"
+        _write_git_head(project_root, None)  # detached
+
+        _write_lbug_dir(
+            gitnexus_dir,
+            [
+                {
+                    "id": "File:main.py",
+                    "label": "File",
+                    "properties": {"filePath": "main.py"},
+                }
+            ],
+        )
+        _write_meta(gitnexus_dir, branch="main")
+
+        branch_dir = gitnexus_dir / "branches" / "feature-x-deadbeef"
+        _write_lbug_dir(
+            branch_dir,
+            [
+                {
+                    "id": "File:feature.py",
+                    "label": "File",
+                    "properties": {"filePath": "feature.py"},
+                }
+            ],
+        )
+        _write_meta(branch_dir, branch="feature-x")
+
+        g = ModuleDependencyGraph.from_gitnexus_dir(gitnexus_dir, target_file="main.py")
+
+    assert g.get_node("File:main.py") is not None
+
+
 def test_from_gitnexus_dir_list_format_auto_id():
     """Relationships without an explicit id get an auto-generated id."""
     items = [

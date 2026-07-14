@@ -772,6 +772,79 @@ CASES = [
         False,
         {"mdg.fan_out": "fan-out (16) exceeds threshold (> 15.0)"},
     ),
+    # --- Distance-from-Main-Sequence (issue #124) — abstractness present,
+    # straddling main_sequence_distance_max=0.5 and
+    # stable_leaf_instability_max=0.05 ---
+    (
+        "composable",
+        {"instability": 1.0, "abstractness": 0.0},
+        1.0,
+        True,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.00) within tolerance (<= 0.5) — instability and abstractness are balanced",
+            "mdg.instability": "instability (1.00) is too high (module depends on too many things)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 1.0, "abstractness": 0.49},
+        0.020000000000000018,
+        True,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.49) within tolerance (<= 0.5) — instability and abstractness are balanced",
+            "mdg.instability": "instability (1.00) is too high (module depends on too many things)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 1.0, "abstractness": 0.5},
+        0.0,
+        True,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.50) within tolerance (<= 0.5) — instability and abstractness are balanced",
+            "mdg.instability": "instability (1.00) is too high (module depends on too many things)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 1.0, "abstractness": 0.51},
+        0.0,
+        False,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.51) exceeds threshold (> 0.5) — module is too concrete-and-stable (rigid) or too abstract-and-unstable (speculative) for its role",
+            "mdg.instability": "instability (1.00) is too high (module depends on too many things)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 0.05, "abstractness": 0.0, "is_stable_leaf_module": True},
+        0.0,
+        True,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.95) is high, but tolerated for frozen, declarations-only leaf modules",
+            "mdg.instability": "instability (0.05) is too low (module is too stable)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 0.05, "abstractness": 0.0, "is_stable_leaf_module": False},
+        0.0,
+        False,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.95) exceeds threshold (> 0.5) — module is too concrete-and-stable (rigid) or too abstract-and-unstable (speculative) for its role",
+            "mdg.instability": "instability (0.05) is too low (module is too stable)",
+        },
+    ),
+    (
+        "composable",
+        {"instability": 0.051, "abstractness": 0.0, "is_stable_leaf_module": True},
+        0.0,
+        False,
+        {
+            "mdg.main_sequence_distance": "main-sequence distance (0.95) exceeds threshold (> 0.5) — module is too concrete-and-stable (rigid) or too abstract-and-unstable (speculative) for its role",
+            "mdg.instability": "instability (0.05) is too low (module is too stable)",
+        },
+    ),
     (
         "secure",
         {"dangerous_calls": 0.0},

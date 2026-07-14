@@ -170,7 +170,19 @@ export interface MethodDeclNode extends UNodeBase {
 
 export interface TypeDeclNode extends UNodeBase {
   kind: "TypeDecl";
-  typeKind: "class" | "struct" | "enum" | "interface" | "typeAlias" | "union";
+  typeKind:
+    | "class"
+    | "struct"
+    | "enum"
+    | "interface"
+    | "typeAlias"
+    | "union"
+    | "trait"
+    | "abstractClass"
+    | "protocol";
+  // "trait" | "abstractClass" | "protocol" are abstract; the rest are
+  // concrete. Drives Martin's Abstractness metric (mdg.abstractness,
+  // topos/functors/probes/uast/abstractness.py) — see issue #124.
   name: IdentifierNode;
   members: UNode[];
   bases?: TypeRefNode[];

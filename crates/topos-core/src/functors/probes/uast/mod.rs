@@ -5,4 +5,5 @@
 //! module holds only the per-program probes `P : E → ℝ` that those
 //! profunctors compose.
 
+pub mod abstractness;
 pub mod signature;

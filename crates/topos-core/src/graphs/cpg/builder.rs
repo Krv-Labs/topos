@@ -36,9 +36,9 @@ fn node_key(node: &UASTNode) -> String {
 }
 
 /// Return `(nodes, edges)` for the CPG, building the CFG and PDG afresh.
-pub fn build_cpg(uast_root: &UASTNode) -> (HashMap<String, CPGNode>, Vec<CPGEdge>) {
+pub fn build_cpg(uast_root: &UASTNode, source: &str) -> (HashMap<String, CPGNode>, Vec<CPGEdge>) {
     let cfg = ControlFlowGraph::from_uast(uast_root);
-    let pdg = ProgramDependenceGraph::from_uast(uast_root);
+    let pdg = ProgramDependenceGraph::from_uast(uast_root, source);
 
     let mut nodes = HashMap::new();
     collect_nodes(uast_root, &mut nodes);
@@ -146,7 +146,7 @@ mod tests {
     fn build_cpg_includes_all_four_edge_families_when_present() {
         let source = "def f(x):\n    if x:\n        y = 1\n    return y\n";
         let result = parse_source(source, "python", None).unwrap();
-        let (nodes, edges) = build_cpg(&result.uast_root);
+        let (nodes, edges) = build_cpg(&result.uast_root, source);
 
         assert!(!nodes.is_empty());
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Ast));

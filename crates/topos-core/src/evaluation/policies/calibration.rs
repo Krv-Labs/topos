@@ -38,6 +38,13 @@ pub struct SimplePolicyThresholds {
     pub max_cyclomatic_cap: f64,
     pub max_function_complexity_cap: f64,
     pub entropy_ideal: f64,
+    /// Below this many source bytes, an `ast.entropy` reading *above*
+    /// `entropy_ideal` is unreliable — zlib's fixed per-stream overhead
+    /// dominates the ratio (issue #152), so a tiny branch-free function can
+    /// read as "denser" than a larger, genuinely branchy one. Mirrors
+    /// `ENTROPY_SIZE_FLOOR_BYTES` in `functors::probes::ast::entropy`; see
+    /// `evaluation::policies::simple::quality`.
+    pub entropy_size_floor_bytes: f64,
 }
 
 /// `Φ_COMPOSABLE` gates and normalization.
@@ -52,6 +59,21 @@ pub struct ComposablePolicyThresholds {
     /// zero fan-in may sit at or above this instability without
     /// failing the gate.
     pub entrypoint_instability_min: f64,
+    /// Distance from Martin's Main Sequence (D = |A + I - 1|), gated in
+    /// place of raw instability whenever Abstractness (`mdg.abstractness`)
+    /// is available — see `evaluation::policies::composable::score_coupling`
+    /// and issue #124. PROVISIONAL: a first-pass estimate (roughly Martin's
+    /// commonly-cited "principal zone" radius), not yet run through the
+    /// PyPI corpus ECDF calibration the other constants in this struct
+    /// received.
+    pub main_sequence_distance_max: f64,
+    /// Zone-of-Pain carve-out: a declarations-only, no-branching "stable
+    /// leaf" module (constants, error types — see
+    /// `evaluation::file_roles::is_stable_leaf_module`) may sit at or below
+    /// this instability without failing the gate, mirroring
+    /// `entrypoint_instability_min` for the low-instability extreme. Also
+    /// PROVISIONAL.
+    pub stable_leaf_instability_max: f64,
     // Normalization (score only)
     pub max_fan_in_cap: f64,
     pub max_fan_out_cap: f64,
@@ -76,6 +98,7 @@ pub const SIMPLE: SimplePolicyThresholds = SimplePolicyThresholds {
     max_cyclomatic_cap: 40.0,
     max_function_complexity_cap: 20.0,
     entropy_ideal: 0.5,
+    entropy_size_floor_bytes: 200.0,
 };
 
 pub const COMPOSABLE: ComposablePolicyThresholds = ComposablePolicyThresholds {
@@ -84,6 +107,8 @@ pub const COMPOSABLE: ComposablePolicyThresholds = ComposablePolicyThresholds {
     max_fan_in: 15.0,
     max_fan_out: 15.0,
     entrypoint_instability_min: 0.95,
+    main_sequence_distance_max: 0.5,
+    stable_leaf_instability_max: 0.05,
     max_fan_in_cap: 40.0,
     max_fan_out_cap: 40.0,
 };

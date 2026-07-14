@@ -25,12 +25,13 @@ pub struct CodePropertyGraph {
 
 impl CodePropertyGraph {
     pub fn from_uast(uast_root: &UASTNode, source: impl Into<String>) -> Self {
-        let (nodes, edges) = build_cpg(uast_root);
+        let source = source.into();
+        let (nodes, edges) = build_cpg(uast_root, &source);
         CodePropertyGraph {
             nodes,
             edges,
             language: uast_root.lang.clone(),
-            source: source.into(),
+            source,
         }
     }
 

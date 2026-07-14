@@ -39,6 +39,7 @@ use topos_core::evaluation::characteristic_morphism::{
     CharacteristicMorphism, ClassificationResult,
 };
 use topos_core::evaluation::policies::base::Priority;
+use topos_core::functors::probes::uast::abstractness::AbstractnessRepresentation;
 use topos_core::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 use topos_core::graphs::base::Representation;
 
@@ -111,6 +112,10 @@ pub(crate) fn classify_with_representations(
     let cfg = morphism.build_cfg().cloned();
     let pdg = morphism.build_pdg().cloned();
     let cpg = morphism.build_cpg().cloned();
+    let abstractness = morphism
+        .ast
+        .as_ref()
+        .map(|ast| AbstractnessRepresentation::new(&ast.uast_root));
     let mut representations: Vec<&dyn Representation> = Vec::new();
     if let Some(cfg) = &cfg {
         representations.push(cfg);
@@ -120,6 +125,9 @@ pub(crate) fn classify_with_representations(
     }
     if let Some(cpg) = &cpg {
         representations.push(cpg);
+    }
+    if let Some(abstractness) = &abstractness {
+        representations.push(abstractness);
     }
     classifier.classify_detailed(morphism, &representations, Priority::default())
 }

@@ -49,6 +49,14 @@ pub struct GateContext<'a> {
     pub value: f64,
     pub metrics: &'a HashMap<String, f64>,
     pub is_entrypoint_module: bool,
+    pub is_stable_leaf_module: bool,
+    /// Raw Martin instability, threaded separately from `metrics` because
+    /// `mdg.instability` is deliberately absent from the gated metrics map
+    /// whenever `mdg.main_sequence_distance` is active (see
+    /// `evaluation::policies::composable::score_coupling`) -- re-adding it
+    /// under its own key would re-trigger the (now-superseded)
+    /// `mdg.instability` GateSpec for the same file.
+    pub instability: Option<f64>,
 }
 
 /// One raw-metric gate: band, pillar, exemption, remedy, and prose.
@@ -120,6 +128,17 @@ fn instability_entrypoint_exempt(ctx: &GateContext) -> bool {
         && ctx.metrics.get("mdg.fan_in") == Some(&0.0)
 }
 
+/// Frozen, declarations-only leaf modules may sit at maximal distance from
+/// the main sequence -- Martin's accepted "Zone of Pain" exception for
+/// foundation/utility code (constants, error types) that is stable *and*
+/// concrete by design, not because it's poorly layered.
+fn distance_stable_leaf_exempt(ctx: &GateContext) -> bool {
+    ctx.is_stable_leaf_module
+        && ctx
+            .instability
+            .is_some_and(|i| i <= COMPOSABLE.stable_leaf_instability_max)
+}
+
 // --- Interpretation renderers (canonical prose) --------------------------
 
 fn interpret_cyclomatic(value: f64, outcome: GateOutcome) -> String {
@@ -177,6 +196,25 @@ fn interpret_instability(value: f64, outcome: GateOutcome) -> String {
             "instability ({value:.2}) is high, but tolerated for import/export-only entrypoint modules"
         ),
         _ => format!("instability ({value:.2}) is too high (module depends on too many things)"),
+    }
+}
+
+fn interpret_main_sequence_distance(value: f64, outcome: GateOutcome) -> String {
+    let max_d = COMPOSABLE.main_sequence_distance_max;
+    match outcome {
+        GateOutcome::Pass => format!(
+            "main-sequence distance ({value:.2}) within tolerance (<= {max_d}) -- \
+             instability and abstractness are balanced"
+        ),
+        GateOutcome::ExemptHigh => format!(
+            "main-sequence distance ({value:.2}) is high, but tolerated for frozen, \
+             declarations-only leaf modules"
+        ),
+        _ => format!(
+            "main-sequence distance ({value:.2}) exceeds threshold (> {max_d}) -- module \
+             is too concrete-and-stable (rigid) or too abstract-and-unstable \
+             (speculative) for its role"
+        ),
     }
 }
 
@@ -285,6 +323,17 @@ pub static GATE_SPECS: &[GateSpec] = &[
         operations_high: &["rebalance_dependencies", "extract_boundary"],
     },
     GateSpec {
+        metric: "mdg.main_sequence_distance",
+        pillar: "composable",
+        low: None,
+        high: Some(COMPOSABLE.main_sequence_distance_max),
+        granularity: "module",
+        interpret: interpret_main_sequence_distance,
+        exempt: Some(distance_stable_leaf_exempt),
+        operations_low: &[],
+        operations_high: &["rebalance_dependencies", "extract_boundary"],
+    },
+    GateSpec {
         metric: "mdg.fan_in",
         pillar: "composable",
         low: None,
@@ -356,13 +405,22 @@ pub fn evaluate_gates(
     metrics: &HashMap<String, f64>,
     pillar: Option<&str>,
     is_entrypoint_module: bool,
+    is_stable_leaf_module: bool,
+    instability: Option<f64>,
 ) -> Vec<GateResult> {
     GATE_SPECS
         .iter()
         .filter(|spec| pillar.is_none_or(|p| spec.pillar == p))
         .filter_map(|spec| {
             let value = *metrics.get(spec.metric)?;
-            let outcome = classify(spec, value, metrics, is_entrypoint_module);
+            let outcome = classify(
+                spec,
+                value,
+                metrics,
+                is_entrypoint_module,
+                is_stable_leaf_module,
+                instability,
+            );
             Some(GateResult {
                 spec,
                 value,
@@ -376,7 +434,7 @@ pub fn evaluate_gates(
 pub fn interpret_metric(metric: &str, value: f64) -> String {
     let spec = gate_for_metric(metric).expect("metric must have a registered GateSpec");
     let empty = HashMap::new();
-    let outcome = classify(spec, value, &empty, false);
+    let outcome = classify(spec, value, &empty, false, false, None);
     (spec.interpret)(value, outcome)
 }
 
@@ -385,6 +443,8 @@ fn classify(
     value: f64,
     metrics: &HashMap<String, f64>,
     is_entrypoint_module: bool,
+    is_stable_leaf_module: bool,
+    instability: Option<f64>,
 ) -> GateOutcome {
     let (fail, exempt) = if spec.low.is_some_and(|low| value < low) {
         (GateOutcome::FailLow, GateOutcome::ExemptLow)
@@ -397,6 +457,8 @@ fn classify(
         value,
         metrics,
         is_entrypoint_module,
+        is_stable_leaf_module,
+        instability,
     };
     match spec.exempt {
         Some(predicate) if predicate(&ctx) => exempt,
@@ -411,7 +473,7 @@ mod tests {
     #[test]
     fn cyclomatic_within_threshold_passes() {
         let metrics = HashMap::from([("cfg.cyclomatic".to_string(), 5.0)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false);
+        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         assert_eq!(results.len(), 1);
         assert!(results[0].passed());
     }
@@ -419,7 +481,7 @@ mod tests {
     #[test]
     fn cyclomatic_over_threshold_fails_with_extract_helper_operation() {
         let metrics = HashMap::from([("cfg.cyclomatic".to_string(), 20.0)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false);
+        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         assert!(!results[0].passed());
         assert!(results[0].operations().contains(&"extract_helper"));
     }
@@ -427,7 +489,7 @@ mod tests {
     #[test]
     fn entropy_low_is_exempt_for_entrypoint_modules() {
         let metrics = HashMap::from([("ast.entropy".to_string(), 0.05)]);
-        let results = evaluate_gates(&metrics, Some("simple"), true);
+        let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
         let entropy = results
             .iter()
             .find(|r| r.spec.metric == "ast.entropy")
@@ -439,7 +501,7 @@ mod tests {
     #[test]
     fn entropy_low_fails_for_ordinary_modules() {
         let metrics = HashMap::from([("ast.entropy".to_string(), 0.05)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false);
+        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         let entropy = results
             .iter()
             .find(|r| r.spec.metric == "ast.entropy")
@@ -450,7 +512,7 @@ mod tests {
     #[test]
     fn instability_exemption_requires_zero_fan_in_not_missing_fan_in() {
         let metrics = HashMap::from([("mdg.instability".to_string(), 0.99)]);
-        let results = evaluate_gates(&metrics, Some("composable"), true);
+        let results = evaluate_gates(&metrics, Some("composable"), true, false, None);
         let instability = results
             .iter()
             .find(|r| r.spec.metric == "mdg.instability")

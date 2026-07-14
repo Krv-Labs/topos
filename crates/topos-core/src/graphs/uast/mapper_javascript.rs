@@ -37,5 +37,5 @@ pub fn map_node_kind(kind: &str) -> &'static str {
 }
 
 pub fn map_javascript_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
-    map_tree_sitter_to_uast(root, "javascript", map_node_kind, source, file, None)
+    map_tree_sitter_to_uast(root, "javascript", map_node_kind, source, file, None, None)
 }

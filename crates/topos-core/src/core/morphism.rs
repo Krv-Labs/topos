@@ -134,7 +134,8 @@ impl ProgramMorphism {
     /// Build (and cache) the academic Program Dependence Graph.
     pub fn build_pdg(&mut self) -> Option<&ProgramDependenceGraph> {
         if self.pdg.is_none() {
-            let pdg = ProgramDependenceGraph::from_uast(&self.ast.as_ref()?.uast_root);
+            let pdg =
+                ProgramDependenceGraph::from_uast(&self.ast.as_ref()?.uast_root, &self.source);
             self.pdg = Some(pdg);
         }
         self.pdg.as_ref()

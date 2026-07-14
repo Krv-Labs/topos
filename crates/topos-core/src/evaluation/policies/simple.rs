@@ -29,6 +29,7 @@ pub fn score_simple(
     entropy: Option<f64>,
     max_function_complexity: Option<f64>,
     is_entrypoint_module: bool,
+    source_size_bytes: Option<f64>,
 ) -> ScoredDecision {
     let mut metrics = HashMap::new();
     if let Some(v) = cyclomatic {
@@ -41,7 +42,7 @@ pub fn score_simple(
         metrics.insert("ast.max_function_complexity".to_string(), v);
     }
 
-    let results = evaluate_gates(&metrics, Some("simple"), is_entrypoint_module);
+    let results = evaluate_gates(&metrics, Some("simple"), is_entrypoint_module, false, None);
     if results.is_empty() {
         // If no metrics are provided, we vacuously satisfy SIMPLE.
         return ScoredDecision {
@@ -54,7 +55,7 @@ pub fn score_simple(
     // Score shaping (reporting only): quality curves stay local to Φ_SIMPLE.
     let qualities: Vec<f64> = results
         .iter()
-        .map(|r| quality(r.spec.metric, r.value))
+        .map(|r| quality(r.spec.metric, r.value, source_size_bytes))
         .collect();
 
     ScoredDecision {
@@ -70,10 +71,24 @@ pub fn score_simple(
 }
 
 /// Normalize one raw metric to a `[0, 1]` quality (never gates `achieved`).
-fn quality(metric: &str, value: f64) -> f64 {
+fn quality(metric: &str, value: f64, source_size_bytes: Option<f64>) -> f64 {
     match metric {
         "cfg.cyclomatic" => 1.0 - (value / SIMPLE.max_cyclomatic_cap).min(1.0),
-        "ast.entropy" => (1.0 - 2.0 * (value - SIMPLE.entropy_ideal).abs()).max(0.0),
+        "ast.entropy" => {
+            let deviation = value - SIMPLE.entropy_ideal;
+            let below_floor =
+                source_size_bytes.is_some_and(|bytes| bytes < SIMPLE.entropy_size_floor_bytes);
+            if below_floor && deviation > 0.0 {
+                // Tiny inputs inflate the ratio via zlib's fixed per-stream
+                // overhead (issue #152): an above-ideal reading isn't a
+                // reliable "too dense" signal at this size, so it doesn't
+                // sink the score. Below-ideal (repetition) stays fully
+                // penalized -- that signal holds at any size.
+                1.0
+            } else {
+                (1.0 - 2.0 * deviation.abs()).max(0.0)
+            }
+        }
         _ => 1.0 - (value / SIMPLE.max_function_complexity_cap).min(1.0),
     }
 }
@@ -90,7 +105,7 @@ mod tests {
     #[test]
     fn perfect_code_scores_one() {
         // Ideal: cyclomatic=0, entropy=0.5, max_func=0 -> score is 1.0
-        let result = score_simple(Some(0.0), Some(0.5), Some(0.0), false);
+        let result = score_simple(Some(0.0), Some(0.5), Some(0.0), false, None);
         assert_eq!(result.score, 1.0);
         assert!(result.achieved);
     }
@@ -98,23 +113,23 @@ mod tests {
     #[test]
     fn pathological_code_scores_zero() {
         // Worst case: cyclomatic=40, entropy=1.0, max_func=20 -> score is 0.0
-        let result = score_simple(Some(40.0), Some(1.0), Some(20.0), false);
+        let result = score_simple(Some(40.0), Some(1.0), Some(20.0), false, None);
         assert_eq!(result.score, 0.0);
         assert!(!result.achieved);
     }
 
     #[test]
     fn independent_thresholds_each_fail_alone() {
-        assert!(score_simple(Some(10.0), Some(0.5), Some(5.0), false).achieved);
-        assert!(!score_simple(Some(16.0), Some(0.5), Some(5.0), false).achieved); // fail cyclomatic
-        assert!(!score_simple(Some(10.0), Some(0.9), Some(5.0), false).achieved); // fail entropy
-        assert!(!score_simple(Some(10.0), Some(0.5), Some(11.0), false).achieved);
+        assert!(score_simple(Some(10.0), Some(0.5), Some(5.0), false, None).achieved);
+        assert!(!score_simple(Some(16.0), Some(0.5), Some(5.0), false, None).achieved); // fail cyclomatic
+        assert!(!score_simple(Some(10.0), Some(0.9), Some(5.0), false, None).achieved); // fail entropy
+        assert!(!score_simple(Some(10.0), Some(0.5), Some(11.0), false, None).achieved);
         // fail max func
     }
 
     #[test]
     fn no_metrics_vacuously_satisfies() {
-        let result = score_simple(None, None, None, false);
+        let result = score_simple(None, None, None, false, None);
         assert!(result.achieved);
         assert_eq!(result.score, 1.0);
     }

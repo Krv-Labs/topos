@@ -1,11 +1,11 @@
 //! Python → UAST mapper.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use tree_sitter::Node;
 
 use super::mapper_common::{map_tree_sitter_to_uast, TestNodeFilter};
-use super::models::UASTNode;
+use super::models::{AttributeValue, UASTNode};
 
 const DUNDER_NAME: &[u8] = b"__name__";
 const DUNDER_MAIN: &[u8] = b"__main__";
@@ -106,6 +106,63 @@ pub fn map_node_kind(kind: &str) -> &'static str {
     }
 }
 
+/// First-pass, name-based Abstractness heuristic -- no import-alias
+/// resolution, so `from foo import ABC as Base` won't be recognized.
+/// Good enough for the overwhelmingly common `abc.ABC` /
+/// `typing.Protocol` spellings.
+const ABSTRACT_BASE_MARKERS: &[&str] = &["ABC", "Protocol", "ABCMeta"];
+
+fn has_abstract_base(node: &Node, source: &[u8]) -> bool {
+    let Some(superclasses) = node.child_by_field_name("superclasses") else {
+        return false;
+    };
+    let Ok(text) = superclasses.utf8_text(source) else {
+        return false;
+    };
+    ABSTRACT_BASE_MARKERS
+        .iter()
+        .any(|marker| text.contains(marker))
+}
+
+fn has_abstractmethod(node: &Node, source: &[u8]) -> bool {
+    let Some(body) = node.child_by_field_name("body") else {
+        return false;
+    };
+    let mut cursor = body.walk();
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "decorated_definition" {
+            continue;
+        }
+        let mut inner_cursor = child.walk();
+        for grandchild in child.named_children(&mut inner_cursor) {
+            if grandchild.kind() == "decorator"
+                && grandchild
+                    .utf8_text(source)
+                    .is_ok_and(|text| text.contains("abstractmethod"))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn extract_type_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    if node.kind() != "class_definition" {
+        return HashMap::new();
+    }
+    let is_abstract = has_abstract_base(node, source) || has_abstractmethod(node, source);
+    let kind = if is_abstract {
+        "abstractClass"
+    } else {
+        "class"
+    };
+    HashMap::from([(
+        "typeKind".to_string(),
+        AttributeValue::Str(kind.to_string()),
+    )])
+}
+
 pub fn map_python_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -114,6 +171,7 @@ pub fn map_python_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) ->
         source,
         file,
         Some(&MainGuardFilter),
+        Some(&extract_type_attributes),
     )
 }
 

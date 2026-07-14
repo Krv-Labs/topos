@@ -9,6 +9,31 @@
 
 use std::io::Write;
 
+const ENTROPY_SIZE_FLOOR_BYTES: usize = 200;
+const ENTROPY_NEUTRAL_RATIO: f64 = 0.5; // mirrors SIMPLE.entropy_ideal
+
+/// Raw zlib compressed/original byte ratio with a tiny-input correction for
+/// zlib's fixed per-stream overhead. Below `ENTROPY_SIZE_FLOOR_BYTES`, only
+/// ratios above the neutral baseline are blended down toward neutral: this
+/// removes false high-entropy failures on tiny dense snippets without
+/// hiding genuinely low-entropy repetitive code (issue #152).
+fn compressed_ratio(source_bytes: &[u8]) -> (usize, f64) {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
+    encoder.write_all(source_bytes).unwrap();
+    let compressed = encoder.finish().unwrap();
+    let compressed_len = compressed.len();
+
+    let raw_ratio = compressed_len as f64 / source_bytes.len() as f64;
+    let ratio =
+        if source_bytes.len() >= ENTROPY_SIZE_FLOOR_BYTES || raw_ratio <= ENTROPY_NEUTRAL_RATIO {
+            raw_ratio
+        } else {
+            let confidence = source_bytes.len() as f64 / ENTROPY_SIZE_FLOOR_BYTES as f64;
+            confidence * raw_ratio + (1.0 - confidence) * ENTROPY_NEUTRAL_RATIO
+        };
+    (compressed_len, ratio)
+}
+
 /// Estimate Kolmogorov complexity via compression ratio.
 ///
 /// `compressed_size / original_size`, after normalizing `\r\n` to `\n`
@@ -20,11 +45,9 @@ pub fn calculate_kolmogorov_proxy(source: &str) -> f64 {
 
     let normalized = source.replace("\r\n", "\n");
     let source_bytes = normalized.as_bytes();
-    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
-    encoder.write_all(source_bytes).unwrap();
-    let compressed = encoder.finish().unwrap();
+    let (_, ratio) = compressed_ratio(source_bytes);
 
-    compressed.len() as f64 / source_bytes.len() as f64
+    ratio
 }
 
 /// Detailed entropy analysis result, with a human-readable interpretation.
@@ -48,11 +71,8 @@ pub fn calculate_entropy_detailed(source: &str) -> EntropyResult {
 
     let normalized = source.replace("\r\n", "\n");
     let source_bytes = normalized.as_bytes();
-    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::new(9));
-    encoder.write_all(source_bytes).unwrap();
-    let compressed = encoder.finish().unwrap();
+    let (compressed_size, ratio) = compressed_ratio(source_bytes);
 
-    let ratio = compressed.len() as f64 / source_bytes.len() as f64;
     let interpretation = if ratio < 0.2 {
         "extreme redundancy (possible boilerplate or repetitive data)"
     } else if ratio < 0.5 {
@@ -65,7 +85,7 @@ pub fn calculate_entropy_detailed(source: &str) -> EntropyResult {
 
     EntropyResult {
         ratio,
-        compressed_size: compressed.len(),
+        compressed_size,
         original_size: source_bytes.len(),
         interpretation: interpretation.to_string(),
     }
@@ -137,5 +157,50 @@ mod tests {
     fn entropy_variance_is_non_negative() {
         let s = "a".repeat(10) + &"b".repeat(10);
         assert!(calculate_entropy_variance(&s, 5) >= 0.0);
+    }
+
+    /// Issue #152: a tiny, structurally-simple array-lookup function must no
+    /// longer score above the SIMPLE `max_entropy` gate (0.8) just because
+    /// zlib's fixed per-stream overhead dominates the ratio on short input.
+    #[test]
+    fn test_kolmogorov_proxy_tiny_dense_function_stays_in_band() {
+        let array_lookup = "pub fn probe(x: u8) -> &'static str {\n    const T: [&str; 8] = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\"];\n    T[x as usize]\n}\n";
+        let ratio = calculate_kolmogorov_proxy(array_lookup);
+        assert!(
+            ratio <= 0.8,
+            "expected tiny array-lookup fn to pass the entropy gate, got {ratio}"
+        );
+    }
+
+    /// Above the size floor, the blend must be a no-op: the ratio should
+    /// equal the plain compressed/original byte ratio exactly.
+    #[test]
+    fn test_kolmogorov_proxy_unaffected_above_size_floor() {
+        let s = "x".repeat(ENTROPY_SIZE_FLOOR_BYTES + 1);
+        let (compressed_len, ratio) = compressed_ratio(s.as_bytes());
+        let raw_ratio = compressed_len as f64 / s.len() as f64;
+        assert_eq!(ratio, raw_ratio);
+    }
+
+    /// Below the size floor, the blended ratio must sit strictly between
+    /// the raw (unblended) ratio and the neutral baseline.
+    #[test]
+    fn test_kolmogorov_proxy_blends_toward_neutral_below_floor() {
+        let s = "x=1";
+        let (compressed_len, blended) = compressed_ratio(s.as_bytes());
+        let raw_ratio = compressed_len as f64 / s.len() as f64;
+        assert!(raw_ratio > ENTROPY_NEUTRAL_RATIO);
+        assert!(blended < raw_ratio);
+        assert!(blended > ENTROPY_NEUTRAL_RATIO);
+    }
+
+    /// Below-floor repetitive code should keep its raw low-entropy signal.
+    #[test]
+    fn test_kolmogorov_proxy_does_not_lift_low_entropy_below_floor() {
+        let s = "a".repeat(100);
+        let (compressed_len, ratio) = compressed_ratio(s.as_bytes());
+        let raw_ratio = compressed_len as f64 / s.len() as f64;
+        assert!(raw_ratio < ENTROPY_NEUTRAL_RATIO);
+        assert_eq!(ratio, raw_ratio);
     }
 }

@@ -15,6 +15,8 @@
 //!    `#[cfg(test)]` items, Python `if __name__ == "__main__":` guards)
 //!    are dropped from the SIMPLE-relevant AST without this shared engine
 //!    needing any language-specific knowledge.
+//! 5. **Attaches language attributes**: language mappers may supply
+//!    `extract_attributes` to add normalized metadata such as `typeKind`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -23,6 +25,10 @@ use blake2::Blake2bVar;
 use tree_sitter::Node;
 
 use super::models::{AttributeValue, NativeRef, SourceSpan, UASTNode};
+
+/// Per-language attribute extractor -- see [`map_tree_sitter_to_uast`]'s
+/// `extract_attributes` parameter.
+pub type AttributeExtractor<'a> = dyn Fn(&Node, &[u8]) -> HashMap<String, AttributeValue> + 'a;
 
 /// A per-language classifier deciding which of a node's named siblings
 /// are test-only scaffolding that should be excluded from the UAST
@@ -175,6 +181,7 @@ pub fn map_tree_sitter_to_uast(
     source: &[u8],
     file: Option<&str>,
     is_test_node: Option<&dyn TestNodeFilter>,
+    extract_attributes: Option<&AttributeExtractor>,
 ) -> UASTNode {
     let (parser_name, parser_version) = parser_identity(language);
 
@@ -213,6 +220,9 @@ pub fn map_tree_sitter_to_uast(
         let end = node.end_position();
         let mut attributes = HashMap::new();
         attributes.insert("named".to_string(), AttributeValue::Bool(node.is_named()));
+        if let Some(extract) = extract_attributes {
+            attributes.extend(extract(&node, source));
+        }
 
         uast_nodes.insert(
             node.id(),

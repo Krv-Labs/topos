@@ -66,48 +66,48 @@ KNOWN_DIVERGENCES: list[Divergence] = [
         metric="ast.max_function_complexity",
         issue="#153",
         reason=(
-            "Two independent, compounding reasons this always differs, not one:\n"
-            "  (1) Python's calculate_max_function_complexity is vacuous (always "
-            "0.0) for every language except Python — its per-function ProgramObject "
-            "never wires uast_root, so the intended language-neutral path is dead "
-            "code and it silently falls back to Python-only native node-type strings.\n"
-            "  (2) Even for Python source, where Python's native-node counting is "
-            "non-vacuous, values still differ: Python counts elif_clause, "
-            "with_statement, assert_statement, list/dict/set/generator "
-            "comprehensions, and boolean short-circuit operators as separate "
-            "decision points (native tree-sitter node types), while the Rust port "
-            "only counts UAST kinds IfStmt/ForStmt/WhileStmt/MatchStmt/TryStmt — the "
-            "same convention topos-core's own CFG builder already uses for "
-            "cfg.cyclomatic (which flattens elif chains into one else-body bucket "
-            "and deliberately does not unfold comprehensions/short-circuit "
-            "operators — see graphs::cfg::builder's and "
-            "functors::probes::ast::complexity's doc comments). The Rust port makes "
-            "ast.max_function_complexity internally consistent with cfg.cyclomatic; "
-            "Python's two complexity metrics use different counting rules for the "
-            "same constructs today."
+            "Fixed for every non-Python language by v0.3.11: Python's "
+            "calculate_max_function_complexity used to be vacuous (always 0.0) "
+            "outside Python because its per-function ProgramObject never wired "
+            "uast_root; it now runs the same language-neutral UAST path "
+            "(DECISION_UAST_KINDS + the BinaryExpr and/or/&&/|| check) the Rust "
+            "port already used, so non-Python values should now match exactly.\n"
+            "Still diverges for Python source itself: Python's native "
+            "tree-sitter path (used only for Python, to preserve the "
+            "established gate) counts elif_clause, with_statement, "
+            "assert_statement, list/dict/set/generator comprehensions, and "
+            "boolean short-circuit operators as separate decision points, while "
+            "the Rust port's UAST path only counts IfStmt/ForStmt/WhileStmt/"
+            "MatchStmt/TryStmt (plus the same BinaryExpr check) — the same "
+            "convention topos-core's own CFG builder already uses for "
+            "cfg.cyclomatic. The Rust port makes ast.max_function_complexity "
+            "internally consistent with cfg.cyclomatic; Python's two complexity "
+            "metrics use different counting rules for the same constructs "
+            "today, for Python source only."
         ),
-        # Always applies: reason (1) covers every non-Python language,
-        # reason (2) covers Python itself.
-        applies=None,
+        # Python-only now: non-Python languages were fixed by #153 and should
+        # match Rust exactly (verify with --language javascript/typescript/
+        # cpp/go runs; drop this Divergence entirely if none show up).
+        applies=lambda language: language == "python",
     ),
 ]
 
 
 def has_unfiltered_main_guard(source: str, language: str) -> bool:
     """Whether `source` has a construct this port's UAST TestNodeFilter
-    excludes from the CFG/PDG but the currently-installed Python CLI
-    (pre-PR #133) does not yet.
+    excludes from the CFG/PDG the same way PR #133 (merged into v0.3.11,
+    #127) now excludes it on the Python side.
 
     This crate's `graphs::uast::mapper_python::MainGuardFilter` forward-
-    ports PR #133's not-yet-merged `if __name__ == "__main__":`
-    exclusion (the same design already merged for Rust's `#[cfg(test)]`
-    via PR #126/#133) — see that module's doc comment. Until PR #133
-    actually lands on `main`, any Python file with this guard will show
-    a real but fully expected `cfg.cyclomatic`/`pdg.*`/`scores.simple`
-    divergence of "one extra branch" in Python's favor, purely from the
-    guard itself still being part of Python's CFG today. Re-run this
-    script against v0.3.11 once PR #133 merges — this allowlist entry
-    should then start reporting the affected files as clean.
+    ported PR #133's `if __name__ == "__main__":` exclusion *before* it
+    merged. Now that #127/#133 have landed on `main`, this allowlist
+    entry is EXPECTED TO BE DEAD CODE: run parity_check.py against a
+    corpus with `__main__` guards and confirm zero files hit this
+    branch. If any still do, it means mapper_python.rs's forward-port
+    doesn't exactly match the *merged* #127 TestNodeFilter/
+    TestNodePredicate batch-classifier shape (mapper_common.rs has not
+    yet been generalized to that interface as of this writing) --
+    investigate before deleting this function.
     """
     if language != "python":
         return False

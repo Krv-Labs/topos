@@ -26,7 +26,7 @@ pub fn score_secure(dangerous_calls: f64, taint_flows: f64) -> ScoredDecision {
         ("cpg.taint_flows".to_string(), taint_flows),
     ]);
 
-    let results = evaluate_gates(&metrics, Some("secure"), false);
+    let results = evaluate_gates(&metrics, Some("secure"), false, false, None);
     if results.is_empty() {
         // If no metrics are provided, we vacuously satisfy SECURE.
         return ScoredDecision {

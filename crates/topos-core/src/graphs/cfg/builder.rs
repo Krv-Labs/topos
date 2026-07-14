@@ -468,8 +468,7 @@ fn match_arms(stmt: &UASTNode) -> Vec<&UASTNode> {
     let Some(first) = stmt.children.first() else {
         return Vec::new();
     };
-    if first.kind == "Unknown" && CASE_ARM_NATIVE_KINDS.contains(&first.native.node_kind.as_str())
-    {
+    if first.kind == "Unknown" && CASE_ARM_NATIVE_KINDS.contains(&first.native.node_kind.as_str()) {
         return unwrap_to_statements(stmt.children.iter());
     }
 

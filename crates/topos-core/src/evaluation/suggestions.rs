@@ -64,7 +64,13 @@ pub fn suggest_refactors(
         }];
     }
 
-    let gate_results = evaluate_gates(&result.raw_metrics, None, result.is_entrypoint_module);
+    let gate_results = evaluate_gates(
+        &result.raw_metrics,
+        None,
+        result.is_entrypoint_module,
+        false,
+        None,
+    );
     let failing: HashMap<&str, &GateResult> = gate_results
         .iter()
         .filter(|r| !r.passed() && r.spec.pillar != "secure")

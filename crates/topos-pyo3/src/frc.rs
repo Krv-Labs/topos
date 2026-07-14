@@ -272,7 +272,7 @@ pub fn directed_forman_curvature(
 mod tests {
     use super::*;
 
-    fn curvature_of<'a>(results: &'a [EdgeCurvature], source: usize, target: usize) -> f64 {
+    fn curvature_of(results: &[EdgeCurvature], source: usize, target: usize) -> f64 {
         results
             .iter()
             .find(|r| {

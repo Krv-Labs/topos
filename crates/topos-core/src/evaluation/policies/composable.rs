@@ -27,10 +27,25 @@ pub fn score_coupling(
     instability: Option<f64>,
     fan_in: Option<f64>,
     fan_out: Option<f64>,
+    abstractness: Option<f64>,
     is_entrypoint_module: bool,
+    is_stable_leaf_module: bool,
 ) -> ScoredDecision {
+    // Files with zero *measured* coupling keep gating on raw instability,
+    // even when `abstractness` is present. `calculate_coupling` returns
+    // instability = 0.5 as a "no signal" fallback for such files --
+    // optimal under the flat-top instability band, but combined with the
+    // common abstractness = 0.0 case it would land main_sequence_distance
+    // exactly on main_sequence_distance_max, passing the hard gate at the
+    // boundary while scoring 0.0 on the distance quality curve.
+    let has_coupling_signal = !(fan_in == Some(0.0) && fan_out == Some(0.0));
+    let use_distance = instability.is_some() && abstractness.is_some() && has_coupling_signal;
+
     let mut metrics = HashMap::new();
-    if let Some(v) = instability {
+    if use_distance {
+        let distance = (abstractness.unwrap() + instability.unwrap() - 1.0).abs();
+        metrics.insert("mdg.main_sequence_distance".to_string(), distance);
+    } else if let Some(v) = instability {
         metrics.insert("mdg.instability".to_string(), v);
     }
     if let Some(v) = fan_in {
@@ -40,7 +55,13 @@ pub fn score_coupling(
         metrics.insert("mdg.fan_out".to_string(), v);
     }
 
-    let results = evaluate_gates(&metrics, Some("composable"), is_entrypoint_module);
+    let results = evaluate_gates(
+        &metrics,
+        Some("composable"),
+        is_entrypoint_module,
+        is_stable_leaf_module,
+        instability,
+    );
     if results.is_empty() {
         // If no metrics are provided, we vacuously satisfy COMPOSABLE.
         return ScoredDecision {
@@ -55,26 +76,43 @@ pub fn score_coupling(
         .map(|r| quality(r.spec.metric, r.value))
         .collect();
 
+    let mut interpretation: HashMap<String, String> = results
+        .iter()
+        .map(|r| (r.spec.metric.to_string(), r.interpretation()))
+        .collect();
+    if use_distance {
+        // `mdg.instability` is deliberately not gated when distance is
+        // active, but users should still see why a high/low instability
+        // reading isn't itself a failure -- surface it as an informational
+        // (non-gating) line alongside the distance verdict.
+        interpretation.insert(
+            "mdg.instability".to_string(),
+            crate::evaluation::policies::gates::interpret_metric(
+                "mdg.instability",
+                instability.unwrap(),
+            ),
+        );
+    }
+
     ScoredDecision {
         score: qualities.into_iter().fold(f64::INFINITY, f64::min),
         achieved: results.iter().all(|r| r.passed()),
-        interpretation: results
-            .iter()
-            .map(|r| (r.spec.metric.to_string(), r.interpretation()))
-            .collect(),
+        interpretation,
     }
 }
 
 fn quality(metric: &str, value: f64) -> f64 {
-    if metric == "mdg.instability" {
-        return instability_tent(value);
+    match metric {
+        "mdg.instability" => instability_tent(value),
+        "mdg.main_sequence_distance" => distance_quality(value),
+        "mdg.fan_in" => 1.0 - (value / COMPOSABLE.max_fan_in_cap).min(1.0),
+        _ => 1.0 - (value / COMPOSABLE.max_fan_out_cap).min(1.0),
     }
-    let cap = if metric == "mdg.fan_in" {
-        COMPOSABLE.max_fan_in_cap
-    } else {
-        COMPOSABLE.max_fan_out_cap
-    };
-    1.0 - (value / cap).min(1.0)
+}
+
+/// Linear fall from `1.0` (on the main sequence) to `0.0` at the cap.
+fn distance_quality(distance: f64) -> f64 {
+    1.0 - (distance / COMPOSABLE.main_sequence_distance_max).min(1.0)
 }
 
 /// Flat-top tent function over `[instability_low, instability_high]`.
@@ -98,26 +136,26 @@ mod tests {
         // instability=0.5 is in-band -> quality 1.0; fan_in/fan_out=5.0
         // are nonzero -> quality 1 - 5/40 = 0.875 each, so the combined
         // (min) score is 0.875, not 1.0 — only all-zero fan would give 1.0.
-        let result = score_coupling(Some(0.5), Some(5.0), Some(5.0), false);
+        let result = score_coupling(Some(0.5), Some(5.0), Some(5.0), None, false, false);
         assert!(result.achieved);
         assert_eq!(result.score, 0.875);
     }
 
     #[test]
     fn zero_fan_and_ideal_instability_scores_one() {
-        let result = score_coupling(Some(0.5), Some(0.0), Some(0.0), false);
+        let result = score_coupling(Some(0.5), Some(0.0), Some(0.0), None, false, false);
         assert!(result.achieved);
         assert_eq!(result.score, 1.0);
     }
 
     #[test]
     fn excessive_fan_out_fails() {
-        let result = score_coupling(Some(0.5), Some(5.0), Some(30.0), false);
+        let result = score_coupling(Some(0.5), Some(5.0), Some(30.0), None, false, false);
         assert!(!result.achieved);
     }
 
     #[test]
     fn no_metrics_vacuously_satisfies() {
-        assert!(score_coupling(None, None, None, false).achieved);
+        assert!(score_coupling(None, None, None, None, false, false).achieved);
     }
 }

@@ -25,6 +25,37 @@ pub fn is_entrypoint_module(morphism: &ProgramMorphism) -> bool {
     is_entrypoint_source_only(&morphism.source, &morphism.language)
 }
 
+/// True iff `morphism` is a declarations-only module with no executable
+/// control/call flow -- Martin's accepted "Zone of Pain" exception for
+/// frozen, rarely-changing foundation/utility code (constants, error
+/// types).
+///
+/// Deliberately filename-agnostic (unlike [`is_entrypoint_module`]): the
+/// whole point of pairing Abstractness with Instability is to avoid
+/// per-language filename lists, and that principle extends here where
+/// possible.
+pub fn is_stable_leaf_module(morphism: &ProgramMorphism) -> bool {
+    let Some(uast_root) = morphism.ast.as_ref().map(|ast| &ast.uast_root) else {
+        return false;
+    };
+    use crate::functors::probes::uast::signature::control_flow_profile;
+
+    let profile = control_flow_profile(uast_root);
+    const DISQUALIFYING_KINDS: &[&str] = &[
+        "IfStmt",
+        "ForStmt",
+        "WhileStmt",
+        "MatchStmt",
+        "TryStmt",
+        "CallExpr",
+        "FunctionDecl",
+        "MethodDecl",
+    ];
+    DISQUALIFYING_KINDS
+        .iter()
+        .all(|kind| *profile.get(*kind).unwrap_or(&0) == 0)
+}
+
 fn entrypoint_filename_hint(path: &Path, language: &str) -> bool {
     let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let lower_name = filename.to_lowercase();

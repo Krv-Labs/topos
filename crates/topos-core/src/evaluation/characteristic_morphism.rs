@@ -47,7 +47,7 @@ use std::fmt;
 
 use crate::core::morphism::ProgramMorphism;
 use crate::core::omega::{verdict_from_generators, EvaluationValue};
-use crate::evaluation::file_roles::is_entrypoint_module;
+use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
 use crate::evaluation::policies::calibration::score_floor;
 use crate::evaluation::policies::composable::score_coupling;
@@ -173,6 +173,8 @@ impl CharacteristicMorphism {
 
         let ast_rep = AstRepresentation::new(ast, &morphism.source, &ast.uast_root);
         let is_entrypoint = is_entrypoint_module(morphism);
+        let is_stable_leaf = is_stable_leaf_module(morphism);
+        let source_size_bytes = morphism.source.len() as f64;
 
         let mut simple_raw = ast_rep.metrics();
         let mut composable_raw: HashMap<String, f64> = HashMap::new();
@@ -195,7 +197,7 @@ impl CharacteristicMorphism {
         let mut scores = HashMap::new();
         let mut interpretation = HashMap::new();
 
-        if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint) {
+        if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint, source_size_bytes) {
             record(
                 &mut dimensions,
                 &mut scores,
@@ -205,7 +207,8 @@ impl CharacteristicMorphism {
                 decision,
             );
         }
-        if let Some(decision) = score_composable_dim(&composable_raw, is_entrypoint) {
+        if let Some(decision) = score_composable_dim(&composable_raw, is_entrypoint, is_stable_leaf)
+        {
             record(
                 &mut dimensions,
                 &mut scores,
@@ -306,6 +309,7 @@ fn record(
 fn score_simple_dim(
     raw: &HashMap<String, f64>,
     is_entrypoint_module: bool,
+    source_size_bytes: f64,
 ) -> Option<ScoredDecision> {
     if !raw.contains_key("cfg.cyclomatic")
         && !raw.contains_key("ast.entropy")
@@ -318,12 +322,14 @@ fn score_simple_dim(
         raw.get("ast.entropy").copied(),
         raw.get("ast.max_function_complexity").copied(),
         is_entrypoint_module,
+        Some(source_size_bytes),
     ))
 }
 
 fn score_composable_dim(
     raw: &HashMap<String, f64>,
     is_entrypoint_module: bool,
+    is_stable_leaf_module: bool,
 ) -> Option<ScoredDecision> {
     if !raw.contains_key("mdg.instability")
         && !raw.contains_key("mdg.fan_in")
@@ -335,7 +341,9 @@ fn score_composable_dim(
         raw.get("mdg.instability").copied(),
         raw.get("mdg.fan_in").copied(),
         raw.get("mdg.fan_out").copied(),
+        raw.get("mdg.abstractness").copied(),
         is_entrypoint_module,
+        is_stable_leaf_module,
     ))
 }
 

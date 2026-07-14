@@ -1,11 +1,11 @@
 //! Rust → UAST mapper.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use tree_sitter::Node;
 
 use super::mapper_common::{map_tree_sitter_to_uast, TestNodeFilter};
-use super::models::UASTNode;
+use super::models::{AttributeValue, UASTNode};
 
 const CFG_TEST_MARKER: &str = "cfg(test)";
 
@@ -49,7 +49,7 @@ impl TestNodeFilter for CfgTestFilter {
 
 pub fn map_node_kind(kind: &str) -> &'static str {
     match kind {
-        "struct_item" | "enum_item" | "impl_item" => "TypeDecl",
+        "struct_item" | "enum_item" | "impl_item" | "trait_item" => "TypeDecl",
         "function_item" => "FunctionDecl",
         "let_declaration" => "VarDecl",
         "if_expression" => "IfStmt",
@@ -72,6 +72,29 @@ pub fn map_node_kind(kind: &str) -> &'static str {
     }
 }
 
+/// Martin Abstractness classification for `TypeDecl` nodes. `impl_item`
+/// is intentionally absent: it implements an existing type rather than
+/// declaring a new one, so it must not be double-counted in the
+/// abstract/concrete ratio.
+fn type_kind(kind: &str) -> Option<&'static str> {
+    match kind {
+        "trait_item" => Some("trait"),
+        "struct_item" => Some("struct"),
+        "enum_item" => Some("enum"),
+        _ => None,
+    }
+}
+
+fn extract_type_attributes(node: &Node, _source: &[u8]) -> HashMap<String, AttributeValue> {
+    match type_kind(node.kind()) {
+        Some(kind) => HashMap::from([(
+            "typeKind".to_string(),
+            AttributeValue::Str(kind.to_string()),
+        )]),
+        None => HashMap::new(),
+    }
+}
+
 pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -80,6 +103,7 @@ pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> U
         source,
         file,
         Some(&CfgTestFilter),
+        Some(&extract_type_attributes),
     )
 }
 

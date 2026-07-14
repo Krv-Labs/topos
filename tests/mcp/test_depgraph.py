@@ -744,7 +744,6 @@ def test_generate_ensure_regenerates_after_in_place_edit(tmp_path, monkeypatch) 
     assert r.state_before == DepgraphState.STALE
 
 
-
 def _checkout_branch(root, name: str) -> None:
     subprocess.run(
         ["git", "-C", str(root), "checkout", "-b", name],
@@ -831,7 +830,8 @@ def test_graph_freshness_uses_resolved_branch_store_not_stale_flat(tmp_path) -> 
     flat_lbug.write_text("", encoding="utf-8")
     _write_meta(gitnexus, branch="main")
     (gitnexus / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({"head_sha": "0" * 40}), encoding="utf-8"  # would read stale
+        json.dumps({"head_sha": "0" * 40}),
+        encoding="utf-8",  # would read stale
     )
 
     branch_dir = gitnexus / "branches" / "feature-x-deadbeef"
@@ -839,7 +839,8 @@ def test_graph_freshness_uses_resolved_branch_store_not_stale_flat(tmp_path) -> 
     (branch_dir / "lbug").write_text("", encoding="utf-8")
     _write_meta(branch_dir, branch="feature-x")
     (branch_dir / GITNEXUS_FINGERPRINT_FILE).write_text(
-        json.dumps({"head_sha": head}), encoding="utf-8"  # matches current HEAD
+        json.dumps({"head_sha": head}),
+        encoding="utf-8",  # matches current HEAD
     )
 
     is_stale, detail = _graph_freshness(tmp_path, gitnexus)

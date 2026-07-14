@@ -170,9 +170,7 @@ def resolve_lbug_store(
             if meta.branch == current_branch:
                 lbug = candidate / "lbug"
                 if lbug.exists():
-                    return ResolvedLbugStore(
-                        path=lbug, matched_branch=current_branch
-                    )
+                    return ResolvedLbugStore(path=lbug, matched_branch=current_branch)
 
     return ResolvedLbugStore(
         path=None,

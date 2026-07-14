@@ -196,7 +196,6 @@ def test_generate_skips_unreadable_source_dirs(
     assert payload["source_hash"] == source_fingerprint(tmp_path).content_hash
 
 
-
 def _checkout_branch(root: Path, name: str) -> None:
     subprocess.run(
         ["git", "-C", str(root), "checkout", "-b", name],

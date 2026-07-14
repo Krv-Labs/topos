@@ -89,9 +89,7 @@ def composable_contract_signals(
     invalid_override = any(
         marker in w for w in messages for marker in INVALID_GITNEXUS_MARKERS
     )
-    branch_not_indexed = any(
-        BRANCH_NOT_INDEXED_MARKER in w.lower() for w in messages
-    )
+    branch_not_indexed = any(BRANCH_NOT_INDEXED_MARKER in w.lower() for w in messages)
     stale_graph = any(STALE_GITNEXUS_MARKER in w for w in messages)
 
     if not coupling_available:

@@ -125,7 +125,6 @@ def test_no_process_nodes_yields_empty_paths():
     assert graph.edges() == []
 
 
-
 def test_from_gitnexus_dir_delegates_to_branch_aware_mdg_resolution():
     """ProcessGraph.from_gitnexus_dir just wraps
     ModuleDependencyGraph.from_gitnexus_dir + from_mdg -- confirm the

@@ -46,6 +46,13 @@ class SimplePolicyThresholds:
     max_cyclomatic_cap: float = 40.0
     max_function_complexity_cap: float = 20.0
     entropy_ideal: float = 0.5
+    # Below this many source bytes, an ``ast.entropy`` reading *above*
+    # entropy_ideal is unreliable — zlib's fixed per-stream overhead
+    # dominates the ratio (issue #152), so a tiny branch-free function can
+    # read as "denser" than a larger, genuinely branchy one. Mirrors
+    # ENTROPY_SIZE_FLOOR_BYTES in src/probes_ast.rs; see
+    # topos.evaluation.policies.simple._quality.
+    entropy_size_floor_bytes: float = 200.0
 
 
 @dataclass(frozen=True)

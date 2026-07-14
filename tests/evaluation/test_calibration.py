@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from topos.evaluation.policies.calibration import (
     CLONE,
     COMPOSABLE,
@@ -264,3 +265,85 @@ def test_composable_zero_coupling_signal_falls_back_to_instability_gate():
     assert decision.score == 1.0
     assert "mdg.main_sequence_distance" not in decision.interpretation
     assert "mdg.instability" in decision.interpretation
+
+
+# ---------------------------------------------------------------------------
+# Entropy size-floor score shaping (issue #152)
+# ---------------------------------------------------------------------------
+
+
+def test_simple_entropy_below_floor_above_ideal_is_not_penalized():
+    # A tiny (< entropy_size_floor_bytes) source whose entropy reads above
+    # entropy_ideal is not a reliable "too dense" signal -- zlib's fixed
+    # per-stream overhead dominates the ratio at this size. The entropy
+    # quality must be 1.0 regardless of how far above ideal it reads.
+    decision = score_simple(
+        cyclomatic=0,
+        entropy=SIMPLE.max_entropy,  # as high as the hard gate still allows
+        max_function_complexity=0,
+        source_size_bytes=50,
+    )
+    assert decision.interpretation["ast.entropy"]
+    assert decision.score == 1.0
+
+
+def test_simple_entropy_below_floor_below_ideal_still_penalized():
+    # Below-ideal entropy (repetition/boilerplate) stays a reliable signal
+    # at any size, so the size floor must not suppress that penalty.
+    decision = score_simple(
+        cyclomatic=1,
+        entropy=SIMPLE.min_entropy,
+        max_function_complexity=1,
+        source_size_bytes=50,
+    )
+    assert decision.score < 1.0
+
+
+def test_simple_entropy_above_floor_keeps_symmetric_penalty():
+    # Once the source clears the size floor, behavior is byte-identical to
+    # before issue #152: above-ideal entropy is penalized the same as
+    # below-ideal entropy by the same distance.
+    above = score_simple(
+        cyclomatic=1,
+        entropy=SIMPLE.entropy_ideal + 0.2,
+        max_function_complexity=1,
+        source_size_bytes=SIMPLE.entropy_size_floor_bytes,
+    )
+    below = score_simple(
+        cyclomatic=1,
+        entropy=SIMPLE.entropy_ideal - 0.2,
+        max_function_complexity=1,
+        source_size_bytes=SIMPLE.entropy_size_floor_bytes,
+    )
+    assert above.score == pytest.approx(below.score)
+
+
+def test_simple_entropy_no_size_supplied_keeps_symmetric_penalty():
+    # Callers that don't pass source_size_bytes (legacy call sites) keep
+    # the pre-fix symmetric curve -- the floor is opt-in via the new arg.
+    decision = score_simple(
+        cyclomatic=1, entropy=SIMPLE.max_entropy, max_function_complexity=1
+    )
+    assert decision.score < 1.0
+
+
+def test_simple_tiny_array_lookup_no_longer_scores_below_tiny_match():
+    # Issue #152's exact repro: refactoring an 8-arm match into a 3-line
+    # array lookup is strictly simpler (cyclomatic 8 -> 1) but used to
+    # score *worse* on SIMPLE because its entropy read further above
+    # entropy_ideal than the match's. Both are well under the entropy
+    # size floor (~130 bytes each).
+    match_arm = score_simple(
+        cyclomatic=8,
+        entropy=0.670,
+        max_function_complexity=2,
+        source_size_bytes=130,
+    )
+    array_lookup = score_simple(
+        cyclomatic=1,
+        entropy=0.738,
+        max_function_complexity=1,
+        source_size_bytes=130,
+    )
+    assert array_lookup.score >= match_arm.score
+    assert array_lookup.achieved is True

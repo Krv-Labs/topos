@@ -35,6 +35,7 @@ def score_simple(
     threshold: float | None = None,
     *,
     is_entrypoint_module: bool = False,
+    source_size_bytes: float | None = None,
 ) -> ScoredDecision:
     """
     Φ_SIMPLE — score the SIMPLE generator using independent raw thresholds.
@@ -47,6 +48,9 @@ def score_simple(
         threshold:  Retained for API compatibility; not read by this Φᵢ.
         is_entrypoint_module: When True, tolerate low entropy for
             import/export-only entrypoint modules.
+        source_size_bytes: Raw UTF-8 byte length of the source. Below
+            SIMPLE.entropy_size_floor_bytes, an above-ideal entropy
+            reading is not penalized (issue #152) -- see _quality.
 
     Returns:
         A ScoredDecision; ``achieved`` is the truth value of the SIMPLE
@@ -69,7 +73,7 @@ def score_simple(
         return ScoredDecision(score=1.0, achieved=True, interpretation={})
 
     # Score shaping (reporting only): quality curves stay local to Φ_SIMPLE.
-    qualities = [_quality(r.spec.metric, r.value) for r in results]
+    qualities = [_quality(r.spec.metric, r.value, source_size_bytes) for r in results]
 
     return ScoredDecision(
         # The combined score is the minimum of the individual qualities
@@ -80,12 +84,26 @@ def score_simple(
     )
 
 
-def _quality(metric: str, value: float) -> float:
+def _quality(
+    metric: str, value: float, source_size_bytes: float | None = None
+) -> float:
     """Normalize one raw metric to a [0, 1] quality (never gates achieved)."""
     if metric == "cfg.cyclomatic":
         return 1.0 - min(value / SIMPLE.max_cyclomatic_cap, 1.0)
     if metric == "ast.entropy":
-        return max(0.0, 1.0 - 2.0 * abs(value - SIMPLE.entropy_ideal))
+        deviation = value - SIMPLE.entropy_ideal
+        below_floor = (
+            source_size_bytes is not None
+            and source_size_bytes < SIMPLE.entropy_size_floor_bytes
+        )
+        if below_floor and deviation > 0:
+            # Tiny inputs inflate the ratio via zlib's fixed per-stream
+            # overhead (issue #152): an above-ideal reading isn't a
+            # reliable "too dense" signal at this size, so it doesn't sink
+            # the score. Below-ideal (repetition) stays fully penalized --
+            # that signal holds at any size.
+            return 1.0
+        return max(0.0, 1.0 - 2.0 * abs(deviation))
     return 1.0 - min(value / SIMPLE.max_function_complexity_cap, 1.0)
 
 

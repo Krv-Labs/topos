@@ -1,5 +1,9 @@
 """Tests for the ProcessGraph representation (issue #86)."""
 
+import json
+import tempfile
+from pathlib import Path
+
 from topos.graphs.mdg.object import GraphNode, GraphRelationship, ModuleDependencyGraph
 from topos.graphs.process.object import ProcessGraph
 
@@ -119,3 +123,62 @@ def test_no_process_nodes_yields_empty_paths():
     graph = ProcessGraph.from_mdg(mdg, "f.py")
     assert graph.paths == []
     assert graph.edges() == []
+
+
+
+def test_from_gitnexus_dir_delegates_to_branch_aware_mdg_resolution():
+    """ProcessGraph.from_gitnexus_dir just wraps
+    ModuleDependencyGraph.from_gitnexus_dir + from_mdg -- confirm the
+    delegation actually resolves a branch-scoped store correctly (not just
+    that it forwards the call), rather than re-deriving the resolver's own
+    unit tests here."""
+    with tempfile.TemporaryDirectory() as tmp:
+        project_root = Path(tmp)
+        gitnexus_dir = project_root / ".gitnexus"
+
+        git_dir = project_root / ".git"
+        git_dir.mkdir()
+        (git_dir / "HEAD").write_text("ref: refs/heads/feature-x\n", encoding="utf-8")
+
+        flat_lbug = gitnexus_dir / "lbug"
+        flat_lbug.mkdir(parents=True)
+        (flat_lbug / "graph.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "File:main.py",
+                        "label": "File",
+                        "properties": {"filePath": "main.py"},
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (gitnexus_dir / "meta.json").write_text(
+            json.dumps({"branch": "main"}), encoding="utf-8"
+        )
+
+        branch_dir = gitnexus_dir / "branches" / "feature-x-deadbeef"
+        branch_lbug = branch_dir / "lbug"
+        branch_lbug.mkdir(parents=True)
+        (branch_lbug / "graph.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "File:feature.py",
+                        "label": "File",
+                        "properties": {"filePath": "feature.py"},
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (branch_dir / "meta.json").write_text(
+            json.dumps({"branch": "feature-x"}), encoding="utf-8"
+        )
+
+        pg = ProcessGraph.from_gitnexus_dir(gitnexus_dir, target_file="feature.py")
+
+    assert pg._mdg is not None
+    assert pg._mdg.get_node("File:feature.py") is not None
+    assert pg._mdg.get_node("File:main.py") is None

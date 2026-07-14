@@ -76,6 +76,7 @@ def _score_simple_dim(
     priority: Priority,
     is_entrypoint_module: bool = False,
     is_stable_leaf_module: bool = False,  # noqa: ARG001 — uniform dispatcher signature
+    source_size_bytes: float | None = None,
 ) -> ScoredDecision | None:
     # The SIMPLE dimension is fed by both CFG (cyclomatic) and AST (entropy, max_func).
     # We pass all available metrics to score_simple; it handles the independent
@@ -92,6 +93,7 @@ def _score_simple_dim(
         entropy=raw.get("ast.entropy"),
         max_function_complexity=raw.get("ast.max_function_complexity"),
         is_entrypoint_module=is_entrypoint_module,
+        source_size_bytes=source_size_bytes,
         priority=priority,
     )
 
@@ -101,6 +103,7 @@ def _score_composable_dim(
     priority: Priority,
     is_entrypoint_module: bool = False,
     is_stable_leaf_module: bool = False,
+    source_size_bytes: float | None = None,  # noqa: ARG001 — uniform dispatcher signature
 ) -> ScoredDecision | None:
     if (
         "mdg.instability" not in raw
@@ -124,6 +127,7 @@ def _score_secure_dim(
     priority: Priority,
     is_entrypoint_module: bool = False,
     is_stable_leaf_module: bool = False,  # noqa: ARG001 — uniform dispatcher signature
+    source_size_bytes: float | None = None,  # noqa: ARG001 — uniform dispatcher signature
 ) -> ScoredDecision | None:
     if "cpg.dangerous_calls" not in raw and "cpg.taint_flows" not in raw:
         return None
@@ -136,7 +140,9 @@ def _score_secure_dim(
 
 _DIMENSION_SCORE_DISPATCHERS: dict[
     str,
-    Callable[[dict[str, float], Priority, bool, bool], ScoredDecision | None],
+    Callable[
+        [dict[str, float], Priority, bool, bool, float | None], ScoredDecision | None
+    ],
 ] = {
     "simple": _score_simple_dim,
     "composable": _score_composable_dim,
@@ -271,6 +277,7 @@ class CharacteristicMorphism:
             by_dimension[rep.dimension].append(rep)
         is_entrypoint = is_entrypoint_module(morphism)
         is_stable_leaf = is_stable_leaf_module(morphism)
+        source_size_bytes = float(len(morphism.source.encode("utf-8")))
 
         raw_metrics: dict[str, float] = {}
         interpretation: dict[str, str] = {}
@@ -287,7 +294,9 @@ class CharacteristicMorphism:
             if not scorer:
                 continue
 
-            decision = scorer(dim_raw, priority, is_entrypoint, is_stable_leaf)
+            decision = scorer(
+                dim_raw, priority, is_entrypoint, is_stable_leaf, source_size_bytes
+            )
             if decision is None:
                 continue
 

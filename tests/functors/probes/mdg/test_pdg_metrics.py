@@ -18,8 +18,52 @@ from topos.graphs.mdg.object import (
     GraphNode,
     GraphRelationship,
     LadybugSchemaMismatchError,
-    ModuleDependencyGraph,
 )
+from topos.graphs.mdg.object import (
+    ModuleDependencyGraph as _RustModuleDependencyGraph,
+)
+from topos.graphs.mdg.object import (
+    _to_rust,
+)
+
+
+class ModuleDependencyGraph:
+    """Test-local, incrementally-buildable stand-in for the Rust-backed
+    ``ModuleDependencyGraph``.
+
+    The real class (``crates/topos-pyo3/src/graphs.rs``) has no Python
+    constructor and no ``add_node``/``add_relationship`` -- it's built
+    once, in full, via ``ModuleDependencyGraph.from_parts(target_file,
+    nodes, relationships)``, matching how GitNexus data is always loaded
+    wholesale (see ``from_gitnexus_dir``). These tests build fixtures
+    incrementally instead, so this wraps that immutable construction with
+    the old mutable-builder shape: ``add_node``/``add_relationship``
+    accumulate, and every other attribute/method access lazily builds
+    (and caches) the real Rust graph via ``from_parts`` and delegates to
+    it.
+    """
+
+    def __init__(self, target_file: str):
+        self._target_file = target_file
+        self._nodes: list[GraphNode] = []
+        self._relationships: list[GraphRelationship] = []
+        self._built: _RustModuleDependencyGraph | None = None
+
+    def add_node(self, node: GraphNode) -> None:
+        self._built = None
+        self._nodes.append(node)
+
+    def add_relationship(self, relationship: GraphRelationship) -> None:
+        self._built = None
+        self._relationships.append(relationship)
+
+    def _rust(self) -> _RustModuleDependencyGraph:
+        if self._built is None:
+            self._built = _to_rust(self._target_file, self._nodes, self._relationships)
+        return self._built
+
+    def __getattr__(self, name: str):
+        return getattr(self._rust(), name)
 
 
 def _graph_with_linear_chain() -> ModuleDependencyGraph:

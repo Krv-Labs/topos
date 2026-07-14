@@ -980,6 +980,7 @@ class DepgraphState(StrEnum):
     LOAD_ERROR = "load_error"
     SCHEMA_MISMATCH = "schema_mismatch"
     INVALID_DIR = "invalid_dir"
+    BRANCH_NOT_INDEXED = "branch_not_indexed"
 
 
 class DepgraphStatusInput(_StrictModel):

@@ -71,6 +71,17 @@ class LadybugSchemaMismatchError(RuntimeError):
         self.original = original
 
 
+class LadybugBranchMismatchError(FileNotFoundError):
+    """Raised when ``.gitnexus`` has indexed stores, but none for the current branch.
+
+    Subclasses ``FileNotFoundError`` (same trick ``LadybugSchemaMismatchError``
+    plays on ``RuntimeError``) so every existing ``except FileNotFoundError``
+    elsewhere in the codebase keeps degrading gracefully with no further
+    changes -- this only needs special-casing where a *better* message/state
+    is wanted, not everywhere graceful degradation already happens.
+    """
+
+
 def _is_shadow_replay_error(exc: BaseException) -> bool:
     """Whether *exc* is Ladybug refusing to replay shadow pages read-only.
 
@@ -218,8 +229,26 @@ class ModuleDependencyGraph:
             ImportError: If ``ladybug`` is not installed for binary format.
             LadybugSchemaMismatchError: If the store version exceeds embedded ladybug.
         """
+        from topos.utils.gitnexus import current_git_branch, resolve_lbug_store
+
         base = Path(gitnexus_dir)
-        lbug_path = base / "lbug"
+        branch = current_git_branch(base.parent)
+        resolved = resolve_lbug_store(base, branch)
+        lbug_path = resolved.path
+
+        if lbug_path is None:
+            if resolved.available_branches:
+                raise LadybugBranchMismatchError(
+                    f"No GitNexus store indexed for branch {branch!r} at {base}. "
+                    f"Indexed branches: {', '.join(resolved.available_branches)}. "
+                    "Run 'gitnexus analyze' on this branch (or 'topos depgraph "
+                    "generate') to index it."
+                )
+            raise FileNotFoundError(
+                f"LadybugDB store not found at {base / 'lbug'}. "
+                "Install GitNexus (npm install -g gitnexus) and run "
+                "'gitnexus analyze' in the repository root first."
+            )
 
         if lbug_path.is_file():
             return cls._from_ladybugdb(lbug_path, target_file)

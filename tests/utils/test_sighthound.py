@@ -17,6 +17,7 @@ from topos.mcp.security_findings import security_findings
 from topos.utils.sighthound import (
     count_findings,
     finding_callee,
+    finding_source_text,
     is_taint_finding,
     run_sighthound_scan,
 )
@@ -173,6 +174,24 @@ def test_finding_callee():
     assert finding_callee({}) is None
 
 
+def test_finding_source_text_keeps_cross_file_location():
+    # Cross-file taint: origin lives in another file, so location must survive.
+    assert (
+        finding_source_text(MOCK_CROSS_FILE_TAINT)
+        == "input() @ source.py:3 (function: main)"
+    )
+    # Single-file taint keeps type, location, and context too.
+    assert (
+        finding_source_text(MOCK_TAINT_FINDING)
+        == "request.args @ app.py:10 (function: index)"
+    )
+    # Falls back to whichever field is present.
+    assert finding_source_text({"source_info": {"location": "x.py:1"}}) == "x.py:1"
+    assert finding_source_text({"source_info": {"context": "f"}}) == "f"
+    assert finding_source_text({"source_info": {}}) is None
+    assert finding_source_text({}) is None
+
+
 @patch("subprocess.run")
 def test_run_sighthound_scan_file(mock_run, tmp_path):
     mock_response = MagicMock()
@@ -214,6 +233,19 @@ def test_run_sighthound_scan_source_in_memory(mock_run):
 def test_run_sighthound_scan_unwraps_findings_wrapper(mock_run, tmp_path):
     mock_response = MagicMock()
     mock_response.stdout = json.dumps({"findings": [MOCK_SEARCH_FINDING]})
+    mock_response.returncode = 0
+    mock_run.return_value = mock_response
+    target = tmp_path / "x.py"
+    target.write_text("x=1", encoding="utf-8")
+    findings = run_sighthound_scan("x=1", "python", target)
+    assert len(findings) == 1
+    assert findings[0]["function"] == "eval"
+
+
+@patch("subprocess.run")
+def test_run_sighthound_scan_drops_non_dict_entries(mock_run, tmp_path):
+    mock_response = MagicMock()
+    mock_response.stdout = json.dumps([MOCK_SEARCH_FINDING, "bogus", None, 42])
     mock_response.returncode = 0
     mock_run.return_value = mock_response
     target = tmp_path / "x.py"
@@ -271,7 +303,8 @@ def test_security_findings_with_sighthound(mock_scan, mock_which):
     assert f3.line == 42
     assert f3.snippet == "os.system(cmd)"
     assert f3.callee == "os.system"
-    assert f3.source == "request.args (function: index)"
+    # Source text keeps the origin location alongside type and context.
+    assert f3.source == "request.args @ app.py:10 (function: index)"
     assert f3.sink == "os.system"
 
 

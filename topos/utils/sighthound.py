@@ -144,28 +144,38 @@ def finding_callee(finding: dict[str, Any]) -> str | None:
     return None
 
 
+def _clean_str(value: Any) -> str | None:
+    """Return a stripped non-empty string, or None."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
 def finding_source_text(finding: dict[str, Any]) -> str | None:
-    """Human-readable taint source text from ``source_info`` (not ``snippet``)."""
+    """Human-readable taint source text from ``source_info`` (not ``snippet``).
+
+    Combines ``source_type`` with the origin ``location`` (kept for cross-file
+    flows, where the source lives in another file) and the ``context``.
+    """
     info = finding.get("source_info")
     if not isinstance(info, dict):
         return None
-    context = info.get("context")
-    source_type = info.get("source_type")
-    location = info.get("location")
-    parts: list[str] = []
-    if isinstance(source_type, str) and source_type.strip():
-        parts.append(source_type.strip())
-    if isinstance(context, str) and context.strip():
-        parts.append(context.strip())
-    if isinstance(location, str) and location.strip() and not parts:
-        parts.append(location.strip())
-    if not parts:
+    source_type = _clean_str(info.get("source_type"))
+    location = _clean_str(info.get("location"))
+    context = _clean_str(info.get("context"))
+
+    head = source_type or location or context
+    if head is None:
         return None
-    if len(parts) == 1:
-        return parts[0]
-    if isinstance(context, str) and context.strip() and isinstance(source_type, str):
-        return f"{source_type.strip()} ({context.strip()})"
-    return " @ ".join(parts)
+
+    # Anchor on the source type, then append location and context when they
+    # add information beyond the head.
+    text = head
+    if location and location != head:
+        text = f"{text} @ {location}"
+    if context and context != head:
+        text = f"{text} ({context})"
+    return text
 
 
 def finding_sink_text(finding: dict[str, Any]) -> str | None:

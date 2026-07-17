@@ -7,7 +7,8 @@ Sighthound's JSON schema (see ``Finding`` in Sighthound ``models.rs``):
   finding.
 * Taint findings are tagged with ``taint_analysis`` (plus ``data_flow`` and/or
   ``cross_file``). Search findings carry rule tags only.
-* ``source_info.context`` / ``sink_info.function_name`` — not ``snippet``.
+* Taint sink operations live under ``sink_info``; ``function`` may be the
+  containing function rather than the actionable callee.
 
 This module is the single source of truth for invoking the CLI and classifying
 findings into Topos SECURE metrics (``cpg.dangerous_calls`` /
@@ -115,15 +116,20 @@ def is_taint_finding(finding: dict[str, Any]) -> bool:
     return ftype in _TAINT_FINDING_TYPES
 
 
-def count_findings(findings: list[dict[str, Any]]) -> tuple[int, int]:
+def count_findings(
+    findings: list[dict[str, Any]], allow: set[str] | None = None
+) -> tuple[int, int]:
     """Count ``(dangerous_calls, taint_flows)`` for Topos SECURE metrics.
 
     Search-mode findings → ``cpg.dangerous_calls``.
     Taint-mode findings → ``cpg.taint_flows``.
+    Findings whose callee matches *allow* are excluded from both counts.
     """
     dangerous_calls = 0
     taint_flows = 0
     for finding in findings:
+        if finding_matches_allowlist(finding, allow):
+            continue
         if is_taint_finding(finding):
             taint_flows += 1
         else:
@@ -133,15 +139,36 @@ def count_findings(findings: list[dict[str, Any]]) -> tuple[int, int]:
 
 def finding_callee(finding: dict[str, Any]) -> str | None:
     """Best-effort callee / sink function name for allowlisting and display."""
+    sink = finding.get("sink_info")
+    if is_taint_finding(finding) and isinstance(sink, dict):
+        # Sighthound taint findings use ``function`` / ``function_name`` for
+        # the containing function. ``sink_type`` carries the matched sink
+        # operation (including for cross-file flows).
+        sink_type = sink.get("sink_type")
+        if isinstance(sink_type, str) and sink_type.strip():
+            return sink_type.strip()
+
     func = finding.get("function")
     if isinstance(func, str) and func.strip():
         return func.strip()
-    sink = finding.get("sink_info")
     if isinstance(sink, dict):
         name = sink.get("function_name")
         if isinstance(name, str) and name.strip():
             return name.strip()
     return None
+
+
+def finding_matches_allowlist(finding: dict[str, Any], allow: set[str] | None) -> bool:
+    """Whether a Sighthound finding's actionable callee is acknowledged."""
+    if not allow:
+        return False
+    callee = finding_callee(finding)
+    if not callee:
+        return False
+
+    from topos.functors.probes.cpg.danger import match_registry_key
+
+    return match_registry_key(callee, allow) is not None
 
 
 def _clean_str(value: Any) -> str | None:
@@ -182,6 +209,10 @@ def finding_sink_text(finding: dict[str, Any]) -> str | None:
     """Human-readable sink text from ``sink_info`` or the finding snippet."""
     sink = finding.get("sink_info")
     if isinstance(sink, dict):
+        if is_taint_finding(finding):
+            sink_type = sink.get("sink_type")
+            if isinstance(sink_type, str) and sink_type.strip():
+                return sink_type.strip()
         name = sink.get("function_name")
         if isinstance(name, str) and name.strip():
             return name.strip()

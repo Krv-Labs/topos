@@ -25,8 +25,9 @@ def security_findings(
 ) -> list[SecurityFinding]:
     """Return concise dangerous-call and taint-flow diagnostics.
 
-    When *allow* is given, allowlisted patterns are excluded from the
-    registry first.  ``allow=None`` preserves canonical behavior.
+    When *allow* is given, matching callees are excluded using the same
+    suffix-aware rules as SECURE metrics. ``allow=None`` preserves canonical
+    behavior.
 
     If the ``sighthound`` CLI is on ``PATH``, findings come from its ruleset
     (via :mod:`topos.utils.sighthound`); otherwise local CPG probes are used.
@@ -62,13 +63,12 @@ def _sighthound_security_findings(
             break
 
     raw_findings = run_sighthound_scan(cpg.source, cpg.language, file_path)
-    registry = effective_registry(cpg.language, allow) if allow is not None else None
 
     findings: list[SecurityFinding] = []
     for raw in raw_findings:
         if not isinstance(raw, dict):
             continue
-        mapped = _map_sighthound_finding(raw, registry=registry)
+        mapped = _map_sighthound_finding(raw, allow=allow)
         if mapped is None:
             continue
         findings.append(mapped)
@@ -80,24 +80,23 @@ def _sighthound_security_findings(
 def _map_sighthound_finding(
     raw: dict[str, Any],
     *,
-    registry: set[str] | None,
+    allow: set[str] | None,
 ) -> SecurityFinding | None:
     """Convert one Sighthound finding; return None if allowlisted away."""
     from topos.utils.sighthound import (
         finding_callee,
         finding_line,
+        finding_matches_allowlist,
         finding_sink_text,
         finding_snippet,
         finding_source_text,
         is_taint_finding,
     )
 
-    callee = finding_callee(raw)
-    # When an allow set is active, ``effective_registry`` already dropped
-    # allowlisted callees. Skip findings whose callee is no longer dangerous.
-    if registry is not None and callee and not _matches_registry(callee, registry):
+    if finding_matches_allowlist(raw, allow):
         return None
 
+    callee = finding_callee(raw)
     taint = is_taint_finding(raw)
     kind = "taint_flow" if taint else "dangerous_call"
     source = finding_source_text(raw) if taint else None

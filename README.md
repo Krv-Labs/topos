@@ -16,8 +16,10 @@
 Topos evaluates code along three independent pillars:
 
 - **SIMPLE** — Avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity).
-- **COMPOSABLE** — Cleanly decoupled from other modules (MDG Martin instability via GitNexus).
-- **SECURE** — Free of dangerous API reachability and taint paths (CPG analysis).
+- **COMPOSABLE** — Cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus)).
+- **SECURE** — Free of dangerous API reachability and taint paths (CPG analysis; optionally powered by [Sighthound](https://github.com/Corgea/Sighthound)).
+
+Topos is the **operator** over those graphs — not another one-off tree-sitter script. Best-in-class analytics (GitNexus for the module graph, Sighthound for SAST) feed a single lattice agents can optimize toward.
 
 ### The Medal Podium
 
@@ -99,6 +101,10 @@ topos evaluate src/ -r --gitnexus-dir .gitnexus
 Install GitNexus once per machine. Run `topos depgraph generate` from each repository you want to score for COMPOSABLE.
 
 > The CLI does **not** auto-detect `.gitnexus/` — pass `--gitnexus-dir` explicitly. Regenerate after imports change (new modules, renames, restructures). *(The `topos mcp` server, by contrast, auto-detects `./.gitnexus`.)*
+
+#### Optional: deepen SECURE with Sighthound
+
+`SECURE` always runs from Topos's CPG probes. Install [Sighthound](https://github.com/Corgea/Sighthound) and put the `sighthound` binary on `PATH` to outsource dangerous-call and taint findings to Corgea's ruleset — same medal, richer SAST signal. No config flag required; Topos detects it automatically.
 
 #### Measure test coverage — structural + semantic
 
@@ -222,7 +228,19 @@ Topos measures code along the three independent quality generators and maps them
 
 - **SIMPLE** — Built from the [abstract syntax tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) (AST) and [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph) (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
 - **COMPOSABLE** — Built from the [module dependency graph](https://en.wikipedia.org/wiki/Module_dependency_graph) (MDG) using [GitNexus](https://github.com/abhigyanpatwari/GitNexus), to capture inter-module dependencies. This is slightly different than the usual [program dependence graph](https://en.wikipedia.org/wiki/Program_dependence_graph) (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
-- **SECURE** — Built from the [code property graph](https://en.wikipedia.org/wiki/Code_property_graph) (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
+- **SECURE** — Built from the [code property graph](https://en.wikipedia.org/wiki/Code_property_graph) (CPG). When [Sighthound](https://github.com/Corgea/Sighthound) is on `PATH`, Topos outsources dangerous-call and taint findings to its ruleset; otherwise local CPG probes still run. Either way, results land in the same SECURE metrics agents already consume.
+
+#### Operator, not another tree-sitter tool
+
+Plenty of custom analytics are built on [tree-sitter](https://tree-sitter.github.io/tree-sitter/) — ASTs, CFGs, dependency graphs, SAST rules. Topos does not replace those engines. It **operates over them**:
+
+| Pillar | Graph / engine | Specialist we integrate |
+| :--- | :--- | :--- |
+| SIMPLE | AST + CFG | Built-in (tree-sitter → UAST) |
+| COMPOSABLE | Module dependency graph | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) |
+| SECURE | Code property graph / SAST | [Sighthound](https://github.com/Corgea/Sighthound) (optional; local CPG fallback) |
+
+The differentiator is the **lattice + agent loop**: one preference-ranked medal, one set of MCP tools, and a closed refactor cycle — instead of stitching together ad-hoc scripts for every graph.
 
 ```mermaid
 graph BT

@@ -1,3 +1,19 @@
+"""Adapter for the Corgea/Sighthound SAST CLI.
+
+Sighthound's JSON schema (see ``Finding`` in Sighthound ``models.rs``):
+
+* ``finding_type`` is a **vulnerability label** (e.g. ``"Command Injection"``),
+  not the rule mode. Rule mode is ``search`` | ``taint`` on the rule, not the
+  finding.
+* Taint findings are tagged with ``taint_analysis`` (plus ``data_flow`` and/or
+  ``cross_file``). Search findings carry rule tags only.
+* ``source_info.context`` / ``sink_info.function_name`` — not ``snippet``.
+
+This module is the single source of truth for invoking the CLI and classifying
+findings into Topos SECURE metrics (``cpg.dangerous_calls`` /
+``cpg.taint_flows``).
+"""
+
 from __future__ import annotations
 
 import contextlib
@@ -7,18 +23,20 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+# Tags Sighthound itself uses to count search vs taint findings
+# (see vulnerability_scanner.rs / scanning_logic.rs / multifile_taint.rs).
+_TAINT_TAGS = frozenset({"taint_analysis", "data_flow", "cross_file"})
+# Rare fallbacks when tags are missing (legacy / partial payloads).
+_TAINT_FINDING_TYPES = frozenset({"taint", "taint flow"})
+
 
 def run_sighthound_scan(
     source: str, language: str, file_path: str | Path | None = None
 ) -> list[dict[str, Any]]:
-    """
-    Run Sighthound SAST scanner on a source file or an in-memory source string.
-    Returns a list of parsed JSON findings.
-    """
+    """Run Sighthound on a path or in-memory source; return parsed findings."""
     if file_path and Path(file_path).exists():
         return _run_cli(Path(file_path))
 
-    # In-memory source: write to temporary file
     suffix_map = {
         "python": ".py",
         "rust": ".rs",
@@ -41,7 +59,7 @@ def run_sighthound_scan(
 
 
 def _run_cli(target_path: Path) -> list[dict[str, Any]]:
-    """Execute sighthound --output-format json and return parsed findings."""
+    """Execute ``sighthound --output-format json`` and return findings."""
     try:
         result = subprocess.run(
             ["sighthound", "--output-format", "json", str(target_path)],
@@ -49,25 +67,135 @@ def _run_cli(target_path: Path) -> list[dict[str, Any]]:
             text=True,
             check=False,
         )
-        if not result.stdout.strip():
-            return []
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return []
     except FileNotFoundError:
-        # sighthound CLI is not installed / in PATH
         return []
+
+    if not result.stdout.strip():
+        return []
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+    return _normalize_findings_payload(payload)
+
+
+def _normalize_findings_payload(payload: Any) -> list[dict[str, Any]]:
+    """Accept a bare list or a wrapper object with a ``findings`` key."""
+    if isinstance(payload, list):
+        return [f for f in payload if isinstance(f, dict)]
+    if isinstance(payload, dict):
+        findings = payload.get("findings")
+        if isinstance(findings, list):
+            return [f for f in findings if isinstance(f, dict)]
+    return []
+
+
+def finding_tags(finding: dict[str, Any]) -> list[str]:
+    """Return lowercased tags from a finding, if any."""
+    tags = finding.get("tags") or []
+    if not isinstance(tags, list):
+        return []
+    return [t.lower() for t in tags if isinstance(t, str)]
+
+
+def is_taint_finding(finding: dict[str, Any]) -> bool:
+    """True when Sighthound produced this finding via taint analysis.
+
+    Prefer tags (``taint_analysis`` / ``data_flow`` / ``cross_file``), matching
+    Sighthound's own search/taint counters. Fall back to a few literal
+    ``finding_type`` values only when tags are absent.
+    """
+    tags = finding_tags(finding)
+    if tags and any(t in _TAINT_TAGS for t in tags):
+        return True
+    if tags:
+        # Explicit non-taint tags present → search-mode finding.
+        return False
+    ftype = str(finding.get("finding_type") or "").strip().lower()
+    return ftype in _TAINT_FINDING_TYPES
 
 
 def count_findings(findings: list[dict[str, Any]]) -> tuple[int, int]:
-    """Count dangerous calls (search mode) and taint flows (taint mode)."""
+    """Count ``(dangerous_calls, taint_flows)`` for Topos SECURE metrics.
+
+    Search-mode findings → ``cpg.dangerous_calls``.
+    Taint-mode findings → ``cpg.taint_flows``.
+    """
     dangerous_calls = 0
     taint_flows = 0
     for finding in findings:
-        ftype = finding.get("finding_type", "").lower()
-        if ftype == "search":
-            dangerous_calls += 1
-        elif ftype == "taint":
+        if is_taint_finding(finding):
             taint_flows += 1
+        else:
+            dangerous_calls += 1
     return dangerous_calls, taint_flows
+
+
+def finding_callee(finding: dict[str, Any]) -> str | None:
+    """Best-effort callee / sink function name for allowlisting and display."""
+    func = finding.get("function")
+    if isinstance(func, str) and func.strip():
+        return func.strip()
+    sink = finding.get("sink_info")
+    if isinstance(sink, dict):
+        name = sink.get("function_name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return None
+
+
+def finding_source_text(finding: dict[str, Any]) -> str | None:
+    """Human-readable taint source text from ``source_info`` (not ``snippet``)."""
+    info = finding.get("source_info")
+    if not isinstance(info, dict):
+        return None
+    context = info.get("context")
+    source_type = info.get("source_type")
+    location = info.get("location")
+    parts: list[str] = []
+    if isinstance(source_type, str) and source_type.strip():
+        parts.append(source_type.strip())
+    if isinstance(context, str) and context.strip():
+        parts.append(context.strip())
+    if isinstance(location, str) and location.strip() and not parts:
+        parts.append(location.strip())
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    if isinstance(context, str) and context.strip() and isinstance(source_type, str):
+        return f"{source_type.strip()} ({context.strip()})"
+    return " @ ".join(parts)
+
+
+def finding_sink_text(finding: dict[str, Any]) -> str | None:
+    """Human-readable sink text from ``sink_info`` or the finding snippet."""
+    sink = finding.get("sink_info")
+    if isinstance(sink, dict):
+        name = sink.get("function_name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+        sink_type = sink.get("sink_type")
+        if isinstance(sink_type, str) and sink_type.strip():
+            return sink_type.strip()
+    snippet = finding.get("snippet")
+    if isinstance(snippet, str) and snippet.strip():
+        return snippet.strip()
+    return None
+
+
+def finding_line(finding: dict[str, Any]) -> int:
+    """1-based line number, clamped for SecurityFinding validation."""
+    try:
+        line = int(finding.get("line") or 1)
+    except (TypeError, ValueError):
+        line = 1
+    return max(1, line)
+
+
+def finding_snippet(finding: dict[str, Any]) -> str:
+    """Top-level code snippet (always present on real Sighthound findings)."""
+    snippet = finding.get("snippet")
+    if isinstance(snippet, str):
+        return snippet
+    return ""

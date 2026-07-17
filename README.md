@@ -60,7 +60,7 @@ Topos is the **operator** over those graphs — not another one-off [tree-sitter
 `COMPOSABLE` needs a cross-file dependency graph, which the CLI does not build automatically:
 
 ```bash
-npm install -g gitnexus
+pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos depgraph generate
 topos evaluate src/ -r --gitnexus-dir .gitnexus
 ```

@@ -12,7 +12,11 @@ from topos.cli.installation import (
     remove_state_dir,
 )
 from topos.cli.update import run_update
-from topos.utils.gitnexus import generate_depgraph, gitnexus_available
+from topos.utils.gitnexus import (
+    generate_depgraph,
+    gitnexus_available,
+    gitnexus_install_hint,
+)
 
 
 def _handle_binary_removal(path: Path, dry_run: bool, yes: bool) -> bool:
@@ -143,10 +147,7 @@ def depgraph_generate(directory: str | None) -> None:
     target_dir = Path(directory).resolve() if directory else Path.cwd()
 
     if not gitnexus_available():
-        click.echo(
-            "GitNexus not found. Install it with: npm install -g gitnexus",
-            err=True,
-        )
+        click.echo(gitnexus_install_hint(), err=True)
         sys.exit(1)
 
     click.echo(

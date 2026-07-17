@@ -34,7 +34,7 @@ The root Click group lazily registers commands while preserving a lightweight `-
 topos evaluate src/ -r --language python
 
 # Build or refresh cross-module state for COMPOSABLE
-npm install -g gitnexus
+pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos depgraph generate
 
 # Include it explicitly in evaluation

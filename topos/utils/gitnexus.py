@@ -18,7 +18,31 @@ from dataclasses import dataclass
 from pathlib import Path
 
 GITNEXUS_CMD = "gitnexus"
-_INSTALL_HINT = "GitNexus not found. Install it with: npm install -g gitnexus"
+_PNPM_INSTALL_CMD = "pnpm add -g gitnexus"
+_NPM_INSTALL_CMD = "npm install -g gitnexus"
+
+
+def gitnexus_install_command() -> str:
+    """Preferred one-shot install command for the GitNexus CLI.
+
+    Prefers ``pnpm`` when available, then ``npm``. Returns the pnpm form when
+    neither package manager is on PATH so docs and error messages stay
+    consistent with the preferred host workflow.
+    """
+    if shutil.which("pnpm") is not None:
+        return _PNPM_INSTALL_CMD
+    if shutil.which("npm") is not None:
+        return _NPM_INSTALL_CMD
+    return _PNPM_INSTALL_CMD
+
+
+def gitnexus_install_hint() -> str:
+    """User-facing message when the GitNexus CLI is missing."""
+    preferred = gitnexus_install_command()
+    alternate = (
+        _NPM_INSTALL_CMD if preferred == _PNPM_INSTALL_CMD else _PNPM_INSTALL_CMD
+    )
+    return f"GitNexus not found. Install it with: {preferred}  # or: {alternate}"
 
 # Topos-owned marker written inside ``.gitnexus`` recording what source snapshot
 # the graph was built from. v1 markers carried only ``head_sha``; v2 added
@@ -248,7 +272,7 @@ def generate_depgraph(
     ``(ok, returncode, message)``.
     """
     if not gitnexus_available():
-        return DepgraphGenerationResult(False, 127, None, _INSTALL_HINT)
+        return DepgraphGenerationResult(False, 127, None, gitnexus_install_hint())
 
     start_time = time.time()
     source_snapshot = source_fingerprint(target_dir)

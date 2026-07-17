@@ -32,7 +32,7 @@ Pytest defaults target `tests/`, add `topos` coverage, and exclude fixtures. Pre
 | CLI behavior/startup | `tests/cli/`; preserve registration/startup checks |
 | MCP schemas/routing/resources | `tests/mcp/`, including context-budget and contract invariants |
 | Frozen distribution | `tests/packaging/` with `TOPOS_BINARY` after a build |
-| VS Code extension | `npm ci`, `npm run check-types`, `npm run lint`, `npm run test:unit` in `extensions/vscode/` |
+| VS Code extension | `pnpm install --frozen-lockfile`, `pnpm run check-types`, `pnpm run lint`, `pnpm run test:unit` in `extensions/vscode/` |
 
 ## CI expectations
 

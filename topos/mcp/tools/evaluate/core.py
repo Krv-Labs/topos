@@ -118,7 +118,7 @@ def topos_evaluate_file(params: EvaluateFileInput) -> ToolResult:
     Use for one file on disk. A ModuleDependencyGraph is attached when
     ``gitnexus_dir`` is given or auto-detected at ``<root>/.gitnexus``, enabling
     COMPOSABLE (SIMPLE/SECURE always run); generate that graph first with
-    ``topos_generate_depgraph`` (needs ``npm install -g gitnexus``). For an
+    ``topos_generate_depgraph`` (needs ``pnpm add -g gitnexus`` or ``npm install -g gitnexus``). For an
     in-memory snippet use ``topos_evaluate_code``; for a whole directory use
     ``topos_evaluate_project``. ``coupling_available`` is false when no graph is
     found, leaving any COMPOSABLE verdict unreachable. Returns an

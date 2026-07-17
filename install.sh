@@ -352,26 +352,32 @@ install_optional_dependencies() {
 
     local reply=""
     if [ -t 0 ]; then
-        printf '? Do you want to install gitnexus via npm? [Y/n] '
+        printf '? Do you want to install gitnexus via pnpm/npm? [Y/n] '
         read -r reply
     elif [ -c /dev/tty ]; then
-        printf '? Do you want to install gitnexus via npm? [Y/n] '
+        printf '? Do you want to install gitnexus via pnpm/npm? [Y/n] '
         read -r reply < /dev/tty
     fi
 
     case "$reply" in
         [yY][eE][sS]|[yY]|"")
-            if ! command -v npm >/dev/null 2>&1; then
-                warn "npm not found. Skipping gitnexus installation."
+            local install_cmd=""
+            if command -v pnpm >/dev/null 2>&1; then
+                install_cmd="pnpm add -g gitnexus"
+            elif command -v npm >/dev/null 2>&1; then
+                install_cmd="npm install -g gitnexus"
+            else
+                warn "Neither pnpm nor npm found. Skipping gitnexus installation."
+                warn "Install manually with: pnpm add -g gitnexus  # or: npm install -g gitnexus"
                 warn "Coupling metrics will not be available."
                 return
             fi
-            info "Installing gitnexus..."
-            if npm install -g gitnexus; then
+            info "Installing gitnexus ($install_cmd)..."
+            if $install_cmd; then
                 success "gitnexus installed successfully!"
             else
                 error "Failed to install gitnexus."
-                warn "You may need to install it manually: npm install -g gitnexus"
+                warn "You may need to install it manually: pnpm add -g gitnexus  # or: npm install -g gitnexus"
             fi
             ;;
         *)

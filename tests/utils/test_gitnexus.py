@@ -68,7 +68,31 @@ def test_missing_gitnexus_returns_structured_failure(tmp_path: Path) -> None:
         result = generate_depgraph(tmp_path)
     assert result.ok is False
     assert result.returncode == 127
-    assert "npm install -g gitnexus" in result.message
+    assert "gitnexus" in result.message
+    assert (
+        "pnpm add -g gitnexus" in result.message
+        or "npm install -g gitnexus" in result.message
+    )
+
+
+def test_gitnexus_install_command_prefers_pnpm(monkeypatch) -> None:
+    from topos.utils import gitnexus as gn
+
+    monkeypatch.setattr(
+        gn.shutil, "which", lambda cmd: "/bin/pnpm" if cmd == "pnpm" else None
+    )
+    assert gn.gitnexus_install_command() == "pnpm add -g gitnexus"
+    assert "pnpm add -g gitnexus" in gn.gitnexus_install_hint()
+
+
+def test_gitnexus_install_command_falls_back_to_npm(monkeypatch) -> None:
+    from topos.utils import gitnexus as gn
+
+    monkeypatch.setattr(
+        gn.shutil, "which", lambda cmd: "/bin/npm" if cmd == "npm" else None
+    )
+    assert gn.gitnexus_install_command() == "npm install -g gitnexus"
+    assert "npm install -g gitnexus" in gn.gitnexus_install_hint()
 
 
 def test_timeout_is_converted_to_structured_failure(tmp_path: Path) -> None:

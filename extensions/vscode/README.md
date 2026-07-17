@@ -50,7 +50,7 @@ You can also drive everything conversationally through agent mode — no command
 
 COMPOSABLE additionally needs a dependency graph produced by [GitNexus](https://github.com/abhigyanpatwari/GitNexus):
 
-1. If GitNexus isn't installed, the extension offers a one-click guided install (`npm install -g gitnexus`).
+1. If GitNexus isn't installed, the extension offers a one-click guided install (`pnpm add -g gitnexus  # or: npm install -g gitnexus`).
 2. Run **Topos: Generate Dependency Graph** to build the `.gitnexus/` store for your workspace.
 3. Re-run it when imports change (new modules, renames, restructures).
 
@@ -60,7 +60,7 @@ To pass the Marketplace's automated Agentic Risk Assessment, Topos declares the 
 
 - **Filesystem Read Access:** Topos requires read access to your workspace files to perform static analysis (AST and Control-Flow Graph construction) and to build dependency graphs via GitNexus.
 - **Local Analysis:** The Topos MCP server runs locally and does not transmit analyzed source code or project metadata to external services.
-- **Controlled Network Use:** If no bundled, cached, or local Topos runtime is available and `topos.autoDownload` is enabled, the extension can fetch the signed release manifest and download a SHA-256-verified runtime. If GitNexus is missing, the extension can launch `npm install -g gitnexus` in a visible terminal only after you choose that action.
+- **Controlled Network Use:** If no bundled, cached, or local Topos runtime is available and `topos.autoDownload` is enabled, the extension can fetch the signed release manifest and download a SHA-256-verified runtime. If GitNexus is missing, the extension can launch `pnpm add -g gitnexus  # or: npm install -g gitnexus` in a visible terminal only after you choose that action.
 
 ## Requirements
 

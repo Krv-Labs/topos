@@ -15,7 +15,7 @@ Topos is the operator that unifies structural signals into one three-pillar verd
 GitNexus generates `.gitnexus/`, containing a LadybugDB-backed knowledge graph. `ModuleDependencyGraph` parses it into nodes and typed relationships such as `IMPORTS`, `CALLS`, and `INHERITS`, then derives coupling, instability, fan-in/out, and dependency-depth metrics.
 
 ```bash
-npm install -g gitnexus
+pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos depgraph generate
 # Equivalent underlying operation: gitnexus analyze --skip-agents-md
 ```

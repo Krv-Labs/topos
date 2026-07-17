@@ -6,6 +6,7 @@ Implements the ``Representation`` protocol on the SECURE generator.
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass, field
 
 from topos.graphs.cpg.builder import build_cpg
@@ -66,6 +67,21 @@ class CodePropertyGraph:
     # ------------------------------------------------------------------
 
     def metrics(self) -> dict[str, float]:
+        if shutil.which("sighthound"):
+            file_path = None
+            for node in self.nodes.values():
+                if node.uast and node.uast.span and node.uast.span.file:
+                    file_path = node.uast.span.file
+                    break
+            from topos.utils.sighthound import count_findings, run_sighthound_scan
+
+            findings = run_sighthound_scan(self.source, self.language, file_path)
+            dangerous, taint = count_findings(findings)
+            return {
+                "cpg.dangerous_calls": float(dangerous),
+                "cpg.taint_flows": float(taint),
+            }
+
         from topos.functors.probes.cpg.danger import dangerous_api_reachable
         from topos.functors.probes.cpg.taint import taint_flow_paths
 

@@ -46,7 +46,9 @@ Topos checks three independent pillars and awards a **Code Quality Medal** for h
 
 - **SIMPLE** — avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity)
 - **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
-- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis)
+- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis; optionally powered by [Sighthound](https://github.com/Corgea/Sighthound))
+
+Topos is the **operator** over those graphs — not another one-off [tree-sitter](https://tree-sitter.github.io/tree-sitter/) script. Specialist engines (GitNexus for the module graph, Sighthound for SAST) feed one medal lattice agents can optimize toward.
 
 | Medal         | Criteria                                    |
 | :------------ | :------------------------------------------ |
@@ -62,6 +64,8 @@ npm install -g gitnexus
 topos depgraph generate
 topos evaluate src/ -r --gitnexus-dir .gitnexus
 ```
+
+Put [Sighthound](https://github.com/Corgea/Sighthound) on `PATH` to deepen `SECURE` with Corgea's ruleset (auto-detected; local CPG probes still run without it).
 
 Other commands: `topos inspect` for per-file metrics, `topos compare` for AST edit distance between two versions, `topos coverage` for structural test coverage, and `--preferences simple,composable,secure` to tell agents which pillar to protect first when 🥇 GOLD isn't reachable. Full reference: **[docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)**.
 

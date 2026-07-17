@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from typing import Any
 
 from topos.functors.probes.cpg.danger import (
     _callee_from_text,
@@ -26,85 +27,90 @@ def security_findings(
 
     When *allow* is given, allowlisted patterns are excluded from the
     registry first.  ``allow=None`` preserves canonical behavior.
+
+    If the ``sighthound`` CLI is on ``PATH``, findings come from its ruleset
+    (via :mod:`topos.utils.sighthound`); otherwise local CPG probes are used.
     """
     if cpg is None:
         return []
 
-    # If sighthound is installed on the system, run its ruleset
     if shutil.which("sighthound"):
-        file_path = None
-        for node in cpg.nodes.values():
-            if node.uast and node.uast.span and node.uast.span.file:
-                file_path = node.uast.span.file
-                break
-
-        from topos.utils.sighthound import run_sighthound_scan
-
-        raw_findings = run_sighthound_scan(cpg.source, cpg.language, file_path)
-
-        # Build registry for allow-list matching if supplied
-        registry = (
-            effective_registry(cpg.language, allow) if allow is not None else None
+        return _sighthound_security_findings(
+            cpg, max_findings=max_findings, allow=allow
         )
 
-        findings: list[SecurityFinding] = []
-        for raw in raw_findings:
-            ftype = raw.get("finding_type", "").lower()
-            callee = raw.get("function") or (
-                raw.get("sink_info", {}).get("function_name")
-                if raw.get("sink_info")
-                else None
-            )
-
-            # Allowlist filter: if a registry is effective and a callee is found,
-            # we exclude findings that do not match the allowed pattern (if we want
-            # to filter them).
-            # Wait, in standard topos, effective_registry returns the list of
-            # DANGEROUS APIs. If allow is provided, the allowed APIs are removed
-            # from the dangerous list.
-            # So _matches_registry(callee, registry) is True if the callee is
-            # STILL dangerous. Thus, we only include the finding if it matches
-            # the registry (remains dangerous).
-            if (
-                registry is not None
-                and callee
-                and not _matches_registry(callee, registry)
-            ):
-                continue
-
-            kind = "dangerous_call" if ftype == "search" else "taint_flow"
-
-            source_snippet = (
-                raw.get("source_info", {}).get("snippet")
-                if raw.get("source_info")
-                else None
-            )
-            sink_snippet = (
-                raw.get("sink_info", {}).get("snippet")
-                if raw.get("sink_info")
-                else None
-            )
-
-            findings.append(
-                SecurityFinding(
-                    kind=kind,
-                    line=max(1, raw.get("line", 1)),
-                    snippet=raw.get("snippet", ""),
-                    callee=callee,
-                    source=source_snippet,
-                    sink=sink_snippet,
-                )
-            )
-            if len(findings) >= max_findings:
-                break
-        return findings
-
-    # Fallback to local probes if sighthound is not available
     findings = dangerous_call_findings(cpg, max_findings=max_findings, allow=allow)
     remaining = max(0, max_findings - len(findings))
     if remaining:
         findings.extend(taint_flow_findings(cpg, max_findings=remaining, allow=allow))
     return findings
+
+
+def _sighthound_security_findings(
+    cpg: CodePropertyGraph,
+    *,
+    max_findings: int,
+    allow: set[str] | None,
+) -> list[SecurityFinding]:
+    """Map Sighthound JSON findings into :class:`SecurityFinding` models."""
+    from topos.utils.sighthound import run_sighthound_scan
+
+    file_path = None
+    for node in cpg.nodes.values():
+        if node.uast and node.uast.span and node.uast.span.file:
+            file_path = node.uast.span.file
+            break
+
+    raw_findings = run_sighthound_scan(cpg.source, cpg.language, file_path)
+    registry = effective_registry(cpg.language, allow) if allow is not None else None
+
+    findings: list[SecurityFinding] = []
+    for raw in raw_findings:
+        if not isinstance(raw, dict):
+            continue
+        mapped = _map_sighthound_finding(raw, registry=registry)
+        if mapped is None:
+            continue
+        findings.append(mapped)
+        if len(findings) >= max_findings:
+            break
+    return findings
+
+
+def _map_sighthound_finding(
+    raw: dict[str, Any],
+    *,
+    registry: set[str] | None,
+) -> SecurityFinding | None:
+    """Convert one Sighthound finding; return None if allowlisted away."""
+    from topos.utils.sighthound import (
+        finding_callee,
+        finding_line,
+        finding_sink_text,
+        finding_snippet,
+        finding_source_text,
+        is_taint_finding,
+    )
+
+    callee = finding_callee(raw)
+    # When an allow set is active, ``effective_registry`` already dropped
+    # allowlisted callees. Skip findings whose callee is no longer dangerous.
+    if registry is not None and callee and not _matches_registry(callee, registry):
+        return None
+
+    taint = is_taint_finding(raw)
+    kind = "taint_flow" if taint else "dangerous_call"
+    source = finding_source_text(raw) if taint else None
+    sink = finding_sink_text(raw) if taint else None
+
+    return SecurityFinding(
+        kind=kind,
+        line=finding_line(raw),
+        snippet=finding_snippet(raw),
+        callee=callee,
+        source=source,
+        sink=sink,
+    )
 
 
 def dangerous_call_findings(

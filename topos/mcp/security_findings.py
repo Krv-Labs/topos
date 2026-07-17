@@ -42,9 +42,7 @@ def security_findings(
     findings = dangerous_call_findings(cpg, max_findings=max_findings, allow=allow)
     remaining = max(0, max_findings - len(findings))
     if remaining:
-        findings.extend(
-            taint_flow_findings(cpg, max_findings=remaining, allow=allow)
-        )
+        findings.extend(taint_flow_findings(cpg, max_findings=remaining, allow=allow))
     return findings
 
 
@@ -55,15 +53,7 @@ def _sighthound_security_findings(
     allow: set[str] | None,
 ) -> list[SecurityFinding]:
     """Map Sighthound JSON findings into :class:`SecurityFinding` models."""
-    from topos.utils.sighthound import (
-        finding_callee,
-        finding_line,
-        finding_sink_text,
-        finding_snippet,
-        finding_source_text,
-        is_taint_finding,
-        run_sighthound_scan,
-    )
+    from topos.utils.sighthound import run_sighthound_scan
 
     file_path = None
     for node in cpg.nodes.values():
@@ -72,24 +62,13 @@ def _sighthound_security_findings(
             break
 
     raw_findings = run_sighthound_scan(cpg.source, cpg.language, file_path)
-    registry = (
-        effective_registry(cpg.language, allow) if allow is not None else None
-    )
+    registry = effective_registry(cpg.language, allow) if allow is not None else None
 
     findings: list[SecurityFinding] = []
     for raw in raw_findings:
         if not isinstance(raw, dict):
             continue
-        mapped = _map_sighthound_finding(
-            raw,
-            registry=registry,
-            finding_callee=finding_callee,
-            finding_line=finding_line,
-            finding_sink_text=finding_sink_text,
-            finding_snippet=finding_snippet,
-            finding_source_text=finding_source_text,
-            is_taint_finding=is_taint_finding,
-        )
+        mapped = _map_sighthound_finding(raw, registry=registry)
         if mapped is None:
             continue
         findings.append(mapped)
@@ -102,14 +81,17 @@ def _map_sighthound_finding(
     raw: dict[str, Any],
     *,
     registry: set[str] | None,
-    finding_callee: Any,
-    finding_line: Any,
-    finding_sink_text: Any,
-    finding_snippet: Any,
-    finding_source_text: Any,
-    is_taint_finding: Any,
 ) -> SecurityFinding | None:
     """Convert one Sighthound finding; return None if allowlisted away."""
+    from topos.utils.sighthound import (
+        finding_callee,
+        finding_line,
+        finding_sink_text,
+        finding_snippet,
+        finding_source_text,
+        is_taint_finding,
+    )
+
     callee = finding_callee(raw)
     # When an allow set is active, ``effective_registry`` already dropped
     # allowlisted callees. Skip findings whose callee is no longer dangerous.

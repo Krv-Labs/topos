@@ -49,6 +49,7 @@ def gitnexus_install_hint() -> str:
     )
     return f"GitNexus not found. Install it with: {preferred}  # or: {alternate}"
 
+
 # Topos-owned marker written inside ``.gitnexus`` recording what source snapshot
 # the graph was built from. v1 markers carried only ``head_sha``; v2 added
 # ``generated_at``/``finished_at``; current markers add a source content hash so

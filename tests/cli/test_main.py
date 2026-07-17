@@ -11,6 +11,7 @@ _SUBCOMMANDS = (
     "evaluate",
     "inspect",
     "mcp",
+    "refactor",
     "uninstall",
     "update",
 )
@@ -37,6 +38,7 @@ def test_cli_help():
     assert "uninstall" in result.output
     assert "mcp" in result.output
     assert "depgraph" in result.output
+    assert "refactor" in result.output
 
 
 def test_main_fast_path_version():

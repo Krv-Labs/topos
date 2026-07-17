@@ -15,10 +15,17 @@ from pydantic import BaseModel
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
 from topos.evaluation.policies.base import Priority
+from topos.evaluation.policies.gates import (
+    PILLAR_METRIC_PREFIXES as _PILLAR_METRIC_PREFIXES,
+)
 from topos.evaluation.preferences import UserPreferences
 from topos.evaluation.suggestions import suggest_refactors
 
-from .evaluation import INVALID_GITNEXUS_MARKERS, STALE_GITNEXUS_MARKER
+from .evaluation import (
+    BRANCH_NOT_INDEXED_MARKER,
+    INVALID_GITNEXUS_MARKERS,
+    STALE_GITNEXUS_MARKER,
+)
 from .schemas import (
     AcknowledgedRisk,
     AgentContract,
@@ -28,6 +35,7 @@ from .schemas import (
     PillarResult,
     PreferenceWalk,
     PrioritySource,
+    RefactorTarget,
     SecurityFinding,
     Suggestion,
 )
@@ -81,15 +89,19 @@ def composable_contract_signals(
     invalid_override = any(
         marker in w for w in messages for marker in INVALID_GITNEXUS_MARKERS
     )
+    branch_not_indexed = any(BRANCH_NOT_INDEXED_MARKER in w.lower() for w in messages)
     stale_graph = any(STALE_GITNEXUS_MARKER in w for w in messages)
 
     if not coupling_available:
         if invalid_override:
             blocked_by.append("invalid_gitnexus_dir")
             risk_flags.append("invalid_gitnexus_dir")
+        elif branch_not_indexed:
+            blocked_by.append("branch_not_indexed_gitnexus_dir")
+            risk_flags.append("branch_not_indexed_gitnexus_dir")
         elif include_missing:
             blocked_by.append("missing_gitnexus_dir")
-        if invalid_override or include_missing:
+        if invalid_override or branch_not_indexed or include_missing:
             risk_flags.append("composable_unavailable")
 
     if stale_graph:
@@ -104,6 +116,13 @@ def composable_contract_signals(
                 "fix gitnexus_dir — it must be an existing directory inside "
                 "the file root"
             ),
+        )
+    if "branch_not_indexed_gitnexus_dir" in blocked_by:
+        return ComposableContractSignals(
+            blocked_by=blocked_by,
+            risk_flags=risk_flags,
+            next_tool="topos_generate_depgraph",
+            next_action="run topos_generate_depgraph to index the current branch",
         )
     if "stale_gitnexus_dir" in blocked_by:
         return ComposableContractSignals(
@@ -184,8 +203,20 @@ def build_agent_contract(
     acknowledged_risks: list[AcknowledgedRisk],
     grade_capped: bool,
     warnings: list[str] | None = None,
+    refactor_targets: list[RefactorTarget] | None = None,
+    offer_refactor_targets: bool = False,
 ) -> tuple[str | None, list[str], list[str], list[str], list[str]]:
-    """Return compact loop-control fields for MCP agents."""
+    """Return compact loop-control fields for MCP agents.
+
+    ``refactor_targets`` are ranked edit targets the caller computed (None
+    when the tool does not support them or they were not requested);
+    ``offer_refactor_targets`` marks a tool that supports them but was called
+    without them, so a below-IDEAL result can advertise the option.
+
+    Invariant: ``next_tool``/``next_actions`` never contradict ``blocked_by``
+    — when a target coexists with a setup blocker, ``next_actions`` carries
+    both the edit step and the setup remedy.
+    """
     blocked_by: list[str] = []
     risk_flags: list[str] = []
     next_actions: list[str] = []
@@ -213,7 +244,21 @@ def build_agent_contract(
     summary = result.summary()
     simple_ok = result.dimensions.get("simple") == EvaluationValue.SIMPLE
 
-    if composable.next_action:
+    if refactor_targets:
+        # Ranked edit targets were requested and found: the edit loop is the
+        # next step. Setup blockers stay in blocked_by and their remedies ride
+        # along in next_actions so the contract never contradicts itself.
+        first = refactor_targets[0]
+        next_tool = "topos_assess_worktree_change"
+        next_actions.append(
+            f"edit target {first.target_id} ({first.metric}) — "
+            "one focused structural change"
+        )
+        if composable.next_action:
+            next_actions.append(composable.next_action)
+        elif "missing_gitnexus_dir" in blocked_by:
+            next_actions.append("run topos_generate_depgraph to score COMPOSABLE")
+    elif composable.next_action:
         next_tool = composable.next_tool
         next_actions.append(composable.next_action)
     elif summary == EvaluationValue.IDEAL:
@@ -240,6 +285,13 @@ def build_agent_contract(
             "inspect weakest measured pillar, then verify a focused patch"
         )
 
+    if offer_refactor_targets and summary != EvaluationValue.IDEAL:
+        # Self-discoverability: the caller supports ranked targets but did not
+        # ask for them; a below-IDEAL verdict is the moment they help.
+        next_actions.append(
+            "re-run topos_evaluate_file with refactor_targets=5 for ranked edit targets"
+        )
+
     verification_gates = [
         "verify in-place edits with topos_assess_worktree_change",
         "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE",
@@ -252,11 +304,9 @@ def build_agent_contract(
 # Raw metrics are namespaced by representation: cfg/ast -> simple,
 # mdg -> composable, cpg -> secure.  (pdg.* is structural and maps to no
 # pillar; it is preserved only in the flat ``raw_metrics``.)
-_PILLAR_METRIC_PREFIXES: dict[str, tuple[str, ...]] = {
-    "simple": ("cfg.", "ast."),
-    "composable": ("mdg.",),
-    "secure": ("cpg.",),
-}
+# _PILLAR_METRIC_PREFIXES is imported from topos.evaluation.policies.gates —
+# the canonical metric-namespace map shared with gate specs and refactor
+# targets.
 
 
 def mdg_unavailable_message(warnings: list[str] | None) -> str:
@@ -357,6 +407,9 @@ def to_evaluation_result(
     include_agent_contract: bool = True,
     verbose: bool = True,
     metric_locations: dict[str, list[FunctionEntry]] | None = None,
+    refactor_targets: list[RefactorTarget] | None = None,
+    offer_refactor_targets: bool = False,
+    include_security_findings: bool = True,
 ) -> EvaluationResult:
     """Convert a ``ClassificationResult`` into the Pydantic return model.
 
@@ -366,6 +419,11 @@ def to_evaluation_result(
     ``interpretation`` make up ~55% of the default structured payload, and
     clients routinely inject ``structured_content`` into context, so gating both
     channels (not just the markdown) is what earns the keep here.
+
+    ``include_security_findings`` gates only the ``security_findings`` payload
+    field (an output-size lever). Routing and guidance — the agent contract's
+    risk flags, suggestions, and refactor targets — always derive from the
+    true findings so a compact output can never misroute a secure-first agent.
     """
     summary = (
         adjusted_verdict.adjusted_element if adjusted_verdict else result.summary()
@@ -404,6 +462,8 @@ def to_evaluation_result(
                 acknowledged_risks=risks,
                 grade_capped=grade_capped,
                 warnings=warnings,
+                refactor_targets=refactor_targets,
+                offer_refactor_targets=offer_refactor_targets,
             )
         )
         agent_contract = AgentContract(
@@ -441,7 +501,8 @@ def to_evaluation_result(
         metric_locations=metric_locations or {},
         warnings=warnings or [],
         agent_contract=agent_contract,
-        security_findings=active_findings,
+        # Payload only: routing above always saw the true findings.
+        security_findings=active_findings if include_security_findings else [],
         acknowledged_risks=risks,
         raw_lattice_element=(
             lattice_to_str(adjusted_verdict.raw_element) if adjusted_verdict else None
@@ -457,6 +518,7 @@ def to_evaluation_result(
         ),
         grade_capped=grade_capped,
         suggestions=suggestions,
+        refactor_targets=refactor_targets or [],
         preference_walk=walk,
     )
 
@@ -590,6 +652,24 @@ def render_evaluation_md(
                     f"({fn.kind}) lines {fn.start_line}-{fn.end_line}"
                 )
                 lines.append(f"  - {where} — complexity {fn.complexity}")
+
+    if e.refactor_targets:
+        lines.append("")
+        lines.append("## Refactor Targets")
+        lines.append("| Target | Kind | Metric | Location | Operations |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for target in e.refactor_targets:
+            loc = (
+                f"{target.line_start}-{target.line_end}"
+                if target.line_end and target.line_end != target.line_start
+                else str(target.line_start or "?")
+            )
+            symbol = (target.symbol or "<module>").replace("|", "\\|")
+            ops = ", ".join(f"`{op}`" for op in target.recommended_operations)
+            lines.append(
+                f"| `{target.target_id}` `{symbol}` | {target.kind} | "
+                f"`{target.metric}` | {loc} | {ops} |"
+            )
 
     # Suggestions are the actionable payload — show them by default (one line
     # each, already concise). Not verbose-gated: they are the whole point.

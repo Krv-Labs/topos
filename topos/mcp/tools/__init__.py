@@ -9,4 +9,5 @@ from . import (  # noqa: F401
     evaluate,
     inspect,
     preferences,
+    refactor,
 )

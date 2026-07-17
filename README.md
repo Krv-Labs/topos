@@ -6,91 +6,56 @@
   </picture>
 </p>
 
-> **Structural code quality metrics for agent-written programs.**
+<p align="center">
+  <a href="https://github.com/Krv-Labs/topos/actions/workflows/ci.yml"><img src="https://github.com/Krv-Labs/topos/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/pyversions/topos-mcp.svg" alt="Python versions"></a>
+  <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
+  <a href="https://glama.ai/mcp/servers/Krv-Labs/topos"><img src="https://glama.ai/mcp/servers/Krv-Labs/topos/badges/score.svg" alt="topos MCP server"></a>
+</p>
+
+<p align="center">
+  <b>Structural code quality metrics for agent-written programs.</b><br>
+  <a href="https://docs.krv.ai/topos/">Docs</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#mcp-server-for-agents">MCP Server</a> ·
+  <a href="https://github.com/Krv-Labs/topos/issues">Issues</a>
+</p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-**Topos** gives you structural code quality metrics your agents can act on. Passing unit tests proves your code works, but Topos proves it's built to last. It measures program structure — not just syntax — giving agents concrete metrics to optimize toward on every pass. You set the target; agents handle the iteration.
-
-### The Quality Pillars
-
-Topos evaluates code along three independent pillars:
-
-- **SIMPLE** — Avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity).
-- **COMPOSABLE** — Cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus)).
-- **SECURE** — Free of dangerous API reachability and taint paths (CPG analysis; optionally powered by [Sighthound](https://github.com/Corgea/Sighthound)).
-
-Topos is the **operator** over those graphs — not another one-off tree-sitter script. Best-in-class analytics (GitNexus for the module graph, Sighthound for SAST) feed a single lattice agents can optimize toward.
-
-### The Medal Podium
-
-Topos checks all three pillars and awards a **Code Quality Medal** based on how many pass:
-
-| Medal | Criteria |
-| :--- | :--- |
-| 🥇 **GOLD** | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
-| 🥈 **SILVER** | Passes 2 of 3 |
-| 🥉 **BRONZE** | Passes 1 of 3 |
-| ❌ **SLOP** | Passes 0 (or fails to parse) |
-
-Set your **Preferences** (e.g., `simple,composable,secure`) to tell your coding agent which pillars to prioritize when aiming for Gold under token and time budgets.
+**Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
+architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
+establishing a precise, medal-scored (SLOP → GOLD) feedback loop to autonomously write clean, highly composable code.
 
 ---
 
-### Quick Start
-
-#### Install
+## Quick Start
 
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
-topos --version
-topos --help
-```
-
-Every command also accepts `-h` / `--help`. See [`docs/cli-startup-benchmarks.md`](docs/cli-startup-benchmarks.md) for release binary size and startup benchmarks.
-
-#### Evaluate code — the 60-second tour
-
-```bash
-topos evaluate path/to/file.py
 topos evaluate src/ -r
-topos evaluate src/ -r --json
-topos inspect path/to/file.py
-topos compare before.py after.py
 ```
 
-Use `evaluate` for medals, `inspect` for per-file metrics, `compare` for AST edit distance, and `--json` for CI or automation.
+`evaluate -r` scores every file in `src/` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
-#### Review a whole repo or module
+Other install paths (PyPI, source checkout) and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**.
 
-Point `evaluate` at a directory with `-r` for a ranked, actionable digest instead of a per-file wall:
+## What you get
 
-```bash
-topos evaluate src/ -r
-topos evaluate src/mypackage -r
-```
+Topos checks three independent pillars and awards a **Code Quality Medal** for how many pass:
 
-The summary surfaces, in order:
+- **SIMPLE** — avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity)
+- **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
+- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis)
 
-- **Pillars** — per-pillar PASS/FAIL with average & minimum scores across all files.
-- **Directory Floor Verdict** — the worst verdict any single file drags the codebase down to (the pointwise lattice meet).
-- **Needs attention** — the lowest-scoring files (where quality is *worst*).
-- **Lowest-hanging fruit** — the files closest to *flipping* a failing pillar, each with the concrete fix. **Start here for the cheapest wins:**
+| Medal         | Criteria                                    |
+| :------------ | :------------------------------------------ |
+| 🥇 **GOLD**   | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
+| 🥈 **SILVER** | Passes 2 of 3                               |
+| 🥉 **BRONZE** | Passes 1 of 3                               |
+| ❌ **SLOP**   | Passes 0 (or fails to parse)                |
 
-```text
-Lowest-hanging fruit
-  Smallest improvement that flips a failing pillar.
-  1.  src/mypackage/__init__.py
-      simple 59% → 60% (+1 pts)
-  2.  src/mypackage/util.py
-      simple 55% → 60% (+5 pts)
-      ↳ Extract helper functions to cut branching (cyclomatic 21 > 15).
-```
-
-Add `--json` for a machine-readable rollup, or `-v` to expand every file's raw metrics.
-
-#### Score COMPOSABLE — add a dependency graph
-
-`COMPOSABLE` measures how cleanly a module is decoupled, which needs a cross-file **dependency graph**. Topos reads one from a `.gitnexus/` directory produced by [GitNexus](https://github.com/abhigyanpatwari/GitNexus). Without it, `SIMPLE` and `SECURE` still run — but any medal containing `COMPOSABLE` (including 🥇 GOLD) is unreachable.
+`COMPOSABLE` needs a cross-file dependency graph, which the CLI does not build automatically:
 
 ```bash
 npm install -g gitnexus
@@ -98,149 +63,26 @@ topos depgraph generate
 topos evaluate src/ -r --gitnexus-dir .gitnexus
 ```
 
-Install GitNexus once per machine. Run `topos depgraph generate` from each repository you want to score for COMPOSABLE.
+Other commands: `topos inspect` for per-file metrics, `topos compare` for AST edit distance between two versions, `topos coverage` for structural test coverage, and `--preferences simple,composable,secure` to tell agents which pillar to protect first when 🥇 GOLD isn't reachable. Full reference: **[docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)**.
 
-> The CLI does **not** auto-detect `.gitnexus/` — pass `--gitnexus-dir` explicitly. Regenerate after imports change (new modules, renames, restructures). *(The `topos mcp` server, by contrast, auto-detects `./.gitnexus`.)*
-
-#### Optional: deepen SECURE with Sighthound
-
-`SECURE` always runs from Topos's CPG probes. Install [Sighthound](https://github.com/Corgea/Sighthound) and put the `sighthound` binary on `PATH` to outsource dangerous-call and taint findings to Corgea's ruleset — same medal, richer SAST signal. No config flag required; Topos detects it automatically.
-
-#### Measure test coverage — structural + semantic
-
-`--tests` takes your test files (repeat the flag for several); the positional arguments are the program-under-test files.
-
-```bash
-topos coverage --tests tests/test_foo.py topos/foo.py
-topos coverage --tests tests/test_a.py --tests tests/test_b.py src/a.py src/b.py
-topos coverage --tests tests/test_foo.py topos/foo.py --coverage-threshold 0.8 --json
-```
-
-Reports UAST **declaration coverage**: bipartite matching between PUT and test declarations at the structural level.
-
-#### Steer the verdict
-
-```bash
-topos evaluate src/ -r --preferences simple,composable,secure
-topos evaluate app.py --allow yaml.load
-topos evaluate src/ -r --language typescript
-```
-
-`--preferences` ranks pillars for agents, `--allow` acknowledges a known risky call and caps the grade below Gold, and `--language` supports `python`, `typescript`, `javascript`, `rust`, and `cpp`.
-
----
-
-### MCP Server
+## MCP server (for agents)
 
 Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
-<details>
-<summary><b>Set up <code>topos mcp</code> in your agent</b></summary>
-
-&nbsp;
-
-#### Step 1 — Build the dependency graph (optional but recommended)
-
-> **_⚠️ Recommended:_**
-> Without a dependency graph, Topos cannot score COMPOSABLE — any verdict containing it (including `IDEAL`) is unreachable. `SIMPLE` and `SECURE` always run.
->
-> ```bash
-> npm install -g gitnexus
-> cd /path/to/your/repo
-> topos depgraph generate
-> ```
->
-> Re-run when imports change (new modules, renames, restructures). The cache keys on `.gitnexus/` mtime and invalidates itself.
-
-> **_💡 Tip:_**
-> Verify the binary before wiring it into editors:
->
-> ```bash
-> topos mcp
-> ```
->
-> `topos mcp` prints the FastMCP banner and waits on standard input. Press `Ctrl-C` after the smoke check.
-
-#### Step 2 — Register with your agent
-
-Run from your project root — Topos auto-detects its file-access root by walking up for `.git` or `pyproject.toml`.
-
-##### Claude Code
-
 ```bash
-claude mcp add topos topos mcp
+claude mcp add --transport stdio topos -- topos mcp
 ```
 
-##### Gemini CLI
-
-```bash
-gemini mcp add topos topos mcp
-```
-
-##### Cursor
-
-<a href="cursor://anysphere.cursor-deeplink/mcp/install?name=topos&config=eyJjb21tYW5kIjogInRvcG9zIG1jcCJ9">**➕ Install `topos` in Cursor**</a>
-
-Or edit `.cursor/mcp.json`:
-
-```json
-{ "mcpServers": { "topos": { "command": "topos mcp" } } }
-```
-
-##### Windsurf and everything else
-
-```json
-{ "mcpServers": { "topos": { "command": "topos mcp" } } }
-```
-
-#### Step 3 — Launch from the project root
-
-> *:warning: IMPORTANT*
-> Topos refuses to read files outside a trusted root. If you must launch from elsewhere, set it explicitly:
->
-> ```json
-> {
->   "command": "topos mcp",
->   "env": { "TOPOS_MCP_FILE_ROOT": "/absolute/path/to/repo" }
-> }
-> ```
-
-> ***:bulb: TIP***
-> On the agent's first turn, point it at the workflow doc:
->
-> > "Fetch `topos://docs/workflows` and follow the Topos refactor loop."
->
-> Or invoke the prompt directly: `topos_refactor_until_ideal(filepath="path/to/file.py")`.
-
-#### Smoke test
-
-> "Use topos to find the worst-scoring file in `src/`, propose a refactor, and verify with `topos_assess_improvement`."
-
-A healthy response shows `{simple: 72%, composable: 65%, secure: 95%}` when GitNexus is configured. If the response is missing `composable`, go back to Step 1.
-
-</details>
+Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
 
 ---
 
-### How it works
+## How it works
 
-Topos measures code along the three independent quality generators and maps them to an 8-element evaluation lattice:
+Topos measures code along the three pillars above and maps the result to an 8-element evaluation lattice — the three pillars are pairwise incomparable, and 🥇 GOLD is their intersection.
 
-- **SIMPLE** — Built from the [abstract syntax tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) (AST) and [control-flow graph](https://en.wikipedia.org/wiki/Control-flow_graph) (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
-- **COMPOSABLE** — Built from the [module dependency graph](https://en.wikipedia.org/wiki/Module_dependency_graph) (MDG) using [GitNexus](https://github.com/abhigyanpatwari/GitNexus), to capture inter-module dependencies. This is slightly different than the usual [program dependence graph](https://en.wikipedia.org/wiki/Program_dependence_graph) (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
-- **SECURE** — Built from the [code property graph](https://en.wikipedia.org/wiki/Code_property_graph) (CPG). When [Sighthound](https://github.com/Corgea/Sighthound) is on `PATH`, Topos outsources dangerous-call and taint findings to its ruleset; otherwise local CPG probes still run. Either way, results land in the same SECURE metrics agents already consume.
-
-#### Operator, not another tree-sitter tool
-
-Plenty of custom analytics are built on [tree-sitter](https://tree-sitter.github.io/tree-sitter/) — ASTs, CFGs, dependency graphs, SAST rules. Topos does not replace those engines. It **operates over them**:
-
-| Pillar | Graph / engine | Specialist we integrate |
-| :--- | :--- | :--- |
-| SIMPLE | AST + CFG | Built-in (tree-sitter → UAST) |
-| COMPOSABLE | Module dependency graph | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) |
-| SECURE | Code property graph / SAST | [Sighthound](https://github.com/Corgea/Sighthound) (optional; local CPG fallback) |
-
-The differentiator is the **lattice + agent loop**: one preference-ranked medal, one set of MCP tools, and a closed refactor cycle — instead of stitching together ad-hoc scripts for every graph.
+<details>
+<summary>Evaluation lattice diagram</summary>
 
 ```mermaid
 graph BT
@@ -276,20 +118,11 @@ graph BT
     style IDEAL      fill:#ffd700,stroke:#856404,color:#000
 ```
 
-> [!TIP]
-> **Three Independent Pillars:** `SIMPLE`, `COMPOSABLE`, and `SECURE` are **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently. `🥇 GOLD` is the intersection of all three. 
+</details>
 
-#### Manager Priorities & Agent Iteration
+Set your **Preferences** (e.g. `simple,composable,secure`) to tell your coding agent which pillars to prioritize when aiming for GOLD under token and time budgets, and how to relax that goal when GOLD isn't reachable. Details: [docs.krv.ai/topos/preferences](https://docs.krv.ai/topos/preferences.html) · [docs.krv.ai/topos/measures](https://docs.krv.ai/topos/measures.html) · [docs.krv.ai/topos/concepts](https://docs.krv.ai/topos/concepts.html).
 
-In a perfect world, every file would earn a `🥇 GOLD` medal. In reality, managers and developers have a finite budget of time and tokens. 
-
-Topos allows you to set **Preferences** — an ordering of these medals based on your immediate priorities. Coding agents use this ranking to aim for `🥇 GOLD`. If achieving `🥇 GOLD` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality medal aligned with your priorities.
-
-
-
----
-
-### Contributing
+## Contributing
 
 Topos is used internally at [Krv Labs](https://krv.ai) to manage AI agent code output. We welcome bugs, ideas, and contributions.
 
@@ -299,6 +132,6 @@ Topos is used internally at [Krv Labs](https://krv.ai) to manage AI agent code o
 
 ---
 
-[Full Documentation](docs/) · [Measures & Metrics](docs/source/measures.rst) · [Category Theory Concepts](docs/source/concepts.rst)
+[Full Documentation](https://docs.krv.ai/topos/) · [Measures & Metrics](https://docs.krv.ai/topos/measures.html) · [Category Theory Concepts](https://docs.krv.ai/topos/concepts.html) · [Engineering notes](docs/)
 
 _Built with ❤️ by [Krv Labs](https://krv.ai)_

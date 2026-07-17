@@ -37,6 +37,46 @@ def test_block_entropy():
     assert calculate_entropy_variance("") == 0.0
 
 
+def test_kolmogorov_proxy_tiny_dense_function_passes_simple_gate():
+    """Issue #152: a 3-line array-lookup refactor of an 8-arm match must not
+    score worse than the match it replaced, and must fall within the SIMPLE
+    entropy band -- previously zlib's fixed per-stream overhead dominated
+    the ratio on such a short input and flagged this textbook simplifying
+    refactor as a regression."""
+    from topos.evaluation.policies.calibration import SIMPLE
+
+    array_lookup = (
+        "pub fn probe(x: u8) -> &'static str {\n"
+        '    const T: [&str; 8] = ["a", "b", "c", "d", "e", "f", "g", "h"];\n'
+        "    T[x as usize]\n"
+        "}\n"
+    )
+    match8 = (
+        "pub fn probe(x: u8) -> &'static str {\n"
+        "    match x {\n"
+        '        0 => "a", 1 => "b", 2 => "c", 3 => "d",\n'
+        '        4 => "e", 5 => "f", 6 => "g", _ => "h",\n'
+        "    }\n"
+        "}\n"
+    )
+
+    array_ratio = calculate_kolmogorov_proxy(array_lookup)
+    match_ratio = calculate_kolmogorov_proxy(match8)
+
+    assert SIMPLE.min_entropy <= array_ratio <= SIMPLE.max_entropy
+    assert SIMPLE.min_entropy <= match_ratio <= SIMPLE.max_entropy
+    assert array_ratio <= match_ratio + 0.1
+
+
+def test_kolmogorov_proxy_tiny_repetitive_code_still_fails_low_entropy():
+    """The tiny-input correction must not lift genuinely repetitive code over
+    the SIMPLE low-entropy floor."""
+    from topos.evaluation.policies.calibration import SIMPLE
+
+    repetitive = "x=1\n" * 40
+    assert calculate_kolmogorov_proxy(repetitive) < SIMPLE.min_entropy
+
+
 def test_distance_metrics():
     source1 = "x = 1"
     source2 = "y = 2"

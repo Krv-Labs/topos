@@ -75,15 +75,22 @@ class ProgramDependenceGraph:
         return "composable"
 
     @classmethod
-    def from_uast(cls, uast_root: UASTNode) -> ProgramDependenceGraph:
-        """Construct DDG ∪ CDG using a freshly-built CFG."""
+    def from_uast(cls, uast_root: UASTNode, source: str = "") -> ProgramDependenceGraph:
+        """Construct DDG ∪ CDG using a freshly-built CFG.
+
+        ``source`` is optional and defaults to ``""`` for backward
+        compatibility; when supplied it lets data-dependence recover real
+        identifier text (see ``_identifier_name``) instead of falling back
+        to each occurrence's own node id.
+        """
         cfg = ControlFlowGraph.from_uast(uast_root)
         statements: list[UASTNode] = []
         for block in cfg.blocks.values():
             statements.extend(block.statements)
 
         edges: list[DependenceEdge] = []
-        edges.extend(_compute_data_dependence(statements))
+        for procedure_statements in _statements_by_procedure(cfg):
+            edges.extend(_compute_data_dependence(procedure_statements, source))
         edges.extend(_compute_control_dependence(cfg))
 
         return cls(statements=statements, edges=edges, cfg=cfg)
@@ -108,8 +115,54 @@ class ProgramDependenceGraph:
 # ---------------------------------------------------------------------------
 
 
+def _statements_by_procedure(cfg: ControlFlowGraph) -> list[list[UASTNode]]:
+    """Return CFG statements grouped by callable/module entry.
+
+    The CFG builder wires the synthetic entry block to one ``call_*`` entry
+    block per callable (and one implicit module-level callable when needed).
+    Data dependence is intra-procedural, so each group gets its own
+    reaching-definitions map instead of sharing file-global variable names.
+    """
+    procedure_entries = [
+        edge.target
+        for edge in cfg.edges
+        if edge.source == cfg.entry_id and edge.target != cfg.exit_id
+    ]
+    if not procedure_entries:
+        return [[stmt for block in cfg.blocks.values() for stmt in block.statements]]
+
+    entry_set = set(procedure_entries)
+    groups: list[list[UASTNode]] = []
+    for entry_id in procedure_entries:
+        reachable = _reachable_procedure_blocks(cfg, entry_id, entry_set)
+        group: list[UASTNode] = []
+        for block_id, block in cfg.blocks.items():
+            if block_id in reachable:
+                group.extend(block.statements)
+        groups.append(group)
+    return groups
+
+
+def _reachable_procedure_blocks(
+    cfg: ControlFlowGraph, entry_id: int, procedure_entries: set[int]
+) -> set[int]:
+    reachable: set[int] = set()
+    stack = [entry_id]
+    while stack:
+        block_id = stack.pop()
+        if block_id in reachable or block_id == cfg.exit_id:
+            continue
+        reachable.add(block_id)
+        for edge in cfg.successors(block_id):
+            if edge.target in procedure_entries and edge.target != entry_id:
+                continue
+            stack.append(edge.target)
+    return reachable
+
+
 def _compute_data_dependence(
     statements: list[UASTNode],
+    source: str = "",
 ) -> list[DependenceEdge]:
     """
     Approximate reaching-definitions data dependence.
@@ -127,7 +180,7 @@ def _compute_data_dependence(
     last_def: dict[str, str] = {}
 
     for stmt in statements:
-        defs, uses = _defs_and_uses(stmt)
+        defs, uses = _defs_and_uses(stmt, source)
         for var in uses:
             if var in last_def and last_def[var] != stmt.id:
                 edges.append(
@@ -182,7 +235,7 @@ def _compute_control_dependence(cfg: ControlFlowGraph) -> list[DependenceEdge]:
     return edges
 
 
-def _defs_and_uses(stmt: UASTNode) -> tuple[set[str], set[str]]:
+def _defs_and_uses(stmt: UASTNode, source: str = "") -> tuple[set[str], set[str]]:
     """Return ``(defs, uses)`` — variable names defined / used by ``stmt``."""
     defs: set[str] = set()
     uses: set[str] = set()
@@ -196,7 +249,7 @@ def _defs_and_uses(stmt: UASTNode) -> tuple[set[str], set[str]]:
                     walk(c, False)
             return
         if node.kind == "Identifier":
-            name = _identifier_name(node)
+            name = _identifier_name(node, source)
             if name:
                 (defs if in_lhs else uses).add(name)
             return
@@ -207,13 +260,36 @@ def _defs_and_uses(stmt: UASTNode) -> tuple[set[str], set[str]]:
     return defs, uses
 
 
-def _identifier_name(node: UASTNode) -> str:
+def _identifier_name(node: UASTNode, source: str = "") -> str:
     """Best-effort recovery of an identifier's textual name.
 
-    The UAST mappers don't currently carry token text; fall back to the
-    node id so identifiers at distinct spans aren't conflated.
+    The UAST mappers don't carry token text as an attribute, so when
+    ``source`` is available we slice the node's own byte span to recover
+    the real variable name (e.g. ``"x"``) — this is what lets two distinct
+    occurrences of the same variable be recognized as the same dependence
+    key. Without ``source`` we fall back to the node's own id, which is
+    unique per span; that keeps identifiers at distinct spans from being
+    spuriously conflated, at the cost of never matching a reused variable
+    across statements.
     """
     name_attr = node.attributes.get("name")
-    if isinstance(name_attr, str):
+    if isinstance(name_attr, str) and name_attr:
         return name_attr
+    if source:
+        text = _node_text(node, source)
+        if text:
+            return text
     return node.id or ""
+
+
+def _node_text(node: UASTNode, source: str) -> str:
+    """Slice ``source`` by ``node``'s byte span (best-effort)."""
+    span = node.span
+    encoded = source.encode("utf-8")
+    if span.start_byte < 0 or span.end_byte > len(encoded):
+        return ""
+    return (
+        encoded[span.start_byte : span.end_byte]
+        .decode("utf-8", errors="replace")
+        .strip()
+    )

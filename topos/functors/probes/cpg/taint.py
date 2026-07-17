@@ -74,6 +74,17 @@ def taint_flow_paths(cpg: CodePropertyGraph, allow: set[str] | None = None) -> i
     A DDG path here is a chain of CPG nodes connected by DDG edges; we
     count distinct ``(source_node, sink_node)`` pairs that are reachable.
 
+    DDG edges connect whole *statement* nodes (see
+    ``ProgramDependenceGraph._compute_data_dependence``), while sources and
+    sinks are detected at the finer *sub-expression* granularity (a bare
+    ``Identifier``/``MemberExpr`` for sources, a ``CallExpr`` for sinks).
+    These two id spaces essentially never intersect directly, so before
+    running BFS we bridge the gap by containment: each source/sink is
+    mapped to the smallest DDG-participating statement whose byte span
+    contains it (falling back to itself when it already *is* a
+    DDG-participating statement, keeping the flat/simple case working
+    unchanged).
+
     When *allow* is given, allowlisted sink patterns are excluded; the
     default ``allow=None`` preserves the canonical metrics behavior.
     """
@@ -86,10 +97,13 @@ def taint_flow_paths(cpg: CodePropertyGraph, allow: set[str] | None = None) -> i
     from topos.graphs.cpg.models import CPGEdgeKind
 
     forward: dict[str, list[str]] = {}
+    ddg_stmt_ids: set[str] = set()
     for edge in cpg.edges:
         if edge.kind is not CPGEdgeKind.DDG:
             continue
         forward.setdefault(edge.source, []).append(edge.target)
+        ddg_stmt_ids.add(edge.source)
+        ddg_stmt_ids.add(edge.target)
 
     if not forward:
         return 0
@@ -111,11 +125,78 @@ def taint_flow_paths(cpg: CodePropertyGraph, allow: set[str] | None = None) -> i
     if not sources or not sinks:
         return 0
 
+    # {ddg_participating_stmt_id: (start_byte, end_byte)} — built once up
+    # front so resolving each source/sink's enclosing statement is a single
+    # pass over this (typically small) set, not a scan of every CPG node.
+    ddg_spans: dict[str, tuple[int, int]] = {}
+    for stmt_id in ddg_stmt_ids:
+        stmt_node = cpg.nodes.get(stmt_id)
+        if stmt_node is not None:
+            ddg_spans[stmt_id] = (
+                stmt_node.uast.span.start_byte,
+                stmt_node.uast.span.end_byte,
+            )
+
+    effective_sources = _resolve_effective_ids(sources, cpg, ddg_spans)
+    effective_sinks = _resolve_effective_ids(sinks, cpg, ddg_spans)
+
+    if not effective_sources or not effective_sinks:
+        return 0
+
     total = 0
+    reachable_cache: dict[str, set[str]] = {}
     for src in sources:
-        reachable = _bfs_reachable(forward, src)
-        total += sum(1 for s in sinks if s in reachable)
+        eff_src = effective_sources.get(src)
+        if eff_src is None:
+            continue
+        reachable = reachable_cache.get(eff_src)
+        if reachable is None:
+            reachable = _bfs_reachable(forward, eff_src)
+            reachable_cache[eff_src] = reachable
+        for sink in sinks:
+            eff_sink = effective_sinks.get(sink)
+            if eff_sink is not None and eff_sink in reachable:
+                total += 1
     return total
+
+
+def _resolve_effective_ids(
+    candidate_ids: list[str] | set[str],
+    cpg: CodePropertyGraph,
+    ddg_spans: dict[str, tuple[int, int]],
+) -> dict[str, str]:
+    """
+    Map each source/sink node id to its "effective" DDG-graph entry point.
+
+    A candidate that already equals a DDG-participating statement id maps
+    to itself (the flat/simple case that already worked before this fix).
+    Otherwise we find the smallest DDG-participating statement span that
+    contains the candidate's span — its nearest enclosing statement — since
+    that's the node the DDG adjacency actually knows how to traverse from.
+    Ties (equal-width enclosing spans) keep the first one encountered;
+    candidates with no enclosing DDG statement (e.g. dead code sliced out
+    of the CFG) are simply omitted from the result.
+    """
+    resolved: dict[str, str] = {}
+    for nid in candidate_ids:
+        if nid in ddg_spans:
+            resolved[nid] = nid
+            continue
+        node = cpg.nodes.get(nid)
+        if node is None:
+            continue
+        start, end = node.uast.span.start_byte, node.uast.span.end_byte
+        best_id: str | None = None
+        best_width: int | None = None
+        for stmt_id, (s_start, s_end) in ddg_spans.items():
+            if s_start <= start and end <= s_end:
+                width = s_end - s_start
+                if best_width is None or width < best_width:
+                    best_width = width
+                    best_id = stmt_id
+        if best_id is not None:
+            resolved[nid] = best_id
+    return resolved
 
 
 def _bfs_reachable(adj: dict[str, list[str]], start: str) -> set[str]:

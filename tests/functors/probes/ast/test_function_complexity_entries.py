@@ -2,10 +2,16 @@
 
 Covers nested functions / closures, methods, and module-level code so the
 ``ast.max_function_complexity`` gate can always be mapped back to a span.
+
+``_entries`` builds the ``ProgramObject`` via ``ProgramMorphism`` (rather
+than constructing it directly), so these tests exercise the real production
+code path -- ``uast_root`` populated -- which is what actually drives
+``ast.max_function_complexity`` for real callers (see issue #153).
 """
 
 from __future__ import annotations
 
+from topos.core.morphism import ProgramMorphism
 from topos.core.object import ProgramObject
 from topos.functors.probes.ast.complexity import (
     calculate_function_complexity_entries,
@@ -15,7 +21,7 @@ from topos.utils.tree_sitter import parse_python
 
 
 def _entries(code: str):
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     return {e.qualified_name: e for e in calculate_function_complexity_entries(obj)}
 
 
@@ -70,7 +76,7 @@ def test_nested_closure_is_dotted_and_outer_includes_nested() -> None:
 
 def test_module_level_only_has_no_function_entries() -> None:
     code = "x = 1\nif x:\n    y = 2\nelse:\n    y = 3\n"
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     assert calculate_function_complexity_entries(obj) == []
 
 
@@ -78,6 +84,58 @@ def test_max_entry_matches_gate_metric() -> None:
     code = "def big(x):\n" + "".join(
         f"    if x == {i}:\n        return {i}\n" for i in range(12)
     )
-    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    obj = ProgramMorphism(source=code, language="python").ast
     entries = calculate_function_complexity_entries(obj)
     assert max(e.complexity for e in entries) == calculate_max_function_complexity(obj)
+
+
+# ---------------------------------------------------------------------------
+# Legacy fallback: a ProgramObject constructed directly (uast_root=None).
+# ---------------------------------------------------------------------------
+#
+# Real callers always go through ProgramMorphism / parse_source, which
+# populate uast_root for every supported language -- but complexity.py keeps
+# a defensive, Python-only native tree-sitter fallback for ProgramObjects
+# built without one. This guards that fallback from silently rotting.
+
+
+def test_fallback_path_used_when_uast_root_is_none() -> None:
+    code = "def foo(x):\n    if x:\n        return 1\n    return 0\n"
+    obj = ProgramObject(root=parse_python(code), source=code, language="python")
+    assert obj.uast_root is None
+
+    entries = {e.qualified_name: e for e in calculate_function_complexity_entries(obj)}
+    foo = entries["foo"]
+    assert foo.kind == "function"
+    assert foo.complexity == 2  # one `if`
+    assert calculate_max_function_complexity(obj) == 2
+
+
+def test_python_program_morphism_keeps_native_decision_coverage() -> None:
+    code = (
+        "def f(xs):\n"
+        "    if xs:\n"
+        "        pass\n"
+        "    for x in xs:\n"
+        "        pass\n"
+        "    while xs:\n"
+        "        break\n"
+        "    try:\n"
+        "        risky()\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "    with open('x') as fh:\n"
+        "        pass\n"
+        "    assert xs\n"
+        "    y = 1 if xs else 0\n"
+        "    z = [i for i in xs if i]\n"
+        "    match y:\n"
+        "        case 1:\n"
+        "            return 1\n"
+        "        case 2:\n"
+        "            return 2\n"
+        "        case _:\n"
+        "            return 3\n"
+    )
+    ast = ProgramMorphism(source=code, language="python").ast
+    assert calculate_max_function_complexity(ast) == 13

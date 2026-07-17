@@ -10,6 +10,7 @@ by the CPG node's byte span and pattern-match the result.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -123,13 +124,27 @@ def _callee_from_text(text: str) -> str:
     return match.group(1) if match else ""
 
 
+def match_registry_key(callee: str, keys: Iterable[str]) -> str | None:
+    """The registry key *callee* matches, or None.
+
+    Exact membership wins; otherwise suffix match for qualified names
+    (``foo.eval`` against ``eval``, ``mypkg.pickle.loads`` against
+    ``pickle.loads``), restricted to dotted or longer-than-3-char keys to
+    avoid spurious short-name suffix hits. Prefers the longest matching key
+    so ``pickle.loads`` beats a hypothetical bare ``loads``.
+    """
+    candidates = list(keys)
+    if callee in candidates:
+        return callee
+    best: str | None = None
+    for key in candidates:
+        if "." not in key and len(key) <= 3:
+            continue
+        matches = callee.endswith("." + key) or callee.endswith(key)
+        if matches and (best is None or len(key) > len(best)):
+            best = key
+    return best
+
+
 def _matches_registry(callee: str, registry: set[str]) -> bool:
-    if callee in registry:
-        return True
-    # Suffix match for qualified names: matches `foo.eval` against `eval`
-    # and `mypkg.pickle.loads` against `pickle.loads`.
-    return any(
-        callee.endswith("." + api) or callee.endswith(api)
-        for api in registry
-        if "." in api or len(api) > 3
-    )
+    return match_registry_key(callee, registry) is not None

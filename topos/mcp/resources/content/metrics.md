@@ -23,21 +23,41 @@ Computed from the Control Flow Graph built on UAST.  Always available.
 max-function cap 20, entropy bell peak at 0.5). **`achieved`** is the AND
 of the raw gates above — not a single score floor.
 
-## COMPOSABLE generator (← Dependency Graph)
+## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
-Requires a `ModuleDependencyGraph` parsed from `.gitnexus/`.  Only populated when
-`gitnexus_dir` is provided or auto-detected.
+`mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`
+require a `ModuleDependencyGraph` parsed from `.gitnexus/` (only populated
+when `gitnexus_dir` is provided or auto-detected). `mdg.abstractness` is
+UAST-derived and needs no GitNexus directory — it is available whenever
+the language's UAST mapper classifies type declarations (Python, Rust,
+Go, TypeScript today; not JavaScript, which has no abstract-type concept).
 
 | Key | What it measures | Gate / good range |
 |---|---|---|
 | `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | Diagnostic |
-| `mdg.instability` | `Ce / (Ca + Ce)`.                        | **[0.3, 0.7]** (achieved gate) |
+| `mdg.instability` | `Ce / (Ca + Ce)`.                        | **[0.3, 0.7]** — only gated when `mdg.abstractness` is unavailable for the file's language (see below) |
+| `mdg.abstractness` | Fraction of the module's type declarations that are abstract (trait/interface/protocol/abstract class) vs. concrete (struct/class/enum). `0.0` for a functions-only module (no type declarations at all) — that is a real, meaningful "fully concrete" reading, not "unmeasured." | Diagnostic |
+| `mdg.main_sequence_distance` | Martin's Distance from the Main Sequence, `D = \|A + I − 1\|`. Replaces the raw `mdg.instability` gate whenever abstractness is available — a concrete, unstable orchestrator (I≈1, A≈0, e.g. `main.rs`) sits *on* the main sequence (D≈0) and is not penalized, unlike a fixed instability band. | **≤ 0.5** (achieved gate, when active) |
 | `mdg.fan_in`      | Incoming `CALLS` edges.                  | **≤ 15** (achieved gate) |
 | `mdg.fan_out`     | Outgoing `CALLS` edges.                  | **≤ 15** (achieved gate) |
 | `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | Diagnostic |
 
+**Why two instability gates?** Gating raw `mdg.instability` against a
+fixed band flags both stable leaf modules (constants, error types) and
+unstable orchestrators (`main.rs`, bootstrap/wiring code) even when those
+extremes are architecturally intentional — see issue #124. Pairing
+instability with Abstractness and gating on distance from the main
+sequence fixes this for languages where Abstractness is measured; other
+languages (currently: JavaScript, C++) keep the original band gate
+unchanged until their UAST mappers gain type-declaration classification.
+A separate role-based exemption (`is_stable_leaf_module` — a
+declarations-only module with no branching control flow) tolerates
+maximal main-sequence distance for frozen, concrete foundation/utility
+code, mirroring Martin's own accepted "Zone of Pain" exception.
+
 `Φ_COMPOSABLE` uses fan caps of 40 for score normalization. **`achieved`**
-is the AND of instability band + fan-in + fan-out gates.
+is the AND of whichever instability-family gate is active, plus fan-in and
+fan-out.
 
 ## SECURE generator (← Code Property Graph)
 

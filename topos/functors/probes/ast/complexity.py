@@ -5,13 +5,24 @@ Per-Function Complexity Analysis
 Provides a function-level breakdown of complexity using the AST.
 This is separate from the CFG-based module-level cyclomatic complexity used
 in the main program evaluation (SIMPLE generator).
+
+Python keeps the native tree-sitter path so the established gate continues
+to count Python-specific decision forms (``with``, ``assert``, ternaries,
+comprehensions, and match arms) that are not represented in today's UAST.
+Other languages use the language-neutral UAST path to avoid the old
+vacuous-zero behavior outside Python.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from topos.core.object import ProgramObject
+
+if TYPE_CHECKING:
+    from topos.graphs.uast.models import UASTNode
 
 _FUNCTION_NODE_TYPES = ("function_definition", "async_function_definition")
 _SCOPE_NODE_TYPES = (*_FUNCTION_NODE_TYPES, "class_definition")
@@ -46,6 +57,44 @@ DECISION_UAST_KINDS = frozenset(
     }
 )
 
+# UAST kinds that every language mapper agrees denote a callable.
+_FUNCTION_UAST_KINDS = frozenset({"FunctionDecl", "MethodDecl"})
+
+# UAST kinds that introduce a new "scope" for qualified-name/kind purposes
+# (mirrors ``_SCOPE_NODE_TYPES`` for the native tree-sitter fallback).
+_SCOPE_UAST_KINDS = frozenset({*_FUNCTION_UAST_KINDS, "TypeDecl"})
+
+# tree-sitter grammars use different native node kinds for a declaration's
+# name token depending on syntactic position (e.g. tree-sitter-javascript
+# emits ``property_identifier`` for a class method's name, not
+# ``identifier``; tree-sitter-go emits ``field_identifier``/
+# ``type_identifier`` elsewhere). ``UASTNode`` has no stored ``name``
+# attribute, so recovering it means scanning a declaration's own children
+# for one of these native kinds and slicing the corresponding byte span out
+# of the source -- the *native* provenance kind is matched here rather than
+# the normalized UAST ``kind``, since none of the mappers classify these
+# tokens as ``"Identifier"`` today.
+_NAME_NATIVE_KINDS = frozenset(
+    {
+        "identifier",
+        "property_identifier",
+        "field_identifier",
+        "type_identifier",
+        "package_identifier",
+    }
+)
+
+_DECLARATOR_WRAPPER_NATIVE_KINDS = frozenset(
+    {
+        "function_declarator",
+        "pointer_declarator",
+        "reference_declarator",
+        "parenthesized_declarator",
+    }
+)
+
+_ASYNC_PREFIX_RE = re.compile(rb"\Aasync\b")
+
 
 def _calculate_node_complexity(ast: ProgramObject) -> int:
     """Internal helper to calculate complexity of a specific node/sub-tree."""
@@ -63,7 +112,7 @@ def _calculate_node_complexity(ast: ProgramObject) -> int:
     return decision_count + 1
 
 
-def _calculate_cyclomatic_complexity_uast(root) -> int:
+def _calculate_cyclomatic_complexity_uast(root: UASTNode) -> int:
     decision_count = 0
 
     def walk(node) -> None:
@@ -98,6 +147,118 @@ def _extract_function_name(node, source_bytes: bytes) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# UAST-driven (language-neutral) implementation
+# ---------------------------------------------------------------------------
+
+
+def _extract_uast_name(node: UASTNode, source_bytes: bytes) -> str | None:
+    """Best-effort identifier extraction for a UAST declaration node.
+
+    Returns ``None`` for callables with no bound identifier of their own
+    (e.g. a JS/TS arrow function assigned via ``const f = (x) => {...}``,
+    where the name lives on the enclosing ``variable_declarator``, not the
+    ``FunctionDecl`` node itself) -- these are skipped by callers, matching
+    the pre-existing behavior of never picking up anonymous callables
+    (Python lambdas were never matched by the native node-type query
+    either).
+    """
+    for child in node.children:
+        if child.native.node_kind in _NAME_NATIVE_KINDS:
+            return source_bytes[child.span.start_byte : child.span.end_byte].decode(
+                "utf-8", errors="replace"
+            )
+    for child in node.children:
+        if child.native.node_kind in _DECLARATOR_WRAPPER_NATIVE_KINDS:
+            nested = _extract_uast_name(child, source_bytes)
+            if nested is not None:
+                return nested
+    return None
+
+
+def _is_async_uast(node: UASTNode, source_bytes: bytes) -> bool:
+    """Detect a leading ``async`` modifier on a UAST declaration node.
+
+    tree-sitter models ``async`` as an unnamed leading token, so it is
+    filtered out of the UAST tree entirely (only *named* children survive
+    mapping) -- but it remains part of the declaration node's own byte span,
+    so a text sniff at the start of that span recovers it uniformly across
+    Python (``async def``), JS/TS (``async function`` / ``async () =>`` /
+    ``async foo()``), and Rust (``async fn``). Go has no ``async`` keyword.
+    """
+    start = node.span.start_byte
+    return bool(_ASYNC_PREFIX_RE.match(source_bytes[start : start + 6]))
+
+
+def _classify_uast_kind(
+    own_kind: str, scope_chain: list[tuple[str, str]], is_async: bool
+) -> str:
+    if own_kind == "MethodDecl":
+        return "method"
+    if scope_chain:
+        enclosing_kind = scope_chain[-1][0]
+        if enclosing_kind == "TypeDecl":
+            return "method"
+        if enclosing_kind in _FUNCTION_UAST_KINDS:
+            return "closure"
+    return "async_function" if is_async else "function"
+
+
+@dataclass(frozen=True)
+class _UastFunctionEntry:
+    node: UASTNode
+    name: str
+    qualified_name: str
+    kind: str
+
+
+def _iter_uast_function_entries(
+    root: UASTNode, source_bytes: bytes
+) -> list[_UastFunctionEntry]:
+    """Top-down walk of the UAST collecting every named callable, in
+    document order, with its dotted qualified name and method/closure/
+    function/async_function classification.
+
+    ``UASTNode`` has no parent pointer, so the enclosing-scope chain is
+    threaded down explicitly as the recursion descends (mirroring the
+    native fallback's upward ``.parent`` walk, just inverted).
+    """
+    entries: list[_UastFunctionEntry] = []
+
+    def walk(node: UASTNode, scope_chain: list[tuple[str, str]]) -> None:
+        kind = getattr(node, "kind", "")
+        next_scope_chain = scope_chain
+
+        if kind in _FUNCTION_UAST_KINDS:
+            name = _extract_uast_name(node, source_bytes)
+            if name is not None:
+                qualified = ".".join([n for _, n in scope_chain] + [name])
+                is_async = _is_async_uast(node, source_bytes)
+                entries.append(
+                    _UastFunctionEntry(
+                        node=node,
+                        name=name,
+                        qualified_name=qualified,
+                        kind=_classify_uast_kind(kind, scope_chain, is_async),
+                    )
+                )
+            next_scope_chain = [*scope_chain, (kind, name or "<anon>")]
+        elif kind in _SCOPE_UAST_KINDS:  # TypeDecl
+            name = _extract_uast_name(node, source_bytes)
+            next_scope_chain = [*scope_chain, (kind, name or "<anon>")]
+
+        for child in getattr(node, "children", []):
+            walk(child, next_scope_chain)
+
+    walk(root, [])
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
 def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
     """
     Calculate cyclomatic complexity for each function in the AST.
@@ -108,6 +269,15 @@ def calculate_function_complexities(ast: ProgramObject) -> dict[str, int]:
     Returns:
         A dictionary mapping function names to their complexity scores.
     """
+    if ast.uast_root is not None and ast.language != "python":
+        source_bytes = ast.source.encode("utf-8")
+        return {
+            entry.name: _calculate_cyclomatic_complexity_uast(entry.node)
+            for entry in _iter_uast_function_entries(ast.uast_root, source_bytes)
+        }
+
+    # Python native path, also used as a fallback for ProgramObjects
+    # constructed without a uast_root.
     complexities: dict[str, int] = {}
     source_bytes = ast.source.encode("utf-8")
 
@@ -194,6 +364,22 @@ def calculate_function_complexity_entries(
     retains every callable (including same-named ones) plus its span, dotted
     qualified name, and scope kind.
     """
+    if ast.uast_root is not None and ast.language != "python":
+        source_bytes = ast.source.encode("utf-8")
+        return [
+            FunctionComplexity(
+                name=entry.name,
+                qualified_name=entry.qualified_name,
+                kind=entry.kind,
+                start_line=entry.node.span.start_line,
+                end_line=entry.node.span.end_line,
+                complexity=_calculate_cyclomatic_complexity_uast(entry.node),
+            )
+            for entry in _iter_uast_function_entries(ast.uast_root, source_bytes)
+        ]
+
+    # Python native path, also used as a fallback for ProgramObjects
+    # constructed without a uast_root.
     source_bytes = ast.source.encode("utf-8")
     entries: list[FunctionComplexity] = []
 

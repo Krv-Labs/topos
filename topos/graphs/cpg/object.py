@@ -40,7 +40,7 @@ class CodePropertyGraph:
 
     @classmethod
     def from_uast(cls, uast_root: UASTNode, source: str = "") -> CodePropertyGraph:
-        nodes, edges = build_cpg(uast_root)
+        nodes, edges = build_cpg(uast_root, source=source)
         return cls(nodes=nodes, edges=edges, language=uast_root.lang, source=source)
 
     def node_text(self, node: CPGNode) -> str:

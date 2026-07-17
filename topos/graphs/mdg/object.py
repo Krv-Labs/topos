@@ -71,6 +71,28 @@ class LadybugSchemaMismatchError(RuntimeError):
         self.original = original
 
 
+class LadybugBranchMismatchError(FileNotFoundError):
+    """Raised when ``.gitnexus`` has indexed stores, but none for the current branch.
+
+    Subclasses ``FileNotFoundError`` (same trick ``LadybugSchemaMismatchError``
+    plays on ``RuntimeError``) so every existing ``except FileNotFoundError``
+    elsewhere in the codebase keeps degrading gracefully with no further
+    changes -- this only needs special-casing where a *better* message/state
+    is wanted, not everywhere graceful degradation already happens.
+    """
+
+
+def _is_shadow_replay_error(exc: BaseException) -> bool:
+    """Whether *exc* is Ladybug refusing to replay shadow pages read-only.
+
+    Incrementally-updated ``.gitnexus`` stores can be left with pending
+    shadow pages (e.g. after ``gitnexus analyze`` without a full wipe).
+    Ladybug requires a read-write handle to replay them.
+    """
+    msg = str(exc).lower()
+    return "shadow page" in msg and "read-only" in msg
+
+
 def _raise_schema_mismatch(exc: BaseException) -> None:
     msg = str(exc).lower()
     if "different version" not in msg and "storage version" not in msg:
@@ -123,6 +145,7 @@ class GraphRelationship:
     type: str
     confidence: float = 1.0
     reason: str = ""
+    properties: dict[str, object] = field(default_factory=dict)
 
 
 def _parse_node(item: dict) -> GraphNode:
@@ -141,6 +164,7 @@ def _parse_relationship(item: dict) -> GraphRelationship:
         type=item["type"],
         confidence=item.get("confidence", 1.0),
         reason=item.get("reason", ""),
+        properties=item.get("properties", {}),
     )
 
 
@@ -205,8 +229,26 @@ class ModuleDependencyGraph:
             ImportError: If ``ladybug`` is not installed for binary format.
             LadybugSchemaMismatchError: If the store version exceeds embedded ladybug.
         """
+        from topos.utils.gitnexus import current_git_branch, resolve_lbug_store
+
         base = Path(gitnexus_dir)
-        lbug_path = base / "lbug"
+        branch = current_git_branch(base.parent)
+        resolved = resolve_lbug_store(base, branch)
+        lbug_path = resolved.path
+
+        if lbug_path is None:
+            if resolved.available_branches:
+                raise LadybugBranchMismatchError(
+                    f"No GitNexus store indexed for branch {branch!r} at {base}. "
+                    f"Indexed branches: {', '.join(resolved.available_branches)}. "
+                    "Run 'gitnexus analyze' on this branch (or 'topos depgraph "
+                    "generate') to index it."
+                )
+            raise FileNotFoundError(
+                f"LadybugDB store not found at {base / 'lbug'}. "
+                "Install GitNexus (npm install -g gitnexus) and run "
+                "'gitnexus analyze' in the repository root first."
+            )
 
         if lbug_path.is_file():
             return cls._from_ladybugdb(lbug_path, target_file)
@@ -231,7 +273,14 @@ class ModuleDependencyGraph:
         try:
             db = lb.Database(str(lbug_path), read_only=True)
         except RuntimeError as exc:
-            _raise_schema_mismatch(exc)
+            if not _is_shadow_replay_error(exc):
+                _raise_schema_mismatch(exc)
+            # Pending shadow pages (e.g. incremental `gitnexus analyze` without
+            # a full wipe) can only be replayed with a read-write handle.
+            try:
+                db = lb.Database(str(lbug_path), read_only=False)
+            except RuntimeError as retry_exc:
+                _raise_schema_mismatch(retry_exc)
         conn = lb.Connection(db)
 
         # Discover node tables at runtime so we're not tied to a fixed schema.
@@ -253,14 +302,31 @@ class ModuleDependencyGraph:
                 props = {k: v for k, v in node_data.items() if not k.startswith("_")}
                 graph.add_node(GraphNode(id=node_id, label=label, properties=props))
 
-        # Load all relationships from the single CodeRelation table.
-        result = conn.execute(
-            "MATCH (src)-[r:CodeRelation]->(dst) "
-            "RETURN src.id, dst.id, r.type, r.confidence, r.reason"
-        )
+        # Load all relationships from the single CodeRelation table. Also try
+        # to pull `step` (the 1-indexed STEP_IN_PROCESS ordering property, see
+        # topos/graphs/process/object.py) — not every ladybug schema version
+        # carries this column on CodeRelation, so fall back to the plain query
+        # if it isn't there rather than failing the whole load.
+        has_step = True
+        try:
+            result = conn.execute(
+                "MATCH (src)-[r:CodeRelation]->(dst) "
+                "RETURN src.id, dst.id, r.type, r.confidence, r.reason, r.step"
+            )
+        except RuntimeError:
+            has_step = False
+            result = conn.execute(
+                "MATCH (src)-[r:CodeRelation]->(dst) "
+                "RETURN src.id, dst.id, r.type, r.confidence, r.reason"
+            )
         idx = 0
         while result.has_next():
-            src_id, dst_id, rel_type, confidence, reason = result.get_next()
+            row = result.get_next()
+            if has_step:
+                src_id, dst_id, rel_type, confidence, reason, step = row
+            else:
+                src_id, dst_id, rel_type, confidence, reason = row
+                step = None
             if src_id is None or dst_id is None:
                 continue
             graph.add_relationship(
@@ -271,6 +337,7 @@ class ModuleDependencyGraph:
                     type=rel_type,
                     confidence=confidence or 1.0,
                     reason=reason or "",
+                    properties={"step": step} if step is not None else {},
                 )
             )
             idx += 1

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFile, execFileSync } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import { promisify } from 'util';
 import {
     getPlatformKey,
@@ -36,10 +36,17 @@ const GITNEXUS_PROMPT_DISMISSED_KEY = "gitnexusPromptDismissed";
 /**
  * Prefer pnpm for GitNexus install when available on PATH; fall back to npm.
  * Synchronous so the guided-install terminal can launch immediately.
+ *
+ * Keep the pnpm-first preference in sync with the other install paths:
+ *   - Python: topos/utils/gitnexus.py (gitnexus_install_command)
+ *   - Shell:  install.sh (install_optional_dependencies)
  */
 function resolveGitNexusInstallCommand(): string {
     try {
-        execFileSync('pnpm', ['--version'], { stdio: 'ignore' });
+        // execSync (shell-based) so Windows resolves pnpm.cmd — execFileSync
+        // cannot run .cmd shims directly, which would mask an installed pnpm.
+        // Command is a constant, so shell use carries no injection surface.
+        execSync('pnpm --version', { stdio: 'ignore' });
         return GITNEXUS_PNPM_INSTALL_COMMAND;
     } catch {
         return GITNEXUS_NPM_INSTALL_COMMAND;

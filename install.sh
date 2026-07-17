@@ -361,6 +361,9 @@ install_optional_dependencies() {
 
     case "$reply" in
         [yY][eE][sS]|[yY]|"")
+            # Keep the pnpm-first preference in sync with the other install paths:
+            #   - Python: topos/utils/gitnexus.py (gitnexus_install_command)
+            #   - TypeScript: extensions/vscode/src/extension.ts (resolveGitNexusInstallCommand)
             local install_cmd=""
             if command -v pnpm >/dev/null 2>&1; then
                 install_cmd="pnpm add -g gitnexus"

@@ -28,6 +28,11 @@ def gitnexus_install_command() -> str:
     Prefers ``pnpm`` when available, then ``npm``. Returns the pnpm form when
     neither package manager is on PATH so docs and error messages stay
     consistent with the preferred host workflow.
+
+    Keep the pnpm-first preference in sync with the other install paths:
+      - TypeScript: extensions/vscode/src/extension.ts
+        (resolveGitNexusInstallCommand)
+      - Shell: install.sh (install_optional_dependencies)
     """
     if shutil.which("pnpm") is not None:
         return _PNPM_INSTALL_CMD

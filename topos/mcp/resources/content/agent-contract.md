@@ -64,6 +64,10 @@ Prefer these fields over parsing prose guidance.
 current value vs. threshold, and `recommended_operations` tokens. Verification
 guidance lives once on `agent_contract.verification_gates`, not per target.
 
+These are **gate-failure** edit targets from the scoring pipeline. They are
+not the same as advisory `topos_refactor(target="cycles"|"dependencies"|"process")`,
+which never affects medals. See `topos://docs/workflows` § Advisory refactoring.
+
 ## Boundaries
 
 - Use `gitnexus_dir` to score COMPOSABLE. Without it, any verdict containing

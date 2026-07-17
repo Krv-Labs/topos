@@ -157,6 +157,48 @@ Concretely: aim for 🥇 **GOLD** for the first few iterations; if the lattice
 verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and try to satisfy
 only the top-two generators. See `topos://docs/preferences`.
 
+## Advisory refactoring (`topos_refactor`)
+
+Separate from gate-failure `refactor_targets` on evaluate results.
+`topos_refactor` is read-only advisory analysis and **does not** feed
+SIMPLE / COMPOSABLE / SECURE scoring.
+
+Call with `{"params": {"target": "...", "filepath": "...", "limit": 5}}`
+(optional `gitnexus_dir`; ignored for `target="cycles"`):
+
+| `target` | Engine | Needs GitNexus | What you get |
+| --- | --- | --- | --- |
+| `cycles` | CFG cycle basis (`ph` / homology) | No | Source ranges for real loops/branches behind cyclomatic complexity |
+| `dependencies` | Balanced Forman curvature on the MDG | Yes | Dependency edges worth strengthening |
+| `process` | Directed Forman-Ricci on process graphs | Yes | Execution choke-point transitions |
+
+Hotspot fields (intentionally terse for wire size): `kind`, `label`,
+`filepath`, `line_start` / `line_end`, `score`, `suggestion`.
+
+Do **not** treat advisory hotspots as medal policy. Use evaluate/assess for
+lattice movement; use `topos_refactor` when you want structural hotspot
+hints outside the scoring loop.
+
+Repo engineering write-up (filesystem, not an MCP resource):
+`openwiki/workflows/agent-and-cli.md`.
+
+## Structural test coverage (`topos_calculate_coverage`)
+
+Static UAST-overlap between a program-under-test and test files — **not**
+executed line/branch coverage and **not** proof that tests call production
+symbols. Outside the lattice. Product reference: Sphinx
+`docs/source/measures.rst`; engineering summary:
+`openwiki/workflows/agent-and-cli.md`.
+
+## Repo OpenWiki (filesystem, not `topos_get_doc`)
+
+`topos_get_doc` / `topos://docs/*` only serve the six embedded topics
+(`agent-contract`, `lattice`, `metrics`, `preferences`, `priority`,
+`workflows`). Broader engineering docs live under `openwiki/` in the
+repository (quickstart, architecture, domain, operations, integrations).
+Agents with workspace access should read those files directly; they are
+**not** MCP resources.
+
 ## What Topos does NOT measure
 
 - **Whether tests pass or behavior is preserved.** A refactor can lift the

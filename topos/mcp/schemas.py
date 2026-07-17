@@ -1112,7 +1112,9 @@ class ChangesetResult(BaseModel):
 
 
 class RefactorHotspot(BaseModel):
-    # Full field semantics: docs/refactor-suite.md (trimmed here — wire-size ratchet).
+    # Field set is intentionally terse (wire-size ratchet). Semantics:
+    # topos_get_doc(topic="workflows") § Advisory refactoring;
+    # openwiki/workflows/agent-and-cli.md (filesystem, not MCP).
     kind: Literal["cycle", "dependency_edge", "process_transition"]
     label: str
     filepath: str

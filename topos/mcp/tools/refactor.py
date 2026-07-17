@@ -12,7 +12,9 @@ surfacing a different structural-analysis engine:
 
 All three are purely advisory — none of this feeds SIMPLE/COMPOSABLE/SECURE
 scoring; that's an explicit acceptance criterion carried over from #86 and
-applied consistently across the whole suite. Full details: docs/refactor-suite.md.
+applied consistently across the whole suite. Orientation:
+``topos_get_doc(topic="workflows")`` (Advisory refactoring) and
+``openwiki/workflows/agent-and-cli.md`` (repo filesystem; not an MCP resource).
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ _READ_ONLY_ANN = {
     annotations=_READ_ONLY_ANN,
 )
 def topos_refactor(params: RefactorInput) -> ToolResult:
-    """Refactor hotspots (read-only). docs/refactor-suite.md."""
+    """Refactor hotspots (read-only). See topos_get_doc(topic="workflows")."""
     try:
         if params.target == "cycles":
             return _refactor_cycles(params)

@@ -37,8 +37,8 @@ class UASTNode:
 
     The UASTNode acts as a normalization layer over language-specific Concrete
     Syntax Trees (CSTs) from Tree-sitter. It maps disparate native nodes into
-    unified `kind` values that follow the industry-standard reference in
-    docs/uast-industry-standards.md.
+    unified `kind` values; representation limits and mapper boundaries are
+    documented in openwiki/architecture/overview.md (UAST contract section).
 
     While normalized, each node strictly retains its `native` provenance and
     `span` data to ensure fidelity with compiler-native AST expectations

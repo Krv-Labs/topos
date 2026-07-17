@@ -139,7 +139,7 @@ chmod +x scripts/build-binary.sh
 
 `scripts/build-binary.sh` is the single source of truth for PyInstaller flags (also used by CI and release workflows). Hidden imports are derived from `topos._LAZY_EXPORTS` via `scripts/lazy_exports.py`.
 
-See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement.
+See [`openwiki/operations/testing-and-release.md`](../../../openwiki/operations/testing-and-release.md) (CLI startup and frozen-binary guardrails) for startup measurement.
 
 Rename the binary for your local platform:
 

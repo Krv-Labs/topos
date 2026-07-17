@@ -68,4 +68,3 @@ COMPOSABLE scoring also evolved from a raw instability band toward Martin’s ma
 
 - **Formal lattice ordering** — `topos/core/omega.py`: verify the explanatory mathematical ordering against the implemented bitmask/order helpers before expanding theory documentation.
 - **Parser backend semantics** — `topos/graphs/ast/dispatch.py`: `hybrid` is a public default but currently has a true native parser only for Python; document the intended future contract once confirmed.
-- **OpenWiki automation duplication** — `.github/workflows/openwiki.yml` and `.github/workflows/openwiki-update.yml`: they appear to schedule the same update job and should be reviewed for duplicate runs.

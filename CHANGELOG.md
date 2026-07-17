@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Sighthound/Corgea SECURE Outsourcing:** Deprecates Python-based pattern matching and BFS taint-path tracing on the Code Property Graph (CPG) by outsourcing security analysis directly to Corgea/Sighthound when available on system `PATH`. When `sighthound` is present, Topos invokes it to parse JSON-formatted findings and maps them into standard `cpg.dangerous_calls` and `cpg.taint_flows`. If `sighthound` is absent, Topos gracefully falls back to local CPG danger and taint probes.
+
 ## [0.3.11] - 2026-07-13
 
 ### Changed

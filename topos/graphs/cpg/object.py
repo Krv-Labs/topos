@@ -67,6 +67,15 @@ class CodePropertyGraph:
     # ------------------------------------------------------------------
 
     def metrics(self) -> dict[str, float]:
+        """Return canonical SECURE metrics without acknowledgement overlays."""
+        return self.security_metrics()
+
+    def security_metrics(self, *, allow: set[str] | None = None) -> dict[str, float]:
+        """Return SECURE metrics with optional disclosed-risk exclusions.
+
+        ``metrics()`` remains the canonical raw Representation contract. This
+        explicit method is used only to compute the allowlist-adjusted view.
+        """
         if shutil.which("sighthound"):
             file_path = None
             for node in self.nodes.values():
@@ -76,7 +85,7 @@ class CodePropertyGraph:
             from topos.utils.sighthound import count_findings, run_sighthound_scan
 
             findings = run_sighthound_scan(self.source, self.language, file_path)
-            dangerous, taint = count_findings(findings)
+            dangerous, taint = count_findings(findings, allow=allow)
             return {
                 "cpg.dangerous_calls": float(dangerous),
                 "cpg.taint_flows": float(taint),
@@ -86,6 +95,6 @@ class CodePropertyGraph:
         from topos.functors.probes.cpg.taint import taint_flow_paths
 
         return {
-            "cpg.dangerous_calls": float(dangerous_api_reachable(self)),
-            "cpg.taint_flows": float(taint_flow_paths(self)),
+            "cpg.dangerous_calls": float(dangerous_api_reachable(self, allow)),
+            "cpg.taint_flows": float(taint_flow_paths(self, allow)),
         }

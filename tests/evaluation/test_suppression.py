@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from topos.config import AllowEntry, ToposConfig, load_topos_config, merge_cli_allows
 from topos.core.morphism import ProgramMorphism
@@ -34,6 +35,40 @@ def test_allowlist_flips_secure_and_caps_grade() -> None:
     assert verdict.acknowledged[0][0].callee == "eval"
     # SECURE is only acknowledged, never a clean pass — no top grade.
     assert verdict.adjusted_element != EvaluationValue.IDEAL
+
+
+def test_sighthound_adjustment_keeps_non_allowlisted_finding_active() -> None:
+    raw_findings = [
+        {
+            "function": "eval",
+            "finding_type": "Code Injection",
+            "line": 1,
+            "snippet": "eval(x)",
+            "tags": ["injection"],
+        },
+        {
+            "function": "database.query",
+            "finding_type": "SQL Injection",
+            "line": 2,
+            "snippet": "database.query(x)",
+            "tags": ["sql"],
+        },
+    ]
+    with (
+        patch("shutil.which", return_value="/usr/local/bin/sighthound"),
+        patch(
+            "topos.utils.sighthound.run_sighthound_scan",
+            return_value=raw_findings,
+        ),
+    ):
+        result, cpg, findings = _setup("eval(x)\ndatabase.query(x)\n")
+        config = ToposConfig(allow=[AllowEntry(pattern="eval", reason="trusted")])
+
+        verdict = apply_allowlist(result, findings, config, file_path="f.py", cpg=cpg)
+
+    assert verdict.adjusted_secure_pass is False
+    assert [finding.callee for finding in verdict.active_findings] == ["database.query"]
+    assert [finding.callee for finding, _entry in verdict.acknowledged] == ["eval"]
 
 
 def test_no_allowlist_leaves_raw_intact() -> None:

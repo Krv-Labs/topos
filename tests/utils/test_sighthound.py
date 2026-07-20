@@ -17,6 +17,7 @@ from topos.mcp.security_findings import security_findings
 from topos.utils.sighthound import (
     count_findings,
     finding_callee,
+    finding_sink_text,
     finding_source_text,
     is_taint_finding,
     run_sighthound_scan,
@@ -76,6 +77,15 @@ MOCK_SEARCH_FINDING_CMD = {
         "variable": "subprocess",
     },
     "tags": ["command", "injection", "subprocess"],
+}
+
+MOCK_SIGHTHOUND_ONLY_FINDING = {
+    **MOCK_SEARCH_FINDING,
+    "line": 9,
+    "function": "database.query",
+    "finding_type": "SQL Injection",
+    "snippet": "database.query(user_input)",
+    "tags": ["sql", "injection"],
 }
 
 # Single-file taint finding tags from scanning_logic.rs.
@@ -166,10 +176,14 @@ def test_count_findings_real_schema():
     assert taint_only == 0
     d, t = count_findings([MOCK_CROSS_FILE_TAINT])
     assert (d, t) == (0, 1)
+    assert count_findings(MOCK_SIGHTHOUND_OUTPUT, {"eval"}) == (1, 1)
+    assert count_findings([MOCK_CROSS_FILE_TAINT], {"os.system"}) == (0, 0)
 
 
 def test_finding_callee():
     assert finding_callee(MOCK_SEARCH_FINDING) == "eval"
+    assert finding_callee(MOCK_CROSS_FILE_TAINT) == "os.system"
+    assert finding_sink_text(MOCK_CROSS_FILE_TAINT) == "os.system"
     assert finding_callee({"sink_info": {"function_name": "exec"}}) == "exec"
     assert finding_callee({}) is None
 
@@ -306,6 +320,33 @@ def test_security_findings_with_sighthound(mock_scan, mock_which):
     # Source text keeps the origin location alongside type and context.
     assert f3.source == "request.args @ app.py:10 (function: index)"
     assert f3.sink == "os.system"
+
+
+@patch("shutil.which")
+@patch("topos.utils.sighthound.run_sighthound_scan")
+def test_sighthound_allowlist_preserves_unrelated_rules(mock_scan, mock_which):
+    mock_which.return_value = "/usr/local/bin/sighthound"
+    mock_scan.return_value = [
+        MOCK_SEARCH_FINDING,
+        MOCK_SIGHTHOUND_ONLY_FINDING,
+        MOCK_CROSS_FILE_TAINT,
+    ]
+
+    span = SourceSpan("main.py", 0, 10, 1, 0, 1, 10)
+    native = NativeRef("tree-sitter", "0.22", "module")
+    uast = UASTNode("module", "python", span, native)
+    cpg = CodePropertyGraph.from_uast(uast, source="eval(x)")
+
+    assert cpg.metrics()["cpg.dangerous_calls"] == 2.0
+    adjusted = cpg.security_metrics(allow={"eval"})
+    assert adjusted["cpg.dangerous_calls"] == 1.0
+    assert adjusted["cpg.taint_flows"] == 1.0
+    findings = security_findings(cpg, allow={"eval"})
+    assert [finding.callee for finding in findings] == [
+        "database.query",
+        "os.system",
+    ]
+    assert findings[1].sink == "os.system"
 
 
 @patch("shutil.which")

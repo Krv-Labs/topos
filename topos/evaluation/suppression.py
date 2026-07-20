@@ -19,8 +19,7 @@ from dataclasses import dataclass, field
 from topos.config import AllowEntry, ToposConfig
 from topos.core.omega import EvaluationValue
 from topos.evaluation.characteristic_morphism import ClassificationResult
-from topos.functors.probes.cpg.danger import _matches_registry, dangerous_api_reachable
-from topos.functors.probes.cpg.taint import taint_flow_paths
+from topos.functors.probes.cpg.danger import _matches_registry
 from topos.graphs.cpg.object import CodePropertyGraph
 from topos.mcp.schemas import SecurityFinding
 
@@ -90,8 +89,9 @@ def apply_allowlist(
     # Recompute the adjusted SECURE gate from exact counts (gate == 0).
     allow_patterns = {entry.pattern for entry in entries}
     if allow_patterns and cpg is not None:
-        dangerous = dangerous_api_reachable(cpg, allow_patterns)
-        taint = taint_flow_paths(cpg, allow_patterns)
+        adjusted_metrics = cpg.security_metrics(allow=allow_patterns)
+        dangerous = adjusted_metrics["cpg.dangerous_calls"]
+        taint = adjusted_metrics["cpg.taint_flows"]
         adjusted_secure_pass = dangerous == 0 and taint == 0
     else:
         adjusted_secure_pass = raw_secure_pass

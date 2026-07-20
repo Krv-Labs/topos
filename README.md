@@ -48,6 +48,8 @@ Topos checks three independent pillars, computed natively in `topos-core` from t
 - **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability, over a dependency graph built by [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
 - **SECURE** — free of dangerous API reachability and taint paths (CPG analysis)
 
+Topos is the **operator** over those graphs — not another one-off [tree-sitter](https://tree-sitter.github.io/tree-sitter/) script. GitNexus feeds the module graph behind COMPOSABLE; the [refactoring suite](#refactoring-suite-advisory-not-scored) below layers Graphify and Sighthound on top as advisory tools, all pointed at one medal lattice agents can optimize toward.
+
 | Medal | Criteria |
 | :--- | :--- |
 | 🥇 **GOLD** | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
@@ -58,7 +60,7 @@ Topos checks three independent pillars, computed natively in `topos-core` from t
 `COMPOSABLE` needs a cross-file dependency graph. As of v0.4.0 that graph is only wired up through the **MCP server** — the `topos` CLI doesn't build or read `.gitnexus` yet (`depgraph`/`--gitnexus-dir` are Python-era commands not ported to the Rust CLI; SIMPLE/SECURE-only evaluation is what `topos evaluate` gives you today):
 
 ```bash
-npm install -g gitnexus
+pnpm add -g gitnexus  # or: npm install -g gitnexus
 claude mcp add --transport stdio topos -- topos mcp
 # then, from an agent: topos_generate_depgraph, followed by
 # topos_evaluate_file(..., gitnexus_dir=".gitnexus") to score COMPOSABLE/GOLD
@@ -75,7 +77,7 @@ Beyond the scored medal, `topos_refactor` (MCP) surfaces ranked, actionable hots
 - **`process`** — directed Forman-Ricci curvature over GitNexus process graphs, flagging execution-path choke points.
 - **`graphify`** — orphan nodes and low-confidence (`INFERRED`/`AMBIGUOUS`) edges in a [Graphify](https://github.com/Graphify-Labs/graphify) knowledge graph, flagging likely dead code and fragile relationships. Generate the graph with `topos graphify generate` or the `topos_generate_graphify_graph` MCP tool, then inspect with `topos graphify orphans <file>` or `topos_refactor(target="graphify")`.
 
-Topos also runs the embedded [Sighthound](https://github.com/Corgea/Sighthound) SAST engine to surface supplementary, per-finding security detail (`security_findings`) alongside the SECURE verdict — advisory detail, not a second scoring input. See [`docs/refactor-suite.md`](docs/refactor-suite.md) for the full design.
+Topos also runs the embedded [Sighthound](https://github.com/Corgea/Sighthound) SAST engine to surface supplementary, per-finding security detail (`security_findings`) alongside the SECURE verdict — advisory detail, not a second scoring input (a deliberate change from an earlier, since-superseded Python integration where Sighthound's counts could replace the CPG probes for the SECURE gate itself). See [`docs/refactor-suite.md`](docs/refactor-suite.md) for the full design.
 
 ## MCP server (for agents)
 

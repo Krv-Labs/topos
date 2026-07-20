@@ -1,0 +1,14 @@
+# pnpm 11+ reads project settings from this file (not package.json "pnpm").
+# Single-package workspace for the VS Code extension only.
+packages:
+  - "."
+
+overrides:
+  serialize-javascript: "^7.0.5"
+  diff: "^9.0.0"
+
+# Allow postinstall scripts required by the extension toolchain.
+allowBuilds:
+  esbuild: true
+  "@vscode/vsce-sign": true
+  keytar: true

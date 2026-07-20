@@ -160,11 +160,13 @@ export function downloadFile(
     redirectsRemaining: number = MAX_REDIRECTS
 ): Promise<void> {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
+        let file: fs.WriteStream | undefined;
 
         const cleanup = () => {
-            file.close();
-            fs.unlink(destPath, () => {});
+            if (file) {
+                file.close();
+                fs.unlink(destPath, () => {});
+            }
         };
 
         const request = getImpl(targetUrl, (response) => {
@@ -189,6 +191,8 @@ export function downloadFile(
                 return;
             }
 
+            const destinationFile = fs.createWriteStream(destPath);
+            file = destinationFile;
             const totalBytes = parseInt(response.headers['content-length'] ?? '0', 10);
             let downloadedBytes = 0;
 
@@ -199,14 +203,14 @@ export function downloadFile(
                 }
             });
 
-            response.pipe(file);
+            response.pipe(destinationFile);
 
-            file.on('finish', () => {
-                file.close();
+            destinationFile.on('finish', () => {
+                destinationFile.close();
                 resolve();
             });
 
-            file.on('error', (err) => {
+            destinationFile.on('error', (err) => {
                 cleanup();
                 reject(err);
             });

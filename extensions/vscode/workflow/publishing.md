@@ -82,11 +82,11 @@ Run the extension checks:
 
 ```bash
 cd <your-local-topos-repo>/extensions/vscode
-npm install
-npm run check-types
-npm run lint
-npm test
-npm run package
+pnpm install
+pnpm run check-types
+pnpm run lint
+pnpm test
+pnpm run package
 ```
 
 What these do:
@@ -99,7 +99,7 @@ What these do:
 To run the VS Code integration smoke tests (downloads a full VS Code build, so it is local-first / opt-in):
 
 ```bash
-npm run test:integration
+pnpm run test:integration
 ```
 
 > [!TIP]
@@ -111,7 +111,7 @@ This tests extension registration and fallback behavior, but does not test the t
 
 ```bash
 cd <your-local-topos-repo>/extensions/vscode
-npx --yes @vscode/vsce package --out topos-vscode-local.vsix
+pnpm exec vsce package --no-dependencies --out topos-vscode-local.vsix
 code --install-extension topos-vscode-local.vsix --force
 code <your-local-topos-repo>
 ```
@@ -139,7 +139,7 @@ chmod +x scripts/build-binary.sh
 
 `scripts/build-binary.sh` is the single source of truth for PyInstaller flags (also used by CI and release workflows). Hidden imports are derived from `topos._LAZY_EXPORTS` via `scripts/lazy_exports.py`.
 
-See [`docs/cli-startup-benchmarks.md`](../../../docs/cli-startup-benchmarks.md) for startup measurement.
+See [`openwiki/operations/testing-and-release.md`](../../../openwiki/operations/testing-and-release.md) (CLI startup and frozen-binary guardrails) for startup measurement.
 
 Rename the binary for your local platform:
 
@@ -163,19 +163,19 @@ Package and install the matching target:
 cd <your-local-topos-repo>/extensions/vscode
 
 # Apple Silicon macOS
-npm run package:darwin-arm64
+pnpm run package:darwin-arm64
 code --install-extension topos-vscode-darwin-arm64.vsix --force
 
 # Intel macOS
-npm run package:darwin-x64
+pnpm run package:darwin-x64
 code --install-extension topos-vscode-darwin-x64.vsix --force
 
 # Linux x64
-npm run package:linux-x64
+pnpm run package:linux-x64
 code --install-extension topos-vscode-linux-x64.vsix --force
 
 # Linux arm64
-npm run package:linux-arm64
+pnpm run package:linux-arm64
 code --install-extension topos-vscode-linux-arm64.vsix --force
 ```
 
@@ -473,14 +473,14 @@ Bump all three to the same version. From repo root:
 # 1. Topos (pyproject.toml + topos/__init__.py) -> set to X.Y.Z
 # 2. VS Code extension package.json + lockfile
 cd extensions/vscode
-npm version X.Y.Z --no-git-tag-version
+pnpm version X.Y.Z --no-git-tag-version
 cd ../..
 ```
 
 Then commit and open a PR to `main`:
 
 ```bash
-git add pyproject.toml topos/__init__.py extensions/vscode/package.json extensions/vscode/package-lock.json
+git add pyproject.toml topos/__init__.py extensions/vscode/package.json extensions/vscode/pnpm-lock.yaml
 git commit -m "Bump version to X.Y.Z"
 git push origin <branch>
 ```
@@ -509,7 +509,7 @@ Do not publish the same extension version twice. Marketplace will reject duplica
 <summary>Versioning checklist</summary>
 
 - Bump `pyproject.toml`, `topos/__init__.py`, and `extensions/vscode/package.json` to the same version.
-- Commit the matching `package-lock.json` update.
+- Commit the matching `pnpm-lock.yaml` update.
 - Use a release tag that matches that version, for example `v0.3.0`.
 - Never reuse a Marketplace version.
 
@@ -523,16 +523,16 @@ Login:
 
 ```bash
 cd <your-local-topos-repo>/extensions/vscode
-npx --yes @vscode/vsce login KrvLabs
+pnpm exec vsce login KrvLabs
 ```
 
 Publish existing VSIXs:
 
 ```bash
-npx --yes @vscode/vsce publish --packagePath topos-vscode-darwin-arm64.vsix
-npx --yes @vscode/vsce publish --packagePath topos-vscode-darwin-x64.vsix
-npx --yes @vscode/vsce publish --packagePath topos-vscode-linux-arm64.vsix
-npx --yes @vscode/vsce publish --packagePath topos-vscode-linux-x64.vsix
+pnpm exec vsce publish --packagePath topos-vscode-darwin-arm64.vsix
+pnpm exec vsce publish --packagePath topos-vscode-darwin-x64.vsix
+pnpm exec vsce publish --packagePath topos-vscode-linux-arm64.vsix
+pnpm exec vsce publish --packagePath topos-vscode-linux-x64.vsix
 ```
 
 Preferred path remains GitHub Actions.
@@ -621,7 +621,7 @@ Bump all three version sources to the same new value (`pyproject.toml`, `topos/_
 
 ```bash
 cd extensions/vscode
-npm version patch --no-git-tag-version
+pnpm version patch --no-git-tag-version
 ```
 
 Commit and release again with a matching new tag. CI will reject the PR if the three versions diverge.

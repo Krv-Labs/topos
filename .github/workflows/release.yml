@@ -131,15 +131,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: extensions/vscode/package.json
+
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
+          cache: pnpm
+          cache-dependency-path: extensions/vscode/pnpm-lock.yaml
 
       - name: Install extension dependencies
         working-directory: extensions/vscode
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Download runtime artifact
         uses: actions/download-artifact@v8
@@ -149,7 +153,7 @@ jobs:
 
       - name: Package VS Code extension
         working-directory: extensions/vscode
-        run: npm run package:${{ matrix.vscode_target }}
+        run: pnpm run package:${{ matrix.vscode_target }}
 
       - name: Check VSIX size
         working-directory: extensions/vscode
@@ -229,9 +233,9 @@ jobs:
             echo "VSCE_PAT is required to publish VS Code Marketplace packages."
             exit 1
           fi
-          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-arm64.vsix
-          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-arm64.vsix
-          npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-x64.vsix
+          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-darwin-arm64.vsix
+          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-linux-arm64.vsix
+          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-linux-x64.vsix
 
   # ---- PyPI: thin `bin` wheels wrapping the topos-mcp server binary --------
   build-pypi-wheels:

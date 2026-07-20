@@ -13,5 +13,6 @@ tsconfig.json
 tsconfig.test.json
 .eslintrc.json
 esbuild.js
-package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
 *.vsix

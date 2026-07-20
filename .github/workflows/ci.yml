@@ -7,99 +7,54 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  rust:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Check versions (Cargo.toml is source of truth)
-        run: python scripts/check_versions.py
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Install dependencies
-        run: uv sync --group dev --python ${{ matrix.python-version }}
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Run Python tests
-        run: uv run pytest -v
+      - name: Check versions (Cargo.toml is source of truth)
+        run: python3 scripts/check_versions.py
 
-      - name: Run Rust tests
-        run: uv run --python ${{ matrix.python-version }} cargo test
+      - name: Format check
+        run: cargo fmt --all --check
 
-      - name: Run Rust clippy
-        if: matrix.python-version == '3.13'
-        run: uv run --python 3.13 cargo clippy -- -D warnings
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run Rust fmt
-        if: matrix.python-version == '3.13'
-        run: cargo fmt --check
+      - name: Tests
+        run: cargo test --workspace
 
-      - name: Run Ruff lint checks
-        if: matrix.python-version == '3.13'
-        run: uv run ruff check topos tests
+      - name: Smoke-test the MCP server over stdio
+        run: |
+          cargo build -p topos-mcp --bin topos-mcp
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+          | TOPOS_MCP_FILE_ROOT="$PWD" ./target/debug/topos-mcp \
+          | grep -q '"topos_evaluate_code"'
 
-      - name: Run Ruff formatting checks
-        if: matrix.python-version == '3.13'
-        run: uv run ruff format --check topos tests
-
-  cli-startup:
+  wheel:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --group dev --python 3.12
-
-      - name: Build release binary
-        run: |
-          chmod +x scripts/build-binary.sh
-          ./scripts/build-binary.sh
-          mv dist/topos dist/topos-linux-amd64
-          ls -lh dist/topos-linux-amd64
-
-      - name: Dogfood release binary
-        env:
-          TOPOS_BINARY: dist/topos-linux-amd64
-          TOPOS_BENCHMARK: "1"
-          TOPOS_BENCHMARK_RUNS: "5"
-          TOPOS_VERSION_BUDGET_S: "2.5"
-          TOPOS_HELP_BUDGET_S: "3.5"
-          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
-        run: |
-          chmod +x "$TOPOS_BINARY"
-          uv run pytest tests/packaging/ -v --no-cov
-          # Gate only the documented trivial-command budgets (--version, --help).
-          # `evaluate --help` loads the full stack; its correctness is covered by
-          # tests/packaging/, and its latency is not a documented budget.
-          uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov -k "warm and not evaluate"
+      - name: Build the topos-mcp bin wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --bindings bin --manifest-path crates/topos-mcp/Cargo.toml --out dist
 
   extension:
     runs-on: ubuntu-latest

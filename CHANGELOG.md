@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Sighthound SAST engine embedded directly**: the [Corgea/Sighthound](https://github.com/Corgea/Sighthound) pattern-matching + taint-flow scanner is now a compiled-in library dependency of `topos-mcp` (not an external CLI discovered on `$PATH`). SECURE findings for Python/JavaScript/TypeScript/Go come from Sighthound's embedded rulesets in-process; Rust/C++ fall back to the local CPG probes. Set `TOPOS_DISABLE_SIGHTHOUND=1` to force the CPG-probe path.
+- **`topos mcp` subcommand**: the `topos` CLI binary now launches the in-process Rust MCP server, so the single `topos` binary is both the CLI and the MCP server (the VS Code extension invokes `topos mcp`). The standalone `topos-mcp` binary remains the PyPI-wheel entry point.
+
+### Removed
+
+- **The legacy Python implementation is deleted**: `topos/` (the Python package — MCP, functors, graphs, core, evaluation, CLI, utils) and the entire Python `tests/` suite are gone now that computation lives in `topos-core` and the server is `topos-mcp`. Also removed: the Rust-vs-Python parity/benchmark scripts, the PyInstaller onefile build (`scripts/build-binary.sh`, `scripts/lazy_exports.py`, `packaging/macos-entitlements.plist`), and the Sphinx `docs/source/` site (which autodoc'd the removed Python API). CI and the release workflow are rewritten Rust-only (cargo test/clippy/fmt + a stdio smoke test; binaries via `cargo build`, PyPI `bin` wheels via maturin).
 
 ## [0.3.11] - 2026-07-13
 

@@ -21,6 +21,7 @@ permissions:
   contents: write
 
 jobs:
+  # ---- Native `topos` binary (includes `topos mcp`) per platform -----------
   build:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}
     strategy:
@@ -33,25 +34,23 @@ jobs:
             target: linux-arm64
           - os: macos-latest
             target: macos-arm64
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install 3.12
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies
-        run: uv sync --group dev --python 3.12
+      - name: Build release binary
+        run: cargo build --release -p topos-cli
+
+      - name: Stage binary with platform suffix
+        run: |
+          mkdir -p dist
+          cp target/release/topos "dist/topos-${{ matrix.target }}"
 
       - name: Prepare macOS code signing keychain
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
@@ -64,7 +63,6 @@ jobs:
             echo "::warning title=Unsigned macOS binary::Apple signing secrets are missing. Continuing with an unsigned macOS binary; Gatekeeper may block it for users."
             exit 0
           fi
-
           KEYCHAIN_PATH="$RUNNER_TEMP/topos-signing.keychain-db"
           CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
           echo "$CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
@@ -75,24 +73,6 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           echo "CODESIGN_IDENTITY=${CODESIGN_IDENTITY}" >> "$GITHUB_ENV"
 
-      - name: Build binary with PyInstaller
-        env:
-          CODESIGN_IDENTITY: ${{ env.CODESIGN_IDENTITY }}
-        run: |
-          chmod +x scripts/build-binary.sh
-          ./scripts/build-binary.sh
-
-      - name: Rename binary with platform suffix
-        run: mv dist/topos "dist/topos-${{ matrix.target }}"
-
-      - name: Dogfood release binary
-        env:
-          TOPOS_BINARY: dist/topos-${{ matrix.target }}
-          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
-        run: |
-          chmod +x "$TOPOS_BINARY"
-          uv run pytest tests/packaging/ -v --no-cov
-
       - name: Sign macOS binary
         if: runner.os == 'macOS' && github.event_name != 'pull_request'
         env:
@@ -101,11 +81,11 @@ jobs:
           if [ -z "${CODESIGN_IDENTITY:-}" ]; then
             exit 0
           fi
-
           BINARY_PATH="dist/topos-${{ matrix.target }}"
-
+          # A pure Rust binary needs only the hardened runtime — no JIT /
+          # unsigned-executable-memory entitlements (those were for the old
+          # PyInstaller/CPython bundle).
           codesign --force --options runtime --timestamp \
-            --entitlements packaging/macos-entitlements.plist \
             --sign "$CODESIGN_IDENTITY" "${BINARY_PATH}"
           codesign --verify --strict --verbose=2 "${BINARY_PATH}"
 
@@ -120,10 +100,8 @@ jobs:
             echo "::warning title=Unnotarized macOS binary::Apple notarization secrets are missing. Continuing without notarization; Gatekeeper may block it for users."
             exit 0
           fi
-
           BINARY_PATH="dist/topos-${{ matrix.target }}"
           ARCHIVE_NAME="topos-${{ matrix.target }}"
-
           ditto -c -k --keepParent "${BINARY_PATH}" "$RUNNER_TEMP/${ARCHIVE_NAME}.zip"
           xcrun notarytool submit "$RUNNER_TEMP/${ARCHIVE_NAME}.zip" \
             --apple-id "$APPLE_ID" \
@@ -251,28 +229,11 @@ jobs:
             echo "VSCE_PAT is required to publish VS Code Marketplace packages."
             exit 1
           fi
-
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-darwin-arm64.vsix
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-arm64.vsix
           npx --yes @vscode/vsce publish --packagePath dist/topos-vscode-linux-x64.vsix
 
-  build-pypi-sdist:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build Source Distribution
-        uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v7
-        with:
-          name: wheels-sdist
-          path: dist
-
+  # ---- PyPI: thin `bin` wheels wrapping the topos-mcp server binary --------
   build-pypi-wheels:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -281,38 +242,28 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64
-            manylinux: 2014
-            args: --release --out dist -i python3.12 --compatibility pypi
-          - os: ubuntu-latest
+            manylinux: "2_28"
+          - os: ubuntu-24.04-arm
             target: aarch64
-            manylinux: 2014
-            args: --release --out dist -i python3.12 --compatibility pypi
+            manylinux: "2_28"
           - os: macos-latest
-            target: universal2
-            manylinux: off
-            args: --release --out dist -i python3.12 --compatibility pypi
+            target: aarch64
+            manylinux: "off"
     steps:
       - uses: actions/checkout@v7
-
-      - name: Set up QEMU
-        if: matrix.target == 'aarch64'
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Python
-        if: runner.os == 'macOS'
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Wheels
+      - name: Build bin wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          args: ${{ matrix.args }}
+          args: >-
+            --release --bindings bin
+            --manifest-path crates/topos-mcp/Cargo.toml
+            --out dist
 
       - name: Upload wheels
         uses: actions/upload-artifact@v7
@@ -323,7 +274,6 @@ jobs:
   publish-pypi:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     needs:
-      - build-pypi-sdist
       - build-pypi-wheels
     runs-on: ubuntu-latest
     permissions:

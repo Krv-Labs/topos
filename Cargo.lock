@@ -1416,7 +1416,9 @@ version = "0.3.11"
 dependencies = [
  "clap",
  "serde_json",
+ "tokio",
  "topos-core",
+ "topos-mcp",
 ]
 
 [[package]]

@@ -12,6 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 topos-core = { path = "../topos-core" }
+# The `topos mcp` subcommand launches the in-process Rust MCP server, so the
+# `topos` binary bundles the same server the standalone `topos-mcp` binary
+# exposes (the VS Code extension invokes `topos mcp`).
+topos-mcp = { path = "../topos-mcp" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
 # Already a topos-core dependency; used here for --json output.
 serde_json = "1.0"

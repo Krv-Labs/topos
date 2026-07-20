@@ -11,15 +11,16 @@
 //! pass — see each command module's doc comment for what is
 //! deliberately not ported yet.
 //!
-//! Skipped entirely for this pass (see individual command docs / final
-//! report for why): `mcp` (server stays Python), `depgraph` (needs
-//! GitNexus wiring), `update`/`uninstall` (pip-specific self-update).
+//! The `mcp` subcommand launches the in-process Rust MCP server (see
+//! `topos-mcp`). Still deliberately unported (see individual command docs):
+//! `depgraph` (needs GitNexus wiring) and `update`/`uninstall` (pip-specific
+//! self-update, obsolete for a cargo/homebrew-distributed binary).
 
 mod commands;
 
 use clap::{Parser, Subcommand};
 
-use commands::{compare, coverage, evaluate, inspect};
+use commands::{compare, coverage, evaluate, inspect, mcp};
 
 #[derive(Parser)]
 #[command(
@@ -42,6 +43,8 @@ enum Command {
     Compare(compare::CompareArgs),
     /// Measure structural (UAST) test coverage.
     Coverage(coverage::CoverageArgs),
+    /// Launch the Topos MCP server over stdio.
+    Mcp(mcp::McpArgs),
 }
 
 fn main() {
@@ -51,6 +54,7 @@ fn main() {
         Command::Inspect(args) => inspect::run(args),
         Command::Compare(args) => compare::run(args),
         Command::Coverage(args) => coverage::run(args),
+        Command::Mcp(args) => mcp::run(args),
     };
     if let Err(message) = result {
         eprintln!("Error: {message}");

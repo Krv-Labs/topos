@@ -182,7 +182,7 @@ export interface TypeDeclNode extends UNodeBase {
     | "protocol";
   // "trait" | "abstractClass" | "protocol" are abstract; the rest are
   // concrete. Drives Martin's Abstractness metric (mdg.abstractness,
-  // topos/functors/probes/uast/abstractness.py) — see issue #124.
+  // crates/topos-core/src/functors/probes/uast/abstractness.rs) — see issue #124.
   name: IdentifierNode;
   members: UNode[];
   bases?: TypeRefNode[];

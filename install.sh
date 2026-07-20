@@ -474,13 +474,14 @@ verify_install() {
         echo "  claude mcp add topos topos mcp"
     fi
     echo ""
-    echo "Direct CLI:"
+    echo "Direct CLI (SIMPLE + SECURE only):"
     echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,secure"
     echo ""
-    echo "Composability:"
+    echo "Composability (COMPOSABLE/GOLD, via the MCP server today):"
     echo "  cd <YOUR_REPO_HERE>"
-    echo "  topos depgraph generate"
-    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,composable,secure --gitnexus-dir .gitnexus"
+    echo "  claude mcp add --transport stdio topos -- topos mcp"
+    echo "  # then, from an agent: topos_generate_depgraph, then"
+    echo "  # topos_evaluate_file(..., gitnexus_dir=\".gitnexus\")"
     echo ""
     echo "Docs: https://docs.krv.ai/topos"
 }

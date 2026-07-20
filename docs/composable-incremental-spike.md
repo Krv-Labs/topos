@@ -5,6 +5,27 @@ Status: **DEFERRED** (gated for Task #13). This document records why the
 was investigated and *not* implemented, plus the concrete path to a full
 implementation.
 
+> **Migration note (v0.4.0, PR [#159](https://github.com/Krv-Labs/topos/pull/159)):**
+> this spike was written against the pre-migration Python codebase, and the
+> `topos/....py:LINE` citations below are historical — that code no longer
+> exists. Re-verified after the Rust rewrite: the two gaps that drove the
+> DEFER decision still hold in `topos-core` today — there is no import/
+> outbound-reference extraction probe anywhere under
+> `crates/topos-core/src/functors/probes/`, and `ModuleDependencyGraph`
+> (`crates/topos-core/src/graphs/mdg/object.rs`) still has no per-node edge
+> **replace** API (only `add_node`/`add_relationship`, which append). The
+> Rust equivalents of the modules cited below are: `topos/mcp/tools/assess.py`
+> → `crates/topos-mcp/src/tools/assess.rs`; `topos/mcp/evaluation.py`
+> (`load_dep_graph`) → `crates/topos-mcp/src/evaluation.rs`;
+> `topos/evaluation/policies/composable.py` (`score_coupling`) →
+> `crates/topos-core/src/evaluation/policies/composable.rs`;
+> `topos/graphs/mdg/object.py` → `crates/topos-core/src/graphs/mdg/object.rs`;
+> `topos/functors/probes/mdg/{coupling,fan}.py` →
+> `crates/topos-core/src/functors/probes/mdg/{coupling,fan}.rs`;
+> `topos/graphs/uast/mapper_python.py` →
+> `crates/topos-core/src/graphs/uast/mapper_python.rs`. The conclusion —
+> **DO NOT BUILD** until the measurement gate below clears — is unchanged.
+
 ## Goal that was investigated (Task #11)
 
 `topos_assess_improvement` (`topos/mcp/tools/assess.py`) scores the proposed

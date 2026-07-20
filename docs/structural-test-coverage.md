@@ -2,7 +2,7 @@
 
 This document describes the **structural test coverage** measure implemented in Topos. It is a prototype metric: it estimates how much of a **program-under-test (PUT)** appears in a **test suite** at the level of normalized **Universal AST (UAST) structure**. It does **not** replace line or branch coverage, and it does **not** establish that tests invoke specific production functions unless you add separate call-linkage analysis.
 
-The UAST implementation lives in `topos/functors/profunctors/uast/structural_test_coverage.py`. The CLI entry point is `topos coverage` (UAST). Formal UAST definitions also appear in Sphinx as `docs/source/measures.rst`.
+The UAST implementation lives in `crates/topos-core/src/functors/profunctors/uast/structural_test_coverage.rs` (Rust, since PR [#159](https://github.com/Krv-Labs/topos/pull/159)'s v0.4.0 migration). The CLI entry point is `topos coverage` (`crates/topos-cli/src/commands/coverage.rs`); the same computation is also exposed as the `topos_calculate_coverage` MCP tool (`crates/topos-mcp/src/tools/coverage.rs`).
 
 ---
 
@@ -42,26 +42,26 @@ The `DeclarationCoverageReport` dataclass includes diagnostics like precise loca
 
 ## API and CLI (reference)
 
-**Python**
+**Rust** (`crates/topos-core/src/functors/profunctors/uast/structural_test_coverage.rs`)
 
-```python
-from topos.graphs.ast.dispatch import parse_source
-from topos.functors.profunctors.uast.structural_test_coverage import declaration_coverage
+```rust
+use topos_core::graphs::ast::dispatch::parse_source;
+use topos_core::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
 
-put = parse_source(source=..., language="python", file="src/m.py").uast_root
-tst = parse_source(source=..., language="python", file="tests/test_m.py").uast_root
-report = declaration_coverage([put], [tst], k=3, include_unknown=False)
-# report.mean_declaration_coverage, report.stmt_recall, report.f2_score
+let put = parse_source(&put_source, "python", Some("src/m.py"))?.uast_root;
+let tst = parse_source(&test_source, "python", Some("tests/test_m.py"))?.uast_root;
+let report = declaration_coverage(&[&put], &[&tst], 3, false)?;
+// report.mean_declaration_coverage, report.stmt_recall, report.f2_score
 ```
 
-**CLI**
+**CLI** (`crates/topos-cli/src/commands/coverage.rs`)
 
 ```bash
 topos coverage --tests tests/test_mod.py src/mod.py
-topos coverage --tests t1.py --tests t2.py --language python --k 3 --json src/a.py src/b.py
+topos coverage --tests t1.py --tests t2.py --language python --k 3 src/a.py src/b.py
 ```
 
-Options include `--language` (`python`, `rust`, `javascript`, `cpp`), `--k`, `--include-unknown`, `--coverage-threshold`, and `--json`.
+Options: `--language` (any [tree-sitter-supported language](../crates/topos-core/src/graphs/ast/languages.rs)), `--k` (n-gram length), `--include-unknown`, `--coverage-threshold`. The same computation is also exposed as the `topos_calculate_coverage` MCP tool (`crates/topos-mcp/src/tools/coverage.rs`), which does return structured JSON over the wire — unlike the CLI, which is plain-text only for this pass (issue [#147](https://github.com/Krv-Labs/topos/issues/147)).
 
 ---
 

@@ -79,13 +79,13 @@ function's control flow has, but not *which* cycles, or where they live in
 the source.
 
 **Algorithm:** a fundamental cycle basis is extracted from the CFG via a
-spanning tree + back-edge closure (`src/ph.rs::compute_cycle_basis`,
+spanning tree + back-edge closure (`crates/topos-core/src/functors/probes/cfg/homology.rs::compute_cycle_basis`,
 O(V+E)). Every non-tree ("back") edge closes exactly one cycle — the tree
 path between its endpoints plus the back edge itself. The count of these
 cycles (`betti_1`, the rank of the cycle space / dim H1) is provably equal
 to `cyclomatic_complexity() - 1` for the single-connected-component CFGs
 this builder always produces; that equality is asserted directly in
-`src/ph.rs`'s test suite as a cross-check against the already-trusted
+`crates/topos-core/src/functors/probes/cfg/homology.rs`'s test suite as a cross-check against the already-trusted
 cyclomatic-complexity metric.
 
 **Why not true persistent homology?** The issue's title mentions "persistent
@@ -117,7 +117,7 @@ descending. `gitnexus_dir` is accepted but ignored for this target.
 Dong & Bronstein, "Understanding over-squashing and bottlenecks on graphs
 via curvature," ICLR 2022, [arXiv:2111.14522](https://arxiv.org/abs/2111.14522),
 Definition 1) applied to the file-level MDG dependency graph
-(`src/frc.rs::balanced_forman_curvature`). The paper uses this curvature to
+(`crates/topos-core/src/functors/curvature.rs::balanced_forman_curvature`). The paper uses this curvature to
 find GNN message-passing bottlenecks — edges with very negative curvature
 "squash" information from exponentially many distant neighborhoods through
 a single transition. Applied to module dependencies instead of message
@@ -132,7 +132,7 @@ re-derived from the paper's set-builder notation, because the 4-cycle
 ("sharp"/"lambda") term has indexing subtleties that are easy to get wrong
 from prose alone — verified by hand-deriving the exact expected curvature
 value for a triangle graph (2.0) and cross-checking against the ported
-algorithm's output in `src/frc.rs`'s test suite. Per the paper, curvature is
+algorithm's output in `crates/topos-core/src/functors/curvature.rs`'s test suite. Per the paper, curvature is
 0 for any "pendant" edge (an endpoint of degree 1) — the raw
 degree/triangle/4-cycle formula degenerates to a spurious large value at
 degree-1 endpoints otherwise.
@@ -161,7 +161,7 @@ for an advisory reporting tool.
 ## `topos refactor process` / `topos_refactor(target="process")` (issue #86)
 
 **Engine:** directed Forman-Ricci curvature (Samal et al.) applied to
-GitNexus process graphs (`src/frc.rs::directed_forman_curvature`):
+GitNexus process graphs (`crates/topos-core/src/functors/curvature.rs::directed_forman_curvature`):
 
 ```
 Ric(e = u -> v) = w_e * ( w_u/w_e + w_v/w_e
@@ -264,13 +264,13 @@ the same resolution Graphify itself uses), `limit` (default 5, 1–50).
 it fails to parse — the same graceful-degradation contract
 `dependencies`/`process` use for `gitnexus_available`.
 
-## Shared Rust engine (`src/frc.rs`)
+## Shared Rust engine (`crates/topos-core/src/functors/curvature.rs`)
 
 Both curvature variants share one adjacency-indexing layer
 (`AdjacencyIndex`): node ids are interned to dense indices, and neighbor
 sets/in-out edge lists are built once per call from a raw
 `Vec<WeightedEdge>`. No `petgraph` graph type is used here — unlike
-`src/cfg.rs`, neither formula needs path/component algorithms, only
+`crates/topos-core/src/graphs/cfg/object.rs`, neither formula needs path/component algorithms, only
 neighbor lookups, so a `HashMap`/`HashSet`-based adjacency index is simpler
 and avoids `NodeIndex` bookkeeping. `balanced_forman_curvature` is
 undirected (every edge populates both endpoints' neighbor sets; duplicate/
@@ -284,9 +284,12 @@ Complexity: `balanced_forman_curvature` is O(deg(u)·deg(v)) per edge in the
 worst case (triangle/4-cycle counting via neighbor-set intersection) —
 noticeably more expensive than `directed_forman_curvature`'s O(deg(u) +
 deg(v)) per edge (pure degree-sum, no triangle counting). The directed
-engine comfortably clears issue #86's acceptance bar (10k nodes / 50k edges
-in <100ms — see `tests/benchmarks/test_curvature_perf.py`, opt-in via
-`TOPOS_BENCHMARK=1`); the undirected engine has no equivalent hard
+engine cleared issue #86's acceptance bar (10k nodes / 50k edges in
+<100ms) against the pre-migration Python implementation via
+`tests/benchmarks/test_curvature_perf.py` (`TOPOS_BENCHMARK=1`); that
+opt-in benchmark was not ported to the Rust `topos-core` test suite, and
+the bound has not been re-verified against the (structurally identical,
+but compiled) Rust port. The undirected engine has no equivalent hard
 acceptance criterion but was benchmarked informally at similar scale during
 development with no pathological blowup on non-hub-heavy graphs.
 

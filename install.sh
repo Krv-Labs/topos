@@ -288,15 +288,13 @@ install_topos() {
         echo ""
         echo "Alternative installation methods:"
         echo ""
-        echo "  # Using uv (recommended for Python users)"
-        echo "  uv pip install topos"
+        echo "  # MCP server via PyPI (installs the 'topos-mcp' command)"
+        echo "  uvx topos-mcp        # run without a persistent install"
+        echo "  pip install topos-mcp"
         echo ""
-        echo "  # Using pip"
-        echo "  pip install topos"
-        echo ""
-        echo "  # From source"
+        echo "  # From source (builds the 'topos' CLI + MCP server)"
         echo "  git clone https://github.com/${REPO}.git"
-        echo "  cd topos && uv sync"
+        echo "  cd topos && cargo build --release -p topos-cli"
         exit 1
     fi
 

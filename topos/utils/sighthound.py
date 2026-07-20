@@ -209,20 +209,16 @@ def finding_sink_text(finding: dict[str, Any]) -> str | None:
     """Human-readable sink text from ``sink_info`` or the finding snippet."""
     sink = finding.get("sink_info")
     if isinstance(sink, dict):
-        if is_taint_finding(finding):
-            sink_type = sink.get("sink_type")
-            if isinstance(sink_type, str) and sink_type.strip():
-                return sink_type.strip()
-        name = sink.get("function_name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-        sink_type = sink.get("sink_type")
-        if isinstance(sink_type, str) and sink_type.strip():
-            return sink_type.strip()
+        sink_type = _clean_str(sink.get("sink_type"))
+        if is_taint_finding(finding) and sink_type:
+            return sink_type
+        name = _clean_str(sink.get("function_name"))
+        if name:
+            return name
+        if sink_type:
+            return sink_type
     snippet = finding.get("snippet")
-    if isinstance(snippet, str) and snippet.strip():
-        return snippet.strip()
-    return None
+    return _clean_str(snippet)
 
 
 def finding_line(finding: dict[str, Any]) -> int:

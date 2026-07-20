@@ -3,6 +3,7 @@
 pub mod compare;
 pub mod coverage;
 pub mod evaluate;
+pub mod graphify;
 pub mod inspect;
 mod lang;
 pub mod mcp;

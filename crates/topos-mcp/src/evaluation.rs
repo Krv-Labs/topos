@@ -74,6 +74,30 @@ pub fn resolve_gitnexus_dir(override_dir: Option<&str>, project_root: &Path) -> 
     default.exists().then_some(default)
 }
 
+/// Return the graphify output dir to use, or None if not available.
+///
+/// Preference: explicit override > Graphify's own default resolution
+/// (`topos_core::adapters::graphify::graphify_out_dir`, which itself honors
+/// `GRAPHIFY_OUT`) — so the read side (this function) and the generate side
+/// never disagree about where to look.
+pub fn resolve_graphify_dir(override_dir: Option<&str>, project_root: &Path) -> Option<PathBuf> {
+    if let Some(raw) = override_dir {
+        let path = PathBuf::from(raw);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            project_root.join(path)
+        };
+        let path = path.canonicalize().ok()?;
+        if !path.starts_with(project_root) {
+            return None;
+        }
+        return path.exists().then_some(path);
+    }
+    let default = topos_core::adapters::graphify::graphify_out_dir(project_root);
+    default.exists().then_some(default)
+}
+
 fn check_override_warning(override_dir: &str, project_root: &Path) -> Option<Vec<String>> {
     let path = PathBuf::from(override_dir);
     let joined = if path.is_absolute() {

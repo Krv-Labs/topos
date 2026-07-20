@@ -17,6 +17,31 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    path.is_file()
+}
+
+/// Whether `name` resolves to an executable file on `$PATH` — a small
+/// stand-in for `shutil.which`, shared by every adapter that needs to check
+/// an external tool's availability before shelling out to it (`gitnexus`,
+/// `graphify`, ...) rather than pulling in a `which` crate dependency for
+/// semantics (Windows `PATHEXT`, symlink resolution, ...) none of them need.
+pub(crate) fn command_on_path(name: &str) -> bool {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path_var).any(|dir| is_executable_file(&dir.join(name)))
+}
+
 /// Poll interval for the `try_wait` loop below.
 ///
 /// ponytail: fixed poll interval, not exponential backoff — every caller's

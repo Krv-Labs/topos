@@ -14,9 +14,10 @@
 //!   equivalent; the actual process spawn/wait/kill lives in
 //!   [`super::process::run_with_timeout`] — see that module's doc comment.
 //! - `shutil.which` is replaced by a small manual `$PATH` scan
-//!   ([`command_on_path`]) rather than a `which` crate dependency: the
-//!   full semantics (Windows `PATHEXT`, symlink resolution, ...) aren't
-//!   needed for finding one specific binary.
+//!   ([`super::process::command_on_path`], shared with the `graphify`
+//!   adapter) rather than a `which` crate dependency: the full semantics
+//!   (Windows `PATHEXT`, symlink resolution, ...) aren't needed for finding
+//!   one specific binary.
 //! - The source-fingerprint hash uses BLAKE2b (via the `blake2` crate,
 //!   already a workspace dependency for `UASTNode::id` — see
 //!   `crate::graphs::uast::mapper_common`) rather than Python's SHA-256.
@@ -35,7 +36,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 
 use super::discovery::iter_source_files;
-use super::process::{run_with_timeout, RunError};
+use super::process::{command_on_path, run_with_timeout, RunError};
 use crate::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 const GITNEXUS_CMD: &str = "gitnexus";
@@ -74,28 +75,6 @@ fn resolve_timeout(timeout: Option<f64>) -> Option<f64> {
     } else {
         None
     }
-}
-
-#[cfg(unix)]
-fn is_executable_file(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable_file(path: &Path) -> bool {
-    path.is_file()
-}
-
-/// Whether `name` resolves to an executable file on `$PATH` (a small
-/// stand-in for `shutil.which`; see the module "Deviation" note).
-fn command_on_path(name: &str) -> bool {
-    let Some(path_var) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path_var).any(|dir| is_executable_file(&dir.join(name)))
 }
 
 /// Whether the `gitnexus` CLI is on `$PATH`.

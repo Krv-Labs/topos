@@ -542,11 +542,13 @@ fn default_refactor_limit() -> usize {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RefactorInput {
-    /// cycles | dependencies | process
+    /// cycles | dependencies | process | graphify
     pub target: RefactorTargetKind,
     pub filepath: String,
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
+    #[serde(default)]
+    pub graphify_dir: Option<String>,
     #[serde(default = "default_refactor_limit")]
     pub limit: usize,
 }
@@ -557,6 +559,7 @@ pub enum RefactorTargetKind {
     Cycles,
     Dependencies,
     Process,
+    Graphify,
 }
 
 impl RefactorTargetKind {
@@ -565,6 +568,7 @@ impl RefactorTargetKind {
             RefactorTargetKind::Cycles => "cycles",
             RefactorTargetKind::Dependencies => "dependencies",
             RefactorTargetKind::Process => "process",
+            RefactorTargetKind::Graphify => "graphify",
         }
     }
 }
@@ -1098,15 +1102,18 @@ pub struct ChangesetResult {
     pub error: Option<String>,
 }
 
-/// One ranked refactor hotspot row (cycles / dependencies / process).
+/// One ranked refactor hotspot row (cycles / dependencies / process / graphify).
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RefactorHotspot {
-    /// cycle | dependency_edge | process_transition
+    /// cycle | dependency_edge | process_transition | graphify_orphan | graphify_fragile_edge
     pub kind: String,
     pub label: String,
     pub filepath: String,
     pub line_start: Option<usize>,
     pub line_end: Option<usize>,
+    /// Betti contribution (cycles) or curvature value (dependencies/process,
+    /// descending = worse) or degree (graphify orphans, **ascending** = worse
+    /// — inverted from curvature's sign convention; see `docs/refactor-suite.md`.
     pub score: f64,
     pub suggestion: String,
 }
@@ -1118,6 +1125,35 @@ pub struct RefactorResult {
     pub filepath: String,
     pub betti_1: Option<usize>,
     pub gitnexus_available: Option<bool>,
+    /// Generic external-tool availability, set for every target going
+    /// forward (`dependencies`/`process` mirror `gitnexus_available` here
+    /// too, for back-compat; `graphify` sets only this field; `cycles`
+    /// leaves both `None`, matching the existing `betti_1`-only-for-cycles
+    /// precedent).
+    pub tool_available: Option<bool>,
     pub hotspots: Vec<RefactorHotspot>,
+    pub error: Option<String>,
+}
+
+/// Arguments for `topos_generate_graphify_graph` (side-effecting).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GenerateGraphifyInput {
+    /// Directory to analyze (default: MCP file root).
+    #[serde(default)]
+    pub directory: Option<String>,
+    /// Regenerate even when current.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Result of `topos_generate_graphify_graph`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct GenerateGraphifyResult {
+    pub ok: bool,
+    pub returncode: i32,
+    pub graphify_out_dir: Option<String>,
+    pub generated: bool,
+    pub message: String,
     pub error: Option<String>,
 }

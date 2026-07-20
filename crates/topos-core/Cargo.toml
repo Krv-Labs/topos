@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Structural code quality engine for Topos: category-theoretic evaluation (SIMPLE/COMPOSABLE/SECURE), graph representations, and refactoring probes. No Python bindings — see topos-pyo3."
+description = "Structural code quality engine for Topos: category-theoretic evaluation (SIMPLE/COMPOSABLE/SECURE), tree-sitter-driven graph representations, and refactoring probes. Pure Rust, no Python bindings — see topos-mcp and topos-cli."
 
 [dependencies]
 tree-sitter = "0.26"

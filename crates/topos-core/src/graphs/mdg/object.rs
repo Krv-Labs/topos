@@ -405,6 +405,9 @@ mod tests {
         assert_eq!(metrics["mdg.fan_in"], 0.0);
         assert_eq!(metrics["mdg.fan_out"], 0.0);
         assert_eq!(metrics["mdg.dep_depth"], 1.0);
+        // Graphify is advisory-only (issue #150) and must never leak into a
+        // scored Representation's metrics.
+        assert!(metrics.keys().all(|k| !k.starts_with("graphify")));
     }
 
     #[test]

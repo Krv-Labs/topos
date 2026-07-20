@@ -11,6 +11,11 @@
 //! - [`gitnexus`] — shell out to `gitnexus analyze` to (re)generate a
 //!   `.gitnexus/` dependency-graph store, with source fingerprinting to
 //!   detect staleness. Ported from `topos/utils/gitnexus.py`.
+//! - [`graphify`] — shell out to `graphify update`/`extract` to (re)generate
+//!   a `graphify-out/graph.json` knowledge-graph store, a second external
+//!   structural-analysis tool alongside GitNexus (issue #150). Advisory
+//!   only — feeds `topos refactor graphify`, never the SIMPLE/COMPOSABLE/
+//!   SECURE lattice; see [`crate::graphs::graphify`].
 //!
 //! `topos/utils/tree_sitter.py` is deliberately *not* ported here: every
 //! per-language parser it sets up, and every helper it exposes
@@ -25,3 +30,4 @@ mod process;
 
 pub mod discovery;
 pub mod gitnexus;
+pub mod graphify;

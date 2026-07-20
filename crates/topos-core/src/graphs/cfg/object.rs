@@ -233,6 +233,19 @@ mod tests {
     }
 
     #[test]
+    fn metrics_never_leaks_graphify_keys() {
+        // Graphify is advisory-only (issue #150) and must never leak into a
+        // scored Representation's metrics.
+        let cfg = ControlFlowGraph::new(
+            blocks_from(&[(0, "entry"), (1, "exit")]),
+            vec![CFGEdge::new(0, 1, EdgeKind::Unconditional)],
+            0,
+            1,
+        );
+        assert!(cfg.metrics().keys().all(|k| !k.starts_with("graphify")));
+    }
+
+    #[test]
     fn cyclomatic_complexity_linear() {
         let cfg = ControlFlowGraph::new(
             blocks_from(&[(0, "entry"), (1, "exit")]),

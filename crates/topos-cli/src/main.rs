@@ -20,7 +20,7 @@ mod commands;
 
 use clap::{Parser, Subcommand};
 
-use commands::{compare, coverage, evaluate, inspect, mcp};
+use commands::{compare, coverage, evaluate, graphify, inspect, mcp};
 
 #[derive(Parser)]
 #[command(
@@ -43,6 +43,8 @@ enum Command {
     Compare(compare::CompareArgs),
     /// Measure structural (UAST) test coverage.
     Coverage(coverage::CoverageArgs),
+    /// Graphify knowledge-graph generation and orphan detection (issue #150).
+    Graphify(graphify::GraphifyArgs),
     /// Launch the Topos MCP server over stdio.
     Mcp(mcp::McpArgs),
 }
@@ -54,6 +56,7 @@ fn main() {
         Command::Inspect(args) => inspect::run(args),
         Command::Compare(args) => compare::run(args),
         Command::Coverage(args) => coverage::run(args),
+        Command::Graphify(args) => graphify::run(args),
         Command::Mcp(args) => mcp::run(args),
     };
     if let Err(message) = result {

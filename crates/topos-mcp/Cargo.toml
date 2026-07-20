@@ -1,0 +1,25 @@
+[package]
+name = "topos-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Topos MCP server: SIMPLE/COMPOSABLE/SECURE structural code-quality tools over the Model Context Protocol (stdio)."
+
+[dependencies]
+topos-core = { path = "../topos-core" }
+rmcp = { version = "2.2", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+anyhow = "1.0"
+tempfile = "3"
+# Unified diff for the regression-diff on an assessment (difflib parity).
+similar = "2"
+# Embedded SAST engine (MIT) — replaces the former external `sighthound`
+# CLI dependency; pinned for reproducible builds.
+sighthound = { git = "https://github.com/Corgea/Sighthound", rev = "36dd5da663f826d81f1a444c474935b6acbf285c" }

@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use topos_core::core::characteristic_morphism::CharacteristicMorphism;
 use topos_core::core::morphism::ProgramMorphism;
-use topos_core::evaluation::characteristic_morphism::CharacteristicMorphism;
 use topos_core::evaluation::policies::simple::describe_entropy_ratio;
 use topos_core::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
@@ -92,7 +92,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
 /// for the fields intentionally omitted.
 fn print_json(
     path: &std::path::Path,
-    result: &topos_core::evaluation::characteristic_morphism::ClassificationResult,
+    result: &topos_core::core::characteristic_morphism::ClassificationResult,
 ) -> Result<(), String> {
     let dimensions: serde_json::Map<String, serde_json::Value> = result
         .dimensions

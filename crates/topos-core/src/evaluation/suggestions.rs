@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use crate::evaluation::characteristic_morphism::ClassificationResult;
+use crate::core::characteristic_morphism::ClassificationResult;
 use crate::evaluation::policies::gates::{evaluate_gates, GateOutcome, GateResult};
 use crate::evaluation::security_guidance::{remediation_for, SecurityFinding};
 

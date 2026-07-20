@@ -3,7 +3,7 @@
 //! Following the math spec (§3 "Policy Translation"), each quality
 //! generator `gᵢ ∈ G_qual` has an associated policy translator `Φᵢ`
 //! that maps probe outputs into a [`ScoredDecision`]. The characteristic
-//! morphism ([`crate::evaluation::characteristic_morphism`]) reads each
+//! morphism ([`crate::core::characteristic_morphism`]) reads each
 //! decision's `achieved` flag and assembles the 8-element verdict in
 //! `Ω` via [`crate::core::omega::verdict_from_generators`].
 //!

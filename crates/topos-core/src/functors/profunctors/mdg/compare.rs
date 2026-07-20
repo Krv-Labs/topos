@@ -128,6 +128,7 @@ mod tests {
             rel_type: "IMPORTS".to_string(),
             confidence: 1.0,
             reason: String::new(),
+            properties: Default::default(),
         });
         g
     }

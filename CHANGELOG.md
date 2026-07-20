@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **MCP server rewritten in Rust (`topos-mcp` crate)**: the entire `topos/mcp/**` Python package is reimplemented as a Rust `rmcp` stdio server, so no computation is marshalled through Python anymore — every tool (all 17: the `topos_evaluate_*`, `topos_assess_*`, `topos_compare_*`, `topos_inspect_code`, `topos_calculate_coverage`, `topos_preference_walk`, `topos_depgraph_*`, `topos_refactor`, `topos_get_doc` family), all 6 `topos://docs/*` resources, and the `topos_refactor_until_ideal` prompt call directly into `topos-core`. The `topos-mcp` PyPI package is now a thin maturin `bin` wheel that ships this self-contained server binary; `pip install topos-mcp` puts the `topos-mcp` command on `PATH` with zero Python runtime dependencies.
+- **All computation centralized in `topos-core`**: the persistent-homology cycle basis, Forman-Ricci curvature engines, process graph, and their MDG/process curvature probes moved out of the former `topos-pyo3` extension crate into `topos-core` (`functors::curvature`, `functors::probes::{cfg::homology,mdg::curvature,process::curvature}`, `graphs::process`). The `topos-pyo3` crate is removed — its functionality lives in `topos-core` as functors, per the PR #159 review.
+- **Characteristic morphism χ_S moved to `core/`**: `characteristic_morphism.rs` now sits alongside the other category-theory definitions (`omega`, `morphism`, `object`, `category`) in `topos-core/src/core/`, not under `evaluation/`.
+- **Tree-sitter is the sole AST engine**: the AST dispatch layer commits fully to tree-sitter; no alternative parser backends are carried forward.
+
+### Added
+
+- **Sighthound SAST engine embedded directly**: the [Corgea/Sighthound](https://github.com/Corgea/Sighthound) pattern-matching + taint-flow scanner is now a compiled-in library dependency of `topos-mcp` (not an external CLI discovered on `$PATH`). SECURE findings for Python/JavaScript/TypeScript/Go come from Sighthound's embedded rulesets in-process; Rust/C++ fall back to the local CPG probes. Set `TOPOS_DISABLE_SIGHTHOUND=1` to force the CPG-probe path.
+
 ## [0.3.11] - 2026-07-13
 
 ### Changed

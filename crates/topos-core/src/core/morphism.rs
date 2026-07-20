@@ -19,7 +19,7 @@
 //! The characteristic map `χ: Morphism → Ω` assigns each morphism an
 //! evaluation value in our Heyting algebra, capturing this nuanced view
 //! of correctness — landing with [`crate::core::omega`]'s consumer,
-//! `evaluation::characteristic_morphism` (issue #144).
+//! `core::characteristic_morphism` (issue #144).
 
 use std::path::{Path, PathBuf};
 
@@ -61,7 +61,7 @@ pub struct ProgramMorphism {
     pdg: Option<ProgramDependenceGraph>,
     cpg: Option<CodePropertyGraph>,
     // `classify` lands with issue #144
-    // (`evaluation::characteristic_morphism::CharacteristicMorphism`).
+    // (`core::characteristic_morphism::CharacteristicMorphism`).
 }
 
 impl ProgramMorphism {

@@ -16,7 +16,7 @@ use crate::graphs::cpg::models::CPGEdgeKind;
 use crate::graphs::cpg::object::CodePropertyGraph;
 
 /// Names whose value should be treated as untrusted input.
-fn taint_sources(language: &str) -> &'static [&'static str] {
+pub fn taint_sources(language: &str) -> &'static [&'static str] {
     match language {
         "python" => &[
             "input",

@@ -143,7 +143,7 @@ pub fn calculate_dependency_depth(graph: &ModuleDependencyGraph, file_node_id: &
 }
 
 /// Walk up CONTAINS edges to find the File node that owns `node_id`.
-pub(crate) fn owning_file(graph: &ModuleDependencyGraph, node_id: &str) -> Option<String> {
+pub fn owning_file(graph: &ModuleDependencyGraph, node_id: &str) -> Option<String> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut current = node_id.to_string();
     loop {
@@ -193,6 +193,7 @@ mod tests {
             rel_type: rel_type.to_string(),
             confidence: 1.0,
             reason: String::new(),
+            properties: Default::default(),
         }
     }
 

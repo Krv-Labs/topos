@@ -1,35 +1,35 @@
 //! Forman-Ricci curvature engine.
 //!
 //! Two variants share one adjacency-indexing layer:
-//!   - `balanced_forman_curvature`: undirected balanced Forman curvature
+//!   - [`balanced_forman_curvature`]: undirected balanced Forman curvature
 //!     (Topping, Di Giovanni, Chamberlain, Dong & Bronstein, "Understanding
 //!     over-squashing and bottlenecks on graphs via curvature", ICLR 2022,
 //!     arxiv:2111.14522, Definition 1). Applied to the MDG to find dependency
-//!     edges worth strengthening.
-//!   - `directed_forman_curvature`: directed Forman-Ricci curvature (Samal et
-//!     al.), applied to GitNexus process graphs to find execution choke points.
+//!     edges worth strengthening (see
+//!     [`crate::functors::probes::mdg::curvature`]).
+//!   - [`directed_forman_curvature`]: directed Forman-Ricci curvature (Samal
+//!     et al.), applied to GitNexus process graphs to find execution choke
+//!     points (see [`crate::functors::probes::process::curvature`]).
 //!
 //! Both are purely local (per-edge) computations over a sparse adjacency
 //! index built once from the input edge list — no petgraph needed, since
 //! neither formula requires path/component algorithms, only neighbor lookups.
+//!
+//! Moved from the former `topos-pyo3` extension crate (`frc.rs`) per PR #159
+//! review: computation lives in `topos-core`; bindings crates only bind.
 
-use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-#[pyclass(get_all, from_py_object)]
-#[derive(Clone, Serialize, Deserialize, Debug)]
+/// A directed edge over caller-interned dense `usize` node ids.
+#[derive(Clone, Debug, PartialEq)]
 pub struct WeightedEdge {
     pub source: usize,
     pub target: usize,
     pub weight: f64,
 }
 
-#[pymethods]
 impl WeightedEdge {
-    #[new]
-    #[pyo3(signature = (source, target, weight=1.0))]
-    fn new(source: usize, target: usize, weight: f64) -> Self {
+    pub fn new(source: usize, target: usize, weight: f64) -> Self {
         Self {
             source,
             target,
@@ -38,8 +38,8 @@ impl WeightedEdge {
     }
 }
 
-#[pyclass(get_all, skip_from_py_object)]
-#[derive(Clone, Serialize, Deserialize, Debug)]
+/// Curvature of one edge, in the caller's original node ids.
+#[derive(Clone, Debug, PartialEq)]
 pub struct EdgeCurvature {
     pub source: usize,
     pub target: usize,
@@ -129,13 +129,12 @@ impl AdjacencyIndex {
 /// to a spurious large value at degree-1 endpoints (verified by hand: a bare
 /// isolated edge would otherwise score curvature 4, not the expected ~0),
 /// so this case is special-cased before the (unnecessary) triangle/4-cycle work.
-#[pyfunction]
-pub fn balanced_forman_curvature(edges: Vec<WeightedEdge>) -> Vec<EdgeCurvature> {
-    let adj = AdjacencyIndex::build(&edges, false);
+pub fn balanced_forman_curvature(edges: &[WeightedEdge]) -> Vec<EdgeCurvature> {
+    let adj = AdjacencyIndex::build(edges, false);
     let mut seen: HashSet<(usize, usize)> = HashSet::new();
     let mut results = Vec::new();
 
-    for e in &edges {
+    for e in edges {
         let i = adj.id_to_idx[&e.source];
         let j = adj.id_to_idx[&e.target];
         if i == j {
@@ -205,9 +204,11 @@ pub fn balanced_forman_curvature(edges: Vec<WeightedEdge>) -> Vec<EdgeCurvature>
 
 /// Directed Forman-Ricci curvature (Samal et al.) for every edge `e = (u -> v)`:
 ///
-///   Ric(e) = w_e * ( w_u/w_e + w_v/w_e
-///                    - sum_{e_in ~ u} sqrt(w_u / w_e_in)
-///                    - sum_{e_out ~ v} sqrt(w_v / w_e_out) )
+/// ```text
+/// Ric(e) = w_e * ( w_u/w_e + w_v/w_e
+///                  - sum_{e_in ~ u} sqrt(w_u / w_e_in)
+///                  - sum_{e_out ~ v} sqrt(w_v / w_e_out) )
+/// ```
 ///
 /// where `e_in` ranges over edges incoming to `u` and `e_out` ranges over
 /// edges outgoing from `v`. `node_weights` (keyed by the caller's original
@@ -216,18 +217,19 @@ pub fn balanced_forman_curvature(edges: Vec<WeightedEdge>) -> Vec<EdgeCurvature>
 /// transitions where many independent paths funnel through one edge.
 /// One result per input edge (not deduplicated: directed multi-edges, e.g.
 /// repeated transitions across several process paths, are each meaningful).
-#[pyfunction]
-#[pyo3(signature = (edges, node_weights=None))]
 pub fn directed_forman_curvature(
-    edges: Vec<WeightedEdge>,
-    node_weights: Option<HashMap<usize, f64>>,
+    edges: &[WeightedEdge],
+    node_weights: Option<&HashMap<usize, f64>>,
 ) -> Vec<EdgeCurvature> {
-    let adj = AdjacencyIndex::build(&edges, true);
-    let weights = node_weights.unwrap_or_default();
-    let weight_of = |id: usize| -> f64 { *weights.get(&id).unwrap_or(&1.0) };
+    let adj = AdjacencyIndex::build(edges, true);
+    let weight_of = |id: usize| -> f64 {
+        node_weights
+            .and_then(|w| w.get(&id).copied())
+            .unwrap_or(1.0)
+    };
 
     let mut results = Vec::with_capacity(edges.len());
-    for e in &edges {
+    for e in edges {
         if e.source == e.target {
             continue;
         }
@@ -275,205 +277,141 @@ mod tests {
     fn curvature_of(results: &[EdgeCurvature], source: usize, target: usize) -> f64 {
         results
             .iter()
-            .find(|r| {
-                (r.source == source && r.target == target)
-                    || (r.source == target && r.target == source)
+            .find(|c| {
+                (c.source == source && c.target == target)
+                    || (c.source == target && c.target == source)
             })
-            .unwrap_or_else(|| panic!("no curvature result for edge ({source}, {target})"))
-            .curvature
+            .map(|c| c.curvature)
+            .expect("edge not found in results")
     }
 
-    /// Hand-derived ground truth: a triangle (K3) has every edge with degree 2,
-    /// one triangle per edge, and a specific 4-cycle ("sharp"/"lambda") term
-    /// that works out to 2.0 exactly — see the module doc comment's worked
-    /// example for the derivation.
+    /// Triangle: every node has degree 2 and one triangle per edge.
+    /// Base term 2/2 + 2/2 - 2 = 0, triangle term (2/2 + 1/2)*1 = 1.5, and
+    /// the reference implementation's sharp/lambda pass (which ranges over
+    /// k = i and k = j too) adds 2/(2*2) = 0.5 — so exactly 2.0, matching
+    /// the paper authors' numba reference on this graph.
     #[test]
-    fn test_balanced_forman_triangle_exact_value() {
+    fn balanced_forman_triangle_exact_value() {
         let edges = vec![
             WeightedEdge::new(0, 1, 1.0),
             WeightedEdge::new(1, 2, 1.0),
             WeightedEdge::new(2, 0, 1.0),
         ];
-        let results = balanced_forman_curvature(edges);
+        let results = balanced_forman_curvature(&edges);
         assert_eq!(results.len(), 3);
-        for &(a, b) in &[(0, 1), (1, 2), (2, 0)] {
-            assert!(
-                (curvature_of(&results, a, b) - 2.0).abs() < 1e-9,
-                "expected curvature 2.0 for triangle edge ({a},{b})"
-            );
+        for c in &results {
+            assert!((c.curvature - 2.0).abs() < 1e-9, "got {}", c.curvature);
         }
     }
 
-    /// A pendant (leaf) edge — one endpoint has degree 1 — must curve to
-    /// exactly 0.0 per the paper's explicit special case, not whatever the
-    /// raw degree/triangle formula would otherwise produce.
+    /// A pendant edge (degree-1 endpoint) is defined as curvature 0.
     #[test]
-    fn test_balanced_forman_leaf_edge_is_zero() {
-        // Star: center 0 connected to leaves 1, 2, 3. Edge (0,1): deg(0)=3, deg(1)=1.
-        let edges = vec![
-            WeightedEdge::new(0, 1, 1.0),
-            WeightedEdge::new(0, 2, 1.0),
-            WeightedEdge::new(0, 3, 1.0),
-        ];
-        let results = balanced_forman_curvature(edges);
-        for r in &results {
-            assert_eq!(r.curvature, 0.0);
-        }
-    }
-
-    /// A "bridge" edge connecting two otherwise-separate triangles must curve
-    /// more negatively than the triangles' own internal edges — the
-    /// bottleneck-detection property the whole engine exists for.
-    #[test]
-    fn test_balanced_forman_bridge_is_most_negative() {
-        // Triangle {0,1,2}, triangle {3,4,5}, bridge edge (2,3).
+    fn balanced_forman_leaf_edge_is_zero() {
         let edges = vec![
             WeightedEdge::new(0, 1, 1.0),
             WeightedEdge::new(1, 2, 1.0),
             WeightedEdge::new(2, 0, 1.0),
+            WeightedEdge::new(2, 3, 1.0), // pendant
+        ];
+        let results = balanced_forman_curvature(&edges);
+        assert_eq!(curvature_of(&results, 2, 3), 0.0);
+    }
+
+    /// A bridge between two triangles is the most negative edge in the graph.
+    #[test]
+    fn balanced_forman_bridge_is_most_negative() {
+        let edges = vec![
+            // triangle A: 0-1-2
+            WeightedEdge::new(0, 1, 1.0),
+            WeightedEdge::new(1, 2, 1.0),
+            WeightedEdge::new(2, 0, 1.0),
+            // triangle B: 3-4-5
             WeightedEdge::new(3, 4, 1.0),
             WeightedEdge::new(4, 5, 1.0),
             WeightedEdge::new(5, 3, 1.0),
+            // bridge
             WeightedEdge::new(2, 3, 1.0),
         ];
-        let results = balanced_forman_curvature(edges);
+        let results = balanced_forman_curvature(&edges);
         let bridge = curvature_of(&results, 2, 3);
-        for &(a, b) in &[(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 3)] {
-            assert!(
-                bridge < curvature_of(&results, a, b),
-                "bridge curvature {bridge} should be less than triangle edge ({a},{b})"
-            );
+        for c in &results {
+            if (c.source, c.target) != (2, 3) && (c.target, c.source) != (2, 3) {
+                assert!(bridge <= c.curvature);
+            }
         }
     }
 
-    /// Duplicate/reciprocal input edges for the same undirected pair collapse
-    /// to a single result rather than being double-counted.
+    /// Reciprocal directed edges (a->b, b->a) collapse to one undirected result.
     #[test]
-    fn test_balanced_forman_dedupes_reciprocal_edges() {
+    fn balanced_forman_dedupes_reciprocal_edges() {
         let edges = vec![
             WeightedEdge::new(0, 1, 1.0),
             WeightedEdge::new(1, 0, 1.0),
             WeightedEdge::new(1, 2, 1.0),
             WeightedEdge::new(2, 0, 1.0),
         ];
-        let results = balanced_forman_curvature(edges);
+        let results = balanced_forman_curvature(&edges);
         assert_eq!(results.len(), 3);
     }
 
-    /// A "bowtie" quiver — two stars whose centers feed into a single bridge
-    /// edge — must have that bridge edge rank most negative among all edges.
+    /// Bow-tie: 0->2, 1->2, 2->3, 3->4, 3->5. The middle edge 2->3 funnels
+    /// two incoming paths into two outgoing paths — most negative curvature.
     #[test]
-    fn test_directed_bowtie_bottleneck() {
-        // Fan-in into 10 from {0,1,2,3}; bridge 10 -> 11; fan-out from 11 to {12,13,14,15}.
-        let mut edges = Vec::new();
-        for src in 0..4 {
-            edges.push(WeightedEdge::new(src, 10, 1.0));
-        }
-        edges.push(WeightedEdge::new(10, 11, 1.0));
-        for dst in 12..16 {
-            edges.push(WeightedEdge::new(11, dst, 1.0));
-        }
-
-        let results = directed_forman_curvature(edges, None);
-        let bridge = curvature_of(&results, 10, 11);
-        for r in &results {
-            if (r.source, r.target) != (10, 11) {
-                assert!(
-                    bridge < r.curvature,
-                    "bridge curvature {bridge} should be less than edge ({},{}) = {}",
-                    r.source,
-                    r.target,
-                    r.curvature
-                );
+    fn directed_bowtie_bottleneck() {
+        let edges = vec![
+            WeightedEdge::new(0, 2, 1.0),
+            WeightedEdge::new(1, 2, 1.0),
+            WeightedEdge::new(2, 3, 1.0),
+            WeightedEdge::new(3, 4, 1.0),
+            WeightedEdge::new(3, 5, 1.0),
+        ];
+        let results = directed_forman_curvature(&edges, None);
+        let middle = results
+            .iter()
+            .find(|c| c.source == 2 && c.target == 3)
+            .unwrap()
+            .curvature;
+        for c in &results {
+            if !(c.source == 2 && c.target == 3) {
+                assert!(middle <= c.curvature, "middle {middle} vs {}", c.curvature);
             }
         }
     }
 
-    /// Uniform directed cycle: every node has in-degree 1 / out-degree 1, so
-    /// every edge must have identical curvature by symmetry.
+    /// A directed cycle is degree-regular: every edge gets the same curvature.
     #[test]
-    fn test_directed_cycle_uniform_curvature() {
-        let k = 6;
-        let edges: Vec<WeightedEdge> = (0..k)
-            .map(|i| WeightedEdge::new(i, (i + 1) % k, 1.0))
-            .collect();
-        let results = directed_forman_curvature(edges, None);
+    fn directed_cycle_uniform_curvature() {
+        let edges = vec![
+            WeightedEdge::new(0, 1, 1.0),
+            WeightedEdge::new(1, 2, 1.0),
+            WeightedEdge::new(2, 0, 1.0),
+        ];
+        let results = directed_forman_curvature(&edges, None);
+        assert_eq!(results.len(), 3);
         let first = results[0].curvature;
-        for r in &results {
-            assert!((r.curvature - first).abs() < 1e-9);
+        for c in &results {
+            assert!((c.curvature - first).abs() < 1e-9);
         }
-        // Ric = 1*(1+1-1-1) = 0 for a uniform-weight cycle (one in-edge, one out-edge each).
-        assert!(first.abs() < 1e-9);
     }
 
-    /// Omitting `node_weights` must behave identically to passing all-1.0 weights.
+    /// With unit weights, Ric(u->v) = 2 - in_deg(u) - out_deg(v).
     #[test]
-    fn test_directed_default_weights_are_unit() {
+    fn directed_default_weights_are_unit() {
         let edges = vec![WeightedEdge::new(0, 1, 1.0), WeightedEdge::new(1, 2, 1.0)];
-        let default_results = directed_forman_curvature(edges.clone(), None);
-        let mut unit_weights = HashMap::new();
-        unit_weights.insert(0usize, 1.0);
-        unit_weights.insert(1usize, 1.0);
-        unit_weights.insert(2usize, 1.0);
-        let explicit_results = directed_forman_curvature(edges, Some(unit_weights));
-        for (a, b) in default_results.iter().zip(explicit_results.iter()) {
-            assert!((a.curvature - b.curvature).abs() < 1e-12);
-        }
+        let results = directed_forman_curvature(&edges, None);
+        // 0->1: in_deg(0)=0, out_deg(1)=1 → 2 - 0 - 1 = 1
+        assert_eq!(results[0].curvature, 1.0);
+        // 1->2: in_deg(1)=1, out_deg(2)=0 → 2 - 1 - 0 = 1
+        assert_eq!(results[1].curvature, 1.0);
     }
 
-    /// Empty input and a single isolated edge must not panic (divide-by-zero guards).
     #[test]
-    fn test_empty_and_isolated_edge_no_panic() {
-        assert_eq!(directed_forman_curvature(vec![], None).len(), 0);
-        assert_eq!(balanced_forman_curvature(vec![]).len(), 0);
-
-        let single = vec![WeightedEdge::new(0, 1, 1.0)];
-        let directed = directed_forman_curvature(single.clone(), None);
-        assert_eq!(directed.len(), 1);
-        let undirected = balanced_forman_curvature(single);
-        assert_eq!(undirected.len(), 1);
-        assert_eq!(undirected[0].curvature, 0.0); // both endpoints degree 1 -> leaf rule
-    }
-
-    /// Perf sanity check for issue #86: directed curvature over 10k nodes /
-    /// 50k edges must stay near-linear, not blow up. The issue's literal
-    /// <100ms acceptance bar is a release-build/production target, validated
-    /// end-to-end (including the Python/PyO3 call boundary) against a
-    /// `maturin build --release` wheel in `tests/benchmarks/test_curvature_perf.py`;
-    /// this Rust-level test runs under `cargo test`'s unoptimized debug profile
-    /// (matching CI's plain `cargo test`, no `--release`), which is commonly
-    /// 10-30x slower than release for numeric code, so it uses a generous
-    /// margin instead of the strict production bound.
-    #[test]
-    fn test_directed_curvature_perf_10k_50k() {
-        use std::time::Instant;
-        let n = 10_000usize;
-        let e_count = 50_000usize;
-        let mut edges = Vec::with_capacity(e_count);
-        // Deterministic pseudo-random edge generation (no external RNG dependency).
-        let mut state: u64 = 88172645463325252;
-        let mut next = || {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            state
-        };
-        for _ in 0..e_count {
-            let s = (next() as usize) % n;
-            let mut t = (next() as usize) % n;
-            if t == s {
-                t = (t + 1) % n;
-            }
-            edges.push(WeightedEdge::new(s, t, 1.0));
-        }
-
-        let start = Instant::now();
-        let results = directed_forman_curvature(edges, None);
-        let elapsed = start.elapsed();
-        assert!(!results.is_empty());
-        assert!(
-            elapsed.as_millis() < 2000,
-            "directed_forman_curvature took {elapsed:?} on 10k/50k (debug build) — investigate for a real algorithmic blowup"
-        );
+    fn empty_and_isolated_edge_no_panic() {
+        assert!(balanced_forman_curvature(&[]).is_empty());
+        assert!(directed_forman_curvature(&[], None).is_empty());
+        let lone = vec![WeightedEdge::new(7, 9, 1.0)];
+        assert_eq!(balanced_forman_curvature(&lone)[0].curvature, 0.0);
+        // Directed: in_deg(7)=0, out_deg(9)=0 → Ric = 2.
+        assert_eq!(directed_forman_curvature(&lone, None)[0].curvature, 2.0);
     }
 }

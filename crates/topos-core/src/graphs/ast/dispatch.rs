@@ -1,20 +1,14 @@
 //! Parser dispatch — parses source into a [`ParseResult`] (tree-sitter
 //! tree + UAST) for any supported language.
 //!
-//! # Deviation from the Python original
-//!
-//! Python's dispatch layer is a `ParserDispatch` holding two
-//! `AstProvider` implementations (`TreeSitterProvider`,
-//! `NativeAstProvider`) selected by an `AstBackend` (`"tree-sitter"` /
-//! `"native"` / `"hybrid"`), plus a module-level singleton with a
-//! test-only `reset_dispatch()`. The two providers exist because Python
-//! *can* additionally build a CPython `ast.Module` for Python source
-//! (`NativeAstProvider`) — but nothing consumes that native AST even on
-//! the Python side today (`native_ast` is `None` for every other
-//! language and unused downstream). Rust has no equivalent to CPython's
-//! `ast` module, so there is exactly one provider here: tree-sitter. One
-//! implementation doesn't need a trait, a backend enum, or a stateless
-//! singleton to select between it — this module is a plain function.
+//! Tree-sitter is *the* AST engine, by design decision (PR #159): there
+//! is deliberately no provider trait, no backend enum, and no dispatch
+//! singleton, because there is exactly one parsing path. (The Python
+//! original grew a `ParserDispatch` with `TreeSitterProvider` /
+//! `NativeAstProvider` selected by an `AstBackend`; the "native"
+//! CPython-`ast` path was never consumed downstream and is not carried
+//! forward.) Supporting another engine someday means revisiting this
+//! module, not pre-abstracting it now.
 
 use tree_sitter::{Language, Parser};
 

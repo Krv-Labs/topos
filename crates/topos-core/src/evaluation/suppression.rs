@@ -1,6 +1,6 @@
 //! Allowlist overlay — the *adjusted* SECURE verdict (anti-gaming design).
 //!
-//! The core classification pipeline ([`crate::evaluation::characteristic_morphism`])
+//! The core classification pipeline ([`crate::core::characteristic_morphism`])
 //! is canonical and untouched: it always produces the raw verdict from the
 //! full dangerous-API registry. This module computes an **adjusted** view
 //! *on top of* that result by re-counting dangerous calls / taint flows
@@ -18,10 +18,10 @@
 //! and `topos.mcp.security_findings` (the MCP server's classification +
 //! finding-extraction glue). Those modules live in the Python-only MCP
 //! server layer, out of scope for this pure-Rust crate, so the tests here
-//! build the [`crate::evaluation::characteristic_morphism::ClassificationResult`]
+//! build the [`crate::core::characteristic_morphism::ClassificationResult`]
 //! and [`SecurityFinding`]s directly from already-ported primitives
 //! ([`crate::core::morphism::ProgramMorphism`],
-//! [`crate::evaluation::characteristic_morphism::CharacteristicMorphism`])
+//! [`crate::core::characteristic_morphism::CharacteristicMorphism`])
 //! instead. `apply_allowlist` itself is a straight, behavior-preserving
 //! port.
 
@@ -29,8 +29,8 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::config::{AllowEntry, ToposConfig};
+use crate::core::characteristic_morphism::ClassificationResult;
 use crate::core::omega::EvaluationValue;
-use crate::evaluation::characteristic_morphism::ClassificationResult;
 use crate::evaluation::security_guidance::SecurityFinding;
 use crate::functors::probes::cpg::danger::{dangerous_api_reachable, matches_registry};
 use crate::functors::probes::cpg::taint::taint_flow_paths;
@@ -143,8 +143,8 @@ fn recompute_element(result: &ClassificationResult, secure_pass: bool) -> Evalua
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::characteristic_morphism::CharacteristicMorphism;
     use crate::core::morphism::ProgramMorphism;
-    use crate::evaluation::characteristic_morphism::CharacteristicMorphism;
     use crate::evaluation::policies::base::Priority;
     use std::collections::HashMap;
     use std::path::PathBuf;

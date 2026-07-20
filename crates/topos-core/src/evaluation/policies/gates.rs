@@ -384,7 +384,7 @@ fn gate_for_metric(metric: &str) -> Option<&'static GateSpec> {
 }
 
 /// Metric-key namespacing shared with the agent-contract/pillar layers.
-const PILLAR_METRIC_PREFIXES: &[(&str, &[&str])] = &[
+pub const PILLAR_METRIC_PREFIXES: &[(&str, &[&str])] = &[
     ("simple", &["cfg.", "ast."]),
     ("composable", &["mdg."]),
     ("secure", &["cpg."]),

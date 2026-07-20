@@ -116,7 +116,7 @@ impl ProgramCategory {
     }
 
     // `characteristic_morphism`, `classify`, `classify_detailed`: pending
-    // issue #144 (`evaluation::characteristic_morphism::CharacteristicMorphism`).
+    // issue #144 (`core::characteristic_morphism::CharacteristicMorphism`).
 }
 
 #[cfg(test)]

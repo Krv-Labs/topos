@@ -34,10 +34,8 @@ use std::path::PathBuf;
 
 use clap::Args;
 use topos_core::adapters::discovery::collect_source_files;
+use topos_core::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_core::core::morphism::ProgramMorphism;
-use topos_core::evaluation::characteristic_morphism::{
-    CharacteristicMorphism, ClassificationResult,
-};
 use topos_core::evaluation::policies::base::Priority;
 use topos_core::functors::probes::uast::abstractness::AbstractnessRepresentation;
 use topos_core::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};

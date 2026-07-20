@@ -71,6 +71,9 @@ pub struct GraphRelationship {
     pub rel_type: String,
     pub confidence: f64,
     pub reason: String,
+    /// Arbitrary GitNexus payload (e.g. `STEP_IN_PROCESS` edges carry a
+    /// `step` ordinal that [`crate::graphs::process`] sorts by).
+    pub properties: HashMap<String, Value>,
 }
 
 /// Parse one legacy-JSON-format node record.
@@ -109,5 +112,10 @@ pub fn parse_relationship(item: &Value) -> Option<GraphRelationship> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string(),
+        properties: item
+            .get("properties")
+            .and_then(Value::as_object)
+            .map(|obj| obj.clone().into_iter().collect())
+            .unwrap_or_default(),
     })
 }

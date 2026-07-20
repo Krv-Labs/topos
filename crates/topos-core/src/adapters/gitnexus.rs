@@ -349,6 +349,134 @@ fn finished_result(
     }
 }
 
+/// GitNexus's per-store metadata file (written next to each `lbug` store).
+pub const GITNEXUS_META_FILE: &str = "meta.json";
+/// Directory of branch-scoped stores under `.gitnexus/`.
+pub const GITNEXUS_BRANCHES_DIR: &str = "branches";
+
+/// Parsed `meta.json` for one `lbug` store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LbugStoreMeta {
+    pub branch: String,
+    pub last_commit: Option<String>,
+}
+
+/// The `lbug` store to load for a given branch, or a "no match" report.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ResolvedLbugStore {
+    pub path: Option<PathBuf>,
+    pub matched_branch: Option<String>,
+    pub available_branches: Vec<String>,
+}
+
+/// Best-effort parse of GitNexus's `meta.json` next to a store. Returns
+/// `None` on any read/parse error or a missing `"branch"` key — callers
+/// treat that identically to "no metadata, can't branch-match."
+fn read_store_meta(store_dir: &Path) -> Option<LbugStoreMeta> {
+    let raw = std::fs::read_to_string(store_dir.join(GITNEXUS_META_FILE)).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let branch = value.get("branch")?.as_str()?.to_string();
+    let last_commit = value
+        .get("lastCommit")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    Some(LbugStoreMeta {
+        branch,
+        last_commit,
+    })
+}
+
+/// Current branch name, parsed from `.git/HEAD` without shelling out.
+///
+/// Returns `None` for a non-git dir, a detached HEAD (HEAD holds a raw
+/// SHA, not a `ref:` line), or a ref outside `refs/heads/` (e.g. a tag
+/// checkout) — all of which mean "no branch identity to match against,"
+/// and callers fall back to the flat store unconditionally.
+pub fn current_git_branch(project_root: &Path) -> Option<String> {
+    let head_text = std::fs::read_to_string(project_root.join(".git").join("HEAD")).ok()?;
+    let head_text = head_text.trim();
+    let ref_path = head_text.strip_prefix("ref: ")?.trim();
+    let branch = ref_path.strip_prefix("refs/heads/")?;
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch.to_string())
+    }
+}
+
+/// Pick the `lbug` store under `gitnexus_dir` matching `current_branch`.
+///
+/// 1. `current_branch` is `None` (no git / detached HEAD), or the flat
+///    store exists with no `meta.json` (a legacy, pre-branch-aware store)
+///    → the flat slot unconditionally.
+/// 2. The flat store's `meta.json` records `current_branch` → flat slot.
+/// 3. Otherwise scan `branches/*/meta.json` for one recording
+///    `current_branch` (matched on the `meta.json` content, never on the
+///    opaque hash suffix GitNexus appends to the directory name).
+/// 4. No match anywhere → `path: None`, `available_branches` populated
+///    (sorted) so the caller can build an actionable error message.
+pub fn resolve_lbug_store(gitnexus_dir: &Path, current_branch: Option<&str>) -> ResolvedLbugStore {
+    let flat_lbug = gitnexus_dir.join("lbug");
+    let flat_meta = read_store_meta(gitnexus_dir);
+
+    let Some(current_branch) = current_branch else {
+        return ResolvedLbugStore {
+            path: flat_lbug.exists().then_some(flat_lbug),
+            matched_branch: flat_meta.map(|m| m.branch),
+            available_branches: Vec::new(),
+        };
+    };
+    if flat_lbug.exists() && flat_meta.is_none() {
+        return ResolvedLbugStore {
+            path: Some(flat_lbug),
+            matched_branch: None,
+            available_branches: Vec::new(),
+        };
+    }
+
+    if let Some(meta) = &flat_meta {
+        if meta.branch == current_branch {
+            return ResolvedLbugStore {
+                path: Some(flat_lbug),
+                matched_branch: Some(current_branch.to_string()),
+                available_branches: Vec::new(),
+            };
+        }
+    }
+
+    let mut available: Vec<String> = flat_meta.iter().map(|m| m.branch.clone()).collect();
+    let branches_dir = gitnexus_dir.join(GITNEXUS_BRANCHES_DIR);
+    if branches_dir.is_dir() {
+        let mut candidates: Vec<PathBuf> = std::fs::read_dir(&branches_dir)
+            .map(|entries| entries.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default();
+        candidates.sort();
+        for candidate in candidates {
+            let Some(meta) = read_store_meta(&candidate) else {
+                continue;
+            };
+            available.push(meta.branch.clone());
+            if meta.branch == current_branch {
+                let lbug = candidate.join("lbug");
+                if lbug.exists() {
+                    return ResolvedLbugStore {
+                        path: Some(lbug),
+                        matched_branch: Some(current_branch.to_string()),
+                        available_branches: Vec::new(),
+                    };
+                }
+            }
+        }
+    }
+
+    available.sort();
+    ResolvedLbugStore {
+        path: None,
+        matched_branch: None,
+        available_branches: available,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -103,6 +103,7 @@ mod tests {
             rel_type: rel_type.to_string(),
             confidence: 1.0,
             reason: String::new(),
+            properties: Default::default(),
         }
     }
 

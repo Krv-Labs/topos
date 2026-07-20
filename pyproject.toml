@@ -1,74 +1,41 @@
 [project]
 name = "topos-mcp"
 dynamic = ["version"]
-description = "Structural code quality metrics for agent-written programs."
+description = "Topos MCP server — structural code-quality tools (SIMPLE/COMPOSABLE/SECURE) for AI coding agents."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "Krv Labs", email = "team@krv.ai"}]
-keywords = ["code-quality", "static-analysis", "category-theory", "topos", "ast"]
+keywords = ["code-quality", "static-analysis", "category-theory", "topos", "ast", "mcp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: BSD License",
+    "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
 ]
 
-dependencies = [
-    "tree-sitter>=0.23",
-    "tree-sitter-python>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-javascript>=0.23",
-    "tree-sitter-cpp>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "tree-sitter-go>=0.23",
-    "click>=8.1",
-    "fastmcp>=3.4.2",
-    "numpy>=1.24",
-    "ladybug>=0.17.0,<0.18",
-]
-
-[project.scripts]
-topos = "topos.cli.main:main"
-topos-mcp = "topos.mcp.server:main"
+# Thin wrapper: the MCP server is a self-contained Rust binary (topos-mcp),
+# built from `crates/topos-mcp` and installed as the `topos-mcp` console
+# command by maturin's `bin` bindings. There is no Python runtime dependency
+# and no Python import surface — `pip install topos-mcp` simply puts the
+# compiled stdio MCP server on PATH. All computation lives in `topos-core`
+# (PR #159); nothing is marshalled through Python anymore.
+dependencies = []
 
 [build-system]
 requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
-# Version comes from [workspace.package].version in Cargo.toml (see scripts/check_versions.py).
-manifest-path = "crates/topos-pyo3/Cargo.toml"
-features = ["pyo3/extension-module"]
-python-source = "."
-module-name = "topos.topos_functors"
-
-[tool.ruff]
-src = ["topos"]
-line-length = 88
-extend-exclude = [
-    "tests/fixtures",
-]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
-addopts = "--cov=topos --cov-report=term-missing"
-norecursedirs = ["tests/fixtures"]
+# Version comes from [workspace.package].version in Cargo.toml
+# (see scripts/check_versions.py). `bindings = "bin"` packages the
+# `topos-mcp` binary itself into the wheel rather than a Python extension.
+manifest-path = "crates/topos-mcp/Cargo.toml"
+bindings = "bin"
 
 [dependency-groups]
-dev = [
-    "pytest>=9.0.2",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.8",
-]
 docs = [
     "sphinx>=7.4,<9",
     "furo>=2024.8.6",

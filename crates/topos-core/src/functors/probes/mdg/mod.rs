@@ -5,6 +5,10 @@
 //! - Coupling (afferent/efferent) and Martin instability
 //! - Fan-in / fan-out
 //! - Dependency depth
+//!
+//! Plus one advisory probe (never folded into COMPOSABLE):
+//! - [`curvature`] — balanced Forman curvature for `topos refactor dependencies`.
 
 pub mod coupling;
+pub mod curvature;
 pub mod fan;

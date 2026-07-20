@@ -12,7 +12,7 @@
 //! In a topos the subobject classifier object and the internal-logic
 //! Heyting algebra coincide — `Ω` carries both roles. The *characteristic
 //! morphism* `χ_S : P → Ω` that maps a program into `Ω` will live in
-//! `topos_core::evaluation::characteristic_morphism` once that module
+//! `topos_core::core::characteristic_morphism` once that module
 //! lands (tracked under issue #144); this file holds only the algebra
 //! itself (elements, ordering, lattice operations).
 //!

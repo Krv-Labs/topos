@@ -87,7 +87,7 @@ Choose an install path
 
       .. code-block:: bash
 
-         npm install -g gitnexus
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
 
    .. tab-item:: Source checkout
       :sync: source
@@ -105,7 +105,7 @@ Choose an install path
 
       .. code-block:: bash
 
-         npm install -g gitnexus
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
 
       Run the local test suites:
 
@@ -128,7 +128,7 @@ Enable optional metrics
 
       .. code-block:: bash
 
-         npm install -g gitnexus
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
          cd /path/to/your/repo
          topos depgraph generate
          topos evaluate src/ -r --gitnexus-dir .gitnexus/

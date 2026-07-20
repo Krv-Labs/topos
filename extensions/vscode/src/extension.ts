@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFile } from 'child_process';
+import { execFile, execSync } from 'child_process';
 import { promisify } from 'util';
 import {
     getPlatformKey,
@@ -28,9 +28,30 @@ const MCP_SERVER_LABEL = "Topos";
 const MANIFEST_URL = "https://raw.githubusercontent.com/Krv-Labs/topos/main/releases.json";
 const BUNDLED_BINARY_RELATIVE_PATH = path.join('bin', 'topos');
 
-const GITNEXUS_INSTALL_COMMAND = "npm install -g gitnexus";
+const GITNEXUS_PNPM_INSTALL_COMMAND = "pnpm add -g gitnexus";
+const GITNEXUS_NPM_INSTALL_COMMAND = "npm install -g gitnexus";
 const GITNEXUS_REPO_URL = "https://github.com/abhigyanpatwari/GitNexus";
 const GITNEXUS_PROMPT_DISMISSED_KEY = "gitnexusPromptDismissed";
+
+/**
+ * Prefer pnpm for GitNexus install when available on PATH; fall back to npm.
+ * Synchronous so the guided-install terminal can launch immediately.
+ *
+ * Keep the pnpm-first preference in sync with the other install paths:
+ *   - Python: topos/utils/gitnexus.py (gitnexus_install_command)
+ *   - Shell:  install.sh (install_optional_dependencies)
+ */
+function resolveGitNexusInstallCommand(): string {
+    try {
+        // execSync (shell-based) so Windows resolves pnpm.cmd — execFileSync
+        // cannot run .cmd shims directly, which would mask an installed pnpm.
+        // Command is a constant, so shell use carries no injection surface.
+        execSync('pnpm --version', { stdio: 'ignore' });
+        return GITNEXUS_PNPM_INSTALL_COMMAND;
+    } catch {
+        return GITNEXUS_NPM_INSTALL_COMMAND;
+    }
+}
 
 export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
@@ -412,9 +433,10 @@ async function checkGitNexusAvailability(context: vscode.ExtensionContext, outpu
         return;
     }
 
+    const installCommand = resolveGitNexusInstallCommand();
     output.appendLine(
         "GitNexus was not found on PATH. SIMPLE and SECURE work normally, but the COMPOSABLE pillar " +
-        `is unavailable until GitNexus is installed (${GITNEXUS_INSTALL_COMMAND}) and a dependency graph is generated.`
+        `is unavailable until GitNexus is installed (${installCommand}) and a dependency graph is generated.`
     );
 
     if (context.globalState.get<boolean>(GITNEXUS_PROMPT_DISMISSED_KEY)) {
@@ -441,10 +463,11 @@ async function checkGitNexusAvailability(context: vscode.ExtensionContext, outpu
  * Launches the GitNexus install in a visible terminal so the user can review output.
  */
 function installGitNexus(output: vscode.OutputChannel): void {
-    output.appendLine(`Launching GitNexus install: ${GITNEXUS_INSTALL_COMMAND}`);
+    const installCommand = resolveGitNexusInstallCommand();
+    output.appendLine(`Launching GitNexus install: ${installCommand}`);
     const terminal = vscode.window.createTerminal("Install GitNexus");
     terminal.show();
-    terminal.sendText(GITNEXUS_INSTALL_COMMAND);
+    terminal.sendText(installCommand);
 }
 
 /**

@@ -70,7 +70,7 @@ _ALLOW_HELP = (
     default=None,
     help=(
         "Path to a .gitnexus/ directory for module dependency metrics. "
-        "Requires GitNexus (npm install -g gitnexus) — run "
+        "Requires GitNexus (pnpm add -g gitnexus, or npm install -g gitnexus) — run "
         "'gitnexus analyze' in the repo root to generate this directory."
     ),
 )
@@ -249,7 +249,7 @@ def compare(source: str, target: str, verbose: bool) -> None:
     default=None,
     help=(
         "Path to a .gitnexus/ directory for module dependency metrics. "
-        "Requires GitNexus (npm install -g gitnexus) — run "
+        "Requires GitNexus (pnpm add -g gitnexus, or npm install -g gitnexus) — run "
         "'gitnexus analyze' in the repo root to generate this directory."
     ),
 )

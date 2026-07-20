@@ -246,8 +246,9 @@ class ModuleDependencyGraph:
                 )
             raise FileNotFoundError(
                 f"LadybugDB store not found at {base / 'lbug'}. "
-                "Install GitNexus (npm install -g gitnexus) and run "
-                "'gitnexus analyze' in the repository root first."
+                "Install GitNexus (pnpm add -g gitnexus, or "
+                "npm install -g gitnexus) and run 'gitnexus analyze' in the "
+                "repository root first."
             )
 
         if lbug_path.is_file():
@@ -258,8 +259,9 @@ class ModuleDependencyGraph:
 
         raise FileNotFoundError(
             f"LadybugDB store not found at {lbug_path}. "
-            "Install GitNexus (npm install -g gitnexus) and run "
-            "'gitnexus analyze' in the repository root first."
+            "Install GitNexus (pnpm add -g gitnexus, or "
+            "npm install -g gitnexus) and run 'gitnexus analyze' in the "
+            "repository root first."
         )
 
     @classmethod

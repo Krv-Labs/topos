@@ -144,7 +144,7 @@ Choose an agent path
       ``.gitnexus/`` — approval-gated in most clients. Re-run when imports
       change, modules are renamed, or directories are restructured.
 
-      CLI equivalent (requires ``npm install -g gitnexus``):
+      CLI equivalent (requires ``pnpm add -g gitnexus  # or: npm install -g gitnexus``):
 
       .. code-block:: bash
 
@@ -345,7 +345,7 @@ Dependency Graph
 
 ``topos_generate_depgraph({"params": {"directory": ...}})``
    Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
-   approval-gated. Requires the ``gitnexus`` CLI (``npm install -g gitnexus``).
+   approval-gated. Requires the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
 
 Structure & Coverage
 ~~~~~~~~~~~~~~~~~~~~

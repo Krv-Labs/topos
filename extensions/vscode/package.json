@@ -106,25 +106,26 @@
       }
     }
   },
+  "packageManager": "pnpm@11.8.0",
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "npm run check-types && npm run lint && node esbuild.js",
-    "watch": "npm run check-types && npm run lint && node esbuild.js --watch",
-    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "vscode:prepublish": "pnpm run package",
+    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
+    "watch": "pnpm run check-types && pnpm run lint && node esbuild.js --watch",
+    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
     "stage:binary": "node scripts/stage-binary.js",
     "stage:binary:clean": "node scripts/stage-binary.js clean",
-    "package:vsix": "npm run package && npx --yes @vscode/vsce package",
-    "package:darwin-arm64": "npm run package && npm run stage:binary -- darwin-arm64 && npx --yes @vscode/vsce package --target darwin-arm64 --out topos-vscode-darwin-arm64.vsix && npm run stage:binary:clean",
-    "package:linux-arm64": "npm run package && npm run stage:binary -- linux-arm64 && npx --yes @vscode/vsce package --target linux-arm64 --out topos-vscode-linux-arm64.vsix && npm run stage:binary:clean",
-    "package:linux-x64": "npm run package && npm run stage:binary -- linux-x64 && npx --yes @vscode/vsce package --target linux-x64 --out topos-vscode-linux-x64.vsix && npm run stage:binary:clean",
-    "publish:targets": "npx --yes @vscode/vsce publish --target darwin-arm64 linux-arm64 linux-x64",
+    "package:vsix": "pnpm run package && vsce package --no-dependencies",
+    "package:darwin-arm64": "pnpm run package && pnpm run stage:binary darwin-arm64 && vsce package --no-dependencies --target darwin-arm64 --out topos-vscode-darwin-arm64.vsix && pnpm run stage:binary:clean",
+    "package:linux-arm64": "pnpm run package && pnpm run stage:binary linux-arm64 && vsce package --no-dependencies --target linux-arm64 --out topos-vscode-linux-arm64.vsix && pnpm run stage:binary:clean",
+    "package:linux-x64": "pnpm run package && pnpm run stage:binary linux-x64 && vsce package --no-dependencies --target linux-x64 --out topos-vscode-linux-x64.vsix && pnpm run stage:binary:clean",
+    "publish:targets": "vsce publish --target darwin-arm64 linux-arm64 linux-x64",
     "check-types": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "npm run test:staging && npm run test:unit",
+    "test": "pnpm run test:staging && pnpm run test:unit",
     "test:staging": "node scripts/test-stage-binary.js",
     "test:unit": "tsx --test src/test/unit/*.test.ts",
     "compile-tests": "tsc -p tsconfig.test.json",
-    "test:integration": "npm run package && npm run compile-tests && vscode-test"
+    "test:integration": "pnpm run package && pnpm run compile-tests && vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
@@ -134,13 +135,10 @@
     "@typescript-eslint/parser": "^7.14.1",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
     "eslint": "^8.57.0",
     "tsx": "^4.19.2",
     "typescript": "^5.4.5"
-  },
-  "overrides": {
-    "serialize-javascript": "^7.0.5",
-    "diff": "^9.0.0"
   }
 }

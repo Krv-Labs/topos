@@ -28,7 +28,7 @@ The central [quality model](domain/quality-model.md) explains what each verdict 
 topos evaluate src/ -r
 
 # Enable inter-module COMPOSABLE analysis
-npm install -g gitnexus
+pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos depgraph generate
 topos evaluate src/ -r --gitnexus-dir .gitnexus
 

@@ -266,7 +266,7 @@ If ``gitnexus`` is missing, install it first:
 
 .. code-block:: bash
 
-   npm install -g gitnexus
+   pnpm add -g gitnexus  # or: npm install -g gitnexus
 
 **GitNexus / LadybugDB compatibility**
 

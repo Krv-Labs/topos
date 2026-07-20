@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-07-20
 
 ### Changed
 
@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The legacy Python implementation is deleted**: `topos/` (the Python package — MCP, functors, graphs, core, evaluation, CLI, utils) and the entire Python `tests/` suite are gone now that computation lives in `topos-core` and the server is `topos-mcp`. Also removed: the Rust-vs-Python parity/benchmark scripts, the PyInstaller onefile build (`scripts/build-binary.sh`, `scripts/lazy_exports.py`, `packaging/macos-entitlements.plist`), and the Sphinx `docs/source/api/` autodoc pages (which introspected the removed Python API — there's no Rust equivalent; see the new `docs/source/architecture.rst`). The rest of the Sphinx site (`docs.krv.ai`) stays and is rewritten for the new Rust CLI/MCP surface and crate structure — see `pyproject.toml`'s `docs` dependency group and `.github/workflows/docs.yml`. CI and the release workflow are rewritten Rust-only (cargo test/clippy/fmt + a stdio smoke test; binaries via `cargo build`, PyPI `bin` wheels via maturin).
 
+### Fixed
+
+- **`cfg.cyclomatic` / `ast.max_function_complexity` now count `match`/`switch` in every language** (completes #151/#153): Python `match`, JavaScript/TypeScript `switch`, and C++ `switch` were never mapped to the UAST `MatchStmt` kind, so their case dispatch added nothing to complexity and a match-heavy function could pass the SIMPLE gate it should fail. Every language mapper now emits `MatchStmt`, and the CFG builder's arm extraction was unified so each case is exactly one branch — also fixing a discriminant-less Go `switch` over-count where each case *statement* became its own branch. (`ast.max_function_complexity` still counts a whole match as one decision to preserve drop-in parity with `0.3.11`; see the note in `functors/probes/ast/complexity.rs`.)
+- **Multi-file rollup is now the true lattice meet.** `combine_dimensions` derived the codebase verdict from `min(score) ≥ score_floor`, a criterion that diverged from the per-file `achieved` gates and could make a one-file "codebase" contradict that file's own verdict. It now takes the meet (`∧`) of the per-file Ω verdicts, so single- and multi-file classification agree by construction; continuous scores stay advisory.
+- **Refactor suggestions can no longer fire on a gate the scorer passed.** `suggest_refactors` re-evaluated gates against raw `mdg.instability` with hard-coded exemption flags, disagreeing with `Φ_COMPOSABLE` (which gates `mdg.main_sequence_distance` in distance mode). Both paths now build gate inputs through the shared `coupling_gate_input`, and the real stable-leaf / instability context is threaded through.
+- **Gates fail closed on `NaN`.** A `NaN` metric compared false against both bounds and silently `Pass`ed every gate, including the zero-tolerance SECURE gates; it is now an out-of-band failure.
+- **`taint_flow_paths` is deterministic.** Enclosing-statement resolution broke equal-width ties by `HashMap` iteration order, so the taint count could vary across runs; ties now break by `(width, start_byte, id)`.
+- **Version is 0.4.0** across `Cargo.toml`, `.mcp/server.json`, and the VS Code extension, so the release publishes as `topos-mcp 0.4.0` instead of colliding with the already-published `0.3.11` on PyPI.
 ## [0.3.11] - 2026-07-13
 
 ### Changed

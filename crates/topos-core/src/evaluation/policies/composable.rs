@@ -31,29 +31,11 @@ pub fn score_coupling(
     is_entrypoint_module: bool,
     is_stable_leaf_module: bool,
 ) -> ScoredDecision {
-    // Files with zero *measured* coupling keep gating on raw instability,
-    // even when `abstractness` is present. `calculate_coupling` returns
-    // instability = 0.5 as a "no signal" fallback for such files --
-    // optimal under the flat-top instability band, but combined with the
-    // common abstractness = 0.0 case it would land main_sequence_distance
-    // exactly on main_sequence_distance_max, passing the hard gate at the
-    // boundary while scoring 0.0 on the distance quality curve.
-    let has_coupling_signal = !(fan_in == Some(0.0) && fan_out == Some(0.0));
-    let use_distance = instability.is_some() && abstractness.is_some() && has_coupling_signal;
-
-    let mut metrics = HashMap::new();
-    if use_distance {
-        let distance = (abstractness.unwrap() + instability.unwrap() - 1.0).abs();
-        metrics.insert("mdg.main_sequence_distance".to_string(), distance);
-    } else if let Some(v) = instability {
-        metrics.insert("mdg.instability".to_string(), v);
-    }
-    if let Some(v) = fan_in {
-        metrics.insert("mdg.fan_in".to_string(), v);
-    }
-    if let Some(v) = fan_out {
-        metrics.insert("mdg.fan_out".to_string(), v);
-    }
+    let metrics = coupling_gate_input(instability, fan_in, fan_out, abstractness);
+    // Distance mode is active iff the shared gate-input builder chose it
+    // (abstractness + a real coupling signal present); see
+    // `coupling_gate_input`.
+    let use_distance = metrics.contains_key("mdg.main_sequence_distance");
 
     let results = evaluate_gates(
         &metrics,
@@ -99,6 +81,42 @@ pub fn score_coupling(
         achieved: results.iter().all(|r| r.passed()),
         interpretation,
     }
+}
+
+/// The exact metric map `Φ_COMPOSABLE` gates on.
+///
+/// Instability is replaced by `mdg.main_sequence_distance = |A + I − 1|`
+/// whenever abstractness *and* a real coupling signal are present. A file
+/// with zero measured coupling (`calculate_coupling`'s instability = 0.5
+/// "no signal" fallback) keeps gating raw instability, since combining
+/// that fallback with the common `abstractness = 0.0` case would otherwise
+/// land distance exactly on its max — passing the hard gate at the
+/// boundary while scoring 0.0 on the distance quality curve. Shared with
+/// the suggestion engine so a suggestion can never fire on a metric the
+/// scorer didn't gate.
+pub fn coupling_gate_input(
+    instability: Option<f64>,
+    fan_in: Option<f64>,
+    fan_out: Option<f64>,
+    abstractness: Option<f64>,
+) -> HashMap<String, f64> {
+    let has_coupling_signal = !(fan_in == Some(0.0) && fan_out == Some(0.0));
+    let use_distance = instability.is_some() && abstractness.is_some() && has_coupling_signal;
+
+    let mut metrics = HashMap::new();
+    if use_distance {
+        let distance = (abstractness.unwrap() + instability.unwrap() - 1.0).abs();
+        metrics.insert("mdg.main_sequence_distance".to_string(), distance);
+    } else if let Some(v) = instability {
+        metrics.insert("mdg.instability".to_string(), v);
+    }
+    if let Some(v) = fan_in {
+        metrics.insert("mdg.fan_in".to_string(), v);
+    }
+    if let Some(v) = fan_out {
+        metrics.insert("mdg.fan_out".to_string(), v);
+    }
+    metrics
 }
 
 fn quality(metric: &str, value: f64) -> f64 {

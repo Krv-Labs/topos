@@ -378,4 +378,53 @@ mod tests {
         let cfg = ControlFlowGraph::from_uast(&result.uast_root);
         assert_eq!(cfg.cyclomatic_complexity(), 2);
     }
+
+    #[test]
+    fn from_uast_python_match_counts_each_arm() {
+        use crate::graphs::ast::dispatch::parse_source;
+        let source = "def f(x):\n    match x:\n        case 1:\n            y = 1\n        case 2:\n            y = 2\n        case _:\n            y = 3\n    return y\n";
+        let result = parse_source(source, "python", None).unwrap();
+        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+        // 3 case arms => 3 branches (was 1 before `match_statement` was mapped).
+        assert_eq!(cfg.cyclomatic_complexity(), 3);
+    }
+
+    #[test]
+    fn from_uast_javascript_switch_counts_each_arm() {
+        use crate::graphs::ast::dispatch::parse_source;
+        let source = "function f(x) {\n  let y;\n  switch (x) {\n    case 1: y = 1;\n    case 2: y = 2;\n    default: y = 3;\n  }\n  return y;\n}\n";
+        let result = parse_source(source, "javascript", None).unwrap();
+        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+        assert_eq!(cfg.cyclomatic_complexity(), 3);
+    }
+
+    #[test]
+    fn from_uast_cpp_switch_counts_each_arm() {
+        use crate::graphs::ast::dispatch::parse_source;
+        let source = "int f(int x) {\n    int y;\n    switch (x) {\n        case 1: y = 1;\n        case 2: y = 2;\n        default: y = 3;\n    }\n    return y;\n}\n";
+        let result = parse_source(source, "cpp", None).unwrap();
+        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+        assert_eq!(cfg.cyclomatic_complexity(), 3);
+    }
+
+    #[test]
+    fn from_uast_go_discriminantless_switch_counts_each_case_once() {
+        use crate::graphs::ast::dispatch::parse_source;
+        // Regression: the discriminant-less Go switch used to flatten each
+        // case's statements into separate branches (over-count).
+        let source = "package p\nfunc f(x int) int {\n\tvar y int\n\tswitch {\n\tcase x > 2:\n\t\ty = 1\n\t\ty = 11\n\tcase x > 1:\n\t\ty = 2\n\t\ty = 22\n\tdefault:\n\t\ty = 3\n\t}\n\treturn y\n}\n";
+        let result = parse_source(source, "go", None).unwrap();
+        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+        // 3 case arms => exactly 3 SwitchCase branches, not one per statement
+        // (regression: the discriminant-less Go switch used to flatten each
+        // case's statements into separate branches). Cyclomatic itself also
+        // picks up Go's module-level `package` callable, so assert the branch
+        // count directly.
+        let switch_branches = cfg
+            .edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::SwitchCase)
+            .count();
+        assert_eq!(switch_branches, 3);
+    }
 }

@@ -49,11 +49,9 @@ use crate::core::morphism::ProgramMorphism;
 use crate::core::omega::{verdict_from_generators, EvaluationValue};
 use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
-use crate::evaluation::policies::calibration::score_floor;
 use crate::evaluation::policies::composable::score_coupling;
 use crate::evaluation::policies::secure::score_secure;
 use crate::evaluation::policies::simple::score_simple;
-use crate::evaluation::preferences::Generator;
 use crate::graphs::ast::object::AstRepresentation;
 use crate::graphs::base::Representation;
 
@@ -78,6 +76,10 @@ pub struct ClassificationResult {
     /// Whether the source is an import/export-only entrypoint module
     /// (drives gate exemptions; see [`crate::evaluation::policies::gates`]).
     pub is_entrypoint_module: bool,
+    /// Whether the source is a declarations-only "stable leaf" module
+    /// (drives the COMPOSABLE Zone-of-Pain exemption; see
+    /// [`crate::evaluation::policies::gates`]).
+    pub is_stable_leaf_module: bool,
 }
 
 impl Default for ClassificationResult {
@@ -91,6 +93,7 @@ impl Default for ClassificationResult {
             raw_metrics: HashMap::new(),
             interpretation: HashMap::new(),
             is_entrypoint_module: false,
+            is_stable_leaf_module: false,
         }
     }
 }
@@ -244,43 +247,44 @@ impl CharacteristicMorphism {
             raw_metrics,
             interpretation,
             is_entrypoint_module: is_entrypoint,
+            is_stable_leaf_module: is_stable_leaf,
         }
     }
 
     /// Pointwise multi-file meet `⋀_f χ_S(f)`.
     ///
-    /// A generator is satisfied across the codebase iff it is satisfied
-    /// for every file (minimum score across files ≥ its calibrated
-    /// threshold). Parse failures inject a zero score on the SIMPLE
-    /// generator (since the program failed even to compile, no other
-    /// generator is reachable).
+    /// A generator holds for the codebase iff it holds for **every** file
+    /// — the lattice meet (`∧`) of the per-file verdicts. Each file's
+    /// per-dimension verdict (`dimensions[dim]`) comes from the same hard
+    /// gates (`ScoredDecision.achieved`) as its single-file
+    /// `lattice_element`, so a one-file codebase agrees exactly with that
+    /// file's own classification. Equivalent to `Omega::aggregate` (the
+    /// lattice meet) over the per-file `lattice_element`s, decomposed per
+    /// generator; the continuous `scores` are advisory and never gate this
+    /// rollup.
+    ///
+    /// An unparseable file satisfies no generator, so it drives every
+    /// evaluated dimension to SLOP — a codebase with a file that won't
+    /// even compile is not SIMPLE/COMPOSABLE/SECURE. Only dimensions at
+    /// least one file actually evaluated are reported.
     pub fn combine_dimensions(
         &self,
         results: &[ClassificationResult],
     ) -> HashMap<String, EvaluationValue> {
-        let mut min_scores: HashMap<String, f64> = HashMap::new();
-        for result in results {
-            if !result.is_parseable {
-                let entry = min_scores.entry("simple".to_string()).or_insert(1.0);
-                *entry = entry.min(0.0);
-            }
-            for (dim, &score) in &result.scores {
-                let entry = min_scores.entry(dim.clone()).or_insert(f64::INFINITY);
-                *entry = entry.min(score);
-            }
-        }
-
-        min_scores
+        ["simple", "composable", "secure"]
             .into_iter()
-            .map(|(dim, score)| {
-                let generator = dimension_generator(&dim);
-                let t = generator_of(&dim).map(score_floor).unwrap_or(0.6);
-                let value = if score >= t {
+            .filter(|dim| results.iter().any(|r| r.dimensions.contains_key(*dim)))
+            .map(|dim| {
+                let generator = dimension_generator(dim);
+                let satisfied = results
+                    .iter()
+                    .all(|r| r.is_parseable && r.dimensions.get(dim) == Some(&generator));
+                let value = if satisfied {
                     generator
                 } else {
                     EvaluationValue::Slop
                 };
-                (dim, value)
+                (dim.to_string(), value)
             })
             .collect()
     }
@@ -369,15 +373,6 @@ fn dimension_generator(dim: &str) -> EvaluationValue {
     }
 }
 
-fn generator_of(dim: &str) -> Option<Generator> {
-    match dim {
-        "simple" => Some(Generator::Simple),
-        "composable" => Some(Generator::Composable),
-        "secure" => Some(Generator::Secure),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn combine_dimensions_uses_min_score() {
+    fn combine_dimensions_meets_per_file_verdicts() {
         let classifier = CharacteristicMorphism;
         let r1 = ClassificationResult {
             is_parseable: true,
@@ -422,7 +417,7 @@ mod tests {
             ..Default::default()
         };
         let combined = classifier.combine_dimensions(&[r1, r2]);
-        // Min score = 0.3, below calibrated threshold 0.40 -> SLOP for SIMPLE
+        // r2's SIMPLE verdict is SLOP, so the meet across files is SLOP.
         assert_eq!(combined["simple"], EvaluationValue::Slop);
     }
 

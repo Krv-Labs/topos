@@ -66,6 +66,13 @@ impl Representation for CodePropertyGraph {
     }
 
     fn metrics(&self) -> HashMap<String, f64> {
+        // ponytail: the scored SECURE gate reads raw, un-allowlisted counts.
+        // `Representation::metrics()` takes no allowlist, and operator
+        // allowlists are applied in the findings/suppression layer
+        // (`evaluation::suppression`), not here — so an allowlisted danger
+        // still fails this gate (strict, fail-safe). Upgrade path: thread an
+        // allowlist through the `Representation` trait if the scored verdict
+        // must honor allowlists too.
         let allow = HashSet::new();
         HashMap::from([
             (

@@ -381,6 +381,7 @@ fn adjusted_result(
         raw_metrics: result.raw_metrics.clone(),
         interpretation: result.interpretation.clone(),
         is_entrypoint_module: result.is_entrypoint_module,
+        is_stable_leaf_module: result.is_stable_leaf_module,
     }
 }
 

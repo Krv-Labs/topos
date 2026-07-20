@@ -156,8 +156,8 @@ pub fn taint_flow_paths(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usi
 /// fix). Otherwise this finds the smallest DDG-participating statement
 /// span that contains the candidate's span -- its nearest enclosing
 /// statement -- since that's the node the DDG adjacency actually knows
-/// how to traverse from. Ties (equal-width enclosing spans) keep the
-/// first one encountered; candidates with no enclosing DDG statement
+/// to traverse from. Equal-width enclosing spans are broken
+/// deterministically (by start byte, then id); candidates with no enclosing DDG statement
 /// (e.g. dead code sliced out of the CFG) are simply omitted from the
 /// result.
 fn resolve_effective_ids<'a>(
@@ -175,16 +175,19 @@ fn resolve_effective_ids<'a>(
             continue;
         };
         let (start, end) = (node.uast.span.start_byte, node.uast.span.end_byte);
-        let mut best: Option<(&str, usize)> = None;
+        // Smallest enclosing statement; ties broken deterministically by
+        // (width, start_byte, id) so the count can't vary with HashMap
+        // iteration order — a security metric must be reproducible.
+        let mut best: Option<(usize, usize, &str)> = None;
         for (&stmt_id, &(s_start, s_end)) in ddg_spans {
             if s_start <= start && end <= s_end {
-                let width = s_end - s_start;
-                if best.is_none_or(|(_, best_width)| width < best_width) {
-                    best = Some((stmt_id, width));
+                let candidate = (s_end - s_start, s_start, stmt_id);
+                if best.is_none_or(|current| candidate < current) {
+                    best = Some(candidate);
                 }
             }
         }
-        if let Some((best_id, _)) = best {
+        if let Some((_, _, best_id)) = best {
             resolved.insert(nid, best_id);
         }
     }

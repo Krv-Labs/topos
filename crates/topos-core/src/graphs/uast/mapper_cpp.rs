@@ -67,6 +67,7 @@ const STATEMENT_TYPES: &[(&str, &str)] = &[
     ("if_statement", "IfStmt"),
     ("for_statement", "ForStmt"),
     ("while_statement", "WhileStmt"),
+    ("switch_statement", "MatchStmt"),
     ("return_statement", "ReturnStmt"),
     ("break_statement", "BreakStmt"),
     ("continue_statement", "ContinueStmt"),

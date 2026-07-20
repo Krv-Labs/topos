@@ -446,6 +446,17 @@ fn classify(
     is_stable_leaf_module: bool,
     instability: Option<f64>,
 ) -> GateOutcome {
+    // A NaN metric must fail closed: `NaN < low` and `NaN > high` are both
+    // false, so without this guard NaN would silently `Pass` every gate —
+    // including the zero-tolerance SECURE gates. Report it as an
+    // out-of-band failure on whichever side is bounded.
+    if value.is_nan() {
+        return if spec.high.is_some() {
+            GateOutcome::FailHigh
+        } else {
+            GateOutcome::FailLow
+        };
+    }
     let (fail, exempt) = if spec.low.is_some_and(|low| value < low) {
         (GateOutcome::FailLow, GateOutcome::ExemptLow)
     } else if spec.high.is_some_and(|high| value > high) {

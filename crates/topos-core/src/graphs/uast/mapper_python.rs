@@ -89,6 +89,7 @@ pub fn map_node_kind(kind: &str) -> &'static str {
         "if_statement" => "IfStmt",
         "for_statement" => "ForStmt",
         "while_statement" => "WhileStmt",
+        "match_statement" => "MatchStmt",
         "return_statement" => "ReturnStmt",
         "break_statement" => "BreakStmt",
         "continue_statement" => "ContinueStmt",

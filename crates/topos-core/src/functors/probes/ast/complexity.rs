@@ -22,8 +22,18 @@ use crate::graphs::uast::models::{AttributeValue, UASTNode};
 const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "MatchStmt", "TryStmt"];
 
 /// Cyclomatic complexity of one callable's subtree: each decision node
-/// (`IfStmt`/`ForStmt`/`WhileStmt`/`MatchStmt`/`TryStmt`) adds one, plus
-/// a short-circuit `BinaryExpr` (`and`/`or`/`&&`/`||`) adds one.
+/// (`IfStmt`/`ForStmt`/`WhileStmt`/`MatchStmt`/`TryStmt`) adds one, plus a
+/// short-circuit `BinaryExpr` (`and`/`or`/`&&`/`||`) adds one.
+///
+/// ponytail: a `MatchStmt` counts as ONE decision here, whereas
+/// `cfg.cyclomatic` counts one branch per case arm — so a match-heavy
+/// function scores lower on `ast.max_function_complexity` than on
+/// `cfg.cyclomatic`. Left as-is deliberately: counting per-arm here
+/// diverged from the last Python release (`topos-mcp==0.3.11`) on the
+/// Go/Rust parity corpus, and preserving the drop-in promise
+/// (`scripts/parity_check.py` at 12/12) wins over strict cross-metric
+/// consistency. Upgrade path: count case arms (see
+/// `graphs::cfg::builder::match_arms`) and allowlist the parity divergence.
 ///
 /// The boolean-operator check is currently dormant — no UAST mapper
 /// (issue #142) populates a `BinaryExpr`'s `"operator"` attribute with
@@ -113,6 +123,23 @@ mod tests {
     fn no_functions_is_zero() {
         let result = parse_source("x = 1\n", "python", None).unwrap();
         assert_eq!(calculate_max_function_complexity(&result.uast_root), 0);
+    }
+
+    #[test]
+    fn python_match_counts_as_a_decision() {
+        // The mapper now emits `MatchStmt`, so a match counts as a decision
+        // (#153: it was vacuous for non-Python before). One decision here =>
+        // base 1 + 1 = 2. (`cfg.cyclomatic` counts per-arm; see node_complexity.)
+        let source = "def f(x):\n    match x:\n        case 1:\n            y = 1\n        case 2:\n            y = 2\n        case _:\n            y = 3\n    return y\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+    }
+
+    #[test]
+    fn go_switch_counts_as_a_decision() {
+        let source = "package p\nfunc f(x int) int {\n\tvar y int\n\tswitch {\n\tcase x > 2:\n\t\ty = 1\n\tcase x > 1:\n\t\ty = 2\n\tdefault:\n\t\ty = 3\n\t}\n\treturn y\n}\n";
+        let result = parse_source(source, "go", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
     }
 }
 

@@ -347,22 +347,27 @@ const STATEMENT_KINDS: &[&str] = &[
     "VarDecl",
 ];
 
-/// Native tree-sitter node kinds for a Go switch/select case arm (tagged,
-/// tagless, or type-switch) — also block containers, since each arm
-/// holds its own statement list.
-const CASE_ARM_NATIVE_KINDS: &[&str] = &[
-    "expression_case",
-    "type_case",
-    "default_case",
-    "communication_case",
+/// Native tree-sitter node kinds for a switch/match case arm across every
+/// supported language. `build_match` emits one CFG branch per arm, so
+/// [`match_arms`] returns these nodes verbatim rather than unwrapping into
+/// their bodies (which would flatten a multi-statement arm and inflate the
+/// branch count).
+const ARM_NATIVE_KINDS: &[&str] = &[
+    "match_arm",          // Rust
+    "case_clause",        // Python `match`
+    "expression_case",    // Go `switch`
+    "type_case",          // Go type switch
+    "default_case",       // Go `default:`
+    "communication_case", // Go `select`
+    "switch_case",        // JS / TS `case`
+    "switch_default",     // JS / TS `default`
+    "case_statement",     // C++ `case` / `default`
 ];
 
-/// Native tree-sitter node kinds for an individual match arm whose body may
-/// itself be a multi-statement block (Rust `match_arm`, Python `case_clause`).
-/// Kept out of [`BLOCK_NATIVE_KINDS`] deliberately: unlike Go's single-statement
-/// case arms, unwrapping these further would flatten a multi-statement arm
-/// body into the surrounding list and lose the arm boundary the CFG needs.
-const MATCH_ARM_NATIVE_KINDS: &[&str] = &["match_arm", "case_clause"];
+/// Whether `node` is a switch/match case arm (see [`ARM_NATIVE_KINDS`]).
+fn is_case_arm(node: &UASTNode) -> bool {
+    node.kind == "Unknown" && ARM_NATIVE_KINDS.contains(&node.native.node_kind.as_str())
+}
 
 /// Native tree-sitter node kinds that act as transparent block
 /// containers (no UAST kind of their own — mapped to `"Unknown"`).
@@ -451,49 +456,35 @@ fn loop_body(stmt: &UASTNode) -> Vec<&UASTNode> {
     }
 }
 
-/// Extract case arms from a `MatchStmt`.
+/// Extract case arms from a `MatchStmt`, one entry per arm.
 ///
-/// Usually the first child is the discriminant/subject (Python `match`,
-/// Rust `match`, Go's tagged `switch`/`type switch`) and is skipped. Go
-/// also has discriminant-less forms (`switch { case ... }`, `select {
-/// case ... }`) where the first child is itself a case arm — detected
-/// via its native node kind so every arm is kept.
+/// Arms live in one of two shapes, both checked here:
+/// - **Direct children** of the switch node — Go's `switch`/`select`
+///   (both discriminant-carrying and discriminant-less) list their
+///   `expression_case`/`default_case`/… arms directly.
+/// - **Nested one level** inside a body container — Rust `match_block`,
+///   Python `block`, JS `switch_body`, C++ `compound_statement` — whose
+///   direct children are the arm nodes. The subject/discriminant and any
+///   condition wrapper are skipped because they carry no arms.
 ///
-/// Rust (`match_expression` -> [scrutinee, match_block]) and Python
-/// (`match_statement` -> [subject, block]) both wrap their arms one level
-/// deeper in a container whose *direct* children are `match_arm` /
-/// `case_clause` nodes. Those arm nodes are returned as one opaque unit
-/// each rather than unwrapped further (see [`MATCH_ARM_NATIVE_KINDS`]).
+/// Arm nodes are returned verbatim (never unwrapped into their statement
+/// bodies) so `build_match` emits exactly one branch per arm; each arm's
+/// own body is walked separately for nested decisions.
 fn match_arms(stmt: &UASTNode) -> Vec<&UASTNode> {
-    let Some(first) = stmt.children.first() else {
-        return Vec::new();
-    };
-    if first.kind == "Unknown" && CASE_ARM_NATIVE_KINDS.contains(&first.native.node_kind.as_str()) {
-        return unwrap_to_statements(stmt.children.iter());
+    let direct: Vec<&UASTNode> = stmt.children.iter().filter(|c| is_case_arm(c)).collect();
+    if !direct.is_empty() {
+        return direct;
     }
-
-    let rest = &stmt.children[1..];
-    // Locate the arm-container by kind, not by position: a comment (or any
-    // other extra node) between the subject and the `match_block`/`block`
-    // would otherwise push it out of the fixed first slot and collapse the
-    // whole match to a single edge.
-    for node in rest {
+    for node in &stmt.children {
         if node.kind != "Unknown" {
             continue;
         }
-        let arm_nodes: Vec<&UASTNode> = node
-            .children
-            .iter()
-            .filter(|c| {
-                c.kind == "Unknown" && MATCH_ARM_NATIVE_KINDS.contains(&c.native.node_kind.as_str())
-            })
-            .collect();
-        if !arm_nodes.is_empty() {
-            return arm_nodes;
+        let nested: Vec<&UASTNode> = node.children.iter().filter(|c| is_case_arm(c)).collect();
+        if !nested.is_empty() {
+            return nested;
         }
     }
-
-    unwrap_to_statements(rest.iter())
+    Vec::new()
 }
 
 /// Return child statements whose kind affects control flow.

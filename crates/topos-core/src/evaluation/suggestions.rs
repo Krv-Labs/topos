@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 
 use crate::core::characteristic_morphism::ClassificationResult;
+use crate::evaluation::policies::composable::coupling_gate_input;
 use crate::evaluation::policies::gates::{evaluate_gates, GateOutcome, GateResult};
 use crate::evaluation::security_guidance::{remediation_for, SecurityFinding};
 
@@ -64,12 +65,26 @@ pub fn suggest_refactors(
         }];
     }
 
+    // Reproduce the exact gate inputs each scorer used, so a suggestion
+    // can never fire on a gate the scorer passed: COMPOSABLE swaps raw
+    // instability for `mdg.main_sequence_distance` in distance mode (shared
+    // with Φ_COMPOSABLE via `coupling_gate_input`), and the stable-leaf and
+    // instability exemptions are threaded through rather than hard-coded.
+    let instability = result.raw_metrics.get("mdg.instability").copied();
+    let mut gate_metrics = result.raw_metrics.clone();
+    gate_metrics.remove("mdg.instability");
+    gate_metrics.extend(coupling_gate_input(
+        instability,
+        result.raw_metrics.get("mdg.fan_in").copied(),
+        result.raw_metrics.get("mdg.fan_out").copied(),
+        result.raw_metrics.get("mdg.abstractness").copied(),
+    ));
     let gate_results = evaluate_gates(
-        &result.raw_metrics,
+        &gate_metrics,
         None,
         result.is_entrypoint_module,
-        false,
-        None,
+        result.is_stable_leaf_module,
+        instability,
     );
     let failing: HashMap<&str, &GateResult> = gate_results
         .iter()
@@ -153,6 +168,7 @@ mod tests {
             raw_metrics,
             interpretation: HashMap::new(),
             is_entrypoint_module: false,
+            is_stable_leaf_module: false,
         }
     }
 

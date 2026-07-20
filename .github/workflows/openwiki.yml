@@ -36,20 +36,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.8.0
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Install OpenWiki
-        # pnpm/action-setup configures PNPM_HOME on PATH, so the global
-        # `openwiki` binary is available to the next step.
-        run: pnpm add --global openwiki
+        run: npm install --global openwiki
 
       - name: Run OpenWiki
         # --update also handles the first run for code docs when env vars are set.

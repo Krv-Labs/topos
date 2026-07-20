@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **The legacy Python implementation is deleted**: `topos/` (the Python package — MCP, functors, graphs, core, evaluation, CLI, utils) and the entire Python `tests/` suite are gone now that computation lives in `topos-core` and the server is `topos-mcp`. Also removed: the Rust-vs-Python parity/benchmark scripts, the PyInstaller onefile build (`scripts/build-binary.sh`, `scripts/lazy_exports.py`, `packaging/macos-entitlements.plist`), and the Sphinx `docs/source/` site (which autodoc'd the removed Python API). CI and the release workflow are rewritten Rust-only (cargo test/clippy/fmt + a stdio smoke test; binaries via `cargo build`, PyPI `bin` wheels via maturin).
+- **The legacy Python implementation is deleted**: `topos/` (the Python package — MCP, functors, graphs, core, evaluation, CLI, utils) and the entire Python `tests/` suite are gone now that computation lives in `topos-core` and the server is `topos-mcp`. Also removed: the Rust-vs-Python parity/benchmark scripts, the PyInstaller onefile build (`scripts/build-binary.sh`, `scripts/lazy_exports.py`, `packaging/macos-entitlements.plist`), and the Sphinx `docs/source/api/` autodoc pages (which introspected the removed Python API — there's no Rust equivalent; see the new `docs/source/architecture.rst`). The rest of the Sphinx site (`docs.krv.ai`) stays and is rewritten for the new Rust CLI/MCP surface and crate structure — see `pyproject.toml`'s `docs` dependency group and `.github/workflows/docs.yml`. CI and the release workflow are rewritten Rust-only (cargo test/clippy/fmt + a stdio smoke test; binaries via `cargo build`, PyPI `bin` wheels via maturin).
 
 ## [0.3.11] - 2026-07-13
 

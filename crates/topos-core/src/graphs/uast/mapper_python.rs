@@ -44,7 +44,7 @@ fn is_name_equals_main(condition: Node, source: &[u8]) -> bool {
 
 /// Strip a single layer of matching leading/trailing `'` or `"`.
 fn strip_quotes(text: &[u8]) -> &[u8] {
-    for quote in [b'\'', b'"'] {
+    for quote in *b"'\"" {
         if text.len() >= 2 && text.first() == Some(&quote) && text.last() == Some(&quote) {
             return &text[1..text.len() - 1];
         }

@@ -1,0 +1,671 @@
+/* ============================================================================
+   Topos documentation — "Engineered"
+   White, high-contrast, monochrome base + a single ochre accent.
+   Geist (self-hosted) throughout. Color/font tokens live in conf.py
+   (light_css_variables / dark_css_variables) so the theme toggle works.
+   ========================================================================== */
+
+/* --- Self-hosted Geist ----------------------------------------------------- */
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/geist-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/geist-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/geist-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/geist-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("fonts/geist-800.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/geist-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/geist-mono-500.woff2") format("woff2");
+}
+
+/* --- Global ---------------------------------------------------------------- */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-size: 0.97rem;
+  line-height: 1.7;
+  letter-spacing: -0.003em;
+}
+
+.content {
+  max-width: 47rem;
+}
+
+/* Clear, weight-driven heading hierarchy — no serif, tight tracking. */
+h1,
+h2,
+h3,
+h4,
+h5,
+.sidebar-brand-text {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.content h1 {
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+}
+.content h2 {
+  font-size: 1.6rem;
+  margin-top: 3.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0;
+  border: 0;
+}
+.content h3 {
+  font-size: 1.2rem;
+  margin-top: 2rem;
+}
+.content h4 {
+  font-size: 1.02rem;
+}
+
+.content p,
+.content li {
+  text-wrap: pretty;
+}
+
+.content p {
+  margin: 0.9rem 0;
+}
+
+/* Hairline section separators instead of heavy underlines. */
+.content h2::after {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--topos-line);
+  margin-top: 0.85rem;
+}
+
+.tabular,
+.topos-version {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Links ----------------------------------------------------------------- */
+
+.content article a {
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--topos-accent) 35%, transparent);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.content article a:hover {
+  border-bottom-color: var(--topos-accent);
+}
+
+/* --- Sidebar --------------------------------------------------------------- */
+
+/* Brand: Krv mark (Furo swaps the light/dark SVG) — borderless, larger,
+   left-aligned, with the title beneath it. */
+.sidebar-brand,
+.sidebar-brand.centered {
+  margin: 0.75rem 0 0.5rem;
+  padding: 0 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+}
+.sidebar-logo-container {
+  margin: 0;
+  max-width: 177px;
+}
+.sidebar-logo {
+  width: 100%;
+  border-radius: 0;
+  outline: 0;
+}
+.sidebar-brand-text {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Search: inset from the drawer edges so the box never touches the border. */
+.sidebar-search-container {
+  margin: 1.1rem 0.75rem;
+  border: 0;
+}
+.sidebar-search {
+  box-sizing: border-box;
+  border: 1px solid var(--topos-line);
+  border-radius: 9px;
+  background: var(--topos-soft);
+  font-size: 0.86rem;
+}
+.sidebar-search:focus {
+  border-color: var(--topos-accent);
+}
+
+/* Caption groups: quiet uppercase labels that organize the flat nav. Furo's
+   native collapsing is for nested toctrees only (CSS checkbox, no JS); a custom
+   collapse for ~5 pages isn't worth the code, so these stay as static headers.
+   When sections grow, nest the toctrees to get Furo's free CSS-only collapsers. */
+.sidebar-tree .caption {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-sidebar-caption-text);
+  padding: 0.55rem 0.4rem;
+  margin: 0.6rem 0 0.1rem;
+}
+
+.sidebar-tree .reference {
+  border-radius: 7px;
+  font-size: 0.88rem;
+  font-weight: 450;
+  padding: 0.34rem 0.6rem;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sidebar-tree .current-page > .reference {
+  font-weight: 600;
+  color: var(--topos-accent-ink);
+}
+
+.toc-tree li.scroll-current > .reference {
+  color: var(--topos-accent-ink);
+  border-left-color: var(--topos-accent);
+  font-weight: 550;
+}
+.toc-title {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* --- Hero (raw HTML block in index) ---------------------------------------- */
+
+.topos-sphinx-title > h1 {
+  display: none;
+}
+
+.topos-hero {
+  margin: 0 0 1rem;
+}
+.topos-eyebrow {
+  font-family: var(--font-stack--monospace);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--topos-accent-ink);
+  font-weight: 500;
+  margin: 0 0 1rem;
+}
+.topos-hero-row {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+.topos-hero-logo {
+  display: block;
+  width: min(320px, 80vw);
+  height: auto;
+}
+.topos-tagline {
+  font-size: 1.3rem;
+  font-weight: 450;
+  letter-spacing: -0.02em;
+  color: var(--topos-ink-2);
+  margin: 1.1rem 0 0;
+  max-width: 34ch;
+}
+.topos-lead {
+  font-size: 1.05rem;
+  color: var(--topos-ink-2);
+  margin: 1.4rem 0 0;
+  max-width: 60ch;
+}
+.topos-lead strong {
+  color: var(--topos-ink);
+  font-weight: 600;
+}
+
+.topos-cta-row {
+  margin: 1.7rem 0 0;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.topos-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--topos-ink);
+  color: var(--topos-bg) !important;
+  padding: 0.6rem 1.1rem;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid var(--topos-ink);
+  text-decoration: none !important;
+  transition:
+    transform 0.1s ease,
+    opacity 0.15s ease;
+}
+.topos-btn:hover {
+  opacity: 0.88;
+}
+.topos-btn:active {
+  transform: scale(0.97);
+}
+.topos-btn.ghost {
+  background: var(--topos-bg);
+  color: var(--topos-ink) !important;
+  border-color: var(--topos-line-strong);
+}
+.topos-btn.ghost:hover {
+  border-color: var(--topos-ink-3);
+  opacity: 1;
+}
+
+/* --- Cards (sphinx-design grid) -------------------------------------------- */
+
+.bd-content .sd-card {
+  background: var(--topos-bg);
+  border: 1px solid var(--topos-line);
+  border-radius: 12px;
+  box-shadow: none;
+  transition:
+    transform 0.16s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.bd-content .sd-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--topos-line-strong);
+  box-shadow: 0 8px 24px var(--topos-shadow-1);
+}
+.sd-card .sd-card-title {
+  font-weight: 650;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  color: var(--topos-ink);
+  display: flex;
+  align-items: center;
+}
+/* sliding arrow on hover */
+.sd-card .sd-card-title::after {
+  content: "→";
+  margin-left: auto;
+  color: var(--topos-ink-3);
+  transform: translateX(-3px);
+  opacity: 0.6;
+  transition:
+    transform 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+.bd-content .sd-card:hover .sd-card-title::after {
+  transform: translateX(0);
+  color: var(--topos-accent);
+  opacity: 1;
+}
+.sd-card .sd-card-body {
+  font-size: 0.9rem;
+}
+.sd-card .sd-card-text {
+  color: var(--topos-ink-3);
+}
+
+/* Buttons → ink, tactile */
+.sd-btn,
+.sd-btn-secondary,
+.sd-btn-primary {
+  background-color: var(--topos-ink) !important;
+  border-color: var(--topos-ink) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition:
+    transform 0.1s ease,
+    opacity 0.15s ease !important;
+}
+.sd-btn:hover,
+.sd-btn-secondary:hover,
+.sd-btn-primary:hover {
+  opacity: 0.88;
+}
+.sd-btn:active {
+  transform: scale(0.96);
+}
+
+/* --- Callout (philosophy) — soft surface, no loud border ------------------- */
+
+.content .philosophy-box,
+.content div.philosophy-box {
+  background: var(--topos-soft);
+  border: 0;
+  border-left: 3px solid var(--topos-accent);
+  border-radius: 0 12px 12px 0;
+  padding: 1.4rem 1.6rem;
+  margin: 2.2rem 0;
+  box-shadow: none;
+  font-size: 1rem;
+}
+.content .philosophy-box > .admonition-title {
+  font-weight: 700;
+  font-size: 1.12rem;
+  color: var(--topos-ink);
+  background: transparent !important;
+  padding: 0;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.015em;
+  text-transform: none;
+}
+.content .philosophy-box > .admonition-title::before {
+  display: none;
+}
+.content .philosophy-box p {
+  color: var(--topos-ink-2);
+}
+.content .philosophy-box p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Admonitions — keep Furo's native rendering (colored title bar + icon),
+   only align radius + typography with the Engineered theme. ------------------ */
+
+.content .admonition:not(.philosophy-box),
+.content div.admonition:not(.philosophy-box) {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px var(--topos-shadow-1);
+  font-size: 0.92rem;
+}
+.content .admonition:not(.philosophy-box) > .admonition-title {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* --- Code ------------------------------------------------------------------ */
+
+.highlight {
+  border-radius: 12px;
+  border: 1px solid var(--topos-code-bg);
+  background: var(--topos-code-bg);
+}
+.highlight pre {
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  font-size: 0.83rem;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+div.literal-block-wrapper {
+  border-radius: 12px;
+  border: 0;
+}
+.literal-block-wrapper .code-block-caption {
+  background: var(--topos-soft);
+  border-radius: 8px 8px 0 0;
+  font-size: 0.78rem;
+}
+
+.content code.literal {
+  font-size: 0.85em;
+  background: var(--color-inline-code-background);
+  border: 1px solid var(--topos-line);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+  color: var(--topos-accent-ink);
+}
+
+button.copybtn {
+  border-radius: 6px;
+  transition:
+    opacity 0.15s ease,
+    transform 0.1s ease,
+    background-color 0.15s ease;
+}
+button.copybtn:active {
+  transform: scale(0.96);
+}
+
+/* --- Tables ---------------------------------------------------------------- */
+
+.content table.docutils {
+  border: 1px solid var(--topos-line);
+  border-radius: 10px;
+  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+}
+.content table.docutils th {
+  background: var(--topos-soft);
+  font-weight: 650;
+  border-color: var(--topos-line);
+}
+.content table.docutils td {
+  border-color: var(--topos-line);
+}
+.content table.docutils td:first-child {
+  font-size: 1.1em;
+}
+
+/* --- Definition lists ------------------------------------------------------ */
+
+.content dl.simple dt {
+  font-weight: 650;
+  color: var(--topos-ink);
+  margin-top: 1rem;
+}
+.content dl.simple dd {
+  margin-left: 1.4rem;
+  margin-bottom: 0.5rem;
+  color: var(--topos-ink-2);
+}
+
+/* --- Pillar chips + verdict badges ----------------------------------------- */
+
+.topos-pillar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--font-stack--monospace);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid currentColor;
+}
+.topos-pillar::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+.topos-pillar.simple {
+  color: var(--topos-pillar-simple);
+}
+.topos-pillar.composable {
+  color: var(--topos-pillar-composable);
+}
+.topos-pillar.secure {
+  color: var(--topos-pillar-secure);
+}
+
+.eval-verified,
+.eval-commodity,
+.eval-weak,
+.eval-noisy,
+.eval-hallucinated,
+.eval-invalid {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-family: var(--font-stack--monospace);
+  font-size: 0.82em;
+}
+.eval-verified {
+  background: color-mix(
+    in srgb,
+    var(--topos-pillar-composable) 14%,
+    transparent
+  );
+  color: var(--topos-pillar-composable);
+}
+.eval-commodity {
+  background: color-mix(in srgb, var(--topos-gold) 22%, transparent);
+  color: var(--topos-bronze);
+}
+.eval-weak {
+  background: var(--topos-accent-soft);
+  color: var(--topos-accent-ink);
+}
+.eval-noisy,
+.eval-hallucinated {
+  background: color-mix(in srgb, var(--topos-pillar-secure) 12%, transparent);
+  color: var(--topos-pillar-secure);
+}
+.eval-invalid {
+  background: var(--topos-soft);
+  color: var(--topos-ink-3);
+}
+
+/* --- Figures --------------------------------------------------------------- */
+
+.topos-figure {
+  margin: 2.5rem auto;
+  text-align: center;
+}
+.topos-figure img {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  height: auto;
+}
+.topos-figure figcaption {
+  margin-top: 0.8rem;
+  font-size: 0.88rem;
+  color: var(--topos-ink-3);
+}
+
+/* --- Installation page ----------------------------------------------------- */
+
+.topos-install-table td:first-child {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--topos-ink);
+}
+
+.topos-install-table td:nth-child(2) {
+  font-family: var(--font-stack--monospace);
+  font-size: 0.88rem;
+  color: var(--topos-accent-ink);
+}
+
+.topos-install-table code,
+.topos-command-table code {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Mermaid (kept for inline diagrams) ------------------------------------ */
+
+.mermaid {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--topos-soft);
+  border: 1px solid var(--topos-line);
+  border-radius: 12px;
+}
+
+/* --- Footer ---------------------------------------------------------------- */
+
+.topos-footer-krv {
+  color: var(--topos-ink-3);
+}
+
+/* --- Restrained page-load reveal ------------------------------------------- */
+
+@keyframes topos-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.topos-reveal > * {
+  animation: topos-rise 0.5s cubic-bezier(0.2, 0, 0, 1) both;
+}
+.topos-reveal > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+.topos-reveal > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.topos-reveal > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.topos-reveal > *:nth-child(4) {
+  animation-delay: 0.22s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topos-reveal > * {
+    animation: none;
+  }
+  .sidebar-tree .topos-group {
+    transition: none;
+  }
+}

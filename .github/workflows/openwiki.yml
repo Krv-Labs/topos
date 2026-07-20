@@ -36,24 +36,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.8.0
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Install OpenWiki
-        # pnpm refuses global installs unless $PNPM_HOME/bin is on PATH.
-        # action-setup exposes pnpm but not the global prefix; wire both here.
-        run: |
-          echo "${PNPM_HOME}/bin" >> "$GITHUB_PATH"
-          pnpm add --global openwiki
-        env:
-          PATH: ${{ env.PNPM_HOME }}/bin:${{ env.PATH }}
+        run: npm install --global openwiki
 
       - name: Run OpenWiki
         # --update also handles the first run for code docs when env vars are set.

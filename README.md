@@ -16,6 +16,8 @@
 
 <p align="center">
   <b>Structural code quality metrics for agent-written programs.</b><br>
+  > [!TIP]
+  > Install as an OpenClaw skill: `openclaw skills install Krv-Labs/topos`<br>
   <a href="https://docs.krv.ai/topos/">Docs</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#mcp-server-for-agents">MCP Server</a> ·

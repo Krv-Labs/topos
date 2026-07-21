@@ -1,5 +1,9 @@
 <!-- OPENWIKI:START -->
 
+## Agent Skills
+- Topos: Structural verification (OpenClaw & Hermes).
+
+
 ## OpenWiki
 
 This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.

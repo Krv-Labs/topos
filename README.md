@@ -16,15 +16,16 @@
 
 <p align="center">
   <b>Structural code quality metrics for agent-written programs.</b><br>
-  > [!TIP]
-  > Install as an OpenClaw skill: `openclaw skills install Krv-Labs/topos`<br>
-  > Install as a Hermes skill: `hermes skills tap add Krv-Labs/topos` then `hermes skills install topos`<br>
   <a href="https://docs.krv.ai/topos/">Docs</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#mcp-server-for-agents">MCP Server</a> ·
   <a href="https://github.com/Krv-Labs/topos/issues">Issues</a>
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
+
+> [!TIP]
+> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
+> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
 
 **Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
 architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,

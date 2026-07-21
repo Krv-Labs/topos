@@ -90,8 +90,8 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
     else:
         if "openclaw:" not in frontmatter:
             errors.append(f"{skill_md}: metadata.openclaw block is required")
-        elif "bins:" not in frontmatter or "topos" not in frontmatter:
-            errors.append(f"{skill_md}: metadata.openclaw.requires.bins must include topos")
+        elif "bins:" not in frontmatter:
+            errors.append(f"{skill_md}: metadata.openclaw.requires.bins is required")
 
         if "hermes:" not in frontmatter:
             errors.append(f"{skill_md}: metadata.hermes block is required")

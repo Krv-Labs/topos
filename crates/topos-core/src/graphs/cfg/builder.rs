@@ -487,6 +487,13 @@ fn match_arms(stmt: &UASTNode) -> Vec<&UASTNode> {
     Vec::new()
 }
 
+/// Number of case arms in a `MatchStmt`. Shared with the AST complexity
+/// probe (`ast.max_function_complexity`) so it counts arms the same way the
+/// CFG does — a k-way switch contributes k branches.
+pub(crate) fn match_arm_count(stmt: &UASTNode) -> usize {
+    match_arms(stmt).len()
+}
+
 /// Return child statements whose kind affects control flow.
 ///
 /// Used to recurse into block-ish nodes whose UAST kind is generic

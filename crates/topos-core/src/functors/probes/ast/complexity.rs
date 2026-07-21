@@ -19,21 +19,18 @@ use std::collections::HashMap;
 
 use crate::graphs::uast::models::{AttributeValue, UASTNode};
 
-const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "MatchStmt", "TryStmt"];
+const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "TryStmt"];
 
 /// Cyclomatic complexity of one callable's subtree: each decision node
-/// (`IfStmt`/`ForStmt`/`WhileStmt`/`MatchStmt`/`TryStmt`) adds one, plus a
-/// short-circuit `BinaryExpr` (`and`/`or`/`&&`/`||`) adds one.
+/// (`IfStmt`/`ForStmt`/`WhileStmt`/`TryStmt`) adds one, a `MatchStmt` adds
+/// one per case arm beyond the first (a k-way switch is k-1 decisions), so
+/// this agrees with `cfg.cyclomatic`; plus a short-circuit `BinaryExpr`
+/// (`and`/`or`/`&&`/`||`) adds one.
 ///
-/// ponytail: a `MatchStmt` counts as ONE decision here, whereas
-/// `cfg.cyclomatic` counts one branch per case arm — so a match-heavy
-/// function scores lower on `ast.max_function_complexity` than on
-/// `cfg.cyclomatic`. Left as-is deliberately: counting per-arm here
-/// diverged from the last Python release (`topos-mcp==0.3.11`) on the
-/// Go/Rust parity corpus, and preserving the drop-in promise
-/// (`scripts/parity_check.py` at 12/12) wins over strict cross-metric
-/// consistency. Upgrade path: count case arms (see
-/// `graphs::cfg::builder::match_arms`) and allowlist the parity divergence.
+/// Note: counting per-arm here intentionally diverges from the last Python
+/// release (`topos-mcp==0.3.11`), which counted a whole match/switch as a
+/// single decision. The divergence is documented and allowlisted in
+/// `scripts/parity_check.py`.
 ///
 /// The boolean-operator check is currently dormant — no UAST mapper
 /// (issue #142) populates a `BinaryExpr`'s `"operator"` attribute with
@@ -44,15 +41,21 @@ const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "MatchS
 /// starts recording operator text.
 fn node_complexity(node: &UASTNode) -> usize {
     fn walk(node: &UASTNode, count: &mut usize) {
-        if DECISION_UAST_KINDS.contains(&node.kind.as_str()) {
-            *count += 1;
-        }
-        if node.kind == "BinaryExpr" {
-            if let Some(AttributeValue::Str(op)) = node.attributes.get("operator") {
-                if matches!(op.as_str(), "and" | "or" | "&&" | "||") {
-                    *count += 1;
+        match node.kind.as_str() {
+            // A k-way switch/match contributes k branches (k - 1 decisions),
+            // counted from its arms so this agrees with the CFG builder.
+            "MatchStmt" => {
+                *count += crate::graphs::cfg::builder::match_arm_count(node).saturating_sub(1);
+            }
+            k if DECISION_UAST_KINDS.contains(&k) => *count += 1,
+            "BinaryExpr" => {
+                if let Some(AttributeValue::Str(op)) = node.attributes.get("operator") {
+                    if matches!(op.as_str(), "and" | "or" | "&&" | "||") {
+                        *count += 1;
+                    }
                 }
             }
+            _ => {}
         }
         for child in &node.children {
             walk(child, count);
@@ -126,20 +129,20 @@ mod tests {
     }
 
     #[test]
-    fn python_match_counts_as_a_decision() {
-        // The mapper now emits `MatchStmt`, so a match counts as a decision
-        // (#153: it was vacuous for non-Python before). One decision here =>
-        // base 1 + 1 = 2. (`cfg.cyclomatic` counts per-arm; see node_complexity.)
+    fn python_match_arms_count_toward_complexity() {
+        // Each case arm is a decision: a 3-arm match => 2 decisions + base 1
+        // = complexity 3, consistent with cfg.cyclomatic (#153 follow-up).
+        // Intentionally diverges from 0.3.11 (allowlisted in parity_check.py).
         let source = "def f(x):\n    match x:\n        case 1:\n            y = 1\n        case 2:\n            y = 2\n        case _:\n            y = 3\n    return y\n";
         let result = parse_source(source, "python", None).unwrap();
-        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
     }
 
     #[test]
-    fn go_switch_counts_as_a_decision() {
+    fn go_switch_arms_count_toward_complexity() {
         let source = "package p\nfunc f(x int) int {\n\tvar y int\n\tswitch {\n\tcase x > 2:\n\t\ty = 1\n\tcase x > 1:\n\t\ty = 2\n\tdefault:\n\t\ty = 3\n\t}\n\treturn y\n}\n";
         let result = parse_source(source, "go", None).unwrap();
-        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
     }
 }
 

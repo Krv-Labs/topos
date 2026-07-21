@@ -91,10 +91,23 @@ KNOWN_DIVERGENCES: list[Divergence] = [
             "TryStmt (plus the BinaryExpr and/or check) — the same convention "
             "topos-core's own CFG builder uses for cfg.cyclomatic, so the Rust "
             "value is internally consistent with cfg.cyclomatic. Non-Python "
-            "languages were made language-neutral in v0.3.11 and should match "
-            "exactly; only Python source is expected to diverge here."
+            "languages also diverge on this metric via the per-arm "
+            "match/switch counting covered by the entry below."
         ),
         applies=lambda language: language == "python",
+    ),
+    Divergence(
+        metric="ast.max_function_complexity",
+        issue="#159-review (per-arm match/switch)",
+        reason=(
+            "The Rust port counts each `match`/`switch` case arm as a decision "
+            "so `ast.max_function_complexity` agrees with `cfg.cyclomatic`, "
+            "whereas topos-mcp==0.3.11 counted a whole match/switch as a single "
+            "decision. Intentional correctness improvement over the reference; "
+            "affects any function containing a match or switch (Python is "
+            "covered more specifically by the #153 entry above, which wins by "
+            "list order)."
+        ),
     ),
 ]
 

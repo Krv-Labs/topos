@@ -26,6 +26,9 @@ on:
 
 jobs:
   publish:
+    permissions:
+      id-token: write   # OIDC token required by openclaw/clawhub skill-publish
+      contents: read
     # pinned to openclaw/clawhub v0.23.1 (immutable SHA — external workflow receives CLAWHUB_TOKEN)
     uses: openclaw/clawhub/.github/workflows/skill-publish.yml@a230d962db64019462c2c8ee400755eb92169908
     with:

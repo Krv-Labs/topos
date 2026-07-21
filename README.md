@@ -74,7 +74,7 @@ pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos evaluate src/ -r   # generates/refreshes .gitnexus as needed, then scores COMPOSABLE/GOLD
 ```
 
-Pass `--no-composable` to skip GitNexus entirely and evaluate SIMPLE/SECURE only, or `--gitnexus-dir <dir>` to point at a `.gitnexus` build elsewhere. The same detection also runs through the **MCP server** (`topos_generate_depgraph`, `topos_evaluate_file(..., gitnexus_dir=".gitnexus")`).
+Pass `--no-composable` to skip GitNexus entirely and evaluate SIMPLE/SECURE only, or `--gitnexus-dir <dir>` to point at a `.gitnexus` build elsewhere. The **MCP server**'s evaluate tools (`topos_evaluate_file`/`topos_evaluate_project`) only *read* an existing `.gitnexus` — call `topos_generate_depgraph` first (or run `topos evaluate` once) to build/refresh it for agent-driven workflows.
 
 Other commands: `topos inspect` for per-file metrics, `topos compare` for AST edit distance between two versions, `topos coverage` for structural test coverage, `topos graphify` for Graphify knowledge-graph generation and orphan/dead-code detection (advisory, see [below](#the-refactoring-layer)), and `--preferences simple,composable,secure` to tell agents which pillar to protect first when 🥇 GOLD isn't reachable. Full reference: **[docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)**.
 

@@ -23,9 +23,6 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-> [!TIP]
-> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
-> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
 
 **Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
 architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
@@ -77,15 +74,15 @@ Other commands: `topos inspect` for per-file metrics, `topos compare` for AST ed
 
 Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
-> [!TIP]
-> **ClawHub / OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
-> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
-
 ```bash
 claude mcp add --transport stdio topos -- topos mcp
 ```
 
 Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
+
+> [!TIP]
+> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
+> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
 
 ---
 

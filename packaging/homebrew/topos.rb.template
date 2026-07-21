@@ -1,7 +1,12 @@
 class Topos < Formula
   desc "Structural code quality metrics for agent-written programs"
   homepage "https://docs.krv.ai/topos"
+  # macOS default; Linux URLs are defined in the on_linux block. A top-level
+  # URL must exist so `brew readall --os=all --arch=all` can load the formula
+  # on Intel macOS, where no binary ships (guarded by depends_on arch below).
+  url "https://github.com/Krv-Labs/topos/releases/download/v{{VERSION}}/topos-macos-arm64"
   version "{{VERSION}}"
+  sha256 "{{SHA_MACOS_ARM64}}"
   license "BSD-3-Clause"
 
   livecheck do
@@ -10,10 +15,7 @@ class Topos < Formula
   end
 
   on_macos do
-    on_arm do
-      url "https://github.com/Krv-Labs/topos/releases/download/v{{VERSION}}/topos-macos-arm64"
-      sha256 "{{SHA_MACOS_ARM64}}"
-    end
+    depends_on arch: :arm64
   end
 
   on_linux do

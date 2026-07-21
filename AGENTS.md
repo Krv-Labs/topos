@@ -1,7 +1,16 @@
 <!-- OPENWIKI:START -->
 
 ## Agent Skills
-- Topos: Structural verification (OpenClaw & Hermes).
+
+Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — published to ClawHub and installable via Hermes taps.
+
+| Runtime | Install |
+| --- | --- |
+| OpenClaw / ClawHub | `openclaw skills install @Krv-Labs/topos` |
+| Hermes | `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos` |
+| Local (dev) | `openclaw skills install ./skills/topos` |
+
+Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`). Publish to ClawHub via the **ClawHub Skill Publish** workflow (requires `CLAWHUB_TOKEN` secret) or manually: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
 
 
 ## OpenWiki

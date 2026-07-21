@@ -76,6 +76,10 @@ Other commands: `topos inspect` for per-file metrics, `topos compare` for AST ed
 
 Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
 
+> [!TIP]
+> **ClawHub / OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
+> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+
 ```bash
 claude mcp add --transport stdio topos -- topos mcp
 ```

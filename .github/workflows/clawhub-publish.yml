@@ -1,3 +1,12 @@
+# Publish skills/topos to ClawHub on skill changes (main) and release tags (v*).
+# PRs run a dry-run preview only.
+#
+# Setup (one-time, org/repo maintainers):
+#   1. Sign in at https://clawhub.ai and create an API token (clh_...).
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
+#      Name: CLAWHUB_TOKEN
+#      Value: <paste token>
+# Without this secret, PR dry-runs still work; pushes to main and v* tags skip real publish.
 name: ClawHub Skill Publish
 
 on:

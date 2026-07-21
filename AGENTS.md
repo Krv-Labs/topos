@@ -10,7 +10,9 @@ Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — publishe
 | Hermes | `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos` |
 | Local (dev) | `openclaw skills install ./skills/topos` |
 
-Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`). Publish to ClawHub via the **ClawHub Skill Publish** workflow (requires `CLAWHUB_TOKEN` secret) or manually: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
+Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`).
+
+**ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`) and `v*` tags. Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
 
 
 ## OpenWiki

@@ -268,6 +268,11 @@ def run_update(*, check_only: bool, pin_version: str | None) -> None:
         _run_package_update(info)
         return
 
+    if info.method == "homebrew":
+        click.echo("Detected Homebrew installation.")
+        click.echo(f"Run: {info.update_cmd or 'brew upgrade topos'}")
+        return
+
     if info.method == "source":
         click.echo("Detected editable/source installation.")
         click.echo(f"Run: {info.update_cmd or 'git pull && uv pip install -e .'}")

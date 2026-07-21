@@ -23,6 +23,9 @@ comparison, and UAST structural coverage.
    * - Most users
      - Binary CLI
      - One command installs ``topos`` and prompts to install GitNexus for COMPOSABLE metrics.
+   * - Homebrew users
+     - Homebrew formula
+     - Installs ``topos`` from the ``krv-labs/tap`` tap. macOS arm64 and Linux amd64/arm64 only.
    * - Managed Python environment
      - PyPI package
      - Requires Python 3.11+ and ``uv``. Install GitNexus separately when needed.
@@ -72,6 +75,29 @@ Choose an install path
 
       ``topos mcp`` waits on standard input. Press ``Ctrl-C`` after the FastMCP
       banner appears.
+
+   .. tab-item:: Homebrew
+      :sync: homebrew
+
+      Use this when you manage tooling with Homebrew.
+
+      .. code-block:: bash
+
+         brew install krv-labs/tap/topos
+
+      Supported platforms are macOS arm64 and Linux amd64/arm64. Intel macOS
+      is not supported. Upgrade through Homebrew:
+
+      .. code-block:: bash
+
+         brew upgrade topos
+
+      Homebrew installs do not install GitNexus automatically. Add it
+      separately when you need COMPOSABLE metrics:
+
+      .. code-block:: bash
+
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
 
    .. tab-item:: PyPI package
       :sync: pypi
@@ -195,6 +221,12 @@ Details and troubleshooting
    .. code-block:: bash
 
       topos update --version v0.3.6
+
+   Homebrew installs should upgrade through Homebrew:
+
+   .. code-block:: bash
+
+      brew upgrade topos
 
    Source checkouts should use:
 

@@ -38,6 +38,8 @@ topos evaluate src/ -r
 
 `evaluate -r` scores every file in `src/` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
+Prefer Homebrew? `brew install krv-labs/tap/topos` works too.
+
 Other install paths (PyPI, source checkout) and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**.
 
 ## What you get

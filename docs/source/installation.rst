@@ -31,7 +31,7 @@ GitNexus only when you need COMPOSABLE.
      - ``pip install topos-mcp`` installs *only* the ``topos-mcp`` server binary (a thin wheel, zero Python runtime dependency) — not the full ``topos`` CLI.
    * - Development
      - Source checkout
-     - Requires the Rust toolchain (``cargo``). No Python involved.
+     - Requires the Rust toolchain either way. Build with ``cargo`` for both binaries, or ``uv`` for a locally-built ``topos-mcp`` wheel.
 
 Choose an install path
 ----------------------
@@ -104,7 +104,11 @@ Choose an install path
       :sync: source
 
       Use this for development, local patches, or repository integration.
-      Requires the Rust toolchain (``cargo``) — no Python environment needed.
+      Two build paths, depending on what you need — both require the Rust
+      toolchain (``cargo``); neither needs a Python runtime at *run* time.
+
+      **Cargo — full Rust build.** Gives you both the ``topos`` CLI and the
+      ``topos-mcp`` server as native binaries, straight from the workspace.
 
       .. code-block:: bash
 
@@ -112,6 +116,32 @@ Choose an install path
          cd topos
          cargo build --release -p topos-cli   # -> target/release/topos
          cargo build --release -p topos-mcp   # -> target/release/topos-mcp
+
+      **uv — the** ``topos-mcp`` **PyPI wheel, built locally.** Builds the
+      same thin ``bin`` wheel published to PyPI — `maturin
+      <https://www.maturin.rs/>`_ compiles ``crates/topos-mcp`` under the
+      hood, per ``pyproject.toml``'s ``[build-system]``. Useful for testing
+      local ``topos-mcp`` changes through the exact install path end users
+      get, or for producing a wheel without a full workspace build. Cargo
+      still does the compiling; uv only drives the Python-side packaging.
+
+      .. code-block:: bash
+
+         git clone https://github.com/Krv-Labs/topos.git
+         cd topos
+         uv sync              # builds + installs topos-mcp into .venv
+         uv run topos-mcp     # -> the compiled MCP server binary
+
+      Or produce a distributable wheel directly:
+
+      .. code-block:: bash
+
+         uv build                              # -> dist/topos_mcp-*.whl
+         uv pip install dist/topos_mcp-*.whl
+
+      This path does not build the ``topos`` CLI (``evaluate``/``inspect``/
+      ``compare``/``coverage``/``graphify``) — use the Cargo build above, or
+      the binary installer, for that.
 
       Source installs do not install GitNexus automatically. Add it separately
       when you need COMPOSABLE metrics:
@@ -208,7 +238,8 @@ Details and troubleshooting
       curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 
    Source checkouts should use ``git pull && cargo build --release -p
-   topos-cli``. There is no built-in ``topos update``/``topos uninstall``
+   topos-cli`` (Cargo path) or ``git pull && uv sync`` (uv path). There is
+   no built-in ``topos update``/``topos uninstall``
    subcommand as of v0.4.0 — those were pip-specific self-update/uninstall
    commands in the pre-migration Python CLI and don't carry over to a
    cargo/homebrew-distributed binary.

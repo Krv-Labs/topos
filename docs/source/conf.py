@@ -17,7 +17,7 @@ extensions = [
     # No sphinx.ext.autodoc/autosummary/viewcode/napoleon: those support
     # Python API autodoc, and there is no Python API left to document.
     # Rust API docs live in rustdoc (`cargo doc`), not this Sphinx site —
-    # see api.rst.
+    # see architecture.rst's "Rust API docs" section.
     "sphinx_design",
     "sphinx.ext.mathjax",
     "sphinx.ext.autosectionlabel",

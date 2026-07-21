@@ -13,7 +13,6 @@ SKILLS_ROOT = ROOT / "skills"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 REQUIRED_SECTIONS = ("## When to Use", "## Pitfalls", "## Verification")
-REQUIRED_FRONTMATTER_KEYS = ("name:", "description:", "version:")
 
 
 def cargo_version() -> str:
@@ -33,8 +32,20 @@ def parse_scalar(block: str, key: str) -> str | None:
     return value
 
 
-def frontmatter_contains(block: str, needle: str) -> bool:
-    return needle in block
+def extract_block(block: str, key: str) -> str | None:
+    """Return the lines nested under `key:`, or None if the key is absent."""
+    lines = block.splitlines()
+    for index, line in enumerate(lines):
+        if not line.strip().startswith(f"{key}:"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        nested = []
+        for candidate in lines[index + 1 :]:
+            if candidate.strip() and len(candidate) - len(candidate.lstrip()) <= indent:
+                break
+            nested.append(candidate)
+        return "\n".join(nested)
+    return None
 
 
 def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
@@ -50,10 +61,6 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
 
     frontmatter = match.group(1)
     body = text[match.end() :]
-
-    for key in REQUIRED_FRONTMATTER_KEYS:
-        if not frontmatter_contains(frontmatter, key):
-            errors.append(f"{skill_md}: frontmatter missing {key.rstrip(':')}")
 
     name = parse_scalar(frontmatter, "name")
     if not name:
@@ -85,20 +92,23 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
         if section not in body:
             errors.append(f"{skill_md}: missing section {section}")
 
-    if "metadata:" not in frontmatter:
+    metadata = extract_block(frontmatter, "metadata")
+    if metadata is None:
         errors.append(f"{skill_md}: frontmatter missing metadata block")
     else:
-        if "openclaw:" not in frontmatter:
+        openclaw = extract_block(metadata, "openclaw")
+        if openclaw is None:
             errors.append(f"{skill_md}: metadata.openclaw block is required")
-        elif "bins:" not in frontmatter:
+        elif "bins:" not in openclaw:
             errors.append(f"{skill_md}: metadata.openclaw.requires.bins is required")
 
-        if "hermes:" not in frontmatter:
+        hermes = extract_block(metadata, "hermes")
+        if hermes is None:
             errors.append(f"{skill_md}: metadata.hermes block is required")
         else:
-            if "tags:" not in frontmatter:
+            if "tags:" not in hermes:
                 errors.append(f"{skill_md}: metadata.hermes.tags is required")
-            if "category:" not in frontmatter:
+            if "category:" not in hermes:
                 errors.append(f"{skill_md}: metadata.hermes.category is required")
 
     return errors

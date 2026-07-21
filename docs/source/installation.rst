@@ -9,9 +9,9 @@ Installation
    :twitter:description: Get started with Topos. Install the CLI, MCP server, and GitNexus composability metrics.
 
 As of v0.4.0 (`PR #159 <https://github.com/Krv-Labs/topos/pull/159>`_) Topos
-is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/crates>`_
-of three crates — ``topos-core`` (the compute engine), ``topos-cli`` (the
-``topos`` binary), and ``topos-mcp`` (the MCP server binary). There is no
+is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/topos>`_
+of three crates — ``topos-engine`` (the compute engine), ``topos`` (the
+CLI binary), and ``topos-mcp`` (the MCP server binary). There is no
 Python runtime anywhere in the stack. Install the CLI first, then add
 GitNexus only when you need COMPOSABLE.
 
@@ -120,12 +120,12 @@ Choose an install path
 
          git clone https://github.com/Krv-Labs/topos.git
          cd topos
-         cargo build --release -p topos-cli   # -> target/release/topos
+         cargo build --release -p topos        # -> target/release/topos
          cargo build --release -p topos-mcp   # -> target/release/topos-mcp
 
       **uv — the** ``topos-mcp`` **PyPI wheel, built locally.** Builds the
       same thin ``bin`` wheel published to PyPI — `maturin
-      <https://www.maturin.rs/>`_ compiles ``crates/topos-mcp`` under the
+      <https://www.maturin.rs/>`_ compiles ``topos/mcp`` under the
       hood, per ``pyproject.toml``'s ``[build-system]``. Useful for testing
       local ``topos-mcp`` changes through the exact install path end users
       get, or for producing a wheel without a full workspace build. Cargo
@@ -244,7 +244,7 @@ Details and troubleshooting
       curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 
    Source checkouts should use ``git pull && cargo build --release -p
-   topos-cli`` (Cargo path) or ``git pull && uv sync`` (uv path). There is
+   topos`` (Cargo path) or ``git pull && uv sync`` (uv path). There is
    no built-in ``topos update``/``topos uninstall``
    subcommand as of v0.4.0 — those were pip-specific self-update/uninstall
    commands in the pre-migration Python CLI and don't carry over to a

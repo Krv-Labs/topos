@@ -17,10 +17,10 @@ classifiers = [
 ]
 
 # Thin wrapper: the MCP server is a self-contained Rust binary (topos-mcp),
-# built from `crates/topos-mcp` and installed as the `topos-mcp` console
+# built from `topos/mcp` and installed as the `topos-mcp` console
 # command by maturin's `bin` bindings. There is no Python runtime dependency
 # and no Python import surface — `pip install topos-mcp` simply puts the
-# compiled stdio MCP server on PATH. All computation lives in `topos-core`
+# compiled stdio MCP server on PATH. All computation lives in `topos-engine`
 # (PR #159); nothing is marshalled through Python anymore.
 dependencies = []
 
@@ -44,6 +44,6 @@ build-backend = "maturin"
 # Version comes from [workspace.package].version in Cargo.toml
 # (see scripts/check_versions.py). `bindings = "bin"` packages the
 # `topos-mcp` binary itself into the wheel rather than a Python extension.
-manifest-path = "crates/topos-mcp/Cargo.toml"
+manifest-path = "topos/mcp/Cargo.toml"
 bindings = "bin"
 

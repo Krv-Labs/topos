@@ -1,0 +1,26 @@
+[package]
+name = "topos-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Structural code quality engine for Topos: category-theoretic evaluation (SIMPLE/COMPOSABLE/SECURE), tree-sitter-driven graph representations, and refactoring probes. Pure Rust, no Python bindings — see topos-mcp and topos."
+
+[dependencies]
+tree-sitter = "0.26"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.23"
+# UASTNode::id is a BLAKE2b-8-byte hash, matching Python's
+# hashlib.blake2b(..., digest_size=8) byte-for-byte (see the parity test
+# in graphs::uast::mapper_common).
+blake2 = "0.10"
+petgraph = "0.6"
+# GraphNode::properties holds arbitrary GitNexus JSON payload values.
+serde_json = "1.0"
+flate2 = "1.0"
+# .topos.toml allowlist parsing (evaluation::suppression / config).
+toml = "0.8"

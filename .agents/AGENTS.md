@@ -10,17 +10,17 @@
 - **`SECURE`** (CPG): dangerous calls, taint flows. Zero-tolerance gates; passing requires a perfect score ($1.00$).
 - **Lattice ($\Omega$)**: `SLOP` ($\bot$) < single satisfied generators < dual combinations < `IDEAL` ($\top$). Pointwise meet ($\bigwedge$) for rollups.
 
-### Layout & Extensibility (Rust workspace: `crates/topos-core`, `crates/topos-cli`, `crates/topos-mcp`)
-- **`crates/topos-core/src/core/`**: Program category, morphism, objects, `Omega` lattice, and `CharacteristicMorphism` ($\chi_S : P \to \Omega$).
-- **`crates/topos-core/src/graphs/`**: Representations implementing the `Representation` trait (`name`, `dimension`, `metrics() -> HashMap<String, f64>`).
-- **`crates/topos-core/src/evaluation/policies/`**: gate specs (`gates.rs`), calibration thresholds (`calibration.rs`), and score functions per pillar.
-- **`crates/topos-core/src/functors/`**: probes (heavy metrics) and profunctors (pairwise comparisons).
+### Layout & Extensibility (Rust workspace: `topos/engine` (crate `topos-engine`), `topos/cli` (crate `topos`), `topos/mcp` (crate `topos-mcp`))
+- **`topos/engine/src/core/`**: Program category, morphism, objects, `Omega` lattice, and `CharacteristicMorphism` ($\chi_S : P \to \Omega$).
+- **`topos/engine/src/graphs/`**: Representations implementing the `Representation` trait (`name`, `dimension`, `metrics() -> HashMap<String, f64>`).
+- **`topos/engine/src/evaluation/policies/`**: gate specs (`gates.rs`), calibration thresholds (`calibration.rs`), and score functions per pillar.
+- **`topos/engine/src/functors/`**: probes (heavy metrics) and profunctors (pairwise comparisons).
 
 **To Add a Representation**:
-1. Create `crates/topos-core/src/graphs/<name>/object.rs` implementing the `Representation` trait, emitting namespaced metrics (e.g. `mdg.*`, `cfg.*`).
-2. Add raw metric probes under `crates/topos-core/src/functors/probes/<name>/`.
-3. Register the new metric(s) in `GATE_SPECS`/`PILLAR_METRIC_PREFIXES` (`crates/topos-core/src/evaluation/policies/gates.rs`) so gating and prose interpretation pick them up.
-4. (Optional) Add pairwise comparison under `crates/topos-core/src/functors/profunctors/<name>/`.
+1. Create `topos/engine/src/graphs/<name>/object.rs` implementing the `Representation` trait, emitting namespaced metrics (e.g. `mdg.*`, `cfg.*`).
+2. Add raw metric probes under `topos/engine/src/functors/probes/<name>/`.
+3. Register the new metric(s) in `GATE_SPECS`/`PILLAR_METRIC_PREFIXES` (`topos/engine/src/evaluation/policies/gates.rs`) so gating and prose interpretation pick them up.
+4. (Optional) Add pairwise comparison under `topos/engine/src/functors/profunctors/<name>/`.
 
 ## CLI & Dev Commands
 ```bash

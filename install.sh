@@ -294,7 +294,7 @@ install_topos() {
         echo ""
         echo "  # From source (builds the 'topos' CLI + MCP server)"
         echo "  git clone https://github.com/${REPO}.git"
-        echo "  cd topos && cargo build --release -p topos-cli"
+        echo "  cd topos && cargo build --release -p topos"
         exit 1
     fi
 
@@ -361,7 +361,7 @@ install_optional_dependencies() {
         [yY][eE][sS]|[yY]|"")
             # Keep the pnpm-first preference in sync with the other install paths:
             #   - TypeScript: extensions/vscode/src/extension.ts (resolveGitNexusInstallCommand)
-            #   - Rust: crates/topos-core/src/adapters/gitnexus.rs (still npm-only; follow-up)
+            #   - Rust: topos/engine/src/adapters/gitnexus.rs (still npm-only; follow-up)
             local install_cmd=""
             if command -v pnpm >/dev/null 2>&1; then
                 install_cmd="pnpm add -g gitnexus"

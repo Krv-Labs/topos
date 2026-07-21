@@ -13,7 +13,7 @@ you want structural quality verdicts without an editor integration. Most
 agent workflows use the :doc:`MCP server <agents>` instead — it currently
 covers more ground than the CLI (COMPOSABLE scoring, preference-ranked
 relaxation walks, JSON output for most tools). The CLI is a fresh,
-from-scratch Rust implementation built directly on ``topos-core``, not a
+from-scratch Rust implementation built directly on ``topos-engine``, not a
 line-for-line port of the pre-v0.4.0 Python CLI — some Python-CLI features
 haven't been ported yet; each command below says explicitly what's missing.
 

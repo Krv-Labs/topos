@@ -45,7 +45,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build release binary
-        run: cargo build --release -p topos-cli
+        run: cargo build --release -p topos
 
       - name: Stage binary with platform suffix
         run: |
@@ -266,7 +266,7 @@ jobs:
           manylinux: ${{ matrix.manylinux }}
           args: >-
             --release --bindings bin
-            --manifest-path crates/topos-mcp/Cargo.toml
+            --manifest-path topos/mcp/Cargo.toml
             --out dist
 
       - name: Upload wheels

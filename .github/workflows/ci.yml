@@ -54,7 +54,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --bindings bin --manifest-path crates/topos-mcp/Cargo.toml --out dist
+          args: --release --bindings bin --manifest-path topos/mcp/Cargo.toml --out dist
 
   extension:
     runs-on: ubuntu-latest

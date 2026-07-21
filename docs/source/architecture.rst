@@ -9,7 +9,7 @@ Architecture
    :twitter:description: How Topos is built — the Rust crate workspace, external tool adapters, and the advisory refactor suite.
 
 As of v0.4.0 (`PR #159 <https://github.com/Krv-Labs/topos/pull/159>`_) Topos
-is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/crates>`_.
+is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/topos>`_.
 There is no Python implementation anywhere in the stack — the ``topos-mcp``
 PyPI package is a thin wheel bundling a compiled binary, not a Python
 package. For the underlying math, see :doc:`concepts`; for what each metric
@@ -24,19 +24,19 @@ The three crates
 
    * - Crate
      - Role
-   * - ``topos-core``
+   * - ``topos-engine``
      - The pure compute engine: tree-sitter AST parsing, the CFG / MDG / CPG
        / PDG / UAST graph representations, the characteristic morphism
        :math:`\chi_S : \text{Program} \to \Omega`, the SIMPLE/COMPOSABLE/
        SECURE scoring policies, and all refactor-suite probes (cycle basis,
        Forman/Forman-Ricci curvature, Graphify orphan detection). External
        tools (GitNexus, Graphify) are reached only through ``adapters::``
-       subprocess wrappers — never library imports — so ``topos-core`` never
+       subprocess wrappers — never library imports — so ``topos-engine`` never
        depends on anything installed outside the Rust toolchain.
-   * - ``topos-cli``
-     - The ``topos`` binary: ``evaluate`` / ``inspect`` / ``compare`` /
+   * - ``topos``
+     - The CLI binary: ``evaluate`` / ``inspect`` / ``compare`` /
        ``coverage`` / ``graphify`` / ``mcp``. Calls straight into
-       ``topos-core``; no logic is duplicated with ``topos-mcp``.
+       ``topos-engine``; no logic is duplicated with ``topos-mcp``.
    * - ``topos-mcp``
      - The MCP server (the ``topos-mcp`` binary, and also what ``topos mcp``
        launches in-process). One ``#[tool_router]`` module per tool family
@@ -51,14 +51,14 @@ The three crates
    <figure class="topos-figure">
      <img class="only-light" src="_static/figures/topos-methods.svg" alt="AST, CFG, PDG, and MDG graph lenses glued over a shared source-coordinate base, amalgamated into a single code property graph." />
      <img class="only-dark" src="_static/figures/topos-methods-dark.svg" alt="" aria-hidden="true" />
-     <figcaption>Each lens reads the same source coordinates; topos-core amalgamates them into one code property graph, then measures structure over the unified space.</figcaption>
+     <figcaption>Each lens reads the same source coordinates; topos-engine amalgamates them into one code property graph, then measures structure over the unified space.</figcaption>
    </figure>
 
 External tools stay at the edges
 ---------------------------------
 
 Two external tools feed Topos, and both are reached the same way — a
-subprocess adapter in ``topos-core::adapters``, never a library dependency
+subprocess adapter in ``topos-engine::adapters``, never a library dependency
 pulled into the scoring path:
 
 `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_
@@ -75,7 +75,7 @@ pulled into the scoring path:
 these two: it's compiled directly into ``topos-mcp`` as a Rust library
 dependency (no subprocess, no ``$PATH`` discovery), and it only supplies
 supplementary ``security_findings`` detail — the SECURE score itself always
-comes from ``topos-core``'s native CPG probes, never from Sighthound.
+comes from ``topos-engine``'s native CPG probes, never from Sighthound.
 
 The advisory refactor suite
 -----------------------------
@@ -108,6 +108,6 @@ locally:
    cd topos
    cargo doc --workspace --no-deps --open
 
-``topos-core`` and ``topos-cli`` are not yet published to crates.io (tracked
+``topos-engine`` and ``topos`` are not yet published to crates.io (tracked
 in `issue #149 <https://github.com/Krv-Labs/topos/issues/149>`_); until then,
 rustdoc generated locally or the source on GitHub are the primary references.

@@ -45,7 +45,7 @@ topos evaluate . -r
 
 `evaluate . -r` scores every file under the current directory and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
-Other install paths and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**. Note: `pip install topos-mcp` / `uvx topos-mcp` installs only the MCP server binary (as the `topos-mcp` command) — the `topos` CLI itself ships via the install script above, a GitHub release binary, or `cargo build --release -p topos-cli` from source.
+Other install paths and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**. Note: `pip install topos-mcp` / `uvx topos-mcp` installs only the MCP server binary (as the `topos-mcp` command) — the `topos` CLI itself ships via the install script above, a GitHub release binary, or `cargo build --release -p topos` from source.
 
 ## Built on
 
@@ -61,7 +61,7 @@ Full credit and integration details: **[docs.krv.ai/topos/architecture](https://
 
 ## What you get
 
-Three independent pillars, computed natively in `topos-core` from tree-sitter ASTs, roll up into one **Code Quality Medal**:
+Three independent pillars, computed natively in `topos-engine` from tree-sitter ASTs, roll up into one **Code Quality Medal**:
 
 - **SIMPLE** — avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity)
 - **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability, over GitNexus's dependency graph)

@@ -3,7 +3,7 @@
 # Topos MCP server — containerized build for Glama releases.
 #
 # The package is a maturin `bin` wheel: the self-contained Rust `topos-mcp`
-# stdio server (crates/topos-mcp), with all computation in topos-core and the
+# stdio server (topos/mcp), with all computation in topos-engine and the
 # Sighthound SAST engine compiled in — no Python runtime. The builder stage
 # carries the Rust toolchain + maturin and produces the wheel; the runtime
 # stage installs it and adds Node.js + GitNexus so the COMPOSABLE pillar works
@@ -33,7 +33,7 @@ COPY . .
 # maturin reads the version from Cargo.toml; build a release `bin` wheel
 # (the topos-mcp server binary) into /wheels.
 RUN maturin build --release --bindings bin \
-        --manifest-path crates/topos-mcp/Cargo.toml --out /wheels
+        --manifest-path topos/mcp/Cargo.toml --out /wheels
 
 # ---- Runtime: install the wheel + Node/GitNexus -----------------------------
 FROM python:3.12-slim AS runtime

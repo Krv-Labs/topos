@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/topos-core", "crates/topos-cli", "crates/topos-mcp"]
+members = ["topos/engine", "topos/cli", "topos/mcp"]
 
 [workspace.package]
 version = "0.4.0"

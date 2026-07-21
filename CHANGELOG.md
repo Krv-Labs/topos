@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-07-20
+
 ### Added
 
-- **Sighthound/Corgea SECURE Outsourcing:** Deprecates Python-based pattern matching and BFS taint-path tracing on the Code Property Graph (CPG) by outsourcing security analysis directly to Corgea/Sighthound when available on system `PATH`. When `sighthound` is present, Topos invokes it to parse JSON-formatted findings and maps them into standard `cpg.dangerous_calls` and `cpg.taint_flows`. If `sighthound` is absent, Topos gracefully falls back to local CPG danger and taint probes.
+- **Sighthound/Corgea SECURE Outsourcing:** Deprecates Python-based pattern matching and BFS taint-path tracing on the Code Property Graph (CPG) by outsourcing security analysis directly to Corgea/Sighthound when available on system `PATH`. When `sighthound` is present, Topos invokes it to parse JSON-formatted findings and maps them into standard `cpg.dangerous_calls` and `cpg.taint_flows`. If `sighthound` is absent, Topos gracefully falls back to local CPG danger and taint probes. (Closes [#130](https://github.com/Krv-Labs/topos/issues/130))
+- **OpenWiki engineering wiki:** Regenerated repository documentation under `openwiki/` (architecture, workflows, domain concepts, operations, integrations) with CI refresh on merges to `main`. ([#169](https://github.com/Krv-Labs/topos/pull/169))
+
+### Changed
+
+- **VS Code extension package manager:** Migrated `extensions/vscode` from npm to pnpm (`packageManager: pnpm@11.8.0`), updated CI/release workflows to `pnpm/action-setup` with frozen lockfile, and publish with `vsce --no-dependencies`. GitNexus install hints now prefer `pnpm add -g` with npm fallback. ([#175](https://github.com/Krv-Labs/topos/pull/175), closes [#71](https://github.com/Krv-Labs/topos/issues/71))
 
 ### Fixed
 
-- **Consistent allowlisting for Sighthound SECURE metrics:** Standardized `cpg.security_metrics` to filter Sighthound findings and local CPG probes through the same active engine, resolving discrepancies where Sighthound-only findings stayed active while `secure_adjusted` passed. Sighthound taint findings now correctly resolve to the actionable sink operation (`sink_type`) instead of the containing function name, ensuring consistent suffix-aware allowlist mapping. (Closes #168)
+- **Consistent allowlisting for Sighthound SECURE metrics:** Standardized `cpg.security_metrics` to filter Sighthound findings and local CPG probes through the same active engine, resolving discrepancies where Sighthound-only findings stayed active while `secure_adjusted` passed. Sighthound taint findings now correctly resolve to the actionable sink operation (`sink_type`) instead of the containing function name, ensuring consistent suffix-aware allowlist mapping. (Closes [#168](https://github.com/Krv-Labs/topos/issues/168), [#174](https://github.com/Krv-Labs/topos/pull/174))
+- **VS Code extension failed binary downloads:** Deferred creation of the download destination stream until the HTTP response is confirmed as 200, preventing redirects and non-200 responses from leaving an empty file on disk. (Closes [#173](https://github.com/Krv-Labs/topos/issues/173), [#172](https://github.com/Krv-Labs/topos/pull/172))
 
 ## [0.3.11] - 2026-07-13
 

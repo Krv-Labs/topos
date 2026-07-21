@@ -67,14 +67,14 @@ Three independent pillars, computed natively in `topos-core` from tree-sitter AS
 | 🥉 **BRONZE** | Passes 1 of 3 |
 | ❌ **SLOP** | Passes 0 (or fails to parse) |
 
-`COMPOSABLE` needs a cross-file dependency graph. As of v0.4.0 that graph is only wired up through the **MCP server** — the `topos` CLI doesn't build or read `.gitnexus` yet (`depgraph`/`--gitnexus-dir` are Python-era commands not ported to the Rust CLI; SIMPLE/SECURE-only evaluation is what `topos evaluate` gives you today):
+`COMPOSABLE` needs a cross-file dependency graph. Install GitNexus and `topos evaluate` will detect it, generate `.gitnexus` if it's missing or stale, and score COMPOSABLE alongside SIMPLE/SECURE automatically:
 
 ```bash
 pnpm add -g gitnexus  # or: npm install -g gitnexus
-claude mcp add --transport stdio topos -- topos mcp
-# then, from an agent: topos_generate_depgraph, followed by
-# topos_evaluate_file(..., gitnexus_dir=".gitnexus") to score COMPOSABLE/GOLD
+topos evaluate src/ -r   # generates/refreshes .gitnexus as needed, then scores COMPOSABLE/GOLD
 ```
+
+Pass `--no-composable` to skip GitNexus entirely and evaluate SIMPLE/SECURE only, or `--gitnexus-dir <dir>` to point at a `.gitnexus` build elsewhere. The same detection also runs through the **MCP server** (`topos_generate_depgraph`, `topos_evaluate_file(..., gitnexus_dir=".gitnexus")`).
 
 Other commands: `topos inspect` for per-file metrics, `topos compare` for AST edit distance between two versions, `topos coverage` for structural test coverage, `topos graphify` for Graphify knowledge-graph generation and orphan/dead-code detection (advisory, see [below](#the-refactoring-layer)), and `--preferences simple,composable,secure` to tell agents which pillar to protect first when 🥇 GOLD isn't reachable. Full reference: **[docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)**.
 

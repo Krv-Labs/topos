@@ -35,7 +35,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     let mut morphism = ProgramMorphism::from_file(&args.path, language)
         .map_err(|e| format!("reading {}: {e}", args.path.display()))?;
     let classifier = CharacteristicMorphism;
-    let result = classify_with_representations(&classifier, &mut morphism);
+    let result = classify_with_representations(&classifier, &mut morphism, None);
 
     if args.json {
         return print_json(&args.path, &result);

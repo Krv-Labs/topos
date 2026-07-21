@@ -6,7 +6,10 @@
 #   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
 #      Name: CLAWHUB_TOKEN
 #      Value: <paste token>
-# Without this secret, PR dry-runs still work; pushes to main and v* tags skip real publish.
+# Without this secret, PR dry-runs still work, but pushes to main and v* tags FAIL:
+# the upstream workflow exits 1 ("Real skill publishes need secrets.clawhub_token").
+# Fork PRs also fail: the upstream workflow requires an OIDC token, and fork-originated
+# pull_request runs never receive id-token: write.
 name: ClawHub Skill Publish
 
 on:

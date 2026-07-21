@@ -70,7 +70,7 @@ Topos
       The Rust crate workspace, external tool adapters, and the advisory refactor suite.
 
 .. hint::
-   **The scary maths are optional.** Topos is grounded in some very abstract fields (category & topos theory). Don't be alarmed! It's not required to understand (or appreciate) the maths to evaluate code quality with Topos. We find the formalism elegant, but know this isn't everyone's cup of tea. If you're curious about what we're building under the hood, check out :doc:`concepts`.
+   **Built on category theory, built in Rust.** Topos models code quality as a structural property of programs using topos theory — the formalism is precise by design, not decoration. You don't need the math to use Topos day to day; see :doc:`concepts` for the foundations.
 
 Beyond Correctness
 -------------------
@@ -141,6 +141,8 @@ Topos measures code along the three independent quality generators and maps them
 - **SIMPLE** — Built from the `abstract syntax tree <https://en.wikipedia.org/wiki/Abstract_syntax_tree>`_ (AST) and `control-flow graph <https://en.wikipedia.org/wiki/Control-flow_graph>`_ (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
 - **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, to capture inter-module dependencies. This is slightly different than the usual `program dependence graph <https://en.wikipedia.org/wiki/Program_dependence_graph>`_ (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
 - **SECURE** — Built from the `code property graph <https://en.wikipedia.org/wiki/Code_property_graph>`_ (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
+
+Beyond these three scored pillars, Topos also wires in `Graphify <https://github.com/Graphify-Labs/graphify>`_ for advisory dead-code and fragile-edge detection, and embeds `Sighthound <https://github.com/Corgea/Sighthound>`_ for supplementary security detail alongside the SECURE verdict. See :doc:`architecture` for how all three tools fit together and what Topos adds on top of them.
 
 .. raw:: html
 

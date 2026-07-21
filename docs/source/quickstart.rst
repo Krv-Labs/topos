@@ -213,8 +213,9 @@ COMPOSABLE: module coupling
 
 **Question:** if this file changes, how much of the repo has to care?
 
-COMPOSABLE zooms out from one function to the module dependency graph. It looks
-at how files and modules depend on each other.
+COMPOSABLE zooms out from one function to the module dependency graph, built by
+`GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_. It looks at how
+files and modules depend on each other.
 
 Fan-out measures how many other modules a file relies on. If
 ``UserPayment.js`` needs twenty local modules just to run, it is carrying a lot
@@ -237,8 +238,9 @@ SECURE: data-flow safety
 
 **Question:** can untrusted input reach something dangerous?
 
-SECURE uses a code property graph to follow data through the program. It looks
-for dangerous API reachability and taint paths.
+SECURE uses a code property graph to follow data through the program, with
+supplementary findings from the embedded `Sighthound <https://github.com/Corgea/Sighthound>`_
+engine. It looks for dangerous API reachability and taint paths.
 
 "Taint" just means untrusted input: a URL parameter, a form field, a search box,
 or anything else a user can control. A taint path is the trail that value takes

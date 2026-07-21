@@ -46,7 +46,7 @@ pub enum AttributeValue {
 /// `UASTNode` acts as a normalization layer over language-specific
 /// concrete syntax trees (CSTs) from tree-sitter. It maps disparate
 /// native nodes into unified `kind` values that follow the
-/// industry-standard reference in `docs/uast-industry-standards.md`.
+/// industry-standard reference in `docs/decisions/uast-industry-standards.md`.
 ///
 /// While normalized, each node strictly retains its `native` provenance
 /// and `span` data to ensure fidelity with compiler-native AST

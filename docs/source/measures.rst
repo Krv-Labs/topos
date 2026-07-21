@@ -207,7 +207,7 @@ hotspots from four more engines — CFG cycle basis, MDG/process-graph
 curvature, and Graphify knowledge-graph degree/confidence. Like the
 profunctors above, **none of these feed the evaluation lattice**; they're
 refactoring guidance layered on top. See :doc:`agents` and the repository's
-``docs/refactor-suite.md`` for the full design.
+``docs/decisions/refactor-suite.md`` for the full design.
 
 Structural Test Coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~

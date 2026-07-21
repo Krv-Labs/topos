@@ -183,14 +183,14 @@ lattice movement; use `topos_refactor` when you want structural hotspot
 hints outside the scoring loop.
 
 Repo engineering write-up (filesystem, not an MCP resource):
-`docs/refactor-suite.md`, `openwiki/workflows/agent-and-cli.md`.
+`docs/decisions/refactor-suite.md`, `openwiki/workflows/agent-and-cli.md`.
 
 ## Structural test coverage (`topos_calculate_coverage`)
 
 Static UAST-overlap between a program-under-test and test files — **not**
 executed line/branch coverage and **not** proof that tests call production
 symbols. Outside the lattice. Engineering reference:
-`docs/structural-test-coverage.md`, `openwiki/workflows/agent-and-cli.md`.
+`docs/decisions/structural-test-coverage.md`, `openwiki/workflows/agent-and-cli.md`.
 
 ## Repo OpenWiki (filesystem, not `topos_get_doc`)
 

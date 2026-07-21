@@ -381,7 +381,7 @@ Ranked, actionable structural hotspots from four independent engines.
 **None of these feed SIMPLE/COMPOSABLE/SECURE** — this is refactoring
 guidance layered on top of the scored medal, distinct from the
 gate-failure ``refactor_targets`` surfaced *inside* ``topos_evaluate_file``.
-See the repository's ``docs/refactor-suite.md`` for the full design.
+See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
 
 ``topos_refactor({"params": {"target": "cycles"|"dependencies"|"process"|"graphify", "filepath": ..., "gitnexus_dir": ..., "graphify_dir": ..., "limit": ...}})``
    One tool, four targets, each surfacing a different structural-analysis

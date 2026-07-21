@@ -83,7 +83,7 @@ The advisory refactor suite
 Beyond the scored medal, ``topos_refactor`` (MCP) and, for Graphify, the
 ``topos graphify`` CLI subcommand, surface ranked structural hotspots from
 four independent engines. **None of these feed SIMPLE/COMPOSABLE/SECURE** —
-see :doc:`agents` for the tool contract and ``docs/refactor-suite.md`` in the
+see :doc:`agents` for the tool contract and ``docs/decisions/refactor-suite.md`` in the
 repository for the full design rationale:
 
 - ``cycles`` — CFG cycle-basis extraction (persistent-homology-flavored),

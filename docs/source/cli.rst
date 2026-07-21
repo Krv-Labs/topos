@@ -210,7 +210,7 @@ graphify
 Generate and inspect a `Graphify <https://github.com/Graphify-Labs/graphify>`_
 knowledge graph — the ``graphify`` target of Topos's advisory refactor suite.
 **Purely advisory**: orphan/dead-code and fragile-edge hotspots here never
-affect the SIMPLE/COMPOSABLE/SECURE medal. See ``docs/refactor-suite.md`` in
+affect the SIMPLE/COMPOSABLE/SECURE medal. See ``docs/decisions/refactor-suite.md`` in
 the repository for the full design, and :doc:`agents` for the equivalent MCP
 tools (``topos_generate_graphify_graph``, ``topos_refactor(target="graphify")``).
 

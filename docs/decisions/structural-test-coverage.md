@@ -36,7 +36,7 @@ This approach provides several advantages:
 - **Lower scores**: Tests may be missing whole classes of syntax or control-flow that specific PUT declarations use, or the tests are structurally disjoint.
 - **F2 Score**: If the F2 score is significantly lower than the Mean Declaration Coverage, it indicates the test suite contains significant "bloat" or structures entirely unrelated to the PUT.
 
-The `DeclarationCoverageReport` dataclass includes diagnostics like precise locations of uncovered declarations (those that fall below the coverage threshold).
+The `DeclarationCoverageReport` struct includes diagnostics like precise locations of uncovered declarations (those that fall below the coverage threshold).
 
 ---
 
@@ -61,7 +61,7 @@ topos coverage --tests tests/test_mod.py src/mod.py
 topos coverage --tests t1.py --tests t2.py --language python --k 3 src/a.py src/b.py
 ```
 
-Options: `--language` (any [tree-sitter-supported language](../crates/topos-core/src/graphs/ast/languages.rs)), `--k` (n-gram length), `--include-unknown`, `--coverage-threshold`. The same computation is also exposed as the `topos_calculate_coverage` MCP tool (`crates/topos-mcp/src/tools/coverage.rs`), which does return structured JSON over the wire — unlike the CLI, which is plain-text only for this pass (issue [#147](https://github.com/Krv-Labs/topos/issues/147)).
+Options: `--language` (any [tree-sitter-supported language](../../crates/topos-core/src/graphs/ast/languages.rs)), `--k` (n-gram length), `--include-unknown`, `--coverage-threshold`. The same computation is also exposed as the `topos_calculate_coverage` MCP tool (`crates/topos-mcp/src/tools/coverage.rs`), which does return structured JSON over the wire — unlike the CLI, which is plain-text only for this pass (issue [#147](https://github.com/Krv-Labs/topos/issues/147)).
 
 ---
 

@@ -166,7 +166,7 @@ Enable optional metrics
          topos graphify generate
          topos graphify orphans src/module.py
 
-      See :doc:`cli` and the repository's ``docs/refactor-suite.md`` for the
+      See :doc:`cli` and the repository's ``docs/decisions/refactor-suite.md`` for the
       full design.
 
 First useful commands

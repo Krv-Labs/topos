@@ -1113,7 +1113,7 @@ pub struct RefactorHotspot {
     pub line_end: Option<usize>,
     /// Betti contribution (cycles) or curvature value (dependencies/process,
     /// descending = worse) or degree (graphify orphans, **ascending** = worse
-    /// — inverted from curvature's sign convention; see `docs/refactor-suite.md`.
+    /// — inverted from curvature's sign convention; see `docs/decisions/refactor-suite.md`.
     pub score: f64,
     pub suggestion: String,
 }

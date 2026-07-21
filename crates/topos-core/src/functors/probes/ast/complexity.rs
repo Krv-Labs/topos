@@ -29,8 +29,9 @@ const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "TryStm
 ///
 /// Note: counting per-arm here intentionally diverges from the last Python
 /// release (`topos-mcp==0.3.11`), which counted a whole match/switch as a
-/// single decision. The divergence is documented and allowlisted in
-/// `scripts/parity_check.py`.
+/// single decision. The divergence is documented in the `[0.4.0]` CHANGELOG
+/// entry (the parity/benchmark harness that originally allowlisted it was a
+/// migration-verification artifact and has since been removed).
 ///
 /// The boolean-operator check is currently dormant — no UAST mapper
 /// (issue #142) populates a `BinaryExpr`'s `"operator"` attribute with

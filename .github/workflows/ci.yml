@@ -29,6 +29,9 @@ jobs:
       - name: Check versions (Cargo.toml is source of truth)
         run: python scripts/check_versions.py
 
+      - name: Check agent skills
+        run: python scripts/check_skill.py
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

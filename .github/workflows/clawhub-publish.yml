@@ -1,0 +1,43 @@
+# Publish skills/topos to ClawHub on skill changes (main) and release tags (v*).
+# PRs run a dry-run preview only.
+#
+# Setup (one-time, org/repo maintainers):
+#   1. Sign in at https://clawhub.ai and create an API token (clh_...).
+#   2. GitHub → Settings → Secrets and variables → Actions → New repository secret
+#      Name: CLAWHUB_TOKEN
+#      Value: <paste token>
+# Without this secret, PR dry-runs still work, but pushes to main and v* tags FAIL:
+# the upstream workflow exits 1 ("Real skill publishes need secrets.clawhub_token").
+# Fork PRs also fail: the upstream workflow requires an OIDC token, and fork-originated
+# pull_request runs never receive id-token: write.
+name: ClawHub Skill Publish
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+    paths:
+      - "skills/**"
+      - ".github/workflows/clawhub-publish.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - ".github/workflows/clawhub-publish.yml"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    permissions:
+      id-token: write   # OIDC token required by openclaw/clawhub skill-publish
+      contents: read
+    # pinned to openclaw/clawhub v0.23.1 (immutable SHA — external workflow receives CLAWHUB_TOKEN)
+    uses: openclaw/clawhub/.github/workflows/skill-publish.yml@a230d962db64019462c2c8ee400755eb92169908
+    with:
+      root: skills
+      dry_run: ${{ github.event_name == 'pull_request' }}
+      owner: Krv-Labs
+      ref: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}

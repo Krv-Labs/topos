@@ -30,7 +30,7 @@ Quick reference
 
 .. code-block:: bash
 
-   topos evaluate src/ -r
+   topos evaluate . -r
    topos inspect module.py
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
@@ -85,7 +85,7 @@ primary command for **Code Quality Medals** across the three pillars (see
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --language rust
+   topos evaluate . -r --language rust
 
 Prints each file's path, resolved medal (e.g. ``Verdict: SIMPLE_SECURE``),
 per-generator scores, and raw metrics. When more than one file is evaluated,

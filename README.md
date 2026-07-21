@@ -31,12 +31,19 @@ v0.4.0 is a pure Rust binary — `topos evaluate`/`inspect`/`compare`/`coverage`
 
 ## Quick Start
 
+Install:
+
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
-topos evaluate src/ -r
 ```
 
-`evaluate -r` scores every file in `src/` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
+From your repo root (or `cd /path/to/your/repo` first):
+
+```bash
+topos evaluate . -r
+```
+
+`evaluate . -r` scores every file under the current directory and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
 Other install paths and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**. Note: `pip install topos-mcp` / `uvx topos-mcp` installs only the MCP server binary (as the `topos-mcp` command) — the `topos` CLI itself ships via the install script above, a GitHub release binary, or `cargo build --release -p topos-cli` from source.
 

@@ -68,6 +68,12 @@ Choose an install path
          topos --version
          topos --help
 
+      From your repo root (or ``cd /path/to/your/repo`` first):
+
+      .. code-block:: bash
+
+         topos evaluate . -r
+
       Smoke-test the MCP server:
 
       .. code-block:: bash
@@ -211,8 +217,8 @@ First useful commands
      - Command
    * - Inspect one file
      - ``topos inspect path/to/file.py``
-   * - Evaluate a directory
-     - ``topos evaluate src/ -r``
+   * - Evaluate your repo
+     - ``topos evaluate . -r`` (from the repo root)
    * - Measure test structure
      - ``topos coverage src/logic.py --tests tests/test_logic.py``
    * - Advisory refactor hotspots

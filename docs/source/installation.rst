@@ -83,7 +83,10 @@ Choose an install path
 
       .. code-block:: bash
 
-         brew install krv-labs/tap/topos
+         brew tap krv-labs/tap
+         brew install topos
+
+      Or in one command: ``brew install krv-labs/tap/topos``.
 
       Supported platforms are macOS arm64 and Linux amd64/arm64. Intel macOS
       is not supported. Upgrade through Homebrew:

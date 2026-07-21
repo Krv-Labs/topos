@@ -61,9 +61,14 @@ A `ClassificationResult` has:
 - `lattice_element` — the overall verdict (one of the 8 above).
 - `dimensions` — per-generator verdict keyed by `simple` / `composable` / `secure`.
 - `scores` — continuous [0, 100] score per generator. Threshold: 60%.
-- `coupling_available` — `false` when no `.gitnexus/` was found.
-  `COMPOSABLE` (and any verdict that includes it, including `IDEAL`) is
-  **unreachable** when this is false.
+- `coupling_available` — `false` when no usable `.gitnexus/` graph is
+  attached. `COMPOSABLE` (and any verdict that includes it, including
+  `IDEAL`) is **unreachable** when this is false. `topos_evaluate_file`/
+  `topos_evaluate_project` generate/refresh `.gitnexus` automatically
+  when it's missing or stale, so this is normally `true`; it stays
+  `false` only when GitNexus isn't installed or generation itself
+  failed — `warnings` explains which. Pass `no_composable: true` to skip
+  that detection/generation and force SIMPLE/SECURE-only scoring.
 
 ## Multi-file rollup
 

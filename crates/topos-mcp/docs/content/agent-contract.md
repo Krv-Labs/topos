@@ -42,7 +42,11 @@ Evaluation, project, and assessment results may include `agent_contract`:
 - `next_actions` — concise outcome-focused actions.
 - `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no
   graph) or `stale_gitnexus_dir` (graph predates the latest commit or a source
-  file was modified after generation). An `invalid_gitnexus_dir` code means
+  file was modified after generation). `topos_evaluate_file`/
+  `topos_evaluate_project` generate/refresh the graph automatically before
+  scoring, so these now only surface when that generation itself couldn't
+  happen — GitNexus not installed, or the `gitnexus analyze` run failed;
+  `warnings` carries the specific reason. An `invalid_gitnexus_dir` code means
   the supplied `gitnexus_dir` override is bad (outside the file root or
   nonexistent) — fix the path rather than generating.
 - `verification_gates` — checks required before accepting a patch.
@@ -70,10 +74,14 @@ which never affects medals. See `topos://docs/workflows` § Advisory refactoring
 
 ## Boundaries
 
-- Use `gitnexus_dir` to score COMPOSABLE. Without it, any verdict containing
-  COMPOSABLE, including `IDEAL`, is unreachable. Check graph state with
-  `topos_depgraph_status` and build/refresh it with `topos_generate_depgraph`
-  (side-effecting, approval-gated) rather than shelling out.
+- COMPOSABLE is scored automatically — `topos_evaluate_file`/
+  `topos_evaluate_project` detect and generate/refresh `.gitnexus` by
+  default (`gitnexus_dir` to point at a specific graph, `no_composable:
+  true` to skip detection/generation). If GitNexus isn't installed or
+  generation fails, any verdict containing COMPOSABLE, including `IDEAL`,
+  is unreachable — check `warnings` for why. `topos_depgraph_status` gives
+  a read-only diagnosis without triggering generation; force an explicit
+  refresh with `topos_generate_depgraph` rather than shelling out yourself.
 - Use `allow` only for intentional dangerous calls. Acknowledged risks stay
   disclosed and can cap the grade.
 - Use `verbose=true` only for deep inspection. Default outputs are designed to

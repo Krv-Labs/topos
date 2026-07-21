@@ -3,7 +3,7 @@
 Every metric key, the graph it lives on, and how it rolls into a generator
 of `H(G_qual) = { SIMPLE, COMPOSABLE, SECURE }`.
 
-**Calibration source of truth:** `topos/evaluation/policies/calibration.py`.
+**Calibration source of truth:** `crates/topos-core/src/evaluation/policies/calibration.rs`.
 Edit that file when tuning gates or normalization from experimental data.
 
 ## SIMPLE generator (← CFG + AST entropy)
@@ -26,11 +26,15 @@ of the raw gates above — not a single score floor.
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
 `mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`
-require a `ModuleDependencyGraph` parsed from `.gitnexus/` (only populated
-when `gitnexus_dir` is provided or auto-detected). `mdg.abstractness` is
-UAST-derived and needs no GitNexus directory — it is available whenever
-the language's UAST mapper classifies type declarations (Python, Rust,
-Go, TypeScript today; not JavaScript, which has no abstract-type concept).
+require a `ModuleDependencyGraph` parsed from `.gitnexus/`. `topos_evaluate_file`/
+`topos_evaluate_project` generate/refresh that graph automatically by
+default (missing or stale → run `gitnexus analyze`), so these populate
+without any extra call; pass `gitnexus_dir` to point at a specific graph,
+or `no_composable: true` to skip detection/generation entirely.
+`mdg.abstractness` is UAST-derived and needs no GitNexus directory — it is
+available whenever the language's UAST mapper classifies type
+declarations (Python, Rust, Go, TypeScript today; not JavaScript, which
+has no abstract-type concept).
 
 | Key | What it measures | Gate / good range |
 |---|---|---|

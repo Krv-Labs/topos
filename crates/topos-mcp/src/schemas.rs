@@ -230,9 +230,16 @@ pub struct EvaluateCodeInput {
 pub struct EvaluateFileInput {
     /// Source file path.
     pub filepath: String,
-    /// .gitnexus directory for COMPOSABLE scoring.
+    /// .gitnexus directory for COMPOSABLE scoring. When omitted, it is
+    /// auto-detected at `<file root>/.gitnexus`; if missing or stale, this
+    /// tool generates/refreshes it first (see `no_composable`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
+    /// exactly like a missing `.gitnexus` did before this tool started
+    /// generating it automatically.
+    #[serde(default)]
+    pub no_composable: bool,
     /// Optional generator ranking.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
@@ -267,12 +274,19 @@ pub struct EvaluateProjectInput {
     /// SIMPLE priority.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
-    /// Path to a `.gitnexus` dependency-graph directory, required for
-    /// COMPOSABLE scoring. When omitted, it is auto-detected from the
-    /// project root; if none is found, COMPOSABLE is reported as
-    /// unavailable rather than failing.
+    /// Path to a `.gitnexus` dependency-graph directory, for COMPOSABLE
+    /// scoring. When omitted, it is auto-detected from the project root;
+    /// if missing or stale, this tool generates/refreshes it first (see
+    /// `no_composable`). If generation isn't possible (GitNexus not
+    /// installed, generation failure), COMPOSABLE is reported as
+    /// unavailable rather than failing the whole evaluation.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
+    /// exactly like a missing `.gitnexus` did before this tool started
+    /// generating it automatically.
+    #[serde(default)]
+    pub no_composable: bool,
     /// Per-file rows to return per page (1–500, default 25).
     #[serde(default = "default_project_limit")]
     pub limit: usize,

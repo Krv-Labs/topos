@@ -14,17 +14,18 @@
 //!
 //! Unless `--no-composable` is passed, this command also attempts to
 //! attach a [`ModuleDependencyGraph`] (COMPOSABLE generator): it checks
-//! whether `<cwd>/.gitnexus` (or `--gitnexus-dir`) is present and fresh
-//! via the same staleness classifier the MCP server uses
-//! (`topos_mcp::evaluation::depgraph_status`), and if it's missing or
-//! stale, generates it by shelling out to `gitnexus analyze
-//! --skip-agents-md` (streaming its output live, since generation can
-//! take a while). Any failure here — GitNexus not installed, generation
-//! failing, a schema mismatch — degrades gracefully to SIMPLE/SECURE
-//! only with a one-line `stderr` notice; it never fails the whole
-//! evaluate run, matching how the MCP tools already treat COMPOSABLE as
-//! "not measured" rather than "failed" when coupling data is
-//! unavailable.
+//! whether `<cwd>/.gitnexus` (or `--gitnexus-dir`) is present and fresh,
+//! and if it's missing or stale, generates it by shelling out to
+//! `gitnexus analyze --skip-agents-md` (streaming its output live, since
+//! generation can take a while). That resolve-or-generate decision is
+//! shared with the MCP evaluate tools via
+//! `topos_mcp::evaluation::ensure_gitnexus_dir`, so the CLI and MCP
+//! server standardize on one policy. Any failure here — GitNexus not
+//! installed, generation failing, a schema mismatch — degrades
+//! gracefully to SIMPLE/SECURE only with a one-line `stderr` notice; it
+//! never fails the whole evaluate run, matching how the MCP tools treat
+//! COMPOSABLE as "not measured" rather than "failed" when coupling data
+//! is unavailable.
 //!
 //! [`ModuleDependencyGraph`]: topos_core::graphs::mdg::object::ModuleDependencyGraph
 //! [`ProgramDependenceGraph`]: topos_core::graphs::pdg::object::ProgramDependenceGraph
@@ -33,9 +34,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Args;
 use topos_core::adapters::discovery::collect_source_files;
-use topos_core::adapters::gitnexus::{
-    current_git_branch, generate_depgraph, gitnexus_available, resolve_lbug_store,
-};
+use topos_core::adapters::gitnexus::{current_git_branch, resolve_lbug_store};
 use topos_core::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_core::core::morphism::ProgramMorphism;
 use topos_core::evaluation::policies::base::Priority;
@@ -43,7 +42,7 @@ use topos_core::functors::probes::uast::abstractness::AbstractnessRepresentation
 use topos_core::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 use topos_core::graphs::base::Representation;
 use topos_core::graphs::mdg::object::ModuleDependencyGraph;
-use topos_mcp::evaluation::{depgraph_status, resolve_gitnexus_dir};
+use topos_mcp::evaluation::ensure_gitnexus_dir;
 
 #[derive(Args)]
 pub struct EvaluateArgs {
@@ -127,49 +126,28 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
 /// `ModuleDependencyGraph`, or return `None` (with an explanatory `stderr`
 /// notice) if that isn't possible. Never returns an `Err` — COMPOSABLE is
 /// optional and its absence must not fail the whole evaluate run.
+///
+/// The resolve-or-generate decision itself (present/missing/stale, GitNexus
+/// availability, generation) is shared with the MCP evaluate tools via
+/// `topos_mcp::evaluation::ensure_gitnexus_dir` — this function only adds
+/// the CLI-specific "load once, reuse across every file in this run" MDG
+/// parsing on top (unlike MCP's `load_dep_graph`, which caches per
+/// `target_file` — a fit for arbitrary single-file tool calls, but N cache
+/// misses across a directory walk of N files).
 fn resolve_composable_mdg(
     project_root: &Path,
     gitnexus_dir_override: Option<&str>,
 ) -> Option<ModuleDependencyGraph> {
-    let status = depgraph_status(
+    let outcome = ensure_gitnexus_dir(
         gitnexus_dir_override,
         project_root,
-        &project_root.to_string_lossy(),
+        /* skip = */ false,
+        /* capture = */ false,
     );
-
-    let gitnexus_dir = match status.state {
-        "present" => resolve_gitnexus_dir(gitnexus_dir_override, project_root)?,
-        "missing" | "stale" => {
-            if !gitnexus_available() {
-                eprintln!(
-                    "gitnexus not found on PATH — evaluating SIMPLE/SECURE only. \
-                     Install with `npm install -g gitnexus` to enable COMPOSABLE, \
-                     or pass --no-composable to silence this."
-                );
-                return None;
-            }
-            eprintln!("Generating dependency graph (gitnexus)...");
-            let result = generate_depgraph(project_root, /* capture = */ false, None);
-            if !result.ok {
-                eprintln!(
-                    "gitnexus: {} — evaluating SIMPLE/SECURE only.",
-                    result.message
-                );
-                return None;
-            }
-            resolve_gitnexus_dir(gitnexus_dir_override, project_root)?
-        }
-        _ => {
-            // schema_mismatch | invalid_dir | branch_not_indexed | load_error
-            eprintln!(
-                "gitnexus: {} — evaluating SIMPLE/SECURE only.",
-                status
-                    .detail
-                    .unwrap_or_else(|| format!("COMPOSABLE unavailable ({})", status.state))
-            );
-            return None;
-        }
-    };
+    if let Some(note) = &outcome.generation_note {
+        eprintln!("gitnexus: {note}");
+    }
+    let gitnexus_dir = outcome.gitnexus_dir?;
 
     let branch = current_git_branch(project_root);
     let resolved = resolve_lbug_store(&gitnexus_dir, branch.as_deref());

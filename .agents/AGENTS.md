@@ -6,7 +6,7 @@
 ## Project Architecture
 **Topos** evaluates code quality (Python, Rust, JavaScript, TypeScript, C++, Go) using category theory, mapping programs to an 8-element lattice ($\Omega$) of free Heyting algebra on 3 independent, pairwise incomparable generators:
 - **`SIMPLE`** (CFG/AST): cyclomatic complexity, nesting, entropy. Passing: $\ge 0.40$.
-- **`COMPOSABLE`** (MDG): coupling, instability, fan-in/out. Passing: $\ge 0.80$. Needs a GitNexus module dependency graph (`.gitnexus/`) — `topos evaluate` auto-detects/generates this by default (`--no-composable` to skip, `--gitnexus-dir` to override); the MCP evaluate tools only *read* an existing graph and need it built first via `topos_generate_depgraph`.
+- **`COMPOSABLE`** (MDG): coupling, instability, fan-in/out. Passing: $\ge 0.80$. Needs a GitNexus module dependency graph (`.gitnexus/`) — `topos evaluate` (CLI) and `topos_evaluate_file`/`topos_evaluate_project` (MCP) all auto-detect and generate/refresh it by default (CLI: `--no-composable`/`--gitnexus-dir`; MCP: `no_composable`/`gitnexus_dir` params). GitNexus missing or generation failing degrades to SIMPLE/SECURE only, never fails the evaluation.
 - **`SECURE`** (CPG): dangerous calls, taint flows. Zero-tolerance gates; passing requires a perfect score ($1.00$).
 - **Lattice ($\Omega$)**: `SLOP` ($\bot$) < single satisfied generators < dual combinations < `IDEAL` ($\top$). Pointwise meet ($\bigwedge$) for rollups.
 
@@ -59,4 +59,4 @@ commit permission. `SUSPICIOUS_NO_STRUCTURAL_CHANGE` blocks acceptance.
 ### Escape Hatches
 - **Score plateaus**: Split file. Extract high-complexity functions identified by `topos_inspect_code`.
 - **SIMPLE improves, COMPOSABLE regresses**: Abstraction is just relocation. Verify whole project rollup.
-- **COMPOSABLE unreachable**: check `topos_depgraph_status` and build/refresh with `topos_generate_depgraph` (MCP), or just run `topos evaluate` (CLI), which does this automatically.
+- **COMPOSABLE still unreachable after evaluating**: GitNexus isn't installed or generation failed — check the `warnings` field (or CLI `stderr`) for why, install GitNexus (`npm install -g gitnexus`) or fix the reported problem, then re-evaluate. `topos_depgraph_status` gives a read-only diagnosis without triggering generation.

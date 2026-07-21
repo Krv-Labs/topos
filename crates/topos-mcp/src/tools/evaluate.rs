@@ -12,8 +12,8 @@ use topos_core::evaluation::policies::base::Priority;
 
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
 use crate::evaluation::{
-    all_source_suffixes, classify_code_string, classify_file, detect_language, gitnexus_warnings,
-    resolve_gitnexus_dir,
+    all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
+    gitnexus_warnings,
 };
 use crate::formatting::{
     build_pillars, composable_contract_signals, error_md, render_evaluation_md,
@@ -101,126 +101,46 @@ impl ToposServer {
     }
 
     /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE lattice —
-    /// the only evaluate tool that can reach COMPOSABLE (read-only).
+    /// the only evaluate tool that can reach COMPOSABLE (side-effecting).
     ///
-    /// A ModuleDependencyGraph is attached when `gitnexus_dir` is given or
-    /// auto-detected at `<root>/.gitnexus`, enabling COMPOSABLE
-    /// (SIMPLE/SECURE always run); generate that graph first with
-    /// `topos_generate_depgraph`. `coupling_available` is false when no
-    /// graph is found, leaving any COMPOSABLE verdict unreachable.
+    /// Unless `no_composable` is set, this generates/refreshes `.gitnexus`
+    /// (given by `gitnexus_dir` or auto-detected at `<root>/.gitnexus`) when
+    /// it's missing or stale, then attaches the resulting
+    /// ModuleDependencyGraph — the same default behavior as the CLI's
+    /// `topos evaluate`. SIMPLE/SECURE always run. When GitNexus isn't
+    /// installed or generation fails, `coupling_available` is false and
+    /// `warnings` explains why; the rest of the evaluation still succeeds.
     #[tool(
         name = "topos_evaluate_file",
         annotations(
             title = "Topos Code Evaluation",
-            read_only_hint = true,
+            read_only_hint = false,
             destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
+            idempotent_hint = false,
+            open_world_hint = true
         )
     )]
-    pub fn topos_evaluate_file(
+    pub async fn topos_evaluate_file(
         &self,
         Parameters(params): Parameters<EvaluateFileInput>,
     ) -> CallToolResult {
-        let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-        let resolved = match resolve_within_root(&params.filepath) {
-            Ok(path) => path,
-            Err(err) => {
-                return err_eval(
-                    "Access denied / path error",
-                    Priority::Simple,
-                    priority_source,
-                    err,
-                )
-            }
-        };
-        if !resolved.is_file() {
-            return err_eval(
-                "Not a file",
+        // Generation can shell out to `gitnexus analyze` (bounded by
+        // TOPOS_DEPGRAPH_TIMEOUT, default 300s); offload so a slow/first-time
+        // run cannot stall the transport, matching topos_evaluate_project.
+        match tokio::task::spawn_blocking(move || evaluate_file_sync(params)).await {
+            Ok(tool_result) => tool_result,
+            Err(join_err) => err_eval(
+                "Evaluation failed",
                 Priority::Simple,
-                priority_source,
-                format!("Path is not a file: {}", resolved.display()),
-            );
+                PrioritySource::Default,
+                format!("file evaluation panicked: {join_err}"),
+            ),
         }
-
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
-            Err(err) => {
-                return err_eval(
-                    "Access denied / path error",
-                    Priority::Simple,
-                    priority_source,
-                    err,
-                )
-            }
-        };
-        let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
-
-        let (result, dep_graph, load_error) =
-            match classify_file(&resolved, priority, gitnexus_dir.as_deref()) {
-                Ok(triple) => triple,
-                Err(exc) => {
-                    return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
-                }
-            };
-
-        let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
-            Some(Err(exc)) => {
-                return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
-            }
-            Some(Ok(p)) => Some(p),
-            None => None,
-        };
-        let warnings = gitnexus_warnings(
-            params.gitnexus_dir.as_deref(),
-            &project_root,
-            gitnexus_dir.as_deref(),
-            dep_graph.is_some(),
-            load_error.as_deref(),
-        );
-        let overlay = overlay_for_file(&resolved, &result, &params.allow);
-        let locations = match read_resolved_utf8(&resolved) {
-            Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
-            Err(_) => HashMap::new(),
-        };
-
-        // Targets are computed before the result model so the agent
-        // contract can route them natively.
-        let targets: Option<Vec<RefactorTarget>> = if params.refactor_targets > 0 {
-            Some(build_refactor_targets(
-                &resolved.to_string_lossy(),
-                &result,
-                overlay
-                    .as_ref()
-                    .map(|o| o.active_findings.as_slice())
-                    .unwrap_or(&[]),
-                &locations,
-                params.preferences.as_ref().map(|p| p.ranking.as_slice()),
-                params.refactor_targets.min(25),
-            ))
-        } else {
-            None
-        };
-
-        let mut opts = EvalResultOptions::new();
-        opts.preferences = prefs.as_ref();
-        opts.priority_source = priority_source;
-        opts.warnings = warnings;
-        opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
-        overlay_opts(overlay.as_ref(), &mut opts);
-        opts.verbose = params.verbose;
-        opts.metric_locations = locations;
-        opts.offer_refactor_targets = targets.is_none();
-        opts.refactor_targets = targets;
-        opts.include_security_findings = params.include_security_findings;
-        let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
-        let md = render_evaluation_md(&model, None, params.verbose);
-        to_tool_result(&model, md)
     }
 
     /// Recursively score every supported source file in a directory on the
     /// SIMPLE / COMPOSABLE / SECURE lattice, with a project rollup
-    /// (read-only).
+    /// (side-effecting).
     ///
     /// Autodetects all supported languages (Python, Rust, JavaScript,
     /// TypeScript, C++, Go) in one walk — no language argument — and skips
@@ -228,14 +148,19 @@ impl ToposServer {
     /// dimension (weakest file floors it). Returns a paginated per-file
     /// table (worst first) plus per-language rollups; page with `limit` /
     /// `offset`.
+    ///
+    /// Unless `no_composable` is set, generates/refreshes `.gitnexus` when
+    /// missing or stale before scoring, same as `topos_evaluate_file` and
+    /// the CLI's `topos evaluate` — `coupling_available`/`warnings` explain
+    /// it when that isn't possible, without failing the evaluation.
     #[tool(
         name = "topos_evaluate_project",
         annotations(
             title = "Topos Code Evaluation",
-            read_only_hint = true,
+            read_only_hint = false,
             destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
+            idempotent_hint = false,
+            open_world_hint = true
         )
     )]
     pub async fn topos_evaluate_project(
@@ -260,6 +185,112 @@ impl ToposServer {
     }
 }
 
+fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
+    let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+    let resolved = match resolve_within_root(&params.filepath) {
+        Ok(path) => path,
+        Err(err) => {
+            return err_eval(
+                "Access denied / path error",
+                Priority::Simple,
+                priority_source,
+                err,
+            )
+        }
+    };
+    if !resolved.is_file() {
+        return err_eval(
+            "Not a file",
+            Priority::Simple,
+            priority_source,
+            format!("Path is not a file: {}", resolved.display()),
+        );
+    }
+
+    let project_root = match resolve_file_root() {
+        Ok(root) => root,
+        Err(err) => {
+            return err_eval(
+                "Access denied / path error",
+                Priority::Simple,
+                priority_source,
+                err,
+            )
+        }
+    };
+    let gitnexus_outcome = ensure_gitnexus_dir(
+        params.gitnexus_dir.as_deref(),
+        &project_root,
+        params.no_composable,
+        /* capture = */ true,
+    );
+    let gitnexus_dir = gitnexus_outcome.gitnexus_dir;
+
+    let (result, dep_graph, load_error) =
+        match classify_file(&resolved, priority, gitnexus_dir.as_deref()) {
+            Ok(triple) => triple,
+            Err(exc) => {
+                return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
+            }
+        };
+
+    let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
+        Some(Err(exc)) => {
+            return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
+        }
+        Some(Ok(p)) => Some(p),
+        None => None,
+    };
+    let mut warnings = gitnexus_warnings(
+        params.gitnexus_dir.as_deref(),
+        &project_root,
+        gitnexus_dir.as_deref(),
+        dep_graph.is_some(),
+        load_error.as_deref(),
+    );
+    if let Some(note) = gitnexus_outcome.generation_note {
+        warnings.insert(0, note);
+    }
+    let overlay = overlay_for_file(&resolved, &result, &params.allow);
+    let locations = match read_resolved_utf8(&resolved) {
+        Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
+        Err(_) => HashMap::new(),
+    };
+
+    // Targets are computed before the result model so the agent
+    // contract can route them natively.
+    let targets: Option<Vec<RefactorTarget>> = if params.refactor_targets > 0 {
+        Some(build_refactor_targets(
+            &resolved.to_string_lossy(),
+            &result,
+            overlay
+                .as_ref()
+                .map(|o| o.active_findings.as_slice())
+                .unwrap_or(&[]),
+            &locations,
+            params.preferences.as_ref().map(|p| p.ranking.as_slice()),
+            params.refactor_targets.min(25),
+        ))
+    } else {
+        None
+    };
+
+    let mut opts = EvalResultOptions::new();
+    opts.preferences = prefs.as_ref();
+    opts.priority_source = priority_source;
+    opts.warnings = warnings;
+    opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
+    overlay_opts(overlay.as_ref(), &mut opts);
+    opts.verbose = params.verbose;
+    opts.metric_locations = locations;
+    opts.offer_refactor_targets = targets.is_none();
+    opts.refactor_targets = targets;
+    opts.include_security_findings = params.include_security_findings;
+    let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    let md = render_evaluation_md(&model, None, params.verbose);
+    to_tool_result(&model, md)
+}
+
 fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
 
@@ -280,7 +311,13 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
             return to_tool_result(&model, md);
         }
     };
-    let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+    let gitnexus_outcome = ensure_gitnexus_dir(
+        params.gitnexus_dir.as_deref(),
+        &project_root,
+        params.no_composable,
+        /* capture = */ true,
+    );
+    let gitnexus_dir = gitnexus_outcome.gitnexus_dir;
     let coupling_available = gitnexus_dir.is_some();
 
     let mut per_file_results: Vec<ClassificationResult> = Vec::new();
@@ -348,6 +385,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         coupling_available,
         project_root: &project_root,
         gitnexus_dir: gitnexus_dir.as_deref(),
+        generation_note: gitnexus_outcome.generation_note,
     });
     let md = render_project_md(&model);
     to_tool_result(&model, md)
@@ -567,6 +605,7 @@ struct BuildProjectArgs<'a> {
     coupling_available: bool,
     project_root: &'a Path,
     gitnexus_dir: Option<&'a Path>,
+    generation_note: Option<String>,
 }
 
 fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
@@ -600,13 +639,16 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     let has_more = args.params.offset + page.len() < entries.len();
     let next_offset = has_more.then_some(args.params.offset + page.len());
 
-    let project_warnings = gitnexus_warnings(
+    let mut project_warnings = gitnexus_warnings(
         args.params.gitnexus_dir.as_deref(),
         args.project_root,
         args.gitnexus_dir,
         args.any_dep_graph_loaded,
         args.last_load_error.as_deref(),
     );
+    if let Some(note) = args.generation_note {
+        project_warnings.insert(0, note);
+    }
     let contract = project_contract(
         overall,
         &worst_files,

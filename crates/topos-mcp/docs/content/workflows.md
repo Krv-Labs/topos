@@ -25,21 +25,29 @@ only when they need detail beyond the compact outcome contract.
 ### 1. Measure
 
 - Single file: `topos_evaluate_file` with
-  `{"params": {"filepath": "...", "gitnexus_dir": "..."}}` — `gitnexus_dir`
-  is required for the COMPOSABLE generator.  Without it, any verdict
-  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable.  When missing,
-  the result includes both top-level `warnings` and a COMPOSABLE-pillar
-  `mdg.unavailable` interpretation.
+  `{"params": {"filepath": "..."}}` — by default this also detects and
+  generates/refreshes `.gitnexus` (missing or stale → runs `gitnexus
+  analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
+  Pass `gitnexus_dir` to point at a specific graph, or `no_composable:
+  true` to skip detection/generation and score SIMPLE/SECURE only. If
+  GitNexus isn't installed or generation fails, `coupling_available` is
+  `false` and any verdict containing COMPOSABLE (including 🥇 **GOLD**) is
+  unreachable — the result includes both top-level `warnings` and a
+  COMPOSABLE-pillar `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
-  `{"params": {"path": "...", "gitnexus_dir": "..."}}` — rollup +
-  worst-N file list.  Treat `aggregate_floor_verdict` as the codebase floor;
-  use `worst_files` and `guidance` to pick the next action.
+  `{"params": {"path": "..."}}` — same default generation behavior, plus
+  a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the
+  codebase floor; use `worst_files` and `guidance` to pick the next action.
 
 ### 2. Plan
 
 Read the `guidance` field of the evaluation result. It's priority-aware and
-tells you which dimension to work on. If `guidance` says "provide
-gitnexus_dir" you must run `topos depgraph generate` first.
+tells you which dimension to work on. If COMPOSABLE is still unreachable
+after evaluating (see `warnings`), GitNexus is either not installed or its
+generation failed — install it (`npm install -g gitnexus`) or fix the
+reported problem, then re-evaluate. `topos_depgraph_status` gives a
+read-only diagnosis without triggering generation; `topos_generate_depgraph`
+lets you force a refresh explicitly.
 
 For deep analysis of a specific file, call `topos_inspect_code` with either
 `{"params": {"filepath": "..."}}` or `{"params": {"code": "..."}}` — it

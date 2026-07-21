@@ -1,5 +1,14 @@
 <!-- OPENWIKI:START -->
 
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
+
+<!-- SKILLS:START (repo-owned; OpenWiki must not edit this block) -->
 ## Agent Skills
 
 Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — published to ClawHub and installable via Hermes taps.
@@ -13,15 +22,7 @@ Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — publishe
 Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`).
 
 **ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`) and `v*` tags. Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
-
-
-## OpenWiki
-
-This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
-
-The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
-
-<!-- OPENWIKI:END -->
+<!-- SKILLS:END -->
 
 <!-- OPENWIKI-POLICY:START -->
 ## OpenWiki CI (repo-owned policy)

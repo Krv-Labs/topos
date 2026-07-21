@@ -23,7 +23,6 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-
 **Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
 architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
 establishing a precise, medal-scored (SLOP → GOLD) feedback loop to autonomously write clean, highly composable code.

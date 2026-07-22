@@ -224,6 +224,28 @@ fn has_suffix(path: &Path, suffixes: &[&str]) -> bool {
     }
 }
 
+/// Split one directory's already-sorted children into matching files and
+/// subdirectories to recurse into, applying the skip/ignore filters once.
+fn scan_dir_children(
+    entries: Vec<PathBuf>,
+    suffixes: &[&str],
+    ignored: &impl Fn(&Path) -> bool,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut files = Vec::new();
+    let mut subdirs = Vec::new();
+    for entry in entries {
+        if entry.is_dir() {
+            if should_skip_dir(&entry) || ignored(&entry) {
+                continue;
+            }
+            subdirs.push(entry);
+        } else if entry.is_file() && has_suffix(&entry, suffixes) && !ignored(&entry) {
+            files.push(entry);
+        }
+    }
+    (files, subdirs)
+}
+
 /// Collect source files under `root`, pruning venvs and ignored directories.
 ///
 /// With `include_dirs`, also collects each visited (non-skipped) directory,
@@ -260,17 +282,8 @@ pub fn iter_source_files(
         let mut entries: Vec<PathBuf> = read_dir.filter_map(|e| e.ok().map(|e| e.path())).collect();
         entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
-        let mut subdirs = Vec::new();
-        for entry in entries {
-            if entry.is_dir() {
-                if should_skip_dir(&entry) || ignored(&entry) {
-                    continue;
-                }
-                subdirs.push(entry);
-            } else if entry.is_file() && has_suffix(&entry, suffixes) && !ignored(&entry) {
-                out.push(entry);
-            }
-        }
+        let (files, subdirs) = scan_dir_children(entries, suffixes, &ignored);
+        out.extend(files);
         if include_dirs {
             out.push(current);
         }

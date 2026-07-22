@@ -11,9 +11,9 @@
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/pyversions/topos-mcp.svg" alt="Python versions"></a>
   <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
-  <a href="https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos"><img src="https://img.shields.io/badge/MCP-Registry-555" alt="MCP Registry"></a>
+  <a href="https://registry.modelcontextprotocol.io/?q=topos"><img src="https://img.shields.io/badge/MCP-Registry-555" alt="MCP Registry"></a>
   <a href="https://glama.ai/mcp/servers/Krv-Labs/topos"><img src="https://glama.ai/mcp/servers/Krv-Labs/topos/badges/score.svg" alt="topos MCP server"></a>
-  <a href="https://clawhub.ai/krv-labs/skills/topos"><img src="https://img.shields.io/badge/ClawHub-topos-111" alt="ClawHub"></a>
+  <a href="https://clawhub.ai/krv-labs/skills/topos"><img src="https://img.shields.io/badge/%F0%9F%A6%9E_ClawHub-topos-F97316" alt="ClawHub"></a>
 </p>
 
 <p align="center">
@@ -103,7 +103,7 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 claude mcp add --transport stdio topos -- topos mcp
 ```
 
-Topos is published on the [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos) (`io.github.Krv-Labs/topos`) and listed on [Glama](https://glama.ai/mcp/servers/Krv-Labs/topos).
+Topos is published on the [official MCP Registry](https://registry.modelcontextprotocol.io/?q=topos) (`io.github.Krv-Labs/topos`) and listed on [Glama](https://glama.ai/mcp/servers/Krv-Labs/topos).
 
 Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
 

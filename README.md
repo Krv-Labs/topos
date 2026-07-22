@@ -11,11 +11,13 @@
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/pyversions/topos-mcp.svg" alt="Python versions"></a>
   <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
+  <a href="https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos"><img src="https://img.shields.io/badge/MCP-Registry-555" alt="MCP Registry"></a>
   <a href="https://glama.ai/mcp/servers/Krv-Labs/topos"><img src="https://glama.ai/mcp/servers/Krv-Labs/topos/badges/score.svg" alt="topos MCP server"></a>
+  <a href="https://clawhub.ai/krv-labs/skills/topos"><img src="https://img.shields.io/badge/ClawHub-topos-111" alt="ClawHub"></a>
 </p>
 
 <p align="center">
-  <b>Structural code quality metrics for agent-written programs.</b><br>
+  <b>Agent harness for tree-sitter and graph-based coding tools — so agents write clean, composable, secure code.</b><br>
   <a href="https://docs.krv.ai/topos/">Docs</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#mcp-server-for-agents">MCP Server</a> ·
@@ -23,16 +25,21 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-**Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
-architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
-establishing a precise, medal-scored (SLOP → GOLD) feedback loop to autonomously write clean, highly composable code.
+Topos is a category theory–inspired framework that sits on top of tree-sitter, [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound) — one scored target for structural code quality instead of disconnected tools. Passing unit tests proves your code works; **Topos** proves it's built to last, scoring complexity, coupling, and data-flow risk so agents have something concrete to optimize toward, instead of a vague "clean it up."
 
 ---
 
 ## Quick Start
 
+Install:
+
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+```
+
+From your repo root (or `cd /path/to/your/repo` first):
+
+```bash
 topos evaluate src/ -r
 ```
 
@@ -50,15 +57,23 @@ before `brew install topos`.
 
 Other install paths (PyPI, source checkout) and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**.
 
+## Built on
+
+Topos doesn't reinvent graph analysis for code — it orchestrates specialist tools most agents would otherwise have to run separately, and scores their combined output as one medal:
+
+| Tool | Integration | What it gives Topos |
+| :--- | :--- | :--- |
+| [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | wired in | ASTs / CFGs that power **SIMPLE** and structural coverage |
+| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | wired in (subprocess) | the module dependency graph that **COMPOSABLE** scores |
+| [Sighthound](https://github.com/Corgea/Sighthound) | optional (`PATH`) | supplementary SAST detail alongside the **SECURE** verdict |
+
 ## What you get
 
-Topos checks three independent pillars and awards a **Code Quality Medal** for how many pass:
+Three independent pillars roll up into one **Code Quality Medal**:
 
 - **SIMPLE** — avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity)
-- **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
-- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis; optionally powered by [Sighthound](https://github.com/Corgea/Sighthound))
-
-Topos is the **operator** over those graphs — not another one-off [tree-sitter](https://tree-sitter.github.io/tree-sitter/) script. Specialist engines (GitNexus for the module graph, Sighthound for SAST) feed one medal lattice agents can optimize toward.
+- **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via GitNexus)
+- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis)
 
 | Medal         | Criteria                                    |
 | :------------ | :------------------------------------------ |
@@ -87,10 +102,12 @@ Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — 
 claude mcp add --transport stdio topos -- topos mcp
 ```
 
+Topos is published on the [official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos) (`io.github.Krv-Labs/topos`) and listed on [Glama](https://glama.ai/mcp/servers/Krv-Labs/topos).
+
 Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
 
 > [!TIP]
-> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
+> **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)  
 > **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
 
 ---

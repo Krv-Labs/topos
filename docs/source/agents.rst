@@ -13,6 +13,18 @@ For Agents
    Topos lets you set the quality target while the agent handles the loop:
    measure, change, verify, stop when the target or budget is reached.
 
+Find the MCP server
+-------------------
+
+Topos is published as ``io.github.Krv-Labs/topos`` on the official MCP Registry
+and mirrored on Glama. Use either listing when discovering servers from a host
+UI, or follow the setup tabs below to register it directly.
+
+- `Official MCP Registry <https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.Krv-Labs/topos>`_
+- `Glama MCP server page <https://glama.ai/mcp/servers/Krv-Labs/topos>`_
+- `ClawHub skill <https://clawhub.ai/krv-labs/skills/topos>`_ (OpenClaw):
+  ``openclaw skills install @Krv-Labs/topos``
+
 MCP Setup
 ---------
 

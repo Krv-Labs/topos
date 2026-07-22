@@ -43,7 +43,7 @@ Topos
       :link: agents
       :link-type: doc
 
-      How AI coding agents use Topos to iteratively optimize code and hit quality targets.
+      MCP setup, the official registry listing, and how agents iterate toward quality targets.
 
    .. grid-item-card:: CLI Reference
       :link: cli
@@ -64,7 +64,7 @@ Topos
       A breakdown of the structural and coupling metrics used to evaluate code quality.
 
 .. hint::
-   **The scary maths are optional.** Topos is grounded in some very abstract fields (category & topos theory). Don't be alarmed! It's not required to understand (or appreciate) the maths to evaluate code quality with Topos. We find the formalism elegant, but know this isn't everyone's cup of tea. If you're curious about what we're building under the hood, check out :doc:`concepts`.
+   **Built on category theory.** Topos models code quality as a structural property of programs using topos theory — the formalism is precise by design, not decoration. You don't need the math to use Topos day to day; see :doc:`concepts` for the foundations.
 
 Beyond Correctness
 -------------------

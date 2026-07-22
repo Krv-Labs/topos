@@ -15,12 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tree-sitter is the sole AST engine**: the AST dispatch layer commits fully to tree-sitter; no alternative parser backends are carried forward.
 - **SECURE scoring stays CPG-native; Sighthound is advisory-only** — this supersedes the Python `topos/utils/sighthound.py` integration merged separately to `main` (issues #130/#134), which let Sighthound's counts *replace* the CPG probes for the SECURE gate itself when the CLI was on `PATH`. In this Rust port, `cpg.dangerous_calls`/`cpg.taint_flows` (the SECURE gate's inputs) always come from the native CPG probes; the embedded Sighthound engine only supplies supplementary, per-finding `security_findings` detail. This is an intentional behavior change, not an oversight — see `docs/decisions/refactor-suite.md` and the SECURE section of `README.md`.
 
+## [0.3.12] - 2026-07-20
+
 ### Added
 
 - **Sighthound SAST engine embedded directly**: the [Corgea/Sighthound](https://github.com/Corgea/Sighthound) pattern-matching + taint-flow scanner is now a compiled-in library dependency of `topos-mcp` (not an external CLI discovered on `$PATH`). SECURE findings for Python/JavaScript/TypeScript/Go come from Sighthound's embedded rulesets in-process; Rust/C++ fall back to the local CPG probes. Set `TOPOS_DISABLE_SIGHTHOUND=1` to force the CPG-probe path. Finding→callee/sink mapping and allowlist matching incorporate the same consistency fix `main` shipped in Python (#168/#174): taint findings resolve their actionable sink via `sink_info.sink_type` before falling back to the containing function name, and allowlist matching is resolved per-finding rather than through a pre-filtered registry substitution.
 - **`topos mcp` subcommand**: the `topos` CLI binary now launches the in-process Rust MCP server, so the single `topos` binary is both the CLI and the MCP server (the VS Code extension invokes `topos mcp`). The standalone `topos-mcp` binary remains the PyPI-wheel entry point.
 - **Graphify knowledge-graph integration (issue #150, Phase 1)**: a subprocess adapter, a from-scratch `graph.json` parser, and an orphan/fragile-edge detection probe, wired into `topos_refactor(target="graphify")`, a new `topos_generate_graphify_graph` MCP tool, and a new `topos graphify generate|orphans` CLI subcommand (the first CLI entry point for the refactor-suite family). Purely advisory — never feeds SIMPLE/COMPOSABLE/SECURE.
 - **COMPOSABLE is scored by default, everywhere** — `topos evaluate` (CLI) and `topos_evaluate_file`/`topos_evaluate_project` (MCP) now all detect whether `gitnexus` is on `$PATH` and whether `.gitnexus` is present and fresh, regenerating it via `gitnexus analyze --skip-agents-md` when missing or stale, then attaching the resulting MDG so COMPOSABLE scores alongside SIMPLE/SECURE with no extra step. The resolve-or-generate decision is one shared function (`topos_mcp::evaluation::ensure_gitnexus_dir`) so the CLI and MCP server can't drift apart on this policy. Any failure in that chain — GitNexus not installed, generation failing, a schema mismatch — degrades gracefully (SIMPLE/SECURE-only, with an explanatory notice) rather than failing the evaluation. The MCP evaluate tools move from `read_only_hint`/`open_world_hint: false` to `false`/`true` (matching `topos_generate_depgraph`'s existing annotations) since they can now write `.gitnexus/` and shell out; `topos_evaluate_file` is now `async` and offloads onto a blocking thread (like `topos_evaluate_project` already did) so a slow first-time generation can't stall the transport. New flags/params: CLI `--no-composable` / `--gitnexus-dir <dir>`; MCP `no_composable` on both evaluate tools.
+- **OpenWiki engineering wiki:** Regenerated repository documentation under `openwiki/` (architecture, workflows, domain concepts, operations, integrations) with CI refresh on merges to `main`. ([#169](https://github.com/Krv-Labs/topos/pull/169))
+- **OpenClaw / Hermes agent skill:** Canonical skill at `skills/topos/SKILL.md`, ClawHub publish workflow, and `scripts/check_skill.py` version sync. ([#185](https://github.com/Krv-Labs/topos/pull/185))
+
+### Changed
+
+- **VS Code extension package manager:** Migrated `extensions/vscode` from npm to pnpm (`packageManager: pnpm@11.8.0`), updated CI/release workflows to `pnpm/action-setup` with frozen lockfile, and publish with `vsce --no-dependencies`. GitNexus install hints now prefer `pnpm add -g` with npm fallback. ([#175](https://github.com/Krv-Labs/topos/pull/175), closes [#71](https://github.com/Krv-Labs/topos/issues/71))
 
 ### Removed
 
@@ -44,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gates fail closed on `NaN`.** A `NaN` metric compared false against both bounds and silently `Pass`ed every gate, including the zero-tolerance SECURE gates; it is now an out-of-band failure.
 - **`taint_flow_paths` is deterministic.** Enclosing-statement resolution broke equal-width ties by `HashMap` iteration order, so the taint count could vary across runs; ties now break by `(width, start_byte, id)`.
 - **Version is 0.4.0** across `Cargo.toml`, `.mcp/server.json`, and the VS Code extension, so the release publishes as `topos-mcp 0.4.0` instead of colliding with the already-published `0.3.11` on PyPI.
+- **VS Code extension failed binary downloads:** Deferred creation of the download destination stream until the HTTP response is confirmed as 200, preventing redirects and non-200 responses from leaving an empty file on disk. (Closes [#173](https://github.com/Krv-Labs/topos/issues/173), [#172](https://github.com/Krv-Labs/topos/pull/172))
 ## [0.3.11] - 2026-07-13
 
 ### Changed

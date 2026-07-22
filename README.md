@@ -112,6 +112,10 @@ claude mcp add --transport stdio topos -- topos mcp
 
 Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
 
+> [!TIP]
+> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
+> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+
 ---
 
 ## How it works

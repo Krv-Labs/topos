@@ -8,6 +8,22 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
 
 <!-- OPENWIKI:END -->
 
+<!-- SKILLS:START (repo-owned; OpenWiki must not edit this block) -->
+## Agent Skills
+
+Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — published to ClawHub and installable via Hermes taps.
+
+| Runtime | Install |
+| --- | --- |
+| OpenClaw / ClawHub | `openclaw skills install @Krv-Labs/topos` |
+| Hermes | `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos` |
+| Local (dev) | `openclaw skills install ./skills/topos` |
+
+Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`).
+
+**ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`) and `v*` tags. Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
+<!-- SKILLS:END -->
+
 <!-- OPENWIKI-POLICY:START -->
 ## OpenWiki CI (repo-owned policy)
 

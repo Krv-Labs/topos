@@ -23,6 +23,9 @@ jobs:
       - name: Check versions (Cargo.toml is source of truth)
         run: python3 scripts/check_versions.py
 
+      - name: Check agent skills
+        run: python3 scripts/check_skill.py
+
       - name: Format check
         run: cargo fmt --all --check
 

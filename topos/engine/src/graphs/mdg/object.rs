@@ -34,17 +34,14 @@
 //! belongs in this representation module. [`MdgError::LadybugBinaryUnsupported`]
 //! surfaces this clearly rather than silently returning an empty graph.
 
-use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
-
-use serde_json::Value;
-
-use super::models::{parse_node, parse_relationship, GraphNode, GraphRelationship};
+use super::models::{GraphNode, GraphRelationship};
 use crate::functors::probes::mdg::coupling::{
     calculate_coupling, calculate_dependency_depth, calculate_instability_from_result,
 };
 use crate::functors::probes::mdg::fan::calculate_fan_in_out;
 use crate::graphs::base::Representation;
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub enum MdgError {
@@ -107,89 +104,6 @@ impl ModuleDependencyGraph {
             relationships: HashMap::new(),
             outgoing: HashMap::new(),
             incoming: HashMap::new(),
-        }
-    }
-
-    // --- Construction ------------------------------------------------
-
-    /// Build a `ModuleDependencyGraph` from a `.gitnexus/` directory.
-    pub fn from_gitnexus_dir(
-        gitnexus_dir: impl AsRef<Path>,
-        target_file: impl Into<String>,
-    ) -> Result<Self, MdgError> {
-        let lbug_path = gitnexus_dir.as_ref().join("lbug");
-        if lbug_path.is_file() {
-            return Err(MdgError::LadybugBinaryUnsupported(lbug_path));
-        }
-        if lbug_path.is_dir() {
-            return Self::from_json_dir(&lbug_path, target_file);
-        }
-        Err(MdgError::NotFound(lbug_path))
-    }
-
-    /// Load from the legacy JSON directory format produced by GitNexus < 1.5.
-    pub fn from_json_dir(
-        lbug_dir: &Path,
-        target_file: impl Into<String>,
-    ) -> Result<Self, MdgError> {
-        let mut graph = ModuleDependencyGraph::new(target_file);
-        for entry in std::fs::read_dir(lbug_dir).map_err(MdgError::Io)? {
-            let path = entry.map_err(MdgError::Io)?.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).map_err(MdgError::Io)?;
-            let data: Value = serde_json::from_str(&text).map_err(MdgError::Json)?;
-            graph.ingest_json_document(&data);
-        }
-        Ok(graph)
-    }
-
-    fn ingest_json_document(&mut self, data: &Value) {
-        match data {
-            Value::Array(items) => self.ingest_array_document(items),
-            Value::Object(_) => self.ingest_object_document(data),
-            _ => {}
-        }
-    }
-
-    /// Ingest the flat-array document shape: a mixed list of node and
-    /// relationship records, distinguished by their own fields.
-    fn ingest_array_document(&mut self, items: &[Value]) {
-        for item in items {
-            if item.get("label").is_some() && item.get("id").is_some() {
-                if let Some(node) = parse_node(item) {
-                    self.add_node(node);
-                }
-            } else if item.get("type").is_some() && item.get("sourceId").is_some() {
-                if let Some(rel) = parse_relationship(item) {
-                    self.add_relationship(rel);
-                }
-            }
-        }
-    }
-
-    /// Ingest the `{nodes: [...], relationships: [...]}` document shape.
-    fn ingest_object_document(&mut self, data: &Value) {
-        for node in data
-            .get("nodes")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            if let Some(node) = parse_node(node) {
-                self.add_node(node);
-            }
-        }
-        for rel in data
-            .get("relationships")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            if let Some(rel) = parse_relationship(rel) {
-                self.add_relationship(rel);
-            }
         }
     }
 
@@ -335,6 +249,7 @@ impl Representation for ModuleDependencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     fn node(id: &str, label: &str, file_path: Option<&str>) -> GraphNode {
         let mut properties = HashMap::new();
@@ -385,18 +300,6 @@ mod tests {
             symbols,
             vec!["a".to_string(), "b".to_string(), "c".to_string()]
         );
-    }
-
-    #[test]
-    fn from_gitnexus_dir_reports_ladybug_binary_as_unsupported() {
-        let dir = std::env::temp_dir().join(format!("topos_mdg_test_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("lbug"), b"binary-store-placeholder").unwrap();
-
-        let result = ModuleDependencyGraph::from_gitnexus_dir(&dir, "x");
-        assert!(matches!(result, Err(MdgError::LadybugBinaryUnsupported(_))));
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

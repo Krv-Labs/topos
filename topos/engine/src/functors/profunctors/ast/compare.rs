@@ -155,43 +155,7 @@ pub(crate) fn compute_sequence_distance(
         }
     }
 
-    let mut insertions = 0;
-    let mut deletions = 0;
-    let mut substitutions = 0;
-
-    let mut i = m;
-    let mut j = n;
-    while i > 0 || j > 0 {
-        match classify_edit_step(&dp, source, target, i, j) {
-            EditStep::Match => {
-                i -= 1;
-                j -= 1;
-            }
-            EditStep::Substitute => {
-                substitutions += 1;
-                i -= 1;
-                j -= 1;
-            }
-            EditStep::Insert => {
-                insertions += 1;
-                j -= 1;
-            }
-            EditStep::Delete => {
-                deletions += 1;
-                i -= 1;
-            }
-            EditStep::Unreachable => {
-                // Should not happen with Wagner-Fischer.
-                i = i.saturating_sub(1);
-                j = j.saturating_sub(1);
-            }
-        }
-    }
-
-    let mut operations = HashMap::new();
-    operations.insert("insertions".to_string(), insertions);
-    operations.insert("deletions".to_string(), deletions);
-    operations.insert("substitutions".to_string(), substitutions);
+    let operations = count_edit_operations(&dp, source, target, m, n);
 
     (dp[m][n], operations)
 }
@@ -225,6 +189,54 @@ fn classify_edit_step(
     } else {
         EditStep::Unreachable
     }
+}
+
+/// Backtrace the Wagner-Fischer DP table and tally edit operations.
+fn count_edit_operations(
+    dp: &[Vec<usize>],
+    source: &[String],
+    target: &[String],
+    m: usize,
+    n: usize,
+) -> HashMap<String, usize> {
+    let mut insertions = 0;
+    let mut deletions = 0;
+    let mut substitutions = 0;
+
+    let mut i = m;
+    let mut j = n;
+    while i > 0 || j > 0 {
+        match classify_edit_step(dp, source, target, i, j) {
+            EditStep::Match => {
+                i -= 1;
+                j -= 1;
+            }
+            EditStep::Substitute => {
+                substitutions += 1;
+                i -= 1;
+                j -= 1;
+            }
+            EditStep::Insert => {
+                insertions += 1;
+                j -= 1;
+            }
+            EditStep::Delete => {
+                deletions += 1;
+                i -= 1;
+            }
+            EditStep::Unreachable => {
+                // Should not happen with Wagner-Fischer.
+                i = i.saturating_sub(1);
+                j = j.saturating_sub(1);
+            }
+        }
+    }
+
+    let mut operations = HashMap::new();
+    operations.insert("insertions".to_string(), insertions);
+    operations.insert("deletions".to_string(), deletions);
+    operations.insert("substitutions".to_string(), substitutions);
+    operations
 }
 
 /// Compute structural similarity between two programs.

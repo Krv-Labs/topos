@@ -73,7 +73,9 @@ pub struct CfgHomologyResult {
 }
 
 /// Extract a fundamental cycle basis via spanning tree + back-edge closure.
-pub fn compute_cycle_basis(cfg: &ControlFlowGraph) -> CycleBasisResult {
+fn build_undirected_graph(
+    cfg: &ControlFlowGraph,
+) -> (UnGraph<usize, CFGEdge>, HashMap<usize, NodeIndex>) {
     let mut graph = UnGraph::<usize, CFGEdge>::default();
     let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
     for &id in cfg.blocks.keys() {
@@ -95,32 +97,24 @@ pub fn compute_cycle_basis(cfg: &ControlFlowGraph) -> CycleBasisResult {
             graph.add_edge(s, t, *edge);
         }
     }
+    (graph, indices)
+}
 
-    // BFS spanning forest, tracked by edge identity (not node-pair identity):
-    // parent pointers + depth per node, and the set of `EdgeIndex`es actually
-    // used to discover a node ("tree edges"). Every edge not in that set is a
-    // genuine back edge, even if it connects a pair of nodes some other edge
-    // also connects.
+type SpanningForest = (
+    HashMap<NodeIndex, NodeIndex>,
+    HashMap<NodeIndex, CFGEdge>,
+    HashMap<NodeIndex, usize>,
+    HashSet<EdgeIndex>,
+);
+
+fn bfs_spanning_forest(graph: &UnGraph<usize, CFGEdge>, roots: &[NodeIndex]) -> SpanningForest {
     let mut parent: HashMap<NodeIndex, NodeIndex> = HashMap::new();
     let mut parent_edge: HashMap<NodeIndex, CFGEdge> = HashMap::new();
     let mut depth: HashMap<NodeIndex, usize> = HashMap::new();
     let mut visited: HashSet<NodeIndex> = HashSet::new();
     let mut tree_edge_ids: HashSet<EdgeIndex> = HashSet::new();
 
-    let roots: Vec<NodeIndex> = {
-        let mut ordered = Vec::new();
-        if let Some(&entry_idx) = indices.get(&cfg.entry_id) {
-            ordered.push(entry_idx);
-        }
-        for &idx in indices.values() {
-            if !ordered.contains(&idx) {
-                ordered.push(idx);
-            }
-        }
-        ordered
-    };
-
-    for &root in &roots {
+    for &root in roots {
         if visited.contains(&root) {
             continue;
         }
@@ -145,6 +139,32 @@ pub fn compute_cycle_basis(cfg: &ControlFlowGraph) -> CycleBasisResult {
             }
         }
     }
+
+    (parent, parent_edge, depth, tree_edge_ids)
+}
+
+pub fn compute_cycle_basis(cfg: &ControlFlowGraph) -> CycleBasisResult {
+    let (graph, indices) = build_undirected_graph(cfg);
+
+    // BFS spanning forest, tracked by edge identity (not node-pair identity):
+    // parent pointers + depth per node, and the set of `EdgeIndex`es actually
+    // used to discover a node ("tree edges"). Every edge not in that set is a
+    // genuine back edge, even if it connects a pair of nodes some other edge
+    // also connects.
+    let roots: Vec<NodeIndex> = {
+        let mut ordered = Vec::new();
+        if let Some(&entry_idx) = indices.get(&cfg.entry_id) {
+            ordered.push(entry_idx);
+        }
+        for &idx in indices.values() {
+            if !ordered.contains(&idx) {
+                ordered.push(idx);
+            }
+        }
+        ordered
+    };
+
+    let (parent, parent_edge, depth, tree_edge_ids) = bfs_spanning_forest(&graph, &roots);
 
     // Every non-tree edge closes exactly one fundamental cycle.
     let mut cycles = Vec::new();

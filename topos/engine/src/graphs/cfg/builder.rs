@@ -122,6 +122,57 @@ pub fn build_cfg_from_uast(uast_root: &UASTNode) -> (Blocks, Vec<CFGEdge>, usize
 /// Returns the id of the block that fall-through reaches, or `None` if
 /// flow is terminated by a return/break/continue/throw before the end of
 /// the sequence.
+fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: usize) -> bool {
+    match stmt.kind.as_str() {
+        "ReturnStmt" => {
+            state.push_statement(current_id, stmt);
+            state.add_edge(current_id, state.exit_id, EdgeKind::Return);
+            true
+        }
+        "ThrowStmt" => {
+            state.push_statement(current_id, stmt);
+            state.add_edge(current_id, state.exit_id, EdgeKind::Exception);
+            true
+        }
+        "BreakStmt" => {
+            if let Some(target) = state.loop_stack.last().map(|ctx| ctx.break_target) {
+                state.add_edge(current_id, target, EdgeKind::Break);
+            }
+            true
+        }
+        "ContinueStmt" => {
+            if let Some(target) = state.loop_stack.last().map(|ctx| ctx.continue_target) {
+                state.add_edge(current_id, target, EdgeKind::Continue);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn build_nested_block(state: &mut CFGBuildState, stmt: &UASTNode, current_id: usize) -> usize {
+    // Recurse into nested blocks/expressions to surface nested
+    // decisions (Python `if` inside a list comprehension is
+    // *not* surfaced — comprehensions are intentionally not
+    // unfolded).
+    let inner = children_with_control_flow(stmt);
+    if !inner.is_empty() {
+        // Nested callables (arrow fns, object methods) get
+        // their own entry block so an inner `return` does not
+        // terminate the enclosing function's fall-through
+        // block.
+        let nested_entry = state.new_block("nested");
+        state.add_edge(current_id, nested_entry, EdgeKind::Unconditional);
+        if let Some(inner_tail) = build_block_sequence(state, &inner, nested_entry) {
+            return inner_tail;
+        }
+        current_id
+    } else {
+        state.push_statement(current_id, stmt);
+        current_id
+    }
+}
+
 fn build_block_sequence(
     state: &mut CFGBuildState,
     statements: &[&UASTNode],
@@ -133,48 +184,12 @@ fn build_block_sequence(
             "ForStmt" | "WhileStmt" => current_id = build_loop(state, stmt, current_id),
             "MatchStmt" => current_id = build_match(state, stmt, current_id),
             "TryStmt" => current_id = build_try(state, stmt, current_id),
-            "ReturnStmt" => {
-                state.push_statement(current_id, stmt);
-                state.add_edge(current_id, state.exit_id, EdgeKind::Return);
-                return None;
-            }
-            "ThrowStmt" => {
-                state.push_statement(current_id, stmt);
-                state.add_edge(current_id, state.exit_id, EdgeKind::Exception);
-                return None;
-            }
-            "BreakStmt" => {
-                if let Some(target) = state.loop_stack.last().map(|ctx| ctx.break_target) {
-                    state.add_edge(current_id, target, EdgeKind::Break);
-                }
-                return None;
-            }
-            "ContinueStmt" => {
-                if let Some(target) = state.loop_stack.last().map(|ctx| ctx.continue_target) {
-                    state.add_edge(current_id, target, EdgeKind::Continue);
-                }
-                return None;
-            }
-            _ => {
-                // Recurse into nested blocks/expressions to surface nested
-                // decisions (Python `if` inside a list comprehension is
-                // *not* surfaced — comprehensions are intentionally not
-                // unfolded).
-                let inner = children_with_control_flow(stmt);
-                if !inner.is_empty() {
-                    // Nested callables (arrow fns, object methods) get
-                    // their own entry block so an inner `return` does not
-                    // terminate the enclosing function's fall-through
-                    // block.
-                    let nested_entry = state.new_block("nested");
-                    state.add_edge(current_id, nested_entry, EdgeKind::Unconditional);
-                    if let Some(inner_tail) = build_block_sequence(state, &inner, nested_entry) {
-                        current_id = inner_tail;
-                    }
-                } else {
-                    state.push_statement(current_id, stmt);
+            "ReturnStmt" | "ThrowStmt" | "BreakStmt" | "ContinueStmt" => {
+                if handle_terminal_stmt(state, stmt, current_id) {
+                    return None;
                 }
             }
+            _ => current_id = build_nested_block(state, stmt, current_id),
         }
     }
     Some(current_id)

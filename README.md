@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <b>Harness for graph-based coding tools, designed to make agents write clean, composable, secure code.</b><br>
+  <b>Harness for graph-based coding tools. Helping agents write clean, composable, secure code.</b><br>
   <a href="https://docs.krv.ai/topos/">Docs</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#mcp-server-for-agents">MCP Server</a> ·
@@ -25,8 +25,8 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-Topos scores code quality from the geometric and topological structure of program graphs — structural debt conventional linters can't compute — and gives agents a medal-scored (SLOP → GOLD) feedback loop to optimize for quality. Inspired by concepts from category, Topos combines the power of [tree-sitter](https://tree-sitter.github.io/tree-sitter/), [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound) into a well-principled evaluation schema, giving your agents
-one scored target for code quality instead of disconnected tools.
+Topos scores code quality based on the structure of the programs in your codebase. Inspired by concepts from category theory, we've built an extensible evaluation framework that combines [tree-sitter](https://tree-sitter.github.io/tree-sitter/), [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound) with custom geometric and topological measures that provide agents with clear, principled targets for writing higher quality code. Agents earn medals for quality in a tight feedback loop, and Topos surfaces the best places in your codebase to refactor and improve structure.
+
 
 ---
 
@@ -41,10 +41,10 @@ curl -fsSL https://docs.krv.ai/topos/install.sh | sh
 From your repo root (or `cd /path/to/your/repo` first):
 
 ```bash
-topos evaluate src/ -r
+topos evaluate . -r
 ```
 
-`evaluate -r` scores every file in `src/` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
+`evaluate -r` scores every file in the `cwd` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
 Prefer Homebrew?
 

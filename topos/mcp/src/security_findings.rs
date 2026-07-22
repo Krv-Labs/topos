@@ -127,7 +127,17 @@ pub fn taint_flow_findings(
         return Vec::new();
     }
 
-    // Deterministic scan order.
+    let (sources, sinks) = collect_taint_sources_and_sinks(cpg, &source_registry, &sink_registry);
+    join_sources_to_sinks(cpg, &forward, &sources, &sinks, max_findings)
+}
+
+/// Deterministic single pass: bucket CPG nodes into taint sources and
+/// dangerous-sink call sites.
+fn collect_taint_sources_and_sinks<'a>(
+    cpg: &'a CodePropertyGraph,
+    source_registry: &HashSet<&str>,
+    sink_registry: &HashSet<&str>,
+) -> (Vec<&'a str>, Vec<(&'a str, String)>) {
     let mut node_items: Vec<_> = cpg.nodes.iter().collect();
     node_items.sort_by_key(|(_, n)| (n.uast.span.start_line, n.uast.span.start_byte));
 
@@ -150,11 +160,21 @@ pub fn taint_flow_findings(
             sources.push(node_id.as_str());
         }
     }
+    (sources, sinks)
+}
 
+/// BFS-reachability join: emit one finding per source with a DDG path to a sink.
+fn join_sources_to_sinks(
+    cpg: &CodePropertyGraph,
+    forward: &HashMap<&str, Vec<&str>>,
+    sources: &[&str],
+    sinks: &[(&str, String)],
+    max_findings: usize,
+) -> Vec<SecurityFinding> {
     let mut findings = Vec::new();
-    for source_id in sources {
-        let reachable = bfs_reachable(&forward, source_id);
-        for (sink_id, sink_snippet) in &sinks {
+    for &source_id in sources {
+        let reachable = bfs_reachable(forward, source_id);
+        for (sink_id, sink_snippet) in sinks {
             if !reachable.contains(sink_id) {
                 continue;
             }

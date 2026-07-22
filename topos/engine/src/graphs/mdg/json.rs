@@ -2,7 +2,7 @@
 //! [`ModuleDependencyGraph`].
 //!
 //! Split out of `object.rs`: this file owns *how a graph gets built* from
-//! disk (legacy JSON directory + cypher dispatch for binary stores); `object.rs`
+//! disk (legacy JSON directory + native binary-store dispatch); `object.rs`
 //! owns what the graph *is* and how it's queried once built. Two
 //! `impl ModuleDependencyGraph` blocks in different files is ordinary
 //! Rust -- the type doesn't care which file its methods live in.
@@ -17,18 +17,32 @@ use super::object::{MdgError, ModuleDependencyGraph};
 impl ModuleDependencyGraph {
     /// Build a `ModuleDependencyGraph` from a `.gitnexus/` directory.
     ///
-    /// Dispatches to the JSON-dir loader or the binary-store loader based on
-    /// whether `lbug` is a directory or a file. `project_root` (for the
-    /// cypher fallback) is the parent of `gitnexus_dir`.
+    /// Dispatches to the JSON-dir loader (GitNexus < 1.5) or the native
+    /// LadybugDB binary-store loader (GitNexus ≥ 1.5) based on whether
+    /// `lbug` is a directory or a file.
     pub fn from_gitnexus_dir(
         gitnexus_dir: impl AsRef<Path>,
         target_file: impl Into<String>,
     ) -> Result<Self, MdgError> {
-        let gitnexus_dir = gitnexus_dir.as_ref();
-        let lbug_path = gitnexus_dir.join("lbug");
-        let project_root = gitnexus_dir.parent().unwrap_or(gitnexus_dir);
-        let branch = crate::adapters::gitnexus::current_git_branch(project_root);
-        Self::from_lbug_path(&lbug_path, target_file, project_root, branch.as_deref())
+        let lbug_path = gitnexus_dir.as_ref().join("lbug");
+        Self::from_lbug_path(&lbug_path, target_file)
+    }
+
+    /// Load from whichever on-disk shape `lbug_path` has:
+    ///
+    /// - Directory → legacy JSON export (GitNexus < 1.5)
+    /// - File → native LadybugDB binary store (GitNexus ≥ 1.5)
+    pub fn from_lbug_path(
+        lbug_path: &Path,
+        target_file: impl Into<String>,
+    ) -> Result<Self, MdgError> {
+        if lbug_path.is_dir() {
+            return Self::from_json_dir(lbug_path, target_file);
+        }
+        if lbug_path.is_file() {
+            return Self::from_ladybug_native(lbug_path, target_file);
+        }
+        Err(MdgError::NotFound(lbug_path.to_path_buf()))
     }
 
     /// Load from the legacy JSON directory format produced by GitNexus < 1.5.
@@ -109,16 +123,11 @@ mod tests {
         std::fs::write(dir.join("lbug"), b"binary-store-placeholder").unwrap();
 
         let result = ModuleDependencyGraph::from_gitnexus_dir(&dir, "x");
-        // Placeholder bytes are not a real Ladybug store. Native open fails
-        // first; if gitnexus is on PATH the cypher fallback also fails.
-        // Either way we must not reclaim the old "unsupported / no store" path.
+        // Placeholder bytes are not a real Ladybug store, so the native open
+        // must fail — but it must not reclaim the old "unsupported / no
+        // store" path.
         assert!(
-            matches!(
-                result,
-                Err(MdgError::LadybugNativeFailed(_))
-                    | Err(MdgError::CypherUnavailable(_))
-                    | Err(MdgError::CypherFailed(_))
-            ),
+            matches!(result, Err(MdgError::LadybugNativeFailed(_))),
             "unexpected result: {result:?}"
         );
 

@@ -68,12 +68,7 @@ pub(crate) fn resolve_composable_mdg(
         return None;
     }
 
-    match ModuleDependencyGraph::from_lbug_path(
-        &lbug_path,
-        project_root.to_string_lossy(),
-        project_root,
-        branch.as_deref(),
-    ) {
+    match ModuleDependencyGraph::from_lbug_path(&lbug_path, project_root.to_string_lossy()) {
         Ok(graph) => Some(graph),
         Err(e) => {
             eprintln!(

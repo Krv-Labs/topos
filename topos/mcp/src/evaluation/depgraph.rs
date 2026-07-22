@@ -34,9 +34,7 @@ fn load_mdg_branch_aware(
     let resolved = resolve_lbug_store(gitnexus_dir, branch);
     match resolved.path {
         Some(lbug) => {
-            let project_root = gitnexus_dir.parent().unwrap_or(gitnexus_dir);
-            ModuleDependencyGraph::from_lbug_path(&lbug, target_file, project_root, branch)
-                .map_err(|e| e.to_string())
+            ModuleDependencyGraph::from_lbug_path(&lbug, target_file).map_err(|e| e.to_string())
         }
         None => {
             if !resolved.available_branches.is_empty() {

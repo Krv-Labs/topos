@@ -30,5 +30,4 @@ mod process;
 
 pub mod discovery;
 pub mod gitnexus;
-pub mod gitnexus_cypher;
 pub mod graphify;

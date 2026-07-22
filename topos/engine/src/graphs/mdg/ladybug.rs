@@ -2,7 +2,7 @@
 //!
 //! Primary path for GitNexus ≥ 1.5 binary stores: open `.gitnexus/lbug`
 //! in-process, query File nodes + `CodeRelation` edges, stub other
-//! endpoints. Falls back to [`super::cypher`] when this fails.
+//! endpoints.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

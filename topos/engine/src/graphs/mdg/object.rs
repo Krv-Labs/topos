@@ -26,9 +26,8 @@
 //! Two on-disk shapes exist under `.gitnexus/lbug`:
 //! - **Directory of JSON** (GitNexus < 1.5) — [`ModuleDependencyGraph::from_json_dir`]
 //! - **Packed LadybugDB binary file** (GitNexus ≥ 1.5) — loaded by
-//!   [`ModuleDependencyGraph::from_ladybug_native`] (embedded `lbug` crate),
-//!   with [`ModuleDependencyGraph::from_cypher`] (`gitnexus cypher`) as
-//!   fallback when the native open/query fails (issue #198).
+//!   [`ModuleDependencyGraph::from_ladybug_native`] via the embedded
+//!   `lbug` crate (issue #198).
 //!
 //! [`ModuleDependencyGraph::from_lbug_path`] dispatches on the path shape.
 
@@ -47,11 +46,6 @@ pub enum MdgError {
     NotFound(PathBuf),
     /// Embedded `lbug` client failed to open/query the binary store.
     LadybugNativeFailed(String),
-    /// Binary Ladybug store present, but `gitnexus` is not on `$PATH`
-    /// so the cypher fallback cannot run.
-    CypherUnavailable(PathBuf),
-    /// `gitnexus cypher` fallback ran (or was attempted) and failed.
-    CypherFailed(String),
     Io(std::io::Error),
     Json(serde_json::Error),
 }
@@ -68,16 +62,6 @@ impl std::fmt::Display for MdgError {
             MdgError::LadybugNativeFailed(msg) => {
                 write!(f, "failed to load LadybugDB store via native lbug: {msg}")
             }
-            MdgError::CypherUnavailable(path) => write!(
-                f,
-                "{} is a LadybugDB binary store; native lbug failed and gitnexus is not on PATH \
-                 for the cypher fallback. Install with: npm install -g gitnexus@1.6.8",
-                path.display()
-            ),
-            MdgError::CypherFailed(msg) => write!(
-                f,
-                "failed to load LadybugDB store via `gitnexus cypher` fallback: {msg}"
-            ),
             MdgError::Io(e) => write!(f, "{e}"),
             MdgError::Json(e) => write!(f, "{e}"),
         }

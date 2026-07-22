@@ -225,15 +225,37 @@ pub fn build_agent_contract(
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
     let missing_gitnexus = blocked_by.iter().any(|b| b == "missing_gitnexus_dir");
 
-    let (next_tool, step_actions) = next_step_for_contract(
-        &composable,
-        refactor_targets,
-        summary,
-        simple_ok,
-        security_findings,
-        missing_gitnexus,
-    );
-    next_actions.extend(step_actions);
+    let next_tool: Option<String>;
+    if let Some(first) = refactor_targets.and_then(|t| t.first()) {
+        next_tool = Some("topos_assess_worktree_change".into());
+        next_actions.push(format!(
+            "edit target {} ({}) — one focused structural change",
+            first.target_id, first.metric
+        ));
+        if let Some(action) = &composable.next_action {
+            next_actions.push(action.clone());
+        } else if missing_gitnexus {
+            next_actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
+        }
+    } else if let Some(action) = &composable.next_action {
+        next_tool = composable.next_tool.clone();
+        next_actions.push(action.clone());
+    } else if summary == EvaluationValue::Ideal {
+        next_tool = Some("topos_evaluate_project".into());
+        next_actions.push("confirm project rollup and behavior tests before accepting".into());
+    } else if !simple_ok {
+        next_tool = Some("topos_inspect_code".into());
+        next_actions.push("inspect weakest measured pillar, then verify a focused patch".into());
+    } else if !security_findings.is_empty() {
+        next_tool = Some("topos_inspect_code".into());
+        next_actions.push("remove active SECURE findings or acknowledge intentional risk".into());
+    } else if missing_gitnexus {
+        next_tool = Some("topos_generate_depgraph".into());
+        next_actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
+    } else {
+        next_tool = Some("topos_inspect_code".into());
+        next_actions.push("inspect weakest measured pillar, then verify a focused patch".into());
+    }
 
     if offer_refactor_targets && summary != EvaluationValue::Ideal {
         next_actions.push(
@@ -253,51 +275,6 @@ pub fn build_agent_contract(
         ],
         risk_flags,
     }
-}
-
-/// Priority-ordered next-tool/next-action dispatch for the agent contract:
-/// an in-progress refactor target, then a COMPOSABLE setup blocker, then
-/// IDEAL confirmation, then the weakest unmet pillar, in that fixed order.
-fn next_step_for_contract(
-    composable: &ComposableContractSignals,
-    refactor_targets: Option<&[RefactorTarget]>,
-    summary: EvaluationValue,
-    simple_ok: bool,
-    security_findings: &[SecurityFinding],
-    missing_gitnexus: bool,
-) -> (Option<String>, Vec<String>) {
-    let mut actions = Vec::new();
-    let next_tool = if let Some(first) = refactor_targets.and_then(|t| t.first()) {
-        actions.push(format!(
-            "edit target {} ({}) — one focused structural change",
-            first.target_id, first.metric
-        ));
-        if let Some(action) = &composable.next_action {
-            actions.push(action.clone());
-        } else if missing_gitnexus {
-            actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
-        }
-        Some("topos_assess_worktree_change".into())
-    } else if let Some(action) = &composable.next_action {
-        actions.push(action.clone());
-        composable.next_tool.clone()
-    } else if summary == EvaluationValue::Ideal {
-        actions.push("confirm project rollup and behavior tests before accepting".into());
-        Some("topos_evaluate_project".into())
-    } else if !simple_ok {
-        actions.push("inspect weakest measured pillar, then verify a focused patch".into());
-        Some("topos_inspect_code".into())
-    } else if !security_findings.is_empty() {
-        actions.push("remove active SECURE findings or acknowledge intentional risk".into());
-        Some("topos_inspect_code".into())
-    } else if missing_gitnexus {
-        actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
-        Some("topos_generate_depgraph".into())
-    } else {
-        actions.push("inspect weakest measured pillar, then verify a focused patch".into());
-        Some("topos_inspect_code".into())
-    };
-    (next_tool, actions)
 }
 
 /// The 'COMPOSABLE not scored' note surfaced when no MDG is available.

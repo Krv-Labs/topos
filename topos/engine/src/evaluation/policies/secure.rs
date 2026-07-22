@@ -51,7 +51,10 @@ pub fn score_secure(dangerous_calls: f64, taint_flows: f64) -> ScoredDecision {
 
     ScoredDecision {
         score: qualities.into_iter().fold(f64::INFINITY, f64::min),
-        achieved: results.iter().all(|r| r.passed()),
+        achieved: results
+            .iter()
+            .filter(|r| r.spec.gates_achieved)
+            .all(|r| r.passed()),
         interpretation: results
             .iter()
             .map(|r| (r.spec.metric.to_string(), r.interpretation()))

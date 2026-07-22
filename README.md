@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <b>Agent harness for tree-sitter and graph-based coding tools — so agents write clean, composable, secure code.</b><br>
+  <b>Harness for graph-based coding tools, designed to make agents write clean, composable, secure code.</b><br>
   <a href="https://docs.krv.ai/topos/">Docs</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#mcp-server-for-agents">MCP Server</a> ·
@@ -25,7 +25,8 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-Topos scores code quality from the geometric and topological structure of program graphs — structural debt conventional linters can't compute — and gives agents a medal-scored (SLOP → GOLD) feedback loop for cleaner, more composable code. Built on [tree-sitter](https://tree-sitter.github.io/tree-sitter/), [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound): one scored target instead of disconnected tools.
+Topos scores code quality from the geometric and topological structure of program graphs — structural debt conventional linters can't compute — and gives agents a medal-scored (SLOP → GOLD) feedback loop to optimize for quality. Inspired by concepts from category, Topos combines the power of [tree-sitter](https://tree-sitter.github.io/tree-sitter/), [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound) into a well-principled evaluation schema, giving your agents
+one scored target for code quality instead of disconnected tools.
 
 ---
 

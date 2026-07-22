@@ -48,28 +48,44 @@ impl TestNodeFilter for CfgTestFilter {
 }
 
 pub fn map_node_kind(kind: &str) -> &'static str {
-    match kind {
-        "struct_item" | "enum_item" | "impl_item" | "trait_item" => "TypeDecl",
-        "function_item" => "FunctionDecl",
-        "let_declaration" => "VarDecl",
-        "if_expression" => "IfStmt",
-        "for_expression" => "ForStmt",
-        "while_expression" | "loop_expression" => "WhileStmt",
-        "match_expression" => "MatchStmt",
-        "return_expression" => "ReturnStmt",
-        "break_expression" => "BreakStmt",
-        "continue_expression" => "ContinueStmt",
-        "expression_statement" => "ExprStmt",
-        "assignment" | "augmented_assignment" => "AssignExpr",
-        "binary_expression" | "boolean_operator" => "BinaryExpr",
-        "unary_expression" => "UnaryExpr",
-        "call_expression" => "CallExpr",
-        "member_expression" | "field_expression" | "subscript" => "MemberExpr",
-        "identifier" => "Identifier",
-        "module" | "program" | "translation_unit" | "source_file" => "File",
-        s if s.ends_with("literal") || matches!(s, "string" | "integer" | "float") => "Literal",
-        _ => "Unknown",
+    const NODE_KIND_TABLE: &[(&str, &str)] = &[
+        ("struct_item", "TypeDecl"),
+        ("enum_item", "TypeDecl"),
+        ("impl_item", "TypeDecl"),
+        ("trait_item", "TypeDecl"),
+        ("function_item", "FunctionDecl"),
+        ("let_declaration", "VarDecl"),
+        ("if_expression", "IfStmt"),
+        ("for_expression", "ForStmt"),
+        ("while_expression", "WhileStmt"),
+        ("loop_expression", "WhileStmt"),
+        ("match_expression", "MatchStmt"),
+        ("return_expression", "ReturnStmt"),
+        ("break_expression", "BreakStmt"),
+        ("continue_expression", "ContinueStmt"),
+        ("expression_statement", "ExprStmt"),
+        ("assignment", "AssignExpr"),
+        ("augmented_assignment", "AssignExpr"),
+        ("binary_expression", "BinaryExpr"),
+        ("boolean_operator", "BinaryExpr"),
+        ("unary_expression", "UnaryExpr"),
+        ("call_expression", "CallExpr"),
+        ("member_expression", "MemberExpr"),
+        ("field_expression", "MemberExpr"),
+        ("subscript", "MemberExpr"),
+        ("identifier", "Identifier"),
+        ("module", "File"),
+        ("program", "File"),
+        ("translation_unit", "File"),
+        ("source_file", "File"),
+    ];
+    if let Some((_, mapped)) = NODE_KIND_TABLE.iter().find(|(k, _)| *k == kind) {
+        return mapped;
     }
+    if kind.ends_with("literal") || matches!(kind, "string" | "integer" | "float") {
+        return "Literal";
+    }
+    "Unknown"
 }
 
 /// Martin Abstractness classification for `TypeDecl` nodes. `impl_item`

@@ -104,6 +104,27 @@ impl AdjacencyIndex {
             out_edges,
         }
     }
+
+    /// One side of the balanced-Forman 4-cycle ("sharp"/"lambda") term:
+    /// for each `k` in `pivot_set`, the size of `fixed`'s common-neighbor
+    /// set with `k`, minus 1 if `fixed` and `k` are already directly
+    /// connected. Returns `(sharp_count, max_lambda)`.
+    fn count_squares(&self, fixed: usize, pivot_set: &HashSet<usize>) -> (u32, i64) {
+        let mut sharp = 0u32;
+        let mut lambda = 0i64;
+        for &k in pivot_set {
+            let common = self.neighbors[fixed]
+                .intersection(&self.neighbors[k])
+                .count() as i64;
+            let direct = i64::from(self.neighbors[fixed].contains(&k));
+            let tmp = common - direct;
+            if tmp > 0 {
+                sharp += 1;
+                lambda = lambda.max(tmp);
+            }
+        }
+        (sharp, lambda)
+    }
 }
 
 /// Balanced Forman curvature for every edge in `edges`, treated as an
@@ -161,30 +182,15 @@ pub fn balanced_forman_curvature(edges: &[WeightedEdge]) -> Vec<EdgeCurvature> {
         let (d_max_f, d_min_f) = (d_max as f64, d_min as f64);
         let triangles = adj.neighbors[i].intersection(&adj.neighbors[j]).count();
 
-        let mut sharp_ij: u32 = 0;
-        let mut lambda_ij: i64 = 0;
-
-        // "i-side" squares: k ranges over N(j); look for a common neighbor of
-        // i and k beyond any direct i-k edge (a 4-cycle i-w-k-j-i).
-        for &k in &adj.neighbors[j] {
-            let common = adj.neighbors[i].intersection(&adj.neighbors[k]).count() as i64;
-            let direct = i64::from(adj.neighbors[i].contains(&k));
-            let tmp = common - direct;
-            if tmp > 0 {
-                sharp_ij += 1;
-                lambda_ij = lambda_ij.max(tmp);
-            }
-        }
-        // "j-side" squares: k ranges over N(i); mirror of the above.
-        for &k in &adj.neighbors[i] {
-            let common = adj.neighbors[k].intersection(&adj.neighbors[j]).count() as i64;
-            let direct = i64::from(adj.neighbors[j].contains(&k));
-            let tmp = common - direct;
-            if tmp > 0 {
-                sharp_ij += 1;
-                lambda_ij = lambda_ij.max(tmp);
-            }
-        }
+        // Square ("sharp"/"lambda") term, accumulated from both sides of
+        // the edge: "i-side" (k ranges over N(j), probing for a common
+        // neighbor of i and k -- a 4-cycle i-w-k-j-i) and its "j-side"
+        // mirror (k ranges over N(i)). `sharp_ij` sums across both;
+        // `lambda_ij` is the running max across both.
+        let (sharp_i, lambda_i) = adj.count_squares(i, &adj.neighbors[j]);
+        let (sharp_j, lambda_j) = adj.count_squares(j, &adj.neighbors[i]);
+        let sharp_ij = sharp_i + sharp_j;
+        let lambda_ij = lambda_i.max(lambda_j);
 
         let mut curvature = 2.0 / d_max_f + 2.0 / d_min_f - 2.0
             + (2.0 / d_max_f + 1.0 / d_min_f) * (triangles as f64);

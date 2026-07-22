@@ -234,10 +234,14 @@ fn build_cycle(
 /// the walk's closing duplicate block is deduped, and each cycle's line
 /// range is the min/max over its blocks' statement spans.
 pub fn calculate_cycle_basis(cfg: &ControlFlowGraph) -> CfgHomologyResult {
-    let raw = compute_cycle_basis(cfg);
+    // Named `basis`, not `raw`: tree-sitter-rust's grammar for the
+    // `&raw const`/`&raw mut` raw-reference syntax misparses a bare `&raw`
+    // local as an ERROR node, which would falsely mark this whole file
+    // unparseable (is_parseable=false) despite valid, rustc-accepted syntax.
+    let basis = compute_cycle_basis(cfg);
 
-    let mut cycles = Vec::with_capacity(raw.cycles.len());
-    for cycle in &raw.cycles {
+    let mut cycles = Vec::with_capacity(basis.cycles.len());
+    for cycle in &basis.cycles {
         // The walk is a closed loop (first block id == last); dedupe while
         // preserving order for a cleaner block list to report.
         let mut block_ids: Vec<usize> = Vec::new();
@@ -277,7 +281,7 @@ pub fn calculate_cycle_basis(cfg: &ControlFlowGraph) -> CfgHomologyResult {
     }
 
     CfgHomologyResult {
-        betti_1: raw.betti_1,
+        betti_1: basis.betti_1,
         cycles,
     }
 }

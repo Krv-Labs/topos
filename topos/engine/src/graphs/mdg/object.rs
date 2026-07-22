@@ -147,42 +147,49 @@ impl ModuleDependencyGraph {
 
     fn ingest_json_document(&mut self, data: &Value) {
         match data {
-            Value::Array(items) => {
-                for item in items {
-                    if item.get("label").is_some() && item.get("id").is_some() {
-                        if let Some(node) = parse_node(item) {
-                            self.add_node(node);
-                        }
-                    } else if item.get("type").is_some() && item.get("sourceId").is_some() {
-                        if let Some(rel) = parse_relationship(item) {
-                            self.add_relationship(rel);
-                        }
-                    }
-                }
-            }
-            Value::Object(_) => {
-                for node in data
-                    .get("nodes")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(node) = parse_node(node) {
-                        self.add_node(node);
-                    }
-                }
-                for rel in data
-                    .get("relationships")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(rel) = parse_relationship(rel) {
-                        self.add_relationship(rel);
-                    }
-                }
-            }
+            Value::Array(items) => self.ingest_array_document(items),
+            Value::Object(_) => self.ingest_object_document(data),
             _ => {}
+        }
+    }
+
+    /// Ingest the flat-array document shape: a mixed list of node and
+    /// relationship records, distinguished by their own fields.
+    fn ingest_array_document(&mut self, items: &[Value]) {
+        for item in items {
+            if item.get("label").is_some() && item.get("id").is_some() {
+                if let Some(node) = parse_node(item) {
+                    self.add_node(node);
+                }
+            } else if item.get("type").is_some() && item.get("sourceId").is_some() {
+                if let Some(rel) = parse_relationship(item) {
+                    self.add_relationship(rel);
+                }
+            }
+        }
+    }
+
+    /// Ingest the `{nodes: [...], relationships: [...]}` document shape.
+    fn ingest_object_document(&mut self, data: &Value) {
+        for node in data
+            .get("nodes")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(node) = parse_node(node) {
+                self.add_node(node);
+            }
+        }
+        for rel in data
+            .get("relationships")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(rel) = parse_relationship(rel) {
+                self.add_relationship(rel);
+            }
         }
     }
 

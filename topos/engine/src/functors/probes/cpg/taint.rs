@@ -70,6 +70,36 @@ pub fn taint_flow_paths(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usi
         return 0;
     }
 
+    let (forward, ddg_stmt_ids) = build_ddg_adjacency(cpg);
+    if forward.is_empty() {
+        return 0;
+    }
+
+    let (sources, sinks) = classify_sources_and_sinks(cpg, &source_registry, &sink_registry);
+    if sources.is_empty() || sinks.is_empty() {
+        return 0;
+    }
+
+    let ddg_spans = build_ddg_spans(cpg, &ddg_stmt_ids);
+
+    let effective_sources = resolve_effective_ids(sources.iter().copied(), cpg, &ddg_spans);
+    let effective_sinks = resolve_effective_ids(sinks.iter().copied(), cpg, &ddg_spans);
+    if effective_sources.is_empty() || effective_sinks.is_empty() {
+        return 0;
+    }
+
+    count_flows(
+        &sources,
+        &sinks,
+        &forward,
+        &effective_sources,
+        &effective_sinks,
+    )
+}
+
+/// Build the forward DDG adjacency map and the set of DDG-participating
+/// statement ids, from every `Ddg`-kind CPG edge.
+fn build_ddg_adjacency(cpg: &CodePropertyGraph) -> (HashMap<&str, Vec<&str>>, HashSet<&str>) {
     let mut forward: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut ddg_stmt_ids: HashSet<&str> = HashSet::new();
     for edge in &cpg.edges {
@@ -83,10 +113,16 @@ pub fn taint_flow_paths(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usi
         ddg_stmt_ids.insert(edge.source.as_str());
         ddg_stmt_ids.insert(edge.target.as_str());
     }
-    if forward.is_empty() {
-        return 0;
-    }
+    (forward, ddg_stmt_ids)
+}
 
+/// Classify CPG nodes into taint sources (bare tainted identifiers/member
+/// expressions) and sinks (dangerous-API call sites).
+fn classify_sources_and_sinks<'a>(
+    cpg: &'a CodePropertyGraph,
+    source_registry: &HashSet<&str>,
+    sink_registry: &HashSet<&str>,
+) -> (Vec<&'a str>, HashSet<&'a str>) {
     let mut sources = Vec::new();
     let mut sinks = HashSet::new();
     for (id, node) in &cpg.nodes {
@@ -105,16 +141,18 @@ pub fn taint_flow_paths(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usi
             sources.push(id.as_str());
         }
     }
-    if sources.is_empty() || sinks.is_empty() {
-        return 0;
-    }
+    (sources, sinks)
+}
 
-    // `{ddg_participating_stmt_id: (start_byte, end_byte)}` -- built once
-    // up front so resolving each source/sink's enclosing statement is a
-    // single pass over this (typically small) set, not a scan of every
-    // CPG node.
-    let mut ddg_spans: HashMap<&str, (usize, usize)> = HashMap::new();
-    for &stmt_id in &ddg_stmt_ids {
+/// `{ddg_participating_stmt_id: (start_byte, end_byte)}` -- built once up
+/// front so resolving each source/sink's enclosing statement is a single
+/// pass over this (typically small) set, not a scan of every CPG node.
+fn build_ddg_spans<'a>(
+    cpg: &'a CodePropertyGraph,
+    ddg_stmt_ids: &HashSet<&'a str>,
+) -> HashMap<&'a str, (usize, usize)> {
+    let mut ddg_spans = HashMap::new();
+    for &stmt_id in ddg_stmt_ids {
         if let Some(stmt_node) = cpg.nodes.get(stmt_id) {
             ddg_spans.insert(
                 stmt_id,
@@ -122,23 +160,29 @@ pub fn taint_flow_paths(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usi
             );
         }
     }
+    ddg_spans
+}
 
-    let effective_sources = resolve_effective_ids(sources.iter().copied(), cpg, &ddg_spans);
-    let effective_sinks = resolve_effective_ids(sinks.iter().copied(), cpg, &ddg_spans);
-    if effective_sources.is_empty() || effective_sinks.is_empty() {
-        return 0;
-    }
-
+/// Count distinct `(source, sink)` pairs connected by DDG reachability,
+/// caching each source's reachable set since multiple sinks are checked
+/// against it.
+fn count_flows<'a>(
+    sources: &[&'a str],
+    sinks: &HashSet<&'a str>,
+    forward: &HashMap<&'a str, Vec<&'a str>>,
+    effective_sources: &HashMap<&'a str, &'a str>,
+    effective_sinks: &HashMap<&'a str, &'a str>,
+) -> usize {
     let mut total = 0;
     let mut reachable_cache: HashMap<&str, HashSet<&str>> = HashMap::new();
-    for &src in &sources {
+    for &src in sources {
         let Some(&eff_src) = effective_sources.get(src) else {
             continue;
         };
         let reachable = reachable_cache
             .entry(eff_src)
-            .or_insert_with(|| bfs_reachable(&forward, eff_src));
-        for &sink in &sinks {
+            .or_insert_with(|| bfs_reachable(forward, eff_src));
+        for &sink in sinks {
             if let Some(&eff_sink) = effective_sinks.get(sink) {
                 if reachable.contains(eff_sink) {
                     total += 1;

@@ -162,23 +162,29 @@ pub(crate) fn compute_sequence_distance(
     let mut i = m;
     let mut j = n;
     while i > 0 || j > 0 {
-        if i > 0 && j > 0 && source[i - 1] == target[j - 1] {
-            i -= 1;
-            j -= 1;
-        } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
-            substitutions += 1;
-            i -= 1;
-            j -= 1;
-        } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
-            insertions += 1;
-            j -= 1;
-        } else if i > 0 && dp[i][j] == dp[i - 1][j] + 1 {
-            deletions += 1;
-            i -= 1;
-        } else {
-            // Should not happen with Wagner-Fischer.
-            i = i.saturating_sub(1);
-            j = j.saturating_sub(1);
+        match classify_edit_step(&dp, source, target, i, j) {
+            EditStep::Match => {
+                i -= 1;
+                j -= 1;
+            }
+            EditStep::Substitute => {
+                substitutions += 1;
+                i -= 1;
+                j -= 1;
+            }
+            EditStep::Insert => {
+                insertions += 1;
+                j -= 1;
+            }
+            EditStep::Delete => {
+                deletions += 1;
+                i -= 1;
+            }
+            EditStep::Unreachable => {
+                // Should not happen with Wagner-Fischer.
+                i = i.saturating_sub(1);
+                j = j.saturating_sub(1);
+            }
         }
     }
 
@@ -188,6 +194,37 @@ pub(crate) fn compute_sequence_distance(
     operations.insert("substitutions".to_string(), substitutions);
 
     (dp[m][n], operations)
+}
+
+/// One step of the Wagner-Fischer backtrace at cell `(i, j)`.
+enum EditStep {
+    Match,
+    Substitute,
+    Insert,
+    Delete,
+    Unreachable,
+}
+
+/// Classify which edit produced `dp[i][j]`, by re-deriving which
+/// predecessor cell the fill step at `(i, j)` must have used.
+fn classify_edit_step(
+    dp: &[Vec<usize>],
+    source: &[String],
+    target: &[String],
+    i: usize,
+    j: usize,
+) -> EditStep {
+    if i > 0 && j > 0 && source[i - 1] == target[j - 1] {
+        EditStep::Match
+    } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
+        EditStep::Substitute
+    } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
+        EditStep::Insert
+    } else if i > 0 && dp[i][j] == dp[i - 1][j] + 1 {
+        EditStep::Delete
+    } else {
+        EditStep::Unreachable
+    }
 }
 
 /// Compute structural similarity between two programs.

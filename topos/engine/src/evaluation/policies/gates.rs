@@ -112,9 +112,15 @@ impl GateResult {
 
 // --- Exemption predicates (the scorer carve-outs, expressed once) -------
 
-/// Import/export-only entrypoint modules may sit below the entropy floor.
+/// Import/export-only entrypoint modules may sit below the entropy floor
+/// (a short re-export list looks "repetitive") or above the ceiling (a
+/// list of distinct crate paths/type names compresses poorly despite
+/// having zero control flow to be "unstructured"). Either failure mode
+/// is a false signal for a file this shape, so both sides are tolerated
+/// -- `classify` has already determined which side failed by the time
+/// this predicate runs.
 fn entropy_entrypoint_exempt(ctx: &GateContext) -> bool {
-    ctx.is_entrypoint_module && ctx.value < SIMPLE.min_entropy
+    ctx.is_entrypoint_module
 }
 
 /// Entrypoint modules with zero fan-in may sit at maximal instability.
@@ -178,10 +184,15 @@ fn interpret_entropy(value: f64, outcome: GateOutcome) -> String {
         GateOutcome::ExemptLow => format!(
             "entropy ({value:.2}) is low, but tolerated for import/export-only entrypoint modules"
         ),
+        GateOutcome::ExemptHigh => format!(
+            "entropy ({value:.2}) is high, but tolerated for import/export-only entrypoint modules"
+        ),
         GateOutcome::FailLow => {
             format!("entropy ({value:.2}) is too low; code may be repetitive or trivial")
         }
-        _ => format!("entropy ({value:.2}) is too high; code may be unstructured"),
+        GateOutcome::FailHigh => {
+            format!("entropy ({value:.2}) is too high; code may be unstructured")
+        }
     }
 }
 
@@ -518,6 +529,18 @@ mod tests {
             .find(|r| r.spec.metric == "ast.entropy")
             .unwrap();
         assert!(!entropy.passed());
+    }
+
+    #[test]
+    fn entropy_high_is_exempt_for_entrypoint_modules() {
+        let metrics = HashMap::from([("ast.entropy".to_string(), 0.95)]);
+        let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
+        let entropy = results
+            .iter()
+            .find(|r| r.spec.metric == "ast.entropy")
+            .unwrap();
+        assert!(entropy.passed());
+        assert_eq!(entropy.outcome, GateOutcome::ExemptHigh);
     }
 
     #[test]

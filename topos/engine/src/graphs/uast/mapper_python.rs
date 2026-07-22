@@ -82,29 +82,43 @@ fn is_guard(node: &Node, source: &[u8]) -> bool {
 }
 
 pub fn map_node_kind(kind: &str) -> &'static str {
-    match kind {
-        "function_definition" => "FunctionDecl",
-        "class_definition" => "TypeDecl",
-        "lexical_declaration" | "variable_declaration" => "VarDecl",
-        "if_statement" => "IfStmt",
-        "for_statement" => "ForStmt",
-        "while_statement" => "WhileStmt",
-        "match_statement" => "MatchStmt",
-        "return_statement" => "ReturnStmt",
-        "break_statement" => "BreakStmt",
-        "continue_statement" => "ContinueStmt",
-        "try_statement" => "TryStmt",
-        "expression_statement" => "ExprStmt",
-        "assignment" | "augmented_assignment" => "AssignExpr",
-        "binary_expression" | "boolean_operator" => "BinaryExpr",
-        "unary_expression" => "UnaryExpr",
-        "call" | "call_expression" => "CallExpr",
-        "member_expression" | "field_expression" | "subscript" => "MemberExpr",
-        "identifier" => "Identifier",
-        "module" | "program" | "translation_unit" | "source_file" => "File",
-        s if s.ends_with("literal") || matches!(s, "string" | "integer" | "float") => "Literal",
-        _ => "Unknown",
+    const NODE_KIND_TABLE: &[(&str, &str)] = &[
+        ("function_definition", "FunctionDecl"),
+        ("class_definition", "TypeDecl"),
+        ("lexical_declaration", "VarDecl"),
+        ("variable_declaration", "VarDecl"),
+        ("if_statement", "IfStmt"),
+        ("for_statement", "ForStmt"),
+        ("while_statement", "WhileStmt"),
+        ("match_statement", "MatchStmt"),
+        ("return_statement", "ReturnStmt"),
+        ("break_statement", "BreakStmt"),
+        ("continue_statement", "ContinueStmt"),
+        ("try_statement", "TryStmt"),
+        ("expression_statement", "ExprStmt"),
+        ("assignment", "AssignExpr"),
+        ("augmented_assignment", "AssignExpr"),
+        ("binary_expression", "BinaryExpr"),
+        ("boolean_operator", "BinaryExpr"),
+        ("unary_expression", "UnaryExpr"),
+        ("call", "CallExpr"),
+        ("call_expression", "CallExpr"),
+        ("member_expression", "MemberExpr"),
+        ("field_expression", "MemberExpr"),
+        ("subscript", "MemberExpr"),
+        ("identifier", "Identifier"),
+        ("module", "File"),
+        ("program", "File"),
+        ("translation_unit", "File"),
+        ("source_file", "File"),
+    ];
+    if let Some((_, mapped)) = NODE_KIND_TABLE.iter().find(|(k, _)| *k == kind) {
+        return mapped;
     }
+    if kind.ends_with("literal") || matches!(kind, "string" | "integer" | "float") {
+        return "Literal";
+    }
+    "Unknown"
 }
 
 /// First-pass, name-based Abstractness heuristic -- no import-alias

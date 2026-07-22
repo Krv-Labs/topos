@@ -352,8 +352,12 @@ pub struct ResolvedLbugStore {
 /// `None` on any read/parse error or a missing `"branch"` key — callers
 /// treat that identically to "no metadata, can't branch-match."
 fn read_store_meta(store_dir: &Path) -> Option<LbugStoreMeta> {
-    let raw = std::fs::read_to_string(store_dir.join(GITNEXUS_META_FILE)).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    // Named `raw_json`, not `raw`: tree-sitter-rust's grammar for the
+    // `&raw const`/`&raw mut` raw-reference syntax misparses a bare `&raw`
+    // local as an ERROR node, which would falsely mark this whole file
+    // unparseable (is_parseable=false) despite valid, rustc-accepted syntax.
+    let raw_json = std::fs::read_to_string(store_dir.join(GITNEXUS_META_FILE)).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw_json).ok()?;
     let branch = value.get("branch")?.as_str()?.to_string();
     let last_commit = value
         .get("lastCommit")

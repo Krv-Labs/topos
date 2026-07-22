@@ -557,6 +557,38 @@ pub fn render_evaluation_md(e: &EvaluationResult, title: Option<&str>, verbose: 
         return lines.join("\n");
     }
 
+    push_generators_section(&mut lines, e);
+
+    lines.push(String::new());
+    lines.push(format!("**Priority:** `{}`", e.priority));
+    lines.push(format!("**Guidance:** {}", e.guidance));
+    push_agent_contract_section(&mut lines, e);
+    push_preference_walk_section(&mut lines, e);
+    push_secure_overlay_section(&mut lines, e);
+    push_acknowledged_risks_section(&mut lines, e);
+    if e.grade_capped {
+        lines.push(
+            "> Max grade capped below IDEAL because an acknowledged security risk is active."
+                .into(),
+        );
+    }
+    push_metric_locations_section(&mut lines, e);
+    push_refactor_targets_section(&mut lines, e);
+    push_suggestions_section(&mut lines, e);
+    if verbose {
+        push_raw_metrics_section(&mut lines, e);
+    }
+    lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// render_evaluation_md section renderers
+// ---------------------------------------------------------------------------
+//
+// Each renders one independent markdown section, pushing onto the shared
+// `lines` buffer and no-opping when its section has nothing to show.
+
+fn push_generators_section(lines: &mut Vec<String>, e: &EvaluationResult) {
     lines.push(String::new());
     lines.push("## Generators".into());
     for (dim, val) in sorted_pairs(&e.dimensions) {
@@ -570,162 +602,179 @@ pub fn render_evaluation_md(e: &EvaluationResult, title: Option<&str>, verbose: 
                 .into(),
         );
     }
+}
 
+fn push_agent_contract_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    let Some(contract) = &e.agent_contract else {
+        return;
+    };
+    if contract.next_tool.is_none()
+        && contract.next_actions.is_empty()
+        && contract.blocked_by.is_empty()
+    {
+        return;
+    }
     lines.push(String::new());
-    lines.push(format!("**Priority:** `{}`", e.priority));
-    lines.push(format!("**Guidance:** {}", e.guidance));
-    if let Some(contract) = &e.agent_contract {
-        if contract.next_tool.is_some()
-            || !contract.next_actions.is_empty()
-            || !contract.blocked_by.is_empty()
-        {
-            lines.push(String::new());
-            lines.push("## Agent Contract".into());
-            if let Some(next_tool) = &contract.next_tool {
-                lines.push(format!("- **Next tool:** `{next_tool}`"));
-            }
-            for action in &contract.next_actions {
-                lines.push(format!("- **Action:** {action}"));
-            }
-            for blocked in &contract.blocked_by {
-                lines.push(format!("- **Blocked by:** `{blocked}`"));
-            }
-        }
+    lines.push("## Agent Contract".into());
+    if let Some(next_tool) = &contract.next_tool {
+        lines.push(format!("- **Next tool:** `{next_tool}`"));
     }
+    for action in &contract.next_actions {
+        lines.push(format!("- **Action:** {action}"));
+    }
+    for blocked in &contract.blocked_by {
+        lines.push(format!("- **Blocked by:** `{blocked}`"));
+    }
+}
 
-    if let Some(pw) = &e.preference_walk {
-        let ranking = pw
-            .ranking
+fn push_preference_walk_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    let Some(pw) = &e.preference_walk else {
+        return;
+    };
+    let ranking = pw
+        .ranking
+        .iter()
+        .map(|g| g.as_str())
+        .collect::<Vec<_>>()
+        .join(" ≻ ");
+    lines.push(String::new());
+    lines.push("## Preference Walk".into());
+    lines.push(format!("- **Ranking:** {ranking}"));
+    lines.push(format!(
+        "- **Target (aspirational):** {} ({:.0}% of the way)",
+        pw.target.as_str(),
+        pw.progress * 100.0
+    ));
+    lines.push(format!(
+        "- **Fallback (ideal intersection):** {} — divert here if IDEAL plateaus",
+        pw.fallback_target.as_str()
+    ));
+    if let Some(next_step) = pw.next_step {
+        lines.push(format!("- **Next step:** aim for `{}`", next_step.as_str()));
+    }
+    if pw.walk.is_empty() {
+        lines.push("- **Walk:** _at or beyond target — no further steps._".into());
+    } else {
+        let walk_str = pw
+            .walk
             .iter()
-            .map(|g| g.as_str())
+            .map(|v| v.as_str())
             .collect::<Vec<_>>()
-            .join(" ≻ ");
-        lines.push(String::new());
-        lines.push("## Preference Walk".into());
-        lines.push(format!("- **Ranking:** {ranking}"));
-        lines.push(format!(
-            "- **Target (aspirational):** {} ({:.0}% of the way)",
-            pw.target.as_str(),
-            pw.progress * 100.0
-        ));
-        lines.push(format!(
-            "- **Fallback (ideal intersection):** {} — divert here if IDEAL plateaus",
-            pw.fallback_target.as_str()
-        ));
-        if let Some(next_step) = pw.next_step {
-            lines.push(format!("- **Next step:** aim for `{}`", next_step.as_str()));
-        }
-        if pw.walk.is_empty() {
-            lines.push("- **Walk:** _at or beyond target — no further steps._".into());
-        } else {
-            let walk_str = pw
-                .walk
-                .iter()
-                .map(|v| v.as_str())
-                .collect::<Vec<_>>()
-                .join(" → ");
-            lines.push(format!("- **Walk:** {walk_str}"));
-        }
+            .join(" → ");
+        lines.push(format!("- **Walk:** {walk_str}"));
     }
+}
 
-    if let (Some(raw), adjusted) = (e.secure_raw, e.secure_adjusted) {
-        if Some(raw) != adjusted {
-            let raw_str = if raw { "PASS" } else { "FAIL" };
-            let adjusted_str = if adjusted == Some(true) {
-                "PASS"
+fn push_secure_overlay_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    let (Some(raw), adjusted) = (e.secure_raw, e.secure_adjusted) else {
+        return;
+    };
+    if Some(raw) == adjusted {
+        return;
+    }
+    let raw_str = if raw { "PASS" } else { "FAIL" };
+    let adjusted_str = if adjusted == Some(true) {
+        "PASS"
+    } else {
+        "FAIL"
+    };
+    lines.push(String::new());
+    lines.push(format!(
+        "**SECURE overlay:** {raw_str} (raw) -> {adjusted_str} (acknowledged)"
+    ));
+}
+
+fn push_acknowledged_risks_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    if e.acknowledged_risks.is_empty() {
+        return;
+    }
+    lines.push(String::new());
+    lines.push("## Acknowledged Risks".into());
+    for risk in &e.acknowledged_risks {
+        let name = risk.callee.clone().unwrap_or_else(|| risk.kind.clone());
+        lines.push(format!("- `{name}` line {}: {}", risk.line, risk.reason));
+    }
+}
+
+fn push_metric_locations_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    if e.metric_locations.is_empty() {
+        return;
+    }
+    lines.push(String::new());
+    lines.push("## Metric Locations".into());
+    for (metric, entries) in sorted_pairs(&e.metric_locations) {
+        lines.push(format!("- `{metric}`:"));
+        for func in entries.iter() {
+            let where_str = if func.kind.as_deref() == Some("module") {
+                "module-level (not attributable to a function)".to_string()
             } else {
-                "FAIL"
+                format!(
+                    "`{}` ({}) lines {}-{}",
+                    func.qualified_name
+                        .clone()
+                        .unwrap_or_else(|| func.name.clone()),
+                    func.kind.clone().unwrap_or_default(),
+                    func.start_line.map(|l| l.to_string()).unwrap_or_default(),
+                    func.end_line.map(|l| l.to_string()).unwrap_or_default()
+                )
             };
-            lines.push(String::new());
-            lines.push(format!(
-                "**SECURE overlay:** {raw_str} (raw) -> {adjusted_str} (acknowledged)"
-            ));
+            lines.push(format!("  - {where_str} — complexity {}", func.complexity));
         }
     }
-    if !e.acknowledged_risks.is_empty() {
-        lines.push(String::new());
-        lines.push("## Acknowledged Risks".into());
-        for risk in &e.acknowledged_risks {
-            let name = risk.callee.clone().unwrap_or_else(|| risk.kind.clone());
-            lines.push(format!("- `{name}` line {}: {}", risk.line, risk.reason));
-        }
-    }
-    if e.grade_capped {
-        lines.push(
-            "> Max grade capped below IDEAL because an acknowledged security risk is active."
-                .into(),
-        );
-    }
+}
 
-    if !e.metric_locations.is_empty() {
-        lines.push(String::new());
-        lines.push("## Metric Locations".into());
-        for (metric, entries) in sorted_pairs(&e.metric_locations) {
-            lines.push(format!("- `{metric}`:"));
-            for func in entries.iter() {
-                let where_str = if func.kind.as_deref() == Some("module") {
-                    "module-level (not attributable to a function)".to_string()
-                } else {
-                    format!(
-                        "`{}` ({}) lines {}-{}",
-                        func.qualified_name
-                            .clone()
-                            .unwrap_or_else(|| func.name.clone()),
-                        func.kind.clone().unwrap_or_default(),
-                        func.start_line.map(|l| l.to_string()).unwrap_or_default(),
-                        func.end_line.map(|l| l.to_string()).unwrap_or_default()
-                    )
-                };
-                lines.push(format!("  - {where_str} — complexity {}", func.complexity));
-            }
-        }
+fn push_refactor_targets_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    if e.refactor_targets.is_empty() {
+        return;
     }
+    lines.push(String::new());
+    lines.push("## Refactor Targets".into());
+    lines.push("| Target | Kind | Metric | Location | Operations |".into());
+    lines.push("| --- | --- | --- | --- | --- |".into());
+    for target in &e.refactor_targets {
+        let loc = match (target.line_start, target.line_end) {
+            (Some(start), Some(end)) if end != start => format!("{start}-{end}"),
+            (Some(start), _) => start.to_string(),
+            _ => "?".to_string(),
+        };
+        let symbol = target
+            .symbol
+            .clone()
+            .unwrap_or_else(|| "<module>".to_string())
+            .replace('|', "\\|");
+        let ops = target
+            .recommended_operations
+            .iter()
+            .map(|op| format!("`{op}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "| `{}` `{symbol}` | {} | `{}` | {loc} | {ops} |",
+            target.target_id, target.kind, target.metric
+        ));
+    }
+}
 
-    if !e.refactor_targets.is_empty() {
-        lines.push(String::new());
-        lines.push("## Refactor Targets".into());
-        lines.push("| Target | Kind | Metric | Location | Operations |".into());
-        lines.push("| --- | --- | --- | --- | --- |".into());
-        for target in &e.refactor_targets {
-            let loc = match (target.line_start, target.line_end) {
-                (Some(start), Some(end)) if end != start => format!("{start}-{end}"),
-                (Some(start), _) => start.to_string(),
-                _ => "?".to_string(),
-            };
-            let symbol = target
-                .symbol
-                .clone()
-                .unwrap_or_else(|| "<module>".to_string())
-                .replace('|', "\\|");
-            let ops = target
-                .recommended_operations
-                .iter()
-                .map(|op| format!("`{op}`"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            lines.push(format!(
-                "| `{}` `{symbol}` | {} | `{}` | {loc} | {ops} |",
-                target.target_id, target.kind, target.metric
-            ));
-        }
+fn push_suggestions_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    if e.suggestions.is_empty() {
+        return;
     }
+    lines.push(String::new());
+    lines.push("## Suggestions".into());
+    for s in &e.suggestions {
+        lines.push(format!("- [ ] ({}) {}", s.pillar, s.message));
+    }
+}
 
-    if !e.suggestions.is_empty() {
-        lines.push(String::new());
-        lines.push("## Suggestions".into());
-        for s in &e.suggestions {
-            lines.push(format!("- [ ] ({}) {}", s.pillar, s.message));
-        }
+fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
+    if e.raw_metrics.is_empty() {
+        return;
     }
-
-    if verbose && !e.raw_metrics.is_empty() {
-        lines.push(String::new());
-        lines.push("## Raw Metrics".into());
-        for (k, v) in sorted_pairs(&e.raw_metrics) {
-            lines.push(format!("- `{k}`: {v:.3}"));
-        }
+    lines.push(String::new());
+    lines.push("## Raw Metrics".into());
+    for (k, v) in sorted_pairs(&e.raw_metrics) {
+        lines.push(format!("- `{k}`: {v:.3}"));
     }
-    lines.join("\n")
 }
 
 #[cfg(test)]

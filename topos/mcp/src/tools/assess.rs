@@ -479,6 +479,30 @@ fn status_meaning(status: AssessmentStatus) -> &'static str {
     }
 }
 
+/// The "## Agent Contract" section of the assessment markdown report.
+fn push_assessment_agent_contract_lines(lines: &mut Vec<String>, r: &AssessmentResult) {
+    let Some(contract) = &r.agent_contract else {
+        return;
+    };
+    if contract.next_tool.is_none()
+        && contract.next_actions.is_empty()
+        && contract.blocked_by.is_empty()
+    {
+        return;
+    }
+    lines.push(String::new());
+    lines.push("## Agent Contract".to_string());
+    if let Some(next_tool) = &contract.next_tool {
+        lines.push(format!("- **Next tool:** `{next_tool}`"));
+    }
+    for action in &contract.next_actions {
+        lines.push(format!("- **Action:** {action}"));
+    }
+    for blocked in &contract.blocked_by {
+        lines.push(format!("- **Blocked by:** `{blocked}`"));
+    }
+}
+
 pub(crate) fn render_assessment_md(r: &AssessmentResult) -> String {
     if let Some(err) = &r.error {
         return format!("**Error:** {err}");
@@ -503,24 +527,7 @@ pub(crate) fn render_assessment_md(r: &AssessmentResult) -> String {
             .unwrap_or_default();
         lines.push(format!("**Structural distance:** {distance:.3}{sim}"));
     }
-    if let Some(contract) = &r.agent_contract {
-        if contract.next_tool.is_some()
-            || !contract.next_actions.is_empty()
-            || !contract.blocked_by.is_empty()
-        {
-            lines.push(String::new());
-            lines.push("## Agent Contract".to_string());
-            if let Some(next_tool) = &contract.next_tool {
-                lines.push(format!("- **Next tool:** `{next_tool}`"));
-            }
-            for action in &contract.next_actions {
-                lines.push(format!("- **Action:** {action}"));
-            }
-            for blocked in &contract.blocked_by {
-                lines.push(format!("- **Blocked by:** `{blocked}`"));
-            }
-        }
-    }
+    push_assessment_agent_contract_lines(&mut lines, r);
     if !r.score_deltas.is_empty() {
         let mut pairs: Vec<_> = r.score_deltas.iter().collect();
         pairs.sort_by(|a, b| a.0.cmp(b.0));
@@ -706,6 +713,38 @@ fn ref_exists(repo_root: &Path, git_ref: &str) -> bool {
 // Snapshot / changeset helpers
 // ---------------------------------------------------------------------------
 
+fn priority_from_str(s: &str) -> Option<Priority> {
+    match s {
+        "simple" => Some(Priority::Simple),
+        "composable" => Some(Priority::Composable),
+        "secure" => Some(Priority::Secure),
+        _ => None,
+    }
+}
+
+fn generator_input_from_str(s: &str) -> Option<GeneratorInput> {
+    match s {
+        "simple" => Some(GeneratorInput::Simple),
+        "composable" => Some(GeneratorInput::Composable),
+        "secure" => Some(GeneratorInput::Secure),
+        _ => None,
+    }
+}
+
+fn lattice_element_from_str(s: &str) -> Option<LatticeElement> {
+    match s {
+        "SLOP" => Some(LatticeElement::SLOP),
+        "SIMPLE" => Some(LatticeElement::SIMPLE),
+        "COMPOSABLE" => Some(LatticeElement::COMPOSABLE),
+        "SECURE" => Some(LatticeElement::SECURE),
+        "SIMPLE_COMPOSABLE" => Some(LatticeElement::SIMPLE_COMPOSABLE),
+        "SIMPLE_SECURE" => Some(LatticeElement::SIMPLE_SECURE),
+        "COMPOSABLE_SECURE" => Some(LatticeElement::COMPOSABLE_SECURE),
+        "IDEAL" => Some(LatticeElement::IDEAL),
+        _ => None,
+    }
+}
+
 fn priority_from_meta(
     meta: &HashMap<String, Value>,
 ) -> (
@@ -719,12 +758,7 @@ fn priority_from_meta(
             let priority = meta
                 .get("priority")
                 .and_then(Value::as_str)
-                .and_then(|s| match s {
-                    "simple" => Some(Priority::Simple),
-                    "composable" => Some(Priority::Composable),
-                    "secure" => Some(Priority::Secure),
-                    _ => None,
-                })
+                .and_then(priority_from_str)
                 .unwrap_or(Priority::Simple);
             (priority, PrioritySource::Default, None)
         }
@@ -732,27 +766,12 @@ fn priority_from_meta(
             let generators: Vec<GeneratorInput> = ranking
                 .iter()
                 .filter_map(Value::as_str)
-                .filter_map(|s| match s {
-                    "simple" => Some(GeneratorInput::Simple),
-                    "composable" => Some(GeneratorInput::Composable),
-                    "secure" => Some(GeneratorInput::Secure),
-                    _ => None,
-                })
+                .filter_map(generator_input_from_str)
                 .collect();
             let target = meta
                 .get("target")
                 .and_then(Value::as_str)
-                .and_then(|t| match t {
-                    "SLOP" => Some(LatticeElement::SLOP),
-                    "SIMPLE" => Some(LatticeElement::SIMPLE),
-                    "COMPOSABLE" => Some(LatticeElement::COMPOSABLE),
-                    "SECURE" => Some(LatticeElement::SECURE),
-                    "SIMPLE_COMPOSABLE" => Some(LatticeElement::SIMPLE_COMPOSABLE),
-                    "SIMPLE_SECURE" => Some(LatticeElement::SIMPLE_SECURE),
-                    "COMPOSABLE_SECURE" => Some(LatticeElement::COMPOSABLE_SECURE),
-                    "IDEAL" => Some(LatticeElement::IDEAL),
-                    _ => None,
-                });
+                .and_then(lattice_element_from_str);
             let prefs_input = UserPreferencesInput {
                 ranking: generators,
                 target,

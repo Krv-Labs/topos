@@ -64,6 +64,14 @@ impl ToposServer {
             + Self::refactor_router();
         ToposServer { tool_router }
     }
+
+    /// MCP tool definitions as shipped over the wire (`tools/list`).
+    ///
+    /// Used by the context-budget ratchet so agent-visible name + description
+    /// + inputSchema + annotations stay under the Python-era ceilings.
+    pub fn list_tool_defs(&self) -> Vec<rmcp::model::Tool> {
+        self.tool_router.list_all()
+    }
 }
 
 fn doc_resources() -> Vec<Resource> {

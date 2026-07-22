@@ -887,6 +887,45 @@ fn project_contract(
     }
 }
 
+/// The "## Agent Contract" section of the project markdown report.
+fn push_agent_contract_lines(lines: &mut Vec<String>, r: &ProjectEvaluationResult) {
+    let Some(contract) = &r.agent_contract else {
+        return;
+    };
+    lines.push(String::new());
+    lines.push("## Agent Contract".to_string());
+    if let Some(next_tool) = &contract.next_tool {
+        lines.push(format!("- **Next tool:** `{next_tool}`"));
+    }
+    for action in &contract.next_actions {
+        lines.push(format!("- **Action:** {action}"));
+    }
+    for blocked in &contract.blocked_by {
+        lines.push(format!("- **Blocked by:** `{blocked}`"));
+    }
+}
+
+/// The "## Per-language rollups" section of the project markdown report.
+fn push_language_rollup_lines(lines: &mut Vec<String>, r: &ProjectEvaluationResult) {
+    if r.language_rollups.is_empty() {
+        return;
+    }
+    lines.push(String::new());
+    lines.push("## Per-language rollups".to_string());
+    for rollup in &r.language_rollups {
+        lines.push(format!(
+            "- **{}**: {} (files={}, parse_failures={})",
+            rollup.language,
+            rollup.aggregate_floor_verdict.as_str(),
+            rollup.file_count,
+            rollup.parse_failures
+        ));
+        if let (Some(path), Some(verdict)) = (&rollup.worst_file_path, rollup.worst_file_verdict) {
+            lines.push(format!("  - worst: `{path}` ({})", verdict.as_str()));
+        }
+    }
+}
+
 fn render_project_entry(entry: &ProjectFileEntry, verbose: bool) -> Vec<String> {
     let mut lines = Vec::new();
     let mut score_pairs: Vec<(&String, &f64)> = entry.scores.iter().collect();
@@ -925,19 +964,7 @@ pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
     if !r.coupling_available {
         lines.push("> ⚠️ No `.gitnexus/` present — coupling dimension not scored.".to_string());
     }
-    if let Some(contract) = &r.agent_contract {
-        lines.push(String::new());
-        lines.push("## Agent Contract".to_string());
-        if let Some(next_tool) = &contract.next_tool {
-            lines.push(format!("- **Next tool:** `{next_tool}`"));
-        }
-        for action in &contract.next_actions {
-            lines.push(format!("- **Action:** {action}"));
-        }
-        for blocked in &contract.blocked_by {
-            lines.push(format!("- **Blocked by:** `{blocked}`"));
-        }
-    }
+    push_agent_contract_lines(&mut lines, r);
     lines.push(String::new());
     lines.push("## Rolled-up dimensions".to_string());
     let mut dims: Vec<(&String, &LatticeElement)> = r.rolled_up_dimensions.iter().collect();
@@ -950,24 +977,7 @@ pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
             .unwrap_or_default();
         lines.push(format!("- **{dim}**: {}{score}", val.as_str()));
     }
-    if !r.language_rollups.is_empty() {
-        lines.push(String::new());
-        lines.push("## Per-language rollups".to_string());
-        for rollup in &r.language_rollups {
-            lines.push(format!(
-                "- **{}**: {} (files={}, parse_failures={})",
-                rollup.language,
-                rollup.aggregate_floor_verdict.as_str(),
-                rollup.file_count,
-                rollup.parse_failures
-            ));
-            if let (Some(path), Some(verdict)) =
-                (&rollup.worst_file_path, rollup.worst_file_verdict)
-            {
-                lines.push(format!("  - worst: `{path}` ({})", verdict.as_str()));
-            }
-        }
-    }
+    push_language_rollup_lines(&mut lines, r);
     lines.push(String::new());
     lines.push(format!(
         "## Worst files (showing {} of {}, offset {})",

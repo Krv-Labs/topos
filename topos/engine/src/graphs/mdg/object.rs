@@ -21,18 +21,16 @@
 //! - `mdg.fan_out` — outgoing CALLS edges
 //! - `mdg.dep_depth` — longest IMPORTS chain from the file
 //!
-//! # Deviation from the Python original: the LadybugDB binary format
+//! # LadybugDB binary stores (GitNexus ≥ 1.5)
 //!
-//! Python supports two `.gitnexus/` store formats: the legacy JSON
-//! directory (ported here, [`ModuleDependencyGraph::from_json_dir`]) and
-//! the current LadybugDB binary format (`lbug` file, GitNexus ≥ 1.5),
-//! read via `import ladybug` — a Python-only binding to a native graph
-//! database with no Rust client available. That's a genuine external
-//! dependency wall, not a port left undone: reading it from Rust would
-//! mean either an FFI binding to `ladybug`'s native library or
-//! reimplementing a LadybugDB reader from scratch, neither of which
-//! belongs in this representation module. [`MdgError::LadybugBinaryUnsupported`]
-//! surfaces this clearly rather than silently returning an empty graph.
+//! Two on-disk shapes exist under `.gitnexus/lbug`:
+//! - **Directory of JSON** (GitNexus < 1.5) — [`ModuleDependencyGraph::from_json_dir`]
+//! - **Packed LadybugDB binary file** (GitNexus ≥ 1.5) — loaded via
+//!   [`ModuleDependencyGraph::from_cypher`], which shells out to
+//!   `gitnexus cypher` (issue #198). There is still no native Rust
+//!   LadybugDB client; the installed CLI is the supported read path.
+//!
+//! [`ModuleDependencyGraph::from_lbug_path`] dispatches on the path shape.
 
 use super::models::{GraphNode, GraphRelationship};
 use crate::functors::probes::mdg::coupling::{
@@ -47,8 +45,11 @@ use std::path::PathBuf;
 pub enum MdgError {
     /// No `.gitnexus/lbug` store found at the expected path.
     NotFound(PathBuf),
-    /// The store is the LadybugDB binary format — see the module doc.
-    LadybugBinaryUnsupported(PathBuf),
+    /// Binary Ladybug store present, but `gitnexus` is not on `$PATH`
+    /// so the cypher loader cannot run.
+    CypherUnavailable(PathBuf),
+    /// `gitnexus cypher` ran (or was attempted) and failed.
+    CypherFailed(String),
     Io(std::io::Error),
     Json(serde_json::Error),
 }
@@ -58,15 +59,19 @@ impl std::fmt::Display for MdgError {
         match self {
             MdgError::NotFound(path) => write!(
                 f,
-                "LadybugDB store not found at {}. Install GitNexus (npm install -g gitnexus) \
+                "LadybugDB store not found at {}. Install GitNexus (npm install -g gitnexus@1.6.8) \
                  and run 'gitnexus analyze' in the repository root first.",
                 path.display()
             ),
-            MdgError::LadybugBinaryUnsupported(path) => write!(
+            MdgError::CypherUnavailable(path) => write!(
                 f,
-                "{} is the LadybugDB binary format, which topos-core cannot read \
-                 (no Rust client for LadybugDB exists yet — see this module's doc comment)",
+                "{} is a LadybugDB binary store, but gitnexus is not on PATH so COMPOSABLE \
+                 cannot query it via `gitnexus cypher`. Install with: npm install -g gitnexus@1.6.8",
                 path.display()
+            ),
+            MdgError::CypherFailed(msg) => write!(
+                f,
+                "failed to load LadybugDB store via `gitnexus cypher`: {msg}"
             ),
             MdgError::Io(e) => write!(f, "{e}"),
             MdgError::Json(e) => write!(f, "{e}"),

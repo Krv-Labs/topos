@@ -77,7 +77,7 @@ Three independent pillars, computed natively in `topos-engine` from tree-sitter 
 `COMPOSABLE` needs a cross-file dependency graph. Install GitNexus and `topos evaluate` will detect it, generate `.gitnexus` if it's missing or stale, and score COMPOSABLE alongside SIMPLE/SECURE automatically:
 
 ```bash
-pnpm add -g gitnexus  # or: npm install -g gitnexus
+pnpm add -g gitnexus@1.6.8  # or: npm install -g gitnexus@1.6.8
 topos evaluate src/ -r   # generates/refreshes .gitnexus as needed, then scores COMPOSABLE/GOLD
 ```
 

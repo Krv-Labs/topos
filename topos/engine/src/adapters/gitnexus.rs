@@ -39,8 +39,14 @@ use super::discovery::iter_source_files;
 use super::process::{command_on_path, run_with_timeout, RunError};
 use crate::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
-const GITNEXUS_CMD: &str = "gitnexus";
-const INSTALL_HINT: &str = "GitNexus not found. Install it with: npm install -g gitnexus";
+pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
+
+/// Pinned GitNexus version known to work with COMPOSABLE (issues #197 / #198).
+pub const GITNEXUS_PINNED: &str = "1.6.8";
+/// Oldest GitNexus that writes the Ladybug binary store (needs cypher load).
+pub const GITNEXUS_MIN_SUPPORTED: &str = "1.5.0";
+
+const INSTALL_HINT: &str = "GitNexus not found. Install it with: npm install -g gitnexus@1.6.8";
 
 /// Topos-owned marker written inside `.gitnexus` recording what source
 /// snapshot the graph was built from. v1 markers carried only `head_sha`;
@@ -80,6 +86,118 @@ fn resolve_timeout(timeout: Option<f64>) -> Option<f64> {
 /// Whether the `gitnexus` CLI is on `$PATH`.
 pub fn gitnexus_available() -> bool {
     command_on_path(GITNEXUS_CMD)
+}
+
+/// Best-effort `gitnexus --version` string (e.g. `"1.6.8"`), or `None`.
+pub fn gitnexus_version() -> Option<String> {
+    let mut cmd = Command::new(GITNEXUS_CMD);
+    cmd.arg("--version");
+    let output = run_with_timeout(cmd, None, true, Some(Duration::from_secs(5))).ok()?;
+    if output.status_code != Some(0) {
+        return None;
+    }
+    parse_version_string(&output.stdout).or_else(|| parse_version_string(&output.stderr))
+}
+
+/// Pull the first `X.Y.Z` (optional pre-release suffix) out of a version line.
+fn parse_version_string(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
+                i += 1;
+            }
+            if i < bytes.len() && bytes[i] == b'-' {
+                i += 1;
+                while i < bytes.len()
+                    && (bytes[i].is_ascii_alphanumeric()
+                        || bytes[i] == b'.'
+                        || bytes[i] == b'-'
+                        || bytes[i] == b'+')
+                {
+                    i += 1;
+                }
+            }
+            let candidate = &trimmed[start..i];
+            if candidate.contains('.') {
+                return Some(candidate.to_string());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// Compare dotted numeric prefixes (`1.6.8` vs `1.5.0`). Pre-release
+/// suffixes are ignored for the gate — RCs still carry the base numbers.
+fn version_tuple(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version.split('-').next().unwrap_or(version);
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next().unwrap_or("0").parse().ok()?;
+    Some((major, minor, patch))
+}
+
+/// Soft compatibility report for the installed GitNexus CLI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitnexusCompat {
+    /// On `$PATH` and within the supported band.
+    Ok { version: String },
+    /// Installed, but older than [`GITNEXUS_MIN_SUPPORTED`].
+    TooOld { version: String },
+    /// Installed and newer than the pinned/tested version — may still work.
+    Untested { version: String },
+    /// `gitnexus --version` could not be parsed.
+    Unknown,
+    /// Not on `$PATH`.
+    Missing,
+}
+
+/// Probe whether the installed GitNexus looks compatible with COMPOSABLE.
+pub fn gitnexus_compat() -> GitnexusCompat {
+    if !gitnexus_available() {
+        return GitnexusCompat::Missing;
+    }
+    let Some(version) = gitnexus_version() else {
+        return GitnexusCompat::Unknown;
+    };
+    let Some(installed) = version_tuple(&version) else {
+        return GitnexusCompat::Unknown;
+    };
+    let min = version_tuple(GITNEXUS_MIN_SUPPORTED).expect("constant semver");
+    let pinned = version_tuple(GITNEXUS_PINNED).expect("constant semver");
+    if installed < min {
+        GitnexusCompat::TooOld { version }
+    } else if installed > pinned {
+        GitnexusCompat::Untested { version }
+    } else {
+        GitnexusCompat::Ok { version }
+    }
+}
+
+/// One-line stderr-friendly note when the installed CLI is outside the
+/// pinned band. Returns `None` when there's nothing to warn about.
+pub fn gitnexus_compat_warning() -> Option<String> {
+    match gitnexus_compat() {
+        GitnexusCompat::TooOld { version } => Some(format!(
+            "gitnexus {version} is older than the minimum supported {GITNEXUS_MIN_SUPPORTED}; \
+             COMPOSABLE may fail to load. Upgrade with: npm install -g gitnexus@{GITNEXUS_PINNED}"
+        )),
+        GitnexusCompat::Untested { version } => Some(format!(
+            "gitnexus {version} is newer than the last tested {GITNEXUS_PINNED}; \
+             COMPOSABLE may break if the store format drifted. Pin with: npm install -g gitnexus@{GITNEXUS_PINNED}"
+        )),
+        GitnexusCompat::Unknown => Some(format!(
+            "could not parse `gitnexus --version`; COMPOSABLE expects gitnexus>={GITNEXUS_MIN_SUPPORTED} \
+             (pinned {GITNEXUS_PINNED})"
+        )),
+        GitnexusCompat::Ok { .. } | GitnexusCompat::Missing => None,
+    }
 }
 
 /// Outcome of a `gitnexus analyze` run.
@@ -509,7 +627,7 @@ mod tests {
         let result = not_found_result();
         assert!(!result.ok);
         assert_eq!(result.returncode, 127);
-        assert!(result.message.contains("npm install -g gitnexus"));
+        assert!(result.message.contains("npm install -g gitnexus@1.6.8"));
     }
 
     #[test]
@@ -594,5 +712,28 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(result.returncode, 1);
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn parse_version_string_extracts_semver() {
+        assert_eq!(parse_version_string("1.6.8").as_deref(), Some("1.6.8"));
+        assert_eq!(
+            parse_version_string(
+                "gitnexus version 1.6.8
+"
+            )
+            .as_deref(),
+            Some("1.6.8")
+        );
+        assert_eq!(
+            parse_version_string("1.6.10-rc.86").as_deref(),
+            Some("1.6.10-rc.86")
+        );
+    }
+
+    #[test]
+    fn version_tuple_orders_numeric_prefixes() {
+        assert!(version_tuple("1.5.0").unwrap() < version_tuple("1.6.8").unwrap());
+        assert!(version_tuple("1.6.8").unwrap() < version_tuple("1.6.10-rc.86").unwrap());
     }
 }

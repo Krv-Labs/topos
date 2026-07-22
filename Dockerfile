@@ -46,7 +46,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g gitnexus \
+    && npm install -g gitnexus@1.6.8 \
     && apt-get purge -y --auto-remove \
     && rm -rf /var/lib/apt/lists/*
 

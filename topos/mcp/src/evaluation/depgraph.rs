@@ -33,11 +33,12 @@ fn load_mdg_branch_aware(
 ) -> Result<ModuleDependencyGraph, String> {
     let resolved = resolve_lbug_store(gitnexus_dir, branch);
     match resolved.path {
-        Some(lbug) if lbug.is_dir() => {
-            ModuleDependencyGraph::from_json_dir(&lbug, target_file).map_err(|e| e.to_string())
+        Some(lbug) => {
+            let project_root = gitnexus_dir.parent().unwrap_or(gitnexus_dir);
+            ModuleDependencyGraph::from_lbug_path(&lbug, target_file, project_root, branch)
+                .map_err(|e| e.to_string())
         }
-        Some(lbug) if lbug.is_file() => Err(MdgError::LadybugBinaryUnsupported(lbug).to_string()),
-        _ => {
+        None => {
             if !resolved.available_branches.is_empty() {
                 Err(format!(
                     "{BRANCH_NOT_INDEXED_MARKER} '{}' (indexed: {})",

@@ -12,7 +12,7 @@ use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::simple::describe_entropy_ratio;
 use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
-use super::evaluate::classify_with_representations;
+use super::classify::classify_with_representations;
 use super::lang::detect_language;
 
 #[derive(Args)]

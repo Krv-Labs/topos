@@ -100,7 +100,7 @@ fn load_file_nodes(
     loop {
         let query = format!(
             "MATCH (n:`File`) RETURN n.id AS id, n.filePath AS filePath, n.name AS name \
-             SKIP {skip} LIMIT {FILE_PAGE_SIZE}"
+             ORDER BY n.id SKIP {skip} LIMIT {FILE_PAGE_SIZE}"
         );
         let table = cypher(project_root, branch, &query)?;
         if table.rows.is_empty() {
@@ -152,13 +152,13 @@ fn rel_query(skip: usize, with_step: bool) -> String {
         format!(
             "MATCH (src)-[r:CodeRelation]->(dst) \
              RETURN src.id AS sourceId, dst.id AS targetId, r.type AS type, r.step AS step \
-             SKIP {skip} LIMIT {REL_PAGE_SIZE}"
+             ORDER BY sourceId, targetId, type SKIP {skip} LIMIT {REL_PAGE_SIZE}"
         )
     } else {
         format!(
             "MATCH (src)-[r:CodeRelation]->(dst) \
              RETURN src.id AS sourceId, dst.id AS targetId, r.type AS type \
-             SKIP {skip} LIMIT {REL_PAGE_SIZE}"
+             ORDER BY sourceId, targetId, type SKIP {skip} LIMIT {REL_PAGE_SIZE}"
         )
     }
 }

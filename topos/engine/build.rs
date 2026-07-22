@@ -2,13 +2,18 @@
 //! that don't pull it in transitively.
 
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-        if let Some(prefix) = brew_prefix("openssl@3").or_else(|| brew_prefix("openssl")) {
-            println!("cargo:rustc-link-search=native={prefix}/lib");
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    // The embedded `lbug` C++ client links OpenSSL on Unix targets. Windows
+    // uses a different crypto backend, so linking `ssl`/`crypto` there fails.
+    if target_os == "macos" || target_os == "linux" {
+        if target_os == "macos" {
+            if let Some(prefix) = brew_prefix("openssl@3").or_else(|| brew_prefix("openssl")) {
+                println!("cargo:rustc-link-search=native={prefix}/lib");
+            }
         }
+        println!("cargo:rustc-link-lib=ssl");
+        println!("cargo:rustc-link-lib=crypto");
     }
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
     println!("cargo:rerun-if-changed=build.rs");
 }
 

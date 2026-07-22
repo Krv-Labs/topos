@@ -4,9 +4,17 @@
 //!
 //! ```text
 //! Φ_SIMPLE(metrics) → ScoredDecision
-//! achieved = (cyclomatic ≤ gate) ∧ (entropy in band) ∧ (max_func ≤ gate)
+//! achieved = (entropy in band) ∧ (max_func ≤ gate)
 //! score    = min(per-metric qualities)   # reporting only; does not gate achieved
 //! ```
+//!
+//! `cyclomatic` is scored (drags down `score`, drives `extract_helper`
+//! suggestions) but does not gate `achieved` (`GateSpec::gates_achieved
+//! = false` in [`super::gates`], issue #193): it's a whole-file
+//! merged-CFG sum that scales with function count, so it would
+//! otherwise hard-fail a file with several small, individually-simple
+//! functions -- a concern `max_func` (a true per-function max) already
+//! gates directly.
 //!
 //! Gate comparisons and interpretation prose live in
 //! [`super::gates`]; thresholds and normalization caps in
@@ -62,7 +70,10 @@ pub fn score_simple(
         // The combined score is the minimum of the individual qualities
         // (conservative AND).
         score: qualities.into_iter().fold(f64::INFINITY, f64::min),
-        achieved: results.iter().all(|r| r.passed()),
+        achieved: results
+            .iter()
+            .filter(|r| r.spec.gates_achieved)
+            .all(|r| r.passed()),
         interpretation: results
             .iter()
             .map(|r| (r.spec.metric.to_string(), r.interpretation()))
@@ -121,10 +132,18 @@ mod tests {
     #[test]
     fn independent_thresholds_each_fail_alone() {
         assert!(score_simple(Some(10.0), Some(0.5), Some(5.0), false, None).achieved);
-        assert!(!score_simple(Some(16.0), Some(0.5), Some(5.0), false, None).achieved); // fail cyclomatic
         assert!(!score_simple(Some(10.0), Some(0.9), Some(5.0), false, None).achieved); // fail entropy
         assert!(!score_simple(Some(10.0), Some(0.5), Some(11.0), false, None).achieved);
         // fail max func
+    }
+
+    #[test]
+    fn cyclomatic_over_threshold_scores_but_does_not_gate() {
+        // cyclomatic=16 exceeds SIMPLE.max_cyclomatic (15), but no longer
+        // gates achieved -- it's advisory only (issue #193).
+        let result = score_simple(Some(16.0), Some(0.5), Some(5.0), false, None);
+        assert!(result.achieved);
+        assert!(result.score < 1.0); // still drags the score down
     }
 
     #[test]

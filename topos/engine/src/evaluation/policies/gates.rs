@@ -72,6 +72,15 @@ pub struct GateSpec {
     pub exempt: Option<fn(&GateContext) -> bool>,
     pub operations_low: &'static [&'static str],
     pub operations_high: &'static [&'static str],
+    /// Whether a fail/exempt outcome on this metric drags down its
+    /// pillar's `achieved`. `false` means the metric is still scored and
+    /// surfaced (interpretation, refactor operations) but advisory only
+    /// -- see `cfg.cyclomatic` below, whose whole-file merged-CFG sum
+    /// scales with function count and shouldn't hard-fail a file for
+    /// having many small, individually-simple functions when
+    /// `ast.max_function_complexity` (a true per-function max) already
+    /// gates that concern directly (issue #193).
+    pub gates_achieved: bool,
 }
 
 /// A spec applied to a measured value.
@@ -299,6 +308,11 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &["extract_helper", "split_decision_logic"],
+        // Advisory only (issue #193): the whole-file merged-CFG sum
+        // scales with function count, so it shouldn't hard-fail a file
+        // for having many small, individually-simple functions.
+        // ast.max_function_complexity gates that concern directly.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "ast.entropy",
@@ -310,6 +324,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(entropy_entrypoint_exempt),
         operations_low: &["consolidate_boilerplate"],
         operations_high: &["decompose_dense_logic"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "ast.max_function_complexity",
@@ -321,6 +336,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &["extract_helper", "split_decision_logic"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "mdg.instability",
@@ -332,6 +348,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(instability_entrypoint_exempt),
         operations_low: &["rebalance_dependencies", "extract_boundary"],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "mdg.main_sequence_distance",
@@ -343,6 +360,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(distance_stable_leaf_exempt),
         operations_low: &[],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "mdg.fan_in",
@@ -354,6 +372,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &["split_module"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "mdg.fan_out",
@@ -365,6 +384,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &["reduce_fanout", "invert_dependency"],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "cpg.dangerous_calls",
@@ -376,6 +396,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &[],
+        gates_achieved: true,
     },
     GateSpec {
         metric: "cpg.taint_flows",
@@ -387,6 +408,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &[],
+        gates_achieved: true,
     },
 ];
 

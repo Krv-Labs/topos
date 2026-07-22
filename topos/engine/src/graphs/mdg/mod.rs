@@ -3,5 +3,6 @@
 
 mod cypher;
 mod json;
+mod ladybug;
 pub mod models;
 pub mod object;

@@ -17,9 +17,9 @@ use super::object::{MdgError, ModuleDependencyGraph};
 impl ModuleDependencyGraph {
     /// Build a `ModuleDependencyGraph` from a `.gitnexus/` directory.
     ///
-    /// Dispatches to the JSON-dir loader or the cypher loader based on
-    /// whether `lbug` is a directory or a binary file. `project_root` for
-    /// cypher is taken as the parent of `gitnexus_dir`.
+    /// Dispatches to the JSON-dir loader or the binary-store loader based on
+    /// whether `lbug` is a directory or a file. `project_root` (for the
+    /// cypher fallback) is the parent of `gitnexus_dir`.
     pub fn from_gitnexus_dir(
         gitnexus_dir: impl AsRef<Path>,
         target_file: impl Into<String>,
@@ -103,19 +103,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn from_gitnexus_dir_binary_store_uses_cypher_path() {
+    fn from_gitnexus_dir_binary_store_does_not_silently_skip() {
         let dir = std::env::temp_dir().join(format!("topos_mdg_json_test_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("lbug"), b"binary-store-placeholder").unwrap();
 
         let result = ModuleDependencyGraph::from_gitnexus_dir(&dir, "x");
-        // Placeholder bytes are not a real Ladybug store. With gitnexus on
-        // PATH this is CypherFailed; without it, CypherUnavailable. Either
-        // way we must not reclaim the old "unsupported / no store" path.
+        // Placeholder bytes are not a real Ladybug store. Native open fails
+        // first; if gitnexus is on PATH the cypher fallback also fails.
+        // Either way we must not reclaim the old "unsupported / no store" path.
         assert!(
             matches!(
                 result,
-                Err(MdgError::CypherUnavailable(_)) | Err(MdgError::CypherFailed(_))
+                Err(MdgError::LadybugNativeFailed(_))
+                    | Err(MdgError::CypherUnavailable(_))
+                    | Err(MdgError::CypherFailed(_))
             ),
             "unexpected result: {result:?}"
         );

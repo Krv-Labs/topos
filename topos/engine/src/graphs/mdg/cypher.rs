@@ -1,19 +1,18 @@
-//! Load a [`ModuleDependencyGraph`] from a GitNexus ≥ 1.5 LadybugDB binary
-//! store by shelling out to `gitnexus cypher` (issue #198).
+//! Fallback COMPOSABLE loader: shell out to `gitnexus cypher` (issue #198).
 //!
-//! Mirrors the Python `_from_ladybugdb` path, but queries via the installed
-//! CLI instead of `import ladybug`.
+//! Primary path is the embedded [`super::ladybug`] client. This module is
+//! used when native open/query fails (version skew, missing native build,
+//! etc.).
 //!
 //! # Performance constraints
 //!
 //! - GitNexus truncates cypher stdout at 64 KiB → every bulk `MATCH` is
 //!   paged with `SKIP`/`LIMIT`.
 //! - Each `gitnexus cypher` spawn costs ~0.7s, so we avoid per-label
-//!   discovery: load **File** nodes (need `filePath` for COMPOSABLE) plus
-//!   all `CodeRelation` edges, then stub any edge endpoint that isn't a
-//!   File. Relationship pages are fetched concurrently.
+//!   discovery: load **File** nodes plus all `CodeRelation` edges, then
+//!   stub other endpoints. Relationship pages are fetched concurrently.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -22,6 +21,7 @@ use serde_json::Value;
 use crate::adapters::gitnexus::gitnexus_available;
 use crate::adapters::gitnexus_cypher::{run_cypher, CypherError, CypherTable};
 
+use super::ladybug::stub_missing_endpoints;
 use super::models::{GraphNode, GraphRelationship};
 use super::object::{MdgError, ModuleDependencyGraph};
 
@@ -33,7 +33,7 @@ impl ModuleDependencyGraph {
     /// Load from whichever on-disk shape `lbug_path` has.
     ///
     /// - Directory → legacy JSON export (GitNexus < 1.5)
-    /// - File → `gitnexus cypher` against `project_root` (GitNexus ≥ 1.5)
+    /// - File → native `lbug`, then `gitnexus cypher` fallback
     pub fn from_lbug_path(
         lbug_path: &Path,
         target_file: impl Into<String>,
@@ -43,13 +43,27 @@ impl ModuleDependencyGraph {
         if lbug_path.is_dir() {
             return Self::from_json_dir(lbug_path, target_file);
         }
-        if lbug_path.is_file() {
-            if !gitnexus_available() {
-                return Err(MdgError::CypherUnavailable(lbug_path.to_path_buf()));
-            }
-            return Self::from_cypher(project_root, branch, target_file);
+        if !lbug_path.is_file() {
+            return Err(MdgError::NotFound(lbug_path.to_path_buf()));
         }
-        Err(MdgError::NotFound(lbug_path.to_path_buf()))
+
+        let target_file = target_file.into();
+        match Self::from_ladybug_native(lbug_path, target_file.clone()) {
+            Ok(graph) => Ok(graph),
+            Err(native_err) => {
+                if !gitnexus_available() {
+                    return Err(MdgError::LadybugNativeFailed(format!(
+                        "{native_err}; cypher fallback unavailable (gitnexus not on PATH)"
+                    )));
+                }
+                match Self::from_cypher(project_root, branch, target_file) {
+                    Ok(graph) => Ok(graph),
+                    Err(cypher_err) => Err(MdgError::CypherFailed(format!(
+                        "native lbug failed ({native_err}); cypher fallback failed ({cypher_err})"
+                    ))),
+                }
+            }
+        }
     }
 
     /// Build a graph by querying the Ladybug binary store via `gitnexus cypher`.
@@ -250,26 +264,6 @@ fn fetch_rel_pages_parallel(
     Ok(results)
 }
 
-/// COMPOSABLE walks CONTAINS/CALLS/IMPORTS by id; non-File endpoints only
-/// need to exist in `nodes` so lookups succeed.
-fn stub_missing_endpoints(graph: &mut ModuleDependencyGraph) {
-    let mut needed: HashSet<String> = HashSet::new();
-    for rel in graph.relationships.values() {
-        needed.insert(rel.source_id.clone());
-        needed.insert(rel.target_id.clone());
-    }
-    for id in needed {
-        if graph.nodes.contains_key(&id) {
-            continue;
-        }
-        graph.add_node(GraphNode {
-            id,
-            label: "Symbol".to_string(),
-            properties: HashMap::new(),
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,30 +288,5 @@ mod tests {
             });
         }
         assert_eq!(graph.file_node_id(), Some("File:a.rs"));
-    }
-
-    #[test]
-    fn stub_missing_endpoints_adds_symbol_nodes() {
-        let mut graph = ModuleDependencyGraph::new("a.rs");
-        graph.add_node(GraphNode {
-            id: "File:a.rs".into(),
-            label: "File".into(),
-            properties: HashMap::from([("filePath".into(), Value::String("a.rs".into()))]),
-        });
-        graph.add_relationship(GraphRelationship {
-            id: "r1".into(),
-            source_id: "File:a.rs".into(),
-            target_id: "Function:a.rs:foo".into(),
-            rel_type: "CONTAINS".into(),
-            confidence: 1.0,
-            reason: String::new(),
-            properties: HashMap::new(),
-        });
-        stub_missing_endpoints(&mut graph);
-        assert!(graph.nodes.contains_key("Function:a.rs:foo"));
-        assert_eq!(
-            graph.contained_symbols("File:a.rs"),
-            vec!["Function:a.rs:foo".to_string()]
-        );
     }
 }

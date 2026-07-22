@@ -24,3 +24,6 @@ serde_json = "1.0"
 flate2 = "1.0"
 # .topos.toml allowlist parsing (evaluation::suppression / config).
 toml = "0.8"
+# LadybugDB native client for COMPOSABLE binary stores (issue #198).
+# Pin to the GitNexus 1.6.x band (ladybug 0.17.x).
+lbug = "=0.17.1"

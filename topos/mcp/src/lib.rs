@@ -18,3 +18,6 @@ pub mod server;
 pub mod sighthound;
 pub mod snapshots;
 pub mod tools;
+
+#[cfg(test)]
+mod context_budget;

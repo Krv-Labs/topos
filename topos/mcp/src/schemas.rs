@@ -556,23 +556,33 @@ fn default_refactor_limit() -> usize {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RefactorInput {
-    /// cycles | dependencies | process | graphify
+    /// Which analysis engine to run: `cycles` (CFG), `dependencies` /
+    /// `process` (need `.gitnexus`), or `graphify` (need Graphify graph).
     pub target: RefactorTargetKind,
+    /// Source file path relative to the MCP file root.
     pub filepath: String,
+    /// Override `.gitnexus` directory (`dependencies` / `process` targets).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
+    /// Override Graphify output directory (`target=graphify` only).
     #[serde(default)]
     pub graphify_dir: Option<String>,
+    /// Maximum hotspots to return (default 5).
     #[serde(default = "default_refactor_limit")]
     pub limit: usize,
 }
 
+/// Engine selector for `topos_refactor`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RefactorTargetKind {
+    /// CFG cycle-basis: loop/branch bodies driving cyclomatic complexity.
     Cycles,
+    /// MDG Forman curvature: load-bearing import edges (needs `.gitnexus`).
     Dependencies,
+    /// Process-graph choke points (needs `.gitnexus`).
     Process,
+    /// Graphify orphan nodes / fragile inferred edges.
     Graphify,
 }
 

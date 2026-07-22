@@ -367,12 +367,16 @@ fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
 
 #[tool_router(router = refactor_router, vis = "pub(crate)")]
 impl ToposServer {
-    /// Refactor hotspots (read-only). Four targets: `cycles` (CFG cycle
-    /// basis pointing at loop bodies), `dependencies` (MDG Forman curvature
-    /// naming load-bearing import edges), `process` (process-graph choke
-    /// points), `graphify` (orphan nodes / fragile inferred edges in a
-    /// Graphify knowledge graph). All purely advisory — none feeds the
-    /// lattice score.
+    /// Rank structural refactor hotspots for one file (read-only, advisory).
+    ///
+    /// Does not score SIMPLE/COMPOSABLE/SECURE — use `topos_evaluate_*` for
+    /// medals and `topos_assess_*` to verify edits afterward. `target`
+    /// selects the engine: `cycles` (CFG loop/branch bodies),
+    /// `dependencies` (MDG Forman curvature on imports; needs `.gitnexus`),
+    /// `process` (execution choke points; needs `.gitnexus`), or `graphify`
+    /// (orphan/fragile edges; needs a Graphify graph from
+    /// `topos_generate_graphify_graph`). Returns a RefactorResult with ranked
+    /// `hotspots` (`kind`, `label`, `score`, `suggestion`, optional lines).
     #[tool(
         name = "topos_refactor",
         annotations(

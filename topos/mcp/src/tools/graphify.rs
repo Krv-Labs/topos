@@ -54,10 +54,11 @@ impl ToposServer {
     /// Generate the Graphify knowledge graph (`graphify-out/graph.json`)
     /// via the external `graphify` CLI (side-effecting).
     ///
-    /// Skips running `graphify` when a graph is already present, unless
-    /// `force=true`. Wholly independent of `.gitnexus`/GitNexus — feeds
-    /// only `topos_refactor(target="graphify")`, never SIMPLE/COMPOSABLE/
-    /// SECURE.
+    /// Use before `topos_refactor(target="graphify")` when no graph exists.
+    /// Skips regeneration when a graph is already present unless
+    /// `force=true`. Wholly independent of `.gitnexus`/GitNexus — never
+    /// feeds SIMPLE/COMPOSABLE/SECURE. For GitNexus dep graphs use
+    /// `topos_generate_depgraph` instead.
     #[tool(
         name = "topos_generate_graphify_graph",
         annotations(

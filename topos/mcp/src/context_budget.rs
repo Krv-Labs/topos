@@ -38,10 +38,7 @@ mod tests {
         let mut lines: Vec<String> = sizes
             .iter()
             .map(|(name, chars, _)| {
-                format!(
-                    "{chars:8} chars (~{:5} tok)  {name}",
-                    approx_tokens(*chars)
-                )
+                format!("{chars:8} chars (~{:5} tok)  {name}", approx_tokens(*chars))
             })
             .collect();
         let total: usize = sizes.iter().map(|(_, c, _)| *c).sum();

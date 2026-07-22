@@ -25,7 +25,7 @@
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-Topos is a category theory–inspired framework that sits on top of tree-sitter, [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound) — one scored target for structural code quality instead of disconnected tools. Passing unit tests proves your code works; **Topos** proves it's built to last, scoring complexity, coupling, and data-flow risk so agents have something concrete to optimize toward, instead of a vague "clean it up."
+Topos scores code quality from the geometric and topological structure of program graphs — structural debt conventional linters can't compute — and gives agents a medal-scored (SLOP → GOLD) feedback loop for cleaner, more composable code. Built on [tree-sitter](https://tree-sitter.github.io/tree-sitter/), [GitNexus](https://github.com/abhigyanpatwari/GitNexus), and [Sighthound](https://github.com/Corgea/Sighthound): one scored target instead of disconnected tools.
 
 ---
 

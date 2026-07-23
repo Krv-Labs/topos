@@ -11,6 +11,11 @@ from pathlib import Path
 import click
 
 _PACKAGE_NAME = "topos-mcp"
+_DEFAULT_HOMEBREW_PREFIXES = (
+    Path("/opt/homebrew"),
+    Path("/usr/local"),
+    Path("/home/linuxbrew/.linuxbrew"),
+)
 
 
 @dataclass(frozen=True)
@@ -108,15 +113,38 @@ def _install_info_from_distribution(
 
 def _is_homebrew_executable(path: Path) -> bool:
     """True when the resolved executable lives inside a Homebrew prefix."""
-    if "Cellar" in path.parts:
-        return True
-    prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
-    if not prefix:
-        return False
     try:
-        return path.is_relative_to(Path(prefix).expanduser().resolve())
+        resolved_path = path.expanduser().resolve()
     except OSError:
         return False
+
+    configured_prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
+    if configured_prefix:
+        try:
+            prefix_path = Path(configured_prefix).expanduser()
+            if prefix_path.is_absolute():
+                prefix = prefix_path.resolve()
+                if resolved_path.is_relative_to(prefix):
+                    return True
+        except (OSError, RuntimeError):
+            pass
+
+    for prefix_path in _DEFAULT_HOMEBREW_PREFIXES:
+        try:
+            prefix = prefix_path.expanduser().resolve()
+            relative_parts = resolved_path.relative_to(prefix).parts
+        except (OSError, ValueError):
+            continue
+
+        if (
+            len(relative_parts) >= 4
+            and relative_parts[0] == "Cellar"
+            and bool(relative_parts[1])
+            and bool(relative_parts[2])
+        ):
+            return True
+
+    return False
 
 
 def _homebrew_info() -> InstallInfo:

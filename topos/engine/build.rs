@@ -6,7 +6,10 @@ fn main() {
     // The embedded `lbug` C++ client links OpenSSL on Unix targets. Windows
     // uses a different crypto backend, so linking `ssl`/`crypto` there fails.
     if target_os == "macos" || target_os == "linux" {
-        if target_os == "macos" {
+        if let Ok(dir) = std::env::var("OPENSSL_DIR") {
+            let lib = format!("{dir}/lib");
+            println!("cargo:rustc-link-search=native={lib}");
+        } else if target_os == "macos" {
             if let Some(prefix) = brew_prefix("openssl@3").or_else(|| brew_prefix("openssl")) {
                 println!("cargo:rustc-link-search=native={prefix}/lib");
             }
@@ -14,6 +17,7 @@ fn main() {
         println!("cargo:rustc-link-lib=ssl");
         println!("cargo:rustc-link-lib=crypto");
     }
+    println!("cargo:rerun-if-env-changed=OPENSSL_DIR");
     println!("cargo:rerun-if-changed=build.rs");
 }
 

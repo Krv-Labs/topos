@@ -259,11 +259,35 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # lbug links OpenSSL; macOS source builds also need cmake and a
+      # deployment target new enough for C++ `to_chars` (macOS 13.3+).
+      - name: Install macOS build deps (lbug / OpenSSL)
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3 cmake
+          echo "MACOSX_DEPLOYMENT_TARGET=13.3" >> "$GITHUB_ENV"
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+
       - name: Build bin wheel
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
+          # manylinux_2_28 images are AlmaLinux-based; openssl must be
+          # installed inside the container (host apt packages are invisible).
+          before-script-linux: |
+            if command -v dnf >/dev/null 2>&1; then
+              dnf install -y openssl-devel cmake pkgconfig
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y openssl-devel cmake pkgconfig
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                libssl-dev cmake pkg-config
+            else
+              echo "No supported package manager in manylinux container" >&2
+              exit 1
+            fi
           args: >-
             --release --bindings bin
             --manifest-path topos/mcp/Cargo.toml

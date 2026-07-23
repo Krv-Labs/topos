@@ -366,10 +366,10 @@ install_optional_dependencies() {
             if command -v pnpm >/dev/null 2>&1; then
                 install_cmd="pnpm add -g gitnexus"
             elif command -v npm >/dev/null 2>&1; then
-                install_cmd="npm install -g gitnexus"
+                install_cmd="npm install -g gitnexus@1.6.8"
             else
                 warn "Neither pnpm nor npm found. Skipping gitnexus installation."
-                warn "Install manually with: pnpm add -g gitnexus  # or: npm install -g gitnexus"
+                warn "Install manually with: pnpm add -g gitnexus@1.6.8  # or: npm install -g gitnexus@1.6.8"
                 warn "Coupling metrics will not be available."
                 return
             fi
@@ -378,7 +378,7 @@ install_optional_dependencies() {
                 success "gitnexus installed successfully!"
             else
                 error "Failed to install gitnexus."
-                warn "You may need to install it manually: pnpm add -g gitnexus  # or: npm install -g gitnexus"
+                warn "You may need to install it manually: pnpm add -g gitnexus@1.6.8  # or: npm install -g gitnexus@1.6.8"
             fi
             ;;
         *)

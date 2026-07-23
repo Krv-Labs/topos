@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn total_tool_surface_under_ceiling() {
         let mut sizes = wire_sizes();
-        sizes.sort_by(|a, b| b.1.cmp(&a.1));
+        sizes.sort_by_key(|b| std::cmp::Reverse(b.1));
         let total: usize = sizes.iter().map(|(_, c, _)| *c).sum();
         assert!(
             total <= TOTAL_CEILING_CHARS,
@@ -106,7 +106,7 @@ mod tests {
     #[ignore = "convenience: cargo test -p topos-mcp dump_tool_surface -- --ignored --nocapture"]
     fn dump_tool_surface() {
         let mut sizes = wire_sizes();
-        sizes.sort_by(|a, b| b.1.cmp(&a.1));
+        sizes.sort_by_key(|b| std::cmp::Reverse(b.1));
         println!("{}", report(&sizes));
     }
 }

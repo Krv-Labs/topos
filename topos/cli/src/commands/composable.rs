@@ -6,7 +6,9 @@
 
 use std::path::Path;
 
-use topos_engine::adapters::gitnexus::{current_git_branch, resolve_lbug_store};
+use topos_engine::adapters::gitnexus::{
+    current_git_branch, gitnexus_compat_warning, resolve_lbug_store,
+};
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_mcp::evaluation::ensure_gitnexus_dir;
 
@@ -37,20 +39,36 @@ pub(crate) fn resolve_composable_mdg(
     }
     let gitnexus_dir = outcome.gitnexus_dir?;
 
+    if let Some(warn) = gitnexus_compat_warning() {
+        eprintln!("gitnexus: {warn}");
+    }
+
     let branch = current_git_branch(project_root);
     let resolved = resolve_lbug_store(&gitnexus_dir, branch.as_deref());
-    let lbug_path = match resolved.path {
-        Some(path) if path.is_dir() => path,
-        _ => {
+    let Some(lbug_path) = resolved.path else {
+        if !resolved.available_branches.is_empty() {
+            eprintln!(
+                "gitnexus: current branch is not indexed (indexed: {}) — evaluating SIMPLE/SECURE only.",
+                resolved.available_branches.join(", ")
+            );
+        } else {
             eprintln!(
                 "gitnexus: no indexed store found at {} — evaluating SIMPLE/SECURE only.",
                 gitnexus_dir.display()
             );
-            return None;
         }
+        return None;
     };
 
-    match ModuleDependencyGraph::from_json_dir(&lbug_path, project_root.to_string_lossy()) {
+    if !lbug_path.exists() {
+        eprintln!(
+            "gitnexus: no indexed store found at {} — evaluating SIMPLE/SECURE only.",
+            gitnexus_dir.display()
+        );
+        return None;
+    }
+
+    match ModuleDependencyGraph::from_lbug_path(&lbug_path, project_root.to_string_lossy()) {
         Ok(graph) => Some(graph),
         Err(e) => {
             eprintln!(

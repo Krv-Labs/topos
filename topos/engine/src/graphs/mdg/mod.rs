@@ -2,5 +2,6 @@
 //! view parsed from GitNexus output, feeding the COMPOSABLE generator.
 
 mod json;
+mod ladybug;
 pub mod models;
 pub mod object;

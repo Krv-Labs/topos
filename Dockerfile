@@ -21,7 +21,8 @@ ENV PIP_NO_CACHE_DIR=1 \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
+    && apt-get install -y --no-install-recommends \
+        build-essential curl cmake libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain stable \
@@ -46,7 +47,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g gitnexus \
+    && npm install -g gitnexus@1.6.8 \
     && apt-get purge -y --auto-remove \
     && rm -rf /var/lib/apt/lists/*
 

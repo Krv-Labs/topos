@@ -52,6 +52,8 @@ Choose an install path
 
       * downloads the latest release binary to ``~/.local/bin``;
       * verifies the release checksum;
+      * warns when another ``topos`` (for example Homebrew) is already on the
+        machine and suggests upgrading that channel instead;
       * records install provenance for ``topos uninstall``;
       * adds ``~/.local/bin`` to your shell profile when needed;
       * prompts to install GitNexus through npm for COMPOSABLE metrics.
@@ -101,6 +103,12 @@ Choose an install path
       .. code-block:: bash
 
          pnpm add -g gitnexus  # or: npm install -g gitnexus
+
+      If a non-Homebrew ``topos`` is already on the machine (for example
+      ``~/.local/bin/topos`` from the curl installer), ``brew install`` /
+      ``brew upgrade`` prints a warning and caveats. Homebrew cannot prompt
+      interactively; remove the foreign binary or fix PATH if you intend to
+      use the Homebrew install.
 
    .. tab-item:: PyPI package
       :sync: pypi
@@ -198,6 +206,14 @@ Details and troubleshooting
    adds a PATH block, it marks it with ``BEGIN TOPOS INSTALLER PATH`` /
    ``END TOPOS INSTALLER PATH`` so ``topos uninstall --prune-path-hints`` can
    remove it later.
+
+   When another ``topos`` binary is already present (Homebrew, a second path,
+   and so on), the installer prints channel-correct upgrade hints. If you run
+   the script with an interactive stdin (for example ``sh install.sh`` in a
+   terminal), it asks before continuing (default: no). Piped installs such as
+   ``curl | sh`` warn and continue without blocking. Set ``TOPOS_FORCE=1`` or
+   ``TOPOS_YES=1`` to skip the confirm. Prefer one install channel; PATH order
+   decides which binary runs.
 
 .. dropdown:: macOS Team ID error on old releases
 

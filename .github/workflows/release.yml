@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v0.1.0)"
+        description: "Version tag (v0.1.0 or 0.1.0; normalized to v*)"
         required: true
       pypi_only:
         description: "Publish only PyPI artifacts"
@@ -206,10 +206,13 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            RAW="${GITHUB_REF#refs/tags/}"
           fi
+          # Accept 0.1.0 or v0.1.0; release tags and formula URLs always use v*.
+          VERSION="v${RAW#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create checksums
         run: |
@@ -228,6 +231,106 @@ jobs:
             dist/topos-vscode-*
             dist/checksums.txt
           generate_release_notes: true
+
+  publish-homebrew:
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}
+    needs:
+      - release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ github.event.inputs.version }}"
+          else
+            RAW="${GITHUB_REF#refs/tags/}"
+          fi
+          # Accept 0.1.0 or v0.1.0; release tags and formula URLs always use v*.
+          VERSION="v${RAW#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ steps.version.outputs.VERSION }}
+          # gh talks to the tap repo with the dedicated PAT (not GITHUB_TOKEN).
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::warning title=Homebrew formula not published::HOMEBREW_TAP_TOKEN secret is missing. Skipping Homebrew tap update for ${TAG}."
+            exit 0
+          fi
+
+          VERSION="${TAG#v}"
+          BRANCH="bot/topos-${VERSION}"
+          TAP_REPO="Krv-Labs/homebrew-tap"
+
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 10 --retry-all-errors \
+            "https://github.com/Krv-Labs/topos/releases/download/${TAG}/checksums.txt" \
+            -o checksums.txt
+
+          sha_for() {
+            sha=$(awk -v asset="$1" '$2 == asset { print $1 }' checksums.txt)
+            if [ -z "$sha" ]; then
+              echo "Missing checksum for $1 in checksums.txt" >&2
+              exit 1
+            fi
+            echo "$sha"
+          }
+
+          SHA_MACOS_ARM64=$(sha_for topos-macos-arm64)
+          SHA_LINUX_AMD64=$(sha_for topos-linux-amd64)
+          SHA_LINUX_ARM64=$(sha_for topos-linux-arm64)
+
+          sed \
+            -e "s/{{VERSION}}/${VERSION}/g" \
+            -e "s/{{SHA_MACOS_ARM64}}/${SHA_MACOS_ARM64}/g" \
+            -e "s/{{SHA_LINUX_AMD64}}/${SHA_LINUX_AMD64}/g" \
+            -e "s/{{SHA_LINUX_ARM64}}/${SHA_LINUX_ARM64}/g" \
+            packaging/homebrew/topos.rb.template > topos.rb
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${TAP_REPO}.git" homebrew-tap
+          mkdir -p homebrew-tap/Formula
+          cp topos.rb homebrew-tap/Formula/topos.rb
+
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${BRANCH}"
+          git add Formula/topos.rb
+          if git diff --cached --quiet; then
+            echo "Formula unchanged for ${VERSION}; nothing to publish."
+            exit 0
+          fi
+
+          git commit -m "topos ${VERSION}"
+          # Open/update a PR so tap CI (style/audit/fetch/test-bot) gates the
+          # formula bump instead of pushing straight to main.
+          git push -u origin "${BRANCH}" --force
+
+          PR_URL=$(gh pr list --repo "${TAP_REPO}" --head "${BRANCH}" --state open --json url --jq '.[0].url // empty')
+          if [ -z "${PR_URL}" ]; then
+            PR_BODY="Automated formula bump for topos ${VERSION}. Rendered from packaging/homebrew/topos.rb.template in Krv-Labs/topos after GitHub release assets were published. Tap CI should verify style, audit, multi-platform fetch, install, and brew test."
+            PR_URL=$(gh pr create --repo "${TAP_REPO}" \
+              --base main \
+              --head "${BRANCH}" \
+              --title "topos ${VERSION}" \
+              --body "${PR_BODY}")
+          fi
+
+          echo "Homebrew tap PR: ${PR_URL}"
+
+          # Best-effort: enable auto-merge when the repo allows it. Merge still
+          # waits on required checks; failure here must not fail the release.
+          if ! gh pr merge --repo "${TAP_REPO}" --auto --squash "${PR_URL}"; then
+            echo "::notice title=Homebrew tap PR opened::Auto-merge not enabled or unavailable for ${PR_URL}. Merge after CI is green."
+          fi
 
   publish-vscode-marketplace:
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}

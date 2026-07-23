@@ -80,6 +80,11 @@ def uninstall(dry_run: bool, yes: bool, keep_path_hints: bool) -> None:
         click.echo(f"Run: {uninstall_cmd}")
         return
 
+    if method == "homebrew":
+        click.echo("Detected Homebrew installation.")
+        click.echo(f"Run: {uninstall_cmd or 'brew uninstall topos'}")
+        return
+
     if method != "binary-installer" or provenance is None:
         click.echo(
             "Could not determine a managed installer provenance record.",

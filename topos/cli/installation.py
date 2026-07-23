@@ -106,6 +106,28 @@ def _install_info_from_distribution(
     return _package_manager_info(installer)
 
 
+def _is_homebrew_executable(path: Path) -> bool:
+    """True when the resolved executable lives inside a Homebrew prefix."""
+    if "Cellar" in path.parts:
+        return True
+    prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
+    if not prefix:
+        return False
+    try:
+        return path.is_relative_to(Path(prefix).expanduser().resolve())
+    except OSError:
+        return False
+
+
+def _homebrew_info() -> InstallInfo:
+    return InstallInfo(
+        method="homebrew",
+        uninstall_cmd="brew uninstall topos",
+        update_cmd="brew upgrade topos",
+        installer="brew",
+    )
+
+
 def _install_info_from_provenance(
     provenance: dict[str, str] | None,
 ) -> InstallInfo | None:
@@ -120,6 +142,9 @@ def detect_install_info() -> InstallInfo:
     try:
         dist = importlib.metadata.distribution(_PACKAGE_NAME)
     except importlib.metadata.PackageNotFoundError:
+        # A brew-run binary wins over stale curl-installer provenance records.
+        if _is_homebrew_executable(active_executable()):
+            return _homebrew_info()
         binary_info = _install_info_from_provenance(provenance)
         if binary_info is not None:
             return binary_info
@@ -162,6 +187,8 @@ def find_topos_executables_on_path() -> list[Path]:
 def channel_label(info: InstallInfo) -> str:
     if info.method == "binary-installer":
         return "binary CLI"
+    if info.method == "homebrew":
+        return "Homebrew"
     if info.method == "source":
         return "editable source checkout"
     if info.method == "package-manager":

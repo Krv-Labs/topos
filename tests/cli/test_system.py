@@ -58,6 +58,24 @@ def test_uninstall_package_manager():
         assert "pip uninstall topos" in result.output
 
 
+def test_uninstall_homebrew():
+    info = InstallInfo(
+        method="homebrew",
+        uninstall_cmd="brew uninstall topos",
+        update_cmd="brew upgrade topos",
+        installer="brew",
+    )
+    with (
+        patch("topos.cli.commands.system.detect_install_info", return_value=info),
+        patch("topos.cli.commands.system.echo_install_layout_notice"),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["uninstall"])
+        assert result.exit_code == 0
+        assert "Detected Homebrew installation." in result.output
+        assert "brew uninstall topos" in result.output
+
+
 def test_uninstall_binary_dry_run(tmp_path: Path):
     binary = tmp_path / "topos"
     binary.touch()
@@ -278,6 +296,29 @@ def test_update_package_manager_pip(mock_run):
             ["pip", "install", "-U", "topos-mcp"],
             check=False,
         )
+
+
+@patch("topos.cli.update.subprocess.run")
+@patch("topos.cli.update.subprocess.Popen")
+def test_update_homebrew_prints_instructions(mock_popen, mock_run):
+    with patch("topos.cli.update.detect_install_info") as mock_detect:
+        from topos.cli.installation import InstallInfo
+
+        mock_detect.return_value = InstallInfo(
+            method="homebrew",
+            uninstall_cmd="brew uninstall topos",
+            update_cmd="brew upgrade topos",
+            installer="brew",
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update"])
+        assert result.exit_code == 0
+        assert "Detected Homebrew installation." in result.output
+        assert "brew upgrade topos" in result.output
+
+    # Homebrew installs must not self-update or re-run the curl installer.
+    mock_popen.assert_not_called()
+    mock_run.assert_not_called()
 
 
 def test_update_source_prints_instructions():

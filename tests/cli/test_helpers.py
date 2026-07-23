@@ -199,10 +199,81 @@ def test_detect_install_method_binary_without_python_package(monkeypatch):
             raise_not_found,
         )
         m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/home/user/.local/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
 
         info = detect_install_info()
         assert info.method == "binary-installer"
         assert info.provenance == stale_provenance
+
+
+def test_detect_install_method_homebrew_cellar(monkeypatch):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/opt/homebrew/Cellar/topos/0.3.12/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
+
+        info = detect_install_info()
+        assert info.method == "homebrew"
+        assert info.installer == "brew"
+        assert info.update_cmd == "brew upgrade topos"
+        assert info.uninstall_cmd == "brew uninstall topos"
+
+
+def test_detect_install_method_homebrew_prefix_env(monkeypatch, tmp_path: Path):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    prefix = tmp_path / "linuxbrew"
+    binary = prefix / "bin" / "topos"
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr("topos.cli.installation.active_executable", lambda: binary)
+        m.setenv("HOMEBREW_PREFIX", str(prefix))
+
+        info = detect_install_info()
+        assert info.method == "homebrew"
+
+
+def test_detect_install_method_homebrew_wins_over_stale_binary_provenance(monkeypatch):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    stale_provenance = {
+        "install_method": "binary-installer",
+        "install_path": "/home/user/.local/bin/topos",
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: stale_provenance)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/opt/homebrew/Cellar/topos/0.3.12/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
+
+        info = detect_install_info()
+        assert info.method == "homebrew"
+        assert info.uninstall_cmd == "brew uninstall topos"
+
+
+def test_channel_label_homebrew():
+    from topos.cli.installation import InstallInfo, channel_label
+
+    assert channel_label(InstallInfo(method="homebrew")) == "Homebrew"
 
 
 def test_install_layout_notice_none_for_single_install(monkeypatch):

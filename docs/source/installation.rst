@@ -26,6 +26,9 @@ GitNexus only when you need COMPOSABLE.
    * - Most users
      - Binary CLI
      - One command installs ``topos`` and prompts to install GitNexus for COMPOSABLE metrics.
+   * - Homebrew users
+     - Homebrew formula
+     - Installs ``topos`` from the ``krv-labs/tap`` tap. macOS arm64 and Linux amd64/arm64 only.
    * - MCP server only
      - PyPI package
      - ``pip install topos-mcp`` installs *only* the ``topos-mcp`` server binary (a thin wheel, zero Python runtime dependency) — not the full ``topos`` CLI.
@@ -53,6 +56,8 @@ Choose an install path
 
       * downloads the latest release binary to ``~/.local/bin``;
       * verifies the release checksum;
+      * warns when another ``topos`` (for example Homebrew) is already on the
+        machine and suggests upgrading that channel instead;
       * adds ``~/.local/bin`` to your shell profile when needed;
       * prompts to install GitNexus through pnpm/npm for COMPOSABLE metrics.
 
@@ -82,6 +87,49 @@ Choose an install path
 
       ``topos mcp`` runs the in-process Rust MCP server over stdio and waits
       on standard input. Press ``Ctrl-C`` to exit.
+
+   .. tab-item:: Homebrew
+      :sync: homebrew
+
+      Use this when you manage tooling with Homebrew. Prefer the fully
+      qualified install (Homebrew 6+: auto-taps and trusts only this formula):
+
+      .. code-block:: bash
+
+         brew install krv-labs/tap/topos
+
+      Or tap first, then install. On Homebrew 6+, short-name install needs an
+      explicit trust step:
+
+      .. code-block:: bash
+
+         brew tap krv-labs/tap
+         brew trust --formula krv-labs/tap/topos
+         brew install topos
+
+      Do not set ``HOMEBREW_NO_REQUIRE_TAP_TRUST`` — that escape hatch is
+      discouraged and slated for removal. See the Homebrew
+      `Tap Trust <https://docs.brew.sh/Tap-Trust>`_ docs.
+
+      Supported platforms are macOS arm64 and Linux amd64/arm64. Intel macOS
+      is not supported. Upgrade through Homebrew:
+
+      .. code-block:: bash
+
+         brew upgrade topos
+
+      Homebrew installs do not install GitNexus automatically. Add it
+      separately when you need COMPOSABLE metrics:
+
+      .. code-block:: bash
+
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
+
+      If a non-Homebrew ``topos`` is already on the machine (for example
+      ``~/.local/bin/topos`` from the curl installer), ``brew install`` /
+      ``brew upgrade`` prints a warning and caveats. Homebrew cannot prompt
+      interactively; remove the foreign binary or fix PATH if you intend to
+      use the Homebrew install.
 
    .. tab-item:: PyPI package
       :sync: pypi
@@ -235,6 +283,14 @@ Details and troubleshooting
    ``TOPOS_VERSION`` to install a specific release. Set
    ``TOPOS_NO_MODIFY_PATH=1`` to skip shell-profile edits.
 
+   When another ``topos`` binary is already present (Homebrew, a second path,
+   and so on), the installer prints channel-correct upgrade hints. If you run
+   the script with an interactive stdin (for example ``sh install.sh`` in a
+   terminal), it asks before continuing (default: no). Piped installs such as
+   ``curl | sh`` warn and continue without blocking. Set ``TOPOS_FORCE=1`` or
+   ``TOPOS_YES=1`` to skip the confirm. Prefer one install channel; PATH order
+   decides which binary runs.
+
 .. dropdown:: Upgrading
 
    Re-run the installer to fetch the latest release:
@@ -242,6 +298,12 @@ Details and troubleshooting
    .. code-block:: bash
 
       curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+
+   Homebrew installs should upgrade through Homebrew:
+
+   .. code-block:: bash
+
+      brew upgrade topos
 
    Source checkouts should use ``git pull && cargo build --release -p
    topos`` (Cargo path) or ``git pull && uv sync`` (uv path). There is

@@ -45,7 +45,17 @@ topos evaluate . -r
 
 `evaluate . -r` scores every file under the current directory and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
-Other install paths and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**. Note: `pip install topos-mcp` / `uvx topos-mcp` installs only the MCP server binary (as the `topos-mcp` command) — the `topos` CLI itself ships via the install script above, a GitHub release binary, or `cargo build --release -p topos` from source.
+Prefer Homebrew?
+
+```bash
+brew install krv-labs/tap/topos
+```
+
+On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you
+`brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos`
+before `brew install topos`.
+
+Other install paths and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**. Note: `pip install topos-mcp` / `uvx topos-mcp` installs only the MCP server binary (as the `topos-mcp` command) — the `topos` CLI itself ships via the install script above, Homebrew, a GitHub release binary, or `cargo build --release -p topos` from source.
 
 ## Built on
 

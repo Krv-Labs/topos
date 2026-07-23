@@ -11,6 +11,9 @@
 #   TOPOS_VERSION   - Specific version to install (default: latest)
 #   TOPOS_INSTALL   - Installation directory (default: ~/.local/bin)
 #   TOPOS_NO_MODIFY_PATH - Set to 1 to skip PATH modification
+#   TOPOS_FORCE / TOPOS_YES - Set to 1 to skip the interactive confirm when
+#                            another non-installer topos is already present
+#   TOPOS_SKIP_MAIN - Set to 1 to source helpers without running main (tests)
 
 set -euo pipefail
 
@@ -99,6 +102,237 @@ escape_for_double_quotes() {
     value="${value//\$/\\\$}"
     value="${value//\`/\\\`}"
     printf '%s' "${value}"
+}
+
+# Resolve a path when the file exists; empty string otherwise.
+# Always prints without a trailing newline so callers can compare safely.
+resolve_path() {
+    local path="$1"
+    local resolved=""
+    local dir="" base=""
+
+    if [ -z "${path}" ] || [ ! -e "${path}" ]; then
+        return 0
+    fi
+
+    if command -v realpath >/dev/null 2>&1; then
+        resolved=$(realpath "${path}" 2>/dev/null || true)
+    fi
+    # GNU readlink -f; skip on BSD readlink (macOS) where -f is unsupported.
+    if [ -z "${resolved}" ] && command -v readlink >/dev/null 2>&1; then
+        resolved=$(readlink -f "${path}" 2>/dev/null || true)
+    fi
+
+    if [ -z "${resolved}" ]; then
+        # macOS / BSD: resolve via pwd -P.
+        if [ -d "${path}" ]; then
+            resolved=$(cd "${path}" 2>/dev/null && pwd -P || true)
+        else
+            dir=$(cd "$(dirname "${path}")" 2>/dev/null && pwd -P || true)
+            base=$(basename "${path}")
+            if [ -n "${dir}" ]; then
+                resolved="${dir}/${base}"
+            fi
+        fi
+    fi
+
+    # Strip any accidental trailing newlines from command substitutions.
+    resolved="${resolved//$'\n'/}"
+    resolved="${resolved//$'\r'/}"
+    printf '%s' "${resolved}"
+}
+
+path_is_executable_file() {
+    local path="$1"
+    [ -n "${path}" ] && [ -f "${path}" ] && [ -x "${path}" ]
+}
+
+# True when path looks like a Homebrew-managed topos binary.
+# Avoid calling `brew` here — preflight must stay fast and offline-friendly.
+is_homebrew_path() {
+    local path="$1"
+    local prefix=""
+    local prefix_resolved=""
+    local candidate=""
+
+    case "${path}" in
+        */Cellar/*|*/opt/topos/*) return 0 ;;
+    esac
+
+    prefix="${HOMEBREW_PREFIX:-}"
+    if [ -n "${prefix}" ]; then
+        case "${path}" in
+            "${prefix}"|"${prefix}"/*) return 0 ;;
+        esac
+        prefix_resolved=$(resolve_path "${prefix}")
+        if [ -n "${prefix_resolved}" ]; then
+            case "${path}" in
+                "${prefix_resolved}"|"${prefix_resolved}"/*) return 0 ;;
+            esac
+        fi
+    fi
+
+    for candidate in /opt/homebrew /usr/local /home/linuxbrew/.linuxbrew; do
+        case "${path}" in
+            "${candidate}/Cellar"/*|"${candidate}/bin/topos"|"${candidate}/opt/topos"/*)
+                return 0
+                ;;
+        esac
+    done
+
+    return 1
+}
+
+# Append resolved executable paths to DISCOVERED_TOPOS (global, newline-separated).
+# Uses a string accumulator so callers can capture via command substitution.
+_discover_seen="|"
+
+discover_add_topos() {
+    local path="$1"
+    local resolved_path=""
+
+    if ! path_is_executable_file "${path}"; then
+        return 0
+    fi
+    resolved_path=$(resolve_path "${path}")
+    if [ -z "${resolved_path}" ]; then
+        resolved_path="${path}"
+    fi
+    case "${_discover_seen}" in
+        *"|${resolved_path}|"*) return 0 ;;
+    esac
+    _discover_seen="${_discover_seen}${resolved_path}|"
+    printf '%s\n' "${resolved_path}"
+}
+
+# Print unique existing topos executables (one path per line), PATH order first.
+discover_topos_executables() {
+    local entry="" old_ifs=""
+
+    _discover_seen="|"
+
+    # Prefer PATH order (what `topos` would run).
+    old_ifs="${IFS}"
+    IFS=':'
+    # shellcheck disable=SC2086
+    set -- ${PATH:-}
+    IFS="${old_ifs}"
+    for entry in "$@"; do
+        [ -n "${entry}" ] || continue
+        discover_add_topos "${entry%/}/topos"
+    done
+
+    # Known install locations outside PATH (stale or not yet on PATH).
+    # Stay offline: no `brew` calls, no hardcoded host prefixes (those show up
+    # via PATH when the user actually uses them).
+    discover_add_topos "${INSTALL_DIR}/topos"
+    discover_add_topos "${HOME}/.local/bin/topos"
+    if [ -n "${HOMEBREW_PREFIX:-}" ]; then
+        discover_add_topos "${HOMEBREW_PREFIX%/}/bin/topos"
+    fi
+}
+
+channel_hint_for_path() {
+    local path="$1"
+
+    if is_homebrew_path "${path}"; then
+        printf '%s' "Homebrew — upgrade with: brew upgrade topos"
+        return
+    fi
+
+    case "${path}" in
+        */site-packages/*|*/dist-packages/*|*/pipx/*|*/pypackages/*)
+            printf '%s' "Python package — upgrade with: pip/uv upgrade of topos-mcp"
+            return
+            ;;
+    esac
+
+    printf '%s' "binary install — upgrade with: curl -fsSL https://docs.krv.ai/topos/install.sh | sh"
+}
+
+# Warn when other installs exist; optional y/N when interactive and foreign.
+preflight_existing_installs() {
+    local target="${INSTALL_DIR}/topos"
+    local target_resolved=""
+    local path="" foreign=0 same=0
+    local -a foreign_paths=()
+    local reply=""
+
+    target_resolved=$(resolve_path "${target}")
+    if [ -z "${target_resolved}" ] && path_is_executable_file "${target}"; then
+        target_resolved="${target}"
+    fi
+
+    while IFS= read -r path; do
+        [ -n "${path}" ] || continue
+        if [ -n "${target_resolved}" ] && [ "${path}" = "${target_resolved}" ]; then
+            same=1
+            continue
+        fi
+        if [ "${path}" = "${target}" ]; then
+            same=1
+            continue
+        fi
+        foreign=1
+        foreign_paths+=("${path}")
+    done < <(discover_topos_executables)
+
+    if [ "${same}" -eq 1 ] && [ "${foreign}" -eq 0 ]; then
+        info "Existing binary install found at ${target_resolved:-$target}; upgrading in place"
+        return 0
+    fi
+
+    if [ "${foreign}" -eq 0 ]; then
+        return 0
+    fi
+
+    echo ""
+    warn "Another Topos installation is already present."
+    if [ -n "${target_resolved}" ] || path_is_executable_file "${target}"; then
+        info "This installer target: ${target_resolved:-$target} (will upgrade in place)"
+    else
+        info "This installer target: ${target}"
+    fi
+    for path in "${foreign_paths[@]}"; do
+        warn "Also found: ${path}"
+        info "  $(channel_hint_for_path "${path}")"
+    done
+    echo ""
+    info "Prefer one install channel. PATH order decides which binary runs."
+    info "After install, run: topos --version   # and check which path it uses"
+    echo ""
+
+    if [ "${TOPOS_FORCE:-0}" = "1" ] || [ "${TOPOS_YES:-0}" = "1" ]; then
+        info "TOPOS_FORCE/TOPOS_YES set; continuing"
+        return 0
+    fi
+
+    # Updates should not block on a confirm.
+    if [ "${TOPOS_UPDATE:-0}" = "1" ]; then
+        warn "Continuing update despite additional installs on this machine"
+        return 0
+    fi
+
+    # Prompt only when stdin is a real TTY (script run interactively).
+    # Do NOT fall back to /dev/tty: curl|sh, agent terminals, and CI often have
+    # a controlling tty that nobody will answer, which hangs the install.
+    if [ -t 0 ]; then
+        printf '? Continue installing to %s anyway? [y/N] ' "${INSTALL_DIR}"
+        read -r reply || reply=""
+        case "${reply}" in
+            [yY]|[yY][eE][sS])
+                return 0
+                ;;
+            *)
+                info "Install cancelled. Use the upgrade command for your existing channel instead."
+                exit 0
+                ;;
+        esac
+    fi
+
+    # curl|sh, piped stdin, captured stdio, agent shells: warn and continue.
+    warn "Non-interactive install; continuing. Set TOPOS_FORCE=1 to silence this path."
+    return 0
 }
 
 calculate_sha256() {
@@ -288,6 +522,9 @@ install_topos() {
         echo ""
         echo "Alternative installation methods:"
         echo ""
+        echo "  # Using Homebrew"
+        echo "  brew install krv-labs/tap/topos"
+        echo ""
         echo "  # MCP server via PyPI (installs the 'topos-mcp' command)"
         echo "  uvx topos-mcp        # run without a persistent install"
         echo "  pip install topos-mcp"
@@ -349,12 +586,15 @@ install_optional_dependencies() {
     echo "gitnexus is required for coupling metrics (COMPOSABLE/IDEAL targets)."
 
     local reply=""
+    # Prompt only on interactive stdin. Never use /dev/tty — curl|sh and agent
+    # shells can hang waiting for input nobody will type.
     if [ -t 0 ]; then
         printf '? Do you want to install gitnexus via pnpm/npm? [Y/n] '
-        read -r reply
-    elif [ -c /dev/tty ]; then
-        printf '? Do you want to install gitnexus via pnpm/npm? [Y/n] '
-        read -r reply < /dev/tty
+        read -r reply || reply="n"
+    else
+        info "Non-interactive install; skipping optional gitnexus prompt."
+        info "Install later with: pnpm add -g gitnexus  # or: npm install -g gitnexus"
+        return
     fi
 
     case "$reply" in
@@ -505,6 +745,7 @@ main() {
 
     check_dependencies
     validate_install_dir
+    preflight_existing_installs
     install_topos
 
     if [ "${TOPOS_UPDATE:-0}" != "1" ]; then
@@ -516,4 +757,6 @@ main() {
     verify_install
 }
 
-main "$@"
+if [ "${TOPOS_SKIP_MAIN:-0}" != "1" ]; then
+    main "$@"
+fi

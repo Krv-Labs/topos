@@ -171,10 +171,26 @@ def test_homebrew_formula_template_has_foreign_detection() -> None:
     assert "~/.local/bin/topos" in template
     assert "opoo" in template
     assert "brew upgrade topos" in template
+    # Prefer a behavioral smoke beyond --version alone.
+    assert 'assert_match "evaluate"' in template
     # Cross-channel only: no formula-to-formula conflicts_with stanza.
     assert not any(
         line.lstrip().startswith("conflicts_with") for line in template.splitlines()
     )
+
+
+def test_docs_prefer_fully_qualified_homebrew_install() -> None:
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    install_rst = (REPO_ROOT / "docs" / "source" / "installation.rst").read_text(
+        encoding="utf-8"
+    )
+    assert "brew install krv-labs/tap/topos" in readme
+    assert "brew trust --formula krv-labs/tap/topos" in readme
+    assert "brew install krv-labs/tap/topos" in install_rst
+    assert "brew trust --formula krv-labs/tap/topos" in install_rst
+    # Docs must not recommend disabling tap trust.
+    assert "export HOMEBREW_NO_REQUIRE_TAP_TRUST" not in readme
+    assert "export HOMEBREW_NO_REQUIRE_TAP_TRUST" not in install_rst
 
 
 @pytest.mark.skipif(not INSTALL_SH.is_file(), reason="install.sh missing")

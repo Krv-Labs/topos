@@ -83,5 +83,6 @@ class Topos < Formula
 
   test do
     assert_match version.to_s, shell_output("#{bin}/topos --version")
+    assert_match "evaluate", shell_output("#{bin}/topos --help")
   end
 end

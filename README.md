@@ -41,9 +41,12 @@ topos evaluate src/ -r
 Prefer Homebrew?
 
 ```bash
-brew tap krv-labs/tap
-brew install topos
+brew install krv-labs/tap/topos
 ```
+
+On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you
+`brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos`
+before `brew install topos`.
 
 Other install paths (PyPI, source checkout) and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**.
 

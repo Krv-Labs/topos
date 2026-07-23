@@ -81,14 +81,25 @@ Choose an install path
    .. tab-item:: Homebrew
       :sync: homebrew
 
-      Use this when you manage tooling with Homebrew.
+      Use this when you manage tooling with Homebrew. Prefer the fully
+      qualified install (Homebrew 6+: auto-taps and trusts only this formula):
+
+      .. code-block:: bash
+
+         brew install krv-labs/tap/topos
+
+      Or tap first, then install. On Homebrew 6+, short-name install needs an
+      explicit trust step:
 
       .. code-block:: bash
 
          brew tap krv-labs/tap
+         brew trust --formula krv-labs/tap/topos
          brew install topos
 
-      Or in one command: ``brew install krv-labs/tap/topos``.
+      Do not set ``HOMEBREW_NO_REQUIRE_TAP_TRUST`` — that escape hatch is
+      discouraged and slated for removal. See the Homebrew
+      `Tap Trust <https://docs.brew.sh/Tap-Trust>`_ docs.
 
       Supported platforms are macOS arm64 and Linux amd64/arm64. Intel macOS
       is not supported. Upgrade through Homebrew:

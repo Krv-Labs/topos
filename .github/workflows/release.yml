@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v0.1.0)"
+        description: "Version tag (v0.1.0 or 0.1.0; normalized to v*)"
         required: true
       pypi_only:
         description: "Publish only PyPI artifacts"
@@ -206,10 +206,13 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            RAW="${GITHUB_REF#refs/tags/}"
           fi
+          # Accept 0.1.0 or v0.1.0; release tags and formula URLs always use v*.
+          VERSION="v${RAW#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create checksums
         run: |
@@ -241,10 +244,13 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            RAW="${{ github.event.inputs.version }}"
           else
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            RAW="${GITHUB_REF#refs/tags/}"
           fi
+          # Accept 0.1.0 or v0.1.0; release tags and formula URLs always use v*.
+          VERSION="v${RAW#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Publish Homebrew formula
         env:

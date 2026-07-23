@@ -347,12 +347,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # 2_34 (AlmaLinux 9) ships OpenSSL 3 — required by the lbug
+          # prebuilt (SSL_get1_peer_certificate). 2_28 only has OpenSSL 1.1.
           - os: ubuntu-latest
             target: x86_64
-            manylinux: "2_28"
+            manylinux: "2_34"
           - os: ubuntu-24.04-arm
             target: aarch64
-            manylinux: "2_28"
+            manylinux: "2_34"
           - os: macos-latest
             target: aarch64
             manylinux: "off"
@@ -376,8 +378,8 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          # manylinux_2_28 images are AlmaLinux-based; openssl must be
-          # installed inside the container (host apt packages are invisible).
+          # manylinux images are AlmaLinux-based; openssl must be installed
+          # inside the container (host apt packages are invisible).
           before-script-linux: |
             if command -v dnf >/dev/null 2>&1; then
               dnf install -y openssl-devel cmake pkgconfig
@@ -390,6 +392,13 @@ jobs:
             else
               echo "No supported package manager in manylinux container" >&2
               exit 1
+            fi
+            # Sanity: lbug prebuilts need OpenSSL 3 symbols.
+            if ! ldconfig -p 2>/dev/null | grep -q 'libssl\.so\.3'; then
+              if [ ! -e /usr/lib64/libssl.so.3 ] && [ ! -e /usr/lib/libssl.so.3 ]; then
+                echo "OpenSSL 3 not found in manylinux image; lbug link will fail" >&2
+                exit 1
+              fi
             fi
           args: >-
             --release --bindings bin

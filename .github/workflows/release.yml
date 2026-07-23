@@ -257,6 +257,8 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG: ${{ steps.version.outputs.VERSION }}
         run: |
+          set -euo pipefail
+
           if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
             echo "::warning title=Homebrew formula not published::HOMEBREW_TAP_TOKEN secret is missing. Skipping Homebrew tap update for ${TAG}."
             exit 0
@@ -302,6 +304,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "topos ${VERSION}"
+          # Assumes tap default branch is main and a single-publisher fast-forward workflow.
           git push origin main
 
   publish-vscode-marketplace:

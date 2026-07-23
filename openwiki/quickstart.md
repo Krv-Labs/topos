@@ -27,6 +27,9 @@ The central [quality model](domain/quality-model.md) explains what each verdict 
 # Basic source evaluation (recursive)
 topos evaluate src/ -r
 
+# Install the prebuilt CLI through Homebrew (macOS arm64; Linux amd64/arm64)
+brew install krv-labs/tap/topos
+
 # Enable inter-module COMPOSABLE analysis
 pnpm add -g gitnexus  # or: npm install -g gitnexus
 topos depgraph generate
@@ -53,7 +56,7 @@ cargo test
 
 ## Recent direction that affects changes
 
-Recent releases consolidated gate definitions and agent-routing contracts, added Go support, and introduced advisory refactor analyses. The current HEAD adds optional Corgea/Sighthound finding ingestion: when the `sighthound` executable is available, the CPG SECURE metrics count its JSON findings; otherwise Topos falls back to local dangerous-API and taint probes (`topos/graphs/cpg/object.py`).
+Recent releases consolidated gate definitions and agent-routing contracts, added Go support, and introduced advisory refactor analyses. Optional Corgea/Sighthound finding ingestion lets CPG SECURE metrics count usable Sighthound JSON findings, falling back to local dangerous-API and taint probes otherwise (`topos/graphs/cpg/object.py`). The current release workflow also publishes the Homebrew channel: `brew install krv-labs/tap/topos` installs the prebuilt CLI on macOS arm64 or Linux amd64/arm64, while the workflow renders its formula from release checksums and submits it to the tap for CI-gated merge. See [testing and release operations](operations/testing-and-release.md#build-and-release-contract) when changing binaries, checksums, or packaging.
 
 COMPOSABLE scoring also evolved from a raw instability band toward Martin’s main-sequence distance when abstractness and actual coupling signals exist. Its thresholds are explicitly provisional in `CHANGELOG.md`; change scoring and its regression tests together.
 

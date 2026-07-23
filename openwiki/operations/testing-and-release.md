@@ -31,7 +31,7 @@ Pytest defaults target `tests/`, add `topos` coverage, and exclude fixtures. Pre
 | Rust-backed algorithms | `cargo test`, related `tests/functors/`, and `tests/parity/` if a cross-language adapter changes |
 | CLI behavior/startup | `tests/cli/`; preserve registration/startup checks |
 | MCP schemas/routing/resources | `tests/mcp/`, including context-budget and contract invariants |
-| Frozen distribution | `tests/packaging/` with `TOPOS_BINARY` after a build |
+| Frozen distribution | `tests/packaging/` with `TOPOS_BINARY` after a build; this includes the Homebrew formula-template contract |
 | VS Code extension | `pnpm install --frozen-lockfile`, `pnpm run check-types`, `pnpm run lint`, `pnpm run test:unit` in `extensions/vscode/` |
 
 ## CI expectations
@@ -61,8 +61,9 @@ Frozen distribution is intentionally a single PyInstaller **onefile** binary. `s
 - **Python build:** Maturin creates the PyO3 extension wheel according to `pyproject.toml`.
 - **Frozen build:** `scripts/build-binary.sh` creates the PyInstaller artifact and includes required dynamic imports/resources.
 - **Release workflow:** `.github/workflows/release.yml` builds Linux amd64/arm64 and macOS arm64 binaries, dogfoods artifacts, packages platform VSIX files, and publishes release/PyPI artifacts under workflow conditions.
+- **Homebrew channel:** after a GitHub release, `publish-homebrew` downloads `checksums.txt`, renders `packaging/homebrew/topos.rb.template` with the normalized `v*` tag and platform checksums, and opens or updates a formula PR in `Krv-Labs/homebrew-tap`. Tap CI—not a direct push to the tap’s default branch—gates the formula merge; a missing `HOMEBREW_TAP_TOKEN` warns and skips this optional publication step. The resulting formula serves macOS arm64 and Linux amd64/arm64 binaries and warns about competing non-Homebrew installs. This is a distribution surface alongside the [container and editor integrations](../integrations/distribution.md#container-and-editor-surfaces).
 
-For release changes, inspect the complete workflow rather than assuming a generic Python publish: it handles platform matrix artifacts, optional macOS signing/notarization, extension packaging, and trusted publishing. Never read or record secret values; workflow secret identifiers are sufficient for operational reasoning.
+For release changes, inspect the complete workflow rather than assuming a generic Python publish: it handles platform matrix artifacts, optional macOS signing/notarization, extension packaging, Homebrew formula publication, and trusted publishing. Exercise `tests/packaging/test_install_sh_preflight.py` when changing the formula template, installer coexistence checks, or Homebrew install guidance. Never read or record secret values; workflow secret identifiers are sufficient for operational reasoning.
 
 ## Documentation and automation
 

@@ -121,9 +121,10 @@ jobs:
           # a second copy of antlr4 (duplicate symbols with liblbug.a).
           before-script-linux: |
             if command -v dnf >/dev/null 2>&1; then
-              dnf install -y openssl-devel cmake pkgconfig
+              # openssl-devel/cmake live in base/AppStream; skip EPEL to avoid mirror flakes.
+              dnf install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
             elif command -v yum >/dev/null 2>&1; then
-              yum install -y openssl-devel cmake pkgconfig
+              yum install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
             elif command -v apt-get >/dev/null 2>&1; then
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

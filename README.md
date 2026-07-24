@@ -75,7 +75,7 @@ Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your s
 | [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Parses six languages and powers the native AST, CFG, CPG, PDG, and UAST representations. |
 | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). |
 | [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
-| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection; it does not affect the medal. |
+| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection; it does not affect the medal. *(Coming soon in v0.4.0)* |
 
 The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
 
@@ -151,7 +151,7 @@ Those verdicts roll up into one memorable quality medal without hiding which pil
 | 🥉 **BRONZE** | Passes 1 of 3 |
 | ❌ **SLOP** | Passes 0, or fails to parse |
 
-Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings. Advisory findings never silently change the scored medal.
+Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings *(coming soon in v0.4.0)*. Advisory findings never silently change the scored medal.
 
 <details>
 <summary>How the medal system is derived</summary>

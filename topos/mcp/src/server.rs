@@ -3,7 +3,7 @@
 //! Server name follows the `{service}_mcp` convention. Transport is stdio
 //! by default; the `topos-mcp` binary (see `main.rs`) launches [`serve`].
 //!
-//! The nine tool modules under [`crate::tools`] each contribute a named
+//! The ten tool modules under [`crate::tools`] each contribute a named
 //! `#[tool_router]` (e.g. `evaluate_router`, `assess_router`); they are
 //! summed here into one [`ToolRouter`]. Resources (`topos://docs/*`) and
 //! the `topos_refactor_until_ideal` prompt are implemented directly in the

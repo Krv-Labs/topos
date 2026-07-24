@@ -135,29 +135,48 @@ impl ProgramObject {
     // (21, exceeding the SIMPLE threshold of 15); the cursor iterator
     // yields nodes directly (no `Option` to unwrap), which removes a
     // branch per recursive call on top of being the idiomatic API.
+    //
+    // All three use an explicit `Vec`-based stack instead of function-call
+    // recursion, matching `graphs::cpg::builder`'s `collect_nodes`/
+    // `ast_edges` and `graphs::uast::mapper_common::map_tree_sitter_to_uast`.
+    // A recursive walk burns one Rust stack frame per AST nesting level;
+    // this file parses untrusted source, and a few thousand nested
+    // parens/brackets is enough to overflow the process stack.
 
-    fn traverse_node<'a>(node: Node<'a>, out: &mut Vec<Node<'a>>) {
-        out.push(node);
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            Self::traverse_node(child, out);
+    fn traverse_node<'a>(root: Node<'a>, out: &mut Vec<Node<'a>>) {
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            out.push(node);
+            let mut cursor = node.walk();
+            // Collect then push in reverse so children pop in the same
+            // left-to-right order the recursive version visited them.
+            let children: Vec<Node<'a>> = node.children(&mut cursor).collect();
+            stack.extend(children.into_iter().rev());
         }
     }
 
-    fn count_nodes(node: Node<'_>) -> usize {
-        let mut cursor = node.walk();
-        1 + node
-            .children(&mut cursor)
-            .map(Self::count_nodes)
-            .sum::<usize>()
+    fn count_nodes(root: Node<'_>) -> usize {
+        let mut stack = vec![root];
+        let mut count = 0;
+        while let Some(node) = stack.pop() {
+            count += 1;
+            let mut cursor = node.walk();
+            stack.extend(node.children(&mut cursor));
+        }
+        count
     }
 
-    fn calculate_depth(node: Node<'_>, current: usize) -> usize {
-        let mut cursor = node.walk();
-        node.children(&mut cursor)
-            .map(|child| Self::calculate_depth(child, current + 1))
-            .max()
-            .unwrap_or(current)
+    fn calculate_depth(root: Node<'_>, start: usize) -> usize {
+        let mut stack = vec![(root, start)];
+        let mut max_depth = start;
+        while let Some((node, depth)) = stack.pop() {
+            max_depth = max_depth.max(depth);
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                stack.push((child, depth + 1));
+            }
+        }
+        max_depth
     }
 }
 
@@ -234,5 +253,39 @@ mod tests {
         let c = build("y = 2");
         assert!(a == b);
         assert!(a != c);
+    }
+
+    #[test]
+    fn program_object_survives_deeply_nested_input() {
+        // ponytail: regression test for the stack-overflow-via-untrusted-
+        // input risk in traverse_node/count_nodes/calculate_depth — these
+        // used to recurse one Rust stack frame per AST nesting level, so
+        // a source file with thousands of nested parens/brackets could
+        // blow the process stack. Parses directly via tree-sitter
+        // (bypassing UAST mapping, which owns its own recursively-typed
+        // tree and is out of scope for this fix) so this isolates
+        // exactly the traversal helpers being fixed. O(n) deep nesting,
+        // not the O(2^k) shape used by issue #113's hang regressions
+        // elsewhere in this crate.
+        const DEPTH: usize = 20_000;
+        let source = format!("x = {}1{}", "(".repeat(DEPTH), ")".repeat(DEPTH));
+
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .expect("python grammar should load");
+        let tree = parser
+            .parse(&source, None)
+            .expect("parse should not be cancelled");
+        let root = tree.root_node();
+        assert!(!root.has_error());
+
+        let mut nodes = Vec::new();
+        ProgramObject::traverse_node(root, &mut nodes);
+        let count = ProgramObject::count_nodes(root);
+        let depth = ProgramObject::calculate_depth(root, 0);
+
+        assert_eq!(nodes.len(), count);
+        assert!(depth >= DEPTH);
     }
 }

@@ -674,13 +674,30 @@ fn assess_edit_in_place(
 // Git helpers
 // ---------------------------------------------------------------------------
 
+/// Whether `git_ref` is safe to interpolate into a `git` argv element.
+///
+/// A ref starting with `-` would otherwise be parsed by git as a CLI option
+/// (e.g. `--output=/some/path`) rather than a revision, since git argv
+/// arguments are never shell-interpreted but are still option-parsed. No
+/// legitimate branch, tag, or commit ref starts with `-`.
+fn is_safe_git_ref(git_ref: &str) -> bool {
+    !git_ref.starts_with('-')
+}
+
 /// Read `<ref>:<rel_path>` from git. Returns `Ok(source)` or
 /// `Err(blocked_by_code)`.
 fn git_show(repo_root: &Path, git_ref: &str, rel_path: &str) -> Result<String, &'static str> {
+    if !is_safe_git_ref(git_ref) {
+        return Err("invalid_baseline_ref");
+    }
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_root)
-        .args(["show", &format!("{git_ref}:{rel_path}")])
+        // `--end-of-options` stops option parsing without git's plain `--`
+        // side effect of reinterpreting the following `ref:path` object as a
+        // bare pathspec (which silently matches nothing instead of showing
+        // the blob). Defense in depth on top of the `-` rejection above.
+        .args(["show", "--end-of-options", &format!("{git_ref}:{rel_path}")])
         .output();
     match output {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err("git_unavailable"),
@@ -693,6 +710,9 @@ fn git_show(repo_root: &Path, git_ref: &str, rel_path: &str) -> Result<String, &
 /// Whether `git_ref` resolves to a commit in `repo_root`. Returns `true`
 /// when git cannot run so the caller falls through to per-file handling.
 fn ref_exists(repo_root: &Path, git_ref: &str) -> bool {
+    if !is_safe_git_ref(git_ref) {
+        return false;
+    }
     let output = Command::new("git")
         .arg("-C")
         .arg(repo_root)
@@ -700,6 +720,7 @@ fn ref_exists(repo_root: &Path, git_ref: &str) -> bool {
             "rev-parse",
             "--verify",
             "--quiet",
+            "--end-of-options",
             &format!("{git_ref}^{{commit}}"),
         ])
         .output();
@@ -1635,5 +1656,105 @@ fn changeset_error(
             risk_flags: vec!["changeset_error".to_string()],
         }),
         error: Some(message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_tmp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_assess_gitref_test_{label}_{}_{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// Real git repo fixture: one commit on `main`/`master` touching
+    /// `f.txt`, plus a second branch `feature` with its own commit. Returns
+    /// `(repo_root, first_commit_sha)`.
+    fn init_repo(root: &Path) -> String {
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                args,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@t.t"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(root.join("f.txt"), "hello\n").unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "init"]);
+        run(&["branch", "feature"]);
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn git_show_rejects_dash_prefixed_ref() {
+        let tmp = unique_tmp_dir("show_dash");
+        init_repo(&tmp);
+        for malicious in ["-x", "--output=/tmp/topos_pwned_test"] {
+            let result = git_show(&tmp, malicious, "f.txt");
+            assert_eq!(result, Err("invalid_baseline_ref"));
+        }
+        assert!(!Path::new("/tmp/topos_pwned_test").exists());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn ref_exists_rejects_dash_prefixed_ref() {
+        let tmp = unique_tmp_dir("exists_dash");
+        init_repo(&tmp);
+        assert!(!ref_exists(&tmp, "-x"));
+        assert!(!ref_exists(&tmp, "--output=/tmp/topos_pwned_test2"));
+        assert!(!Path::new("/tmp/topos_pwned_test2").exists());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn git_show_reads_normal_refs() {
+        let tmp = unique_tmp_dir("show_normal");
+        let sha = init_repo(&tmp);
+
+        assert_eq!(git_show(&tmp, "HEAD", "f.txt").as_deref(), Ok("hello\n"));
+        assert_eq!(git_show(&tmp, "feature", "f.txt").as_deref(), Ok("hello\n"));
+        assert_eq!(git_show(&tmp, &sha, "f.txt").as_deref(), Ok("hello\n"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn ref_exists_recognizes_normal_refs() {
+        let tmp = unique_tmp_dir("exists_normal");
+        let sha = init_repo(&tmp);
+
+        assert!(ref_exists(&tmp, "HEAD"));
+        assert!(ref_exists(&tmp, "feature"));
+        assert!(ref_exists(&tmp, &sha));
+        assert!(!ref_exists(&tmp, "no-such-ref-at-all"));
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

@@ -27,6 +27,12 @@ use crate::graphs::uast::models::UASTNode;
 /// `graphs::cfg::builder`'s synthetic module-callable wrapper) that
 /// never appear as CFG/PDG statements themselves, so it's effectively
 /// unreachable in real data, same as in Python.
+///
+/// Kept in sync with an identical private helper in
+/// `graphs::pdg::object` (issue #159): DDG/CDG edges built there use
+/// this same `anon::{ptr:x}` format for empty-id statements, so a
+/// dependence edge's endpoint always resolves to the matching key in
+/// this module's node map.
 fn node_key(node: &UASTNode) -> String {
     if node.id.is_empty() {
         format!("anon::{:x}", std::ptr::from_ref(node) as usize)
@@ -98,16 +104,8 @@ fn cfg_edges(cfg: &ControlFlowGraph) -> Vec<CPGEdge> {
         let Some(dst_stmt) = dst_block.statements.first() else {
             continue;
         };
-        let source = if src_stmt.id.is_empty() {
-            "<anon>".to_string()
-        } else {
-            src_stmt.id.clone()
-        };
-        let target = if dst_stmt.id.is_empty() {
-            "<anon>".to_string()
-        } else {
-            dst_stmt.id.clone()
-        };
+        let source = node_key(src_stmt);
+        let target = node_key(dst_stmt);
         edges.push(CPGEdge::new(
             source,
             target,
@@ -141,6 +139,46 @@ fn dependence_edges(pdg: &ProgramDependenceGraph) -> Vec<CPGEdge> {
 mod tests {
     use super::*;
     use crate::graphs::ast::dispatch::parse_source;
+    use crate::graphs::uast::models::{NativeRef, SourceSpan};
+
+    #[test]
+    fn node_key_uses_anon_ptr_convention_for_empty_id_nodes() {
+        // Issue #159: `graphs::pdg::object` builds DDG/CDG edges with an
+        // identical private helper; both must produce the same
+        // `anon::{ptr}` format for an anonymous (empty-id) statement, or
+        // an edge referencing that statement silently fails to resolve
+        // against this module's node map.
+        let anon = UASTNode {
+            kind: "Anonymous".to_string(),
+            lang: "python".to_string(),
+            span: SourceSpan {
+                file: None,
+                start_byte: 0,
+                end_byte: 0,
+                start_line: 0,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+            },
+            native: NativeRef {
+                parser: "test".to_string(),
+                parser_version: "0".to_string(),
+                node_kind: "anon".to_string(),
+            },
+            attributes: HashMap::new(),
+            children: Vec::new(),
+            id: String::new(),
+        };
+        let key = node_key(&anon);
+        assert!(
+            key.starts_with("anon::"),
+            "expected `anon::<ptr>` key for empty-id node, got {key:?}"
+        );
+        assert_ne!(
+            key, "<anon>",
+            "must not use the old literal-string convention"
+        );
+    }
 
     #[test]
     fn build_cpg_includes_all_four_edge_families_when_present() {

@@ -13,6 +13,7 @@ use topos_engine::evaluation::policies::simple::describe_entropy_ratio;
 use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
 use super::classify::classify_with_representations;
+use super::composable::resolve_composable_mdg;
 use super::lang::detect_language;
 
 #[derive(Args)]
@@ -28,6 +29,12 @@ pub struct InspectArgs {
     /// parity tests), not primarily human reading.
     #[arg(long)]
     pub json: bool,
+    /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
+    #[arg(long)]
+    pub no_composable: bool,
+    /// Override the `.gitnexus` directory (default: `<cwd>/.gitnexus`).
+    #[arg(long)]
+    pub gitnexus_dir: Option<String>,
 }
 
 pub fn run(args: InspectArgs) -> Result<(), String> {
@@ -35,7 +42,27 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     let mut morphism = ProgramMorphism::from_file(&args.path, language)
         .map_err(|e| format!("reading {}: {e}", args.path.display()))?;
     let classifier = CharacteristicMorphism;
-    let result = classify_with_representations(&classifier, &mut morphism, None);
+    // Attach the COMPOSABLE MDG the same way `evaluate` does (auto-detect /
+    // generate `<cwd>/.gitnexus`, or `--gitnexus-dir`), so `inspect` reports
+    // COMPOSABLE too. Python's `inspect` fed `--gitnexus-dir` through the same
+    // `classify_file` pipeline as evaluate; `--no-composable` opts out.
+    let mut mdg = if args.no_composable {
+        None
+    } else {
+        match std::env::current_dir() {
+            Ok(project_root) => resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref()),
+            Err(e) => {
+                eprintln!(
+                    "gitnexus: could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
+                );
+                None
+            }
+        }
+    };
+    if let Some(g) = mdg.as_mut() {
+        g.target_file = args.path.to_string_lossy().into_owned();
+    }
+    let result = classify_with_representations(&classifier, &mut morphism, mdg.as_ref());
 
     if args.json {
         return print_json(&args.path, &result);

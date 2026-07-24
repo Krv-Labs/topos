@@ -64,7 +64,7 @@ Topos
       A breakdown of the structural and coupling metrics used to evaluate code quality.
 
 .. hint::
-   **Built on category theory, built in Rust.** Topos models code quality as a structural property of programs using topos theory — the formalism is precise by design, not decoration. You don't need the math to use Topos day to day; see :doc:`concepts` for the foundations.
+   **Built on category theory, written in Rust.** Topos models code quality as a structural property of programs using topos theory — the formalism is precise by design, not decoration. You don't need the math to use Topos day to day; see :doc:`concepts` for the foundations.
 
 Beyond Correctness
 -------------------

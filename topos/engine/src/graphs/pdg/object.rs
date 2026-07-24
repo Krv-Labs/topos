@@ -23,7 +23,9 @@ use std::collections::{HashMap, HashSet};
 use crate::graphs::base::Representation;
 use crate::graphs::cfg::models::EdgeKind;
 use crate::graphs::cfg::object::ControlFlowGraph;
-use crate::graphs::uast::models::{AttributeValue, UASTNode};
+use crate::graphs::uast::models::UASTNode;
+
+use super::dataflow::defs_and_uses;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependenceKind {
@@ -68,7 +70,7 @@ impl ProgramDependenceGraph {
     ///
     /// `source` is optional (pass `""` for backward compatibility) and,
     /// when supplied, lets data dependence recover real identifier text
-    /// (see [`identifier_name`]) instead of falling back to each
+    /// (see the `dataflow` module) instead of falling back to each
     /// occurrence's own node id.
     pub fn from_uast(uast_root: &UASTNode, source: &str) -> Self {
         let cfg = ControlFlowGraph::from_uast(uast_root);
@@ -290,85 +292,6 @@ fn compute_control_dependence(cfg: &ControlFlowGraph) -> Vec<DependenceEdge> {
     }
 
     edges
-}
-
-/// Return `(defs, uses)` — variable names defined / used by `stmt`.
-fn defs_and_uses(stmt: &UASTNode, source: &str) -> (HashSet<String>, HashSet<String>) {
-    let mut defs = HashSet::new();
-    let mut uses = HashSet::new();
-
-    fn walk(
-        node: &UASTNode,
-        in_lhs: bool,
-        source: &str,
-        defs: &mut HashSet<String>,
-        uses: &mut HashSet<String>,
-    ) {
-        if node.kind == "AssignExpr" {
-            let mut children = node.children.iter();
-            if let Some(lhs) = children.next() {
-                walk(lhs, true, source, defs, uses);
-                for rhs in children {
-                    walk(rhs, false, source, defs, uses);
-                }
-            }
-            return;
-        }
-        if node.kind == "Identifier" {
-            let name = identifier_name(node, source);
-            if !name.is_empty() {
-                if in_lhs {
-                    defs.insert(name);
-                } else {
-                    uses.insert(name);
-                }
-            }
-            return;
-        }
-        for child in &node.children {
-            walk(child, in_lhs, source, defs, uses);
-        }
-    }
-
-    walk(stmt, false, source, &mut defs, &mut uses);
-    (defs, uses)
-}
-
-/// Best-effort recovery of an identifier's textual name.
-///
-/// The UAST mappers don't carry token text as an attribute, so when
-/// `source` is non-empty we slice the node's own byte span to recover
-/// the real variable name (e.g. `"x"`) -- this is what lets two
-/// distinct occurrences of the same variable be recognized as the same
-/// dependence key. With an empty `source` we fall back to the node's
-/// own id, which is unique per span; that keeps identifiers at distinct
-/// spans from being spuriously conflated, at the cost of never matching
-/// a reused variable across statements.
-fn identifier_name(node: &UASTNode, source: &str) -> String {
-    if let Some(AttributeValue::Str(name)) = node.attributes.get("name") {
-        if !name.is_empty() {
-            return name.clone();
-        }
-    }
-    if !source.is_empty() {
-        let text = node_text(node, source);
-        if !text.is_empty() {
-            return text;
-        }
-    }
-    node.id.clone()
-}
-
-/// Slice `source` by `node`'s byte span (best-effort).
-fn node_text(node: &UASTNode, source: &str) -> String {
-    let span = &node.span;
-    let bytes = source.as_bytes();
-    if span.end_byte > bytes.len() {
-        return String::new();
-    }
-    String::from_utf8_lossy(&bytes[span.start_byte..span.end_byte])
-        .trim()
-        .to_string()
 }
 
 #[cfg(test)]

@@ -59,7 +59,7 @@ pub enum AttributeValue {
 /// identical-span sibling nodes without needing an explicit sibling
 /// index. The mapper walker populates it; a node built directly (e.g. in
 /// tests) with no id supplied defaults to the empty string.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct UASTNode {
     pub kind: String,
     pub lang: String,
@@ -68,4 +68,53 @@ pub struct UASTNode {
     pub attributes: HashMap<String, AttributeValue>,
     pub children: Vec<UASTNode>,
     pub id: String,
+}
+
+impl Clone for UASTNode {
+    fn clone(&self) -> Self {
+        let mut order = Vec::new();
+        let mut stack = vec![self];
+        while let Some(node) = stack.pop() {
+            order.push(node);
+            stack.extend(node.children.iter());
+        }
+
+        let mut cloned = HashMap::with_capacity(order.len());
+        for node in order.into_iter().rev() {
+            let children = node
+                .children
+                .iter()
+                .map(|child| {
+                    cloned
+                        .remove(&std::ptr::from_ref(child))
+                        .expect("children are cloned before their parent")
+                })
+                .collect();
+            cloned.insert(
+                std::ptr::from_ref(node),
+                UASTNode {
+                    kind: node.kind.clone(),
+                    lang: node.lang.clone(),
+                    span: node.span.clone(),
+                    native: node.native.clone(),
+                    attributes: node.attributes.clone(),
+                    children,
+                    id: node.id.clone(),
+                },
+            );
+        }
+
+        cloned
+            .remove(&std::ptr::from_ref(self))
+            .expect("the root is cloned in the final pass")
+    }
+}
+
+impl Drop for UASTNode {
+    fn drop(&mut self) {
+        let mut descendants = std::mem::take(&mut self.children);
+        while let Some(mut node) = descendants.pop() {
+            descendants.append(&mut node.children);
+        }
+    }
 }

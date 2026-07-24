@@ -276,9 +276,17 @@ impl CharacteristicMorphism {
             .filter(|dim| results.iter().any(|r| r.dimensions.contains_key(*dim)))
             .map(|dim| {
                 let generator = dimension_generator(dim);
-                let satisfied = results
-                    .iter()
-                    .all(|r| r.is_parseable && r.dimensions.get(dim) == Some(&generator));
+                // A file that never evaluated this dimension at all (key
+                // absent, e.g. no MDG representation for that file) must not
+                // drag the rollup down — only a file that evaluated the
+                // dimension and got the SLOP value counts as a failure.
+                let satisfied = results.iter().all(|r| {
+                    r.is_parseable
+                        && match r.dimensions.get(dim) {
+                            Some(v) => *v == generator,
+                            None => true,
+                        }
+                });
                 let value = if satisfied {
                     generator
                 } else {
@@ -437,6 +445,29 @@ mod tests {
         };
         let combined = classifier.combine_dimensions(&[good, parse_failure]);
         assert_eq!(combined["simple"], EvaluationValue::Slop);
+    }
+
+    #[test]
+    fn combine_dimensions_ignores_files_missing_the_representation() {
+        let classifier = CharacteristicMorphism;
+        let has_repr = ClassificationResult {
+            is_parseable: true,
+            dimensions: HashMap::from([("composable".to_string(), EvaluationValue::Composable)]),
+            scores: HashMap::from([("composable".to_string(), 0.9)]),
+            lattice_element: EvaluationValue::Composable,
+            ..Default::default()
+        };
+        // No MDG representation at all for this file: "composable" key is
+        // absent, not present-and-failing.
+        let missing_repr = ClassificationResult {
+            is_parseable: true,
+            dimensions: HashMap::new(),
+            scores: HashMap::new(),
+            lattice_element: EvaluationValue::Slop,
+            ..Default::default()
+        };
+        let combined = classifier.combine_dimensions(&[has_repr, missing_repr]);
+        assert_eq!(combined["composable"], EvaluationValue::Composable);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::mapper_common::map_tree_sitter_to_uast;
+use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast};
 use super::models::{AttributeValue, UASTNode};
 
 /// `go_statement`/`defer_statement` have no dedicated UAST control-flow
@@ -92,6 +92,12 @@ fn extract_type_attributes(node: &Node, _source: &[u8]) -> HashMap<String, Attri
     HashMap::new()
 }
 
+fn extract_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    let mut attrs = extract_type_attributes(node, source);
+    attrs.extend(logical_operator_attribute(node, source));
+    attrs
+}
+
 pub fn map_go_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -100,6 +106,6 @@ pub fn map_go_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UAS
         source,
         file,
         None,
-        Some(&extract_type_attributes),
+        Some(&extract_attributes),
     )
 }

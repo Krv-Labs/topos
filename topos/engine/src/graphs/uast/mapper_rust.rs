@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use tree_sitter::Node;
 
-use super::mapper_common::{map_tree_sitter_to_uast, TestNodeFilter};
+use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast, TestNodeFilter};
 use super::models::{AttributeValue, UASTNode};
 
 const CFG_TEST_MARKER: &str = "cfg(test)";
@@ -111,6 +111,12 @@ fn extract_type_attributes(node: &Node, _source: &[u8]) -> HashMap<String, Attri
     }
 }
 
+fn extract_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    let mut attrs = extract_type_attributes(node, source);
+    attrs.extend(logical_operator_attribute(node, source));
+    attrs
+}
+
 pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -119,7 +125,7 @@ pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> U
         source,
         file,
         Some(&CfgTestFilter),
-        Some(&extract_type_attributes),
+        Some(&extract_attributes),
     )
 }
 

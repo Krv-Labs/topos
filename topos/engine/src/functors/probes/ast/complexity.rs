@@ -19,27 +19,44 @@ use std::collections::HashMap;
 
 use crate::graphs::uast::models::{AttributeValue, UASTNode};
 
-const DECISION_UAST_KINDS: &[&str] = &["IfStmt", "ForStmt", "WhileStmt", "TryStmt"];
+const DECISION_UAST_KINDS: &[&str] = &[
+    "IfStmt",
+    "ForStmt",
+    "WhileStmt",
+    "ConditionalExpr",
+    "WithStmt",
+    "AssertStmt",
+];
+
+/// Count implicit `for` and filter `if` clauses inside a Python comprehension.
+fn comprehension_decision_points(node: &UASTNode) -> usize {
+    let mut points = 0;
+    fn walk(node: &UASTNode, count: &mut usize) {
+        match node.native.node_kind.as_str() {
+            "for_in_clause" | "for_clause" | "if_clause" => *count += 1,
+            _ => {}
+        }
+        for child in &node.children {
+            walk(child, count);
+        }
+    }
+    walk(node, &mut points);
+    points
+}
 
 /// Cyclomatic complexity of one callable's subtree: each decision node
-/// (`IfStmt`/`ForStmt`/`WhileStmt`/`TryStmt`) adds one, a `MatchStmt` adds
-/// one per case arm beyond the first (a k-way switch is k-1 decisions), so
-/// this agrees with `cfg.cyclomatic`; plus a short-circuit `BinaryExpr`
-/// (`and`/`or`/`&&`/`||`) adds one.
+/// (`IfStmt`/`ForStmt`/`WhileStmt`/`ConditionalExpr`/…) adds one, a
+/// `MatchStmt` adds one per case arm beyond the first (a k-way switch is
+/// k-1 decisions), `TryStmt` adds one plus one per handler beyond the
+/// first (mirroring old Python per-`except_clause` counting), a
+/// `Comprehension` adds one per implicit `for` and filter `if`, and a
+/// short-circuit `BinaryExpr` (`and`/`or`/`&&`/`||`) adds one.
 ///
 /// Note: counting per-arm here intentionally diverges from the last Python
 /// release (`topos-mcp==0.3.11`), which counted a whole match/switch as a
 /// single decision. The divergence is documented in the `[0.4.0]` CHANGELOG
 /// entry (the parity/benchmark harness that originally allowlisted it was a
 /// migration-verification artifact and has since been removed).
-///
-/// The boolean-operator check is currently dormant — no UAST mapper
-/// (issue #142) populates a `BinaryExpr`'s `"operator"` attribute with
-/// token text yet, the same "mappers don't carry token text" limitation
-/// noted in `graphs::pdg::object::identifier_name`. Kept because it's
-/// what the Python original's own (also dormant) UAST-kind path
-/// intended, and it costs nothing to leave wired for when a mapper
-/// starts recording operator text.
 fn node_complexity(node: &UASTNode) -> usize {
     fn walk(node: &UASTNode, count: &mut usize) {
         match node.kind.as_str() {
@@ -47,6 +64,19 @@ fn node_complexity(node: &UASTNode) -> usize {
             // counted from its arms so this agrees with the CFG builder.
             "MatchStmt" => {
                 *count += crate::graphs::cfg::builder::match_arm_count(node).saturating_sub(1);
+            }
+            // Try body + one decision per handler; first handler is covered by
+            // the base +1, extras match old Python per-`except_clause` tally.
+            "TryStmt" => {
+                let handlers = node
+                    .children
+                    .iter()
+                    .filter(|c| c.kind == "CatchClause")
+                    .count();
+                *count += 1 + handlers.saturating_sub(1);
+            }
+            "Comprehension" => {
+                *count += comprehension_decision_points(node);
             }
             k if DECISION_UAST_KINDS.contains(&k) => *count += 1,
             "BinaryExpr" => {
@@ -144,6 +174,62 @@ mod tests {
         let source = "package p\nfunc f(x int) int {\n\tvar y int\n\tswitch {\n\tcase x > 2:\n\t\ty = 1\n\tcase x > 1:\n\t\ty = 2\n\tdefault:\n\t\ty = 3\n\t}\n\treturn y\n}\n";
         let result = parse_source(source, "go", None).unwrap();
         assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
+    }
+
+    #[test]
+    fn boolean_chain_breaks_simple_gate() {
+        let source = "def f(a, b, c, d, e, f, g, h, i, j, k):\n    return a and b and c and d and e and f and g and h and i and j and k\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 11);
+    }
+
+    #[test]
+    fn boolean_chain_three_term_rust() {
+        let source = "fn f(a: bool, b: bool, c: bool) -> bool {\n    a && b && c\n}\n";
+        let result = parse_source(source, "rust", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
+    }
+
+    #[test]
+    fn boolean_chain_three_term_go() {
+        let source = "package p\nfunc f(a, b, c bool) bool {\n\treturn a && b && c\n}\n";
+        let result = parse_source(source, "go", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
+    }
+
+    #[test]
+    fn javascript_ternary_increases_complexity() {
+        let source = "function f(x) { return x ? 1 : 0; }\n";
+        let result = parse_source(source, "javascript", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+    }
+
+    #[test]
+    fn filtered_comprehension_increases_complexity() {
+        let source = "def f(items):\n    return [x for x in items if x > 0]\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 3);
+    }
+
+    #[test]
+    fn with_statement_increases_complexity() {
+        let source = "def f():\n    with open('x') as fh:\n        return fh.read()\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+    }
+
+    #[test]
+    fn assert_statement_increases_complexity() {
+        let source = "def f(x):\n    assert x\n    return x\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 2);
+    }
+
+    #[test]
+    fn python_multi_except_counts_per_handler() {
+        let source = "def f():\n    try:\n        pass\n    except ValueError:\n        pass\n    except TypeError:\n        pass\n    except KeyError:\n        pass\n";
+        let result = parse_source(source, "python", None).unwrap();
+        assert_eq!(calculate_max_function_complexity(&result.uast_root), 4);
     }
 }
 

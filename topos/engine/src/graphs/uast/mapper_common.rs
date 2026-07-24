@@ -66,6 +66,74 @@ pub trait TestNodeFilter {
     fn drop_set(&self, named_siblings: &[Node], source: &[u8]) -> HashSet<usize>;
 }
 
+const LOGICAL_OPERATORS: &[&str] = &["and", "or", "&&", "||"];
+
+fn is_logical_operator_text(text: &str) -> bool {
+    LOGICAL_OPERATORS.contains(&text)
+}
+
+fn logical_operator_from_node(node: &Node, source: &[u8]) -> Option<String> {
+    match node.kind() {
+        "and" | "or" => Some(node.kind().to_string()),
+        _ => node.utf8_text(source).ok().and_then(|text| {
+            let text = text.trim();
+            if is_logical_operator_text(text) {
+                Some(text.to_string())
+            } else {
+                None
+            }
+        }),
+    }
+}
+
+fn extract_binary_logical_operator(node: &Node, source: &[u8]) -> Option<String> {
+    if let Some(op_node) = node.child_by_field_name("operator") {
+        if let Some(op) = logical_operator_from_node(&op_node, source) {
+            return Some(op);
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(op) = logical_operator_from_node(&child, source) {
+            return Some(op);
+        }
+    }
+    None
+}
+
+fn extract_boolean_operator_logical_op(node: &Node, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if matches!(child.kind(), "and" | "or") {
+            return Some(child.kind().to_string());
+        }
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(op) = logical_operator_from_node(&child, source) {
+            return Some(op);
+        }
+    }
+    None
+}
+
+/// When mapping `boolean_operator` / `binary_expression` to `BinaryExpr`,
+/// record short-circuit logical operator text for `ast.max_function_complexity`
+/// (issue #142). Nullish coalescing (`??`) is intentionally excluded.
+pub fn logical_operator_attribute(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    let op = match node.kind() {
+        "boolean_operator" => extract_boolean_operator_logical_op(node, source),
+        "binary_expression" => extract_binary_logical_operator(node, source),
+        _ => None,
+    };
+    match op {
+        Some(text) if is_logical_operator_text(&text) => {
+            HashMap::from([("operator".to_string(), AttributeValue::Str(text))])
+        }
+        _ => HashMap::new(),
+    }
+}
+
 const TREE_SITTER_PACKAGES: &[(&str, &str)] = &[
     ("python", "tree-sitter-python"),
     ("rust", "tree-sitter-rust"),

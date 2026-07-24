@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use tree_sitter::Node;
 
-use super::mapper_common::map_tree_sitter_to_uast;
+use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast};
 use super::models::{AttributeValue, UASTNode};
 
 /// Real tree-sitter-cpp grammar node names (verified against the
@@ -73,12 +73,14 @@ const STATEMENT_TYPES: &[(&str, &str)] = &[
     ("continue_statement", "ContinueStmt"),
     ("throw_statement", "ThrowStmt"),
     ("try_statement", "TryStmt"),
+    ("catch_clause", "CatchClause"),
     ("expression_statement", "ExprStmt"),
 ];
 
 const EXPRESSION_TYPES: &[(&str, &str)] = &[
     ("assignment_expression", "AssignExpr"),
     ("binary_expression", "BinaryExpr"),
+    ("conditional_expression", "ConditionalExpr"),
     ("unary_expression", "UnaryExpr"),
     ("call_expression", "CallExpr"),
     ("field_expression", "MemberExpr"),
@@ -178,6 +180,12 @@ fn extract_type_attributes(node: &Node, source: &[u8]) -> HashMap<String, Attrib
     )])
 }
 
+fn extract_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    let mut attrs = extract_type_attributes(node, source);
+    attrs.extend(logical_operator_attribute(node, source));
+    attrs
+}
+
 pub fn map_cpp_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -186,6 +194,6 @@ pub fn map_cpp_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UA
         source,
         file,
         None,
-        Some(&extract_type_attributes),
+        Some(&extract_attributes),
     )
 }

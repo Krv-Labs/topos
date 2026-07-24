@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use tree_sitter::Node;
 
-use super::mapper_common::{map_tree_sitter_to_uast, TestNodeFilter};
+use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast, TestNodeFilter};
 use super::models::{AttributeValue, UASTNode};
 
 const DUNDER_NAME: &[u8] = b"__name__";
@@ -103,6 +103,14 @@ pub fn map_node_kind(kind: &str) -> &'static str {
         ("break_statement", "BreakStmt"),
         ("continue_statement", "ContinueStmt"),
         ("try_statement", "TryStmt"),
+        ("except_clause", "CatchClause"),
+        ("with_statement", "WithStmt"),
+        ("assert_statement", "AssertStmt"),
+        ("conditional_expression", "ConditionalExpr"),
+        ("list_comprehension", "Comprehension"),
+        ("set_comprehension", "Comprehension"),
+        ("dictionary_comprehension", "Comprehension"),
+        ("generator_expression", "Comprehension"),
         ("expression_statement", "ExprStmt"),
         ("assignment", "AssignExpr"),
         ("augmented_assignment", "AssignExpr"),
@@ -186,6 +194,12 @@ fn extract_type_attributes(node: &Node, source: &[u8]) -> HashMap<String, Attrib
     )])
 }
 
+fn extract_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
+    let mut attrs = extract_type_attributes(node, source);
+    attrs.extend(logical_operator_attribute(node, source));
+    attrs
+}
+
 pub fn map_python_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
     map_tree_sitter_to_uast(
         root,
@@ -194,7 +208,7 @@ pub fn map_python_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) ->
         source,
         file,
         Some(&MainGuardFilter),
-        Some(&extract_type_attributes),
+        Some(&extract_attributes),
     )
 }
 
@@ -216,6 +230,27 @@ mod tests {
         for child in &node.children {
             collect_kinds(child, out);
         }
+    }
+
+    fn collect_binary_operators(node: &UASTNode, out: &mut Vec<String>) {
+        if node.kind == "BinaryExpr" {
+            if let Some(AttributeValue::Str(op)) = node.attributes.get("operator") {
+                out.push(op.clone());
+            }
+        }
+        for child in &node.children {
+            collect_binary_operators(child, out);
+        }
+    }
+
+    #[test]
+    fn records_logical_operators_on_boolean_expr() {
+        let source = "def f(a, b, c):\n    return a and b and c\n";
+        let tree = parse(source);
+        let uast = map_python_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        let mut ops = Vec::new();
+        collect_binary_operators(&uast, &mut ops);
+        assert_eq!(ops, vec!["and", "and"]);
     }
 
     #[test]

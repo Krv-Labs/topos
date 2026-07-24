@@ -230,6 +230,22 @@ def test_detect_install_method_homebrew_cellar(monkeypatch):
         assert info.uninstall_cmd == "brew uninstall topos"
 
 
+def test_detect_install_method_homebrew_apple_silicon_linked_keg(monkeypatch):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/opt/homebrew/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
+
+        assert detect_install_info().method == "homebrew"
+
+
 def test_detect_install_method_homebrew_intel_cellar(monkeypatch):
     def raise_not_found(name: str):
         raise PackageNotFoundError

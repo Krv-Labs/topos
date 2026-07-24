@@ -47,8 +47,12 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     println!("Classification");
     println!("{}", "-".repeat(40));
     if !result.is_parseable {
+        // Match Python's `print(...)` + `sys.exit(1)`: emit the SLOP line to
+        // stdout, then exit non-zero — a parse failure is a CLI failure, so
+        // `topos inspect broken.py` must fail a shell gate. (JSON mode above
+        // returns 0 for an unparseable file, matching Python too.)
         println!("⊥ SLOP — parse failure");
-        return Ok(());
+        std::process::exit(1);
     }
     for dim in ["simple", "composable", "secure"] {
         if let Some(val) = result.dimensions.get(dim) {
@@ -99,12 +103,25 @@ fn print_json(
         .iter()
         .map(|(k, v)| (k.clone(), serde_json::Value::String(v.name().to_string())))
         .collect();
+    let scores: serde_json::Map<String, serde_json::Value> = result
+        .scores
+        .iter()
+        .map(|(k, s)| {
+            // Python emits `round(s * 100.0, 1)` (0–100, one decimal); the
+            // engine stores 0–1, so scale to match for parity/machine consumers.
+            let scaled = (*s * 1000.0).round() / 10.0;
+            let value = serde_json::Number::from_f64(scaled)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null);
+            (k.clone(), value)
+        })
+        .collect();
     let payload = serde_json::json!({
         "file": path.display().to_string(),
         "is_parseable": result.is_parseable,
         "lattice_element": result.lattice_element.name(),
         "dimensions": dimensions,
-        "scores": result.scores,
+        "scores": scores,
         "raw_metrics": result.raw_metrics,
     });
     println!(

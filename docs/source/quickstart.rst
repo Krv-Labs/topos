@@ -21,9 +21,9 @@ that follows.
 .. admonition:: The short version
    :class: philosophy-box
 
-   **Recommended:** run Topos through Claude Code or the VS Code / Cursor
-   extension. If you want package installs, source builds, or other MCP hosts,
-   use :doc:`installation` and :doc:`agents`.
+   **Recommended:** run Topos through Claude Code, VS Code ``@mcp topos``, or
+   the optional full VS Code extension. If you want package installs, source
+   builds, or other MCP hosts, use :doc:`installation` and :doc:`agents`.
 
 Install
 -------
@@ -68,14 +68,25 @@ locally and expose the same structural quality tools.
 
 .. dropdown:: VS Code / Cursor
 
-   Best when your review happens in the editor. Install the extension and let
-   the editor own MCP registration, trust prompts, and runtime discovery.
+   Best when your review happens in the editor. Pick **one** install path — do
+   not install both, or agent mode can register two Topos MCP servers.
+
+   **Recommended — MCP server (``@mcp`` gallery)**
+
+   1. Extensions view → search ``@mcp topos`` → install **Topos**.
+   2. Or use **Install MCP server** on the `GitHub MCP Registry page
+      <https://github.com/mcp/Krv-Labs/topos>`_.
+
+   VS Code pulls the registry PyPI package (``topos-mcp``) and owns
+   registration, trust, and lifecycle — no separate Topos install required.
+
+   **Optional — full Marketplace extension** (Command Palette + bundled runtime)
 
    .. button-link:: https://marketplace.visualstudio.com/items?itemName=KrvLabs.topos-vscode
       :color: primary
       :shadow:
 
-      Install the VS Code extension
+      Install ``KrvLabs.topos-vscode``
 
    In agent mode, ask:
 
@@ -84,9 +95,7 @@ locally and expose the same structural quality tools.
       Use Topos to evaluate this project and identify the lowest-hanging
       structural improvement.
 
-   The extension is the least fussy option when it is available: no MCP JSON
-   hand-editing, no separate terminal ritual, and the quality feedback stays
-   where you are reading the diff.
+   Full setup, and why not to install both paths, is in :doc:`agents`.
 
 When to use Topos
 -----------------

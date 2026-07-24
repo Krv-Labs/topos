@@ -64,8 +64,34 @@ fn collect_nodes(root: &UASTNode, out: &mut HashMap<String, CPGNode>) {
         if out.contains_key(&key) {
             continue;
         }
-        out.insert(key, CPGNode { uast: node.clone() });
+        let children = node.children.iter().map(clone_without_children).collect();
+        out.insert(
+            key,
+            CPGNode {
+                uast: UASTNode {
+                    kind: node.kind.clone(),
+                    lang: node.lang.clone(),
+                    span: node.span.clone(),
+                    native: node.native.clone(),
+                    attributes: node.attributes.clone(),
+                    children,
+                    id: node.id.clone(),
+                },
+            },
+        );
         stack.extend(node.children.iter());
+    }
+}
+
+fn clone_without_children(node: &UASTNode) -> UASTNode {
+    UASTNode {
+        kind: node.kind.clone(),
+        lang: node.lang.clone(),
+        span: node.span.clone(),
+        native: node.native.clone(),
+        attributes: node.attributes.clone(),
+        children: Vec::new(),
+        id: node.id.clone(),
     }
 }
 
@@ -190,5 +216,64 @@ mod tests {
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Ast));
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Cfg));
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Cdg));
+    }
+
+    #[test]
+    fn anonymous_node_edges_resolve_to_cpg_nodes() {
+        fn node(kind: &str, native_kind: &str, children: Vec<UASTNode>) -> UASTNode {
+            UASTNode {
+                kind: kind.to_string(),
+                lang: "python".to_string(),
+                span: SourceSpan {
+                    file: None,
+                    start_byte: 0,
+                    end_byte: 0,
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 0,
+                },
+                native: NativeRef {
+                    parser: "test".to_string(),
+                    parser_version: "0".to_string(),
+                    node_kind: native_kind.to_string(),
+                },
+                attributes: HashMap::new(),
+                children,
+                id: String::new(),
+            }
+        }
+
+        let root = node(
+            "File",
+            "module",
+            vec![node(
+                "IfStmt",
+                "if_statement",
+                vec![node(
+                    "Unknown",
+                    "block",
+                    vec![node("ExprStmt", "expression_statement", Vec::new())],
+                )],
+            )],
+        );
+        let (nodes, edges) = build_cpg(&root, "");
+
+        assert!(edges.iter().any(|edge| edge.kind == CPGEdgeKind::Cfg));
+        assert!(edges.iter().any(|edge| edge.kind == CPGEdgeKind::Cdg));
+        for edge in &edges {
+            assert!(
+                nodes.contains_key(&edge.source),
+                "{:?} edge source is missing from nodes: {}",
+                edge.kind,
+                edge.source
+            );
+            assert!(
+                nodes.contains_key(&edge.target),
+                "{:?} edge target is missing from nodes: {}",
+                edge.kind,
+                edge.target
+            );
+        }
     }
 }

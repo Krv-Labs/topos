@@ -723,10 +723,10 @@ verify_install() {
         echo "  claude mcp add topos topos mcp"
     fi
     echo ""
-    echo "Direct CLI (SIMPLE + SECURE only):"
-    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,secure"
+    echo "Direct CLI (SIMPLE + COMPOSABLE + SECURE):"
+    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r"
     echo ""
-    echo "Composability (COMPOSABLE/GOLD, via the MCP server today):"
+    echo "Agent workflow (same COMPOSABLE/GOLD support via MCP):"
     echo "  cd <YOUR_REPO_HERE>"
     echo "  claude mcp add --transport stdio topos -- topos mcp"
     echo "  # then, from an agent: topos_generate_depgraph, then"

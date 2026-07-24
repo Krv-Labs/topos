@@ -100,4 +100,15 @@ mod tests {
             "composable must appear once an MDG representation is attached"
         );
     }
+
+    #[test]
+    fn classify_with_representations_survives_deeply_nested_input() {
+        const DEPTH: usize = 10_000;
+        let source = format!("x = {}1{}\n", "(".repeat(DEPTH), ")".repeat(DEPTH));
+        let mut morphism = ProgramMorphism::new(source, "python");
+
+        let result = classify_with_representations(&CharacteristicMorphism, &mut morphism, None);
+
+        assert!(result.is_parseable);
+    }
 }

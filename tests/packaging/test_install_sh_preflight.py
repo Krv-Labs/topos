@@ -204,6 +204,13 @@ def test_install_sh_documents_force_env() -> None:
     assert "< /dev/tty" not in text
 
 
+def test_install_sh_recommends_supported_evaluate_flags() -> None:
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "topos evaluate <YOUR_REPO_SRC_HERE> -r" in text
+    assert "topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences" not in text
+    assert "topos evaluate <YOUR_REPO_SRC_HERE> -r --no-composable" not in text
+
+
 def test_preflight_piped_stdin_does_not_block(tmp_path: Path) -> None:
     """Simulate curl|sh: stdin is a pipe, not a TTY — must warn and continue."""
     install_dir = tmp_path / "localbin"

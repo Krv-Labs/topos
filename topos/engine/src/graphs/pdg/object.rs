@@ -297,22 +297,15 @@ fn defs_and_uses(stmt: &UASTNode, source: &str) -> (HashSet<String>, HashSet<Str
     let mut defs = HashSet::new();
     let mut uses = HashSet::new();
 
-    fn walk(
-        node: &UASTNode,
-        in_lhs: bool,
-        source: &str,
-        defs: &mut HashSet<String>,
-        uses: &mut HashSet<String>,
-    ) {
+    let mut stack = vec![(stmt, false)];
+    while let Some((node, in_lhs)) = stack.pop() {
         if node.kind == "AssignExpr" {
             let mut children = node.children.iter();
             if let Some(lhs) = children.next() {
-                walk(lhs, true, source, defs, uses);
-                for rhs in children {
-                    walk(rhs, false, source, defs, uses);
-                }
+                stack.extend(children.rev().map(|rhs| (rhs, false)));
+                stack.push((lhs, true));
             }
-            return;
+            continue;
         }
         if node.kind == "Identifier" {
             let name = identifier_name(node, source);
@@ -323,14 +316,10 @@ fn defs_and_uses(stmt: &UASTNode, source: &str) -> (HashSet<String>, HashSet<Str
                     uses.insert(name);
                 }
             }
-            return;
+            continue;
         }
-        for child in &node.children {
-            walk(child, in_lhs, source, defs, uses);
-        }
+        stack.extend(node.children.iter().rev().map(|child| (child, in_lhs)));
     }
-
-    walk(stmt, false, source, &mut defs, &mut uses);
     (defs, uses)
 }
 

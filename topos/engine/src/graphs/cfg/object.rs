@@ -371,6 +371,18 @@ mod tests {
     }
 
     #[test]
+    fn from_uast_survives_deeply_nested_input() {
+        use crate::graphs::ast::dispatch::parse_source;
+        const DEPTH: usize = 10_000;
+        let source = format!("x = {}1{}\n", "(".repeat(DEPTH), ")".repeat(DEPTH));
+        let result = parse_source(&source, "python", None).unwrap();
+
+        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+
+        assert!(!cfg.blocks.is_empty());
+    }
+
+    #[test]
     fn from_uast_single_if_has_cyclomatic_two() {
         use crate::graphs::ast::dispatch::parse_source;
         let source = "def f(x):\n    if x:\n        return 1\n    return 0\n";

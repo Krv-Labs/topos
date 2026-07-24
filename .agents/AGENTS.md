@@ -6,8 +6,8 @@
 ## Project Architecture
 **Topos** evaluates code quality (Python, Rust, JavaScript, TypeScript, C++, Go) using category theory, mapping programs to an 8-element lattice ($\Omega$) of free Heyting algebra on 3 independent, pairwise incomparable generators:
 - **`SIMPLE`** (CFG/AST): cyclomatic complexity, nesting, entropy. Passing: $\ge 0.40$.
-- **`COMPOSABLE`** (MDG): coupling, instability, fan-in/out. Passing: $\ge 0.80$. Needs a GitNexus module dependency graph (`.gitnexus/`) — `topos evaluate` (CLI) and `topos_evaluate_file`/`topos_evaluate_project` (MCP) all auto-detect and generate/refresh it by default (CLI: `--no-composable`/`--gitnexus-dir`; MCP: `no_composable`/`gitnexus_dir` params). GitNexus missing or generation failing degrades to SIMPLE/SECURE only, never fails the evaluation.
-- **`SECURE`** (CPG): dangerous calls, taint flows. Zero-tolerance gates; passing requires a perfect score ($1.00$).
+- **`COMPOSABLE`** (MDG): coupling, instability, fan-in/out. Passing: $\ge 0.80$. Pairing instability with abstractness (`mdg.abstractness`), it gates on Distance from the Main Sequence (`mdg.main_sequence_distance = |A + I - 1| \le 0.5`) for supported languages when coupling signal exists, falling back to raw instability when no coupling data or abstractness support exists. Needs a GitNexus module dependency graph (`.gitnexus/`) — `topos evaluate` (CLI) and `topos_evaluate_file`/`topos_evaluate_project` (MCP) all auto-detect and generate/refresh it by default (CLI: `--no-composable`/`--gitnexus-dir`; MCP: `no_composable`/`gitnexus_dir` params). GitNexus missing or generation failing degrades to SIMPLE/SECURE only, never fails the evaluation.
+- **`SECURE`** (CPG): dangerous calls, taint flows. Zero-tolerance gates; passing requires a perfect score ($1.00$). SECURE scoring stays CPG-native; the embedded Sighthound SAST engine only supplies supplementary, per-finding `security_findings` detail (advisory-only).
 - **Lattice ($\Omega$)**: `SLOP` ($\bot$) < single satisfied generators < dual combinations < `IDEAL` ($\top$). Pointwise meet ($\bigwedge$) for rollups.
 
 ### Layout & Extensibility (Rust workspace: `topos/engine` (crate `topos-engine`), `topos/cli` (crate `topos`), `topos/mcp` (crate `topos-mcp`))
@@ -15,6 +15,8 @@
 - **`topos/engine/src/graphs/`**: Representations implementing the `Representation` trait (`name`, `dimension`, `metrics() -> HashMap<String, f64>`).
 - **`topos/engine/src/evaluation/policies/`**: gate specs (`gates.rs`), calibration thresholds (`calibration.rs`), and score functions per pillar.
 - **`topos/engine/src/functors/`**: probes (heavy metrics) and profunctors (pairwise comparisons).
+- **`topos/engine/src/adapters/`**: external tools and integrations (`gitnexus.rs`, `graphify.rs`, `process.rs`).
+- **`topos/engine/src/config.rs`**: `.topos.toml` configuration parsing and allowlist rules.
 
 **To Add a Representation**:
 1. Create `topos/engine/src/graphs/<name>/object.rs` implementing the `Representation` trait, emitting namespaced metrics (e.g. `mdg.*`, `cfg.*`).
@@ -27,7 +29,15 @@
 cargo build --workspace                              # Setup
 cargo test --workspace                                # Run tests
 cargo fmt --all && cargo clippy --workspace --all-targets  # Lint/format
+
+# CLI Subcommands:
 topos evaluate <path> [-r] [--language <lang>] [--no-composable] [--gitnexus-dir <dir>]
+topos inspect <path>                                 # Detailed metrics
+topos compare <path1> <path2>                         # Structural distance
+topos coverage --put <path1> --test <path2>           # UAST test coverage
+topos graphify generate|orphans                      # Graphify integration
+topos depgraph generate [--force]                     # GitNexus generation
+topos mcp                                             # Launch MCP server over stdio
 ```
 `--priority`/`--preferences` are not CLI flags today — priority/preference weighting is only exposed through the MCP tools' `preferences` parameter (see below).
 
@@ -59,4 +69,4 @@ commit permission. `SUSPICIOUS_NO_STRUCTURAL_CHANGE` blocks acceptance.
 ### Escape Hatches
 - **Score plateaus**: Split file. Extract high-complexity functions identified by `topos_inspect_code`.
 - **SIMPLE improves, COMPOSABLE regresses**: Abstraction is just relocation. Verify whole project rollup.
-- **COMPOSABLE still unreachable after evaluating**: GitNexus isn't installed or generation failed — check the `warnings` field (or CLI `stderr`) for why, install GitNexus (`npm install -g gitnexus`) or fix the reported problem, then re-evaluate. `topos_depgraph_status` gives a read-only diagnosis without triggering generation.
+- **COMPOSABLE still unreachable after evaluating**: GitNexus isn't installed or generation failed — check the `warnings` field (or CLI `stderr`) for why, install GitNexus (`pnpm add -g gitnexus` or `npm install -g gitnexus`) or fix the reported problem, then re-evaluate. `topos_depgraph_status` gives a read-only diagnosis without triggering generation.

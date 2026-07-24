@@ -71,10 +71,6 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
     frontmatter = match.group(1)
     body = text[match.end() :]
 
-    metadata = extract_block(frontmatter, "metadata")
-    if metadata is None:
-        return []
-
     name = parse_scalar(frontmatter, "name")
     if not name:
         errors.append(f"{skill_md}: frontmatter name is required")
@@ -92,6 +88,10 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
         errors.append(
             f"{skill_md}: description is {len(description)} chars; keep under 160"
         )
+
+    metadata = extract_block(frontmatter, "metadata")
+    if metadata is None:
+        return errors
 
     version = parse_scalar(frontmatter, "version")
     openclaw = extract_block(metadata, "openclaw")

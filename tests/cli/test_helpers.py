@@ -334,6 +334,49 @@ def test_detect_install_method_binary_in_usr_local_bin(monkeypatch):
         assert info.provenance == provenance
 
 
+def test_detect_install_method_binary_in_usr_local_bin_with_homebrew_prefix(
+    monkeypatch,
+):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    provenance = {
+        "install_method": "binary-installer",
+        "install_path": "/usr/local/bin/topos",
+    }
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: provenance)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/usr/local/bin/topos"),
+        )
+        m.setenv("HOMEBREW_PREFIX", "/usr/local")
+
+        info = detect_install_info()
+        assert info.method == "binary-installer"
+        assert info.provenance == provenance
+
+
+def test_detect_install_method_homebrew_intel_cellar_with_homebrew_prefix(
+    monkeypatch,
+):
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/usr/local/Cellar/topos/0.3.12/bin/topos"),
+        )
+        m.setenv("HOMEBREW_PREFIX", "/usr/local")
+
+        assert detect_install_info().method == "homebrew"
+
+
 def test_detect_install_method_ignores_malformed_homebrew_prefix(monkeypatch):
     def raise_not_found(name: str):
         raise PackageNotFoundError

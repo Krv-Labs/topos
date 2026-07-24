@@ -2,107 +2,138 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, worktree-rust-migration-v0.4.0]
   pull_request:
-    branches: [main]
+    branches: [main, worktree-rust-migration-v0.4.0]
 
 jobs:
-  build:
+  rust:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Check versions (Cargo.toml is source of truth)
-        run: python scripts/check_versions.py
-
-      - name: Check agent skills
-        run: python scripts/check_skill.py
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Install dependencies
-        run: uv sync --group dev --python ${{ matrix.python-version }}
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Run Python tests
-        run: uv run pytest -v
+      - name: Check versions (Cargo.toml is source of truth)
+        run: python3 scripts/check_versions.py
 
-      - name: Run Rust tests
-        run: uv run --python ${{ matrix.python-version }} cargo test
+      - name: Check agent skills
+        run: python3 scripts/check_skill.py
 
-      - name: Run Rust clippy
-        if: matrix.python-version == '3.13'
-        run: uv run --python 3.13 cargo clippy -- -D warnings
+      - name: Format check
+        run: cargo fmt --all --check
 
-      - name: Run Rust fmt
-        if: matrix.python-version == '3.13'
-        run: cargo fmt --check
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run Ruff lint checks
-        if: matrix.python-version == '3.13'
-        run: uv run ruff check topos tests
+      - name: Tests
+        run: cargo test --workspace
 
-      - name: Run Ruff formatting checks
-        if: matrix.python-version == '3.13'
-        run: uv run ruff format --check topos tests
+      - name: Smoke-test the MCP server over stdio
+        run: |
+          cargo build -p topos-mcp --bin topos-mcp
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+          | TOPOS_MCP_FILE_ROOT="$PWD" ./target/debug/topos-mcp \
+          | grep -q '"topos_evaluate_code"'
 
-  cli-startup:
+  composable:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
+      - name: Install build deps (lbug / OpenSSL)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake libssl-dev pkg-config
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        run: uv python install 3.12
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Install dependencies
-        run: uv sync --group dev --python 3.12
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
 
-      - name: Build release binary
+      - name: Install pinned GitNexus
+        run: npm install -g gitnexus@1.6.8
+
+      - name: Build topos CLI
+        run: cargo build -p topos --bin topos
+
+      - name: Analyze fixture and assert COMPOSABLE scores
         run: |
-          chmod +x scripts/build-binary.sh
-          ./scripts/build-binary.sh
-          mv dist/topos dist/topos-linux-amd64
-          ls -lh dist/topos-linux-amd64
+          set -euo pipefail
+          BIN="$GITHUB_WORKSPACE/target/debug/topos"
+          FIXTURE_SRC="$GITHUB_WORKSPACE/tests/fixtures/composable_mdg"
+          WORK="$(mktemp -d)"
+          cp -R "$FIXTURE_SRC/." "$WORK/"
+          cd "$WORK"
+          git init
+          git config user.email "ci@topos.local"
+          git config user.name "topos-ci"
+          git add -A
+          git commit -m "fixture"
+          gitnexus analyze --skip-agents-md
+          test -f .gitnexus/lbug
+          test ! -d .gitnexus/lbug
+          OUT="$(mktemp)"
+          ERR="$(mktemp)"
+          "$BIN" evaluate --language rust src/lib.rs >"$OUT" 2>"$ERR"
+          echo "=== stdout ==="
+          cat "$OUT"
+          echo "=== stderr ==="
+          cat "$ERR"
+          if grep -q "no indexed store found" "$ERR"; then
+            echo "COMPOSABLE silently fell back to no-store messaging" >&2
+            exit 1
+          fi
+          if ! grep -E -q 'composable:' "$OUT"; then
+            echo "COMPOSABLE pillar missing from evaluate output" >&2
+            exit 1
+          fi
 
-      - name: Dogfood release binary
-        env:
-          TOPOS_BINARY: dist/topos-linux-amd64
-          TOPOS_BENCHMARK: "1"
-          TOPOS_BENCHMARK_RUNS: "5"
-          TOPOS_VERSION_BUDGET_S: "2.5"
-          TOPOS_HELP_BUDGET_S: "3.5"
-          TOPOS_MCP_SMOKE_TIMEOUT_S: "180"
-        run: |
-          chmod +x "$TOPOS_BINARY"
-          uv run pytest tests/packaging/ -v --no-cov
-          # Gate only the documented trivial-command budgets (--version, --help).
-          # `evaluate --help` loads the full stack; its correctness is covered by
-          # tests/packaging/, and its latency is not a documented budget.
-          uv run pytest tests/benchmarks/test_cli_startup.py -s --no-cov -k "warm and not evaluate"
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the topos-mcp bin wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          manylinux: "2_34"
+          # manylinux_2_34 (AlmaLinux 9) ships OpenSSL 3 — required by the
+          # lbug prebuilt. Building on the host ubuntu-latest linker pulls in
+          # a second copy of antlr4 (duplicate symbols with liblbug.a).
+          before-script-linux: |
+            if command -v dnf >/dev/null 2>&1; then
+              # openssl-devel/cmake live in base/AppStream; skip EPEL to avoid mirror flakes.
+              dnf install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                libssl-dev cmake pkg-config
+            else
+              echo "No supported package manager in manylinux container" >&2
+              exit 1
+            fi
+          args: --release --bindings bin --manifest-path topos/mcp/Cargo.toml --out dist
 
   extension:
     runs-on: ubuntu-latest

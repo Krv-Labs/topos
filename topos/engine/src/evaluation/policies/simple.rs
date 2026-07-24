@@ -1,0 +1,155 @@
+//! `Φ_SIMPLE`: policy translator for the SIMPLE generator.
+//!
+//! Maps CFG and AST observations into a [`ScoredDecision`]:
+//!
+//! ```text
+//! Φ_SIMPLE(metrics) → ScoredDecision
+//! achieved = (entropy in band) ∧ (max_func ≤ gate)
+//! score    = min(per-metric qualities)   # reporting only; does not gate achieved
+//! ```
+//!
+//! `cyclomatic` is scored (drags down `score`, drives `extract_helper`
+//! suggestions) but does not gate `achieved` (`GateSpec::gates_achieved
+//! = false` in [`super::gates`], issue #193): it's a whole-file
+//! merged-CFG sum that scales with function count, so it would
+//! otherwise hard-fail a file with several small, individually-simple
+//! functions -- a concern `max_func` (a true per-function max) already
+//! gates directly.
+//!
+//! Gate comparisons and interpretation prose live in
+//! [`super::gates`]; thresholds and normalization caps in
+//! [`super::calibration`]. Only the score-shaping quality curves remain
+//! local.
+
+use std::collections::HashMap;
+
+use super::base::ScoredDecision;
+use super::calibration::SIMPLE;
+use super::gates::{evaluate_gates, interpret_metric};
+
+/// `Φ_SIMPLE` — score the SIMPLE generator using independent raw
+/// thresholds.
+///
+/// `is_entrypoint_module`, when true, tolerates low entropy for
+/// import/export-only entrypoint modules.
+pub fn score_simple(
+    cyclomatic: Option<f64>,
+    entropy: Option<f64>,
+    max_function_complexity: Option<f64>,
+    is_entrypoint_module: bool,
+    source_size_bytes: Option<f64>,
+) -> ScoredDecision {
+    let mut metrics = HashMap::new();
+    if let Some(v) = cyclomatic {
+        metrics.insert("cfg.cyclomatic".to_string(), v);
+    }
+    if let Some(v) = entropy {
+        metrics.insert("ast.entropy".to_string(), v);
+    }
+    if let Some(v) = max_function_complexity {
+        metrics.insert("ast.max_function_complexity".to_string(), v);
+    }
+
+    let results = evaluate_gates(&metrics, Some("simple"), is_entrypoint_module, false, None);
+    if results.is_empty() {
+        // If no metrics are provided, we vacuously satisfy SIMPLE.
+        return ScoredDecision {
+            score: 1.0,
+            achieved: true,
+            interpretation: HashMap::new(),
+        };
+    }
+
+    // Score shaping (reporting only): quality curves stay local to Φ_SIMPLE.
+    let qualities: Vec<f64> = results
+        .iter()
+        .map(|r| quality(r.spec.metric, r.value, source_size_bytes))
+        .collect();
+
+    ScoredDecision {
+        // The combined score is the minimum of the individual qualities
+        // (conservative AND).
+        score: qualities.into_iter().fold(f64::INFINITY, f64::min),
+        achieved: results
+            .iter()
+            .filter(|r| r.spec.gates_achieved)
+            .all(|r| r.passed()),
+        interpretation: results
+            .iter()
+            .map(|r| (r.spec.metric.to_string(), r.interpretation()))
+            .collect(),
+    }
+}
+
+/// Normalize one raw metric to a `[0, 1]` quality (never gates `achieved`).
+fn quality(metric: &str, value: f64, source_size_bytes: Option<f64>) -> f64 {
+    match metric {
+        "cfg.cyclomatic" => 1.0 - (value / SIMPLE.max_cyclomatic_cap).min(1.0),
+        "ast.entropy" => {
+            let deviation = value - SIMPLE.entropy_ideal;
+            let below_floor =
+                source_size_bytes.is_some_and(|bytes| bytes < SIMPLE.entropy_size_floor_bytes);
+            if below_floor && deviation > 0.0 {
+                // Tiny inputs inflate the ratio via zlib's fixed per-stream
+                // overhead (issue #152): an above-ideal reading isn't a
+                // reliable "too dense" signal at this size, so it doesn't
+                // sink the score. Below-ideal (repetition) stays fully
+                // penalized -- that signal holds at any size.
+                1.0
+            } else {
+                (1.0 - 2.0 * deviation.abs()).max(0.0)
+            }
+        }
+        _ => 1.0 - (value / SIMPLE.max_function_complexity_cap).min(1.0),
+    }
+}
+
+/// Describe a raw AST entropy ratio using SIMPLE policy language.
+pub fn describe_entropy_ratio(entropy: f64) -> String {
+    interpret_metric("ast.entropy", entropy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn perfect_code_scores_one() {
+        // Ideal: cyclomatic=0, entropy=0.5, max_func=0 -> score is 1.0
+        let result = score_simple(Some(0.0), Some(0.5), Some(0.0), false, None);
+        assert_eq!(result.score, 1.0);
+        assert!(result.achieved);
+    }
+
+    #[test]
+    fn pathological_code_scores_zero() {
+        // Worst case: cyclomatic=40, entropy=1.0, max_func=20 -> score is 0.0
+        let result = score_simple(Some(40.0), Some(1.0), Some(20.0), false, None);
+        assert_eq!(result.score, 0.0);
+        assert!(!result.achieved);
+    }
+
+    #[test]
+    fn independent_thresholds_each_fail_alone() {
+        assert!(score_simple(Some(10.0), Some(0.5), Some(5.0), false, None).achieved);
+        assert!(!score_simple(Some(10.0), Some(0.9), Some(5.0), false, None).achieved); // fail entropy
+        assert!(!score_simple(Some(10.0), Some(0.5), Some(11.0), false, None).achieved);
+        // fail max func
+    }
+
+    #[test]
+    fn cyclomatic_over_threshold_scores_but_does_not_gate() {
+        // cyclomatic=16 exceeds SIMPLE.max_cyclomatic (15), but no longer
+        // gates achieved -- it's advisory only (issue #193).
+        let result = score_simple(Some(16.0), Some(0.5), Some(5.0), false, None);
+        assert!(result.achieved);
+        assert!(result.score < 1.0); // still drags the score down
+    }
+
+    #[test]
+    fn no_metrics_vacuously_satisfies() {
+        let result = score_simple(None, None, None, false, None);
+        assert!(result.achieved);
+        assert_eq!(result.score, 1.0);
+    }
+}

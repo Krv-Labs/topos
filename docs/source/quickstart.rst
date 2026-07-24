@@ -36,12 +36,18 @@ locally and expose the same structural quality tools.
    Best when you already use Claude Code for repo work. Topos becomes the
    structural verifier in the same agent loop: measure, edit, verify, repeat.
 
-   You do not need a persistent Python install. Let ``uvx`` resolve and run the
-   package when Claude starts the MCP server.
+   You do not need a persistent install. Let ``uvx`` resolve and run the
+   ``topos-mcp`` server binary when Claude starts the MCP server — the
+   PyPI ``topos-mcp`` package is a thin wheel bundling that compiled Rust
+   binary, so there's no Python runtime involved.
 
    .. code-block:: bash
 
-      claude mcp add --transport stdio topos -- uvx --from topos-mcp topos mcp
+      claude mcp add --transport stdio topos -- uvx topos-mcp
+
+   Prefer the full ``topos`` binary (CLI + MCP server) instead? Install it
+   with the script in :doc:`installation`, then run
+   ``claude mcp add --transport stdio topos -- topos mcp``.
 
    To confirm the install + MCP server status, you can run:
 
@@ -216,8 +222,9 @@ COMPOSABLE: module coupling
 
 **Question:** if this file changes, how much of the repo has to care?
 
-COMPOSABLE zooms out from one function to the module dependency graph. It looks
-at how files and modules depend on each other.
+COMPOSABLE zooms out from one function to the module dependency graph, built by
+`GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_. It looks at how
+files and modules depend on each other.
 
 Fan-out measures how many other modules a file relies on. If
 ``UserPayment.js`` needs twenty local modules just to run, it is carrying a lot
@@ -240,8 +247,9 @@ SECURE: data-flow safety
 
 **Question:** can untrusted input reach something dangerous?
 
-SECURE uses a code property graph to follow data through the program. It looks
-for dangerous API reachability and taint paths.
+SECURE uses a code property graph to follow data through the program, with
+supplementary findings from the embedded `Sighthound <https://github.com/Corgea/Sighthound>`_
+engine. It looks for dangerous API reachability and taint paths.
 
 "Taint" just means untrusted input: a URL parameter, a form field, a search box,
 or anything else a user can control. A taint path is the trail that value takes

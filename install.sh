@@ -525,15 +525,13 @@ install_topos() {
         echo "  # Using Homebrew"
         echo "  brew install krv-labs/tap/topos"
         echo ""
-        echo "  # Using uv (recommended for Python users)"
-        echo "  uv pip install topos-mcp"
-        echo ""
-        echo "  # Using pip"
+        echo "  # MCP server via PyPI (installs the 'topos-mcp' command)"
+        echo "  uvx topos-mcp        # run without a persistent install"
         echo "  pip install topos-mcp"
         echo ""
-        echo "  # From source"
+        echo "  # From source (builds the 'topos' CLI + MCP server)"
         echo "  git clone https://github.com/${REPO}.git"
-        echo "  cd topos && uv sync"
+        echo "  cd topos && cargo build --release -p topos"
         exit 1
     fi
 
@@ -602,16 +600,16 @@ install_optional_dependencies() {
     case "$reply" in
         [yY][eE][sS]|[yY]|"")
             # Keep the pnpm-first preference in sync with the other install paths:
-            #   - Python: topos/utils/gitnexus.py (gitnexus_install_command)
             #   - TypeScript: extensions/vscode/src/extension.ts (resolveGitNexusInstallCommand)
+            #   - Rust: topos/engine/src/adapters/gitnexus.rs (still npm-only; follow-up)
             local install_cmd=""
             if command -v pnpm >/dev/null 2>&1; then
                 install_cmd="pnpm add -g gitnexus"
             elif command -v npm >/dev/null 2>&1; then
-                install_cmd="npm install -g gitnexus"
+                install_cmd="npm install -g gitnexus@1.6.8"
             else
                 warn "Neither pnpm nor npm found. Skipping gitnexus installation."
-                warn "Install manually with: pnpm add -g gitnexus  # or: npm install -g gitnexus"
+                warn "Install manually with: pnpm add -g gitnexus@1.6.8  # or: npm install -g gitnexus@1.6.8"
                 warn "Coupling metrics will not be available."
                 return
             fi
@@ -620,7 +618,7 @@ install_optional_dependencies() {
                 success "gitnexus installed successfully!"
             else
                 error "Failed to install gitnexus."
-                warn "You may need to install it manually: pnpm add -g gitnexus  # or: npm install -g gitnexus"
+                warn "You may need to install it manually: pnpm add -g gitnexus@1.6.8  # or: npm install -g gitnexus@1.6.8"
             fi
             ;;
         *)
@@ -725,13 +723,14 @@ verify_install() {
         echo "  claude mcp add topos topos mcp"
     fi
     echo ""
-    echo "Direct CLI:"
+    echo "Direct CLI (SIMPLE + SECURE only):"
     echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,secure"
     echo ""
-    echo "Composability:"
+    echo "Composability (COMPOSABLE/GOLD, via the MCP server today):"
     echo "  cd <YOUR_REPO_HERE>"
-    echo "  topos depgraph generate"
-    echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences simple,composable,secure --gitnexus-dir .gitnexus"
+    echo "  claude mcp add --transport stdio topos -- topos mcp"
+    echo "  # then, from an agent: topos_generate_depgraph, then"
+    echo "  # topos_evaluate_file(..., gitnexus_dir=\".gitnexus\")"
     echo ""
     echo "Docs: https://docs.krv.ai/topos"
 }

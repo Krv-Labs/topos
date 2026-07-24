@@ -1,7 +1,7 @@
 ---
 name: topos
 description: Structural code quality metrics, lattice verification, and refactor loops for agent-written code.
-version: 0.3.12
+version: "0.4.0"
 homepage: https://docs.krv.ai/topos/
 metadata:
   openclaw:

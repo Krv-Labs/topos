@@ -186,14 +186,19 @@ Choose an agent path
       ``invalid_dir``.
       ``topos_generate_depgraph`` shells out to GitNexus and rewrites
       ``.gitnexus/`` — approval-gated in most clients. Re-run when imports
-      change, modules are renamed, or directories are restructured.
+      change, modules are renamed, or directories are restructured (it also
+      no-ops safely when the graph is already current — pass ``force=true``
+      to always regenerate).
 
-      CLI equivalent (requires ``pnpm add -g gitnexus  # or: npm install -g gitnexus``):
+      Requires GitNexus on ``PATH``:
 
       .. code-block:: bash
 
-         cd /path/to/your/repo
-         topos depgraph generate
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
+
+      As of v0.4.0 there is no CLI equivalent — the ``topos`` CLI's
+      ``evaluate``/``inspect`` commands don't build or read ``.gitnexus``
+      yet, so COMPOSABLE is reachable through the MCP server only.
 
    Root override
       If the MCP host starts Topos outside the repository, set the trusted root
@@ -292,9 +297,10 @@ Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
 MCP Tools
 ---------
 
-Topos registers sixteen MCP tools. Evaluation, inspection, assessment, coverage,
-and depgraph tools take a single ``params`` object. ``topos_get_doc`` takes a
-direct ``topic`` argument.
+Topos registers eighteen MCP tools, all implemented directly in ``topos-mcp``
+(a compiled Rust binary — see :doc:`installation`). Evaluation, inspection,
+assessment, coverage, depgraph, refactor, and graphify tools take a single
+``params`` object. ``topos_get_doc`` takes a direct ``topic`` argument.
 
 Most evaluation and assessment tools accept optional ``preferences`` with a
 strict ``ranking`` (for example
@@ -331,9 +337,11 @@ Core Evaluation
    Classifies a raw code string (SIMPLE and SECURE only).
 
 ``topos_evaluate_project({"params": {"path": ..., "preferences": ..., "gitnexus_dir": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...}})``
-   Python project rollup with progress reporting and pagination. Returns worst-scoring files first. Use
-   ``aggregate_floor_verdict`` for the codebase floor and ``worst_files`` /
-   ``guidance`` for the next action.
+   Project-wide rollup with progress reporting and pagination. Autodetects
+   all six supported languages (Python, Rust, JavaScript, TypeScript, C++,
+   Go) in one walk — no language argument needed. Returns worst-scoring
+   files first. Use ``aggregate_floor_verdict`` for the codebase floor and
+   ``worst_files`` / ``guidance`` for the next action.
 
 ``topos_inspect_code({"params": {"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ..., "allow": ..., "verbose": ...}})``
    Detailed metric breakdown: top-N functions by complexity (with line numbers and
@@ -364,7 +372,12 @@ Refactor & Iterate
    ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 
    When SECURE fails, file-level assessment includes ``security_findings`` with the
-   dangerous callee, line, and source snippet.
+   dangerous callee, line, and source snippet — sourced from the embedded
+   `Sighthound <https://github.com/Corgea/Sighthound>`_ SAST engine for
+   Python/JavaScript/TypeScript/Go, falling back to local CPG probes for
+   Rust/C++ or when Sighthound is disabled (``TOPOS_DISABLE_SIGHTHOUND=1``).
+   These findings are supplementary detail only — the SECURE verdict itself
+   always comes from the native CPG probes, never from Sighthound.
 
 ``topos_assess_changeset({"params": {"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
    Multi-file / module-split assessment (read-only). Each file is compared to the git
@@ -404,6 +417,56 @@ Structure & Coverage
    Calculates structural test coverage (UAST declaration matching and k-gram
    recall). Coverage is a separate signal; it does not change the
    SIMPLE / COMPOSABLE / SECURE lattice verdict.
+
+Refactor Suite (advisory, not scored)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ranked, actionable structural hotspots from four independent engines.
+**None of these feed SIMPLE/COMPOSABLE/SECURE** — this is refactoring
+guidance layered on top of the scored medal, distinct from the
+gate-failure ``refactor_targets`` surfaced *inside* ``topos_evaluate_file``.
+See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
+
+``topos_refactor({"params": {"target": "cycles"|"dependencies"|"process"|"graphify", "filepath": ..., "gitnexus_dir": ..., "graphify_dir": ..., "limit": ...}})``
+   One tool, four targets, each surfacing a different structural-analysis
+   engine and returning a ranked list of hotspots:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 18 30 12 40
+
+      * - ``target``
+        - Engine
+        - Needs
+        - What you get
+      * - ``cycles``
+        - CFG cycle basis (homology)
+        - —
+        - Source ranges for real loops/branches behind cyclomatic complexity
+      * - ``dependencies``
+        - Balanced Forman curvature on the MDG
+        - GitNexus
+        - Dependency edges worth strengthening (bottlenecks)
+      * - ``process``
+        - Directed Forman-Ricci curvature on process graphs
+        - GitNexus
+        - Execution choke-point transitions
+      * - ``graphify``
+        - Degree + confidence over a `Graphify <https://github.com/Graphify-Labs/graphify>`_ knowledge graph
+        - Graphify
+        - Orphan/dead-code nodes and low-confidence (``INFERRED``/``AMBIGUOUS``) edges
+
+   ``gitnexus_dir``/``graphify_dir`` are ignored for targets that don't need
+   them. ``gitnexus_available``/``tool_available`` report ``false`` (no
+   error) when the backing tool/graph isn't present — the same graceful
+   degradation ``topos_evaluate_file`` uses for COMPOSABLE.
+
+``topos_generate_graphify_graph({"params": {"directory": ..., "force": ...}})``
+   Generates the Graphify knowledge graph (``graphify-out/graph.json``) via
+   the external ``graphify`` CLI (``pip install graphifyy``). Side-effecting;
+   skips running ``graphify`` when a graph is already current unless
+   ``force=true``. Feeds only ``topos_refactor(target="graphify")`` — never
+   SIMPLE/COMPOSABLE/SECURE.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

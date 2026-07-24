@@ -123,14 +123,9 @@ respects the user's ranking.
 How to Set Preferences
 ----------------------
 
-In the CLI, pass ``--preferences``:
-
-.. code-block:: bash
-
-   topos evaluate src/server.py --preferences composable,secure,simple
-   topos inspect src/server.py --preferences composable,secure,simple
-
-In MCP tools, pass ``preferences.ranking``:
+As of v0.4.0, preferences are an **MCP-only** feature — the ``topos`` CLI's
+``evaluate``/``inspect`` commands don't have a ``--preferences`` flag yet
+(see :doc:`cli`). In MCP tools, pass ``preferences.ranking``:
 
 .. code-block:: json
 
@@ -177,8 +172,7 @@ Related Tools
    Include ``preference_walk`` in their structured output when preferences are
    supplied.
 
-``topos_assess_worktree_change``, ``topos_assess_snapshot``, and
-``topos_assess_changeset``
+``topos_assess_worktree_change``, ``topos_assess_snapshot``, and ``topos_assess_changeset``
    Preserve the same preferences when verifying in-place edits, snapshot baselines,
    or multi-file module splits.
 

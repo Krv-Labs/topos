@@ -1,0 +1,231 @@
+# Topos Agent Workflows
+
+This is the expanded guide for using Topos tools in a closed-loop refactor.
+Agents should read `topos://docs/agent-contract` first and use this document
+only when they need detail beyond the compact outcome contract.
+
+## The canonical loop: review → plan → refactor → re-measure
+
+```
+┌────────────┐      ┌────────────┐      ┌──────────────┐      ┌────────────┐
+│ 1. MEASURE │ ───► │ 2. PLAN    │ ───► │ 3. PROPOSE   │ ───► │ 4. VERIFY  │
+│  (evaluate)│      │ (identify  │      │  (refactor)  │      │  (assess)  │
+│            │      │  weakest)  │      │              │      │            │
+└────────────┘      └────────────┘      └──────────────┘      └─────┬──────┘
+                                                                    │
+                          ┌─────────────────────────────────────────┘
+                          ▼
+                    ┌──────────────┐
+                    │ 5. DECIDE    │
+                    │ accept / try │
+                    │ again / stop │
+                    └──────────────┘
+```
+
+### 1. Measure
+
+- Single file: `topos_evaluate_file` with
+  `{"params": {"filepath": "..."}}` — by default this also detects and
+  generates/refreshes `.gitnexus` (missing or stale → runs `gitnexus
+  analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
+  Pass `gitnexus_dir` to point at a specific graph, or `no_composable:
+  true` to skip detection/generation and score SIMPLE/SECURE only. If
+  GitNexus isn't installed or generation fails, `coupling_available` is
+  `false` and any verdict containing COMPOSABLE (including 🥇 **GOLD**) is
+  unreachable — the result includes both top-level `warnings` and a
+  COMPOSABLE-pillar `mdg.unavailable` interpretation explaining why.
+- Whole project: `topos_evaluate_project` with
+  `{"params": {"path": "..."}}` — same default generation behavior, plus
+  a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the
+  codebase floor; use `worst_files` and `guidance` to pick the next action.
+
+### 2. Plan
+
+Read the `guidance` field of the evaluation result. It's priority-aware and
+tells you which dimension to work on. If COMPOSABLE is still unreachable
+after evaluating (see `warnings`), GitNexus is either not installed or its
+generation failed — install it (`npm install -g gitnexus`) or fix the
+reported problem, then re-evaluate. `topos_depgraph_status` gives a
+read-only diagnosis without triggering generation; `topos_generate_depgraph`
+lets you force a refresh explicitly.
+
+For deep analysis of a specific file, call `topos_inspect_code` with either
+`{"params": {"filepath": "..."}}` or `{"params": {"code": "..."}}` — it
+returns top-N functions by complexity, source line, entropy details, and the
+full metric table.
+
+### 3. Propose
+
+Write a refactor. Keep the change focused on one dimension at a time.
+
+**Editing the file in place (recommended for coding agents).** After you edit
+the target file directly, you don't need to re-send the source — recover the
+baseline automatically:
+
+- `topos_assess_worktree_change` with
+  `{"params": {"filepath": "...", "baseline_ref": "HEAD"}}` — compares the
+  working-tree file to its committed version. Stateless; the common "did my
+  edit beat HEAD?" check. Point `baseline_ref` at any branch/commit.
+- For an untracked/new file, or a baseline that was never committed, snapshot
+  it **before** editing: `topos_begin_refactor {"params": {"filepath": "..."}}`
+  → returns `snapshot_id` → edit → `topos_assess_snapshot
+  {"params": {"snapshot_id": "...", "filepath": "..."}}`. A missing/expired
+  snapshot reports `blocked_by` `snapshot_not_found` / `snapshot_stale`.
+
+**Side-by-side comparison.** When you have a proposed variant in hand, submit
+via `topos_assess_improvement` with
+`{"params": {"filepath": "...", "proposed_code": "..."}}`, or use
+`proposed_filepath` inside `params` when the proposed version is already
+written inside the configured file root.
+
+### 4. Verify
+
+All assessment tools return one of:
+
+- `IMPROVEMENT` — lattice moved up (e.g. ❌ SLOP → 🥉 BRONZE, or 🥉 BRONZE → 🥈 SILVER). Topos accepts the structural direction; behavior checks still gate final acceptance.
+- `IMPROVEMENT_SCORE` — lattice unchanged but per-dim scores improved.
+  Progress, but not a medal jump yet.
+- `LATERAL_MOVE` — neither improved nor regressed. Try a different angle.
+- `REGRESSION` / `REGRESSION_SCORE` — revert and re-plan.
+- **`SUSPICIOUS_NO_STRUCTURAL_CHANGE`** — ⚠️ scores moved but AST barely
+  changed. The refactor is probably cosmetic (whitespace / comments /
+  renames). Make a structural change, not a textual one. **Do not commit.**
+
+When SECURE fails, file-level evaluation and assessment include
+`security_findings` by default.  Start with `callee`, `line`, and `snippet`;
+these are the actionable fields an agent needs before guessing at fixes.
+If a project `.topos.toml` or an `allow` input acknowledges a finding, the raw
+SECURE verdict remains visible as `secure_raw`, the adjusted result is visible
+as `secure_adjusted` / `adjusted_lattice_element`, and acknowledged entries are
+listed in `acknowledged_risks`. Only active findings drive SECURE suggestions.
+Acknowledged risk can never buy an undisclosed IDEAL grade.
+
+### 5. Decide
+
+Stop when:
+- Verdict = 🥇 **GOLD** (all three generators satisfied), OR
+- Priority-specific generator satisfied (`simple` → SIMPLE bit set,
+  `composable` → COMPOSABLE bit set, `secure` → SECURE bit set), OR
+- `max_iterations` exhausted — report partial progress honestly rather than
+  gaming one more iteration.
+
+Prefer the structured `agent_contract` field over parsing prose. It carries
+`next_tool`, `next_actions`, `blocked_by`, `verification_gates`, and
+`risk_flags` for the current result.
+
+## Escape hatches — when the loop stalls
+
+### Stall #1: Every generator score plateaus below 60%
+
+Often a sign the file needs to be **split**, not refactored. Use
+`topos_inspect_code` to find the top-complexity functions; consider
+extracting them into a separate module. Re-run `topos_evaluate_project` to
+check the rollup doesn't regress as a result.
+
+### Stall #2: `SUSPICIOUS_NO_STRUCTURAL_CHANGE` repeatedly
+
+You're iterating on presentation. Step back: what is the *structural*
+problem? Rename → not a refactor. Whitespace → not a refactor. Loop
+unrolling, extracted helpers, collapsed conditionals → real refactors.
+
+### Stall #3: SIMPLE improves, COMPOSABLE regresses
+
+Classic "moved complexity elsewhere" anti-pattern. Re-run
+`topos_evaluate_project` — did the other file's score drop? If so, the
+refactor didn't reduce total system complexity, it just relocated it.
+Consider if the abstraction is actually an improvement or just a shuffle.
+
+## Priority selection cheat sheet
+
+- Leaf module (few callers) → `simple`
+- Library surface (many importers) → `composable`
+- File handling untrusted input → `secure`
+- Unknown / general cleanup → `secure` (default scorer emphasis)
+
+See `topos://docs/priority` for more.
+
+## Preference-driven targeting
+
+For agent loops that need a concrete *next-best* verdict to aim for —
+not just an upweighted generator — pass `preferences` alongside
+`priority`. A `preferences.ranking` like `["composable", "secure",
+"simple"]` induces a total order on Ω and produces a **two-stage**
+target:
+
+1. **`target`** — aspirational, default 🥇 **GOLD**. Try to beat the
+   thresholds for all three generators first.
+2. **`fallback_target`** — the **"ideal intersection"**, i.e. the meet
+   of the top-two ranked generators (🥈 **SILVER**). When 🥇 **GOLD** plateaus, divert here.
+
+The result also returns a **`walk`** (descending verdicts from GOLD
+down) and a **`next_step`** (the smallest improvement above the
+current verdict).
+
+Concretely: aim for 🥇 **GOLD** for the first few iterations; if the lattice
+verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and try to satisfy
+only the top-two generators. See `topos://docs/preferences`.
+
+## Advisory refactoring (`topos_refactor`)
+
+Separate from gate-failure `refactor_targets` on evaluate results.
+`topos_refactor` is read-only advisory analysis and **does not** feed
+SIMPLE / COMPOSABLE / SECURE scoring.
+
+Call with `{"params": {"target": "...", "filepath": "...", "limit": 5}}`
+(optional `gitnexus_dir`; ignored for `target="cycles"`):
+
+| `target` | Engine | Needs GitNexus/Graphify | What you get |
+| --- | --- | --- | --- |
+| `cycles` | CFG cycle basis (homology) | No | Source ranges for real loops/branches behind cyclomatic complexity |
+| `dependencies` | Balanced Forman curvature on the MDG | Yes (GitNexus) | Dependency edges worth strengthening |
+| `process` | Directed Forman-Ricci on process graphs | Yes (GitNexus) | Execution choke-point transitions |
+| `graphify` | Degree + confidence over a Graphify knowledge graph | Yes (Graphify) | Orphan/dead-code nodes and low-confidence (`INFERRED`/`AMBIGUOUS`) edges |
+
+Hotspot fields (intentionally terse for wire size): `kind`, `label`,
+`filepath`, `line_start` / `line_end`, `score`, `suggestion`. Note:
+`graphify` inverts the score convention — ascending degree is worse, not
+descending curvature.
+
+Do **not** treat advisory hotspots as medal policy. Use evaluate/assess for
+lattice movement; use `topos_refactor` when you want structural hotspot
+hints outside the scoring loop.
+
+Repo engineering write-up (filesystem, not an MCP resource):
+`docs/decisions/refactor-suite.md`, `openwiki/workflows/agent-and-cli.md`.
+
+## Structural test coverage (`topos_calculate_coverage`)
+
+Static UAST-overlap between a program-under-test and test files — **not**
+executed line/branch coverage and **not** proof that tests call production
+symbols. Outside the lattice. Engineering reference:
+`docs/decisions/structural-test-coverage.md`, `openwiki/workflows/agent-and-cli.md`.
+
+## Repo OpenWiki (filesystem, not `topos_get_doc`)
+
+`topos_get_doc` / `topos://docs/*` only serve the six embedded topics
+(`agent-contract`, `lattice`, `metrics`, `preferences`, `priority`,
+`workflows`). Broader engineering docs live under `openwiki/` in the
+repository (quickstart, architecture, domain, operations, integrations).
+Agents with workspace access should read those files directly; they are
+**not** MCP resources.
+
+## What Topos does NOT measure
+
+- **Whether tests pass or behavior is preserved.** A refactor can lift the
+  lattice score yet break behavior — the evaluate/assess loop cannot see this,
+  so run the suite separately. (Test *coverage* itself — structural UAST
+  declaration matching and k-gram recall — is available as a distinct signal
+  via `topos_calculate_coverage`; it is not part of the lattice verdict.)
+- **Functional correctness.** AST edit distance measures *change*, not
+  *preservation of behavior*. Verify behavior with relevant project tests or
+  equivalent checks when available; if unavailable or not run, report that
+  explicitly.
+- **Runtime performance.** Orthogonal to all Topos metrics.
+- **Beyond-syntactic security.** The SECURE generator catches obvious
+  footguns (dangerous-API call sites, source→sink taint paths) via
+  textual / structural pattern matching on the CPG.  It is not a full
+  SAST / pen-test — pair with dedicated security tooling for high-stakes
+  code.
+
+Topos is one signal in a multi-signal loop. Pair it with test coverage and
+type checks for the full picture.

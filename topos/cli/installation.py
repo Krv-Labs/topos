@@ -11,6 +11,12 @@ from pathlib import Path
 import click
 
 _PACKAGE_NAME = "topos-mcp"
+# Default roots where broad prefix matching is safe (not shared with binary installs).
+_PRIVATE_HOMEBREW_PREFIXES = (
+    Path("/opt/homebrew"),
+    Path("/home/linuxbrew/.linuxbrew"),
+)
+_SHARED_HOMEBREW_PREFIX = Path("/usr/local")
 
 
 @dataclass(frozen=True)
@@ -106,17 +112,57 @@ def _install_info_from_distribution(
     return _package_manager_info(installer)
 
 
+def _is_homebrew_cellar_layout(relative_parts: tuple[str, ...]) -> bool:
+    return (
+        len(relative_parts) >= 4
+        and relative_parts[0] == "Cellar"
+        and bool(relative_parts[1])
+        and bool(relative_parts[2])
+    )
+
+
 def _is_homebrew_executable(path: Path) -> bool:
-    """True when the resolved executable lives inside a Homebrew prefix."""
-    if "Cellar" in path.parts:
-        return True
-    prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
-    if not prefix:
-        return False
+    """True when the resolved executable lives inside a Homebrew prefix.
+
+    Three-tier classification:
+    1. Explicit ``HOMEBREW_PREFIX`` — broad prefix match (custom roots, linked kegs).
+    2. Private default roots (``/opt/homebrew``, Linuxbrew) — broad prefix match.
+    3. Shared ``/usr/local`` — Cellar layout only
+       (avoids ``/usr/local/bin`` false positives).
+    """
     try:
-        return path.is_relative_to(Path(prefix).expanduser().resolve())
+        resolved_path = path.expanduser().resolve()
     except OSError:
         return False
+
+    configured_prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
+    if configured_prefix:
+        try:
+            prefix_path = Path(configured_prefix).expanduser()
+            if prefix_path.is_absolute():
+                prefix = prefix_path.resolve()
+                if resolved_path.is_relative_to(prefix):
+                    return True
+        except (OSError, RuntimeError):
+            pass
+
+    for prefix_path in _PRIVATE_HOMEBREW_PREFIXES:
+        try:
+            prefix = prefix_path.expanduser().resolve()
+            if resolved_path.is_relative_to(prefix):
+                return True
+        except OSError:
+            continue
+
+    try:
+        usr_local = _SHARED_HOMEBREW_PREFIX.resolve()
+        relative_parts = resolved_path.relative_to(usr_local).parts
+        if _is_homebrew_cellar_layout(relative_parts):
+            return True
+    except (OSError, ValueError):
+        pass
+
+    return False
 
 
 def _homebrew_info() -> InstallInfo:

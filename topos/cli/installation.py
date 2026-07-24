@@ -127,7 +127,8 @@ def _is_homebrew_executable(path: Path) -> bool:
     Three-tier classification:
     1. Explicit ``HOMEBREW_PREFIX`` — broad prefix match (custom roots, linked kegs).
     2. Private default roots (``/opt/homebrew``, Linuxbrew) — broad prefix match.
-    3. Shared ``/usr/local`` — Cellar layout only (avoids ``/usr/local/bin`` false positives).
+    3. Shared ``/usr/local`` — Cellar layout only
+       (avoids ``/usr/local/bin`` false positives).
     """
     try:
         resolved_path = path.expanduser().resolve()

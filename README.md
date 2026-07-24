@@ -65,7 +65,6 @@ Topos computes that signal from program structure—not from an LLM review or a 
 
 **Tests check behavior. Topos checks whether the implementation is built to keep changing.**
 
-> [!TIP]
 > Grounded in category theory, powered by a native-Rust engine.
 
 

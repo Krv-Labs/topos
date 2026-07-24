@@ -371,15 +371,26 @@ mod tests {
     }
 
     #[test]
-    fn from_uast_survives_deeply_nested_input() {
+    fn from_uast_survives_deeply_nested_supported_languages() {
         use crate::graphs::ast::dispatch::parse_source;
         const DEPTH: usize = 10_000;
-        let source = format!("x = {}1{}\n", "(".repeat(DEPTH), ")".repeat(DEPTH));
-        let result = parse_source(&source, "python", None).unwrap();
+        let open = "(".repeat(DEPTH);
+        let close = ")".repeat(DEPTH);
+        let cases = [
+            ("python", format!("x = {open}1{close}\n")),
+            ("rust", format!("const X: i32 = {open}1{close};\n")),
+            ("javascript", format!("const x = {open}1{close};\n")),
+            ("typescript", format!("const x: number = {open}1{close};\n")),
+            ("cpp", format!("int x = {open}1{close};\n")),
+            ("go", format!("package p\nvar x = {open}1{close}\n")),
+        ];
 
-        let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+        for (language, source) in cases {
+            let result = parse_source(&source, language, None).unwrap();
+            let cfg = ControlFlowGraph::from_uast(&result.uast_root);
 
-        assert!(!cfg.blocks.is_empty());
+            assert!(!cfg.blocks.is_empty(), "failed for {language}");
+        }
     }
 
     #[test]

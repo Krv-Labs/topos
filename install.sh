@@ -724,6 +724,7 @@ verify_install() {
     fi
     echo ""
     echo "Direct CLI (SIMPLE + COMPOSABLE + SECURE):"
+    echo "  cd <YOUR_REPO_HERE>"
     echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r"
     echo ""
     echo "Agent workflow (same COMPOSABLE/GOLD support via MCP):"

@@ -206,6 +206,10 @@ def test_install_sh_documents_force_env() -> None:
 
 def test_install_sh_recommends_supported_evaluate_flags() -> None:
     text = INSTALL_SH.read_text(encoding="utf-8")
+    direct_cli = text.index('echo "Direct CLI (SIMPLE + COMPOSABLE + SECURE):"')
+    repo_cd = text.index('echo "  cd <YOUR_REPO_HERE>"', direct_cli)
+    evaluate = text.index('echo "  topos evaluate <YOUR_REPO_SRC_HERE> -r"', direct_cli)
+    assert repo_cd < evaluate
     assert "topos evaluate <YOUR_REPO_SRC_HERE> -r" in text
     assert "topos evaluate <YOUR_REPO_SRC_HERE> -r --preferences" not in text
     assert "topos evaluate <YOUR_REPO_SRC_HERE> -r --no-composable" not in text

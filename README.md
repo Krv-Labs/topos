@@ -59,11 +59,14 @@ known limitations, and a reproduction command. Avoid labeling repositories as
 
 ## Why Topos
 
-Coding agents produce working code quickly. The harder question is whether the result is still easy to understand, safe to change, and well-fitted to the rest of the repository.
+Coding agents produce working code quickly. The harder question is whether the result is still easy to understand, safe to change, and well-fitted to the rest of the repository. **[Quality is the new currency.](https://krv.ai/field-notes/evaluating-code-generation)**
 
 Topos computes that signal from program structure—not from an LLM review or a style opinion—and returns concrete failure locations and next actions. It is fast enough to sit inside the agent loop: measure, edit, verify, repeat.
 
 **Tests check behavior. Topos checks whether the implementation is built to keep changing.**
+
+> [!TIP]
+> Grounded in category theory, powered by a native-Rust engine.
 
 
 ## Under the hood

@@ -270,6 +270,65 @@ def test_detect_install_method_homebrew_wins_over_stale_binary_provenance(monkey
         assert info.uninstall_cmd == "brew uninstall topos"
 
 
+def test_detect_install_method_homebrew_cellar_false_positive(monkeypatch):
+    """A path containing ``Cellar`` but NOT under a Homebrew prefix must NOT
+    be detected as Homebrew (regression test for #200)."""
+
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/Users/me/projects/Cellar/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
+
+        info = detect_install_info()
+        assert info.method != "homebrew"
+
+
+def test_detect_install_method_homebrew_cellar_under_real_prefix(monkeypatch):
+    """A real Cellar path under ``/opt/homebrew`` MUST still be detected."""
+
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr(
+            "topos.cli.installation.active_executable",
+            lambda: Path("/opt/homebrew/Cellar/topos/0.3.12/bin/topos"),
+        )
+        m.delenv("HOMEBREW_PREFIX", raising=False)
+
+        info = detect_install_info()
+        assert info.method == "homebrew"
+
+
+def test_detect_install_method_homebrew_prefix_only(monkeypatch, tmp_path: Path):
+    """A binary directly under ``HOMEBREW_PREFIX/bin`` (linked keg) without a
+    Cellar segment is still recognised as Homebrew."""
+
+    def raise_not_found(name: str):
+        raise PackageNotFoundError
+
+    prefix = tmp_path / "linuxbrew"
+    binary = prefix / "bin" / "topos"
+
+    with monkeypatch.context() as m:
+        m.setattr("importlib.metadata.distribution", raise_not_found)
+        m.setattr("topos.cli.installation.load_provenance", lambda: None)
+        m.setattr("topos.cli.installation.active_executable", lambda: binary)
+        m.setenv("HOMEBREW_PREFIX", str(prefix))
+
+        info = detect_install_info()
+        assert info.method == "homebrew"
+
+
 def test_channel_label_homebrew():
     from topos.cli.installation import InstallInfo, channel_label
 

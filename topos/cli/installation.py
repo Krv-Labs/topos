@@ -106,17 +106,49 @@ def _install_info_from_distribution(
     return _package_manager_info(installer)
 
 
+# Known default Homebrew installation roots (ordered by likelihood).
+_HOMEBREW_DEFAULT_PREFIXES = (
+    "/opt/homebrew",   # Apple Silicon (macOS)
+    "/usr/local",      # Intel macOS / Linuxbrew (default)
+    "/home/linuxbrew/.linuxbrew",  # Linuxbrew
+)
+
+
+def _homebrew_prefixes() -> list[Path]:
+    """Return resolved Homebrew prefix candidates: env var then defaults."""
+    prefixes: list[Path] = []
+    env_prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
+    if env_prefix:
+        try:
+            prefixes.append(Path(env_prefix).expanduser().resolve())
+        except OSError:
+            pass
+    for candidate in _HOMEBREW_DEFAULT_PREFIXES:
+        resolved = Path(candidate).resolve()
+        if resolved not in prefixes:
+            prefixes.append(resolved)
+    return prefixes
+
+
 def _is_homebrew_executable(path: Path) -> bool:
-    """True when the resolved executable lives inside a Homebrew prefix."""
-    if "Cellar" in path.parts:
-        return True
-    prefix = os.environ.get("HOMEBREW_PREFIX", "").strip()
-    if not prefix:
-        return False
-    try:
-        return path.is_relative_to(Path(prefix).expanduser().resolve())
-    except OSError:
-        return False
+    """True when the resolved executable lives inside a Homebrew prefix.
+
+    A path is recognised as Homebrew-installed only when it sits under a
+    *known* Homebrew root prefix (``HOMEBREW_PREFIX`` or one of the
+    standard defaults).  A bare ``Cellar`` segment match is **not**
+    sufficient — that avoids false positives for projects whose directory
+    tree happens to contain a ``Cellar``-named folder.
+    """
+    # Fast path: check against all known Homebrew root prefixes.
+    for prefix in _homebrew_prefixes():
+        try:
+            if path.is_relative_to(prefix):
+                # Under a known prefix → accept whether it goes through
+                # Cellar/<formula>/<version> or is a linked keg in <prefix>/bin.
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 def _homebrew_info() -> InstallInfo:

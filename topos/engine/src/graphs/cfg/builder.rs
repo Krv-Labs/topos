@@ -156,371 +156,450 @@ fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: 
     }
 }
 
-fn build_block_sequence(
-    state: &mut CFGBuildState,
-    statements: Vec<&UASTNode>,
+enum BuildTask<'a> {
+    Sequence(SequenceTask<'a>),
+    Statement {
+        stmt: &'a UASTNode,
+        current_id: usize,
+        output: usize,
+    },
+    Continuation(ContinuationTask<'a>),
+}
+
+enum SequenceTask<'a> {
+    Next {
+        statements: Vec<&'a UASTNode>,
+        index: usize,
+        current_id: usize,
+        output: usize,
+    },
+    Resume {
+        statements: Vec<&'a UASTNode>,
+        index: usize,
+        statement_output: usize,
+        output: usize,
+    },
+}
+
+struct MatchCursor<'a> {
+    arms: Vec<&'a UASTNode>,
+    index: usize,
     current_id: usize,
-) -> Option<usize> {
-    enum Task<'a> {
-        Sequence {
-            statements: Vec<&'a UASTNode>,
-            index: usize,
-            current_id: usize,
-            output: usize,
-        },
-        ContinueSequence {
-            statements: Vec<&'a UASTNode>,
-            index: usize,
-            statement_output: usize,
-            output: usize,
-        },
-        Statement {
-            stmt: &'a UASTNode,
-            current_id: usize,
-            output: usize,
-        },
-        FinishNested {
-            nested_output: usize,
-            fallback_id: usize,
-            output: usize,
-        },
-        ContinueIf {
-            then_output: usize,
-            else_branch: Vec<&'a UASTNode>,
-            current_id: usize,
-            join_block: usize,
-            output: usize,
-        },
-        FinishElse {
-            else_output: usize,
-            join_block: usize,
-            output: usize,
-        },
-        FinishLoop {
-            body_output: usize,
-            header: usize,
-            after: usize,
-            output: usize,
-        },
-        MatchArm {
-            arms: Vec<&'a UASTNode>,
-            index: usize,
-            current_id: usize,
-            join_block: usize,
-            output: usize,
-        },
-        ContinueMatchArm {
-            arms: Vec<&'a UASTNode>,
-            index: usize,
-            current_id: usize,
-            arm_output: usize,
-            join_block: usize,
-            output: usize,
-        },
-        FinishTry {
-            body_output: usize,
-            current_id: usize,
-            join_block: usize,
-            output: usize,
-        },
+    join_block: usize,
+    output: usize,
+}
+
+enum ContinuationTask<'a> {
+    Nested {
+        nested_output: usize,
+        fallback_id: usize,
+        output: usize,
+    },
+    If {
+        then_output: usize,
+        else_branch: Vec<&'a UASTNode>,
+        current_id: usize,
+        join_block: usize,
+        output: usize,
+    },
+    Else {
+        else_output: usize,
+        join_block: usize,
+        output: usize,
+    },
+    Loop {
+        body_output: usize,
+        header: usize,
+        after: usize,
+        output: usize,
+    },
+    MatchArm(MatchCursor<'a>),
+    MatchArmDone {
+        cursor: MatchCursor<'a>,
+        arm_output: usize,
+    },
+    Try {
+        body_output: usize,
+        current_id: usize,
+        join_block: usize,
+        output: usize,
+    },
+}
+
+struct BuildMachine<'state, 'a> {
+    state: &'state mut CFGBuildState,
+    outputs: Vec<Option<usize>>,
+    tasks: Vec<BuildTask<'a>>,
+}
+
+impl<'state, 'a> BuildMachine<'state, 'a> {
+    fn new(state: &'state mut CFGBuildState) -> Self {
+        Self {
+            state,
+            outputs: vec![None],
+            tasks: Vec::new(),
+        }
     }
 
-    fn new_output(outputs: &mut Vec<Option<usize>>) -> usize {
-        outputs.push(None);
-        outputs.len() - 1
+    fn new_output(&mut self) -> usize {
+        self.outputs.push(None);
+        self.outputs.len() - 1
     }
 
-    let mut outputs = vec![None];
-    let mut tasks = vec![Task::Sequence {
-        statements,
-        index: 0,
-        current_id,
-        output: 0,
-    }];
+    fn push_sequence(
+        &mut self,
+        statements: Vec<&'a UASTNode>,
+        index: usize,
+        current_id: usize,
+        output: usize,
+    ) {
+        self.tasks.push(BuildTask::Sequence(SequenceTask::Next {
+            statements,
+            index,
+            current_id,
+            output,
+        }));
+    }
 
-    while let Some(task) = tasks.pop() {
+    fn run(&mut self) {
+        while let Some(task) = self.tasks.pop() {
+            self.execute(task);
+        }
+    }
+
+    fn execute(&mut self, task: BuildTask<'a>) {
         match task {
-            Task::Sequence {
+            BuildTask::Sequence(task) => self.execute_sequence(task),
+            BuildTask::Statement {
+                stmt,
+                current_id,
+                output,
+            } => self.execute_statement(stmt, current_id, output),
+            BuildTask::Continuation(task) => self.execute_continuation(task),
+        }
+    }
+
+    fn execute_sequence(&mut self, task: SequenceTask<'a>) {
+        match task {
+            SequenceTask::Next {
                 statements,
                 index,
                 current_id,
                 output,
-            } => {
-                let Some(&stmt) = statements.get(index) else {
-                    outputs[output] = Some(current_id);
-                    continue;
-                };
-                let statement_output = new_output(&mut outputs);
-                tasks.push(Task::ContinueSequence {
-                    statements,
-                    index: index + 1,
-                    statement_output,
-                    output,
-                });
-                tasks.push(Task::Statement {
-                    stmt,
-                    current_id,
-                    output: statement_output,
-                });
-            }
-            Task::ContinueSequence {
+            } => self.next_statement(statements, index, current_id, output),
+            SequenceTask::Resume {
                 statements,
                 index,
                 statement_output,
                 output,
-            } => match outputs[statement_output] {
-                Some(current_id) => tasks.push(Task::Sequence {
-                    statements,
-                    index,
-                    current_id,
-                    output,
-                }),
-                None => outputs[output] = None,
-            },
-            Task::Statement {
-                stmt,
-                current_id,
-                output,
-            } => match stmt.kind.as_str() {
-                "IfStmt" => {
-                    state.push_statement(current_id, stmt);
-                    let join_block = state.new_block("if_join");
-                    let (then_branch, else_branch) = if_branches(stmt);
+            } => self.resume_sequence(statements, index, statement_output, output),
+        }
+    }
 
-                    let then_block = state.new_block("if_then");
-                    state.add_edge(current_id, then_block, EdgeKind::True);
-                    let then_output = new_output(&mut outputs);
-                    tasks.push(Task::ContinueIf {
-                        then_output,
-                        else_branch,
-                        current_id,
-                        join_block,
-                        output,
-                    });
-                    tasks.push(Task::Sequence {
-                        statements: then_branch,
-                        index: 0,
-                        current_id: then_block,
-                        output: then_output,
-                    });
-                }
-                "ForStmt" | "WhileStmt" => {
-                    let header = state.new_block("loop_header");
-                    state.add_edge(current_id, header, EdgeKind::Unconditional);
-                    state.push_statement(header, stmt);
-                    let body_entry = state.new_block("loop_body");
-                    let after = state.new_block("loop_after");
-                    state.add_edge(header, body_entry, EdgeKind::True);
-                    state.add_edge(header, after, EdgeKind::False);
-                    state.loop_stack.push(LoopContext {
-                        continue_target: header,
-                        break_target: after,
-                    });
-                    let body_output = new_output(&mut outputs);
-                    tasks.push(Task::FinishLoop {
-                        body_output,
-                        header,
-                        after,
-                        output,
-                    });
-                    tasks.push(Task::Sequence {
-                        statements: loop_body(stmt),
-                        index: 0,
-                        current_id: body_entry,
-                        output: body_output,
-                    });
-                }
-                "MatchStmt" => {
-                    state.push_statement(current_id, stmt);
-                    let join_block = state.new_block("match_join");
-                    let arms = match_arms(stmt);
-                    if arms.is_empty() {
-                        state.add_edge(current_id, join_block, EdgeKind::Unconditional);
-                        outputs[output] = Some(join_block);
-                        continue;
-                    }
+    fn next_statement(
+        &mut self,
+        statements: Vec<&'a UASTNode>,
+        index: usize,
+        current_id: usize,
+        output: usize,
+    ) {
+        let Some(&stmt) = statements.get(index) else {
+            self.outputs[output] = Some(current_id);
+            return;
+        };
+        let statement_output = self.new_output();
+        self.tasks.push(BuildTask::Sequence(SequenceTask::Resume {
+            statements,
+            index: index + 1,
+            statement_output,
+            output,
+        }));
+        self.tasks.push(BuildTask::Statement {
+            stmt,
+            current_id,
+            output: statement_output,
+        });
+    }
 
-                    tasks.push(Task::MatchArm {
-                        arms,
-                        index: 0,
-                        current_id,
-                        join_block,
-                        output,
-                    });
-                }
-                "TryStmt" => {
-                    state.push_statement(current_id, stmt);
-                    let join_block = state.new_block("try_join");
-                    let body_block = state.new_block("try_body");
-                    state.add_edge(current_id, body_block, EdgeKind::Unconditional);
-                    let body_output = new_output(&mut outputs);
-                    tasks.push(Task::FinishTry {
-                        body_output,
-                        current_id,
-                        join_block,
-                        output,
-                    });
-                    tasks.push(Task::Sequence {
-                        statements: stmt
-                            .children
-                            .iter()
-                            .filter(|child| child.kind != "Unknown")
-                            .collect(),
-                        index: 0,
-                        current_id: body_block,
-                        output: body_output,
-                    });
-                }
-                "ReturnStmt" | "ThrowStmt" | "BreakStmt" | "ContinueStmt" => {
-                    handle_terminal_stmt(state, stmt, current_id);
-                    outputs[output] = None;
-                }
-                _ => {
-                    let inner = children_with_control_flow(stmt);
-                    if inner.is_empty() {
-                        state.push_statement(current_id, stmt);
-                        outputs[output] = Some(current_id);
-                    } else {
-                        let nested_entry = state.new_block("nested");
-                        state.add_edge(current_id, nested_entry, EdgeKind::Unconditional);
-                        let nested_output = new_output(&mut outputs);
-                        tasks.push(Task::FinishNested {
-                            nested_output,
-                            fallback_id: current_id,
-                            output,
-                        });
-                        tasks.push(Task::Sequence {
-                            statements: inner,
-                            index: 0,
-                            current_id: nested_entry,
-                            output: nested_output,
-                        });
-                    }
-                }
-            },
-            Task::FinishNested {
-                nested_output,
-                fallback_id,
-                output,
-            } => outputs[output] = Some(outputs[nested_output].unwrap_or(fallback_id)),
-            Task::ContinueIf {
+    fn resume_sequence(
+        &mut self,
+        statements: Vec<&'a UASTNode>,
+        index: usize,
+        statement_output: usize,
+        output: usize,
+    ) {
+        match self.outputs[statement_output] {
+            Some(current_id) => self.push_sequence(statements, index, current_id, output),
+            None => self.outputs[output] = None,
+        }
+    }
+
+    fn execute_statement(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        match stmt.kind.as_str() {
+            "IfStmt" => self.start_if(stmt, current_id, output),
+            "ForStmt" | "WhileStmt" => self.start_loop(stmt, current_id, output),
+            "MatchStmt" => self.start_match(stmt, current_id, output),
+            "TryStmt" => self.start_try(stmt, current_id, output),
+            "ReturnStmt" | "ThrowStmt" | "BreakStmt" | "ContinueStmt" => {
+                self.finish_terminal(stmt, current_id, output)
+            }
+            _ => self.start_nested(stmt, current_id, output),
+        }
+    }
+
+    fn start_if(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        self.state.push_statement(current_id, stmt);
+        let join_block = self.state.new_block("if_join");
+        let (then_branch, else_branch) = if_branches(stmt);
+        let then_block = self.state.new_block("if_then");
+        self.state.add_edge(current_id, then_block, EdgeKind::True);
+        let then_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::If {
                 then_output,
                 else_branch,
                 current_id,
                 join_block,
                 output,
-            } => {
-                if let Some(then_tail) = outputs[then_output] {
-                    state.add_edge(then_tail, join_block, EdgeKind::Unconditional);
-                }
-                if else_branch.is_empty() {
-                    state.add_edge(current_id, join_block, EdgeKind::False);
-                    outputs[output] = Some(join_block);
-                } else {
-                    let else_block = state.new_block("if_else");
-                    state.add_edge(current_id, else_block, EdgeKind::False);
-                    let else_output = new_output(&mut outputs);
-                    tasks.push(Task::FinishElse {
-                        else_output,
-                        join_block,
-                        output,
-                    });
-                    tasks.push(Task::Sequence {
-                        statements: else_branch,
-                        index: 0,
-                        current_id: else_block,
-                        output: else_output,
-                    });
-                }
-            }
-            Task::FinishElse {
-                else_output,
-                join_block,
-                output,
-            } => {
-                if let Some(else_tail) = outputs[else_output] {
-                    state.add_edge(else_tail, join_block, EdgeKind::Unconditional);
-                }
-                outputs[output] = Some(join_block);
-            }
-            Task::FinishLoop {
+            }));
+        self.push_sequence(then_branch, 0, then_block, then_output);
+    }
+
+    fn start_loop(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        let header = self.state.new_block("loop_header");
+        self.state
+            .add_edge(current_id, header, EdgeKind::Unconditional);
+        self.state.push_statement(header, stmt);
+        let body_entry = self.state.new_block("loop_body");
+        let after = self.state.new_block("loop_after");
+        self.state.add_edge(header, body_entry, EdgeKind::True);
+        self.state.add_edge(header, after, EdgeKind::False);
+        self.state.loop_stack.push(LoopContext {
+            continue_target: header,
+            break_target: after,
+        });
+        let body_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::Loop {
                 body_output,
                 header,
                 after,
                 output,
-            } => {
-                state.loop_stack.pop();
-                if let Some(body_tail) = outputs[body_output] {
-                    state.add_edge(body_tail, header, EdgeKind::Loopback);
-                }
-                outputs[output] = Some(after);
-            }
-            Task::MatchArm {
-                arms,
-                index,
-                current_id,
-                join_block,
-                output,
-            } => {
-                let Some(&arm) = arms.get(index) else {
-                    outputs[output] = Some(join_block);
-                    continue;
-                };
-                let arm_block = state.new_block("match_arm");
-                state.add_edge(current_id, arm_block, EdgeKind::SwitchCase);
-                let arm_output = new_output(&mut outputs);
-                tasks.push(Task::ContinueMatchArm {
+            }));
+        self.push_sequence(loop_body(stmt), 0, body_entry, body_output);
+    }
+
+    fn start_match(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        self.state.push_statement(current_id, stmt);
+        let join_block = self.state.new_block("match_join");
+        let arms = match_arms(stmt);
+        if arms.is_empty() {
+            self.state
+                .add_edge(current_id, join_block, EdgeKind::Unconditional);
+            self.outputs[output] = Some(join_block);
+            return;
+        }
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::MatchArm(
+                MatchCursor {
                     arms,
-                    index: index + 1,
-                    current_id,
-                    arm_output,
-                    join_block,
-                    output,
-                });
-                tasks.push(Task::Sequence {
-                    statements: vec![arm],
                     index: 0,
-                    current_id: arm_block,
-                    output: arm_output,
-                });
-            }
-            Task::ContinueMatchArm {
-                arms,
-                index,
-                current_id,
-                arm_output,
-                join_block,
-                output,
-            } => {
-                if let Some(arm_tail) = outputs[arm_output] {
-                    state.add_edge(arm_tail, join_block, EdgeKind::Unconditional);
-                }
-                tasks.push(Task::MatchArm {
-                    arms,
-                    index,
                     current_id,
                     join_block,
                     output,
-                });
-            }
-            Task::FinishTry {
+                },
+            )));
+    }
+
+    fn start_try(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        self.state.push_statement(current_id, stmt);
+        let join_block = self.state.new_block("try_join");
+        let body_block = self.state.new_block("try_body");
+        self.state
+            .add_edge(current_id, body_block, EdgeKind::Unconditional);
+        let body_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::Try {
                 body_output,
                 current_id,
                 join_block,
                 output,
+            }));
+        let body = stmt
+            .children
+            .iter()
+            .filter(|child| child.kind != "Unknown")
+            .collect();
+        self.push_sequence(body, 0, body_block, body_output);
+    }
+
+    fn finish_terminal(&mut self, stmt: &UASTNode, current_id: usize, output: usize) {
+        handle_terminal_stmt(self.state, stmt, current_id);
+        self.outputs[output] = None;
+    }
+
+    fn start_nested(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
+        let inner = children_with_control_flow(stmt);
+        if inner.is_empty() {
+            self.state.push_statement(current_id, stmt);
+            self.outputs[output] = Some(current_id);
+            return;
+        }
+        let nested_entry = self.state.new_block("nested");
+        self.state
+            .add_edge(current_id, nested_entry, EdgeKind::Unconditional);
+        let nested_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::Nested {
+                nested_output,
+                fallback_id: current_id,
+                output,
+            }));
+        self.push_sequence(inner, 0, nested_entry, nested_output);
+    }
+
+    fn execute_continuation(&mut self, task: ContinuationTask<'a>) {
+        match task {
+            ContinuationTask::Nested {
+                nested_output,
+                fallback_id,
+                output,
+            } => self.finish_nested(nested_output, fallback_id, output),
+            ContinuationTask::If {
+                then_output,
+                else_branch,
+                current_id,
+                join_block,
+                output,
+            } => self.finish_if(then_output, else_branch, current_id, join_block, output),
+            ContinuationTask::Else {
+                else_output,
+                join_block,
+                output,
             } => {
-                if let Some(body_tail) = outputs[body_output] {
-                    state.add_edge(body_tail, join_block, EdgeKind::Unconditional);
+                if let Some(else_tail) = self.outputs[else_output] {
+                    self.state
+                        .add_edge(else_tail, join_block, EdgeKind::Unconditional);
                 }
-                state.add_edge(current_id, join_block, EdgeKind::Exception);
-                outputs[output] = Some(join_block);
+                self.outputs[output] = Some(join_block);
             }
+            ContinuationTask::Loop {
+                body_output,
+                header,
+                after,
+                output,
+            } => self.finish_loop(body_output, header, after, output),
+            ContinuationTask::MatchArm(cursor) => self.start_match_arm(cursor),
+            ContinuationTask::MatchArmDone { cursor, arm_output } => {
+                self.finish_match_arm(cursor, arm_output)
+            }
+            ContinuationTask::Try {
+                body_output,
+                current_id,
+                join_block,
+                output,
+            } => self.finish_try(body_output, current_id, join_block, output),
         }
     }
 
-    outputs[0]
+    fn finish_nested(&mut self, nested_output: usize, fallback_id: usize, output: usize) {
+        self.outputs[output] = Some(self.outputs[nested_output].unwrap_or(fallback_id));
+    }
+
+    fn finish_if(
+        &mut self,
+        then_output: usize,
+        else_branch: Vec<&'a UASTNode>,
+        current_id: usize,
+        join_block: usize,
+        output: usize,
+    ) {
+        if let Some(then_tail) = self.outputs[then_output] {
+            self.state
+                .add_edge(then_tail, join_block, EdgeKind::Unconditional);
+        }
+        if else_branch.is_empty() {
+            self.state.add_edge(current_id, join_block, EdgeKind::False);
+            self.outputs[output] = Some(join_block);
+            return;
+        }
+        let else_block = self.state.new_block("if_else");
+        self.state.add_edge(current_id, else_block, EdgeKind::False);
+        let else_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::Else {
+                else_output,
+                join_block,
+                output,
+            }));
+        self.push_sequence(else_branch, 0, else_block, else_output);
+    }
+
+    fn finish_loop(&mut self, body_output: usize, header: usize, after: usize, output: usize) {
+        self.state.loop_stack.pop();
+        if let Some(body_tail) = self.outputs[body_output] {
+            self.state.add_edge(body_tail, header, EdgeKind::Loopback);
+        }
+        self.outputs[output] = Some(after);
+    }
+
+    fn start_match_arm(&mut self, cursor: MatchCursor<'a>) {
+        let Some(&arm) = cursor.arms.get(cursor.index) else {
+            self.outputs[cursor.output] = Some(cursor.join_block);
+            return;
+        };
+        let arm_block = self.state.new_block("match_arm");
+        self.state
+            .add_edge(cursor.current_id, arm_block, EdgeKind::SwitchCase);
+        let arm_output = self.new_output();
+        let next = MatchCursor {
+            index: cursor.index + 1,
+            ..cursor
+        };
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::MatchArmDone {
+                cursor: next,
+                arm_output,
+            }));
+        self.push_sequence(vec![arm], 0, arm_block, arm_output);
+    }
+
+    fn finish_match_arm(&mut self, cursor: MatchCursor<'a>, arm_output: usize) {
+        if let Some(arm_tail) = self.outputs[arm_output] {
+            self.state
+                .add_edge(arm_tail, cursor.join_block, EdgeKind::Unconditional);
+        }
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::MatchArm(cursor)));
+    }
+
+    fn finish_try(
+        &mut self,
+        body_output: usize,
+        current_id: usize,
+        join_block: usize,
+        output: usize,
+    ) {
+        if let Some(body_tail) = self.outputs[body_output] {
+            self.state
+                .add_edge(body_tail, join_block, EdgeKind::Unconditional);
+        }
+        self.state
+            .add_edge(current_id, join_block, EdgeKind::Exception);
+        self.outputs[output] = Some(join_block);
+    }
 }
 
+fn build_block_sequence(
+    state: &mut CFGBuildState,
+    statements: Vec<&UASTNode>,
+    current_id: usize,
+) -> Option<usize> {
+    let mut machine = BuildMachine::new(state);
+    machine.push_sequence(statements, 0, current_id, 0);
+    machine.run();
+    machine.outputs[0]
+}
 // --- UAST-shape helpers -------------------------------------------------
 
 /// Find every `FunctionDecl` / `MethodDecl` recursively.

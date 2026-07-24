@@ -6,6 +6,9 @@ packages:
 overrides:
   serialize-javascript: "^7.0.5"
   diff: "^9.0.0"
+  # GHSA-v2hh-gcrm-f6hx / CVE-2026-16221: host confusion via backslash authority.
+  # Transitive via @vscode/vsce → secretlint → ajv@8 (fast-uri ^3.0.1).
+  fast-uri: "^3.1.4"
 
 # Allow postinstall scripts required by the extension toolchain.
 allowBuilds:

@@ -6,37 +6,106 @@
   </picture>
 </p>
 
+<h3 align="center">A structural quality gate for coding agents.</h3>
+
 <p align="center">
-  <a href="https://github.com/Krv-Labs/topos/actions/workflows/ci.yml"><img src="https://github.com/Krv-Labs/topos/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp.svg" alt="PyPI"></a>
-  <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/pyversions/topos-mcp.svg" alt="Python versions"></a>
-  <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
-  <a href="https://glama.ai/mcp/servers/Krv-Labs/topos"><img src="https://glama.ai/mcp/servers/Krv-Labs/topos/badges/score.svg" alt="topos MCP server"></a>
+  Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
 </p>
 
 <p align="center">
-  <b>Structural code quality metrics for agent-written programs.</b><br>
-  <a href="https://docs.krv.ai/topos/">Docs</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#mcp-server-for-agents">MCP Server</a> ·
-  <a href="https://github.com/Krv-Labs/topos/issues">Issues</a>
+  <a href="https://github.com/mcp/Krv-Labs/topos"><img src="https://img.shields.io/badge/VS_Code-Install_MCP-007ACC?logo=visualstudiocode&logoColor=white" alt="Install Topos MCP in VS Code"></a>
+  <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp.svg" alt="PyPI"></a>
+  <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
+  <a href="https://glama.ai/mcp/servers/Krv-Labs/topos"><img src="https://glama.ai/mcp/servers/Krv-Labs/topos/badges/score.svg" alt="Topos MCP server"></a>
+  <a href="https://clawhub.ai/krv-labs/skills/topos"><img src="https://img.shields.io/badge/%F0%9F%A6%9E_ClawHub-topos-F97316" alt="ClawHub"></a>
 </p>
 <!-- mcp-name: io.github.Krv-Labs/topos -->
 
-**Topos** is an _operating layer for AI agents_ that provides structural (geometric & topological) metrics computed over program graphs, surfacing deep
-architectural debt that conventional linters can't compute. It delivers complexity, coupling, and security metrics for your agents to wield as tools,
-establishing a precise, medal-scored (SLOP → GOLD) feedback loop to autonomously write clean, highly composable code.
+<p align="center">
+  <a href="#install-and-quick-start">Install</a> ·
+  <a href="#what-topos-checks">What it checks</a> ·
+  <a href="#under-the-hood">Under the hood</a> ·
+  <a href="https://docs.krv.ai/topos/">Docs</a> ·
+  <a href="https://github.com/Krv-Labs/topos/issues">Issues</a>
+</p>
 
 ---
 
-## Quick Start
+<!--
+DEMO STUB — replace this comment only after recording the real release flow.
+
+Show, in under 20 seconds:
+1. an agent evaluates a repository;
+2. Topos identifies the exact failing pillar and source hotspot;
+3. the agent makes one focused refactor;
+4. Topos verifies the medal improvement while the project tests stay green.
+
+Prefer a checked-in, captioned GIF or SVG terminal recording with a stable
+repository-relative URL. Do not publish a synthetic or hand-written result.
+-->
+
+<!--
+STUDY STUB — keep hidden until the study, raw results, pinned repository SHAs,
+and reproduction method are public.
+
+Candidate headline:
+"We evaluated <N> public repositories at pinned commits. <result>."
+
+Required link target: a durable methodology/results page containing the corpus
+selection rule, Topos version and configuration, machine details, raw JSON,
+known limitations, and a reproduction command. Avoid labeling repositories as
+"AI-generated" unless that provenance is explicit and independently verifiable.
+-->
+
+## Why Topos
+
+Coding agents produce working code quickly. The harder question is whether the result is still easy to understand, safe to change, and well-fitted to the rest of the repository.
+
+Topos computes that signal from program structure—not from an LLM review or a style opinion—and returns concrete failure locations and next actions. It is fast enough to sit inside the agent loop: measure, edit, verify, repeat.
+
+**Tests check behavior. Topos checks whether the implementation is built to keep changing.**
+
+
+## Under the hood
+
+Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your source code is not sent to an external model or hosted analysis service.
+
+| Component | Role |
+| :--- | :--- |
+| [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Parses six languages and powers the native AST, CFG, CPG, PDG, and UAST representations. |
+| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). |
+| [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
+| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection; it does not affect the medal. *(Coming soon in v0.4.0)* |
+
+The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
+
+## Install and Quick Start
+
+### VS Code MCP Extension
+
+Open the Extensions view, search **`@mcp topos`**, select **Topos**, and choose **Install**. Or view here: [Topos: GitHub's MCP Registry](https://github.com/mcp/Krv-Labs/topos).
+
+Then ask agent mode:
+
+> Use Topos to find this repository's worst structural problem, make one focused improvement, and verify the result.
+
+See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for tool permissions and troubleshooting.
+
+### Other MCP clients [*Claude Code*]
+
+Run the self-contained MCP server on demand—no persistent Topos or Python installation required:
+
+```bash
+claude mcp add --transport stdio topos -- uvx topos-mcp
+```
+
+Setup for Codex, Gemini CLI, Cursor, Windsurf, Antigravity, and manual JSON lives in the [agent setup guide](https://docs.krv.ai/topos/agents.html).
+
+### Standalone CLI
 
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | sh
-topos evaluate src/ -r
 ```
-
-`evaluate -r` scores every file in `src/` and prints a ranked digest: which pillars pass, the worst-scoring files, and the cheapest fixes to flip a failing pillar. Add `-h` to any command for help, or `--json` for CI.
 
 Prefer Homebrew?
 
@@ -44,65 +113,57 @@ Prefer Homebrew?
 brew install krv-labs/tap/topos
 ```
 
-On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you
-`brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos`
-before `brew install topos`.
+On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you `brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos` before `brew install topos`.
 
-Other install paths (PyPI, source checkout) and the full command tour live at **[docs.krv.ai/topos/installation](https://docs.krv.ai/topos/installation.html)**.
 
-## What you get
-
-Topos checks three independent pillars and awards a **Code Quality Medal** for how many pass:
-
-- **SIMPLE** — avoids unnecessary complexity (AST entropy & CFG cyclomatic complexity)
-- **COMPOSABLE** — cleanly decoupled from other modules (MDG Martin instability via [GitNexus](https://github.com/abhigyanpatwari/GitNexus))
-- **SECURE** — free of dangerous API reachability and taint paths (CPG analysis; optionally powered by [Sighthound](https://github.com/Corgea/Sighthound))
-
-Topos is the **operator** over those graphs — not another one-off [tree-sitter](https://tree-sitter.github.io/tree-sitter/) script. Specialist engines (GitNexus for the module graph, Sighthound for SAST) feed one medal lattice agents can optimize toward.
-
-| Medal         | Criteria                                    |
-| :------------ | :------------------------------------------ |
-| 🥇 **GOLD**   | Passes all 3 (SIMPLE + COMPOSABLE + SECURE) |
-| 🥈 **SILVER** | Passes 2 of 3                               |
-| 🥉 **BRONZE** | Passes 1 of 3                               |
-| ❌ **SLOP**   | Passes 0 (or fails to parse)                |
-
-`COMPOSABLE` needs a cross-file dependency graph, which the CLI does not build automatically:
-
+Then run:
 ```bash
-pnpm add -g gitnexus  # or: npm install -g gitnexus
-topos depgraph generate
-topos evaluate src/ -r --gitnexus-dir .gitnexus
+topos evaluate . -r
 ```
-
-Put [Sighthound](https://github.com/Corgea/Sighthound) on `PATH` to deepen `SECURE` with Corgea's ruleset (auto-detected; local CPG probes still run without it).
-
-Other commands: `topos inspect` for per-file metrics, `topos compare` for AST edit distance between two versions, `topos coverage` for structural test coverage, and `--preferences simple,composable,secure` to tell agents which pillar to protect first when 🥇 GOLD isn't reachable. Full reference: **[docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)**.
-
-## MCP server (for agents)
-
-Give any MCP-compatible agent — Claude Code, Cursor, Gemini CLI, Windsurf — a live feed of Topos verdicts so it can evaluate and iterate on its own output.
-
-```bash
-claude mcp add --transport stdio topos -- topos mcp
-```
-
-Setup for Cursor, VS Code, Gemini CLI, Codex, and Windsurf, plus troubleshooting and the full MCP tool list: **[docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)**.
 
 > [!TIP]
-> **OpenClaw:** `openclaw skills install @Krv-Labs/topos`  
-> **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+> Want GOLD? Run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
 
----
+Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaults to Python; use `--language rust|go|javascript|typescript|cpp` for another language. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
-## How it works
+## More ways to use Topos
 
-Topos measures code along the three pillars above and maps the result to an 8-element evaluation lattice — the three pillars are pairwise incomparable, and 🥇 GOLD is their intersection.
+- **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)
+- **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+- **MCP Registry name:** `io.github.Krv-Labs/topos`
+- **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
+
+
+## What Topos checks
+
+Every file gets three independent verdicts:
+
+- **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
+- **COMPOSABLE** — stays decoupled from the repository using module-dependency structure and Martin instability.
+- **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
+
+Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
+
+| Medal | Criteria |
+| :--- | :--- |
+| 🥇 **GOLD** | Passes all 3 |
+| 🥈 **SILVER** | Passes 2 of 3 |
+| 🥉 **BRONZE** | Passes 1 of 3 |
+| ❌ **SLOP** | Passes 0, or fails to parse |
+
+Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings *(coming soon in v0.4.0)*. Advisory findings never silently change the scored medal.
 
 <details>
-<summary>Evaluation lattice diagram</summary>
+<summary>How the medal system is derived</summary>
+
+The three pillars are pairwise incomparable and form an eight-element evaluation lattice; GOLD is their intersection.
 
 ```mermaid
+---
+config:
+  layout: dagre
+  theme: neutral
+---
 graph BT
     SLOP["❌ SLOP<br/>No Medal"]
     SIMPLE["🥉 BRONZE<br/>Simple"]
@@ -136,20 +197,24 @@ graph BT
     style IDEAL      fill:#ffd700,stroke:#856404,color:#000
 ```
 
-</details>
+[Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)
 
-Set your **Preferences** (e.g. `simple,composable,secure`) to tell your coding agent which pillars to prioritize when aiming for GOLD under token and time budgets, and how to relax that goal when GOLD isn't reachable. Details: [docs.krv.ai/topos/preferences](https://docs.krv.ai/topos/preferences.html) · [docs.krv.ai/topos/measures](https://docs.krv.ai/topos/measures.html) · [docs.krv.ai/topos/concepts](https://docs.krv.ai/topos/concepts.html).
+</details>
 
 ## Contributing
 
-Topos is used internally at [Krv Labs](https://krv.ai) to manage AI agent code output. We welcome bugs, ideas, and contributions.
+Topos is used internally at [Krv Labs](https://krv.ai) to manage AI-agent code output. We welcome bugs, ideas, and contributions.
 
-- **Bug?** Open an [Issue](https://github.com/Krv-Labs/topos/issues)
-- **Idea?** Start a [Discussion](https://github.com/Krv-Labs/topos/discussions) or open a PR
+- **Bug?** Open an [issue](https://github.com/Krv-Labs/topos/issues)
+- **Idea?** Start a [discussion](https://github.com/Krv-Labs/topos/discussions) or open a PR
 - **Collaborate?** [team@krv.ai](mailto:team@krv.ai)
 
 ---
 
-[Full Documentation](https://docs.krv.ai/topos/) · [Measures & Metrics](https://docs.krv.ai/topos/measures.html) · [Category Theory Concepts](https://docs.krv.ai/topos/concepts.html) · [Engineering notes](docs/)
+[Full documentation](https://docs.krv.ai/topos/) · [Measures and metrics](https://docs.krv.ai/topos/measures.html) · [Engineering notes](docs/)
 
-_Built with ❤️ by [Krv Labs](https://krv.ai)_
+<p align="left">
+  <a href="https://krv.ai">
+    <img src="docs/source/_static/made-by-krv.svg" alt="Made by Krv Labs" height="24">
+  </a>
+</p>

@@ -13,6 +13,18 @@ For Agents
    Topos lets you set the quality target while the agent handles the loop:
    measure, change, verify, stop when the target or budget is reached.
 
+Find the MCP server
+-------------------
+
+Topos is published as ``io.github.Krv-Labs/topos`` on the official MCP Registry
+and mirrored on Glama. Use either listing when discovering servers from a host
+UI, or follow the setup tabs below to register it directly.
+
+- `Official MCP Registry <https://registry.modelcontextprotocol.io/?q=topos>`_
+- `Glama MCP server page <https://glama.ai/mcp/servers/Krv-Labs/topos>`_
+- `ClawHub skill <https://clawhub.ai/krv-labs/skills/topos>`_ (OpenClaw):
+  ``openclaw skills install @Krv-Labs/topos``
+
 MCP Setup
 ---------
 
@@ -24,22 +36,53 @@ Choose an agent path
 
 .. tab-set::
 
-   .. tab-item:: VS Code / Cursor extension
+   .. tab-item:: VS Code / Cursor
       :sync: vscode-extension
 
-      If you use VS Code or an MCP-capable Cursor build, install the Marketplace
-      extension instead of hand-editing MCP JSON:
+      VS Code exposes **two different install surfaces**. Pick **one** — do not
+      install both, or agent mode can register two Topos MCP servers and double
+      tool calls / trust prompts.
+
+      **Recommended — MCP server (``@mcp`` gallery)**
+
+      This is the official MCP Registry entry (``io.github.Krv-Labs/topos``),
+      not the Marketplace extension. The registry points at the PyPI package
+      ``topos-mcp``; VS Code installs/runs that package and owns registration,
+      trust, and lifecycle. You do **not** need a separate local Topos install
+      or the Marketplace extension.
+
+      1. Open the Extensions view (``Ctrl+Shift+X`` / ``Cmd+Shift+X``).
+      2. Search ``@mcp topos`` and install **Topos**.
+      3. Or open the `GitHub MCP Registry page
+         <https://github.com/mcp/Krv-Labs/topos>`_ and use **Install MCP
+         server**.
+
+      See `Add MCP servers in VS Code
+      <https://code.visualstudio.com/docs/copilot/customization/mcp-servers>`_
+      for gallery vs ``mcp.json`` details.
+
+      **Optional — full Marketplace extension**
+
+      Use this when you want Command Palette workflows (**Topos: Evaluate
+      Project**, **Topos: Generate Dependency Graph**), bundled runtime
+      resolution, and an editor-owned MCP provider — not only agent tools.
 
       .. button-link:: https://marketplace.visualstudio.com/items?itemName=KrvLabs.topos-vscode
          :color: primary
          :shadow:
 
-         Topos: Code Quality Targets for Agents
+         Topos: Code Quality Targets for Agents (``KrvLabs.topos-vscode``)
 
       The extension registers a ``topos-mcp`` server provider, resolves a
       bundled, cached, local, or downloaded Topos runtime, and starts
       ``topos mcp`` for agent mode. Topos still runs locally; the editor owns
       server registration and trust prompts.
+
+      .. important::
+         Install **either** ``@mcp topos`` **or** ``KrvLabs.topos-vscode``, not
+         both. If you already have the full extension, skip the ``@mcp``
+         install (and vice versa). Cursor builds that lack the MCP gallery
+         should use the Marketplace extension or the Manual JSON tab.
 
    .. tab-item:: Agent CLIs
       :sync: agent-cli
@@ -102,7 +145,8 @@ Choose an agent path
          The current ``agy`` CLI does not expose a documented ``mcp`` setup
          command. Use one of these verified paths instead:
 
-         - In VS Code or Cursor, install the Topos extension above.
+         - In VS Code or Cursor, use the VS Code tab above (``@mcp topos`` or
+           the full Marketplace extension — not both).
          - If your Antigravity build exposes manual MCP JSON, use the
            ``Manual JSON`` tab below.
          - If you already manage MCP through Claude or Gemini plugins, import

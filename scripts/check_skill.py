@@ -12,7 +12,16 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS_ROOT = ROOT / "skills"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
-REQUIRED_SECTIONS = ("## When to Use", "## Pitfalls", "## Verification")
+HERMES_SECTIONS = ("## When to Use", "## Pitfalls", "## Verification")
+SKILL_CARD_SECTIONS = (
+    "## Use Case",
+    "## Requirements / Dependencies",
+    "## Known Risks and Mitigations",
+    "## Skill Output",
+    "## References",
+    "## Ethical Considerations",
+)
+CREDENTIAL_DECLARATION = "**Requires API Key or External Credential:**"
 
 
 def cargo_version() -> str:
@@ -62,6 +71,10 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
     frontmatter = match.group(1)
     body = text[match.end() :]
 
+    metadata = extract_block(frontmatter, "metadata")
+    if metadata is None:
+        return []
+
     name = parse_scalar(frontmatter, "name")
     if not name:
         errors.append(f"{skill_md}: frontmatter name is required")
@@ -81,35 +94,41 @@ def validate_skill(skill_dir: Path, expected_version: str) -> list[str]:
         )
 
     version = parse_scalar(frontmatter, "version")
-    if not version:
-        errors.append(f"{skill_md}: frontmatter version is required")
-    elif version != expected_version:
-        errors.append(
-            f"{skill_md}: version {version!r} must match Cargo.toml {expected_version!r}"
-        )
+    openclaw = extract_block(metadata, "openclaw")
+    hermes = extract_block(metadata, "hermes")
 
-    for section in REQUIRED_SECTIONS:
-        if section not in body:
-            errors.append(f"{skill_md}: missing section {section}")
-
-    metadata = extract_block(frontmatter, "metadata")
-    if metadata is None:
-        errors.append(f"{skill_md}: frontmatter missing metadata block")
+    if openclaw is None:
+        errors.append(f"{skill_md}: metadata.openclaw block is required")
     else:
-        openclaw = extract_block(metadata, "openclaw")
-        if openclaw is None:
-            errors.append(f"{skill_md}: metadata.openclaw block is required")
-        elif "bins:" not in openclaw:
+        if "bins:" not in openclaw:
             errors.append(f"{skill_md}: metadata.openclaw.requires.bins is required")
+        for section in SKILL_CARD_SECTIONS:
+            if section not in body:
+                errors.append(f"{skill_md}: missing section {section}")
+        if CREDENTIAL_DECLARATION not in body:
+            errors.append(
+                f"{skill_md}: missing credential declaration "
+                f"({CREDENTIAL_DECLARATION} Yes/No/Optional/Not Specified)"
+            )
 
-        hermes = extract_block(metadata, "hermes")
-        if hermes is None:
-            errors.append(f"{skill_md}: metadata.hermes block is required")
-        else:
-            if "tags:" not in hermes:
-                errors.append(f"{skill_md}: metadata.hermes.tags is required")
-            if "category:" not in hermes:
-                errors.append(f"{skill_md}: metadata.hermes.category is required")
+    if hermes is None:
+        errors.append(f"{skill_md}: metadata.hermes block is required")
+    else:
+        if "tags:" not in hermes:
+            errors.append(f"{skill_md}: metadata.hermes.tags is required")
+        if "category:" not in hermes:
+            errors.append(f"{skill_md}: metadata.hermes.category is required")
+        for section in HERMES_SECTIONS:
+            if section not in body:
+                errors.append(f"{skill_md}: missing section {section}")
+
+    if openclaw is not None:
+        if not version:
+            errors.append(f"{skill_md}: frontmatter version is required")
+        elif version != expected_version:
+            errors.append(
+                f"{skill_md}: version {version!r} must match Cargo.toml {expected_version!r}"
+            )
 
     return errors
 

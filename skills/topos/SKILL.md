@@ -8,6 +8,8 @@ metadata:
     requires:
       bins: [topos]
     homepage: https://docs.krv.ai/topos/
+    os: [macos, linux]
+    emoji: "📐"
   hermes:
     tags: [code-quality, refactoring, security, metrics]
     category: software-development
@@ -18,22 +20,70 @@ metadata:
 
 Topos scores code on three pillars — **SIMPLE**, **COMPOSABLE**, **SECURE** — and maps results to a medal lattice (SLOP → GOLD). Use it in a closed loop: measure, edit, re-measure.
 
+## Use Case
+
+Developers and AI coding agents use this skill to improve structural code quality, reduce complexity, verify refactors, and optimize toward GOLD or SILVER medals. It supports both CLI and MCP agent loops on local repositories.
+
+**Deployment geography:** Global (local execution; no region-restricted services).
+
 ## When to Use
 
 Load this skill when the user asks to improve code quality, reduce complexity, check structural security footguns, verify a refactor, or optimize toward GOLD/SILVER medals.
 
-## Prerequisites
+## Requirements / Dependencies
 
-```bash
-curl -fsSL https://docs.krv.ai/topos/install.sh | sh
-topos depgraph generate   # required for COMPOSABLE / GOLD scoring
-```
+**Requires API Key or External Credential:** No
 
-For MCP-based agents, register the server:
+**Credential Type(s):** None
+
+**Runtime dependencies:**
+
+- `topos` CLI on `PATH` (install via [docs.krv.ai/topos/install.sh](https://docs.krv.ai/topos/install.sh))
+- Git repository for baseline comparisons (`topos assess_worktree_change`, untracked baselines via snapshot flow)
+- `.gitnexus` dependency graph for COMPOSABLE / GOLD scoring (`topos depgraph generate` or `topos_generate_depgraph`)
+
+**Optional MCP setup** (for tool-based agents, not required for CLI-only use):
 
 ```bash
 claude mcp add --transport stdio topos -- topos mcp
 ```
+
+Do not include secrets in prompts, logs, or output. Topos reads local source files and git state only; it does not transmit code to external services.
+
+## Known Risks and Mitigations
+
+Risk: The skill may guide agents to apply structural refactors that change behavior; Topos measures structure, not functional correctness.
+
+Mitigation: Run project tests or linters after each edit; treat Topos verdicts as structural signals, not proof of correctness.
+
+Risk: Agents may trust SECURE medal findings as full security assurance; Topos SECURE checks are structural heuristics, not full SAST.
+
+Mitigation: Pair with dedicated security tooling for high-stakes code; acknowledge remaining SECURE findings explicitly.
+
+Risk: Without a GitNexus graph, COMPOSABLE scores are unavailable or misleading.
+
+Mitigation: Run `topos depgraph generate` (or `topos_generate_depgraph`) before trusting composability scores.
+
+Risk: Cosmetic edits (whitespace, rename-only) may appear as improvements but do not move the lattice.
+
+Mitigation: Stop when MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`; require `IMPROVEMENT` or `IMPROVEMENT_SCORE` before accepting a change.
+
+## Skill Output
+
+**Output type(s):** Analysis, markdown reports, JSON (MCP), shell commands
+
+**Output format:** CLI tables and ranked file lists; MCP structured payloads with `agent_contract` fields; per-function inspect detail
+
+**Output parameters:** Medal verdict (SLOP → GOLD), pillar scores (SIMPLE, COMPOSABLE, SECURE), ranked refactor targets, assessment status (`IMPROVEMENT`, `REGRESSION`, etc.)
+
+**Other properties:** Writes `.gitnexus` graph artifacts when depgraph is generated; does not modify source files unless the agent chooses to edit based on guidance
+
+## References
+
+- [Topos documentation](https://docs.krv.ai/topos/)
+- [Agent contract](https://docs.krv.ai/topos/agents.html)
+- [Source repository](https://github.com/Krv-Labs/topos)
+- [ClawHub listing](https://clawhub.ai/Krv-Labs/topos)
 
 ## Agent Loop
 
@@ -89,4 +139,6 @@ A change is ready when:
 - Active SECURE findings are fixed or explicitly acknowledged.
 - Relevant tests/type checks pass, or their absence is reported.
 
-Full agent contract: [docs.krv.ai/topos/agents](https://docs.krv.ai/topos/agents.html)
+## Ethical Considerations
+
+Users should review agent-proposed code changes before committing, especially when refactoring production systems. Topos is an advisory structural quality tool; organizations should apply their own security, compliance, and code-review policies before deployment.

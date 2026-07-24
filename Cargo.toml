@@ -7,3 +7,10 @@ version = "0.4.0"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/Krv-Labs/topos"
+authors = ["Krv Labs <team@krv.ai>"]
+
+# Internal path deps with crates.io version pins (keep version in sync with
+# [workspace.package].version — required for `cargo publish`).
+[workspace.dependencies]
+topos-engine = { path = "topos/engine", version = "0.4.0" }
+topos-mcp = { path = "topos/mcp", version = "0.4.0" }

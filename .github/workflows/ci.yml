@@ -35,6 +35,9 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      - name: Crates.io publish dry-run (dependency order)
+        run: bash scripts/cargo_publish_dry_run.sh
+
       - name: Smoke-test the MCP server over stdio
         run: |
           cargo build -p topos-mcp --bin topos-mcp

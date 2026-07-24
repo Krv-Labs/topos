@@ -4,10 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
 description = "Topos MCP server: SIMPLE/COMPOSABLE/SECURE structural code-quality tools over the Model Context Protocol (stdio)."
+keywords = ["code-quality", "static-analysis", "topos", "mcp"]
+categories = ["development-tools"]
 
 [dependencies]
-topos-engine = { path = "../engine" }
+topos-engine = { workspace = true }
 rmcp = { version = "2.2", features = ["server", "transport-io", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -22,4 +26,4 @@ tempfile = "3"
 similar = "2"
 # Embedded SAST engine (MIT) — replaces the former external `sighthound`
 # CLI dependency; pinned for reproducible builds.
-sighthound = { git = "https://github.com/Corgea/Sighthound", rev = "36dd5da663f826d81f1a444c474935b6acbf285c" }
+sighthound = { git = "https://github.com/Corgea/Sighthound", rev = "36dd5da663f826d81f1a444c474935b6acbf285c", version = "0.1.1" }

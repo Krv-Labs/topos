@@ -37,7 +37,7 @@ If it is absent or produces no usable JSON, Topos falls back to local CPG danger
 
 ## MCP package and registry
 
-The project publishes both `topos` and `topos-mcp` console scripts. The latter starts the same stdio server directly; `topos mcp` routes to it via the CLI. `.mcp/server.json` declares registry identity, PyPI package (`topos-mcp`), version, and stdio transport. Keep it version-aligned with `Cargo.toml`, Python metadata, and the VS Code package; `scripts/check_versions.py` enforces the contract.
+The project publishes both `topos` and `topos-mcp` console scripts. The latter starts the same stdio server directly; `topos mcp` routes to it via the CLI. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml`, Python metadata, and the VS Code package; `scripts/check_versions.py` enforces the contract.
 
 ## Container and editor surfaces
 

@@ -1,0 +1,36 @@
+<svg width="130" height="24" viewBox="0 0 130 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Built by Krv Labs">
+  <!--
+    Krv Labs brand badge for README / docs footers.
+    Aesthetic mirrors krv.ai: near-black field, muted lead-in, signature red mark, off-white wordmark.
+    Mark geometry sourced from docs/source/_static/krv-logo.svg (bbox center 257.3,250.4; 448x472 units).
+    Layout grid: 9px side insets, 6.3px gaps around the 13px-tall mark, shared text baseline at y=15.8
+    (cap-height optically centered on y=12). textLength values sit ~5% above natural width so
+    lengthAdjust="spacing" yields gentle, deterministic tracking instead of renderer-dependent kerning.
+  -->
+  <rect x="0.5" y="0.5" width="129" height="23" rx="3.2" fill="#0A0A0A" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <text
+    x="9"
+    y="15.8"
+    fill="#A1A1AA"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    font-size="10.5"
+    font-weight="200"
+    textLength="39"
+    lengthAdjust="spacing">built by</text>
+  <!-- Krv mark between lead-in and wordmark -->
+  <g transform="translate(60.5, 12) scale(0.02754) translate(-257.3, -250.4)" fill="#E11D2E" fill-rule="evenodd">
+    <g transform="matrix(2.7434917,0,0,2.7434917,-37.861676,-40.016888)">
+      <path d="m 46.137654,106.32606 86.394976,-86.481927 56.48777,0.05938 -83.8588,84.858387 84.11445,85.53421 -55.3251,-0.17457 z"/>
+      <path d="m 26.444164,20.69278 41.461606,0.118739 0.08046,59.918852 -25.73253,25.745539 -0.0012,63.54146 34.0524,-20.96039 0.10566,42.81608 -50.533959,-0.32117 z"/>
+    </g>
+  </g>
+  <text
+    x="73"
+    y="15.8"
+    fill="#F4F4F5"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    font-size="12"
+    font-weight="800"
+    textLength="48"
+    lengthAdjust="spacing">krv labs</text>
+</svg>

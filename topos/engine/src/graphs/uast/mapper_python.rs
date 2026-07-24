@@ -76,8 +76,16 @@ fn is_guard(node: &Node, source: &[u8]) -> bool {
         return false;
     }
     match node.child_by_field_name("condition") {
-        Some(condition) => is_name_equals_main(condition, source),
-        None => false,
+        Some(condition) if is_name_equals_main(condition, source) => {
+            // Only a *bare* guard is pure entrypoint scaffolding. A guard
+            // carrying an `else`/`elif` holds real fallback logic; dropping the
+            // whole `if_statement` would silently discard that branch, so keep
+            // it (matches Python's `_is_guard`). A full fix — dropping only the
+            // `__main__` consequence while keeping the alternative — needs
+            // subtree rewriting the drop-by-id filter can't express.
+            node.child_by_field_name("alternative").is_none()
+        }
+        _ => false,
     }
 }
 
@@ -241,5 +249,22 @@ mod tests {
         let mut kinds = HashSet::new();
         collect_kinds(&uast, &mut kinds);
         assert!(!kinds.contains("if_statement"));
+    }
+
+    #[test]
+    fn keeps_main_guard_carrying_an_else_branch() {
+        // A `__main__` guard with an `else`/`elif` holds real fallback logic;
+        // dropping the whole `if_statement` would silently delete that branch.
+        // Python keeps it (mapper_python.py::_is_guard) — so must the Rust port.
+        let source =
+            "if __name__ == \"__main__\":\n    main()\nelse:\n    configure_as_library()\n";
+        let tree = parse(source);
+        let uast = map_python_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        let mut kinds = HashSet::new();
+        collect_kinds(&uast, &mut kinds);
+        assert!(
+            kinds.contains("if_statement"),
+            "a __main__ guard with an else branch must be kept, not dropped"
+        );
     }
 }

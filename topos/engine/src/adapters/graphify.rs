@@ -28,9 +28,8 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
-use super::process::{command_on_path, run_with_timeout, RunError};
+use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
 
 const GRAPHIFY_CMD: &str = "graphify";
 const INSTALL_HINT: &str = "Graphify not found. Install it with: pip install graphifyy";
@@ -178,7 +177,7 @@ fn run_graphify(
     timeout: Option<f64>,
 ) -> GraphifyGenerationResult {
     let effective_timeout = resolve_timeout(timeout);
-    let duration_timeout = effective_timeout.map(Duration::from_secs_f64);
+    let duration_timeout = effective_timeout.and_then(timeout_duration);
 
     let mut cmd = Command::new(cmd_name);
     cmd.args(args);

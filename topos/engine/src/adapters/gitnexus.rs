@@ -36,7 +36,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 
 use super::discovery::iter_source_files;
-use super::process::{command_on_path, run_with_timeout, RunError};
+use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
 use crate::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
@@ -366,7 +366,7 @@ fn run_analyze(
     let start_time = SystemTime::now();
     let source_snapshot = source_fingerprint(target_dir);
     let effective_timeout = resolve_timeout(timeout);
-    let duration_timeout = effective_timeout.map(Duration::from_secs_f64);
+    let duration_timeout = effective_timeout.and_then(timeout_duration);
 
     let mut cmd = Command::new(cmd_name);
     cmd.args(args);

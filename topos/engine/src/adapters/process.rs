@@ -112,6 +112,22 @@ pub fn run_with_timeout(
     }
 }
 
+/// Convert a timeout expressed in fractional seconds into a [`Duration`],
+/// returning `None` for any value that isn't a usable positive, finite
+/// deadline.
+///
+/// [`Duration::from_secs_f64`] *panics* on non-finite (`inf`, `NaN`) or
+/// out-of-range input, so a misconfigured `TOPOS_*_TIMEOUT` env var (e.g.
+/// `inf`, `1e400`, or an absurdly large finite value) would otherwise abort
+/// the whole run. Mirroring the Python original — where an unbounded or
+/// oversized timeout simply meant "no deadline" rather than a crash — such
+/// inputs disable the deadline (`None`) instead of panicking.
+pub(crate) fn timeout_duration(secs: f64) -> Option<Duration> {
+    Duration::try_from_secs_f64(secs)
+        .ok()
+        .filter(|d| !d.is_zero())
+}
+
 fn spawn_reader<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
         let mut buf = String::new();
@@ -156,5 +172,17 @@ mod tests {
         let cmd = Command::new("topos-adapters-nonexistent-binary-xyz");
         let result = run_with_timeout(cmd, None, true, None);
         assert!(matches!(result, Err(RunError::Io(_))));
+    }
+
+    #[test]
+    fn timeout_duration_rejects_unusable_values() {
+        // Non-finite / non-positive / overflowing inputs disable the deadline
+        // instead of panicking inside `Duration::from_secs_f64`.
+        assert_eq!(timeout_duration(f64::INFINITY), None);
+        assert_eq!(timeout_duration(f64::NAN), None);
+        assert_eq!(timeout_duration(-1.0), None);
+        assert_eq!(timeout_duration(0.0), None);
+        assert_eq!(timeout_duration(1e300), None); // overflows Duration
+        assert_eq!(timeout_duration(2.5), Some(Duration::from_secs_f64(2.5)));
     }
 }

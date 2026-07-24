@@ -141,7 +141,8 @@ def _is_homebrew_executable(path: Path) -> bool:
             prefix_path = Path(configured_prefix).expanduser()
             if prefix_path.is_absolute():
                 prefix = prefix_path.resolve()
-                if resolved_path.is_relative_to(prefix):
+                shared_prefix = _SHARED_HOMEBREW_PREFIX.resolve()
+                if prefix != shared_prefix and resolved_path.is_relative_to(prefix):
                     return True
         except (OSError, RuntimeError):
             pass

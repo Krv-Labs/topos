@@ -51,7 +51,7 @@ Run the job matching the contract you change; engine-only success does not valid
 - **VS Code:** release builds stage the matching native CLI into platform VSIX artifacts.
 - **Homebrew:** after release, workflow automation renders a checksum-backed formula PR for the tap; tap CI gates its merge.
 
-The installer is a standalone binary installer. When changing its coexistence/prompt behavior, run `tests/packaging/test_install_sh_preflight.py`; do not describe it as a Python or PyInstaller deployment path.
+For release changes, inspect the complete workflow: it handles platform matrix artifacts, optional macOS signing/notarization, extension packaging, Homebrew formula publication, and trusted publishing. The installer is a standalone binary installer — not a Python or PyInstaller deployment path. When changing the formula template, installer coexistence checks, or Homebrew install guidance, run `tests/packaging/test_install_sh_preflight.py`; its channel-detection cases must continue to distinguish a declared Homebrew prefix from an ordinary local executable, including paths under Intel `/usr/local`. Never read or record secret values; workflow secret identifiers are sufficient for operational reasoning.
 
 ## Documentation and automation
 

@@ -15,31 +15,7 @@ use std::collections::HashMap;
 use super::models::{CPGEdge, CPGEdgeKind, CPGNode};
 use crate::graphs::cfg::object::ControlFlowGraph;
 use crate::graphs::pdg::object::{DependenceKind, ProgramDependenceGraph};
-use crate::graphs::uast::models::UASTNode;
-
-/// A node key stable across a single `build_cpg` call: the UAST node's
-/// own id when present, or a pointer-identity fallback otherwise.
-///
-/// Mirrors Python's `node.id or f"anon::{id(node):x}"`, where Python's
-/// `id()` builtin is object identity — Rust's closest equivalent is the
-/// node's address. In practice every node the mapper engine produces has
-/// a real id; the fallback only matters for hand-built nodes (e.g.
-/// `graphs::cfg::builder`'s synthetic module-callable wrapper) that
-/// never appear as CFG/PDG statements themselves, so it's effectively
-/// unreachable in real data, same as in Python.
-///
-/// Kept in sync with an identical private helper in
-/// `graphs::pdg::object` (issue #159): DDG/CDG edges built there use
-/// this same `anon::{ptr:x}` format for empty-id statements, so a
-/// dependence edge's endpoint always resolves to the matching key in
-/// this module's node map.
-fn node_key(node: &UASTNode) -> String {
-    if node.id.is_empty() {
-        format!("anon::{:x}", std::ptr::from_ref(node) as usize)
-    } else {
-        node.id.clone()
-    }
-}
+use crate::graphs::uast::models::{node_key, UASTNode};
 
 /// Return `(nodes, edges)` for the CPG, building the CFG and PDG afresh.
 pub fn build_cpg(uast_root: &UASTNode, source: &str) -> (HashMap<String, CPGNode>, Vec<CPGEdge>) {
@@ -64,8 +40,34 @@ fn collect_nodes(root: &UASTNode, out: &mut HashMap<String, CPGNode>) {
         if out.contains_key(&key) {
             continue;
         }
-        out.insert(key, CPGNode { uast: node.clone() });
+        let children = node.children.iter().map(clone_without_children).collect();
+        out.insert(
+            key,
+            CPGNode {
+                uast: UASTNode {
+                    kind: node.kind.clone(),
+                    lang: node.lang.clone(),
+                    span: node.span.clone(),
+                    native: node.native.clone(),
+                    attributes: node.attributes.clone(),
+                    children,
+                    id: node.id.clone(),
+                },
+            },
+        );
         stack.extend(node.children.iter());
+    }
+}
+
+fn clone_without_children(node: &UASTNode) -> UASTNode {
+    UASTNode {
+        kind: node.kind.clone(),
+        lang: node.lang.clone(),
+        span: node.span.clone(),
+        native: node.native.clone(),
+        attributes: node.attributes.clone(),
+        children: Vec::new(),
+        id: node.id.clone(),
     }
 }
 
@@ -142,45 +144,6 @@ mod tests {
     use crate::graphs::uast::models::{NativeRef, SourceSpan};
 
     #[test]
-    fn node_key_uses_anon_ptr_convention_for_empty_id_nodes() {
-        // Issue #159: `graphs::pdg::object` builds DDG/CDG edges with an
-        // identical private helper; both must produce the same
-        // `anon::{ptr}` format for an anonymous (empty-id) statement, or
-        // an edge referencing that statement silently fails to resolve
-        // against this module's node map.
-        let anon = UASTNode {
-            kind: "Anonymous".to_string(),
-            lang: "python".to_string(),
-            span: SourceSpan {
-                file: None,
-                start_byte: 0,
-                end_byte: 0,
-                start_line: 0,
-                start_column: 0,
-                end_line: 0,
-                end_column: 0,
-            },
-            native: NativeRef {
-                parser: "test".to_string(),
-                parser_version: "0".to_string(),
-                node_kind: "anon".to_string(),
-            },
-            attributes: HashMap::new(),
-            children: Vec::new(),
-            id: String::new(),
-        };
-        let key = node_key(&anon);
-        assert!(
-            key.starts_with("anon::"),
-            "expected `anon::<ptr>` key for empty-id node, got {key:?}"
-        );
-        assert_ne!(
-            key, "<anon>",
-            "must not use the old literal-string convention"
-        );
-    }
-
-    #[test]
     fn build_cpg_includes_all_four_edge_families_when_present() {
         let source = "def f(x):\n    if x:\n        y = 1\n    return y\n";
         let result = parse_source(source, "python", None).unwrap();
@@ -190,5 +153,64 @@ mod tests {
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Ast));
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Cfg));
         assert!(edges.iter().any(|e| e.kind == CPGEdgeKind::Cdg));
+    }
+
+    #[test]
+    fn anonymous_node_edges_resolve_to_cpg_nodes() {
+        fn node(kind: &str, native_kind: &str, children: Vec<UASTNode>) -> UASTNode {
+            UASTNode {
+                kind: kind.to_string(),
+                lang: "python".to_string(),
+                span: SourceSpan {
+                    file: None,
+                    start_byte: 0,
+                    end_byte: 0,
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 0,
+                },
+                native: NativeRef {
+                    parser: "test".to_string(),
+                    parser_version: "0".to_string(),
+                    node_kind: native_kind.to_string(),
+                },
+                attributes: HashMap::new(),
+                children,
+                id: String::new(),
+            }
+        }
+
+        let root = node(
+            "File",
+            "module",
+            vec![node(
+                "IfStmt",
+                "if_statement",
+                vec![node(
+                    "Unknown",
+                    "block",
+                    vec![node("ExprStmt", "expression_statement", Vec::new())],
+                )],
+            )],
+        );
+        let (nodes, edges) = build_cpg(&root, "");
+
+        assert!(edges.iter().any(|edge| edge.kind == CPGEdgeKind::Cfg));
+        assert!(edges.iter().any(|edge| edge.kind == CPGEdgeKind::Cdg));
+        for edge in &edges {
+            assert!(
+                nodes.contains_key(&edge.source),
+                "{:?} edge source is missing from nodes: {}",
+                edge.kind,
+                edge.source
+            );
+            assert!(
+                nodes.contains_key(&edge.target),
+                "{:?} edge target is missing from nodes: {}",
+                edge.kind,
+                edge.target
+            );
+        }
     }
 }

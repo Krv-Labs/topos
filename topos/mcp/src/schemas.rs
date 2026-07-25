@@ -252,9 +252,18 @@ pub struct EvaluateFileInput {
     /// Include raw metrics.
     #[serde(default)]
     pub verbose: bool,
-    /// Ranked edit targets to return (0 = off, max 25).
-    #[serde(default)]
+    /// Ranked edit targets to return, gate failures first (default 3;
+    /// 0 = off; capped at 25).
+    #[serde(default = "default_refactor_targets")]
     pub refactor_targets: usize,
+}
+
+/// Ranked targets are on by default: their expensive input
+/// (`build_metric_locations`) is already computed on every call, and the
+/// agent contract routes off the top gating target, so returning none by
+/// default made the common loop pay for a second round trip.
+fn default_refactor_targets() -> usize {
+    3
 }
 
 fn default_project_limit() -> usize {
@@ -466,6 +475,16 @@ pub struct InspectCodeInput {
     /// autodetected from the file extension.
     #[serde(default = "default_language")]
     pub language: String,
+    /// .gitnexus directory for COMPOSABLE scoring. When omitted, it is
+    /// auto-detected at `<file root>/.gitnexus`; if missing or stale, this
+    /// tool generates/refreshes it first (see `no_composable`). Only used
+    /// with `filepath` — inline `code` has no module to place in the graph.
+    #[serde(default)]
+    pub gitnexus_dir: Option<String>,
+    /// Skip GitNexus generation; score whatever `.gitnexus` is already
+    /// there, or SIMPLE/SECURE only when there is none.
+    #[serde(default)]
+    pub no_composable: bool,
     /// Strict total order on the three generators; see
     /// `topos://docs/preferences`.
     #[serde(default)]
@@ -620,6 +639,18 @@ pub struct GetDocInput {
 // ---------------------------------------------------------------------------
 // Return models (structured output)
 // ---------------------------------------------------------------------------
+//
+// Empty-field policy: the structs that repeat — per-file rows and everything
+// embedded in an evaluation — omit null / empty collections from the
+// structured channel (`skip_serializing_if`). Emptiness carries no
+// information these models don't already carry positionally, and at a full
+// page the always-null overlay fields and always-empty vectors were the
+// second-largest block on the wire. The one-per-response wrappers
+// (project/comparison/coverage/depgraph results) keep their full shape:
+// there is nothing to multiply, and a stable key set is worth more there.
+//
+// None of this applies to the Deserialize input structs above, which use
+// `serde(default)` + `deny_unknown_fields` and are a separate contract.
 
 /// One verdict on the relaxation walk, annotated with the
 /// satisfied-generator set so an agent can see at a glance what changing to
@@ -665,9 +696,11 @@ pub struct PreferenceWalk {
     pub target: LatticeElement,
     /// Divert target when IDEAL stalls.
     pub fallback_target: LatticeElement,
-    /// Preference-ordered verdict path above current.
+    /// Preference-ordered verdict path above current; empty at/beyond target.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub walk: Vec<LatticeElement>,
     /// Immediate next verdict above current.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_step: Option<LatticeElement>,
     /// Progress toward target in [0, 1].
     pub progress: f64,
@@ -692,10 +725,13 @@ pub struct SecurityFinding {
     /// Source snippet for the finding.
     pub snippet: String,
     /// Detected dangerous callee.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub callee: Option<String>,
     /// Taint source snippet.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// Taint sink snippet.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sink: Option<String>,
 }
 
@@ -726,6 +762,7 @@ impl SecurityFinding {
 /// A disclosed security finding acknowledged by project config or input.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AcknowledgedRisk {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub callee: Option<String>,
     pub kind: String,
     pub line: u32,
@@ -741,14 +778,20 @@ pub struct FunctionEntry {
     pub line: usize,
     pub complexity: i64,
     /// Dotted scope path, e.g. 'Cls.method.closure'.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub qualified_name: Option<String>,
     /// function | async_function | method | closure | module.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub start_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub end_line: Option<usize>,
     /// Which probe produced the complexity: 'ast' or 'cfg'.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metric_source: Option<String>,
     /// True when the count includes nested callables' decisions.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub includes_nested: Option<bool>,
 }
 
@@ -757,7 +800,8 @@ pub struct FunctionEntry {
 pub struct Suggestion {
     /// simple | composable | secure | coverage.
     pub pillar: String,
-    /// Raw-metric key, or null for finding-derived.
+    /// Raw-metric key; absent for finding-derived suggestions.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metric: Option<String>,
     /// 'fix' (gate failed) | 'improve' (advisory).
     pub severity: String,
@@ -769,10 +813,15 @@ pub struct Suggestion {
 #[derive(Debug, Clone, Serialize, JsonSchema, Default)]
 pub struct AgentContract {
     /// Recommended next MCP tool for the agent loop, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub next_tool: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub next_actions: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub verification_gates: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub risk_flags: Vec<String>,
 }
 
@@ -783,18 +832,56 @@ pub struct RefactorTarget {
     /// function | module | security_call
     pub kind: String,
     pub filepath: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub line_start: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub line_end: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub failing_generators: Vec<String>,
     pub metric: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub current_value: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f64>,
-    /// fix | improve
+    /// `fix` when the metric gates its pillar's `achieved`, `improve` when
+    /// it is advisory. Targets are ordered gating-first.
     pub severity: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub recommended_operations: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub evidence: HashMap<String, Value>,
+}
+
+/// The one out-of-band metric currently costing a pillar its `achieved`.
+///
+/// A deliberate subset of [`RefactorTarget`] — identity, the number, and
+/// the bound — with none of the edit payload (`target_id`, `evidence`,
+/// `constraints`, `recommended_operations`). It answers "why is this
+/// pillar not achieved?", not "how do I fix it?"; the matching
+/// `refactor_targets` entry answers the latter.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct BindingConstraint {
+    /// simple | composable | secure.
+    pub pillar: String,
+    /// Raw-metric key, or the dangerous callee for a SECURE finding.
+    pub metric: String,
+    /// Measured value (1.0 for a present SECURE finding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
+    /// Bound the value must satisfy (0.0 for a SECURE finding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f64>,
+    /// Offending symbol, or `<module>` for a whole-file metric.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_start: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_end: Option<usize>,
 }
 
 /// Result of a single-unit evaluation on the Medal Podium.
@@ -804,10 +891,13 @@ pub struct EvaluationResult {
     pub lattice_element: LatticeElement,
     pub lattice_symbol: String,
     pub lattice_description: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub dimensions: HashMap<String, LatticeElement>,
     /// Per-dimension normalized score in [0, 100].
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub scores: HashMap<String, f64>,
     /// Per-pillar breakdown (simple, composable, secure).
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub pillars: HashMap<String, PillarResult>,
     pub priority: String,
     /// Whether priority was defaulted, inferred from preferences, or explicit.
@@ -817,30 +907,58 @@ pub struct EvaluationResult {
     /// True only when a ModuleDependencyGraph was provided. When false, any
     /// verdict containing COMPOSABLE (including IDEAL) is unreachable.
     pub coupling_available: bool,
+    /// Raw probe values; present only under `verbose`.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub raw_metrics: HashMap<String, f64>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub interpretation: HashMap<String, String>,
     /// Source locations for failing complexity gates, keyed by metric.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metric_locations: HashMap<String, Vec<FunctionEntry>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_contract: Option<AgentContract>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     /// Canonical raw verdict before acknowledged-risk overlay.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_lattice_element: Option<LatticeElement>,
     /// Verdict after acknowledged-risk overlay and grade cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub adjusted_lattice_element: Option<LatticeElement>,
     /// Raw SECURE gate before acknowledged-risk overlay.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub secure_raw: Option<bool>,
     /// SECURE gate after acknowledged-risk overlay.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub secure_adjusted: Option<bool>,
     /// True when acknowledged risk prevents a top IDEAL grade.
     pub grade_capped: bool,
     /// Actionable, refactor-focused next steps.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub suggestions: Vec<Suggestion>,
     /// Present only when the caller supplied `preferences`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub preference_walk: Option<PreferenceWalk>,
     /// Optional ranked edit targets, populated only when requested.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub refactor_targets: Vec<RefactorTarget>,
+    /// The gate failure to fix first — the highest-ranked `refactor_targets`
+    /// entry whose `severity` is `"fix"`, restated without the edit payload.
+    ///
+    /// Read it against `pillars.*.achieved`. Absent means one of: every
+    /// gating metric is in band, or only advisory metrics are out of band
+    /// (an advisory metric is never promoted here), or this tool did not
+    /// compute ranked targets at all — `refactor_targets` is empty in the
+    /// last two cases and non-empty in the advisory-only case, which
+    /// distinguishes them. So a low `score` with `achieved: true` and no
+    /// `binding_constraint` is a file whose only offenders are advisory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding_constraint: Option<BindingConstraint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -879,6 +997,7 @@ impl EvaluationResult {
             suggestions: Vec::new(),
             preference_walk: None,
             refactor_targets: Vec::new(),
+            binding_constraint: None,
             error: Some(error),
         }
     }
@@ -890,18 +1009,40 @@ pub struct ProjectFileEntry {
     /// Detected language used to evaluate this file.
     pub language: String,
     pub lattice_element: LatticeElement,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub scores: HashMap<String, f64>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub pillars: HashMap<String, PillarResult>,
+    /// Raw probe values; present only under `verbose`.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub raw_metrics: HashMap<String, f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_lattice_element: Option<LatticeElement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub adjusted_lattice_element: Option<LatticeElement>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub secure_raw: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub secure_adjusted: Option<bool>,
     pub grade_capped: bool,
     pub is_parseable: bool,
+}
+
+/// A pointer at one of the project's lowest-scoring rows.
+///
+/// Deliberately just the identity and the verdict: the full row for any of
+/// these files is already in `files` (or one page away), so repeating the
+/// whole `ProjectFileEntry` here duplicated the page's largest rows.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct WorstFileEntry {
+    pub filepath: String,
+    pub lattice_element: LatticeElement,
 }
 
 /// Per-language project rollup for polyglot directory evaluation.
@@ -929,7 +1070,12 @@ pub struct ProjectEvaluationResult {
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
     pub worst_file_verdict: Option<LatticeElement>,
-    pub worst_files: Vec<ProjectFileEntry>,
+    /// The three lowest-scoring rows in the *whole* project, by the same
+    /// order `files` is sorted in: ascending minimum score across the
+    /// measured dimensions. Page-global — unaffected by `offset`/`limit`,
+    /// so it is identical on every page. This ranks by score alone; it is
+    /// not an estimate of effort, payoff, or fix order.
+    pub worst_files: Vec<WorstFileEntry>,
     pub guidance: String,
     pub priority: String,
     pub priority_source: PrioritySource,
@@ -1180,4 +1326,86 @@ pub struct GenerateGraphifyResult {
     pub generated: bool,
     pub message: String,
     pub error: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Task-C wire default: an agent that asks for nothing still gets the
+    /// ranked spans its next edit needs, and `0` still means off.
+    #[test]
+    fn evaluate_file_defaults_to_three_ranked_targets() {
+        let defaulted: EvaluateFileInput =
+            serde_json::from_str(r#"{"filepath": "a.py"}"#).expect("deserialize");
+        assert_eq!(defaulted.refactor_targets, 3);
+
+        let disabled: EvaluateFileInput =
+            serde_json::from_str(r#"{"filepath": "a.py", "refactor_targets": 0}"#)
+                .expect("deserialize");
+        assert_eq!(
+            disabled.refactor_targets, 0,
+            "0 must stay an explicit opt-out, not fall back to the default"
+        );
+    }
+
+    /// `topos_inspect_code` scores COMPOSABLE like `topos_evaluate_file`
+    /// (issue #216), so it must accept — and advertise — the same two knobs.
+    /// `deny_unknown_fields` means an agent copying an evaluate call would
+    /// hard-error otherwise.
+    #[test]
+    fn inspect_code_accepts_and_advertises_the_composable_knobs() {
+        let defaulted: InspectCodeInput =
+            serde_json::from_str(r#"{"filepath": "a.py"}"#).expect("deserialize");
+        assert!(defaulted.gitnexus_dir.is_none());
+        assert!(!defaulted.no_composable);
+
+        let explicit: InspectCodeInput = serde_json::from_str(
+            r#"{"filepath": "a.py", "gitnexus_dir": ".gitnexus", "no_composable": true}"#,
+        )
+        .expect("deserialize");
+        assert_eq!(explicit.gitnexus_dir.as_deref(), Some(".gitnexus"));
+        assert!(explicit.no_composable);
+
+        // The wire schema is what an agent reads to discover the knobs.
+        let schema = serde_json::to_value(schemars::schema_for!(InspectCodeInput))
+            .expect("schema serializes");
+        let properties = schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .expect("object schema with properties");
+        for field in ["gitnexus_dir", "no_composable"] {
+            assert!(
+                properties.contains_key(field),
+                "`{field}` missing from the published InspectCodeInput schema"
+            );
+        }
+    }
+
+    /// The empty-field policy, asserted as a property rather than per
+    /// field, so a newly added `Option`/`Vec`/`HashMap` cannot quietly
+    /// reintroduce a null on the error path (where nearly everything is
+    /// empty by construction).
+    #[test]
+    fn evaluation_result_omits_null_and_empty_fields() {
+        let model = EvaluationResult::error_result(
+            "Evaluation failed",
+            Priority::Simple,
+            PrioritySource::Default,
+            "boom".to_string(),
+        );
+        let json = serde_json::to_value(&model).expect("serialize");
+        let obj = json.as_object().expect("object");
+        for (key, value) in obj {
+            assert!(!value.is_null(), "`{key}` serialized as null");
+            if let Some(items) = value.as_array() {
+                assert!(!items.is_empty(), "`{key}` serialized as an empty array");
+            }
+            if let Some(map) = value.as_object() {
+                assert!(!map.is_empty(), "`{key}` serialized as an empty object");
+            }
+        }
+        // The one populated optional survives the policy.
+        assert_eq!(obj.get("error").and_then(|v| v.as_str()), Some("boom"));
+    }
 }

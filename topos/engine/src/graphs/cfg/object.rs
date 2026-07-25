@@ -371,6 +371,62 @@ mod tests {
     }
 
     #[test]
+    fn from_uast_survives_deeply_nested_supported_languages() {
+        use crate::graphs::ast::dispatch::parse_source;
+        const DEPTH: usize = 10_000;
+        let open = "(".repeat(DEPTH);
+        let close = ")".repeat(DEPTH);
+        let cases = [
+            ("python", format!("x = {open}1{close}\n")),
+            ("rust", format!("const X: i32 = {open}1{close};\n")),
+            ("javascript", format!("const x = {open}1{close};\n")),
+            ("typescript", format!("const x: number = {open}1{close};\n")),
+            ("cpp", format!("int x = {open}1{close};\n")),
+            ("go", format!("package p\nvar x = {open}1{close}\n")),
+        ];
+
+        for (language, source) in cases {
+            let result = parse_source(&source, language, None).unwrap();
+            let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+
+            assert!(!cfg.blocks.is_empty(), "failed for {language}");
+        }
+    }
+
+    #[test]
+    fn from_uast_survives_deeply_nested_control_flow() {
+        use crate::graphs::ast::dispatch::parse_source;
+        // Nested parens (above) exercise parse/clone/drop but contain no
+        // control flow; nested `if`s drive the CFG builder's continuation
+        // machinery itself, which is what must stay stack-safe. The UAST
+        // shape is language-neutral past the mapper, so one language
+        // suffices. Depth is bounded by cost (block statements clone
+        // their subtree, so nested control flow is quadratic to build);
+        // the deliberately small thread stack is what makes this depth a
+        // hard stack-safety gate — a recursive builder overflows 512 KiB
+        // immediately, while the iterative machine stays on the heap.
+        const DEPTH: usize = 1_000;
+        let mut source = String::from("function f(x) {\n");
+        source.push_str(&"if (x) { ".repeat(DEPTH));
+        source.push_str("x = 1;");
+        source.push_str(&" }".repeat(DEPTH));
+        source.push_str("\n}\n");
+
+        let cyclomatic = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                let result = parse_source(&source, "javascript", None).unwrap();
+                let cfg = ControlFlowGraph::from_uast(&result.uast_root);
+                cfg.cyclomatic_complexity()
+            })
+            .expect("spawn test thread")
+            .join()
+            .expect("deeply nested control flow must not overflow the stack");
+
+        assert_eq!(cyclomatic, DEPTH + 1);
+    }
+
+    #[test]
     fn from_uast_single_if_has_cyclomatic_two() {
         use crate::graphs::ast::dispatch::parse_source;
         let source = "def f(x):\n    if x:\n        return 1\n    return 0\n";

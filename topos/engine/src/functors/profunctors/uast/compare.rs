@@ -188,10 +188,8 @@ mod tests {
             children: Vec::new(),
             id: String::new(),
         };
-        let other = UASTNode {
-            kind: "Unknown".to_string(),
-            ..empty.clone()
-        };
+        let mut other = empty.clone();
+        other.kind = "Unknown".to_string();
 
         let comparison = compare_uast(&empty, &other, true);
         assert_eq!(comparison.kind_distance, 1.0);

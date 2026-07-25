@@ -69,9 +69,9 @@ impl CPGEdge {
 /// A CPG node: a UAST node enriched with quick-lookup metadata.
 ///
 /// The CPG uses the UAST node directly as the node payload — every CPG
-/// node *is* a UAST node, so the AST family of edges is implicit in the
-/// UAST `children` lists. We materialize them as `CPGEdge`s anyway so
-/// downstream queries are uniform.
+/// node *is* a UAST node, so direct AST adjacency remains available in
+/// its `children` list. Descendants are not duplicated under every node;
+/// the complete tree lives in the CPG node map and materialized AST edges.
 #[derive(Debug, Clone)]
 pub struct CPGNode {
     pub uast: UASTNode,

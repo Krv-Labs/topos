@@ -12,16 +12,49 @@ Computed from the Control Flow Graph built on UAST.  Always available.
 
 | Key | Source | What it measures | Gate / good range |
 |---|---|---|---|
-| `cfg.cyclomatic`   | CFG | McCabe complexity `E - N + 2P`.        | **≤ 15** (achieved gate) |
+| `cfg.cyclomatic`   | CFG | McCabe complexity `E - N + 2P`.        | **≤ 15** — advisory |
 | `cfg.essential`    | CFG | Cabe 1989 essential complexity.        | Diagnostic |
 | `cfg.nesting_depth`| CFG | Max static nesting depth.              | Diagnostic |
 | `cfg.longest_path` | CFG | Longest acyclic entry-to-exit path.    | Diagnostic |
 | `ast.entropy`      | AST | Source-text compression ratio.         | **[0.2, 0.8]** (achieved gate) |
 | `ast.max_function_complexity` | AST | Max McCabe of any single function. | **≤ 10** (achieved gate) |
 
+*Column legend.* **achieved gate** — a violation fails the pillar's
+`achieved`. **advisory** — scored (it shapes `score` and drives
+`extract_helper` / `split_decision_logic` suggestions) but never fails
+`achieved`. **Diagnostic** — reported in `raw_metrics` only.
+
+**Why `cfg.cyclomatic` is advisory (issue #193).** It is a *whole-file
+merged-CFG* sum, so it scales with function count: a file of many small,
+individually-simple functions would hard-fail on it for no real
+complexity reason. `ast.max_function_complexity` — a true per-function
+max — gates that concern directly, so cyclomatic keeps its `≤ 15`
+reference point for interpretation and scoring only. (Source of truth:
+`GateSpec::gates_achieved` in
+`topos/engine/src/evaluation/policies/gates.rs`; `cfg.cyclomatic` is the
+only spec with `gates_achieved: false`.)
+
 `Φ_SIMPLE` maps metrics to `[0, 1]` quality scores (cyclomatic cap 40,
-max-function cap 20, entropy bell peak at 0.5). **`achieved`** is the AND
-of the raw gates above — not a single score floor.
+max-function cap 20, entropy bell peak at 0.5), then takes `score =
+min(qualities)`. **`achieved`** is the AND of exactly two raw gates —
+`ast.entropy` in band (or entrypoint-exempt) **and**
+`ast.max_function_complexity ≤ 10` — not a single score floor, and *not*
+a conjunction over every row above. Because `score` is a minimum over
+all scored metrics including the advisory one, a file can legitimately
+report `achieved: true` with `score: 0.0`: e.g. a large
+dispatch/discovery-class module with `cfg.cyclomatic: 63` (past the cap
+of 40 → quality 0.0) whose individual functions all stay under 10.
+
+> **Known language skew (Go).** Go files carry a constant **+1** on
+> `cfg.cyclomatic` relative to the other languages, because the CFG gains an
+> empty module-level callable. This has **no** effect on SIMPLE `achieved`:
+> `cfg.cyclomatic` does not gate, and per-function
+> `ast.max_function_complexity` is unaffected by the extra empty callable.
+> The residual effect is on the SIMPLE *score* — the constant offset nudges
+> the cyclomatic quality curve, which moves `score` only when cyclomatic is
+> the binding minimum. Deferred deliberately — the v0.4.0 CFG rewrite locks
+> pre-rewrite edge shapes as golden contracts, so correcting the offset is a
+> behavior change tracked separately in issue #230.
 
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
@@ -83,8 +116,8 @@ unless `include_security_findings=true`.
 ## Score floors (alternate path)
 
 When callers already hold normalized scores without re-running a `Φᵢ`, the
-score-floor dict in `calibration.py` (`SCORE_FLOORS`, re-exported as
-`THRESHOLDS` from `policies.base`) applies:
+`score_floor(generator)` function in
+`topos/engine/src/evaluation/policies/calibration.rs` applies:
 
 | Generator | Floor |
 |---|---|
@@ -93,7 +126,8 @@ score-floor dict in `calibration.py` (`SCORE_FLOORS`, re-exported as
 | SECURE | 1.00 |
 
 The live `CharacteristicMorphism` path uses each `Φᵢ`'s `ScoredDecision.achieved`
-(raw-metric AND gates), not these floors.
+(the AND of that generator's *gating* raw metrics — advisory ones excluded),
+not these floors.
 
 ## Diagnostic-only metrics (academic PDG)
 

@@ -50,3 +50,115 @@ pub const DOC_SLUGS: [&str; 6] = [
     "preferences",
     "workflows",
 ];
+
+/// Guards that the agent-visible prose stays consistent with the tool surface
+/// actually registered on the router.
+///
+/// These exist because the Python→Rust rewrite flattened the tool inputs
+/// (FastMCP wrapped every tool's arguments in a single `params` model; `rmcp`
+/// takes them at the top level) while the docs kept teaching the old shape —
+/// so every documented call example was a hard `unknown field` error.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::ToposServer;
+
+    fn all_docs() -> Vec<(&'static str, &'static str)> {
+        DOC_SLUGS
+            .iter()
+            .map(|slug| (*slug, doc_content_for_slug(slug).expect("slug has content")))
+            .collect()
+    }
+
+    /// Every `DOC_SLUGS` entry must resolve, or `list_resources` advertises a
+    /// `topos://docs/*` URI that `read_resource` then 404s on.
+    #[test]
+    fn every_slug_resolves() {
+        for slug in DOC_SLUGS {
+            assert!(
+                doc_content_for_slug(slug).is_some(),
+                "advertised resource slug `{slug}` has no content"
+            );
+        }
+        assert!(doc_content_for_slug("nope").is_none());
+    }
+
+    /// Tool inputs are flat. No doc may teach the Python-era `params` wrapper.
+    #[test]
+    fn docs_do_not_teach_params_wrapper() {
+        for (slug, body) in all_docs() {
+            assert!(
+                !body.contains("\"params\":"),
+                "`{slug}` teaches the removed `params` wrapper; tool arguments are flat"
+            );
+        }
+    }
+
+    /// Same guard for the prompt — it is the artifact an LLM copies verbatim.
+    #[test]
+    fn refactor_prompt_does_not_teach_params_wrapper() {
+        let text = crate::server::refactor_prompt_text_for_test();
+        assert!(
+            !text.contains("\"params\":"),
+            "topos_refactor_until_ideal prompt teaches the removed `params` wrapper"
+        );
+        assert!(
+            text.contains("\"filepath\""),
+            "prompt should show a flat filepath argument"
+        );
+    }
+
+    /// Every registered tool must be reachable from the embedded docs, so an
+    /// agent that reads them learns the whole surface. Catches tools added to
+    /// the router without a corresponding doc mention (how
+    /// `topos_generate_graphify_graph` went undocumented).
+    #[test]
+    fn every_registered_tool_is_documented() {
+        let corpus: String = all_docs()
+            .iter()
+            .map(|(_, b)| *b)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let undocumented: Vec<String> = ToposServer::new()
+            .list_tool_defs()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .filter(|name| !corpus.contains(name.as_str()))
+            .collect();
+        assert!(
+            undocumented.is_empty(),
+            "tools registered but absent from every embedded doc: {undocumented:?}"
+        );
+    }
+
+    /// The inverse: no doc may reference a `topos_*` tool that isn't
+    /// registered, which is how `topos refactor`-style phantom guidance
+    /// survives a rewrite.
+    #[test]
+    fn docs_reference_no_phantom_tools() {
+        let registered: Vec<String> = ToposServer::new()
+            .list_tool_defs()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        // `topos_`-prefixed identifiers that are legitimately not tools: the
+        // crate/server name and the prompt. Extend this rather than loosening
+        // the check.
+        const NON_TOOL_IDENTS: [&str; 3] =
+            ["topos_mcp", "topos_refactor_until_ideal", "topos_core"];
+        for (slug, body) in all_docs() {
+            for raw in body.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
+                if !raw.starts_with("topos_") || NON_TOOL_IDENTS.contains(&raw) {
+                    continue;
+                }
+                if registered.iter().any(|r| r == raw) {
+                    continue;
+                }
+                panic!(
+                    "`{slug}` references `{raw}`, which is not a registered tool. \
+                     If it is intentionally not a tool, add it to NON_TOOL_IDENTS."
+                );
+            }
+        }
+    }
+}

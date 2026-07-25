@@ -23,7 +23,9 @@ use std::collections::{HashMap, HashSet};
 use crate::graphs::base::Representation;
 use crate::graphs::cfg::models::EdgeKind;
 use crate::graphs::cfg::object::ControlFlowGraph;
-use crate::graphs::uast::models::{AttributeValue, UASTNode};
+use crate::graphs::uast::models::{node_key, UASTNode};
+
+use super::dataflow::defs_and_uses;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DependenceKind {
@@ -68,7 +70,7 @@ impl ProgramDependenceGraph {
     ///
     /// `source` is optional (pass `""` for backward compatibility) and,
     /// when supplied, lets data dependence recover real identifier text
-    /// (see [`identifier_name`]) instead of falling back to each
+    /// (see the `dataflow` module) instead of falling back to each
     /// occurrence's own node id.
     pub fn from_uast(uast_root: &UASTNode, source: &str) -> Self {
         let cfg = ControlFlowGraph::from_uast(uast_root);
@@ -131,21 +133,6 @@ impl Representation for ProgramDependenceGraph {
 }
 
 // --- Internals -----------------------------------------------------------
-
-/// Fallback key for a UAST node with no natural `id` (e.g. hand-built
-/// synthetic nodes) -- matches `graphs::cpg::builder::node_key`'s
-/// `anon::{ptr:x}` convention exactly (issue #159) so a DDG/CDG edge
-/// referencing an anonymous statement resolves to the same key the
-/// CPG's node map inserted it under. Kept as a private duplicate rather
-/// than a cross-module import to avoid a `pdg -> cpg` dependency (the
-/// CPG already depends on this module, not the reverse).
-fn node_key(node: &UASTNode) -> String {
-    if node.id.is_empty() {
-        format!("anon::{:x}", std::ptr::from_ref(node) as usize)
-    } else {
-        node.id.clone()
-    }
-}
 
 /// Approximate reaching-definitions data dependence.
 ///
@@ -292,129 +279,10 @@ fn compute_control_dependence(cfg: &ControlFlowGraph) -> Vec<DependenceEdge> {
     edges
 }
 
-/// Return `(defs, uses)` — variable names defined / used by `stmt`.
-fn defs_and_uses(stmt: &UASTNode, source: &str) -> (HashSet<String>, HashSet<String>) {
-    let mut defs = HashSet::new();
-    let mut uses = HashSet::new();
-
-    fn walk(
-        node: &UASTNode,
-        in_lhs: bool,
-        source: &str,
-        defs: &mut HashSet<String>,
-        uses: &mut HashSet<String>,
-    ) {
-        if node.kind == "AssignExpr" {
-            let mut children = node.children.iter();
-            if let Some(lhs) = children.next() {
-                walk(lhs, true, source, defs, uses);
-                for rhs in children {
-                    walk(rhs, false, source, defs, uses);
-                }
-            }
-            return;
-        }
-        if node.kind == "Identifier" {
-            let name = identifier_name(node, source);
-            if !name.is_empty() {
-                if in_lhs {
-                    defs.insert(name);
-                } else {
-                    uses.insert(name);
-                }
-            }
-            return;
-        }
-        for child in &node.children {
-            walk(child, in_lhs, source, defs, uses);
-        }
-    }
-
-    walk(stmt, false, source, &mut defs, &mut uses);
-    (defs, uses)
-}
-
-/// Best-effort recovery of an identifier's textual name.
-///
-/// The UAST mappers don't carry token text as an attribute, so when
-/// `source` is non-empty we slice the node's own byte span to recover
-/// the real variable name (e.g. `"x"`) -- this is what lets two
-/// distinct occurrences of the same variable be recognized as the same
-/// dependence key. With an empty `source` we fall back to the node's
-/// own id, which is unique per span; that keeps identifiers at distinct
-/// spans from being spuriously conflated, at the cost of never matching
-/// a reused variable across statements.
-fn identifier_name(node: &UASTNode, source: &str) -> String {
-    if let Some(AttributeValue::Str(name)) = node.attributes.get("name") {
-        if !name.is_empty() {
-            return name.clone();
-        }
-    }
-    if !source.is_empty() {
-        let text = node_text(node, source);
-        if !text.is_empty() {
-            return text;
-        }
-    }
-    node.id.clone()
-}
-
-/// Slice `source` by `node`'s byte span (best-effort).
-fn node_text(node: &UASTNode, source: &str) -> String {
-    let span = &node.span;
-    let bytes = source.as_bytes();
-    if span.end_byte > bytes.len() {
-        return String::new();
-    }
-    String::from_utf8_lossy(&bytes[span.start_byte..span.end_byte])
-        .trim()
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::graphs::ast::dispatch::parse_source;
-    use crate::graphs::uast::models::{NativeRef, SourceSpan};
-
-    #[test]
-    fn node_key_uses_anon_ptr_convention_for_empty_id_nodes() {
-        // Issue #159: `graphs::cpg::builder` builds its node map with an
-        // identical private helper; both must produce the same
-        // `anon::{ptr}` format for an anonymous (empty-id) statement, or
-        // a DDG/CDG edge built here silently fails to resolve against
-        // that node map.
-        let anon = UASTNode {
-            kind: "Anonymous".to_string(),
-            lang: "python".to_string(),
-            span: SourceSpan {
-                file: None,
-                start_byte: 0,
-                end_byte: 0,
-                start_line: 0,
-                start_column: 0,
-                end_line: 0,
-                end_column: 0,
-            },
-            native: NativeRef {
-                parser: "test".to_string(),
-                parser_version: "0".to_string(),
-                node_kind: "anon".to_string(),
-            },
-            attributes: HashMap::new(),
-            children: Vec::new(),
-            id: String::new(),
-        };
-        let key = node_key(&anon);
-        assert!(
-            key.starts_with("anon::"),
-            "expected `anon::<ptr>` key for empty-id node, got {key:?}"
-        );
-        assert_ne!(
-            key, "<anon>",
-            "must not use the old literal-string convention"
-        );
-    }
 
     #[test]
     fn from_uast_computes_control_dependence_for_if() {

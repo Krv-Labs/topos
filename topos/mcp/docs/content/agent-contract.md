@@ -9,6 +9,11 @@ behavior. Treat Topos as one signal: it measures structure, security footguns,
 coupling, and structural test coverage; it does not prove functional
 correctness.
 
+## Call Shape
+
+Every tool takes a flat arguments object: `{"filepath": "src/a.rs"}`. There is
+no `params` wrapper; sending one is rejected as an unknown field.
+
 ## Required Loop
 
 1. Measure the current state with `topos_evaluate_file` or
@@ -61,14 +66,54 @@ COMPOSABLE (typically once per assess checkpoint), not after every edit.
 
 Prefer these fields over parsing prose guidance.
 
+## Reading `achieved` vs. `scores`
+
+They answer different questions — do not substitute one for the other.
+
+- `pillars.*.achieved` — the **gating conjunction**: a hard pass/fail over
+  only that pillar's gating raw metrics. This is the lattice verdict.
+- `scores.*` (same value as `pillars.*.score`) — **continuous quality**,
+  computed as the *minimum* of the per-metric quality curves. That minimum
+  includes **advisory** metrics that deliberately do not gate (notably
+  `cfg.cyclomatic`, whose whole-file sum scales with function count — see
+  `topos://docs/metrics`).
+
+Consequence: `achieved: true` alongside a low or even `0.0` score is
+**normal**, not a bug. One advisory metric far out of band pins the minimum
+at `0.0` while every gating metric still passes — typical of large
+dispatch/discovery-class files made of many small, individually-simple
+functions. Such a file can still evaluate to `IDEAL`.
+
+So: **do not infer "not SIMPLE" from a low score — read `achieved`.** Use
+`scores.*` for ranking and for measuring improvement between runs, and the
+returned `refactor_targets` for the concrete spans to edit — reading each
+target's `severity` to tell the two apart (see below).
+
+`binding_constraint` answers the same question in one field: when present, it
+is the single **gating** metric currently costing a pillar its `achieved` —
+pillar, metric, measured value vs. threshold, and the span. It is the
+top-ranked `"fix"` target restated without the edit payload, so it can never
+name a different metric than `refactor_targets` does. When it is absent, no
+gating metric is out of band among the computed targets — an advisory metric
+is never promoted into it — so a low score with `achieved: true` and no
+`binding_constraint` is exactly the advisory-only case above. Tools that do
+not compute ranked targets omit the field entirely.
+
 ## Refactor Targets
 
-`topos_evaluate_file(refactor_targets=N)` returns up to N ranked edit targets
-(`refactor_targets` on the result): concrete spans with the failing metric,
-current value vs. threshold, and `recommended_operations` tokens. Verification
+`topos_evaluate_file` returns ranked edit targets by default:
+`refactor_targets` (default `3`, `0` disables, capped at `25`) gives that many
+concrete spans with the failing metric, current value vs. threshold, and
+`recommended_operations` tokens, ordered gate failures first. Verification
 guidance lives once on `agent_contract.verification_gates`, not per target.
 
-These are **gate-failure** edit targets from the scoring pipeline. They are
+Each target carries a `severity` that mirrors whether its metric gates:
+`"fix"` means the out-of-band metric is costing that pillar's `achieved`;
+`"improve"` means the metric is advisory (currently only `cfg.cyclomatic`)
+— worth addressing for the score, but no verdict depends on it. Prioritize
+`"fix"` targets when you must pick one.
+
+These are metric-driven edit targets from the scoring pipeline. They are
 not the same as advisory `topos_refactor(target="cycles"|"dependencies"|"process"|"graphify")`,
 which never affects medals. See `topos://docs/workflows` § Advisory refactoring.
 

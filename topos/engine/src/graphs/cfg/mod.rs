@@ -5,3 +5,6 @@
 pub mod builder;
 pub mod models;
 pub mod object;
+
+#[cfg(test)]
+mod edge_contracts;

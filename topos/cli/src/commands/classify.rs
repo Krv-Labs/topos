@@ -100,4 +100,27 @@ mod tests {
             "composable must appear once an MDG representation is attached"
         );
     }
+
+    #[test]
+    fn classify_with_representations_survives_deeply_nested_supported_languages() {
+        const DEPTH: usize = 10_000;
+        let open = "(".repeat(DEPTH);
+        let close = ")".repeat(DEPTH);
+        let cases = [
+            ("python", format!("x = {open}1{close}\n")),
+            ("rust", format!("const X: i32 = {open}1{close};\n")),
+            ("javascript", format!("const x = {open}1{close};\n")),
+            ("typescript", format!("const x: number = {open}1{close};\n")),
+            ("cpp", format!("int x = {open}1{close};\n")),
+            ("go", format!("package p\nvar x = {open}1{close}\n")),
+        ];
+
+        for (language, source) in cases {
+            let mut morphism = ProgramMorphism::new(source, language);
+            let result =
+                classify_with_representations(&CharacteristicMorphism, &mut morphism, None);
+
+            assert!(result.is_parseable, "failed for {language}");
+        }
+    }
 }

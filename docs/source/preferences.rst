@@ -130,11 +130,9 @@ As of v0.4.0, preferences are an **MCP-only** feature — the ``topos`` CLI's
 .. code-block:: json
 
    {
-     "params": {
-       "filepath": "src/server.py",
-       "preferences": {
-         "ranking": ["composable", "secure", "simple"]
-       }
+     "filepath": "src/server.rs",
+     "preferences": {
+       "ranking": ["composable", "secure", "simple"]
      }
    }
 

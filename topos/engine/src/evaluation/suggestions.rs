@@ -32,7 +32,8 @@ pub struct Suggestion {
     pub pillar: String,
     /// Raw-metric key, or `None` for a finding/guidance-derived suggestion.
     pub metric: Option<String>,
-    /// `"fix"` (gate failed) | `"improve"` (advisory).
+    /// `"fix"` (a pillar-gating gate failed, or a security finding is
+    /// active) | `"improve"` (an advisory, non-pillar-gating gate failed).
     pub severity: String,
     /// Imperative instruction.
     pub message: String,
@@ -98,7 +99,17 @@ pub fn suggest_refactors(
             failing.get(metric).map(|r| Suggestion {
                 pillar: r.spec.pillar.to_string(),
                 metric: Some(metric.to_string()),
-                severity: "fix".to_string(),
+                // Severity tracks what the gate can actually cost you:
+                // only a `gates_achieved` gate can drag its pillar's
+                // `achieved` down, so only it warrants "fix". Advisory
+                // gates (today just `cfg.cyclomatic` -- issue #193) are
+                // still worth acting on but cannot fail a pillar, so
+                // telling an agent to "fix" them misdirects the loop.
+                severity: if r.spec.gates_achieved {
+                    "fix".to_string()
+                } else {
+                    "improve".to_string()
+                },
                 message: gate_message(r),
             })
         })
@@ -112,6 +123,16 @@ pub fn suggest_refactors(
             message: remediation_for(finding).0,
         });
     }
+
+    // Gating suggestions lead. `SUGGESTION_ORDER` opens with
+    // `cfg.cyclomatic`, which is advisory (`gates_achieved: false`, issue
+    // #193), so without this an agent reading `suggestions[0]` is pointed
+    // at the one metric no verdict depends on -- the same misrouting that
+    // `refactor_targets` ranks around in `topos-mcp`. Correcting only the
+    // severity label was not enough: order is what a reader acts on. The
+    // sort is stable, so `SUGGESTION_ORDER` still decides ties within a
+    // tier and security findings stay behind the other gate failures.
+    suggestions.sort_by_key(|s| usize::from(s.severity != "fix"));
     suggestions
 }
 
@@ -204,8 +225,23 @@ mod tests {
         assert!(secure[0].message.contains("eval"));
     }
 
+    /// Pick a suggestion by metric key -- never by index. `SUGGESTION_ORDER`
+    /// puts the advisory `cfg.cyclomatic` first, so `suggestions[0]` is not
+    /// the most severe entry.
+    fn by_metric<'a>(suggestions: &'a [Suggestion], metric: &str) -> &'a Suggestion {
+        suggestions
+            .iter()
+            .find(|s| s.metric.as_deref() == Some(metric))
+            .unwrap_or_else(|| panic!("expected a suggestion for {metric}"))
+    }
+
     #[test]
-    fn high_cyclomatic_yields_simple_suggestion() {
+    fn high_cyclomatic_alone_yields_advisory_simple_suggestion() {
+        // Only `cfg.cyclomatic` fails here: entropy 0.5 is in band and
+        // `ast.max_function_complexity` is absent (unmeasured metrics are
+        // skipped by `evaluate_gates`). Because cyclomatic is advisory
+        // (`gates_achieved: false`, issue #193) it cannot fail SIMPLE, so
+        // the suggestion must say "improve" rather than "fix".
         let result = result(
             HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
             HashMap::from([
@@ -216,13 +252,74 @@ mod tests {
         );
 
         let suggestions = suggest_refactors(&result, &[]);
-        let simple: Vec<&Suggestion> = suggestions
-            .iter()
-            .filter(|s| s.metric.as_deref() == Some("cfg.cyclomatic"))
-            .collect();
-        assert!(!simple.is_empty());
-        assert_eq!(simple[0].severity, "fix");
-        assert!(simple[0].message.to_lowercase().contains("cyclomatic"));
+        let cyclomatic = by_metric(&suggestions, "cfg.cyclomatic");
+        assert_eq!(cyclomatic.pillar, "simple");
+        assert_eq!(cyclomatic.severity, "improve");
+        assert!(cyclomatic.message.to_lowercase().contains("cyclomatic"));
+    }
+
+    #[test]
+    fn severity_tracks_whether_the_gate_can_fail_its_pillar() {
+        // One fixture failing all three SIMPLE gates, so the two severities
+        // are pinned as coexisting rather than one clobbering the other.
+        // `is_entrypoint_module: false` keeps the entropy exemption from
+        // swallowing the entropy failure.
+        let result = result(
+            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            HashMap::from([
+                ("cfg.cyclomatic".to_string(), 25.0),
+                ("ast.max_function_complexity".to_string(), 20.0),
+                ("ast.entropy".to_string(), 0.95),
+            ]),
+            EvaluationValue::Slop,
+        );
+
+        let suggestions = suggest_refactors(&result, &[]);
+        // Advisory: high whole-file branching cannot fail SIMPLE.
+        assert_eq!(
+            by_metric(&suggestions, "cfg.cyclomatic").severity,
+            "improve"
+        );
+        // Gating: these two do decide SIMPLE's `achieved`.
+        assert_eq!(
+            by_metric(&suggestions, "ast.max_function_complexity").severity,
+            "fix"
+        );
+        assert_eq!(by_metric(&suggestions, "ast.entropy").severity, "fix");
+    }
+
+    #[test]
+    fn gating_suggestions_lead_advisory_ones() {
+        // `SUGGESTION_ORDER` opens with the advisory `cfg.cyclomatic`, so
+        // before the tier sort an agent reading `suggestions[0]` was sent at
+        // the one metric that cannot fail a pillar -- even once its severity
+        // label was corrected. Same fixture as the severity test: all three
+        // SIMPLE gates fail, and cyclomatic has by far the largest excess.
+        let result = result(
+            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            HashMap::from([
+                ("cfg.cyclomatic".to_string(), 25.0),
+                ("ast.max_function_complexity".to_string(), 20.0),
+                ("ast.entropy".to_string(), 0.95),
+            ]),
+            EvaluationValue::Slop,
+        );
+
+        let suggestions = suggest_refactors(&result, &[]);
+        let order: Vec<&str> = suggestions.iter().map(|s| s.severity.as_str()).collect();
+        let first_advisory = order.iter().position(|s| *s == "improve");
+        let last_gating = order.iter().rposition(|s| *s == "fix");
+        assert!(
+            matches!((first_advisory, last_gating), (Some(a), Some(g)) if g < a),
+            "every gating suggestion must precede every advisory one, got {order:?}"
+        );
+        assert_eq!(
+            suggestions[0].metric.as_deref(),
+            Some("ast.max_function_complexity"),
+            "the largest-excess metric is advisory cyclomatic; a real gate failure must still lead"
+        );
+        // Stability: within the gating tier, SUGGESTION_ORDER still decides.
+        assert_eq!(suggestions[1].metric.as_deref(), Some("ast.entropy"));
     }
 
     #[test]

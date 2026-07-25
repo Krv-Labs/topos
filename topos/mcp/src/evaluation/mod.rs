@@ -123,16 +123,60 @@ pub fn ensure_gitnexus_dir(
     }
 
     let result = generate_depgraph(project_root, capture, None);
-    let generation_note = (!result.ok).then(|| {
-        format!(
-            "GitNexus generation failed ({}) — COMPOSABLE not scored.",
-            result.message
-        )
-    });
+    let generation_note = (!result.ok).then(|| generation_failure_note(&result.message));
     GitnexusEnsureOutcome {
         gitnexus_dir: resolve(),
         generation_note,
     }
+}
+
+/// Upper bound, in bytes, on how much GitNexus child output is echoed into an
+/// agent-visible warning.
+const GENERATION_DETAIL_CAP: usize = 200;
+
+/// Wrap a failed `generate_depgraph` message into the agent-visible
+/// "COMPOSABLE not scored" warning, capping the child's own output.
+///
+/// The cap lives here rather than in `topos_engine::adapters::gitnexus`
+/// because the two consumers of `DepgraphGenerationResult::message` want
+/// opposite things: the CLI prints it verbatim for a human debugging a broken
+/// `gitnexus analyze`, and a full Node.js stack trace is exactly what that
+/// human needs. On this path the same string is interpolated into
+/// `warnings[0]` and duplicated into `interpretation["mdg.unavailable"]`, so
+/// those kilobytes are spent out of the agent's context window on a detail
+/// the agent cannot act on — the actionable part is the wrapper text.
+///
+/// Truncating is safe for the marker contract that
+/// `formatting::composable_contract_signals` builds `blocked_by` / `risk_flags`
+/// from: truncation is monotonic, so it can only remove substring matches,
+/// never invent one. It could in principle drop a marker that happened to
+/// appear inside child stderr, but a *generation* failure is not a graph-state
+/// signal — any marker matched out of a stack trace was incidental coupling.
+/// The elision suffix is deliberately worded to contain none of the markers.
+fn generation_failure_note(message: &str) -> String {
+    format!(
+        "GitNexus generation failed ({}) — COMPOSABLE not scored.",
+        cap_generation_detail(message)
+    )
+}
+
+/// Bound `detail` to [`GENERATION_DETAIL_CAP`] bytes, appending an explicit
+/// elision suffix so the reader can tell Topos cut the output rather than the
+/// child emitting a stunted message.
+///
+/// `floor_char_boundary` backs the cut point off to the nearest `char`
+/// boundary, so multi-byte UTF-8 in the child's output (accented paths, CJK
+/// identifiers) can never be sliced mid-character into a panic.
+pub(crate) fn cap_generation_detail(detail: &str) -> String {
+    if detail.len() <= GENERATION_DETAIL_CAP {
+        return detail.to_string();
+    }
+    let end = detail.floor_char_boundary(GENERATION_DETAIL_CAP);
+    format!(
+        "{} … [+{} bytes elided — re-run `topos depgraph generate` for the full output]",
+        &detail[..end],
+        detail.len() - end
+    )
 }
 
 /// Return the graphify output dir to use, or None if not available.
@@ -315,5 +359,139 @@ mod tests {
             .as_deref()
             .is_some_and(|n| n.contains("not found on $PATH")));
         std::fs::remove_dir_all(&project_root).ok();
+    }
+
+    /// Marker the cap appends; tests split on it instead of re-spelling the
+    /// whole suffix, so rewording the suffix doesn't churn every assertion.
+    const ELISION: &str = " … [+";
+
+    /// Pull the child-output detail back out of a wrapped note.
+    fn detail_of(note: &str) -> &str {
+        note.strip_prefix("GitNexus generation failed (")
+            .and_then(|rest| rest.strip_suffix(") — COMPOSABLE not scored."))
+            .expect("note must keep the wrapper text")
+    }
+
+    #[test]
+    fn generation_failure_note_keeps_wrapper_text_around_short_details() {
+        let note = generation_failure_note("gitnexus analyze failed.");
+        assert_eq!(
+            note,
+            "GitNexus generation failed (gitnexus analyze failed.) — COMPOSABLE not scored."
+        );
+        // Short details are passed through untouched — no elision noise.
+        assert!(!note.contains(ELISION));
+    }
+
+    #[test]
+    fn generation_failure_note_caps_multi_kilobyte_child_stderr() {
+        // A Node.js stack trace out of `gitnexus analyze` is kilobytes; all of
+        // it used to land in warnings[0] and interpretation["mdg.unavailable"].
+        let stderr = format!(
+            "Error: Cannot find module 'tree-sitter'\n{}",
+            "    at Module._resolveFilename (node:internal/modules/cjs/loader:1145:15)\n"
+                .repeat(64)
+        );
+        assert!(stderr.len() > 4096, "fixture must be multi-kilobyte");
+
+        let note = generation_failure_note(&stderr);
+        let detail = detail_of(&note);
+        let (kept, _) = detail.split_once(ELISION).expect("cap must mark elision");
+        assert!(
+            kept.len() <= GENERATION_DETAIL_CAP,
+            "kept {} bytes, cap is {GENERATION_DETAIL_CAP}",
+            kept.len()
+        );
+        // The head of the trace — the part that actually names the failure —
+        // survives.
+        assert!(kept.starts_with("Error: Cannot find module 'tree-sitter'"));
+        assert!(note.len() < 400, "note still {} bytes", note.len());
+    }
+
+    #[test]
+    fn cap_generation_detail_truncates_multibyte_payloads_on_a_char_boundary() {
+        // '日' is 3 bytes, so the cap (200) lands mid-character at 200 and
+        // floor_char_boundary must back off to 198 rather than panic.
+        let payload = "日".repeat(400);
+        let capped = cap_generation_detail(&payload);
+        let (kept, _) = capped.split_once(ELISION).expect("cap must mark elision");
+        assert_eq!(kept.len(), 198);
+        assert_eq!(kept.chars().count(), 66);
+        assert!(kept.chars().all(|c| c == '日'));
+
+        // Every cap offset within a multi-byte run must be boundary-safe.
+        for len in 1..=400usize {
+            let _ = cap_generation_detail(&"é".repeat(len));
+            let _ = cap_generation_detail(&"🜁".repeat(len));
+        }
+    }
+
+    #[test]
+    fn capped_notes_never_synthesize_contract_markers() {
+        // The elision suffix is agent-visible prose sitting in warnings[0];
+        // if it ever drifted into containing a marker, every truncated note
+        // would fabricate a blocked_by code.
+        let note = generation_failure_note(&"x".repeat(4096));
+        let lower = note.to_lowercase();
+        for marker in INVALID_GITNEXUS_MARKERS {
+            assert!(!lower.contains(marker), "elision suffix leaked {marker}");
+        }
+        assert!(!lower.contains(BRANCH_NOT_INDEXED_MARKER));
+        assert!(!lower.contains(STALE_GITNEXUS_MARKER));
+
+        let signals = crate::formatting::composable_contract_signals(false, &[note], false);
+        assert!(signals.blocked_by.is_empty(), "{:?}", signals.blocked_by);
+    }
+
+    #[test]
+    fn marker_warnings_still_drive_composable_contract_signals() {
+        // The cap must not disturb the substring contract between these
+        // producers and formatting::composable_contract_signals.
+        let project_root = temp_dir("marker_root");
+        let outside = temp_dir("marker_outside");
+        let invalid = check_override_warning(&outside.to_string_lossy(), &project_root)
+            .expect("override outside the root must warn");
+        assert!(
+            crate::formatting::composable_contract_signals(false, &invalid, false)
+                .blocked_by
+                .contains(&"invalid_gitnexus_dir".to_string())
+        );
+
+        let branch = dep_graph_load_warning(Some(
+            "no gitnexus store indexed for branch 'feature/x'; run gitnexus analyze",
+        ));
+        assert!(
+            crate::formatting::composable_contract_signals(false, &branch, false)
+                .blocked_by
+                .contains(&"branch_not_indexed_gitnexus_dir".to_string())
+        );
+
+        // Staleness needs a real .gitnexus store to produce organically, so
+        // mirror the shape freshness.rs emits.
+        let stale = vec![format!(
+            "{STALE_GITNEXUS_MARKER} — source tree content changed since the graph was built"
+        )];
+        assert!(
+            crate::formatting::composable_contract_signals(true, &stale, false)
+                .blocked_by
+                .contains(&"stale_gitnexus_dir".to_string())
+        );
+
+        std::fs::remove_dir_all(&project_root).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[test]
+    fn dep_graph_load_warning_is_not_capped() {
+        // Deliberately uncapped: BRANCH_NOT_INDEXED_MARKER can sit anywhere in
+        // this passthrough, and truncating it would silently drop a
+        // blocked_by code.
+        let err = format!(
+            "no gitnexus store indexed for branch 'feature/x' {}",
+            "(candidate store rejected) ".repeat(64)
+        );
+        let warnings = dep_graph_load_warning(Some(&err));
+        assert!(warnings[0].contains(&err));
+        assert!(warnings[0].len() > GENERATION_DETAIL_CAP * 5);
     }
 }

@@ -24,15 +24,23 @@ use topos_mcp::evaluation::ensure_gitnexus_dir;
 /// parsing on top (unlike MCP's `load_dep_graph`, which caches per
 /// `target_file` — a fit for arbitrary single-file tool calls, but N cache
 /// misses across a directory walk of N files).
+///
+/// `quiet` must be set whenever the command writes a machine-readable payload
+/// to stdout (`inspect --json`). GitNexus generation otherwise *inherits*
+/// stdout to stream its progress banner live, which lands in the middle of the
+/// document and makes it unparseable — but only on the first run in a
+/// repository, since a present graph skips generation entirely. Capturing the
+/// child's output keeps stdout to just the JSON.
 pub(crate) fn resolve_composable_mdg(
     project_root: &Path,
     gitnexus_dir_override: Option<&str>,
+    quiet: bool,
 ) -> Option<ModuleDependencyGraph> {
     let outcome = ensure_gitnexus_dir(
         gitnexus_dir_override,
         project_root,
         /* skip = */ false,
-        /* capture = */ false,
+        /* capture = */ quiet,
     );
     if let Some(note) = &outcome.generation_note {
         eprintln!("gitnexus: {note}");
@@ -102,10 +110,29 @@ mod tests {
         let project_root = temp_dir("root");
         let outside = temp_dir("outside");
 
-        let result = resolve_composable_mdg(&project_root, Some(&outside.to_string_lossy()));
+        let result = resolve_composable_mdg(&project_root, Some(&outside.to_string_lossy()), false);
         assert!(result.is_none());
 
         std::fs::remove_dir_all(&project_root).ok();
         std::fs::remove_dir_all(&outside).ok();
+    }
+
+    /// `inspect --json` must pass `quiet`, or GitNexus generation inherits
+    /// stdout and its progress banner corrupts the JSON document — on the
+    /// first run in a repository only, which is exactly the fresh-clone path
+    /// an agent or parity script hits.
+    #[test]
+    fn inspect_passes_json_flag_through_as_quiet() {
+        // Collapse whitespace so rustfmt line-wrapping can't break the match.
+        let src: String = include_str!("inspect.rs")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            src.contains(
+                "resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), args.json)"
+            ),
+            "inspect must forward `args.json` as `quiet` so --json output stays parseable"
+        );
     }
 }

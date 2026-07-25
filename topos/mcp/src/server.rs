@@ -32,7 +32,8 @@ snapshot first with topos_begin_refactor, then verify with topos_assess_snapshot
 topos_assess_improvement only for side-by-side variants. Use gitnexus_dir (default: ./.gitnexus) \
 to enable COMPOSABLE/IDEAL; check graph state with topos_depgraph_status and build/refresh it \
 with topos_generate_depgraph. topos_calculate_coverage reports test-suite coverage — structural \
-(UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice.";
+(UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice. \
+Read `topos://build` to confirm which binary and file root are serving you.";
 
 const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 
@@ -74,8 +75,10 @@ impl ToposServer {
     }
 }
 
+const BUILD_URI: &str = "topos://build";
+
 fn doc_resources() -> Vec<Resource> {
-    DOC_SLUGS
+    let mut resources: Vec<Resource> = DOC_SLUGS
         .iter()
         .map(|slug| {
             Resource::new(
@@ -85,7 +88,20 @@ fn doc_resources() -> Vec<Resource> {
             .with_mime_type("text/markdown")
             .with_description(doc_description(slug))
         })
-        .collect()
+        .collect();
+    // Server identity lives as a resource, not a tool: resources are read on
+    // demand, so this costs nothing in the always-listed tool surface that
+    // every session pays for (see `crate::context_budget`).
+    resources.push(
+        Resource::new(BUILD_URI, "topos_build")
+            .with_mime_type("text/markdown")
+            .with_description(
+                "Which binary is serving you: version + build time, executable path, file \
+                 root, pid, and whether the binary on disk has been rebuilt since this \
+                 process started.",
+            ),
+    );
+    resources
 }
 
 fn doc_description(slug: &str) -> &'static str {
@@ -167,12 +183,14 @@ fn build_refactor_prompt_text(
          Use the compact contract in `topos://docs/agent-contract`. Success means a focused \
          structural change moves the target toward `preference_walk.next_step` or the fallback \
          target, preserves behavior, and leaves residual risks explicit.\n\n\
-         Core tool calls:\n```json\n{{\"params\": {{\"filepath\": \"{filepath}\"{pref_args}}}}}\n```\n\
-         Use with `topos_evaluate_file` to measure the current verdict.\n\n\
-         ```json\n{{\"params\": {{\"filepath\": \"{filepath}\"{pref_args}}}}}\n```\n\
-         Use with `topos_inspect_code` when the returned `agent_contract`, `guidance`, or \
-         `suggestions` indicate inspection is needed.\n\n\
-         ```json\n{{\"params\": {{\"filepath\": \"{filepath}\", \"baseline_ref\": \"HEAD\"{pref_args}}}}}\n```\n\
+         Core tool calls (arguments are flat — there is no `params` wrapper):\n\n\
+         `topos_evaluate_file` — measure the current verdict:\n\
+         ```json\n{{\"filepath\": \"{filepath}\"{pref_args}}}\n```\n\n\
+         `topos_inspect_code` — when the returned `agent_contract`, `guidance`, or \
+         `suggestions` indicate inspection is needed:\n\
+         ```json\n{{\"filepath\": \"{filepath}\"{pref_args}}}\n```\n\n\
+         `topos_assess_worktree_change` — verify after editing in place:\n\
+         ```json\n{{\"filepath\": \"{filepath}\", \"baseline_ref\": \"HEAD\"{pref_args}}}\n```\n\n\
          Verification route:\n\
          - Default after in-place edits: `topos_assess_worktree_change` against `HEAD` or another git ref.\n\
          - Dirty or untracked baseline: call `topos_begin_refactor` before editing, then `topos_assess_snapshot`.\n\
@@ -189,6 +207,13 @@ fn build_refactor_prompt_text(
     )
 }
 
+/// Rendered `topos_refactor_until_ideal` text for a representative argument
+/// set, so doc-consistency tests can assert on the prompt agents actually see.
+#[cfg(test)]
+pub(crate) fn refactor_prompt_text_for_test() -> String {
+    build_refactor_prompt_text("src/a.rs", "secure", 5, None)
+}
+
 #[rmcp::tool_handler(router = self.tool_router)]
 impl ServerHandler for ToposServer {
     fn get_info(&self) -> ServerInfo {
@@ -200,7 +225,14 @@ impl ServerHandler for ToposServer {
                 .build(),
         )
         .with_protocol_version(ProtocolVersion::default())
-        .with_server_info(Implementation::new("topos_mcp", env!("CARGO_PKG_VERSION")))
+        // Build metadata rides on the existing version field: no new surface,
+        // no agent-context cost, and it is what an MCP host shows in its
+        // server list — where a human tells a local build apart from a
+        // registry-installed one. See `crate::build_info`.
+        .with_server_info(Implementation::new(
+            "topos_mcp",
+            crate::build_info::version_with_build(),
+        ))
         .with_instructions(SERVER_INSTRUCTIONS)
     }
 
@@ -217,11 +249,21 @@ impl ServerHandler for ToposServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
-        let result = match request.uri.strip_prefix("topos://docs/") {
-            Some(slug) => doc_content_for_slug(slug).map(|content| {
-                ReadResourceResult::new(vec![ResourceContents::text(content, request.uri.clone())])
-            }),
-            None => None,
+        let result = if request.uri == BUILD_URI {
+            Some(ReadResourceResult::new(vec![ResourceContents::text(
+                crate::build_info::render(),
+                request.uri.clone(),
+            )]))
+        } else {
+            match request.uri.strip_prefix("topos://docs/") {
+                Some(slug) => doc_content_for_slug(slug).map(|content| {
+                    ReadResourceResult::new(vec![ResourceContents::text(
+                        content,
+                        request.uri.clone(),
+                    )])
+                }),
+                None => None,
+            }
         };
         std::future::ready(result.ok_or_else(|| {
             McpError::resource_not_found(format!("Unknown resource: {}", request.uri), None)
@@ -293,6 +335,9 @@ pub async fn serve() -> anyhow::Result<()> {
     use rmcp::transport::io::stdio;
     use rmcp::ServiceExt;
 
+    // Capture the identity snapshot before serving so `started_at` is process
+    // start, not whenever the first client happens to ask.
+    let _ = crate::build_info::identity();
     let service = ToposServer::new().serve(stdio()).await?;
     service.waiting().await?;
     Ok(())

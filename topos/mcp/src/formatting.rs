@@ -19,10 +19,26 @@ use crate::evaluation::{
     BRANCH_NOT_INDEXED_MARKER, INVALID_GITNEXUS_MARKERS, STALE_GITNEXUS_MARKER,
 };
 use crate::schemas::{
-    lattice_to_str, priority_str, AcknowledgedRisk, AgentContract, EvaluationResult, FunctionEntry,
-    GeneratorInput, PillarResult, PreferenceWalk, PrioritySource, RefactorTarget, SecurityFinding,
-    Suggestion,
+    lattice_to_str, priority_str, AcknowledgedRisk, AgentContract, BindingConstraint,
+    EvaluationResult, FunctionEntry, GeneratorInput, PillarResult, PreferenceWalk, PrioritySource,
+    RefactorTarget, SecurityFinding, Suggestion,
 };
+
+/// `RefactorTarget::severity` for a metric whose failure actually costs its
+/// pillar's `achieved`; see `crate::refactor_targets::gate_severity`, which
+/// derives it from `GateSpec::gates_achieved`.
+const GATING_SEVERITY: &str = "fix";
+
+/// The first target whose metric actually gates a pillar.
+///
+/// Targets arrive already ordered gating-first within a pillar, so this is
+/// normally `targets[0]`; it differs exactly when every remaining failure
+/// is advisory. Routing and [`EvaluationResult::binding_constraint`] both
+/// go through this one function, so the field an agent reads and the edit
+/// it is told to make cannot name different metrics.
+fn top_gating_target(targets: &[RefactorTarget]) -> Option<&RefactorTarget> {
+    targets.iter().find(|t| t.severity == GATING_SEVERITY)
+}
 
 /// Agent-contract fields implied by COMPOSABLE setup state.
 #[derive(Debug, Default, Clone)]
@@ -235,9 +251,14 @@ pub fn build_agent_contract(
     );
     next_actions.extend(step_actions);
 
+    // Reachable only when the caller passed `refactor_targets=0`, since the
+    // parameter now defaults to a non-zero count: this is a re-enable hint
+    // for a caller that opted out, not an upsell for the default path.
     if offer_refactor_targets && summary != EvaluationValue::Ideal {
         next_actions.push(
-            "re-run topos_evaluate_file with refactor_targets=5 for ranked edit targets".into(),
+            "ranked edit targets are off for this call — re-run \
+             topos_evaluate_file with refactor_targets=3 (the default) for concrete spans"
+                .into(),
         );
     }
 
@@ -258,6 +279,11 @@ pub fn build_agent_contract(
 /// Priority-ordered next-tool/next-action dispatch for the agent contract:
 /// an in-progress refactor target, then a COMPOSABLE setup blocker, then
 /// IDEAL confirmation, then the weakest unmet pillar, in that fixed order.
+///
+/// The edit step is offered for a *gating* target only. An advisory-only
+/// target list means no verdict is waiting on an edit, so the contract
+/// falls through to the ordinary dispatch instead of routing the agent
+/// into an assess loop over a metric that cannot change a pillar.
 fn next_step_for_contract(
     composable: &ComposableContractSignals,
     refactor_targets: Option<&[RefactorTarget]>,
@@ -267,7 +293,7 @@ fn next_step_for_contract(
     missing_gitnexus: bool,
 ) -> (Option<String>, Vec<String>) {
     let mut actions = Vec::new();
-    let next_tool = if let Some(first) = refactor_targets.and_then(|t| t.first()) {
+    let next_tool = if let Some(first) = refactor_targets.and_then(top_gating_target) {
         actions.push(format!(
             "edit target {} ({}) — one focused structural change",
             first.target_id, first.metric
@@ -385,6 +411,11 @@ pub struct EvalResultOptions<'a> {
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     pub adjusted_verdict: Option<&'a AdjustedVerdict>,
     pub include_agent_contract: bool,
+    /// Attach the raw-metric floats and the full interpretation map.
+    ///
+    /// Defaults to `false` (see [`EvalResultOptions::new`]) because the raw
+    /// metrics are the single largest block in the structured channel and
+    /// every caller that wants them has a `verbose` parameter to forward.
     pub verbose: bool,
     pub metric_locations: HashMap<String, Vec<FunctionEntry>>,
     pub refactor_targets: Option<Vec<RefactorTarget>>,
@@ -393,10 +424,16 @@ pub struct EvalResultOptions<'a> {
 }
 
 impl<'a> EvalResultOptions<'a> {
+    /// Defaults chosen so the *compact* shape is what a caller gets by
+    /// omission: `verbose` is opt-in, not opt-out. It used to default to
+    /// `true`, which silently shipped the full raw-metric map from every
+    /// construction site that never mentioned it (notably both assessment
+    /// evaluations, which have no `verbose` input at all and expose metric
+    /// movement through `metric_deltas` instead).
     pub fn new() -> Self {
         EvalResultOptions {
             include_agent_contract: true,
-            verbose: true,
+            verbose: false,
             include_security_findings: true,
             ..Default::default()
         }
@@ -475,6 +512,26 @@ pub fn to_evaluation_result(
         None
     };
 
+    // Derived from the same ordered list `refactor_targets` is served from,
+    // so the two can never name different metrics.
+    let binding_constraint = opts
+        .refactor_targets
+        .as_deref()
+        .and_then(top_gating_target)
+        .map(|target| BindingConstraint {
+            pillar: target
+                .failing_generators
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "simple".to_string()),
+            metric: target.metric.clone(),
+            value: target.current_value,
+            threshold: target.threshold,
+            symbol: target.symbol.clone(),
+            line_start: target.line_start,
+            line_end: target.line_end,
+        });
+
     let core_findings: Vec<topos_engine::evaluation::security_guidance::SecurityFinding> =
         opts.security_findings.iter().map(|f| f.to_core()).collect();
     let suggestions: Vec<Suggestion> = suggest_refactors(result, &core_findings)
@@ -527,6 +584,7 @@ pub fn to_evaluation_result(
         suggestions,
         preference_walk: walk,
         refactor_targets: opts.refactor_targets.unwrap_or_default(),
+        binding_constraint,
         error: None,
     }
 }
@@ -538,6 +596,16 @@ pub fn to_evaluation_result(
 /// Return a dual-channel tool result: markdown for the LLM plus the model's
 /// JSON dump as `structured_content` for programmatic clients.
 pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResult {
+    // Every tool funnels through here, so this is the one place a
+    // server-level condition can reach an agent mid-loop. The banner is
+    // emitted *only* when the binary on disk has outrun this process, so a
+    // healthy call pays nothing — the structured channel is untouched either
+    // way. Staleness cannot be advertised in `instructions` instead: those
+    // are built at `initialize`, when a just-started process is never stale.
+    let markdown = match crate::build_info::stale_banner() {
+        Some(banner) => format!("{banner}\n\n{markdown}"),
+        None => markdown,
+    };
     let mut result = CallToolResult::success(vec![ContentBlock::text(markdown)]);
     result.structured_content = serde_json::to_value(model).ok();
     result
@@ -752,8 +820,12 @@ fn push_refactor_targets_section(lines: &mut Vec<String>, e: &EvaluationResult) 
     }
     lines.push(String::new());
     lines.push("## Refactor Targets".into());
-    lines.push("| Target | Kind | Metric | Location | Operations |".into());
-    lines.push("| --- | --- | --- | --- | --- |".into());
+    // Severity is a column, not just a sort input: the rows are ordered
+    // gating-first, but nothing in a rendered table says so, and an agent
+    // reading only the markdown would otherwise treat an advisory row as a
+    // gate failure.
+    lines.push("| Target | Kind | Metric | Location | Severity | Operations |".into());
+    lines.push("| --- | --- | --- | --- | --- | --- |".into());
     for target in &e.refactor_targets {
         let loc = match (target.line_start, target.line_end) {
             (Some(start), Some(end)) if end != start => format!("{start}-{end}"),
@@ -772,8 +844,8 @@ fn push_refactor_targets_section(lines: &mut Vec<String>, e: &EvaluationResult) 
             .collect::<Vec<_>>()
             .join(", ");
         lines.push(format!(
-            "| `{}` `{symbol}` | {} | `{}` | {loc} | {ops} |",
-            target.target_id, target.kind, target.metric
+            "| `{}` `{symbol}` | {} | `{}` | {loc} | {} | {ops} |",
+            target.target_id, target.kind, target.metric, target.severity
         ));
     }
 }
@@ -809,7 +881,11 @@ mod tests {
     fn evaluation_result_round_trip() {
         let result =
             classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
-        let model = to_evaluation_result(&result, false, EvalResultOptions::new());
+        let mut opts = EvalResultOptions::new();
+        // Explicit: `new()` is the compact shape, so the raw-metrics
+        // assertions below only hold once verbose is opted into.
+        opts.verbose = true;
+        let model = to_evaluation_result(&result, false, opts);
         assert!(model.is_parseable);
         assert!(!model.coupling_available);
         assert!(model.interpretation.contains_key("mdg.unavailable"));
@@ -822,6 +898,23 @@ mod tests {
         assert!(wire.structured_content.is_some());
     }
 
+    /// The default shape is the cheap one: a caller that never mentions
+    /// `verbose` must not pay for the raw-metric floats.
+    #[test]
+    fn default_options_omit_raw_metrics() {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let model = to_evaluation_result(&result, false, EvalResultOptions::new());
+        assert!(
+            model.raw_metrics.is_empty(),
+            "EvalResultOptions::new() must default to the compact shape; \
+             callers that want raw metrics forward their own verbose flag"
+        );
+        // Omitted from the wire entirely, not serialized as `{}`.
+        let json = serde_json::to_value(&model).expect("serialize");
+        assert!(json.get("raw_metrics").is_none());
+    }
+
     #[test]
     fn non_verbose_drops_raw_metrics() {
         let result =
@@ -832,6 +925,191 @@ mod tests {
         assert!(model.raw_metrics.is_empty());
         let md = render_evaluation_md(&model, None, false);
         assert!(!md.contains("## Raw Metrics"));
+    }
+
+    /// A target list shaped like the one `build_refactor_targets`
+    /// produces when the preferred pillar's only failure is advisory: the
+    /// raw first entry is `improve`, and the real gate failure sits behind
+    /// it in another pillar.
+    fn advisory_then_gating_targets() -> Vec<RefactorTarget> {
+        vec![
+            refactor_target("cfg.cyclomatic", "improve", "simple", "<module>"),
+            refactor_target("os.system", "fix", "secure", "run_cmd"),
+        ]
+    }
+
+    fn refactor_target(metric: &str, severity: &str, pillar: &str, symbol: &str) -> RefactorTarget {
+        RefactorTarget {
+            target_id: format!("rt_{metric}"),
+            kind: "function".to_string(),
+            filepath: "a.py".to_string(),
+            symbol: Some(symbol.to_string()),
+            line_start: Some(12),
+            line_end: Some(40),
+            failing_generators: vec![pillar.to_string()],
+            metric: metric.to_string(),
+            current_value: Some(80.0),
+            threshold: Some(15.0),
+            severity: severity.to_string(),
+            recommended_operations: vec!["extract_helper".to_string()],
+            constraints: Vec::new(),
+            evidence: HashMap::new(),
+        }
+    }
+
+    fn model_with_targets(targets: Vec<RefactorTarget>) -> EvaluationResult {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let mut opts = EvalResultOptions::new();
+        opts.refactor_targets = Some(targets);
+        to_evaluation_result(&result, false, opts)
+    }
+
+    /// `binding_constraint` names the top *gating* target, not the top
+    /// target — and it is a projection of that same entry, so the two can
+    /// never point an agent at different metrics.
+    #[test]
+    fn binding_constraint_names_the_top_gating_target() {
+        let model = model_with_targets(advisory_then_gating_targets());
+
+        let binding = model.binding_constraint.expect("a gating target exists");
+        assert_eq!(binding.metric, "os.system");
+        assert_eq!(binding.pillar, "secure");
+        assert_eq!(binding.symbol.as_deref(), Some("run_cmd"));
+        assert_eq!(binding.value, Some(80.0));
+        assert_eq!(binding.threshold, Some(15.0));
+        // The advisory entry keeps its place in the served list; only the
+        // binding view and the routing skip it.
+        assert_eq!(model.refactor_targets[0].metric, "cfg.cyclomatic");
+        let contract = model.agent_contract.expect("contract present");
+        assert!(
+            contract
+                .next_actions
+                .iter()
+                .any(|a| a.starts_with("edit target rt_os.system")),
+            "the edit step must name the gating target: {:?}",
+            contract.next_actions
+        );
+        assert_eq!(
+            contract.next_tool.as_deref(),
+            Some("topos_assess_worktree_change")
+        );
+    }
+
+    /// Advisory-only failures bind nothing: no verdict is waiting on an
+    /// edit, so the contract must not open an edit/assess loop over a
+    /// metric that cannot move a pillar.
+    #[test]
+    fn advisory_only_targets_neither_bind_nor_route() {
+        let model = model_with_targets(vec![refactor_target(
+            "cfg.cyclomatic",
+            "improve",
+            "simple",
+            "<module>",
+        )]);
+
+        assert!(model.binding_constraint.is_none());
+        assert_eq!(
+            model.refactor_targets.len(),
+            1,
+            "the advisory target is still served, just not promoted"
+        );
+        let contract = model.agent_contract.expect("contract present");
+        assert!(
+            !contract
+                .next_actions
+                .iter()
+                .any(|a| a.starts_with("edit target")),
+            "no gating target, so no edit step: {:?}",
+            contract.next_actions
+        );
+        assert_ne!(
+            contract.next_tool.as_deref(),
+            Some("topos_assess_worktree_change"),
+            "assess-the-edit routing requires an edit to assess"
+        );
+        // Routing still happens, and the setup blocker still surfaces.
+        assert!(!contract.next_actions.is_empty());
+        assert!(contract
+            .blocked_by
+            .contains(&"missing_gitnexus_dir".to_string()));
+    }
+
+    /// The rendered table carries `severity` too: the rows are ordered
+    /// gating-first, but ordering alone is invisible in markdown.
+    #[test]
+    fn refactor_target_markdown_shows_severity() {
+        let model = model_with_targets(advisory_then_gating_targets());
+        let md = render_evaluation_md(&model, None, false);
+        // Table rows only — the agent contract also names these targets.
+        let row = md
+            .lines()
+            .find(|l| l.starts_with("| `rt_cfg.cyclomatic`"))
+            .expect("advisory row rendered");
+        assert!(row.contains("| improve |"), "row was: {row}");
+        let gating = md
+            .lines()
+            .find(|l| l.starts_with("| `rt_os.system`"))
+            .expect("gating row rendered");
+        assert!(gating.contains("| fix |"), "row was: {gating}");
+    }
+
+    /// Both binding cases, built through the real producers
+    /// (`build_metric_locations` -> `build_refactor_targets`) instead of
+    /// hand-written targets. That pins the producer/consumer contract:
+    /// `top_gating_target` matches on the `severity` string
+    /// `refactor_targets::gate_severity` emits, and if those two ever
+    /// drifted, every result would silently lose its binding constraint
+    /// and its edit routing.
+    fn model_for_source(source: &str) -> EvaluationResult {
+        let result = classify_code_string(source, "python", Priority::Simple).unwrap();
+        let locations = crate::metric_locations::build_metric_locations(source, "python", &result);
+        let targets = crate::refactor_targets::build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &locations,
+            None,
+            3,
+        );
+        let mut opts = EvalResultOptions::new();
+        opts.refactor_targets = Some(targets);
+        to_evaluation_result(&result, false, opts)
+    }
+
+    #[test]
+    fn a_passing_file_binds_nothing() {
+        let model = model_for_source("def f():\n    return 1\n");
+        assert!(
+            model.refactor_targets.is_empty(),
+            "no gate is out of band, so there is nothing to target: {:?}",
+            model.refactor_targets
+        );
+        assert!(model.binding_constraint.is_none());
+    }
+
+    #[test]
+    fn a_failing_gate_binds_the_metric_the_producer_labeled() {
+        // Eleven independent branches in one function: past
+        // `ast.max_function_complexity`'s bound of 10, and the whole-file
+        // `cfg.cyclomatic` sum trips its advisory bound of 15 too.
+        let body: String = (0..11)
+            .map(|i| format!("    if x == {i}:\n        return {i}\n"))
+            .collect();
+        let model = model_for_source(&format!("def f(x):\n{body}    return -1\n"));
+
+        let binding = model
+            .binding_constraint
+            .as_ref()
+            .expect("a gating metric is out of band");
+        assert_eq!(binding.metric, "ast.max_function_complexity");
+        assert_eq!(binding.pillar, "simple");
+        assert_eq!(
+            binding.metric, model.refactor_targets[0].metric,
+            "the producer already ranks gating first, so the binding view \
+             and the served list agree on the top entry"
+        );
+        assert_eq!(model.refactor_targets[0].severity, "fix");
     }
 
     #[test]

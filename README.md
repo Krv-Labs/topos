@@ -228,6 +228,6 @@ Topos is used internally at [Krv Labs](https://krv.ai) to manage AI-agent code o
 
 <p align="left">
   <a href="https://krv.ai">
-    <img src="docs/source/_static/made-by-krv.svg" alt="Made by Krv Labs" height="24">
+    <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/made-by-krv.svg" alt="Made by Krv Labs" height="24">
   </a>
 </p>

@@ -596,6 +596,16 @@ pub fn to_evaluation_result(
 /// Return a dual-channel tool result: markdown for the LLM plus the model's
 /// JSON dump as `structured_content` for programmatic clients.
 pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResult {
+    // Every tool funnels through here, so this is the one place a
+    // server-level condition can reach an agent mid-loop. The banner is
+    // emitted *only* when the binary on disk has outrun this process, so a
+    // healthy call pays nothing — the structured channel is untouched either
+    // way. Staleness cannot be advertised in `instructions` instead: those
+    // are built at `initialize`, when a just-started process is never stale.
+    let markdown = match crate::build_info::stale_banner() {
+        Some(banner) => format!("{banner}\n\n{markdown}"),
+        None => markdown,
+    };
     let mut result = CallToolResult::success(vec![ContentBlock::text(markdown)]);
     result.structured_content = serde_json::to_value(model).ok();
     result

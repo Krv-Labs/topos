@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-07-20
 
+### Added
+
+- **Server build identity, and self-reported stale-process detection.** Determining which of several registered Topos servers a host was actually running — and whether it held the binary you just built — previously meant `stat`, `pgrep`, `ps`, and `strings` on the executable. The server now answers it:
+  - `serverInfo.version` carries semver build metadata (`0.4.0+build.<epoch>`), so two builds of the same branch are distinguishable. It rides on the existing field: no new surface and no agent-context cost, and it renders in the host's server list where a local build is told apart from a registry-installed one.
+  - A new `topos://build` resource reports version and build time, executable path, resolved file root, pid, and staleness. It is a resource rather than a tool deliberately — resources are read on demand, so it costs nothing in the always-listed tool surface.
+  - **Every tool response is prefixed with a stale-server warning when, and only when, the binary on disk has been rebuilt since the process started.** A rebuild does not replace a running server, since the MCP host owns the process; this makes that visible instead of leaving two timestamps to compare. Healthy responses are unchanged, so the compact payload is unaffected. It cannot be advertised in `instructions` instead: those are built at `initialize`, when a just-started process is never stale.
+  - `topos-mcp --version` (and `--help`) now work. Previously the binary answered a version query by waiting for an `initialize` frame that never arrived and then reporting a closed connection, which reads like a broken install.
+
+  The build timestamp is the executable's own mtime read at runtime, not a value embedded by a `build.rs`: a build script stamping a timestamp must rerun on every build to stay accurate, forcing a relink each time, and a cached value can report a build that never happened. No new dependency and no build script were added.
+
 ### Changed
 
 - **Per-function complexity entries no longer skip `pub fn`s (wire-visible; fixes an un-targetable gate).** The gate metric `ast.max_function_complexity` counted every function, but the parallel entries pass that produces `metric_locations` — and therefore `refactor_targets`, `binding_constraint`, and the function list in `topos_inspect_code` — silently dropped any function whose name it could not resolve. On Rust that was most `pub fn`s. The two disagreed: `topos/engine/src/evaluation/file_roles.rs` reported a gate of `30` while the highest visible entry was `6`, because the offending `pub fn is_entrypoint_source_only` (complexity 30) was absent. A failing SIMPLE gate could therefore never become a refactor target or a binding constraint. Entries now cover those functions, so the gate and the entries agree. The gate metric itself is unchanged — no score, verdict, or medal moves — but Rust files gain per-function entries and SIMPLE targets they never previously surfaced, which shifts `refactor_targets` ordering and `binding_constraint` on those files.

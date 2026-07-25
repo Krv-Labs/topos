@@ -4,6 +4,7 @@
 //! computation lives in `topos-core`; this crate is the MCP wire layer —
 //! schemas, orchestration, formatting, and the stdio server.
 
+pub mod build_info;
 pub mod diagnostics;
 pub mod docs;
 pub mod evaluation;

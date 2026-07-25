@@ -32,6 +32,20 @@ situational.
 | `topos_calculate_coverage` | Structural test coverage. Outside the lattice. |
 | `topos_get_doc` | Fetch one of the six embedded topics. |
 
+## Which server am I talking to?
+
+Read the `topos://build` resource. It reports the running binary's version and
+build time, its executable path, the resolved file root, the pid, and whether
+the binary on disk has been **rebuilt since this process started**.
+
+That last field matters: an MCP host owns the server process, so rebuilding
+Topos does not replace a running server — tool calls keep reaching the old
+code until it is restarted. When that happens, every tool response is prefixed
+with a stale-server warning; healthy responses carry nothing. If results
+contradict the source you are reading, check here before re-measuring.
+
+Outside MCP, `topos-mcp --version` prints the same report.
+
 ## The canonical loop: review → plan → refactor → re-measure
 
 ```

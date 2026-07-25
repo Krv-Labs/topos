@@ -68,7 +68,7 @@ Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, o
 | Tool | Purpose |
 | --- | --- |
 | `topos_get_doc(topic="agent-contract")` | Compact loop contract — read first |
-| `topos_evaluate_file` | Score one file; optional `refactor_targets` for ranked edit spans |
+| `topos_evaluate_file` | Score one file; returns 3 ranked edit spans (`refactor_targets`, gate failures first) |
 | `topos_evaluate_project` | Project rollup and worst-file list |
 | `topos_inspect_code` | Deep per-function complexity and metrics |
 | `topos_assess_worktree_change` | Compare working tree to a git baseline |

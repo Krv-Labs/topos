@@ -25,7 +25,7 @@ use crate::schemas::{
     lattice_to_str, priority_str, resolve_priority, AgentContract, EvaluateCodeInput,
     EvaluateFileInput, EvaluateProjectInput, EvaluationResult, LatticeElement, PrioritySource,
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
-    SecurityFinding,
+    SecurityFinding, WorstFileEntry,
 };
 use crate::security::{read_resolved_utf8, resolve_file_root, resolve_within_root};
 use crate::server::ToposServer;
@@ -257,8 +257,12 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         Err(_) => HashMap::new(),
     };
 
-    // Targets are computed before the result model so the agent
-    // contract can route them natively.
+    // Targets are computed before the result model so the agent contract
+    // can route them natively and `binding_constraint` can project the top
+    // gating one. This is the only place targets are built: they are a
+    // single-file affordance, and `evaluate_single_file` (the project page)
+    // deliberately has no equivalent — a few full targets per row would
+    // outweigh the rows.
     let targets: Option<Vec<RefactorTarget>> = if params.refactor_targets > 0 {
         Some(build_refactor_targets(
             &resolved.to_string_lossy(),
@@ -283,6 +287,8 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     overlay_opts(overlay.as_ref(), &mut opts);
     opts.verbose = params.verbose;
     opts.metric_locations = locations;
+    // Only reachable via an explicit `refactor_targets=0`, now that the
+    // parameter defaults to a non-zero count.
     opts.offer_refactor_targets = targets.is_none();
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
@@ -337,6 +343,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
             priority,
             gitnexus_dir.as_deref(),
             params.include_security_findings,
+            params.verbose,
             &params.allow,
         ) {
             Err(_) => {
@@ -431,12 +438,21 @@ type SingleFileOutcome = (
     Option<String>,
 );
 
+/// Score one file and shape its project-page row.
+///
+/// `verbose` gates `raw_metrics` on the row exactly as
+/// [`crate::formatting::to_evaluation_result`] does for the single-file
+/// tool: the project markdown renderer already respects the same flag
+/// (`render_project_entry`), so shipping the floats unconditionally in the
+/// structured channel made the two channels disagree — and at the default
+/// page size the raw metrics were the largest block in the response.
 fn evaluate_single_file(
     path: &Path,
     resolved_root: &Path,
     priority: Priority,
     gitnexus_dir: Option<&Path>,
     include_security_findings: bool,
+    verbose: bool,
     allows: &[String],
 ) -> Result<SingleFileOutcome, String> {
     let (result, dep_graph, load_error) = classify_file(path, priority, gitnexus_dir)?;
@@ -464,7 +480,11 @@ fn evaluate_single_file(
             .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
             .collect(),
         pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
-        raw_metrics: result.raw_metrics.clone(),
+        raw_metrics: if verbose {
+            result.raw_metrics.clone()
+        } else {
+            HashMap::new()
+        },
         warnings: Vec::new(),
         security_findings: if include_security_findings {
             findings
@@ -626,9 +646,11 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     let aggregate_explanation = aggregate_explanation(&rolled, &rolled_scores, &entries);
-    let worst_files: Vec<ProjectFileEntry> = entries.iter().take(3).cloned().collect();
-    let worst_file_verdict = worst_files.first().map(|w| w.lattice_element);
-    let guidance = project_guidance(&worst_files);
+    // Guidance and the agent contract need the full rows (warnings, scores,
+    // grade_capped, secure_adjusted); only the wire field is slimmed.
+    let worst_rows: &[ProjectFileEntry] = &entries[..entries.len().min(3)];
+    let worst_file_verdict = worst_rows.first().map(|w| w.lattice_element);
+    let guidance = project_guidance(worst_rows);
 
     let page: Vec<ProjectFileEntry> = entries
         .iter()
@@ -651,11 +673,18 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     }
     let contract = project_contract(
         overall,
-        &worst_files,
+        worst_rows,
         args.coupling_available,
         &project_warnings,
         args.parse_failures,
     );
+    let worst_files: Vec<WorstFileEntry> = worst_rows
+        .iter()
+        .map(|entry| WorstFileEntry {
+            filepath: entry.filepath.clone(),
+            lattice_element: entry.lattice_element,
+        })
+        .collect();
 
     ProjectEvaluationResult {
         root: args.resolved_root.to_string_lossy().to_string(),
@@ -996,4 +1025,191 @@ pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
         lines.push(format!("\n> error: {error}"));
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schemas::PillarResult;
+
+    fn entry(filepath: &str, simple_score: f64) -> ProjectFileEntry {
+        ProjectFileEntry {
+            filepath: filepath.to_string(),
+            language: "python".to_string(),
+            lattice_element: LatticeElement::SIMPLE,
+            scores: HashMap::from([("simple".to_string(), simple_score)]),
+            pillars: HashMap::from([(
+                "simple".to_string(),
+                PillarResult {
+                    achieved: true,
+                    score: simple_score,
+                },
+            )]),
+            raw_metrics: HashMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
+            warnings: Vec::new(),
+            security_findings: Vec::new(),
+            acknowledged_risks: Vec::new(),
+            raw_lattice_element: None,
+            adjusted_lattice_element: None,
+            secure_raw: None,
+            secure_adjusted: None,
+            grade_capped: false,
+            is_parseable: true,
+        }
+    }
+
+    fn project_params(offset: usize) -> EvaluateProjectInput {
+        EvaluateProjectInput {
+            path: ".".to_string(),
+            preferences: None,
+            gitnexus_dir: None,
+            no_composable: true,
+            limit: 2,
+            offset,
+            verbose: false,
+            include_security_findings: false,
+            allow: Vec::new(),
+        }
+    }
+
+    fn project_result(params: &EvaluateProjectInput) -> ProjectEvaluationResult {
+        let entries = vec![
+            entry("mid.py", 50.0),
+            entry("worst.py", 10.0),
+            entry("best.py", 90.0),
+            entry("second.py", 20.0),
+            entry("third.py", 30.0),
+        ];
+        let root = Path::new("/tmp/topos-project-test");
+        build_project_result(BuildProjectArgs {
+            resolved_root: root,
+            source_file_count: entries.len(),
+            parse_failures: 0,
+            per_file_results: Vec::new(),
+            entries,
+            any_dep_graph_loaded: false,
+            last_load_error: None,
+            per_language_results: HashMap::new(),
+            per_language_entries: HashMap::new(),
+            per_language_parse_failures: HashMap::new(),
+            params,
+            priority: Priority::Simple,
+            priority_source: PrioritySource::Default,
+            coupling_available: false,
+            project_root: root,
+            gitnexus_dir: None,
+            generation_note: None,
+        })
+    }
+
+    /// `worst_files` ranks the whole project, not the page: an agent that
+    /// pages forward must not see the "worst" list shift under it.
+    #[test]
+    fn worst_files_are_page_global_and_slim() {
+        let first_page = project_result(&project_params(0));
+        let second_page = project_result(&project_params(2));
+
+        let paths: Vec<&str> = first_page
+            .worst_files
+            .iter()
+            .map(|w| w.filepath.as_str())
+            .collect();
+        assert_eq!(paths, vec!["worst.py", "second.py", "third.py"]);
+        assert_eq!(
+            paths,
+            second_page
+                .worst_files
+                .iter()
+                .map(|w| w.filepath.as_str())
+                .collect::<Vec<_>>(),
+            "worst_files must not follow offset/limit"
+        );
+        // Page 2 does not even contain the worst file, so the compact list
+        // is the only place it is named.
+        assert!(!second_page.files.iter().any(|f| f.filepath == "worst.py"));
+
+        // Slim by construction: identity plus verdict, no row payload.
+        let json = serde_json::to_value(&first_page.worst_files[0]).expect("serialize");
+        let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
+        assert_eq!(keys, vec!["filepath", "lattice_element"]);
+    }
+
+    /// The guidance and contract still read the *full* worst rows, which
+    /// is why the slimming happens at the wire boundary only.
+    #[test]
+    fn project_guidance_still_names_the_worst_file() {
+        let model = project_result(&project_params(0));
+        assert!(
+            model.guidance.contains("worst.py"),
+            "guidance was: {}",
+            model.guidance
+        );
+        assert_eq!(model.worst_file_verdict, Some(LatticeElement::SIMPLE));
+    }
+
+    /// Ranked targets are a single-file affordance: three per row would
+    /// dwarf the rows themselves, so no project row may carry them.
+    #[test]
+    fn project_rows_carry_no_refactor_targets() {
+        let model = project_result(&project_params(0));
+        let json = serde_json::to_value(&model.files[0]).expect("serialize");
+        let obj = json.as_object().expect("object");
+        assert!(obj.get("refactor_targets").is_none());
+        assert!(obj.get("binding_constraint").is_none());
+    }
+
+    fn write_temp_source(name: &str, source: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_mcp_evaluate_test_{}_{}",
+            std::process::id(),
+            name
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join(format!("{name}.py"));
+        std::fs::write(&path, source).expect("write temp source");
+        path
+    }
+
+    fn single_row(name: &str, verbose: bool) -> ProjectFileEntry {
+        let path = write_temp_source(
+            name,
+            "def f(x):\n    if x:\n        return 1\n    return 0\n",
+        );
+        let dir = path.parent().expect("parent");
+        let (_, entry, ..) = evaluate_single_file(
+            &path,
+            dir,
+            Priority::Simple,
+            None,
+            /* include_security_findings = */ false,
+            verbose,
+            &[],
+        )
+        .expect("classify temp file");
+        entry
+    }
+
+    /// Both channels agree on `verbose`: the project markdown renderer
+    /// already gated the raw metrics, while the structured row shipped
+    /// them unconditionally.
+    #[test]
+    fn project_rows_gate_raw_metrics_on_verbose() {
+        let compact = single_row("compact", false);
+        assert!(
+            compact.raw_metrics.is_empty(),
+            "default project rows must not carry raw metrics"
+        );
+        assert!(
+            !compact.scores.is_empty(),
+            "scores are the row's payload and always stay"
+        );
+        let json = serde_json::to_value(&compact).expect("serialize");
+        assert!(json.get("raw_metrics").is_none());
+
+        let verbose = single_row("verbose", true);
+        assert!(
+            verbose.raw_metrics.contains_key("cfg.cyclomatic"),
+            "verbose=true must restore the previous row shape"
+        );
+    }
 }

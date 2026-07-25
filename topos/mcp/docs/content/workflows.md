@@ -18,7 +18,7 @@ situational.
 | `topos_evaluate_file` | Score a file on disk. `refactor_targets=N` adds ranked edit spans. |
 | `topos_evaluate_project` | Rollup + worst-N files for a directory. |
 | `topos_evaluate_code` | Score a source string (SIMPLE/SECURE only — no file, so no coupling). |
-| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. |
+| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. **Does not score COMPOSABLE** (issue #216) — its verdict can read one medal lower than `topos_evaluate_file` on the same file. Use it for metric detail; take the verdict from evaluate. |
 | `topos_assess_worktree_change` | Verify an in-place edit against a git ref. **Default verification.** |
 | `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |

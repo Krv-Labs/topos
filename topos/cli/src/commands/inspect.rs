@@ -50,7 +50,9 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         None
     } else {
         match std::env::current_dir() {
-            Ok(project_root) => resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref()),
+            Ok(project_root) => {
+                resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), args.json)
+            }
             Err(e) => {
                 eprintln!(
                     "gitnexus: could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."

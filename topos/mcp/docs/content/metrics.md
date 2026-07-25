@@ -25,8 +25,7 @@ of the raw gates above — not a single score floor.
 
 > **Known language skew (Go).** Go files carry a constant **+1** on
 > `cfg.cyclomatic` relative to the other languages, because the CFG gains an
-> empty module-level callable. An otherwise-identical branch-free file scores
-> `2` in Go and `1` in Python/JS/TS/C++. The `≤ 15` gate is *not* adjusted for
+> empty module-level callable. The `≤ 15` gate is *not* adjusted for
 > this, so a Go file effectively gates at 14. Deferred deliberately — the
 > v0.4.0 CFG rewrite locks pre-rewrite edge shapes as golden contracts, so
 > correcting the skew is a behavior change tracked separately in issue #230.

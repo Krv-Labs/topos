@@ -141,17 +141,23 @@ mod tests {
             .into_iter()
             .map(|t| t.name.to_string())
             .collect();
+        // `topos_`-prefixed identifiers that are legitimately not tools: the
+        // crate/server name and the prompt. Extend this rather than loosening
+        // the check.
+        const NON_TOOL_IDENTS: [&str; 3] =
+            ["topos_mcp", "topos_refactor_until_ideal", "topos_core"];
         for (slug, body) in all_docs() {
             for raw in body.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
-                if !raw.starts_with("topos_") || raw == "topos_mcp" {
+                if !raw.starts_with("topos_") || NON_TOOL_IDENTS.contains(&raw) {
                     continue;
                 }
-                // Doc prose also names non-tool identifiers (e.g. result
-                // fields); only flag things shaped like a tool call.
                 if registered.iter().any(|r| r == raw) {
                     continue;
                 }
-                panic!("`{slug}` references unregistered tool `{raw}`");
+                panic!(
+                    "`{slug}` references `{raw}`, which is not a registered tool. \
+                     If it is intentionally not a tool, add it to NON_TOOL_IDENTS."
+                );
             }
         }
     }

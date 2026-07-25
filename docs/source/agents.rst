@@ -196,9 +196,10 @@ Choose an agent path
 
          pnpm add -g gitnexus  # or: npm install -g gitnexus
 
-      As of v0.4.0 there is no CLI equivalent — the ``topos`` CLI's
-      ``evaluate``/``inspect`` commands don't build or read ``.gitnexus``
-      yet, so COMPOSABLE is reachable through the MCP server only.
+      As of v0.4.0 the CLI has the same behavior: ``topos evaluate`` and
+      ``topos inspect`` detect and generate/refresh ``.gitnexus`` before
+      scoring, accept ``--gitnexus-dir`` / ``--no-composable``, and
+      ``topos depgraph generate`` forces a rebuild.
 
    Root override
       If the MCP host starts Topos outside the repository, set the trusted root
@@ -327,16 +328,19 @@ Structured responses may include:
 Core Evaluation
 ~~~~~~~~~~~~~~~
 
-``topos_evaluate_file({"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
-   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and
-   reach higher badges like ``IDEAL``. Missing or rejected GitNexus configuration is
-   reported in ``warnings``, ``agent_contract.blocked_by``, and the COMPOSABLE pillar
-   interpretation. Returns ``metric_locations`` for failing complexity gates.
+``topos_evaluate_file({"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "refactor_targets": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
+   Classifies a file on disk. COMPOSABLE is scored by default — a missing or stale
+   ``.gitnexus`` is generated/refreshed before scoring, so badges like ``IDEAL`` are
+   reachable with no extra call. Pass ``gitnexus_dir`` only to point at a non-default
+   graph, or ``no_composable`` to skip detection entirely. If GitNexus is not installed
+   or generation fails, that is reported in ``warnings``,
+   ``agent_contract.blocked_by``, and the COMPOSABLE pillar interpretation. Returns
+   ``metric_locations`` for failing complexity gates.
 
 ``topos_evaluate_code({"code": ..., "language": ..., "preferences": ..., "allow": ..., "verbose": ...})``
    Classifies a raw code string (SIMPLE and SECURE only).
 
-``topos_evaluate_project({"path": ..., "preferences": ..., "gitnexus_dir": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
+``topos_evaluate_project({"path": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
    Project-wide rollup with progress reporting and pagination. Autodetects
    all six supported languages (Python, Rust, JavaScript, TypeScript, C++,
    Go) in one walk — no language argument needed. Returns worst-scoring
@@ -400,7 +404,7 @@ Dependency Graph
    (falling back to file mtimes for graphs built before that marker existed), so
    a regenerate reliably clears ``stale``. Never shells out.
 
-``topos_generate_depgraph({"directory": ...})``
+``topos_generate_depgraph({"directory": ..., "force": ...})``
    Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
    approval-gated. Requires the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
 

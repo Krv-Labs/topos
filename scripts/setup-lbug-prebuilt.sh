@@ -5,6 +5,13 @@
 # the in-crate downloader and the cmake source fallback (issue #239).
 set -euo pipefail
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if [[ -n "${LBUG_BUILD_FROM_SOURCE:-}" || -n "${LBUG_RUST_BUILD_FROM_SOURCE:-}" ]]; then
+    echo "Refusing lbug source build on macOS (issue #239)" >&2
+    exit 1
+  fi
+fi
+
 LBUG_VERSION="${LBUG_VERSION:-0.17.1}"
 LIB_KIND="${LBUG_LIB_KIND:-static}"
 CACHE_ROOT="${LBUG_PREBUILT_ROOT:-${CARGO_HOME:-$HOME/.cargo}/lbug-prebuilt}"
@@ -61,12 +68,4 @@ emit_env() {
 emit_env "LBUG_LIBRARY_DIR" "${LIB_DIR}"
 emit_env "LBUG_INCLUDE_DIR" "${LIB_DIR}"
 emit_env "LBUG_VERSION" "${LBUG_VERSION}"
-
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  if [[ -n "${LBUG_BUILD_FROM_SOURCE:-}" || -n "${LBUG_RUST_BUILD_FROM_SOURCE:-}" ]]; then
-    echo "Refusing lbug source build on macOS (issue #239)" >&2
-    exit 1
-  fi
-fi
-
 echo "lbug prebuilt: ${LIB_DIR}/${LIB_FILE}" >&2

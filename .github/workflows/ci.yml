@@ -58,6 +58,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
       - name: Cache lbug prebuilt
         uses: actions/cache@v4
         with:
@@ -66,9 +69,6 @@ jobs:
 
       - name: Setup lbug prebuilt
         run: ./scripts/setup-lbug-prebuilt.sh
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
 
       - uses: actions/setup-node@v6
         with:

@@ -171,6 +171,10 @@ def test_homebrew_formula_template_has_foreign_detection() -> None:
     assert "~/.local/bin/topos" in template
     assert "opoo" in template
     assert "brew upgrade topos" in template
+    assert 'depends_on "openssl@3"' in template
+    assert "bundle_openssl_on_macos if OS.mac?" in template
+    assert "def bundle_openssl_on_macos" in template
+    assert "def rewrite_openssl_links" in template
     # Prefer a behavioral smoke beyond --version alone.
     assert 'assert_match "evaluate"' in template
     # Cross-channel only: no formula-to-formula conflicts_with stanza.

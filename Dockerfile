@@ -2,14 +2,16 @@
 #
 # Topos MCP server — containerized build for Glama releases.
 #
-# The package is a maturin hybrid: a Rust pyo3 extension (topos-functors) plus
-# a Python package. The builder stage carries the Rust toolchain + maturin and
-# produces a self-contained wheel; the runtime stage installs that wheel and
-# adds Node.js + GitNexus so the COMPOSABLE pillar works in-container.
+# The package is a maturin `bin` wheel: the self-contained Rust `topos-mcp`
+# stdio server (topos/mcp), with all computation in topos-engine and the
+# Sighthound SAST engine compiled in — no Python runtime. The builder stage
+# carries the Rust toolchain + maturin and produces the wheel; the runtime
+# stage installs it and adds Node.js + GitNexus so the COMPOSABLE pillar works
+# in-container.
 #
 # Transport is stdio. Launch the server with the `topos-mcp` entrypoint.
 
-# ---- Builder: compile the pyo3 extension into a wheel -----------------------
+# ---- Builder: compile the topos-mcp binary into a wheel ---------------------
 FROM python:3.12-slim AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
@@ -19,7 +21,8 @@ ENV PIP_NO_CACHE_DIR=1 \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
+    && apt-get install -y --no-install-recommends \
+        build-essential curl cmake libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain stable \
@@ -28,8 +31,10 @@ RUN apt-get update \
 WORKDIR /src
 COPY . .
 
-# maturin reads the version from Cargo.toml; build a release wheel into /wheels.
-RUN maturin build --release --features pyo3/extension-module --out /wheels
+# maturin reads the version from Cargo.toml; build a release `bin` wheel
+# (the topos-mcp server binary) into /wheels.
+RUN maturin build --release --bindings bin \
+        --manifest-path topos/mcp/Cargo.toml --out /wheels
 
 # ---- Runtime: install the wheel + Node/GitNexus -----------------------------
 FROM python:3.12-slim AS runtime
@@ -42,7 +47,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates git \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g gitnexus \
+    && npm install -g gitnexus@1.6.8 \
     && apt-get purge -y --auto-remove \
     && rm -rf /var/lib/apt/lists/*
 

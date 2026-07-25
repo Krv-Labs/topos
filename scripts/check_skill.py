@@ -26,7 +26,11 @@ CREDENTIAL_DECLARATION = "**Requires API Key or External Credential:**"
 
 def cargo_version() -> str:
     with (ROOT / "Cargo.toml").open("rb") as f:
-        return tomllib.load(f)["package"]["version"]
+        data = tomllib.load(f)
+    # Root crate uses [package]; workspace-only layouts (v0.4+) use [workspace.package].
+    if "package" in data and "version" in data["package"]:
+        return data["package"]["version"]
+    return data["workspace"]["package"]["version"]
 
 
 def parse_scalar(block: str, key: str) -> str | None:

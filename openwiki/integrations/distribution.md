@@ -1,59 +1,48 @@
 ---
 type: Integration Guide
 title: Analysis integrations and distribution surfaces
-description: Documents Topos dependencies on GitNexus and Sighthound plus MCP, Docker, VS Code, package metadata, and runtime trust boundaries.
+description: Documents Topos dependencies on GitNexus plus embedded Sighthound, MCP, Docker, VS Code, package metadata, and runtime trust boundaries.
 resource: /Dockerfile
-tags: [integrations, gitnexus, sighthound, mcp, docker, vscode]
+tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, rust]
 ---
 
 # Analysis integrations and distribution surfaces
 
-Topos is the operator that unifies structural signals into one three-pillar verdict. It delegates specialized work where a separate engine owns better source information: GitNexus supplies inter-module topology and Sighthound can supply SECURE findings. These integrations feed the [quality model](../domain/quality-model.md) through the [architecture pipeline](../architecture/overview.md).
+Topos unifies structural signals into one three-pillar verdict. GitNexus supplies inter-module topology, while the Rust MCP package embeds Sighthound for supplementary security findings. These integrations feed the [quality model](../domain/quality-model.md) through the [architecture pipeline](../architecture/overview.md).
 
 ## GitNexus for COMPOSABLE
 
-GitNexus generates `.gitnexus/`, containing a LadybugDB-backed knowledge graph. `ModuleDependencyGraph` parses it into nodes and typed relationships such as `IMPORTS`, `CALLS`, and `INHERITS`, then derives coupling, instability, fan-in/out, and dependency-depth metrics.
+GitNexus generates `.gitnexus/`, containing a LadybugDB-backed knowledge graph. `ModuleDependencyGraph` parses nodes and typed relationships such as `IMPORTS`, `CALLS`, and `INHERITS`, then derives coupling, instability, fan-in/out, and dependency-depth metrics.
 
 ```bash
-pnpm add -g gitnexus  # or: npm install -g gitnexus
+npm install -g gitnexus@1.6.8
 topos depgraph generate
-# Equivalent underlying operation: gitnexus analyze --skip-agents-md
+# Underlying generation: gitnexus analyze --skip-agents-md
 ```
 
-Operational states matter:
+Missing, stale, invalid-path, branch-mismatched, or schema-mismatched stores degrade or block COMPOSABLE according to status rather than crashing an evaluation. A schema mismatch is not silently regenerated. The CLI and MCP status/generation route is explained in [agent workflow guidance](../workflows/agent-and-cli.md#mcp-agent-loop).
 
-- Missing, stale, invalid-path, branch-mismatch, and schema-mismatch stores degrade COMPOSABLE rather than crashing an evaluation.
-- The 0.3.10 freshness fingerprint considers working-tree source edits, preventing an edit-in-place agent loop from reusing topology generated before the edit.
-- A Ladybug shadow-page replay failure can trigger a retry with a read-write handle. Treat the store as managed mutable state, not merely an immutable report.
-- A schema mismatch requires compatible Topos/GitNexus/Ladybug versions; blindly regenerating may not repair it.
+## Embedded Sighthound for SECURE
 
-The CLI and MCP status/generation tools expose this setup boundary. Their route is described in [agent workflow guidance](../workflows/agent-and-cli.md#mcp-agent-loop).
-
-## Sighthound for SECURE
-
-`CodePropertyGraph.metrics()` checks for a `sighthound` executable. If present, Topos invokes `sighthound --output-format json` against the real file or a temporary language-suffixed file, normalizes either bare-list or `{findings: [...]}` payloads, and maps search findings to `cpg.dangerous_calls` and taint-tagged findings to `cpg.taint_flows`.
-
-If it is absent or produces no usable JSON, Topos falls back to local CPG danger and taint probes. This optional integration therefore deepens detection without adding a package dependency or making basic SECURE scoring unavailable. Changes to finding tags, schema mapping, or source/sink rendering belong in `topos/utils/sighthound.py`, `topos/mcp/security_findings.py`, and `tests/utils/test_sighthound.py` together.
+`topos-mcp` depends on a pinned Sighthound crate, so the server/container compile it into the Rust distribution rather than invoking a user-installed `sighthound` executable. Native CPG probes remain Topos’s local structural SECURE mechanism; Sighthound contributes supplementary finding handling. Changes to that boundary belong in `topos/mcp/src/{security,security_findings,sighthound}.rs` and CPG/SECURE tests together.
 
 ## MCP package and registry
 
-The project publishes both `topos` and `topos-mcp` console scripts. The latter starts the same stdio server directly; `topos mcp` routes to it via the CLI. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml`, Python metadata, and the VS Code package; `scripts/check_versions.py` enforces the contract.
+`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml` and VS Code metadata using `scripts/check_versions.py`.
 
 ## Container and editor surfaces
 
 ### Docker / Glama
 
-The Dockerfile is a two-stage Maturin build: a Python/Rust builder produces a wheel; the runtime installs that wheel plus Node.js, Git, and GitNexus. It defaults `TOPOS_MCP_FILE_ROOT=/workspace`, uses `/workspace` as working directory, and enters through `topos-mcp` over stdio. Mount the repository there or deliberately override the trusted root.
+The Dockerfile builds a Maturin `bin` wheel for the compiled `topos-mcp` server, then installs it in a runtime image with Node.js, Git, and pinned GitNexus. It sets `TOPOS_MCP_FILE_ROOT=/workspace` and uses `topos-mcp` as its stdio entrypoint. Mount source below that trusted root or deliberately configure another root.
 
 ### VS Code extension
 
-`extensions/vscode/` contributes an MCP server provider and two commands: **Evaluate Project** and **Generate Dependency Graph**. It launches `topos mcp` with the workspace as `TOPOS_MCP_FILE_ROOT`; its runtime lookup prefers an explicit executable path, then bundled/cached/PATH/Python installations, then an optional verified download. The extension owns TypeScript build/test code and packages platform-specific VSIX artifacts in release CI.
-
-The extension setting text currently lists five auto-detected languages while core CLI support includes Go. Treat language UI consistency as a follow-up when changing language support.
+`extensions/vscode/` contributes an MCP server provider plus project-evaluation and dependency-graph commands. It launches `topos mcp` with the workspace as `TOPOS_MCP_FILE_ROOT`, resolves an executable from configured/bundled/cached/PATH sources, and packages platform-specific VSIX artifacts in release CI.
 
 ## Change checklist
 
-- GitNexus loader/metric changes: `topos/graphs/mdg/`, `topos/utils/gitnexus.py`, tests in `tests/utils/`, `tests/mcp/`, and `tests/graphs/mdg/`.
-- Security engine changes: exercise Sighthound-present and absent behavior and keep the raw/acknowledged finding distinction stable.
-- MCP metadata/container/editor changes: verify `TOPOS_MCP_FILE_ROOT` behavior, stdio entry points, version parity, and focused packaging/extension tests.
-- Do not expose credentials or update workflow secrets in documentation; automation references secret names only.
+- GitNexus loader/metric changes: `topos/engine/src/{adapters/gitnexus.rs,graphs/mdg/}` and the composable CI fixture.
+- Security changes: exercise native CPG behavior and embedded Sighthound result handling together.
+- MCP/container/editor changes: verify trusted-root behavior, stdio entry points, metadata parity, and focused extension or wheel checks.
+- Do not expose credentials or document secret values; workflow secret identifiers are sufficient for operations.

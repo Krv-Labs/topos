@@ -29,7 +29,7 @@ const MANIFEST_URL = "https://raw.githubusercontent.com/Krv-Labs/topos/main/rele
 const BUNDLED_BINARY_RELATIVE_PATH = path.join('bin', 'topos');
 
 const GITNEXUS_PNPM_INSTALL_COMMAND = "pnpm add -g gitnexus";
-const GITNEXUS_NPM_INSTALL_COMMAND = "npm install -g gitnexus";
+const GITNEXUS_NPM_INSTALL_COMMAND = "npm install -g gitnexus@1.6.8";
 const GITNEXUS_REPO_URL = "https://github.com/abhigyanpatwari/GitNexus";
 const GITNEXUS_PROMPT_DISMISSED_KEY = "gitnexusPromptDismissed";
 

@@ -60,6 +60,14 @@ Evaluates whether the code flow can reach dangerous operations or untrusted data
 * **Taint Flows** (``cpg.taint_flows``)
   Source→sink data-flow paths along the CPG's data-dependence edges, from untrusted sources (e.g. ``input``, ``request.args``) to dangerous sinks. Longer taint chains increase risk.
 
+.. note::
+   The embedded `Sighthound <https://github.com/Corgea/Sighthound>`_ SAST
+   engine supplies supplementary ``security_findings`` detail (per-finding
+   callee, line, taint source/sink) for Python/JavaScript/TypeScript/Go —
+   but ``cpg.dangerous_calls``/``cpg.taint_flows`` above, and therefore the
+   SECURE score itself, always come from the native CPG probes. Sighthound
+   never feeds SECURE.
+
 Scoring and Manager Priorities
 ------------------------------
 
@@ -189,6 +197,17 @@ Topos supports several relational metrics across its different graph representat
 *   **MDG Comparison:** Measures changes in coupling, fan-in/fan-out, and dependency depth.
 *   **PDG Comparison:** Computes the Jaccard similarity of control and data dependencies between two versions of a function.
 *   **AST Edit Distance:** Measures the topological drift between two programs using UAST edit distance.
+
+Refactor Suite (also not scored)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Beyond profunctor comparisons, the ``topos_refactor`` MCP tool (and, for
+Graphify, the ``topos graphify`` CLI subcommand) surfaces ranked structural
+hotspots from four more engines — CFG cycle basis, MDG/process-graph
+curvature, and Graphify knowledge-graph degree/confidence. Like the
+profunctors above, **none of these feed the evaluation lattice**; they're
+refactoring guidance layered on top. See :doc:`agents` and the repository's
+``docs/decisions/refactor-suite.md`` for the full design.
 
 Structural Test Coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~

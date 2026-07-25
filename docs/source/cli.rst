@@ -5,28 +5,39 @@ CLI Reference
 =============
 
 .. meta::
-   :description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, MCP, and dependency graphs.
-   :twitter:description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, MCP, and dependency graphs.
+   :description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, Graphify refactor hotspots, and MCP.
+   :twitter:description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, Graphify refactor hotspots, and MCP.
 
-The Topos CLI is for **manual inspections**, **batch rollups**, and **CI-style checks** when you want structural quality verdicts on the terminal. Most agent workflows use the :doc:`MCP server <agents>` instead; the CLI exposes the same core evaluations without an editor integration.
+The Topos CLI is for **manual inspections** and **terminal workflows** when
+you want structural quality verdicts without an editor integration. Most
+agent workflows use the :doc:`MCP server <agents>` instead — it currently
+covers more ground than the CLI (COMPOSABLE scoring, preference-ranked
+relaxation walks, JSON output for most tools). The CLI is a fresh,
+from-scratch Rust implementation built directly on ``topos-engine``, not a
+line-for-line port of the pre-v0.4.0 Python CLI — some Python-CLI features
+haven't been ported yet; each command below says explicitly what's missing.
 
 .. hint::
-   **CLI vs MCP:** ``--preferences`` on ``evaluate`` and ``inspect`` sets display metadata from the first pillar in the list. For a full **relaxation walk** (ranked fallbacks when ``🥇 GOLD`` is out of reach), use MCP tools — see :doc:`agents`.
+   **CLI vs MCP, as of v0.4.0:** the CLI's ``evaluate``/``inspect`` commands
+   score only SIMPLE and SECURE — COMPOSABLE (which needs a GitNexus
+   dependency graph) is wired up on the **MCP server only** so far. There is
+   no ``--preferences``/``--priority`` relaxation walk, no ``--json``, and no
+   ``--allow`` acknowledgement flag on the CLI yet. Use MCP tools
+   (:doc:`agents`) for all of these.
 
 Quick reference
 ---------------
 
 .. code-block:: bash
 
-   topos depgraph generate
-   topos evaluate src/ -r --preferences simple,composable,secure --gitnexus-dir .gitnexus/
-   topos inspect module.py --preferences simple,composable,secure
+   topos evaluate . -r
+   topos inspect module.py
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
+   topos graphify generate && topos graphify orphans src/logic.py
    topos mcp
 
-Run ``topos depgraph generate`` only when you need COMPOSABLE metrics. Run
-``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
+Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -38,12 +49,12 @@ Run ``topos depgraph generate`` only when you need COMPOSABLE metrics. Run
       ^^^
       ``evaluate`` · ``inspect`` · ``compare`` · ``coverage``
 
-   .. grid-item-card:: ⚙️ System commands
+   .. grid-item-card:: ⚙️ Other commands
       :shadow: md
 
-      Run the MCP server, generate dependency graphs, update, or uninstall cleanly.
+      Advisory refactor hotspots and the MCP server.
       ^^^
-      ``mcp`` · ``depgraph generate`` · ``update`` · ``uninstall``
+      ``graphify`` · ``mcp``
 
 Quality commands
 ================
@@ -51,7 +62,9 @@ Quality commands
 evaluate
 --------
 
-Evaluate code quality for one or more files or directories. This is the primary command for **Code Quality Medals** across the three pillars (see :doc:`measures`).
+Evaluate code quality for one or more files or directories. This is the
+primary command for **Code Quality Medals** across the three pillars (see
+:doc:`measures`).
 
 .. code-block:: bash
 
@@ -65,68 +78,33 @@ Evaluate code quality for one or more files or directories. This is the primary 
      - Description
    * - ``-r``, ``--recursive``
      - Recursively evaluate directories.
-   * - ``-v``, ``--verbose``
-     - Show detailed metrics for each file.
-   * - ``--json``
-     - Output results as a single JSON array.
-   * - ``--priority [simple|composable|secure]``
-     - Which pillar to emphasize in result metadata (default: ``secure``). Does not change pass/fail thresholds.
-   * - ``--preferences TEXT``
-     - Comma-separated pillar ranking (e.g. ``simple,composable,secure``).
-   * - ``--gitnexus-dir PATH``
-     - Path to a ``.gitnexus/`` directory for **COMPOSABLE** metrics (requires `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_).
-   * - ``--allow TEXT``
-     - Acknowledge a dangerous-call pattern for this run. Repeat or comma-separate values.
-   * - ``--language [python|rust|javascript|typescript|cpp]``
-     - Source language for parsing and directory discovery (default: ``python``).
+   * - ``--language [python|rust|javascript|typescript|cpp|go]``
+     - Source language for parsing and file discovery when paths are directories (default: ``python``).
 
 **Example**
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --preferences simple,composable,secure --gitnexus-dir .gitnexus/
+   topos evaluate . -r --language rust
 
-Text output prints each file with its resolved medal, for example
-``src/audit/_ingest.py [🥈 COMPOSABLE_SECURE]``.  Directory summaries separate
-two different concepts:
-
-- ``Directory Average Score`` is the mean file score across the evaluated files.
-- ``Directory Floor Verdict`` is the aggregate floor: a pillar passes only if it
-  passes across the evaluated set.
+Prints each file's path, resolved medal (e.g. ``Verdict: SIMPLE_SECURE``),
+per-generator scores, and raw metrics. When more than one file is evaluated,
+a **Directory rollup** line follows, combining each generator's verdict
+across every file (the pointwise lattice meet — a pillar passes the rollup
+only if every file passes it).
 
 .. important::
-   Without ``--gitnexus-dir``, Topos still scores **SIMPLE** and **SECURE**, but **COMPOSABLE** (and any medal requiring it) stays unreachable. Generate the graph once per repo with ``topos depgraph generate``.
+   COMPOSABLE never appears in CLI output as of v0.4.0: the CLI never builds
+   or reads a GitNexus dependency graph. Only SIMPLE and SECURE (plus a
+   diagnostic-only PDG contribution to raw metrics) are attached. Use the
+   MCP server's ``topos_evaluate_file(gitnexus_dir=...)`` for COMPOSABLE —
+   see :doc:`agents`.
 
-Directory digest
-~~~~~~~~~~~~~~~~
-
-Point ``evaluate`` at a directory with ``-r`` for a ranked, actionable digest
-instead of a per-file wall:
-
-.. code-block:: bash
-
-   topos evaluate src/ -r
-   topos evaluate src/mypackage -r
-
-The summary surfaces, in order:
-
-* **Pillars** — per-pillar PASS/FAIL with average & minimum scores across all files.
-* **Directory Floor Verdict** — the worst verdict any single file drags the codebase down to (the pointwise lattice meet).
-* **Needs attention** — the lowest-scoring files (where quality is *worst*).
-* **Lowest-hanging fruit** — the files closest to *flipping* a failing pillar, each with the concrete fix. Start here for the cheapest wins:
-
-.. code-block:: text
-
-   Lowest-hanging fruit
-     Smallest improvement that flips a failing pillar.
-     1.  src/mypackage/__init__.py
-         simple 59% → 60% (+1 pts)
-     2.  src/mypackage/util.py
-         simple 55% → 60% (+5 pts)
-         ↳ Extract helper functions to cut branching (cyclomatic 21 > 15).
-
-Add ``--json`` for a machine-readable rollup, or ``-v`` to expand every
-file's raw metrics.
+.. note::
+   Not yet ported to this CLI (available via MCP tools instead): ``--json``,
+   ``--preferences``/``--priority``, ``--gitnexus-dir``, ``--allow``, and the
+   ranked "lowest-hanging fruit" digest the pre-v0.4.0 Python CLI printed for
+   directory rollups.
 
 inspect
 -------
@@ -143,22 +121,22 @@ Inspect detailed metrics and entropy analysis for a **single** file.
 
    * - Option
      - Description
-   * - ``--priority [simple|composable|secure]``
-     - Which pillar to emphasize in output (default: ``secure``).
-   * - ``--preferences TEXT``
-     - Comma-separated pillar ranking.
-   * - ``--gitnexus-dir PATH``
-     - Path to a ``.gitnexus/`` directory for coupling metrics.
-   * - ``--allow TEXT``
-     - Acknowledge a dangerous-call pattern for this run.
    * - ``--json``
-     - Output the inspection as a single JSON object.
+     - Output the inspection as a single JSON object (a subset of the
+       pre-v0.4.0 Python CLI's ``--json`` fields — no ``suggestions``/
+       ``security_findings``/suppression rendering yet). Mainly intended for
+       machine comparison, not primary human reading.
 
 **Example**
 
 .. code-block:: bash
 
-   topos inspect src/main.py --preferences simple,composable,secure
+   topos inspect src/main.py
+   topos inspect src/main.py --json
+
+.. note::
+   Not yet ported: ``--priority``/``--preferences``, ``--gitnexus-dir``,
+   ``--allow``.
 
 compare
 -------
@@ -189,7 +167,7 @@ coverage
 
 Measure how much of the **program-under-test (PUT)** structure is represented in test code.
 
-Declaration-level bipartite matching and k-gram path recall. No test execution required.
+Declaration-level bipartite matching and k-gram path recall. No test execution required. See :doc:`measures` for the underlying algorithm.
 
 .. code-block:: bash
 
@@ -203,7 +181,7 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
      - Description
    * - ``--tests PATH`` *(required, repeatable)*
      - Test file path; pass multiple times for several modules.
-   * - ``--language [python|rust|javascript|typescript|cpp]``
+   * - ``--language [python|rust|javascript|typescript|cpp|go]``
      - Language for parsing (default: ``python``).
    * - ``--k INTEGER``
      - DFS kind n-gram length for path recall (default: ``3``).
@@ -211,17 +189,77 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
      - Minimum best-match recall to count a PUT declaration as covered (default: ``0.5``).
    * - ``--include-unknown``
      - Include ``Unknown`` UAST kinds in histograms and k-grams.
-   * - ``--json``
-     - Emit a single JSON object with scores and diagnostics.
 
 **Example**
 
 .. code-block:: bash
 
-   topos coverage src/logic.py --tests tests/test_logic.py --json
+   topos coverage src/logic.py --tests tests/test_logic.py --k 3
 
-System commands
+.. note::
+   ``--json`` is not yet ported to this CLI — plain-text output only. The
+   same computation is exposed with structured JSON via the
+   ``topos_calculate_coverage`` MCP tool.
+
+Other commands
 ===============
+
+graphify
+--------
+
+Generate and inspect a `Graphify <https://github.com/Graphify-Labs/graphify>`_
+knowledge graph — the ``graphify`` target of Topos's advisory refactor suite.
+**Purely advisory**: orphan/dead-code and fragile-edge hotspots here never
+affect the SIMPLE/COMPOSABLE/SECURE medal. See ``docs/decisions/refactor-suite.md`` in
+the repository for the full design, and :doc:`agents` for the equivalent MCP
+tools (``topos_generate_graphify_graph``, ``topos_refactor(target="graphify")``).
+
+.. code-block:: bash
+
+   topos graphify generate [PATH] [OPTIONS]
+   topos graphify orphans FILEPATH [OPTIONS]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+   :class: topos-command-table
+
+   * - Subcommand
+     - Option
+     - Description
+   * - ``generate``
+     - ``PATH``
+     - Directory to analyze (default: current directory). Invokes the external ``graphify`` CLI as a subprocess.
+   * - ``generate``
+     - ``--force``
+     - Regenerate even when a graph is already present.
+   * - ``generate``
+     - ``--json``
+     - Output the result as a single JSON object.
+   * - ``orphans``
+     - ``FILEPATH``
+     - The file to scope orphan nodes / fragile edges to (matched against each node/edge's ``source_file``).
+   * - ``orphans``
+     - ``--graphify-dir PATH``
+     - Directory containing ``graph.json`` (default: ``./graphify-out``).
+   * - ``orphans``
+     - ``--limit N``
+     - Maximum rows to print (default: ``5``).
+   * - ``orphans``
+     - ``--json``
+     - Output the result as a single JSON object.
+
+Requires `Graphify <https://github.com/Graphify-Labs/graphify>`_ on ``PATH``
+(``pip install graphifyy``) for ``generate``; ``orphans`` only reads an
+already-generated ``graphify-out/graph.json``.
+
+**Example**
+
+.. code-block:: bash
+
+   cd /path/to/your/repo
+   topos graphify generate
+   topos graphify orphans src/module.py --limit 10
 
 mcp
 ---
@@ -239,119 +277,7 @@ Start the Topos **Model Context Protocol** server on stdio. AI coding agents con
 
       topos mcp
 
-   The command waits on standard input. Press ``Ctrl-C`` after the FastMCP
-   banner appears.
-
-depgraph generate
------------------
-
-Generate a module dependency graph with `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_. Required for the **COMPOSABLE** pillar and medals that depend on it.
-
-.. code-block:: bash
-
-   topos depgraph generate [--dir REPO_ROOT]
-
-.. list-table::
-   :header-rows: 1
-   :widths: 28 72
-
-   * - Option
-     - Description
-   * - ``--dir REPO_ROOT``
-     - Repository root to analyze (default: current working directory).
-
-Writes ``.gitnexus/`` under the repo root. Re-run when imports change.
-
-If ``gitnexus`` is missing, install it first:
-
-.. code-block:: bash
-
-   pnpm add -g gitnexus  # or: npm install -g gitnexus
-
-**GitNexus / LadybugDB compatibility**
-
-.. list-table::
-   :header-rows: 1
-   :widths: 20 30 50
-
-   * - Topos
-     - Python binding
-     - GitNexus CLI
-   * - ≤0.3.3
-     - ``real-ladybug`` 0.15 (storage v40)
-     - pin ``gitnexus@<1.6`` or omit ``--gitnexus-dir``
-   * - ≥0.3.4
-     - ``ladybug`` 0.17+ (storage v41)
-     - ``gitnexus@latest`` (tested with 1.6.7)
-
-**Example**
-
-.. code-block:: bash
-
-   cd /path/to/your/repo
-   topos depgraph generate
-   topos evaluate src/ -r --gitnexus-dir .gitnexus/
-
-update
-------
-
-Upgrade Topos using the detected install channel (binary installer, PyPI package manager, or source checkout).
-
-.. code-block:: bash
-
-   topos update [OPTIONS]
-
-.. list-table::
-   :header-rows: 1
-   :widths: 28 72
-
-   * - Option
-     - Description
-   * - ``--check``
-     - Exit 0 if up to date, 1 if outdated (for scripts). No upgrade is performed.
-   * - ``--version VERSION``
-     - Pin a release for binary installs (maps to ``TOPOS_VERSION`` in ``install.sh``).
-
-Channel behavior:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 28 72
-
-   * - Install channel
-     - ``topos update`` behavior
-   * - Binary (``install.sh``)
-     - Re-runs the installer with checksum verification; preserves PATH hints.
-   * - PyPI (``uv`` / ``pip``)
-     - Runs ``uv pip install -U topos-mcp`` or ``pip install -U topos-mcp``.
-   * - Source (editable checkout)
-     - Prints instructions: ``git pull && uv pip install -e .``
-   * - Unknown
-     - Prints all supported upgrade paths.
-
-On interactive CLI use (not ``topos mcp``), Topos may print a one-line update notice at most once per 24 hours when a newer release is available. Set ``TOPOS_NO_UPDATE_NOTICES=1`` to disable.
-
-uninstall
----------
-
-Safely remove Topos based on how it was installed (binary installer vs package manager).
-
-.. code-block:: bash
-
-   topos uninstall [OPTIONS]
-
-.. list-table::
-   :header-rows: 1
-   :widths: 28 72
-
-   * - Option
-     - Description
-   * - ``--dry-run``
-     - Show what would be removed without changing anything.
-   * - ``--yes``
-     - Skip confirmation prompts.
-   * - ``--prune-path-hints``
-     - Remove PATH hint blocks previously added by the installer.
+   The command waits on standard input. Press ``Ctrl-C`` to exit.
 
 Next steps
 ----------

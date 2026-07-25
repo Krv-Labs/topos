@@ -4,6 +4,34 @@ This is the expanded guide for using Topos tools in a closed-loop refactor.
 Agents should read `topos://docs/agent-contract` first and use this document
 only when they need detail beyond the compact outcome contract.
 
+**Call shape.** Every tool takes a flat arguments object — named inputs at the
+top level, e.g. `{"filepath": "..."}`. There is no `params` wrapper; sending
+one is rejected as an unknown field.
+
+## Tool index
+
+All 18 registered tools. The loop below uses the first group; the rest are
+situational.
+
+| Tool | Use |
+| --- | --- |
+| `topos_evaluate_file` | Score a file on disk. `refactor_targets=N` adds ranked edit spans. |
+| `topos_evaluate_project` | Rollup + worst-N files for a directory. |
+| `topos_evaluate_code` | Score a source string (SIMPLE/SECURE only — no file, so no coupling). |
+| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. |
+| `topos_assess_worktree_change` | Verify an in-place edit against a git ref. **Default verification.** |
+| `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
+| `topos_assess_improvement` | Verify a side-by-side proposed variant. |
+| `topos_assess_changeset` | Verify several edited files at once against a git ref. |
+| `topos_compare_files` / `topos_compare_code` | AST edit distance between two versions (no verdict). |
+| `topos_preference_walk` | Resolve `target` / `fallback_target` / `next_step` for a ranking, standalone. |
+| `topos_depgraph_status` | Read-only GitNexus diagnosis; never triggers generation. |
+| `topos_generate_depgraph` | Force a GitNexus rebuild/refresh. |
+| `topos_generate_graphify_graph` | Build the Graphify graph that `topos_refactor(target="graphify")` reads. |
+| `topos_refactor` | Advisory hotspots. Never affects the medal. |
+| `topos_calculate_coverage` | Structural test coverage. Outside the lattice. |
+| `topos_get_doc` | Fetch one of the six embedded topics. |
+
 ## The canonical loop: review → plan → refactor → re-measure
 
 ```
@@ -25,7 +53,7 @@ only when they need detail beyond the compact outcome contract.
 ### 1. Measure
 
 - Single file: `topos_evaluate_file` with
-  `{"params": {"filepath": "..."}}` — by default this also detects and
+  `{"filepath": "..."}` — by default this also detects and
   generates/refreshes `.gitnexus` (missing or stale → runs `gitnexus
   analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
   Pass `gitnexus_dir` to point at a specific graph, or `no_composable:
@@ -35,7 +63,7 @@ only when they need detail beyond the compact outcome contract.
   unreachable — the result includes both top-level `warnings` and a
   COMPOSABLE-pillar `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
-  `{"params": {"path": "..."}}` — same default generation behavior, plus
+  `{"path": "..."}` — same default generation behavior, plus
   a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the
   codebase floor; use `worst_files` and `guidance` to pick the next action.
 
@@ -50,7 +78,7 @@ read-only diagnosis without triggering generation; `topos_generate_depgraph`
 lets you force a refresh explicitly.
 
 For deep analysis of a specific file, call `topos_inspect_code` with either
-`{"params": {"filepath": "..."}}` or `{"params": {"code": "..."}}` — it
+`{"filepath": "..."}` or `{"code": "..."}` — it
 returns top-N functions by complexity, source line, entropy details, and the
 full metric table.
 
@@ -63,19 +91,19 @@ the target file directly, you don't need to re-send the source — recover the
 baseline automatically:
 
 - `topos_assess_worktree_change` with
-  `{"params": {"filepath": "...", "baseline_ref": "HEAD"}}` — compares the
+  `{"filepath": "...", "baseline_ref": "HEAD"}` — compares the
   working-tree file to its committed version. Stateless; the common "did my
   edit beat HEAD?" check. Point `baseline_ref` at any branch/commit.
 - For an untracked/new file, or a baseline that was never committed, snapshot
-  it **before** editing: `topos_begin_refactor {"params": {"filepath": "..."}}`
+  it **before** editing: `topos_begin_refactor {"filepath": "..."}`
   → returns `snapshot_id` → edit → `topos_assess_snapshot
-  {"params": {"snapshot_id": "...", "filepath": "..."}}`. A missing/expired
+  {"snapshot_id": "...", "filepath": "..."}`. A missing/expired
   snapshot reports `blocked_by` `snapshot_not_found` / `snapshot_stale`.
 
 **Side-by-side comparison.** When you have a proposed variant in hand, submit
 via `topos_assess_improvement` with
-`{"params": {"filepath": "...", "proposed_code": "..."}}`, or use
-`proposed_filepath` inside `params` when the proposed version is already
+`{"filepath": "...", "proposed_code": "..."}`, or use
+`proposed_filepath` when the proposed version is already
 written inside the configured file root.
 
 ### 4. Verify
@@ -171,7 +199,7 @@ Separate from gate-failure `refactor_targets` on evaluate results.
 `topos_refactor` is read-only advisory analysis and **does not** feed
 SIMPLE / COMPOSABLE / SECURE scoring.
 
-Call with `{"params": {"target": "...", "filepath": "...", "limit": 5}}`
+Call with `{"target": "...", "filepath": "...", "limit": 5}`
 (optional `gitnexus_dir`; ignored for `target="cycles"`):
 
 | `target` | Engine | Needs GitNexus/Graphify | What you get |

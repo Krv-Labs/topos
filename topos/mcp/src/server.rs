@@ -167,12 +167,14 @@ fn build_refactor_prompt_text(
          Use the compact contract in `topos://docs/agent-contract`. Success means a focused \
          structural change moves the target toward `preference_walk.next_step` or the fallback \
          target, preserves behavior, and leaves residual risks explicit.\n\n\
-         Core tool calls:\n```json\n{{\"params\": {{\"filepath\": \"{filepath}\"{pref_args}}}}}\n```\n\
-         Use with `topos_evaluate_file` to measure the current verdict.\n\n\
-         ```json\n{{\"params\": {{\"filepath\": \"{filepath}\"{pref_args}}}}}\n```\n\
-         Use with `topos_inspect_code` when the returned `agent_contract`, `guidance`, or \
-         `suggestions` indicate inspection is needed.\n\n\
-         ```json\n{{\"params\": {{\"filepath\": \"{filepath}\", \"baseline_ref\": \"HEAD\"{pref_args}}}}}\n```\n\
+         Core tool calls (arguments are flat — there is no `params` wrapper):\n\n\
+         `topos_evaluate_file` — measure the current verdict:\n\
+         ```json\n{{\"filepath\": \"{filepath}\"{pref_args}}}\n```\n\n\
+         `topos_inspect_code` — when the returned `agent_contract`, `guidance`, or \
+         `suggestions` indicate inspection is needed:\n\
+         ```json\n{{\"filepath\": \"{filepath}\"{pref_args}}}\n```\n\n\
+         `topos_assess_worktree_change` — verify after editing in place:\n\
+         ```json\n{{\"filepath\": \"{filepath}\", \"baseline_ref\": \"HEAD\"{pref_args}}}\n```\n\n\
          Verification route:\n\
          - Default after in-place edits: `topos_assess_worktree_change` against `HEAD` or another git ref.\n\
          - Dirty or untracked baseline: call `topos_begin_refactor` before editing, then `topos_assess_snapshot`.\n\
@@ -187,6 +189,13 @@ fn build_refactor_prompt_text(
          Return only the baseline, change summary, Topos verification, behavior verification, \
          and residual risks.\n"
     )
+}
+
+/// Rendered `topos_refactor_until_ideal` text for a representative argument
+/// set, so doc-consistency tests can assert on the prompt agents actually see.
+#[cfg(test)]
+pub(crate) fn refactor_prompt_text_for_test() -> String {
+    build_refactor_prompt_text("src/a.rs", "secure", 5, None)
 }
 
 #[rmcp::tool_handler(router = self.tool_router)]

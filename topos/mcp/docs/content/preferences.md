@@ -80,11 +80,9 @@ Pass `preferences` to any evaluate or assess tool:
 
 ```json
 {
-  "params": {
-    "filepath": "src/server.py",
-    "preferences": {
-      "ranking": ["composable", "secure", "simple"]
-    }
+  "filepath": "src/server.rs",
+  "preferences": {
+    "ranking": ["composable", "secure", "simple"]
   }
 }
 ```

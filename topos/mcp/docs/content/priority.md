@@ -31,15 +31,15 @@ Clean fan-in/out and instability in the healthy band dominate.
 
 ## Example
 
-`topos/server.py` (MCP entry point, few callers, lots of internal
+`topos/mcp/src/server.rs` (MCP entry point, few callers, lots of internal
 orchestration): use `simple` — the SIMPLE generator reflects real quality.
 
-`topos/evaluation/omega.py` (the classifier, imported by every evaluation
+`topos/engine/src/core/omega.rs` (the classifier, imported by every evaluation
 path): use `composable` — coupling quality is the main lever here.
 
-`topos/utils/yaml_loader.py` (parses untrusted user config): use
-`secure` — `yaml.load` is a known footgun; the SECURE generator is the
-relevant target.
+`topos/engine/src/adapters/gitnexus.rs` (parses untrusted subprocess output):
+use `secure` — external input crossing a trust boundary is a known footgun;
+the SECURE generator is the relevant target.
 
 ## Switching mid-loop
 

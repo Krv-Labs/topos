@@ -9,6 +9,11 @@ behavior. Treat Topos as one signal: it measures structure, security footguns,
 coupling, and structural test coverage; it does not prove functional
 correctness.
 
+## Call Shape
+
+Every tool takes a flat arguments object: `{"filepath": "src/a.rs"}`. There is
+no `params` wrapper; sending one is rejected as an unknown field.
+
 ## Required Loop
 
 1. Measure the current state with `topos_evaluate_file` or

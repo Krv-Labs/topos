@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use crate::graphs::base::Representation;
 use crate::graphs::cfg::models::EdgeKind;
 use crate::graphs::cfg::object::ControlFlowGraph;
-use crate::graphs::uast::models::UASTNode;
+use crate::graphs::uast::models::{node_key, UASTNode};
 
 use super::dataflow::defs_and_uses;
 
@@ -133,21 +133,6 @@ impl Representation for ProgramDependenceGraph {
 }
 
 // --- Internals -----------------------------------------------------------
-
-/// Fallback key for a UAST node with no natural `id` (e.g. hand-built
-/// synthetic nodes) -- matches `graphs::cpg::builder::node_key`'s
-/// `anon::{ptr:x}` convention exactly (issue #159) so a DDG/CDG edge
-/// referencing an anonymous statement resolves to the same key the
-/// CPG's node map inserted it under. Kept as a private duplicate rather
-/// than a cross-module import to avoid a `pdg -> cpg` dependency (the
-/// CPG already depends on this module, not the reverse).
-fn node_key(node: &UASTNode) -> String {
-    if node.id.is_empty() {
-        format!("anon::{:x}", std::ptr::from_ref(node) as usize)
-    } else {
-        node.id.clone()
-    }
-}
 
 /// Approximate reaching-definitions data dependence.
 ///
@@ -298,46 +283,6 @@ fn compute_control_dependence(cfg: &ControlFlowGraph) -> Vec<DependenceEdge> {
 mod tests {
     use super::*;
     use crate::graphs::ast::dispatch::parse_source;
-    use crate::graphs::uast::models::{NativeRef, SourceSpan};
-
-    #[test]
-    fn node_key_uses_anon_ptr_convention_for_empty_id_nodes() {
-        // Issue #159: `graphs::cpg::builder` builds its node map with an
-        // identical private helper; both must produce the same
-        // `anon::{ptr}` format for an anonymous (empty-id) statement, or
-        // a DDG/CDG edge built here silently fails to resolve against
-        // that node map.
-        let anon = UASTNode {
-            kind: "Anonymous".to_string(),
-            lang: "python".to_string(),
-            span: SourceSpan {
-                file: None,
-                start_byte: 0,
-                end_byte: 0,
-                start_line: 0,
-                start_column: 0,
-                end_line: 0,
-                end_column: 0,
-            },
-            native: NativeRef {
-                parser: "test".to_string(),
-                parser_version: "0".to_string(),
-                node_kind: "anon".to_string(),
-            },
-            attributes: HashMap::new(),
-            children: Vec::new(),
-            id: String::new(),
-        };
-        let key = node_key(&anon);
-        assert!(
-            key.starts_with("anon::"),
-            "expected `anon::<ptr>` key for empty-id node, got {key:?}"
-        );
-        assert_ne!(
-            key, "<anon>",
-            "must not use the old literal-string convention"
-        );
-    }
 
     #[test]
     fn from_uast_computes_control_dependence_for_if() {

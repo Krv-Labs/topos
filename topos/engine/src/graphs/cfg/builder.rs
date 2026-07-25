@@ -27,7 +27,7 @@
 //! README's policy doesn't currently price.
 
 use super::models::{BasicBlock, Blocks, CFGEdge, EdgeKind};
-use crate::graphs::uast::models::UASTNode;
+use crate::graphs::uast::models::{node_key, UASTNode};
 
 /// Stack frame for break/continue resolution within a loop.
 struct LoopContext {
@@ -71,7 +71,10 @@ impl CFGBuildState {
     fn push_statement(&mut self, block_id: usize, stmt: &UASTNode) {
         let mut owned = stmt.clone();
         if owned.id.is_empty() {
-            owned.id = anonymous_node_key(stmt);
+            // Bake the original node's identity key into the clone so
+            // CPG/PDG edges built from block statements resolve to the
+            // same key the CPG node map derives from the original tree.
+            owned.id = node_key(stmt);
         }
         self.blocks
             .get_mut(&block_id)
@@ -79,10 +82,6 @@ impl CFGBuildState {
             .statements
             .push(owned);
     }
-}
-
-fn anonymous_node_key(node: &UASTNode) -> String {
-    format!("anon::{:x}", std::ptr::from_ref(node) as usize)
 }
 
 /// Build a CFG covering every callable reachable from `uast_root`.
@@ -122,37 +121,31 @@ pub fn build_cfg_from_uast(uast_root: &UASTNode) -> (Blocks, Vec<CFGEdge>, usize
 
 // --- Iterative walker --------------------------------------------------
 
-/// Lay out a straight-line sequence of statements, branching out as
-/// needed for control-flow primitives.
-///
-/// Returns the id of the block that fall-through reaches, or `None` if
-/// flow is terminated by a return/break/continue/throw before the end of
-/// the sequence.
-fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: usize) -> bool {
+/// Wire the CFG edge for a flow-terminating statement: `return`/`throw`
+/// edge to the exit block, `break`/`continue` edge to the innermost loop
+/// context (silently dropped when no loop is active, e.g. a stray
+/// `break` in malformed source — flow still terminates).
+fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: usize) {
     match stmt.kind.as_str() {
         "ReturnStmt" => {
             state.push_statement(current_id, stmt);
             state.add_edge(current_id, state.exit_id, EdgeKind::Return);
-            true
         }
         "ThrowStmt" => {
             state.push_statement(current_id, stmt);
             state.add_edge(current_id, state.exit_id, EdgeKind::Exception);
-            true
         }
         "BreakStmt" => {
             if let Some(target) = state.loop_stack.last().map(|ctx| ctx.break_target) {
                 state.add_edge(current_id, target, EdgeKind::Break);
             }
-            true
         }
         "ContinueStmt" => {
             if let Some(target) = state.loop_stack.last().map(|ctx| ctx.continue_target) {
                 state.add_edge(current_id, target, EdgeKind::Continue);
             }
-            true
         }
-        _ => false,
+        _ => {}
     }
 }
 
@@ -590,6 +583,12 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
     }
 }
 
+/// Lay out a straight-line sequence of statements, branching out as
+/// needed for control-flow primitives.
+///
+/// Returns the id of the block that fall-through reaches, or `None` if
+/// flow is terminated by a return/break/continue/throw before the end of
+/// the sequence.
 fn build_block_sequence(
     state: &mut CFGBuildState,
     statements: Vec<&UASTNode>,

@@ -31,10 +31,10 @@ pub struct NativeRef {
 
 /// A UAST node attribute value.
 ///
-/// Narrows Python's `dict[str, Any]` — the two concrete uses seen so far
-/// are `mapper_common`'s `"named": bool` and `graphs::cfg::builder`'s
-/// synthetic module-callable node (`"synthetic": bool`, `"scope": str`).
-/// Widen with another variant if a future attribute needs a richer value.
+/// Narrows Python's `dict[str, Any]` — the concrete uses seen so far are
+/// booleans like `mapper_common`'s `"named"` and strings like the
+/// mappers' `"operator"` / `"typeKind"`. Widen with another variant if a
+/// future attribute needs a richer value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AttributeValue {
     Bool(bool),
@@ -59,7 +59,12 @@ pub enum AttributeValue {
 /// identical-span sibling nodes without needing an explicit sibling
 /// index. The mapper walker populates it; a node built directly (e.g. in
 /// tests) with no id supplied defaults to the empty string.
-#[derive(Debug, PartialEq)]
+///
+/// `Clone`, `Drop`, and `PartialEq` are all implemented iteratively so
+/// pathologically deep trees can't overflow the stack. `Debug` remains
+/// derived (recursive): it is a diagnostic aid never applied to
+/// untrusted input, so avoid formatting extremely deep trees.
+#[derive(Debug)]
 pub struct UASTNode {
     pub kind: String,
     pub lang: String,
@@ -110,11 +115,132 @@ impl Clone for UASTNode {
     }
 }
 
+impl PartialEq for UASTNode {
+    fn eq(&self, other: &Self) -> bool {
+        let mut stack = vec![(self, other)];
+        while let Some((a, b)) = stack.pop() {
+            if a.kind != b.kind
+                || a.lang != b.lang
+                || a.span != b.span
+                || a.native != b.native
+                || a.attributes != b.attributes
+                || a.id != b.id
+                || a.children.len() != b.children.len()
+            {
+                return false;
+            }
+            stack.extend(a.children.iter().zip(b.children.iter()));
+        }
+        true
+    }
+}
+
 impl Drop for UASTNode {
     fn drop(&mut self) {
         let mut descendants = std::mem::take(&mut self.children);
         while let Some(mut node) = descendants.pop() {
             descendants.append(&mut node.children);
         }
+    }
+}
+
+/// Identity key for a node within a single build: the mapper-assigned
+/// [`UASTNode::id`] when present, or `anon::{address:x}` from the node's
+/// location in memory otherwise.
+///
+/// Every layer that cross-references nodes between graph representations
+/// (CFG block statements, the CPG node map, PDG dependence edges) must
+/// key nodes through this one helper so an anonymous (empty-id) node
+/// resolves to the same key everywhere. Mirrors Python's
+/// `node.id or f"anon::{id(node):x}"`, where `id()` is object identity —
+/// the node's address is Rust's closest equivalent.
+///
+/// The pointer fallback is only meaningful while the borrowed tree is
+/// alive, within a single build of one tree: addresses are not stable
+/// across separate parses, so anonymous keys must never be compared
+/// between trees. Mapper-produced nodes always carry a real id, which is
+/// what keeps cross-tree comparisons (e.g. CPG node Jaccard) sound.
+pub(crate) fn node_key(node: &UASTNode) -> String {
+    if node.id.is_empty() {
+        format!("anon::{:x}", std::ptr::from_ref(node) as usize)
+    } else {
+        node.id.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_node(kind: &str) -> UASTNode {
+        UASTNode {
+            kind: kind.to_string(),
+            lang: "python".to_string(),
+            span: SourceSpan {
+                file: None,
+                start_byte: 0,
+                end_byte: 0,
+                start_line: 0,
+                start_column: 0,
+                end_line: 0,
+                end_column: 0,
+            },
+            native: NativeRef {
+                parser: "test".to_string(),
+                parser_version: "0".to_string(),
+                node_kind: kind.to_lowercase(),
+            },
+            attributes: HashMap::new(),
+            children: Vec::new(),
+            id: String::new(),
+        }
+    }
+
+    fn deep_chain(depth: usize) -> UASTNode {
+        let mut node = test_node("Leaf");
+        for _ in 0..depth {
+            let mut parent = test_node("Wrap");
+            parent.children.push(node);
+            node = parent;
+        }
+        node
+    }
+
+    #[test]
+    fn node_key_prefers_the_mapper_id() {
+        let mut node = test_node("Stmt");
+        node.id = "deadbeefdeadbeef".to_string();
+        assert_eq!(node_key(&node), "deadbeefdeadbeef");
+    }
+
+    #[test]
+    fn node_key_falls_back_to_anon_ptr_for_empty_id_nodes() {
+        let anon = test_node("Stmt");
+        let key = node_key(&anon);
+        assert!(
+            key.starts_with("anon::"),
+            "expected `anon::<ptr>` key for empty-id node, got {key:?}"
+        );
+        assert_eq!(key, node_key(&anon), "key must be stable for one node");
+        assert_ne!(
+            node_key(&test_node("Stmt")),
+            key,
+            "distinct nodes must get distinct keys"
+        );
+    }
+
+    #[test]
+    fn eq_is_stack_safe_on_deeply_nested_trees() {
+        const DEPTH: usize = 100_000;
+        let original = deep_chain(DEPTH);
+        let mut copy = original.clone();
+        assert!(original == copy);
+
+        let mut cursor = &mut copy;
+        while !cursor.children.is_empty() {
+            cursor = &mut cursor.children[0];
+        }
+        cursor.kind = "Changed".to_string();
+        assert!(original != copy);
     }
 }

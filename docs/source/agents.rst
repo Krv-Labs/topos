@@ -178,22 +178,28 @@ Choose an agent path
 
       .. code-block:: text
 
-         topos_depgraph_status({"params": {}})
-         topos_generate_depgraph({"params": {}})
+         topos_depgraph_status({})
+         topos_generate_depgraph({})
 
       ``topos_depgraph_status`` is read-only and reports ``missing``,
       ``present``, ``stale``, ``load_error``, ``schema_mismatch``, or
       ``invalid_dir``.
       ``topos_generate_depgraph`` shells out to GitNexus and rewrites
       ``.gitnexus/`` — approval-gated in most clients. Re-run when imports
-      change, modules are renamed, or directories are restructured.
+      change, modules are renamed, or directories are restructured (it also
+      no-ops safely when the graph is already current — pass ``force=true``
+      to always regenerate).
 
-      CLI equivalent (requires ``pnpm add -g gitnexus  # or: npm install -g gitnexus``):
+      Requires GitNexus on ``PATH``:
 
       .. code-block:: bash
 
-         cd /path/to/your/repo
-         topos depgraph generate
+         pnpm add -g gitnexus  # or: npm install -g gitnexus
+
+      As of v0.4.0 the CLI has the same behavior: ``topos evaluate`` and
+      ``topos inspect`` detect and generate/refresh ``.gitnexus`` before
+      scoring, accept ``--gitnexus-dir`` / ``--no-composable``, and
+      ``topos depgraph generate`` forces a rebuild.
 
    Root override
       If the MCP host starts Topos outside the repository, set the trusted root
@@ -292,9 +298,10 @@ Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
 MCP Tools
 ---------
 
-Topos registers sixteen MCP tools. Evaluation, inspection, assessment, coverage,
-and depgraph tools take a single ``params`` object. ``topos_get_doc`` takes a
-direct ``topic`` argument.
+Topos registers eighteen MCP tools, all implemented directly in ``topos-mcp``
+(a compiled Rust binary — see :doc:`installation`). Every tool takes a **flat
+arguments object** — the named inputs sit at the top level, with no ``params``
+wrapper. Sending ``{"params": {...}}`` is rejected as an unknown field.
 
 Most evaluation and assessment tools accept optional ``preferences`` with a
 strict ``ranking`` (for example
@@ -321,21 +328,26 @@ Structured responses may include:
 Core Evaluation
 ~~~~~~~~~~~~~~~
 
-``topos_evaluate_file({"params": {"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ..., "verbose": ...}})``
-   Classifies a file on disk. Pass ``gitnexus_dir`` to enable the COMPOSABLE pillar and
-   reach higher badges like ``IDEAL``. Missing or rejected GitNexus configuration is
-   reported in ``warnings``, ``agent_contract.blocked_by``, and the COMPOSABLE pillar
-   interpretation. Returns ``metric_locations`` for failing complexity gates.
+``topos_evaluate_file({"filepath": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "refactor_targets": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
+   Classifies a file on disk. COMPOSABLE is scored by default — a missing or stale
+   ``.gitnexus`` is generated/refreshed before scoring, so badges like ``IDEAL`` are
+   reachable with no extra call. Pass ``gitnexus_dir`` only to point at a non-default
+   graph, or ``no_composable`` to skip detection entirely. If GitNexus is not installed
+   or generation fails, that is reported in ``warnings``,
+   ``agent_contract.blocked_by``, and the COMPOSABLE pillar interpretation. Returns
+   ``metric_locations`` for failing complexity gates.
 
-``topos_evaluate_code({"params": {"code": ..., "language": ..., "preferences": ..., "allow": ..., "verbose": ...}})``
+``topos_evaluate_code({"code": ..., "language": ..., "preferences": ..., "allow": ..., "verbose": ...})``
    Classifies a raw code string (SIMPLE and SECURE only).
 
-``topos_evaluate_project({"params": {"path": ..., "preferences": ..., "gitnexus_dir": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...}})``
-   Python project rollup with progress reporting and pagination. Returns worst-scoring files first. Use
-   ``aggregate_floor_verdict`` for the codebase floor and ``worst_files`` /
-   ``guidance`` for the next action.
+``topos_evaluate_project({"path": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
+   Project-wide rollup with progress reporting and pagination. Autodetects
+   all six supported languages (Python, Rust, JavaScript, TypeScript, C++,
+   Go) in one walk — no language argument needed. Returns worst-scoring
+   files first. Use ``aggregate_floor_verdict`` for the codebase floor and
+   ``worst_files`` / ``guidance`` for the next action.
 
-``topos_inspect_code({"params": {"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ..., "allow": ..., "verbose": ...}})``
+``topos_inspect_code({"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ..., "allow": ..., "verbose": ...})``
    Detailed metric breakdown: top-N functions by complexity (with line numbers and
    ``qualified_name``), entropy details, and full metric table. Provide exactly
    one of ``code`` or ``filepath``.
@@ -343,20 +355,20 @@ Core Evaluation
 Refactor & Iterate
 ~~~~~~~~~~~~~~~~~~
 
-``topos_assess_worktree_change({"params": {"filepath": ..., "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+``topos_assess_worktree_change({"filepath": ..., "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...})``
    **Default edit-in-place loop.** Compares the working-tree file to a git baseline
    (``git show <baseline_ref>:<path>``). Edit the file, then call this — no snapshot
    or pasted source required.
 
-``topos_begin_refactor({"params": {"filepath": ..., "preferences": ..., "gitnexus_dir": ...}})``
+``topos_begin_refactor({"filepath": ..., "preferences": ..., "gitnexus_dir": ...})``
    Captures the current file as a baseline snapshot before editing. Returns a
    ``snapshot_id``. Use for untracked files or uncommitted baselines that git cannot
    serve.
 
-``topos_assess_snapshot({"params": {"snapshot_id": ..., "filepath": ..., "include_security_findings": ..., "allow": ...}})``
+``topos_assess_snapshot({"snapshot_id": ..., "filepath": ..., "include_security_findings": ..., "allow": ...})``
    Compares the current on-disk file to a snapshot from ``topos_begin_refactor``.
 
-``topos_assess_improvement({"params": {"filepath": ..., "current_code": ..., "proposed_code": ..., "proposed_filepath": ..., "language": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+``topos_assess_improvement({"filepath": ..., "current_code": ..., "proposed_code": ..., "proposed_filepath": ..., "language": ..., "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...})``
    Side-by-side variant assessment. Provide exactly one of ``filepath`` or
    ``current_code`` and exactly one of ``proposed_code`` or ``proposed_filepath``.
 
@@ -364,46 +376,101 @@ Refactor & Iterate
    ``SUSPICIOUS_NO_STRUCTURAL_CHANGE``.
 
    When SECURE fails, file-level assessment includes ``security_findings`` with the
-   dangerous callee, line, and source snippet.
+   dangerous callee, line, and source snippet — sourced from the embedded
+   `Sighthound <https://github.com/Corgea/Sighthound>`_ SAST engine for
+   Python/JavaScript/TypeScript/Go, falling back to local CPG probes for
+   Rust/C++ or when Sighthound is disabled (``TOPOS_DISABLE_SIGHTHOUND=1``).
+   These findings are supplementary detail only — the SECURE verdict itself
+   always comes from the native CPG probes, never from Sighthound.
 
-``topos_assess_changeset({"params": {"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...}})``
+``topos_assess_changeset({"files": [...], "baseline_ref": "HEAD", "preferences": ..., "gitnexus_dir": ..., "include_security_findings": ..., "allow": ...})``
    Multi-file / module-split assessment (read-only). Each file is compared to the git
    baseline; new files have no baseline. Returns per-file verdicts, a project rollup
    (``aggregate_before`` / ``aggregate_after``), and flags
    ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
    blocked, call ``topos_generate_depgraph`` first, then re-assess.
 
-``topos_preference_walk({"params": {"ranking": ..., "target": ..., "current": ...}})``
+``topos_preference_walk({"ranking": ..., "target": ..., "current": ...})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should
    follow to reach the target from its current state.
 
 Dependency Graph
 ~~~~~~~~~~~~~~~~
 
-``topos_depgraph_status({"params": {"gitnexus_dir": ...}})``
+``topos_depgraph_status({"gitnexus_dir": ...})``
    Read-only ``.gitnexus`` state: ``missing``, ``present``, ``stale``,
    ``load_error``, ``schema_mismatch``, or ``invalid_dir`` (a bad ``gitnexus_dir``
    override). Staleness is anchored to the commit the graph was built from
    (falling back to file mtimes for graphs built before that marker existed), so
    a regenerate reliably clears ``stale``. Never shells out.
 
-``topos_generate_depgraph({"params": {"directory": ...}})``
+``topos_generate_depgraph({"directory": ..., "force": ...})``
    Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
    approval-gated. Requires the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
 
 Structure & Coverage
 ~~~~~~~~~~~~~~~~~~~~
 
-``topos_compare_files({"params": {"source": ..., "target": ...}})``
+``topos_compare_files({"source": ..., "target": ...})``
    AST edit distance (topological drift) between two files on disk.
 
-``topos_compare_code({"params": {"source_code": ..., "target_code": ..., "language": ...}})``
+``topos_compare_code({"source_code": ..., "target_code": ..., "language": ...})``
    AST edit distance (topological drift) between two code strings.
 
-``topos_calculate_coverage({"params": {"put_files": ..., "test_files": ..., "language": ..., "k": ..., "include_unknown": ..., "coverage_threshold": ...}})``
+``topos_calculate_coverage({"put_files": ..., "test_files": ..., "language": ..., "k": ..., "include_unknown": ..., "coverage_threshold": ...})``
    Calculates structural test coverage (UAST declaration matching and k-gram
    recall). Coverage is a separate signal; it does not change the
    SIMPLE / COMPOSABLE / SECURE lattice verdict.
+
+Refactor Suite (advisory, not scored)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ranked, actionable structural hotspots from four independent engines.
+**None of these feed SIMPLE/COMPOSABLE/SECURE** — this is refactoring
+guidance layered on top of the scored medal, distinct from the
+gate-failure ``refactor_targets`` surfaced *inside* ``topos_evaluate_file``.
+See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
+
+``topos_refactor({"target": "cycles"|"dependencies"|"process"|"graphify", "filepath": ..., "gitnexus_dir": ..., "graphify_dir": ..., "limit": ...})``
+   One tool, four targets, each surfacing a different structural-analysis
+   engine and returning a ranked list of hotspots:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 18 30 12 40
+
+      * - ``target``
+        - Engine
+        - Needs
+        - What you get
+      * - ``cycles``
+        - CFG cycle basis (homology)
+        - —
+        - Source ranges for real loops/branches behind cyclomatic complexity
+      * - ``dependencies``
+        - Balanced Forman curvature on the MDG
+        - GitNexus
+        - Dependency edges worth strengthening (bottlenecks)
+      * - ``process``
+        - Directed Forman-Ricci curvature on process graphs
+        - GitNexus
+        - Execution choke-point transitions
+      * - ``graphify``
+        - Degree + confidence over a `Graphify <https://github.com/Graphify-Labs/graphify>`_ knowledge graph
+        - Graphify
+        - Orphan/dead-code nodes and low-confidence (``INFERRED``/``AMBIGUOUS``) edges
+
+   ``gitnexus_dir``/``graphify_dir`` are ignored for targets that don't need
+   them. ``gitnexus_available``/``tool_available`` report ``false`` (no
+   error) when the backing tool/graph isn't present — the same graceful
+   degradation ``topos_evaluate_file`` uses for COMPOSABLE.
+
+``topos_generate_graphify_graph({"directory": ..., "force": ...})``
+   Generates the Graphify knowledge graph (``graphify-out/graph.json``) via
+   the external ``graphify`` CLI (``pip install graphifyy``). Side-effecting;
+   skips running ``graphify`` when a graph is already current unless
+   ``force=true``. Feeds only ``topos_refactor(target="graphify")`` — never
+   SIMPLE/COMPOSABLE/SECURE.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

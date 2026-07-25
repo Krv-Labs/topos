@@ -1,24 +1,24 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath("../../src"))
-sys.path.insert(0, os.path.abspath("../.."))
+import tomllib
+from pathlib import Path
 
 project = "Topos"
 author = "Krv Labs"
 copyright = "2026, Krv Labs"
 
-from topos import __version__  # noqa: E402
-
-release = __version__
+# As of v0.4.0 (PR #159) Topos is an all-Rust workspace — there is no
+# `topos` Python package to import __version__ from. Read the shared
+# version straight from the workspace manifest instead, mirroring
+# `scripts/check_versions.py`.
+_root = Path(__file__).resolve().parent.parent.parent
+with (_root / "Cargo.toml").open("rb") as _f:
+    release = tomllib.load(_f)["workspace"]["package"]["version"]
 
 extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.autosummary",
-    "sphinx.ext.viewcode",
-    "sphinx.ext.intersphinx",
+    # No sphinx.ext.autodoc/autosummary/viewcode/napoleon: those support
+    # Python API autodoc, and there is no Python API left to document.
+    # Rust API docs live in rustdoc (`cargo doc`), not this Sphinx site —
+    # see architecture.rst's "Rust API docs" section.
     "sphinx_design",
-    "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.todo",
@@ -30,16 +30,6 @@ extensions = [
 autosectionlabel_prefix_document = True
 autosectionlabel_maxdepth = 2
 
-autodoc_default_options = {
-    "members": True,
-    "undoc-members": True,
-    "show-inheritance": True,
-}
-autodoc_member_order = "bysource"
-autodoc_typehints = "none"
-autosummary_generate = True
-autosummary_imported_members = False
-
 source_suffix = {
     ".rst": "restructuredtext",
     ".txt": "restructuredtext",
@@ -48,10 +38,6 @@ source_suffix = {
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
-
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-}
 
 html_theme = "furo"
 html_static_path = ["_static"]

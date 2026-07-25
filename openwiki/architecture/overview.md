@@ -1,70 +1,59 @@
 ---
 type: Architecture Overview
-title: Hybrid analysis and evaluation architecture
-description: Explains how Topos turns supported-language source into normalized program graphs, policy decisions, and lattice verdicts using Python orchestration and Rust kernels.
-resource: /topos/core/morphism.py
-tags: [architecture, python, rust, program-graphs, evaluation]
+title: Rust analysis and evaluation architecture
+description: Explains how the Rust workspace turns supported-language source into normalized program graphs, policy decisions, and three-pillar lattice verdicts.
+resource: /topos/engine/src/lib.rs
+tags: [architecture, rust, program-graphs, evaluation]
 ---
 
-# Hybrid analysis and evaluation architecture
+# Rust analysis and evaluation architecture
 
-Topos treats a source file as a `ProgramMorphism`: source plus parse result and derived structural representations. It is not a monolithic compiler. Python coordinates language parsing, UAST mapping, graph assembly, policies, CLI, and MCP; the Maturin-built `topos.topos_functors` extension provides selected Rust implementations for CFG algorithms, entropy, edit distance, curvature, and cycle analysis.
-
-The [quality model](../domain/quality-model.md) assigns product meaning to the outputs of this pipeline, while [agent and CLI workflows](../workflows/agent-and-cli.md) expose it to humans and agents.
+Topos is a Rust workspace: `topos/engine` contains pure structural analysis, while `topos/cli` and `topos/mcp` are its human and agent-facing consumers. The engine parses six languages with tree-sitter and models source as UAST, CFG, PDG, CPG, MDG, and process-graph representations. It then applies the three-pillar policies described in the [quality model](../domain/quality-model.md); the [CLI and MCP workflows](../workflows/agent-and-cli.md) expose those results.
 
 ## Evaluation flow
 
-1. **Parse source.** `ProgramMorphism` creates a `ProgramObject` via `topos.graphs.ast.dispatch.parse_source` (`topos/core/morphism.py`). Tree-sitter provides the common parsing/UAST route for Python, Rust, JavaScript, TypeScript, C++, and Go. The default backend is named `hybrid`; native parsing is currently substantive only for Python, so avoid assuming cross-language dual-parser behavior.
-2. **Build representations.** A morphism lazily caches CFG, PDG, CPG, and abstractness representations from its UAST. These representations are different views of the same file, not independent source parsers.
-3. **Attach cross-file information when available.** A `ModuleDependencyGraph` reads GitNexus output to represent imports, calls, inheritance, and other relationships across files. This is why [COMPOSABLE depends on the integration](../integrations/distribution.md#gitnexus-for-composable).
-4. **Measure and score.** `CharacteristicMorphism.classify_detailed` always adds AST metrics, groups supplied representations by dimension, invokes dimension scorers, and records raw metrics, interpretations, scores, and achieved generators.
-5. **Aggregate project results.** `combine_dimensions` takes the minimum score per dimension across evaluated files. A parse failure injects zero SIMPLE score, so project-level success is intentionally pessimistic.
+1. **Parse and normalize.** `graphs::ast::dispatch` parses supported source and language mappers produce UAST nodes with source spans, native provenance, and deterministic IDs.
+2. **Build per-file graphs.** The UAST is consumed by CFG, PDG, and CPG builders; these are derived views, not independent parsers.
+3. **Attach repository topology when available.** The MDG reads GitNexus state for cross-file COMPOSABLE signals, as described in the [GitNexus integration](../integrations/distribution.md#gitnexus-for-composable).
+4. **Measure and decide.** Engine probes supply metrics to policy translators, which produce SIMPLE, COMPOSABLE, and SECURE results and their lattice outcome.
+5. **Present a contract.** The CLI and MCP server link the same engine, so their differences should be output/routing concerns rather than separate scoring logic.
 
 ## Representation boundaries
 
 | Representation | Scope and primary use | Key anchors |
 | --- | --- | --- |
-| AST/UAST | Per-file syntax and normalized language shape; entropy and general graph input | `topos/graphs/ast/`, `topos/graphs/uast/` |
-| CFG | Intra-file control flow; cyclomatic/essential complexity, nesting, longest acyclic path | `topos/graphs/cfg/` |
-| PDG | Intra-procedural control and data dependence; feeds CPG diagnostics | `topos/graphs/pdg/` |
-| CPG | AST/CFG/DDG/CDG fusion; SECURE metrics | `topos/graphs/cpg/` |
-| MDG | Inter-module GitNexus graph; coupling, instability, dependency depth | `topos/graphs/mdg/object.py` |
-| Process graph | GitNexus process transitions; advisory curvature hotspots only | `topos/graphs/process/` |
+| AST/UAST | Per-file parsing and normalized structural shape | `topos/engine/src/graphs/{ast,uast}/` |
+| CFG | Intra-file control flow and SIMPLE complexity inputs | `topos/engine/src/graphs/cfg/` |
+| PDG | Intra-procedural data/control dependence for diagnostics and CPG construction | `topos/engine/src/graphs/pdg/` |
+| CPG | AST, projected CFG, DDG, and CDG edge families; SECURE analysis input | `topos/engine/src/graphs/cpg/` |
+| MDG | GitNexus inter-module topology for COMPOSABLE | `topos/engine/src/graphs/mdg/` |
+| Process graph | GitNexus process transitions for advisory refactoring | `topos/engine/src/graphs/process/` |
 
-The CPG dispatches to Sighthound when present and otherwise runs local probes, connecting its SECURE metrics directly to [external security integration behavior](../integrations/distribution.md#sighthound-for-secure). The process graph and refactor probes deliberately remain outside medal scoring; see [advisory workflow guidance](../workflows/agent-and-cli.md#advisory-refactoring).
+The [CPG builder](../../topos/engine/src/graphs/cpg/builder.rs) fuses AST edges with projected CFG edges and PDG DDG/CDG edges. PDG reaching definitions are deliberately textual-order approximations rather than alias-, SSA-, or flow-sensitive analysis; do not overstate them when changing SECURE diagnostics.
 
-## UAST contract and dependency-graph limits
+## UAST and graph identity contract
 
-The UAST is a normalized representation used for cross-language structural analysis; it is not a claim that Topos retains every construct from every native parser. `topos/graphs/uast/mapper_python.py` maps common declaration, statement, expression, identifier, literal, and file kinds while preserving source positions through the shared mapper. In particular, its mapping tables do **not** currently include Python `import_statement` or `import_from_statement`, so those nodes become `Unknown`. Other language mappers should be checked individually rather than assumed to implement a proposed universal schema.
+Mappers assign deterministic UAST IDs. For hand-built nodes without an ID, `graphs::uast::models::node_key` provides an `anon::<address>` key that is valid only during one live tree/build. CFG, PDG, and CPG must use that shared helper: the CPG relies on matching keys to connect projected CFG/DDG/CDG endpoints to collected nodes.
 
-This boundary matters to COMPOSABLE assessment. GitNexus owns cross-file module and symbol resolution, and Topos consumes its `.gitnexus` output as an MDG. Although an edited source variant can be parsed, Topos cannot correctly reconstruct its outgoing MDG edges from the UAST: import extraction, first-party module resolution, and a supported per-file MDG edge-replacement API are absent. Furthermore, instability is import-driven but `fan_out` is based on resolved `CALLS` edges. The assessment path therefore reports the static-graph approximation and freshness warnings instead of silently claiming an updated COMPOSABLE verdict.
+UAST clone, drop, and equality are iterative, and CFG construction uses an iterative continuation machine. These stack-safety properties protect deeply nested source, but derived `Debug` formatting remains recursive and is not appropriate for extremely deep trees.
 
-Do not add an incremental MDG patch as a small scoring change. It needs an import/outbound-reference representation, resolution against MDG file nodes (including packages and third-party imports), safely maintained incoming/outgoing indexes, and parity tests against a fresh `gitnexus analyze`. First measure whether stale-versus-regenerated topology changes COMPOSABLE verdicts often enough to justify that infrastructure; a fast full regeneration is the correctness-preserving alternative. This limitation is surfaced to agents through the [CLI and MCP workflows](../workflows/agent-and-cli.md#mcp-agent-loop) and derives from the external [GitNexus integration](../integrations/distribution.md#gitnexus-for-composable).
+CFG behavior is protected by `graphs/cfg/edge_contracts.rs`, which locks branch/loop, match/switch-return, and supported try-return edge layouts across every registered language. Preserve that contract when altering traversal; add an explicit fixture and expectation for a genuinely new control-flow shape.
 
-## Native-code boundary
+## SIMPLE complexity boundary
 
-`pyproject.toml` configures Maturin with `Cargo.toml` as the version source and publishes the extension as `topos.topos_functors`. `src/lib.rs` exports native types/functions rather than a complete application runtime.
-
-Rust is used where structural operations are expensive or algorithmically sensitive:
-
-- CFG complexity and longest acyclic path (`src/cfg.rs`)
-- cycle-basis extraction (`src/ph.rs`)
-- balanced and directed Forman curvature (`src/frc.rs`)
-- compression-based AST entropy (`src/probes_ast.rs`)
-- sequence edit distance (`src/profunctors.rs`)
-
-Keep Python-facing models and Rust exports in sync. Changes crossing this boundary should include targeted Python tests and, where applicable, `tests/parity/`; [testing operations](../operations/testing-and-release.md) describe the full gate.
+`ast.max_function_complexity` walks each UAST function/method subtree and is a real SIMPLE gate; whole-file `cfg.cyclomatic` shapes reporting and suggestions but does not independently determine achievement. The complexity walk counts conventional decision nodes, short-circuit boolean operators, ternaries, Python comprehension clauses, `with`/`assert`, try handlers, and match/switch arms. The [quality model](../domain/quality-model.md#simple) owns the product meaning and threshold implications.
 
 ## Design constraints to preserve
 
-- CFG longest-path calculation assumes loopback and continue edges are removed before DAG dynamic programming. A previous exponential path enumeration was replaced for this reason (`CHANGELOG.md`, 0.3.8).
-- The classifier only automatically supplies AST metrics; callers must supply CFG/CPG/MDG/abstractness representations appropriate to the desired dimensions. Trace the invoking CLI or MCP path before diagnosing a missing pillar.
-- MDG loading gracefully degrades for missing, stale, incompatible, or branch-mismatched GitNexus state. It can retry a shadow-page replay with read-write access, so do not describe dependency-graph evaluation as unconditionally read-only.
-- Source spans are used for diagnostics and CPG text recovery. Preserve source/parse revision alignment when extending graph models.
+- The engine crate contains no CLI or MCP concerns; keep shared structural behavior there so interfaces do not drift.
+- Cross-file COMPOSABLE depends on GitNexus topology. Source edits cannot be silently treated as an incrementally reconstructed MDG; status and freshness handling are part of the result contract.
+- PDG is diagnostic infrastructure consumed by CPG, not a fourth lattice pillar.
+- CPG node payloads intentionally avoid recursively duplicating full descendants; retain this when evolving graph output.
 
 ## Change navigation
 
-- Parsing/language support: `topos/graphs/ast/languages.py`, AST providers, and `topos/graphs/uast/mapper_*.py`.
-- Per-file graph semantics: `topos/graphs/{cfg,pdg,cpg}/` and matching `tests/graphs/`.
-- Policy coupling and lattice assembly: `topos/evaluation/characteristic_morphism.py`, then [quality model](../domain/quality-model.md).
-- Native algorithm changes: `src/` plus Python probe adapters under `topos/functors/`.
+- Parsing and UAST: `topos/engine/src/graphs/{ast,uast}/`.
+- Per-file graph semantics and contracts: `topos/engine/src/graphs/{cfg,pdg,cpg}/`.
+- Metrics and policy assembly: `topos/engine/src/{functors,evaluation}/`, then the [quality model](../domain/quality-model.md).
+- CLI/MCP transport or result contracts: [agent and CLI workflows](../workflows/agent-and-cli.md).
+- Focused Cargo checks and CI: [testing and release operations](../operations/testing-and-release.md).

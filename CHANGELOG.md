@@ -5,7 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-07-25
+
+Baseline: **`topos-mcp==0.3.12`** (last Python release on PyPI). v0.4.0 is a Rust rewrite aimed at drop-in parity for scoring semantics and agent workflows on the same inputs, with documented exceptions called out below. Items not listed under **Intentional changes** are intended to match 0.3.12 behavior; where the Rust port regressed during migration, **Fixed** entries restore Python semantics.
+
+### Parity with `topos-mcp==0.3.12`
+
+- **Three-pillar scoring** — same gate thresholds, lattice medals, preference walk, and assess/evaluate/compare/coverage/depgraph/refactor tool semantics when given the same file, flags, and `.gitnexus` state. All 18 MCP tools, 6 `topos://docs/*` resources, and the `topos_refactor_until_ideal` prompt are preserved (argument shape is flat top-level JSON, not a FastMCP `params` wrapper).
+- **CLI surface** — `topos evaluate`, `inspect`, `compare`, structural test coverage, `depgraph generate`, and advisory `refactor`/`graphify` subcommands. Pass **`--no-composable`** (CLI) or **`no_composable: true`** (MCP) to reproduce 0.3.12's opt-in COMPOSABLE behavior (no auto-generation, read existing `.gitnexus` only).
+- **SECURE allowlisting** — #168/#174 consistency ported to Rust: taint findings resolve via `sink_info.sink_type`; allowlist matching is per-finding; one-off `--allow` acknowledges risk without stripping the grade cap.
+- **SIMPLE complexity** — decision-form counting restored (#142): short-circuit booleans, ternaries, comprehensions, `with`/`assert`, per-handler `except`/`catch`. Gate threshold unchanged (`<= 10.0`).
+- **Rollups and gates** — multi-file verdict is the lattice meet (∧) of per-file Ω verdicts; files missing a dimension representation (e.g. no MDG) no longer drag the project rollup down; refactor suggestions use the same gate inputs as the scorer; gates fail closed on `NaN`; `taint_flow_paths` is deterministic.
+- **CLI inspect JSON** — parseable on first run in a fresh repo; text mode exits `1` on parse failure; `--json` scores are 0–100 (Python scale). `TOPOS_DEPGRAPH_TIMEOUT` / `TOPOS_GRAPHIFY_TIMEOUT` disable the deadline instead of panicking on non-finite values.
+
+### Intentional changes from `topos-mcp==0.3.12`
+
+- **SECURE gate stays CPG-native; Sighthound is advisory-only** — 0.3.12 let a `sighthound` binary on `$PATH` *replace* `cpg.dangerous_calls`/`cpg.taint_flows` for the gate when present. v0.4.0 always gates on native CPG probes; embedded Sighthound only enriches `security_findings`. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) and the SECURE section of `README.md`. Force CPG-only detail with `TOPOS_DISABLE_SIGHTHOUND=1`.
+- **`match`/`switch` counted per case arm** (#151/#153) — 0.3.12 counted a whole `match`/`switch` as one decision; v0.4.0 counts one branch per arm (stricter SIMPLE gate, aligns `ast.max_function_complexity` with `cfg.cyclomatic`).
+- **COMPOSABLE scored by default** — CLI and MCP detect GitNexus, generate/refresh `.gitnexus` when missing or stale, then score COMPOSABLE in the same call. 0.3.12 required a separate depgraph step (CLI never attached an MDG; MCP read an existing graph only). See [`docs/decisions/composable-by-default.md`](docs/decisions/composable-by-default.md). Opt out: `--no-composable` / `no_composable: true`.
+- **Sighthound embedded in-process** — no `$PATH` discovery; compiled into `topos-mcp` for Python/JS/TS/Go rulesets (Rust/C++ still use CPG probes). Deployment change; SECURE gate behavior is covered above.
+- **MCP wire shape (breaking for structured-content consumers)** — `structured_content` defaults compact: `raw_metrics` behind `verbose: true`; null/empty fields omitted unconditionally; `topos_assess_*` always compact; `refactor_targets` defaults to `3` (was `0`); `worst_files` is `{filepath, lattice_element}` not full row clones; new `binding_constraint` field; gating targets rank ahead of advisory `cfg.cyclomatic` when no pillar preference is given. Restore partial payload with `verbose: true`; disable targets with `refactor_targets: 0`.
+
+### Added
+
+- **Server build identity, and self-reported stale-process detection.** Determining which of several registered Topos servers a host was actually running — and whether it held the binary you just built — previously meant `stat`, `pgrep`, `ps`, and `strings` on the executable. The server now answers it:
+  - `serverInfo.version` carries semver build metadata (`0.4.0+build.<epoch>`), so two builds of the same branch are distinguishable. It rides on the existing field: no new surface and no agent-context cost, and it renders in the host's server list where a local build is told apart from a registry-installed one.
+  - A new `topos://build` resource reports version and build time, executable path, resolved file root, pid, and staleness. It is a resource rather than a tool deliberately — resources are read on demand, so it costs nothing in the always-listed tool surface.
+  - **Every tool response is prefixed with a stale-server warning when, and only when, the binary on disk has been rebuilt since the process started.** A rebuild does not replace a running server, since the MCP host owns the process; this makes that visible instead of leaving two timestamps to compare. Healthy responses are unchanged, so the compact payload is unaffected. It cannot be advertised in `instructions` instead: those are built at `initialize`, when a just-started process is never stale.
+  - `topos-mcp --version` (and `--help`) now work. Previously the binary answered a version query by waiting for an `initialize` frame that never arrived and then reporting a closed connection, which reads like a broken install.
+
+  The build timestamp is the executable's own mtime read at runtime, not a value embedded by a `build.rs`: a build script stamping a timestamp must rerun on every build to stay accurate, forcing a relink each time, and a cached value can report a build that never happened. No new dependency and no build script were added.
+- **Sighthound SAST engine embedded directly**: the [Corgea/Sighthound](https://github.com/Corgea/Sighthound) pattern-matching + taint-flow scanner is now a compiled-in library dependency of `topos-mcp` (not an external CLI discovered on `$PATH`). SECURE findings for Python/JavaScript/TypeScript/Go come from Sighthound's embedded rulesets in-process; Rust/C++ fall back to the local CPG probes. Set `TOPOS_DISABLE_SIGHTHOUND=1` to force the CPG-probe path.
+- **`topos mcp` subcommand**: the `topos` CLI binary now launches the in-process Rust MCP server, so the single `topos` binary is both the CLI and the MCP server (the VS Code extension invokes `topos mcp`). The standalone `topos-mcp` binary remains the PyPI-wheel entry point.
+- **`topos depgraph generate` CLI subcommand restored.** Thin wrapper over the same `generate_depgraph` / `depgraph_status` paths the MCP `topos_generate_depgraph` tool uses (closes [#206](https://github.com/Krv-Labs/topos/issues/206)).
+- **Graphify knowledge-graph integration (issue #150, Phase 1)**: a subprocess adapter, a from-scratch `graph.json` parser, and an orphan/fragile-edge detection probe, wired into `topos_refactor(target="graphify")`, a new `topos_generate_graphify_graph` MCP tool, and a new `topos graphify generate|orphans` CLI subcommand. Purely advisory — never feeds SIMPLE/COMPOSABLE/SECURE.
+- **OpenClaw / Hermes agent skill:** Canonical skill at `skills/topos/SKILL.md`, ClawHub publish workflow, and `scripts/check_skill.py` version sync. ([#185](https://github.com/Krv-Labs/topos/pull/185))
+- **`EvaluationResult.binding_constraint`.** The single gating metric costing a pillar its `achieved`: pillar, metric, value, threshold, and span. It is the top-ranked `"fix"` refactor target projected down to those fields, so it cannot disagree with `refactor_targets`, and it is omitted when only advisory metrics are out of band — which is what makes the common `achieved: true` / `score: 0.0` combination readable.
+
+### Changed
+
+- **MCP server rewritten in Rust (`topos-mcp` crate)**: the entire `topos/mcp/**` Python package is reimplemented as a Rust `rmcp` stdio server — every tool calls directly into `topos-core`. The `topos-mcp` PyPI package is now a thin maturin `bin` wheel with zero Python runtime dependencies.
+- **All computation centralized in `topos-core`**: persistent-homology cycle basis, Forman-Ricci curvature engines, process graph, and MDG/process curvature probes moved out of `topos-pyo3` into `topos-core` (`functors::curvature`, `functors::probes::{cfg::homology,mdg::curvature,process::curvature}`, `graphs::process`). The `topos-pyo3` crate is removed.
+- **Characteristic morphism χ_S moved to `core/`**: `characteristic_morphism.rs` now sits alongside `omega`, `morphism`, `object`, and `category` in `topos-core/src/core/`, not under `evaluation/`.
+- **Tree-sitter is the sole AST engine**: no alternative parser backends are carried forward.
+- **COMPOSABLE is scored by default, everywhere** — see **Intentional changes** above. Shared resolver: `topos_mcp::evaluation::ensure_gitnexus_dir`. MCP evaluate tools move to `read_only_hint: false` / `open_world_hint: true`; `topos_evaluate_file` is `async` with blocking offload. Flags: CLI `--no-composable` / `--gitnexus-dir <dir>`; MCP `no_composable` on evaluate tools.
+- **Per-function complexity entries no longer skip `pub fn`s (wire-visible).** Rust migration bug: gate metric and `metric_locations`/`refactor_targets`/`binding_constraint`/`topos_inspect_code` entries disagreed when name resolution failed on `pub fn`s. Entries now cover those functions; gate metric unchanged but Rust files gain targets they never surfaced before.
+- **`topos_inspect_code` now scores COMPOSABLE (closes #216).** Resolves the graph through the same helpers as `topos_evaluate_file`; takes `gitnexus_dir` and `no_composable`. The `code`-string form unchanged (no file → no module → SIMPLE/SECURE only).
+- **`refactor_targets[0]` is the top gating target when no pillar preference is given.** Gating tier leads over advisory `cfg.cyclomatic` (#193); agent docs relabel `cfg.cyclomatic` as advisory. With `preferences.ranking` supplied, stated pillar order still wins.
+- **`topos_generate_depgraph` caps GitNexus child output** at 200 bytes with an elision marker on `message`, `error`, and markdown. CLI still prints GitNexus output in full on stderr.
+- **MCP evaluation responses default to a compact shape** — see **Intentional changes** above for the full wire contract and restore paths.
+
+### Removed
+
+- **The legacy Python implementation is deleted**: `topos/` (MCP, functors, graphs, core, evaluation, CLI, utils) and the Python `tests/` suite; PyInstaller onefile build (`scripts/build-binary.sh`, `scripts/lazy_exports.py`, `packaging/macos-entitlements.plist`); Sphinx `docs/source/api/` autodoc pages. CI and release are Rust-only (cargo test/clippy/fmt + stdio smoke test; binaries via `cargo build`, PyPI `bin` wheels via maturin). See `docs/source/architecture.rst`.
+
+### Fixed
+
+- **Deeply nested source no longer overflows the stack.** UAST clone/drop/equality, CFG construction, callable discovery, and PDG dataflow are iterative; CFG builder is an explicit task machine; CPG node collection is O(n). Golden edge-shape contracts for all six languages lock pre-rewrite CFG output (closes [#226](https://github.com/Krv-Labs/topos/issues/226)–[#229](https://github.com/Krv-Labs/topos/issues/229)).
+- **`topos inspect --json` emits parseable JSON on the first run in a repository.** COMPOSABLE-by-default subprocess output no longer lands inside the JSON document; captured when `--json` is set.
+- **The MCP agent docs and `topos_refactor_until_ideal` prompt taught a call shape the server rejects.** Flat top-level args (no FastMCP `params` wrapper); regression tests pin docs to the registered router.
+- **`ast.max_function_complexity` restores 0.3.12 decision-form counting via UAST** (closes [#142](https://github.com/Krv-Labs/topos/issues/142)): forms the Rust port initially dropped — see **Parity with 0.3.12**.
+- **`cfg.cyclomatic` / `ast.max_function_complexity` now count `match`/`switch` per case arm** (completes #151/#153) — **intentional break** from 0.3.12; see **Intentional changes** above. Also fixes discriminant-less Go `switch` over-count.
+- **Multi-file rollup is now the true lattice meet** — restores consistency 0.3.12 should have had: `combine_dimensions` now takes ∧ of per-file Ω verdicts, not `min(score) ≥ score_floor`.
+- **Project rollup no longer penalized by files that never evaluated a dimension** — missing pillar key (e.g. no MDG → no `composable`) leaves that pillar out of the meet.
+- **Refactor suggestions can no longer fire on a gate the scorer passed** — both paths use shared `coupling_gate_input`.
+- **Gates fail closed on `NaN`.**
+- **`taint_flow_paths` is deterministic** — ties break by `(width, start_byte, id)`.
+- **One-off `--allow` acknowledges risk instead of stripping it** — grade cap fires correctly on acknowledged SIMPLE+COMPOSABLE files.
+- **`TOPOS_DEPGRAPH_TIMEOUT` / `TOPOS_GRAPHIFY_TIMEOUT` no longer panic** on non-finite or out-of-range values.
+- **Version is 0.4.0** across `Cargo.toml`, `.mcp/server.json`, and the VS Code extension.
 
 ## [0.3.12] - 2026-07-20
 

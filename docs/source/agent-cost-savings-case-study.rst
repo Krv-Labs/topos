@@ -260,6 +260,17 @@ structural feedback made subsequent agent work cheaper to complete.
    experiment, written so another agent can build a comparable fixture and run
    the same A/B comparison.
 
+   .. note::
+      This experiment predates the v0.4.0 Rust migration and its CLI
+      commands use pre-migration flags (``topos evaluate --gitnexus-dir
+      ... --json``, ``topos coverage --json``) that the current ``topos``
+      CLI doesn't have yet — COMPOSABLE and JSON output are MCP-only as of
+      v0.4.0 (see :doc:`cli`). Reproducing this today means substituting the
+      equivalent MCP tool calls (``topos_generate_depgraph``,
+      ``topos_evaluate_project(gitnexus_dir=...)``,
+      ``topos_calculate_coverage``) for the ``--gitnexus-dir``/``--json``
+      commands below.
+
    **Fixture target**
 
    Build a small Python package named ``claims_engine`` with tests. The package

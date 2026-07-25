@@ -475,6 +475,16 @@ pub struct InspectCodeInput {
     /// autodetected from the file extension.
     #[serde(default = "default_language")]
     pub language: String,
+    /// .gitnexus directory for COMPOSABLE scoring. When omitted, it is
+    /// auto-detected at `<file root>/.gitnexus`; if missing or stale, this
+    /// tool generates/refreshes it first (see `no_composable`). Only used
+    /// with `filepath` — inline `code` has no module to place in the graph.
+    #[serde(default)]
+    pub gitnexus_dir: Option<String>,
+    /// Skip GitNexus generation; score whatever `.gitnexus` is already
+    /// there, or SIMPLE/SECURE only when there is none.
+    #[serde(default)]
+    pub no_composable: bool,
     /// Strict total order on the three generators; see
     /// `topos://docs/preferences`.
     #[serde(default)]
@@ -1337,6 +1347,39 @@ mod tests {
             disabled.refactor_targets, 0,
             "0 must stay an explicit opt-out, not fall back to the default"
         );
+    }
+
+    /// `topos_inspect_code` scores COMPOSABLE like `topos_evaluate_file`
+    /// (issue #216), so it must accept — and advertise — the same two knobs.
+    /// `deny_unknown_fields` means an agent copying an evaluate call would
+    /// hard-error otherwise.
+    #[test]
+    fn inspect_code_accepts_and_advertises_the_composable_knobs() {
+        let defaulted: InspectCodeInput =
+            serde_json::from_str(r#"{"filepath": "a.py"}"#).expect("deserialize");
+        assert!(defaulted.gitnexus_dir.is_none());
+        assert!(!defaulted.no_composable);
+
+        let explicit: InspectCodeInput = serde_json::from_str(
+            r#"{"filepath": "a.py", "gitnexus_dir": ".gitnexus", "no_composable": true}"#,
+        )
+        .expect("deserialize");
+        assert_eq!(explicit.gitnexus_dir.as_deref(), Some(".gitnexus"));
+        assert!(explicit.no_composable);
+
+        // The wire schema is what an agent reads to discover the knobs.
+        let schema = serde_json::to_value(schemars::schema_for!(InspectCodeInput))
+            .expect("schema serializes");
+        let properties = schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .expect("object schema with properties");
+        for field in ["gitnexus_dir", "no_composable"] {
+            assert!(
+                properties.contains_key(field),
+                "`{field}` missing from the published InspectCodeInput schema"
+            );
+        }
     }
 
     /// The empty-field policy, asserted as a property rather than per

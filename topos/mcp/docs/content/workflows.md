@@ -18,7 +18,7 @@ situational.
 | `topos_evaluate_file` | Score a file on disk. `refactor_targets=N` adds ranked edit spans. |
 | `topos_evaluate_project` | Rollup + worst-N files for a directory. |
 | `topos_evaluate_code` | Score a source string (SIMPLE/SECURE only — no file, so no coupling). |
-| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. **Does not score COMPOSABLE** (issue #216) — its verdict can read one medal lower than `topos_evaluate_file` on the same file. Use it for metric detail; take the verdict from evaluate. |
+| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. With `filepath` it resolves the dependency graph exactly as `topos_evaluate_file` does (`gitnexus_dir` / `no_composable`), so the two agree on the same file — including when COMPOSABLE is unavailable and `warnings` says why. With a `code` string, SIMPLE/SECURE only. |
 | `topos_assess_worktree_change` | Verify an in-place edit against a git ref. **Default verification.** |
 | `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |
@@ -80,7 +80,10 @@ lets you force a refresh explicitly.
 For deep analysis of a specific file, call `topos_inspect_code` with either
 `{"filepath": "..."}` or `{"code": "..."}` — it
 returns top-N functions by complexity, source line, entropy details, and the
-full metric table.
+full metric table. The `filepath` form takes the same `gitnexus_dir` /
+`no_composable` knobs as `topos_evaluate_file` and resolves the dependency
+graph the same way, so its verdict matches; the `code` form has no module in
+the graph and reaches SIMPLE/SECURE only.
 
 ### 3. Propose
 

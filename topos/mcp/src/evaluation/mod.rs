@@ -167,7 +167,7 @@ fn generation_failure_note(message: &str) -> String {
 /// `floor_char_boundary` backs the cut point off to the nearest `char`
 /// boundary, so multi-byte UTF-8 in the child's output (accented paths, CJK
 /// identifiers) can never be sliced mid-character into a panic.
-fn cap_generation_detail(detail: &str) -> String {
+pub(crate) fn cap_generation_detail(detail: &str) -> String {
     if detail.len() <= GENERATION_DETAIL_CAP {
         return detail.to_string();
     }

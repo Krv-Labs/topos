@@ -10,8 +10,13 @@
 //! Ranking honors the same distinction the gate table makes: a metric
 //! whose failure cannot cost its pillar's `achieved` (`gates_achieved:
 //! false`) is labeled `"improve"` and sorted behind every real gate
-//! failure in its pillar, however large its excess. Agents route off the
-//! first target, so an advisory metric leading the list is a wrong turn.
+//! failure, however large its excess. Agents route off the first target,
+//! so an advisory metric leading the list is a wrong turn.
+//!
+//! That ordering yields to one thing only: an explicit
+//! `preferences.ranking`, which is a caller instruction rather than a
+//! default. Absent one, the gating tier leads across pillars too — see
+//! [`rank_key`].
 
 use std::collections::HashMap;
 
@@ -65,9 +70,18 @@ pub fn build_refactor_targets(
             .collect(),
         None => HashMap::new(),
     };
+    // Read off the derived map rather than `ranking.is_some()`: a ranking
+    // that ranked nothing leaves every target on `default_pillar_rank`,
+    // which is the internal default the tier is meant to outrank, so it
+    // must take the no-preference branch. `topos_evaluate_file` cannot
+    // reach that shape today — `UserPreferencesInput::to_preferences`
+    // rejects anything but a full permutation before targets are built —
+    // but this function is public and the map, not the slice, is what the
+    // key actually consults.
+    let tier_first = pillar_rank.is_empty();
     candidates.sort_by(|a, b| {
-        rank_key(a, &pillar_rank)
-            .partial_cmp(&rank_key(b, &pillar_rank))
+        rank_key(a, &pillar_rank, tier_first)
+            .partial_cmp(&rank_key(b, &pillar_rank, tier_first))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     candidates.truncate(max_targets);
@@ -278,19 +292,34 @@ fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<Refacto
         .collect()
 }
 
-/// Sort key: preferred pillar, then gating tier, then excess, then position.
+/// Sort key over pillar, gating tier, excess, then position — with pillar
+/// and tier swapped depending on whether the caller ranked pillars.
 ///
-/// The gating tier sits *ahead* of excess so an advisory metric can never
-/// outrank a real gate failure inside the same pillar. It used to: a
+/// The gating tier always sits *ahead* of excess so an advisory metric can
+/// never outrank a real gate failure by sheer magnitude. It used to: a
 /// whole-file `cfg.cyclomatic` of 80 (excess 65, and `gates_achieved:
 /// false`, so it cannot fail SIMPLE) buried a genuine
 /// `ast.max_function_complexity` of 14 (excess 4), and since the agent
 /// contract routes off `targets.first()` agents were sent to rewrite the
-/// one SIMPLE metric no verdict depends on. The tier stays *behind*
-/// `pillar_rank` so `preferences.ranking` still dominates.
+/// one SIMPLE metric no verdict depends on.
+///
+/// What `tier_first` decides is which of pillar and tier leads:
+///
+/// - `false` — the caller passed `preferences.ranking`, so the key is
+///   `(pillar_rank, tier, ...)`. A stated pillar order is an instruction;
+///   an agent that asked for SECURE first gets SECURE first even when a
+///   different pillar has the failing gate.
+/// - `true` — no ranking, so `pillar_rank` is only `default_pillar_rank`,
+///   an internal tie-breaker nobody asked for. The key becomes
+///   `(tier, pillar_rank, ...)` and correctness leads. Otherwise the
+///   cross-pillar version of the same bug survives: on this repo's own
+///   `formatting.rs`, an advisory `cfg.cyclomatic` of 118 outranked a
+///   gating `mdg.instability` purely because SIMPLE sorts before
+///   COMPOSABLE by default.
 fn rank_key(
     target: &RefactorTarget,
     pillar_rank: &HashMap<&str, usize>,
+    tier_first: bool,
 ) -> (usize, usize, i64, usize, String) {
     let pillar = target
         .failing_generators
@@ -307,9 +336,14 @@ fn rank_key(
     let current = target.current_value.unwrap_or(0.0);
     let threshold = target.threshold.unwrap_or(current);
     let excess = ((current - threshold).abs() * 100.0) as i64;
+    let (primary, secondary) = if tier_first {
+        (tier, rank)
+    } else {
+        (rank, tier)
+    };
     (
-        rank,
-        tier,
+        primary,
+        secondary,
         -excess,
         target.line_start.unwrap_or(0),
         target.target_id.clone(),
@@ -465,6 +499,79 @@ mod tests {
         );
         assert_eq!(targets[0].severity, "fix");
         assert_eq!(targets[0].failing_generators, vec!["composable"]);
+    }
+
+    /// The live-server shape observed on `topos/mcp/src/formatting.rs`: a
+    /// huge advisory `cfg.cyclomatic` in SIMPLE next to a small, genuine
+    /// COMPOSABLE gate failure. `default_pillar_rank` puts SIMPLE first,
+    /// so this is the fixture that separates "the caller ranked pillars"
+    /// from "we fell back to an internal default".
+    fn cross_pillar_fixture() -> (HashMap<String, Vec<FunctionEntry>>, ClassificationResult) {
+        let locations = HashMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(118)])]);
+        let mut result = ClassificationResult::default();
+        // Abstractness is deliberately absent so `coupling_gate_input`
+        // keeps raw instability rather than swapping in
+        // `mdg.main_sequence_distance`; 0.18 is below `instability_low`
+        // (0.3), so the gate fails low with an excess of just 0.12 against
+        // cyclomatic's 103.
+        result
+            .raw_metrics
+            .insert("mdg.instability".to_string(), 0.18);
+        (locations, result)
+    }
+
+    /// With no `preferences.ranking`, `pillar_rank` is an internal default,
+    /// not a caller choice — so the gating tier must lead.
+    #[test]
+    fn gating_tier_leads_when_no_pillar_preference_is_supplied() {
+        let (locations, result) = cross_pillar_fixture();
+        let targets = build_refactor_targets("a.py", &result, &[], &locations, None, 5);
+
+        assert_eq!(
+            targets.len(),
+            2,
+            "fixture must produce both an advisory SIMPLE target and a gating \
+             COMPOSABLE one; got {:?}",
+            targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            targets[0].metric, "mdg.instability",
+            "no ranking was supplied, so SIMPLE-before-COMPOSABLE is only \
+             default_pillar_rank talking. A gating COMPOSABLE failure must beat an \
+             advisory SIMPLE metric with a far larger excess (103 vs 0.12), or the \
+             agent routes off a metric no verdict depends on."
+        );
+        assert_eq!(targets[0].severity, "fix");
+        assert_eq!(targets[1].metric, "cfg.cyclomatic");
+        assert_eq!(targets[1].severity, "improve");
+    }
+
+    /// Same fixture, but the caller ranked SIMPLE first: a stated
+    /// preference outranks the gating tier.
+    #[test]
+    fn explicit_pillar_preference_outranks_the_gating_tier() {
+        let (locations, result) = cross_pillar_fixture();
+        let targets = build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &locations,
+            Some(&[
+                GeneratorInput::Simple,
+                GeneratorInput::Secure,
+                GeneratorInput::Composable,
+            ]),
+            5,
+        );
+
+        assert_eq!(targets.len(), 2);
+        assert_eq!(
+            targets[0].metric, "cfg.cyclomatic",
+            "the caller asked for SIMPLE first, so the advisory SIMPLE target leads \
+             even though the COMPOSABLE one gates — preferences.ranking is an \
+             explicit instruction, unlike default_pillar_rank"
+        );
+        assert_eq!(targets[1].metric, "mdg.instability");
     }
 
     #[test]

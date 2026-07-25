@@ -28,7 +28,11 @@ Missing, stale, invalid-path, branch-mismatched, or schema-mismatched stores deg
 
 ## MCP package and registry
 
-`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml` and VS Code metadata using `scripts/check_versions.py`.
+`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop). Keep registry metadata version-aligned with `Cargo.toml` and VS Code metadata using `scripts/check_versions.py`.
+
+### ClawHub agent skill
+
+`skills/topos/SKILL.md` is the separate ClawHub-distributed agent skill for the same [agent-facing workflow](../workflows/agent-and-cli.md). ClawHub generates its skill card after publication, so the source skill carries the required use-case, dependency, risk/mitigation, output, reference, and ethical-consideration sections, plus an explicit external-credential declaration. `.github/workflows/clawhub-publish.yml` previews skill changes on pull requests and publishes changes pushed to `main` or `v*` tags through the pinned upstream workflow. Treat the publishing token as CI configuration only; do not record its value. `scripts/check_skill.py`, run by the standard [testing and release checks](../operations/testing-and-release.md#standard-local-checks), validates the skill’s metadata and content contract before CI.
 
 ## Container and editor surfaces
 

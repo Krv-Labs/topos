@@ -28,6 +28,7 @@ cargo test --workspace
 | GitNexus/COMPOSABLE behavior | Build `topos`, generate a fixture `.gitnexus` store with `gitnexus@1.6.8`, then evaluate it |
 | MCP bin wheel or container | `maturin build --release --bindings bin --manifest-path topos/mcp/Cargo.toml`; exercise the resulting entrypoint |
 | VS Code extension | Run `pnpm install --frozen-lockfile`, `pnpm run check-types`, `pnpm run lint`, and `pnpm run test:unit` in `extensions/vscode/` |
+| Bundled agent skill | Run `python3 scripts/check_skill.py`; when present, OpenClaw/Hermes metadata, Cargo-version parity, the generated-card governance headings, and the credential declaration are validated. See [ClawHub distribution](../integrations/distribution.md#clawhub-agent-skill). |
 
 For CFG changes, keep `graphs/cfg/edge_contracts.rs` and deep-nesting tests passing. For UAST/CPG/PDG changes, include the anonymous-node endpoint and iterative-tree regressions where applicable.
 

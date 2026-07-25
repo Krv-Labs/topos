@@ -46,7 +46,7 @@ Run the job matching the contract you change; engine-only success does not valid
 
 - **Version source of truth:** workspace `Cargo.toml`.
 - **Parity check:** `scripts/check_versions.py` checks relevant distribution metadata.
-- **CLI release artifact:** `.github/workflows/release.yml` builds `topos` for Linux amd64/arm64 and macOS arm64 directly with Cargo.
+- **CLI release artifact:** `.github/workflows/release.yml` builds `topos` for Linux amd64/arm64 and macOS arm64 directly with Cargo. It restores the Cargo cache before running `scripts/setup-lbug-prebuilt.sh`, which supplies the pinned LadybugDB static library through `LBUG_LIBRARY_DIR`; on macOS the script rejects source-build overrides to avoid the duplicate-symbol linker failure. Keep that order and fail-fast guard when changing the release build.
 - **MCP artifact:** `topos-mcp` is packaged as a Maturin `bin` wheel; it ships a compiled server rather than a Python runtime.
 - **VS Code:** release builds stage the matching native CLI into platform VSIX artifacts.
 - **Homebrew:** after release, workflow automation renders a checksum-backed formula PR for the tap; tap CI gates its merge.

@@ -123,6 +123,16 @@ pub fn suggest_refactors(
             message: remediation_for(finding).0,
         });
     }
+
+    // Gating suggestions lead. `SUGGESTION_ORDER` opens with
+    // `cfg.cyclomatic`, which is advisory (`gates_achieved: false`, issue
+    // #193), so without this an agent reading `suggestions[0]` is pointed
+    // at the one metric no verdict depends on -- the same misrouting that
+    // `refactor_targets` ranks around in `topos-mcp`. Correcting only the
+    // severity label was not enough: order is what a reader acts on. The
+    // sort is stable, so `SUGGESTION_ORDER` still decides ties within a
+    // tier and security findings stay behind the other gate failures.
+    suggestions.sort_by_key(|s| usize::from(s.severity != "fix"));
     suggestions
 }
 
@@ -276,6 +286,40 @@ mod tests {
             "fix"
         );
         assert_eq!(by_metric(&suggestions, "ast.entropy").severity, "fix");
+    }
+
+    #[test]
+    fn gating_suggestions_lead_advisory_ones() {
+        // `SUGGESTION_ORDER` opens with the advisory `cfg.cyclomatic`, so
+        // before the tier sort an agent reading `suggestions[0]` was sent at
+        // the one metric that cannot fail a pillar -- even once its severity
+        // label was corrected. Same fixture as the severity test: all three
+        // SIMPLE gates fail, and cyclomatic has by far the largest excess.
+        let result = result(
+            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            HashMap::from([
+                ("cfg.cyclomatic".to_string(), 25.0),
+                ("ast.max_function_complexity".to_string(), 20.0),
+                ("ast.entropy".to_string(), 0.95),
+            ]),
+            EvaluationValue::Slop,
+        );
+
+        let suggestions = suggest_refactors(&result, &[]);
+        let order: Vec<&str> = suggestions.iter().map(|s| s.severity.as_str()).collect();
+        let first_advisory = order.iter().position(|s| *s == "improve");
+        let last_gating = order.iter().rposition(|s| *s == "fix");
+        assert!(
+            matches!((first_advisory, last_gating), (Some(a), Some(g)) if g < a),
+            "every gating suggestion must precede every advisory one, got {order:?}"
+        );
+        assert_eq!(
+            suggestions[0].metric.as_deref(),
+            Some("ast.max_function_complexity"),
+            "the largest-excess metric is advisory cyclomatic; a real gate failure must still lead"
+        );
+        // Stability: within the gating tier, SUGGESTION_ORDER still decides.
+        assert_eq!(suggestions[1].metric.as_deref(), Some("ast.entropy"));
     }
 
     #[test]

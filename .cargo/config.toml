@@ -1,0 +1,5 @@
+# Pin the LadybugDB prebuilt band used by topos-engine (lbug = "=0.17.1").
+# Run `./scripts/setup-lbug-prebuilt.sh` and export the printed vars before
+# building if liblbug is not already on the default search path.
+[env]
+LBUG_VERSION = "0.17.1"

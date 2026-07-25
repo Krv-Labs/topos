@@ -41,8 +41,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache lbug prebuilt
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/lbug-prebuilt
+          key: lbug-prebuilt-0.17.1-static-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup lbug prebuilt
+        run: ./scripts/setup-lbug-prebuilt.sh
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}-lbug-prebuilt
+          cache-on-failure: false
 
       - name: Build release binary
         run: cargo build --release -p topos
@@ -363,6 +375,17 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache lbug prebuilt
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/lbug-prebuilt
+          key: lbug-prebuilt-0.17.1-static-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup lbug prebuilt
+        if: runner.os == 'macOS'
+        run: ./scripts/setup-lbug-prebuilt.sh
 
       # lbug links OpenSSL; macOS source builds also need cmake and a
       # deployment target new enough for C++ `to_chars` (macOS 13.3+).

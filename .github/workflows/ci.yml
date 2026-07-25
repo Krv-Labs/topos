@@ -58,6 +58,15 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache lbug prebuilt
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/lbug-prebuilt
+          key: lbug-prebuilt-0.17.1-static-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup lbug prebuilt
+        run: ./scripts/setup-lbug-prebuilt.sh
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 

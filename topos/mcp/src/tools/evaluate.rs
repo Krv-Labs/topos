@@ -406,7 +406,6 @@ fn adjusted_result(
         return result.clone();
     };
     let mut dimensions = result.dimensions.clone();
-    let mut scores = result.scores.clone();
     let pass = overlay.verdict.adjusted_secure_pass;
     dimensions.insert(
         "secure".to_string(),
@@ -416,11 +415,10 @@ fn adjusted_result(
             EvaluationValue::Slop
         },
     );
-    scores.insert("secure".to_string(), if pass { 1.0 } else { 0.0 });
     ClassificationResult {
         is_parseable: result.is_parseable,
         dimensions,
-        scores,
+        scores: result.scores.clone(),
         lattice_element: overlay.verdict.adjusted_element,
         priority: result.priority,
         raw_metrics: result.raw_metrics.clone(),
@@ -1210,6 +1208,45 @@ mod tests {
         assert!(
             verbose.raw_metrics.contains_key("cfg.cyclomatic"),
             "verbose=true must restore the previous row shape"
+        );
+    }
+
+    /// #232: an active security overlay must only flip `achieved`/lattice,
+    /// never the numeric score — `entry.scores` and `entry.pillars` are
+    /// two different channels for the same raw classification.
+    #[test]
+    fn project_row_scores_and_pillars_agree_under_security_overlay() {
+        let path = write_temp_source("overlay_secure", "def f(expr):\n    return eval(expr)\n");
+        let dir = path.parent().expect("parent");
+        let (_, entry, ..) = evaluate_single_file(
+            &path,
+            dir,
+            Priority::Simple,
+            None,
+            /* include_security_findings = */ false,
+            /* verbose = */ false,
+            &["eval".to_string()],
+        )
+        .expect("classify temp file");
+
+        let raw_score = entry
+            .scores
+            .get("secure")
+            .copied()
+            .expect("secure score present");
+        let pillar = entry.pillars.get("secure").expect("secure pillar present");
+
+        assert_eq!(
+            raw_score, pillar.score,
+            "entry.scores and pillars must report the same (raw) secure score"
+        );
+        assert!(
+            raw_score > 0.0 && raw_score < 100.0,
+            "fixture must produce a non-trivial raw score, not 0/100 by coincidence: {raw_score}"
+        );
+        assert!(
+            pillar.achieved,
+            "the allowlisted eval call must still achieve SECURE via the overlay verdict"
         );
     }
 }

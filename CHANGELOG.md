@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-25
+
+### Fixed
+
+- **Project-row SECURE score now matches its pillar score under an active security overlay** — `evaluate_project`'s per-file `scores.secure` and `pillars.secure.score` could disagree when an allowlisted/acknowledged risk was in effect, because the overlay-adjusted classification used for `pillars` hard-coded the score to 1.0/0.0 instead of keeping it raw. `pillars.secure.achieved` and `lattice_element` still reflect the overlay-adjusted verdict; only the score is now always raw, matching the existing single-file `evaluate` behavior. (Closes [#232](https://github.com/Krv-Labs/topos/issues/232))
+
 ## [0.4.0] - 2026-07-25
 
 Baseline: **`topos-mcp==0.3.12`** (last Python release on PyPI). v0.4.0 is a Rust rewrite aimed at drop-in parity for scoring semantics and agent workflows on the same inputs, with documented exceptions called out below. Items not listed under **Intentional changes** are intended to match 0.3.12 behavior; where the Rust port regressed during migration, **Fixed** entries restore Python semantics.

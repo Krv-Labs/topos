@@ -261,3 +261,75 @@ def test_preflight_piped_stdin_does_not_block(tmp_path: Path) -> None:
     assert "Non-interactive install; continuing" in result.stdout
     assert "CONTINUED" in result.stdout
     assert "Install cancelled" not in result.stdout
+
+
+DOC_INSTALL_SITES = (
+    "install.sh",
+    "README.md",
+    "docs/source/installation.rst",
+    "skills/topos/SKILL.md",
+)
+
+
+@pytest.mark.skipif(not INSTALL_SH.is_file(), reason="install.sh missing")
+def test_install_sh_avoids_process_substitution() -> None:
+    """`< <(...)` is rejected by bash in POSIX mode, which is /bin/sh on macOS.
+
+    A `done < <(cmd)` in preflight_existing_installs made the whole script fail
+    to parse under `curl ... | sh`. Feed loops from a here-doc instead: it keeps
+    the body in the current shell (a pipe would lose assignments to a subshell)
+    and parses everywhere.
+
+    Grep rather than `bash --posix -n`: bash 3.2 rejects process substitution in
+    POSIX mode but bash 5.x accepts it, so a parse check passes vacuously on the
+    very CI runners this needs to protect.
+    """
+    text = INSTALL_SH.read_text(encoding="utf-8")
+    assert "< <(" not in text, "process substitution breaks `curl ... | sh` on macOS"
+    assert "> >(" not in text, "process substitution breaks `curl ... | sh` on macOS"
+
+
+@pytest.mark.skipif(not INSTALL_SH.is_file(), reason="install.sh missing")
+def test_install_sh_parses_under_system_sh() -> None:
+    """Parse install.sh with the platform /bin/sh when that shell is bash.
+
+    macOS ships bash 3.2 as /bin/sh, which runs in POSIX mode — the exact
+    configuration that rejected the process substitution above. Skipped where
+    /bin/sh is dash, since the script is legitimately bash-only (arrays,
+    `[[ ... =~ ... ]]`) and dash cannot parse it by design.
+    """
+    probe = subprocess.run(
+        ["/bin/sh", "--version"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10.0,
+    )
+    if "bash" not in probe.stdout.lower():
+        pytest.skip("/bin/sh is not bash; script is bash-only by design")
+
+    result = subprocess.run(
+        ["/bin/sh", "-n", str(INSTALL_SH)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10.0,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("relpath", DOC_INSTALL_SITES)
+def test_advertised_install_command_pipes_to_bash(relpath: str) -> None:
+    """install.sh has a bash shebang and uses bash-only syntax.
+
+    Piping it to `sh` only ever worked on macOS by accident (there sh *is*
+    bash); on Debian/Ubuntu /bin/sh is dash and the script cannot parse. Every
+    advertised invocation must therefore say `| bash`.
+    """
+    path = REPO_ROOT / relpath
+    if not path.is_file():
+        pytest.skip(f"{relpath} missing")
+    text = path.read_text(encoding="utf-8")
+    assert "install.sh | sh" not in text, f"{relpath} advertises `| sh`"
+    if "docs.krv.ai/topos/install.sh" in text:
+        assert "install.sh | bash" in text, f"{relpath} lost the `| bash` example"

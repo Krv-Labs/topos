@@ -106,7 +106,7 @@ Setup for Codex, Gemini CLI, Cursor, Windsurf, Antigravity, and manual JSON live
 ### Standalone CLI
 
 ```bash
-curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+curl -fsSL https://docs.krv.ai/topos/install.sh | bash
 ```
 
 Prefer Homebrew?

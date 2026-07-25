@@ -5,7 +5,7 @@
 # Install Topos - structural code quality metrics for AI coding agents
 #
 # Usage:
-#   curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+#   curl -fsSL https://docs.krv.ai/topos/install.sh | bash
 #
 # Options (via environment variables):
 #   TOPOS_VERSION   - Specific version to install (default: latest)
@@ -247,7 +247,7 @@ channel_hint_for_path() {
             ;;
     esac
 
-    printf '%s' "binary install — upgrade with: curl -fsSL https://docs.krv.ai/topos/install.sh | sh"
+    printf '%s' "binary install — upgrade with: curl -fsSL https://docs.krv.ai/topos/install.sh | bash"
 }
 
 # Warn when other installs exist; optional y/N when interactive and foreign.
@@ -257,11 +257,20 @@ preflight_existing_installs() {
     local path="" foreign=0 same=0
     local -a foreign_paths=()
     local reply=""
+    local discovered=""
 
     target_resolved=$(resolve_path "${target}")
     if [ -z "${target_resolved}" ] && path_is_executable_file "${target}"; then
         target_resolved="${target}"
     fi
+
+    # Feed the loop from a here-doc rather than process substitution: the latter
+    # is a bashism that POSIX mode rejects, and /bin/sh on macOS is bash in
+    # POSIX mode, so it made this whole function unparseable whenever the script
+    # was piped to sh. The here-doc keeps the loop body in the current shell (a
+    # pipe would lose foreign/same/foreign_paths to a subshell). `|| true` keeps
+    # `set -e` from aborting the installer if discovery ever exits non-zero.
+    discovered="$(discover_topos_executables || true)"
 
     while IFS= read -r path; do
         [ -n "${path}" ] || continue
@@ -275,7 +284,9 @@ preflight_existing_installs() {
         fi
         foreign=1
         foreign_paths+=("${path}")
-    done < <(discover_topos_executables)
+    done <<EOF
+${discovered}
+EOF
 
     if [ "${same}" -eq 1 ] && [ "${foreign}" -eq 0 ]; then
         info "Existing binary install found at ${target_resolved:-$target}; upgrading in place"

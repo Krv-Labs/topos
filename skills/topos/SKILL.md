@@ -39,7 +39,7 @@ Load this skill when the user asks to improve code quality, reduce complexity, c
 **Runtime dependencies:**
 
 ```bash
-curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+curl -fsSL https://docs.krv.ai/topos/install.sh | bash
 npm install -g gitnexus   # enables COMPOSABLE / GOLD scoring
 ```
 

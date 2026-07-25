@@ -50,7 +50,7 @@ Choose an install path
 
       .. code-block:: bash
 
-         curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+         curl -fsSL https://docs.krv.ai/topos/install.sh | bash
 
       The installer:
 
@@ -297,7 +297,7 @@ Details and troubleshooting
 
    .. code-block:: bash
 
-      curl -fsSL https://docs.krv.ai/topos/install.sh | sh
+      curl -fsSL https://docs.krv.ai/topos/install.sh | bash
 
    Homebrew installs should upgrade through Homebrew:
 

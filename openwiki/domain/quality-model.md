@@ -38,7 +38,7 @@ SECURE is a zero-findings gate over CPG dangerous-call and taint-flow evidence. 
 
 ## Security acknowledgements are disclosed, not silent overrides
 
-A nearest-ancestor `.topos.toml` can contain scoped `[secure.allow]` entries, and CLI `--allow` supplies one-run acknowledgements. Every persistent entry requires a non-empty reason. The canonical raw SECURE verdict remains visible; acknowledgements are disclosed and cap the grade below GOLD/IDEAL. Malformed configuration should not crash evaluation.
+A nearest-ancestor `.topos.toml` can contain scoped `[secure.allow]` entries, and CLI `--allow` supplies one-run acknowledgements. Every persistent entry requires a non-empty reason. The canonical raw SECURE verdict and numeric score remain visible; an acknowledgement adjusts only the SECURE achieved state and lattice verdict, then caps the grade below GOLD/IDEAL. In MCP project rows, `scores.secure` and `pillars.secure.score` therefore remain the same raw measurement even when `pillars.secure.achieved` reflects the acknowledgement. Malformed configuration should not crash evaluation.
 
 ## Scoring versus advice
 

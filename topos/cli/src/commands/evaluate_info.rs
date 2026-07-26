@@ -12,13 +12,19 @@ use topos_mcp::refactor_targets::build_refactor_targets;
 use topos_mcp::schemas::GeneratorInput;
 
 use super::evaluate_info_render::{detail_lines, FileDetails};
-use super::summary::{attention_lines, ranked_file_indices};
+use super::summary::{attention_lines, failure_file_indices, failure_lines, ranked_file_indices};
 
 enum BrowserAction {
     Stay,
     Back,
     Open,
     Close,
+}
+
+#[derive(Clone, Copy)]
+enum SelectorKind<'a> {
+    WeakSpots,
+    Failures(&'a str),
 }
 
 pub(crate) fn can_browse_evaluation_info(file_count: usize) -> bool {
@@ -32,11 +38,31 @@ pub(crate) fn show_evaluation_info(
     ranking: Option<&[Generator; 3]>,
 ) -> Result<(), String> {
     let ranked = ranked_file_indices(files, results, 5);
-    if can_browse_evaluation_info(ranked.len()) {
-        browse_files(files, results, &ranked, language, ranking)?;
-        for line in attention_lines(
+    show_ranked_info(
+        files,
+        results,
+        &ranked,
+        language,
+        ranking,
+        SelectorKind::WeakSpots,
+    )
+}
+
+pub(crate) fn show_pillar_failures(
+    files: &[PathBuf],
+    results: &[ClassificationResult],
+    language: &str,
+    pillar: &str,
+    inspect: bool,
+    ranking: Option<&[Generator; 3]>,
+) -> Result<(), String> {
+    let mut ranked = failure_file_indices(files, results, pillar);
+    if !inspect || ranked.is_empty() {
+        for line in failure_lines(
             files,
             results,
+            &ranked,
+            pillar,
             None,
             std::env::var_os("NO_COLOR").is_none(),
             terminal_width(&Term::stdout(), 120),
@@ -45,13 +71,47 @@ pub(crate) fn show_evaluation_info(
         }
         return Ok(());
     }
-    if ranked.len() > 1 {
-        for line in attention_lines(
+    ranked.truncate(5);
+    show_ranked_info(
+        files,
+        results,
+        &ranked,
+        language,
+        ranking,
+        SelectorKind::Failures(pillar),
+    )
+}
+
+fn show_ranked_info(
+    files: &[PathBuf],
+    results: &[ClassificationResult],
+    ranked: &[usize],
+    language: &str,
+    ranking: Option<&[Generator; 3]>,
+    kind: SelectorKind<'_>,
+) -> Result<(), String> {
+    if can_browse_evaluation_info(ranked.len()) {
+        browse_files(files, results, ranked, language, ranking, kind)?;
+        for line in selector_lines_for(
             files,
             results,
+            ranked,
             None,
-            false,
             terminal_width(&Term::stdout(), 120),
+            kind,
+        ) {
+            println!("{line}");
+        }
+        return Ok(());
+    }
+    if ranked.len() > 1 {
+        for line in selector_lines_for(
+            files,
+            results,
+            ranked,
+            None,
+            terminal_width(&Term::stdout(), 120),
+            kind,
         ) {
             println!("{line}");
         }
@@ -82,6 +142,7 @@ fn browse_files(
     ranked: &[usize],
     language: &str,
     ranking: Option<&[Generator; 3]>,
+    kind: SelectorKind<'_>,
 ) -> Result<(), String> {
     let term = Term::stderr();
     let width = terminal_width(&term, 100);
@@ -105,7 +166,7 @@ fn browse_files(
                     selected + 1,
                     ranked.len(),
                 ),
-                None => selector_lines(files, results, selected, width),
+                None => selector_lines_for(files, results, ranked, Some(selected), width, kind),
             };
             rendered = lines.len();
             for line in lines {
@@ -165,19 +226,32 @@ fn list_action(key: Key, selected: &mut usize, item_count: usize) -> BrowserActi
     BrowserAction::Stay
 }
 
-fn selector_lines(
+fn selector_lines_for(
     files: &[PathBuf],
     results: &[ClassificationResult],
-    selected: usize,
+    ranked: &[usize],
+    selected: Option<usize>,
     width: usize,
+    kind: SelectorKind<'_>,
 ) -> Vec<String> {
-    attention_lines(
-        files,
-        results,
-        Some(selected),
-        std::env::var_os("NO_COLOR").is_none(),
-        width,
-    )
+    match kind {
+        SelectorKind::WeakSpots => attention_lines(
+            files,
+            results,
+            selected,
+            std::env::var_os("NO_COLOR").is_none(),
+            width,
+        ),
+        SelectorKind::Failures(pillar) => failure_lines(
+            files,
+            results,
+            ranked,
+            pillar,
+            selected,
+            std::env::var_os("NO_COLOR").is_none(),
+            width,
+        ),
+    }
 }
 
 fn details_for_file(
@@ -246,6 +320,7 @@ mod tests {
 
     fn result(simple: f64, secure: f64) -> ClassificationResult {
         ClassificationResult {
+            is_parseable: true,
             scores: HashMap::from([
                 ("simple".to_string(), simple),
                 ("secure".to_string(), secure),
@@ -261,8 +336,24 @@ mod tests {
             PathBuf::from("repo/src/a.rs"),
             PathBuf::from("repo/src/b.rs"),
         ];
-        let results = vec![result(0.5, 1.0), result(0.2, 1.0)];
-        let lines = selector_lines(&files, &results, 0, 100);
+        let mut passing = result(0.5, 1.0);
+        passing
+            .dimensions
+            .insert("simple".to_string(), EvaluationValue::Simple);
+        let mut failing = result(0.2, 1.0);
+        failing
+            .dimensions
+            .insert("simple".to_string(), EvaluationValue::Slop);
+        let results = vec![passing, failing];
+        let ranked = ranked_file_indices(&files, &results, 5);
+        let lines = selector_lines_for(
+            &files,
+            &results,
+            &ranked,
+            Some(0),
+            100,
+            SelectorKind::WeakSpots,
+        );
         let output = lines.join("\n");
         assert!(output.contains("↑↓ move · enter open · esc close"));
         assert!(output.contains("›  1  b.rs"));
@@ -276,7 +367,45 @@ mod tests {
             "repo/a/very/long/source/path/that/must/be/truncated.rs",
         )];
         let results = vec![result(0.2, 1.0)];
-        let lines = selector_lines(&files, &results, 0, 72);
+        let ranked = ranked_file_indices(&files, &results, 5);
+        let lines = selector_lines_for(
+            &files,
+            &results,
+            &ranked,
+            Some(0),
+            72,
+            SelectorKind::WeakSpots,
+        );
         assert!(lines.iter().all(|line| line.chars().count() <= 72));
+    }
+
+    #[test]
+    fn failure_selector_names_the_pillar_and_uses_its_score() {
+        let files = vec![
+            PathBuf::from("repo/src/a.rs"),
+            PathBuf::from("repo/src/b.rs"),
+        ];
+        let mut passing = result(0.5, 1.0);
+        passing
+            .dimensions
+            .insert("simple".to_string(), EvaluationValue::Simple);
+        let mut failing = result(0.2, 1.0);
+        failing
+            .dimensions
+            .insert("simple".to_string(), EvaluationValue::Slop);
+        let results = vec![passing, failing];
+        let lines = selector_lines_for(
+            &files,
+            &results,
+            &[1],
+            Some(0),
+            100,
+            SelectorKind::Failures("simple"),
+        );
+        let output = lines.join("\n");
+        assert!(output.contains("SIMPLE failures · 1 file"));
+        assert!(output.contains("›  1  b.rs"));
+        assert!(output.contains("20% score"));
+        assert!(!output.contains("avg"));
     }
 }

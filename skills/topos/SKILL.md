@@ -109,6 +109,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | Command | Purpose |
 | --- | --- |
 | `topos evaluate <path> -r` | Show the cumulative project quality rollup |
+| `topos evaluate <path> -r --failures <pillar>` | List the files whose gates fail one pillar |
 | `topos evaluate <path> -r --info` | Select a weak file and show ranked line-level refactor targets |
 | `topos config` | View or edit project priority and preference settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |

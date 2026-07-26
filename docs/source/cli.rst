@@ -87,7 +87,11 @@ primary command for **Code Quality Medals** across the three pillars (see
    * - ``--info``
      - Select one of the five weakest files in a TTY and show its top three
        line-level refactor targets. When piped, inspect the weakest file
-       without prompting. Cannot be combined with ``--json``.
+       without prompting. Combine with ``--failures`` to inspect only files
+       failing that pillar. Cannot be combined with ``--json``.
+   * - ``--failures [simple|composable|secure]``
+     - List every file whose policy gates fail the selected pillar, ordered by
+       that pillar's diagnostic score. Cannot be combined with ``--json``.
    * - ``--priority [simple|composable|secure]``
      - Set the run's primary guidance pillar. This does not change fixed pass/fail gates.
    * - ``--preferences RANKING``
@@ -102,14 +106,20 @@ primary command for **Code Quality Medals** across the three pillars (see
 .. code-block:: bash
 
    topos evaluate . -r --language rust
+   topos evaluate . -r --language rust --failures simple
    topos evaluate . -r --language rust --info
+   topos evaluate . -r --language rust --failures simple --info
 
 For a directory, terminal output is a cumulative pillar table with status,
 average and minimum diagnostic scores, failure counts, quality rails, and the
-directory lattice floor. A short hint points to ``--info``, which adds a
-bounded ``Weak spots`` list ranked by each file's average diagnostic score.
+directory lattice floor. When a pillar fails, a short hint points to
+``--failures PILLAR`` for the exact files; ``--info`` adds a bounded
+``Weak spots`` list ranked by each file's average diagnostic score.
 Opening a row reveals the
 weakest pillar, ranked metrics, exact source spans, and recommended operations.
+Combining ``--failures PILLAR --info`` applies the same browser to the five
+lowest-scoring files that actually fail that pillar. A low score alone does
+not put a file in the list: failure status always comes from policy gates.
 Progress is drawn on stderr only while work is active.
 Press ``Enter`` to open a file, ``Escape`` to return to the selector, and
 ``Escape`` again (or ``q``) to close it.
@@ -133,13 +143,14 @@ Representative directory output:
    │  Status reflects policy gates; scores are diagnostic.
    └  ~ SECURE floor · 70% average
 
-   Tip: add --info to inspect the five weakest files.
+   Tip: add --failures simple to list its 3 failing files; --info shows overall weak spots.
 
 .. note::
    Pillar status comes from the raw policy gates. Normalized quality scores
    are diagnostic and therefore can be below the visual midpoint even when a
-   pillar passes. ``--info`` exposes the same ranked refactor-target evidence
-   used by MCP without expanding every project row or rerunning the project.
+   pillar passes. ``--failures`` filters on those gates rather than scores.
+   ``--info`` exposes the same ranked refactor-target evidence used by MCP
+   without expanding every project row or rerunning the project.
 
 inspect
 -------

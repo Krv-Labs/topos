@@ -34,14 +34,15 @@ use topos_engine::config::load_topos_config;
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::preferences::Generator;
 use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
 use super::config::{parse_priority, parse_ranking, priority_for_generator};
-use super::evaluate_info::show_evaluation_info;
+use super::evaluate_info::{show_evaluation_info, show_pillar_failures};
 use super::render::{print_classification, print_raw_metrics, spinner};
-use super::summary::{json_output, print_summary};
+use super::summary::{json_output, pillar_measured, print_summary};
 
 #[derive(Args)]
 pub struct EvaluateArgs {
@@ -69,6 +70,9 @@ pub struct EvaluateArgs {
     /// Select one of the five weakest files and show actionable line-level details.
     #[arg(long)]
     pub info: bool,
+    /// List files that fail one pillar; combine with --info to inspect them.
+    #[arg(long, value_name = "PILLAR")]
+    pub failures: Option<String>,
     /// Emphasize one quality pillar for result metadata and guidance.
     #[arg(long)]
     pub priority: Option<String>,
@@ -81,6 +85,15 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     if args.info && args.json {
         return Err("--info cannot be combined with --json".to_string());
     }
+    if args.failures.is_some() && args.json {
+        return Err("--failures cannot be combined with --json".to_string());
+    }
+    let failure_pillar = args
+        .failures
+        .as_deref()
+        .map(parse_priority)
+        .transpose()?
+        .map(Priority::top_generator);
     if !SUPPORTED_LANGUAGES.contains(&args.language.as_str()) {
         return Err(format!(
             "unsupported language '{}' (expected one of: {})",
@@ -142,6 +155,15 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     }
     progress.finish_and_clear();
 
+    if let Some(pillar) = failure_pillar {
+        if !pillar_measured(&results, pillar.as_str()) {
+            return Err(format!(
+                "{} was not measured; check the evaluation inputs and COMPOSABLE availability",
+                pillar.as_str().to_ascii_uppercase()
+            ));
+        }
+    }
+
     if args.json {
         println!(
             "{}",
@@ -156,15 +178,45 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
                 println!();
             }
         }
-        print_summary(&files, &results, &args.language, !args.info);
+        print_summary(
+            &files,
+            &results,
+            &args.language,
+            !args.info && failure_pillar.is_none(),
+        );
         if args.verbose && results.len() == 1 {
             print_raw_metrics(&results[0]);
         }
-        if args.info {
+        if let Some(pillar) = failure_pillar {
+            let focused = focused_ranking(pillar, target_ranking.as_ref());
+            show_pillar_failures(
+                &files,
+                &results,
+                &args.language,
+                pillar.as_str(),
+                args.info,
+                Some(&focused),
+            )?;
+        } else if args.info {
             show_evaluation_info(&files, &results, &args.language, target_ranking.as_ref())?;
         }
     }
     Ok(())
+}
+
+fn focused_ranking(focus: Generator, configured: Option<&[Generator; 3]>) -> [Generator; 3] {
+    let mut rest = configured
+        .copied()
+        .unwrap_or(Generator::ALL)
+        .into_iter()
+        .filter(|generator| *generator != focus);
+    [
+        focus,
+        rest.next()
+            .expect("three generators include two non-focus values"),
+        rest.next()
+            .expect("three generators include two non-focus values"),
+    ]
 }
 
 fn resolve_target_ranking(
@@ -205,4 +257,20 @@ fn progress_bar(len: usize, hidden: bool) -> ProgressBar {
             .progress_chars("█▓░"),
     );
     progress
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failure_focus_moves_the_requested_pillar_first() {
+        assert_eq!(
+            focused_ranking(
+                Generator::Secure,
+                Some(&[Generator::Composable, Generator::Simple, Generator::Secure,])
+            ),
+            [Generator::Secure, Generator::Composable, Generator::Simple,]
+        );
+    }
 }

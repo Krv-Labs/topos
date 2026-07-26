@@ -78,7 +78,7 @@ it elsewhere.
       "sizes": ["958x958"]
     }
   ],
-  "version": "0.3.6",
+  "version": "0.4.1",
   "websiteUrl": "https://github.com/Krv-Labs/topos",
   "repository": {
     "url": "https://github.com/Krv-Labs/topos",
@@ -87,9 +87,9 @@ it elsewhere.
   "packages": [
     {
       "registryType": "pypi",
-      "registryBaseUrl": "https://pypi.org",
+      "registryBaseUrl": "https://pypi.org/simple",
       "identifier": "topos-mcp",
-      "version": "0.3.6",
+      "version": "0.4.1",
       "transport": {
         "type": "stdio"
       }
@@ -132,7 +132,7 @@ it elsewhere.
 5. Log in with GitHub to claim your namespace:
 
    ```bash
-   mcp-publisher login github
+   mcp-publisher login github #OR MCP_GITHUB_TOKEN="$(gh auth token)" mcp-publisher login github
    ```
 
    *(Prefix with `./` if using the manual fallback binary in the current directory).*

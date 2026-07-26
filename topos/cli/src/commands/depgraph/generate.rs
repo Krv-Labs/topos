@@ -54,6 +54,15 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
                     println!("{}", guide_line(dir, Style::new().dim(), options));
                 }
                 println!("{}", guide('└', options));
+                println!();
+                println!(
+                    "{}",
+                    paint(
+                        "Tip: run topos depgraph generate --force if results appear stale.",
+                        Style::new().dim(),
+                        options
+                    )
+                );
             }
             return Ok(());
         }

@@ -15,6 +15,7 @@ pub(crate) fn print_summary(
     files: &[PathBuf],
     results: &[ClassificationResult],
     language: &str,
+    composable_requested: bool,
     show_info_hint: bool,
 ) {
     let options = RenderOptions::stdout();
@@ -23,6 +24,7 @@ pub(crate) fn print_summary(
         results,
         language,
         options,
+        composable_requested,
         show_info_hint,
         "Evaluated",
     ) {
@@ -42,6 +44,7 @@ pub(crate) fn print_inspection_summary(
         language,
         options,
         false,
+        false,
         "Inspected",
     ) {
         println!("{line}");
@@ -53,6 +56,7 @@ fn render_summary(
     results: &[ClassificationResult],
     language: &str,
     options: RenderOptions,
+    composable_requested: bool,
     show_info_hint: bool,
     action: &str,
 ) -> Vec<String> {
@@ -162,6 +166,18 @@ fn render_summary(
         options,
     ));
     lines.push(floor_line(floor, mean, options));
+
+    let composable_measured = results
+        .iter()
+        .any(|result| result.scores.contains_key("composable"));
+    if composable_requested && !composable_measured {
+        lines.push(String::new());
+        lines.push(paint(
+            "!  COMPOSABLE not measured · run topos depgraph generate",
+            Style::new().yellow(),
+            options,
+        ));
+    }
 
     if show_info_hint {
         lines.push(String::new());
@@ -541,6 +557,7 @@ mod tests {
                 styled: false,
                 width: 120,
             },
+            false,
             true,
             "Evaluated",
         )
@@ -577,6 +594,7 @@ mod tests {
                 styled: false,
                 width: 120,
             },
+            false,
             true,
             "Evaluated",
         )
@@ -595,12 +613,51 @@ mod tests {
                 styled: false,
                 width: 120,
             },
+            false,
             true,
             "Evaluated",
         )
         .join("\n");
 
         assert!(output.contains("Tip: add --info to inspect the five weakest files."));
+    }
+
+    #[test]
+    fn requested_unmeasured_composable_has_recovery_hint() {
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result(true)],
+            "rust",
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+            true,
+            false,
+            "Evaluated",
+        )
+        .join("\n");
+
+        assert!(output.contains("!  COMPOSABLE not measured · run topos depgraph generate"));
+    }
+
+    #[test]
+    fn intentionally_skipped_composable_has_no_recovery_hint() {
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result(true)],
+            "rust",
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+            false,
+            false,
+            "Evaluated",
+        )
+        .join("\n");
+
+        assert!(!output.contains("topos depgraph generate"));
     }
 
     #[test]
@@ -745,6 +802,7 @@ mod tests {
                 styled: false,
                 width: 72,
             },
+            false,
             true,
             "Evaluated",
         )
@@ -763,6 +821,7 @@ mod tests {
                 styled: false,
                 width: 120,
             },
+            false,
             true,
             "Evaluated",
         )

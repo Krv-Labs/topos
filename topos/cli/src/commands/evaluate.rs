@@ -182,6 +182,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
             &files,
             &results,
             &args.language,
+            !args.no_composable,
             !args.info && failure_pillar.is_none(),
         );
         if args.verbose && results.len() == 1 {

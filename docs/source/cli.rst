@@ -315,7 +315,9 @@ no-ops when the existing graph is current unless ``--force`` is supplied.
 
 Requires GitNexus on ``PATH``. ``evaluate`` and ``inspect`` normally manage
 the same store automatically; this command is useful for explicit refreshes
-after dependency changes.
+after dependency changes. If a graph reported as current appears stale, rerun
+with ``--force``. When ``evaluate`` cannot measure COMPOSABLE, its terminal
+summary points back to this command.
 
 graphify
 --------

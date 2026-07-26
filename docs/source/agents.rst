@@ -196,8 +196,8 @@ Choose an agent path
 
          pnpm add -g gitnexus  # or: npm install -g gitnexus
 
-      As of v0.4.0 the CLI has the same behavior: ``topos evaluate`` and
-      ``topos inspect`` detect and generate/refresh ``.gitnexus`` before
+      The CLI has the same behavior: ``topos evaluate`` and ``topos inspect``
+      detect and generate/refresh ``.gitnexus`` before
       scoring, accept ``--gitnexus-dir`` / ``--no-composable``, and
       ``topos depgraph generate`` forces a rebuild.
 
@@ -220,8 +220,8 @@ Choose an agent path
 
          topos mcp
 
-      ``topos mcp`` prints the FastMCP banner and waits on standard input.
-      Press ``Ctrl-C`` after the smoke check.
+      ``topos mcp`` waits silently on standard input. Press ``Ctrl-C`` after
+      the smoke check.
 
    Workflow docs
       Topos exposes the workflow docs through MCP resources:

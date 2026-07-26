@@ -108,7 +108,9 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 
 | Command | Purpose |
 | --- | --- |
-| `topos evaluate <path> -r` | Rank files; show worst offenders and cheapest fixes |
+| `topos evaluate <path> -r` | Show the cumulative project quality rollup |
+| `topos evaluate <path> -r --info` | Select a weak file and show ranked line-level refactor targets |
+| `topos config` | View or edit project priority and preference settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
 | `topos coverage <put>... --tests <test>` | Structural test coverage (UAST + k-gram recall) |
@@ -116,7 +118,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos mcp` | Start the MCP server for tool-based agent loops |
 
-Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, or `--no-composable` to score SIMPLE/SECURE only. Preference ranking is an MCP-only input (`preferences.ranking`); the CLI has no `--preferences` flag. Advisory `cycles`/`dependencies`/`process` hints are likewise MCP-only, via `topos_refactor`.
+Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, or `--no-composable` to score SIMPLE/SECURE only. The CLI accepts one-run `--priority` / `--preferences` overrides and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
 
 ## MCP Tool Reference
 

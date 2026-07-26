@@ -11,19 +11,17 @@ CLI Reference
 The Topos CLI is for **manual inspections** and **terminal workflows** when
 you want structural quality verdicts without an editor integration. Most
 agent workflows use the :doc:`MCP server <agents>` instead — it currently
-covers more ground than the CLI (COMPOSABLE scoring, preference-ranked
-relaxation walks, JSON output for most tools). The CLI is a fresh,
+covers more ground than the CLI (preference-ranked relaxation walks and
+structured agent guidance). The CLI is a fresh,
 from-scratch Rust implementation built directly on ``topos-engine``, not a
 line-for-line port of the pre-v0.4.0 Python CLI — some Python-CLI features
 haven't been ported yet; each command below says explicitly what's missing.
 
 .. hint::
-   **CLI vs MCP, as of v0.4.0:** the CLI's ``evaluate``/``inspect`` commands
-   score only SIMPLE and SECURE — COMPOSABLE (which needs a GitNexus
-   dependency graph) is wired up on the **MCP server only** so far. There is
-   no ``--preferences``/``--priority`` relaxation walk, no ``--json``, and no
-   ``--allow`` acknowledgement flag on the CLI yet. Use MCP tools
-   (:doc:`agents`) for all of these.
+   ``evaluate`` automatically resolves GitNexus for COMPOSABLE scoring and
+   supports JSON, priority, and preference inputs. MCP remains the richer
+   agent surface: it returns the full preference walk, refactor targets,
+   findings, and structured contracts.
 
 Quick reference
 ---------------
@@ -31,9 +29,11 @@ Quick reference
 .. code-block:: bash
 
    topos evaluate . -r
+   topos config
    topos inspect module.py
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
+   topos depgraph generate
    topos graphify generate && topos graphify orphans src/logic.py
    topos mcp
 
@@ -52,9 +52,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
 
-      Advisory refactor hotspots and the MCP server.
+      Project settings, advisory refactor hotspots, and the MCP server.
       ^^^
-      ``graphify`` · ``mcp``
+      ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
 
 Quality commands
 ================
@@ -80,36 +80,75 @@ primary command for **Code Quality Medals** across the three pillars (see
      - Recursively evaluate directories.
    * - ``--language [python|rust|javascript|typescript|cpp|go]``
      - Source language for parsing and file discovery when paths are directories (default: ``python``).
+   * - ``-v``, ``--verbose``
+     - Print every file's full classification and raw metrics.
+   * - ``--json``
+     - Emit a machine-readable document without terminal progress.
+   * - ``--info``
+     - Select one of the five weakest files in a TTY and show its top three
+       line-level refactor targets. When piped, inspect the weakest file
+       without prompting. Cannot be combined with ``--json``.
+   * - ``--priority [simple|composable|secure]``
+     - Set the run's primary guidance pillar. This does not change fixed pass/fail gates.
+   * - ``--preferences RANKING``
+     - Rank all three pillars, comma-separated and most important first.
+   * - ``--no-composable``
+     - Skip GitNexus and score SIMPLE/SECURE only.
+   * - ``--gitnexus-dir PATH``
+     - Use a non-default ``.gitnexus`` directory.
 
 **Example**
 
 .. code-block:: bash
 
    topos evaluate . -r --language rust
+   topos evaluate . -r --language rust --info
 
-Prints each file's path, resolved medal (e.g. ``Verdict: SIMPLE_SECURE``),
-per-generator scores, and raw metrics. When more than one file is evaluated,
-a **Directory rollup** line follows, combining each generator's verdict
-across every file (the pointwise lattice meet — a pillar passes the rollup
-only if every file passes it).
+For a directory, terminal output is a cumulative pillar table with status,
+average and minimum diagnostic scores, failure counts, quality rails, and the
+directory lattice floor. A short hint points to ``--info``, which adds a
+bounded ``Weak spots`` list ranked by each file's average diagnostic score.
+Opening a row reveals the
+weakest pillar, ranked metrics, exact source spans, and recommended operations.
+Progress is drawn on stderr only while work is active.
+Press ``Enter`` to open a file, ``Escape`` to return to the selector, and
+``Escape`` again (or ``q``) to close it.
+Single-file runs use the same compact summary without redundant aggregate
+columns and point to ``topos inspect`` for the full file-level analysis.
+Use ``--verbose`` only when a script or debugging session needs the legacy
+inline raw-metric stream.
 
-.. important::
-   COMPOSABLE never appears in CLI output as of v0.4.0: the CLI never builds
-   or reads a GitNexus dependency graph. Only SIMPLE and SECURE (plus a
-   diagnostic-only PDG contribution to raw metrics) are attached. Use the
-   MCP server's ``topos_evaluate_file(gitnexus_dir=...)`` for COMPOSABLE —
-   see :doc:`agents`.
+Representative directory output:
+
+.. code-block:: text
+
+   ◇  Evaluated 20 files
+   │  rust · priority simple · COMPOSABLE enabled
+   │
+   │  PILLAR        STATUS    AVG    MIN   FAILURES   SCORE
+   │  SIMPLE        X FAIL    51%     0%     3 / 20    ━━━━━━━◆───────
+   │  COMPOSABLE    X FAIL    60%     0%     8 / 20    ━━━━━━━━◆──────
+   │  SECURE        ✓ PASS   100%   100%     0 / 20    ━━━━━━━━━━━━━━◆
+   │
+   │  Status reflects policy gates; scores are diagnostic.
+   └  ~ SECURE floor · 70% average
+
+   Tip: add --info to inspect the five weakest files.
 
 .. note::
-   Not yet ported to this CLI (available via MCP tools instead): ``--json``,
-   ``--preferences``/``--priority``, ``--gitnexus-dir``, ``--allow``, and the
-   ranked "lowest-hanging fruit" digest the pre-v0.4.0 Python CLI printed for
-   directory rollups.
+   Pillar status comes from the raw policy gates. Normalized quality scores
+   are diagnostic and therefore can be below the visual midpoint even when a
+   pillar passes. ``--info`` exposes the same ranked refactor-target evidence
+   used by MCP without expanding every project row or rerunning the project.
 
 inspect
 -------
 
-Inspect detailed metrics and entropy analysis for a **single** file.
+Inspect one file without losing the project context. Human output starts with
+the same pillar summary as ``evaluate``, then shows ranked recommendations,
+function complexity with line spans, and every raw metric. Policy metrics keep
+their interpretations; supporting diagnostics remain available in a quieter
+section.
 
 .. code-block:: bash
 
@@ -126,6 +165,10 @@ Inspect detailed metrics and entropy analysis for a **single** file.
        pre-v0.4.0 Python CLI's ``--json`` fields — no ``suggestions``/
        ``security_findings``/suppression rendering yet). Mainly intended for
        machine comparison, not primary human reading.
+   * - ``--no-composable``
+     - Skip GitNexus and inspect SIMPLE/SECURE only.
+   * - ``--gitnexus-dir PATH``
+     - Use a non-default ``.gitnexus`` directory.
 
 **Example**
 
@@ -134,9 +177,9 @@ Inspect detailed metrics and entropy analysis for a **single** file.
    topos inspect src/main.py
    topos inspect src/main.py --json
 
-.. note::
-   Not yet ported: ``--priority``/``--preferences``, ``--gitnexus-dir``,
-   ``--allow``.
+The nearest ``.topos.toml`` supplies the inspection priority and preferences,
+so file-level guidance stays aligned with the project. JSON field names and
+values are unchanged by the human-output redesign.
 
 compare
 -------
@@ -203,6 +246,51 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
 
 Other commands
 ===============
+
+config
+------
+
+View or update project evaluation settings in the nearest ``.topos.toml``.
+Running bare ``topos config`` opens a small priority selector on a TTY and
+falls back to ``show`` when input is non-interactive.
+
+.. code-block:: bash
+
+   topos config
+   topos config show
+   topos config set --priority secure
+   topos config set --preferences composable,secure,simple
+
+Explicit ``evaluate`` flags override project settings. A preference ranking
+is the stronger statement of intent, so its first pillar becomes the effective
+priority.
+
+depgraph
+--------
+
+Build or refresh the GitNexus store used by COMPOSABLE scoring. Generation
+no-ops when the existing graph is current unless ``--force`` is supplied.
+
+.. code-block:: bash
+
+   topos depgraph generate [PATH] [OPTIONS]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Option
+     - Description
+   * - ``PATH``
+     - Project directory to analyze (default: current directory).
+   * - ``--force``
+     - Regenerate even when the graph is current.
+   * - ``--json``
+     - Output the generation result as a single JSON object.
+
+Requires GitNexus on ``PATH``. ``evaluate`` and ``inspect`` normally manage
+the same store automatically; this command is useful for explicit refreshes
+after dependency changes.
 
 graphify
 --------

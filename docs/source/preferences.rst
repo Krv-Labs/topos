@@ -123,9 +123,13 @@ respects the user's ranking.
 How to Set Preferences
 ----------------------
 
-As of v0.4.0, preferences are an **MCP-only** feature — the ``topos`` CLI's
-``evaluate``/``inspect`` commands don't have a ``--preferences`` flag yet
-(see :doc:`cli`). In MCP tools, pass ``preferences.ranking``:
+For a one-off CLI evaluation, pass the complete ranking as a comma-separated
+value. Persist project defaults with ``topos config``::
+
+   topos evaluate src/ -r --preferences composable,secure,simple
+   topos config set --preferences composable,secure,simple
+
+In MCP tools, pass ``preferences.ranking``:
 
 .. code-block:: json
 
@@ -147,8 +151,9 @@ Preferences vs. Priority
 Preferences and priority are related, but they are not the same thing.
 
 ``priority``
-   A single scorer knob. It changes how metrics are weighted inside the scoring
-   policy for a run.
+   A single emphasis label used by result metadata and guidance. Current
+   pass/fail policies use fixed raw gates and do not change achievement based
+   on priority.
 
 ``preferences.ranking``
    A full target-ordering contract for agents. It decides how to rank lattice

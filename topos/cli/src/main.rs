@@ -1,32 +1,36 @@
-//! `topos` — standalone CLI binary for Topos structural code quality
-//! evaluation, built directly on `topos-engine` (issue #147).
+//! `topos` — standalone Rust CLI for structural code-quality evaluation.
 //!
-//! Mirrors the command surface of `topos/cli/main.py` /
-//! `topos/cli/commands/quality.py`, but is a fresh idiomatic-Rust
-//! implementation rather than a line-for-line port: the Python CLI's
-//! rich terminal styling (`click.style`) and its "Suggestions" /
-//! "Security Findings" sections depend on `topos/mcp/schemas.py`
-//! (Pydantic) and `topos.evaluation.{suggestions,suppression,
-//! security_guidance}`, which stay out of `topos-engine`'s scope for this
-//! pass — see each command module's doc comment for what is
-//! deliberately not ported yet.
-//!
-//! The `mcp` subcommand launches the in-process Rust MCP server (see
-//! `topos-mcp`). Still deliberately unported (see individual command docs):
-//! `depgraph` (needs GitNexus wiring) and `update`/`uninstall` (pip-specific
-//! self-update, obsolete for a cargo/homebrew-distributed binary).
+//! Human commands call directly into `topos-engine`; `topos mcp` launches the
+//! in-process `topos-mcp` server. Update and uninstall remain package-manager
+//! responsibilities rather than CLI subcommands.
 
 mod commands;
 
-use clap::{Parser, Subcommand};
+use std::fmt::Write as _;
+use std::io::IsTerminal;
 
-use commands::{compare, coverage, depgraph, evaluate, graphify, inspect, mcp};
+use clap::{Parser, Subcommand};
+use console::Style;
+
+use commands::{compare, config, coverage, depgraph, evaluate, graphify, inspect, mcp};
+
+const ROOT_COMMANDS: [(&str, &str); 8] = [
+    ("evaluate", "Score a file or directory"),
+    ("inspect", "Explain one file"),
+    ("config", "Set project priorities"),
+    ("compare", "Compare two files"),
+    ("coverage", "Measure structural test coverage"),
+    ("depgraph", "Build the COMPOSABLE graph"),
+    ("graphify", "Inspect graph health"),
+    ("mcp", "Start the MCP server"),
+];
 
 #[derive(Parser)]
 #[command(
     name = "topos",
     version,
-    about = "Topos: category-theoretic code quality evaluation."
+    about = "Category-theoretic code quality evaluation.",
+    disable_help_subcommand = true
 )]
 struct Cli {
     #[command(subcommand)]
@@ -35,25 +39,43 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Evaluate code quality using the characteristic morphism χ_S : P → Ω.
+    /// View or edit project settings.
+    Config(config::ConfigArgs),
+    /// Score files and directories across the quality pillars.
     Evaluate(evaluate::EvaluateArgs),
-    /// Inspect detailed metrics for a single file.
+    /// Explain one file with metrics, functions, and guidance.
     Inspect(inspect::InspectArgs),
-    /// Compare structural distance between two programs.
+    /// Compare structural distance between two files.
     Compare(compare::CompareArgs),
-    /// Measure structural (UAST) test coverage.
+    /// Measure structural test coverage.
     Coverage(coverage::CoverageArgs),
-    /// Graphify knowledge-graph generation and orphan detection (issue #150).
+    /// Generate or inspect a Graphify knowledge graph.
     Graphify(graphify::GraphifyArgs),
-    /// GitNexus dependency-graph generation for COMPOSABLE scoring.
+    /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
-    /// Launch the Topos MCP server over stdio.
+    /// Start the MCP server over stdio.
     Mcp(mcp::McpArgs),
 }
 
 fn main() {
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    if args.is_empty() {
+        eprint!(
+            "{}",
+            root_help(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
+        );
+        std::process::exit(2);
+    }
+    if args.len() == 1 && matches!(args[0].to_str(), Some("-h" | "--help")) {
+        print!(
+            "{}",
+            root_help(std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none())
+        );
+        return;
+    }
     let cli = Cli::parse();
     let result = match cli.command {
+        Command::Config(args) => config::run(args),
         Command::Evaluate(args) => evaluate::run(args),
         Command::Inspect(args) => inspect::run(args),
         Command::Compare(args) => compare::run(args),
@@ -65,5 +87,84 @@ fn main() {
     if let Err(message) = result {
         eprintln!("Error: {message}");
         std::process::exit(1);
+    }
+}
+
+fn root_help(styled: bool) -> String {
+    let emphasis = |text: &str, style: Style| {
+        if styled {
+            style.force_styling(true).apply_to(text).to_string()
+        } else {
+            text.to_string()
+        }
+    };
+    let mut output = String::new();
+    writeln!(
+        output,
+        "{}\n{}\n",
+        emphasis(
+            &format!("topos {}", env!("CARGO_PKG_VERSION")),
+            Style::new().bold()
+        ),
+        emphasis(
+            "Category-theoretic code quality evaluation.",
+            Style::new().dim()
+        )
+    )
+    .expect("writing to String cannot fail");
+    writeln!(
+        output,
+        "{}\n    topos <command>\n",
+        emphasis("Usage", Style::new().bold())
+    )
+    .expect("writing to String cannot fail");
+    writeln!(output, "{}", emphasis("Commands", Style::new().bold()))
+        .expect("writing to String cannot fail");
+    for (command, description) in ROOT_COMMANDS {
+        writeln!(
+            output,
+            "    {command:<11} {}",
+            emphasis(description, Style::new().dim())
+        )
+        .expect("writing to String cannot fail");
+    }
+    writeln!(
+        output,
+        "\n{}\n    -h, --help\n    -V, --version\n\n{}",
+        emphasis("Options", Style::new().bold()),
+        emphasis(
+            "Run `topos <command> --help` for details.",
+            Style::new().dim()
+        )
+    )
+    .expect("writing to String cannot fail");
+    output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{root_help, ROOT_COMMANDS};
+
+    #[test]
+    fn root_help_uses_the_terminal_grammar_and_keeps_every_command() {
+        let plain = root_help(false);
+        assert!(plain.starts_with("topos "));
+        assert!(plain.contains("\n    topos <command>\n"));
+        for command in [
+            "config", "evaluate", "inspect", "compare", "coverage", "graphify", "depgraph", "mcp",
+        ] {
+            assert!(
+                plain.contains(&format!("\n    {command}")),
+                "missing {command} from help"
+            );
+        }
+        assert!(!plain.contains("◇"));
+        assert!(!plain.contains("\n    help"));
+        assert!(plain.ends_with("Run `topos <command> --help` for details.\n"));
+
+        let styled = root_help(true);
+        assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
+        assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
+        assert_eq!(ROOT_COMMANDS.len(), 8);
     }
 }

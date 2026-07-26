@@ -3,10 +3,12 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use console::Style;
 use topos_engine::adapters::gitnexus::generate_depgraph;
 use topos_mcp::evaluation::depgraph_status;
 
 use super::print_json;
+use crate::commands::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
 pub struct GenerateArgs {
@@ -43,10 +45,15 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
                     "message": message,
                 }))?;
             } else {
-                println!("{message}");
+                let options = RenderOptions::stdout();
+                println!(
+                    "{}",
+                    paint("◇  Dependency graph current", Style::new().bold(), options)
+                );
                 if let Some(dir) = status.gitnexus_dir {
-                    println!("  .gitnexus: {dir}");
+                    println!("{}", guide_line(dir, Style::new().dim(), options));
                 }
+                println!("{}", guide('└', options));
             }
             return Ok(());
         }
@@ -71,10 +78,19 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
 
     if result.ok {
         if !args.json {
-            println!("{}", result.message);
+            let options = RenderOptions::stdout();
+            println!(
+                "{}",
+                paint(
+                    "◇  Dependency graph generated",
+                    Style::new().bold(),
+                    options
+                )
+            );
             if let Some(dir) = result.gitnexus_path {
-                println!("  .gitnexus: {}", dir.display());
+                println!("{}", guide_line(dir.display(), Style::new().dim(), options));
             }
+            println!("{}", guide('└', options));
         }
         Ok(())
     } else {

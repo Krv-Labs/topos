@@ -1,0 +1,384 @@
+//! `topos config` — scriptable project settings plus a small TTY selector.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use clap::{Args, Subcommand};
+use console::{Key, Term};
+use toml_edit::{value, Array, DocumentMut, Item, Table};
+use topos_engine::config::{find_config_file, load_topos_config};
+use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::preferences::{Generator, UserPreferences};
+
+use super::render::{guide, guide_line, paint, RenderOptions};
+
+#[derive(Args)]
+pub struct ConfigArgs {
+    #[command(subcommand)]
+    command: Option<ConfigCommand>,
+}
+
+#[derive(Subcommand)]
+enum ConfigCommand {
+    /// Print the resolved project settings.
+    Show,
+    /// Update evaluation settings in `.topos.toml`.
+    Set(ConfigSetArgs),
+}
+
+#[derive(Args)]
+struct ConfigSetArgs {
+    /// Primary quality pillar: simple, composable, or secure.
+    #[arg(long)]
+    priority: Option<String>,
+    /// Complete pillar ranking, most important first.
+    #[arg(long, value_name = "SIMPLE,COMPOSABLE,SECURE")]
+    preferences: Option<String>,
+}
+
+pub(crate) fn run(args: ConfigArgs) -> Result<(), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("resolving current directory: {e}"))?;
+    match args.command {
+        Some(ConfigCommand::Show) => show(&cwd),
+        Some(ConfigCommand::Set(set)) => set_config(&cwd, set.priority, set.preferences),
+        None if Term::stderr().is_term() => interactive(&cwd),
+        None => show(&cwd),
+    }
+}
+
+fn show(cwd: &Path) -> Result<(), String> {
+    let config = load_topos_config(cwd);
+    let path = find_config_file(cwd);
+    let options = RenderOptions::stdout();
+    println!(
+        "{}",
+        paint(
+            "◇  Topos project settings",
+            console::Style::new().bold(),
+            options
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            path.map_or_else(
+                || "defaults · no .topos.toml".to_string(),
+                |p| p.display().to_string()
+            ),
+            console::Style::new().dim(),
+            options,
+        )
+    );
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line(
+            format!(
+                "priority     {}",
+                priority_name(config.effective_priority())
+            ),
+            console::Style::new(),
+            options,
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!(
+                "preferences  {}",
+                config
+                    .preferences
+                    .map_or_else(|| "not set".to_string(), ranking_text)
+            ),
+            console::Style::new(),
+            options,
+        )
+    );
+    println!("{}", guide('└', options));
+    Ok(())
+}
+
+fn set_config(
+    cwd: &Path,
+    raw_priority: Option<String>,
+    raw_preferences: Option<String>,
+) -> Result<(), String> {
+    if raw_priority.is_none() && raw_preferences.is_none() {
+        return Err("config set requires --priority or --preferences".to_string());
+    }
+    let current = load_topos_config(cwd);
+    let explicit_priority = raw_priority.as_deref().map(parse_priority).transpose()?;
+    let mut ranking = raw_preferences
+        .as_deref()
+        .map(parse_ranking)
+        .transpose()?
+        .or(current.preferences)
+        .unwrap_or_else(default_ranking);
+    if let Some(priority) = explicit_priority {
+        ranking = move_first(ranking, generator_for_priority(priority));
+    }
+    let priority = explicit_priority.unwrap_or_else(|| priority_for_generator(ranking[0]));
+    write_settings(cwd, priority, ranking)?;
+    let options = RenderOptions::stdout();
+    println!(
+        "{}",
+        paint(
+            "◇  Project settings updated",
+            console::Style::new().bold(),
+            options
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            config_path(cwd).display(),
+            console::Style::new().dim(),
+            options
+        )
+    );
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line(
+            format!("priority     {}", priority_name(priority)),
+            console::Style::new(),
+            options,
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!("preferences  {}", ranking_text(ranking)),
+            console::Style::new(),
+            options,
+        )
+    );
+    println!("{}", guide('└', options));
+    Ok(())
+}
+
+fn interactive(cwd: &Path) -> Result<(), String> {
+    let term = Term::stderr();
+    let current = load_topos_config(cwd).effective_priority();
+    let choices = [Priority::Simple, Priority::Composable, Priority::Secure];
+    let mut selected = choices.iter().position(|p| *p == current).unwrap_or(2);
+    let mut rendered = 0;
+    term.hide_cursor().map_err(|e| e.to_string())?;
+    let result = (|| -> Result<Option<Priority>, String> {
+        loop {
+            if rendered > 0 {
+                term.clear_last_lines(rendered).map_err(|e| e.to_string())?;
+            }
+            let lines = selector_lines(selected, RenderOptions::stderr());
+            rendered = lines.len();
+            for line in lines {
+                term.write_line(&line).map_err(|e| e.to_string())?;
+            }
+            match term.read_key().map_err(|e| e.to_string())? {
+                Key::ArrowUp | Key::Char('k') => selected = selected.saturating_sub(1),
+                Key::ArrowDown | Key::Char('j') => selected = (selected + 1).min(2),
+                Key::Enter => return Ok(Some(choices[selected])),
+                Key::Escape | Key::CtrlC | Key::Char('q') => return Ok(None),
+                _ => {}
+            }
+        }
+    })();
+    term.show_cursor().ok();
+    let Some(priority) = result? else {
+        return Ok(());
+    };
+    let ranking = preset_ranking(priority);
+    write_settings(cwd, priority, ranking)?;
+    term.write_line(&format!(
+        "◇  Saved {} priority to {}",
+        priority_name(priority),
+        config_path(cwd).display()
+    ))
+    .map_err(|e| e.to_string())
+}
+
+fn selector_lines(selected: usize, options: RenderOptions) -> Vec<String> {
+    let choices = [
+        ("Simple", "favor low complexity and readable structure"),
+        ("Composable", "favor clean module boundaries and coupling"),
+        ("Secure", "favor safe data flow and dangerous-call review"),
+    ];
+    let mut lines = vec![
+        paint(
+            "┌  Topos project settings",
+            console::Style::new().bold(),
+            options,
+        ),
+        "│".to_string(),
+        format!(
+            "│  {}",
+            paint(
+                "Evaluation priority",
+                console::Style::new().cyan().bold(),
+                options,
+            )
+        ),
+        format!(
+            "│  {}",
+            paint(
+                "↑↓ move · enter save · esc cancel",
+                console::Style::new().dim(),
+                options,
+            )
+        ),
+        "│".to_string(),
+    ];
+    for (idx, (label, hint)) in choices.iter().enumerate() {
+        let cursor = if idx == selected { "›" } else { " " };
+        let marker = if idx == selected { "●" } else { "○" };
+        let row = format!("{cursor} {marker} {label:<12} {hint}");
+        let style = if idx == selected {
+            console::Style::new().bold()
+        } else {
+            console::Style::new().dim()
+        };
+        lines.push(format!("│ {}", paint(row, style, options)));
+    }
+    lines.push("└".to_string());
+    lines
+}
+
+fn write_settings(cwd: &Path, priority: Priority, ranking: [Generator; 3]) -> Result<(), String> {
+    let path = config_path(cwd);
+    let source = fs::read_to_string(&path).unwrap_or_default();
+    let mut document = source
+        .parse::<DocumentMut>()
+        .map_err(|e| format!("parsing {}: {e}", path.display()))?;
+    if !document.as_table().contains_key("evaluation") {
+        document["evaluation"] = Item::Table(Table::new());
+    }
+    document["evaluation"]["priority"] = value(priority_name(priority));
+    let mut values = Array::new();
+    for generator in ranking {
+        values.push(generator.as_str());
+    }
+    document["evaluation"]["preferences"] = value(values);
+    fs::write(&path, document.to_string()).map_err(|e| format!("writing {}: {e}", path.display()))
+}
+
+fn config_path(cwd: &Path) -> PathBuf {
+    find_config_file(cwd).unwrap_or_else(|| cwd.join(".topos.toml"))
+}
+
+pub(crate) fn parse_priority(value: &str) -> Result<Priority, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "simple" => Ok(Priority::Simple),
+        "composable" => Ok(Priority::Composable),
+        "secure" => Ok(Priority::Secure),
+        _ => Err(format!(
+            "invalid priority '{value}' (expected simple, composable, or secure)"
+        )),
+    }
+}
+
+pub(crate) fn parse_ranking(value: &str) -> Result<[Generator; 3], String> {
+    let parsed: Vec<Generator> = value
+        .split(',')
+        .map(|part| match part.trim().to_ascii_lowercase().as_str() {
+            "simple" => Ok(Generator::Simple),
+            "composable" => Ok(Generator::Composable),
+            "secure" => Ok(Generator::Secure),
+            other => Err(format!("invalid preference '{other}'")),
+        })
+        .collect::<Result<_, _>>()?;
+    let ranking: [Generator; 3] = parsed.try_into().map_err(|values: Vec<_>| {
+        format!(
+            "preferences require all three pillars exactly once (got {})",
+            values.len()
+        )
+    })?;
+    UserPreferences::new(ranking)
+        .map(|prefs| prefs.ranking())
+        .map_err(|e| e.to_string())
+}
+
+pub(crate) fn priority_for_generator(generator: Generator) -> Priority {
+    match generator {
+        Generator::Simple => Priority::Simple,
+        Generator::Composable => Priority::Composable,
+        Generator::Secure => Priority::Secure,
+    }
+}
+
+pub(crate) fn priority_name(priority: Priority) -> &'static str {
+    match priority {
+        Priority::Simple => "simple",
+        Priority::Composable => "composable",
+        Priority::Secure => "secure",
+    }
+}
+
+fn generator_for_priority(priority: Priority) -> Generator {
+    priority.top_generator()
+}
+
+fn default_ranking() -> [Generator; 3] {
+    [Generator::Simple, Generator::Composable, Generator::Secure]
+}
+
+fn preset_ranking(priority: Priority) -> [Generator; 3] {
+    move_first(default_ranking(), generator_for_priority(priority))
+}
+
+fn move_first(ranking: [Generator; 3], first: Generator) -> [Generator; 3] {
+    let rest: Vec<_> = ranking.into_iter().filter(|g| *g != first).collect();
+    [first, rest[0], rest[1]]
+}
+
+fn ranking_text(ranking: [Generator; 3]) -> String {
+    ranking.map(Generator::as_str).join(" > ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ranking_requires_a_permutation() {
+        assert!(parse_ranking("secure,simple,composable").is_ok());
+        assert!(parse_ranking("secure,secure,simple").is_err());
+        assert!(parse_ranking("secure,simple").is_err());
+    }
+
+    #[test]
+    fn moving_priority_preserves_the_other_order() {
+        assert_eq!(
+            move_first(default_ranking(), Generator::Secure),
+            [Generator::Secure, Generator::Simple, Generator::Composable]
+        );
+    }
+
+    #[test]
+    fn writing_settings_preserves_unrelated_content_and_comments() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cli-config-write-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".topos.toml");
+        fs::write(
+            &path,
+            "# keep this\n[[secure.allow]]\npattern = \"eval\"\nreason = \"trusted\"\n",
+        )
+        .unwrap();
+
+        write_settings(
+            &dir,
+            Priority::Secure,
+            [Generator::Secure, Generator::Simple, Generator::Composable],
+        )
+        .unwrap();
+
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains("# keep this"));
+        assert!(updated.contains("[[secure.allow]]"));
+        assert!(updated.contains("priority = \"secure\""));
+        assert!(updated.contains("preferences = [\"secure\", \"simple\", \"composable\"]"));
+        fs::remove_dir_all(dir).ok();
+    }
+}

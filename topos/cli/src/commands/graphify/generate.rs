@@ -8,9 +8,11 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use console::Style;
 use topos_engine::adapters::graphify::{ensure_graphify_graph, GRAPHIFY_GRAPH_FILE};
 
 use super::print_json;
+use crate::commands::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
 pub struct GenerateArgs {
@@ -42,7 +44,16 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
                 "message": message,
             }))?;
         } else {
-            println!("{message}");
+            let options = RenderOptions::stdout();
+            println!(
+                "{}",
+                paint("◇  Graphify graph current", Style::new().bold(), options)
+            );
+            println!(
+                "{}",
+                guide_line(graph_file.display(), Style::new().dim(), options)
+            );
+            println!("{}", guide('└', options));
         }
         return Ok(());
     }
@@ -53,12 +64,23 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
             "ok": result.ok,
             "returncode": result.returncode,
             "generated": result.ok,
-            "graphify_out_dir": result.graphify_out_dir.map(|p| p.display().to_string()),
+            "graphify_out_dir": result.graphify_out_dir.as_ref().map(|p| p.display().to_string()),
             "message": result.message,
         }))?;
     }
 
     if result.ok {
+        if !args.json {
+            let options = RenderOptions::stdout();
+            println!(
+                "{}",
+                paint("◇  Graphify graph generated", Style::new().bold(), options)
+            );
+            if let Some(dir) = result.graphify_out_dir {
+                println!("{}", guide_line(dir.display(), Style::new().dim(), options));
+            }
+            println!("{}", guide('└', options));
+        }
         Ok(())
     } else {
         Err(result.message)

@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use console::Style;
 use topos_engine::adapters::graphify::GRAPHIFY_GRAPH_FILE;
 use topos_engine::functors::probes::graphify::orphans::{
     calculate_graphify_orphans, FragileEdge, GraphifyOrphanResult, OrphanNode,
@@ -13,6 +14,7 @@ use topos_engine::functors::probes::graphify::orphans::{
 use topos_engine::graphs::graphify::GraphifyGraph;
 
 use super::print_json;
+use crate::commands::render::{guide, guide_line, paint, RenderOptions};
 
 const DEFAULT_ORPHAN_DEGREE_THRESHOLD: usize = 1;
 
@@ -102,33 +104,75 @@ pub fn run_orphans(args: OrphansArgs) -> Result<(), String> {
         return Ok(());
     }
 
-    println!("Orphan nodes ({})", filepath);
-    println!("{}", "-".repeat(40));
+    let options = RenderOptions::stdout();
+    println!(
+        "{}",
+        paint(
+            format!("◇  Graph health · {}", args.filepath.display()),
+            Style::new().bold(),
+            options,
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!(
+                "{} orphan · {} fragile",
+                orphan_nodes.len(),
+                fragile_edges.len()
+            ),
+            Style::new().dim(),
+            options,
+        )
+    );
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line("ORPHAN NODES", Style::new().cyan().bold(), options)
+    );
     if orphan_nodes.is_empty() {
-        println!("  (none)");
+        println!("{}", guide_line("None", Style::new().dim(), options));
     }
     for node in &orphan_nodes {
         println!(
-            "  [{}] {} (degree {})",
-            node.node_id, node.label, node.degree
+            "{}",
+            guide_line(
+                format!("degree {}  {} [{}]", node.degree, node.label, node.node_id),
+                Style::new(),
+                options,
+            )
         );
     }
 
-    println!();
-    println!("Fragile edges (INFERRED | AMBIGUOUS)");
-    println!("{}", "-".repeat(40));
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line("FRAGILE EDGES", Style::new().cyan().bold(), options)
+    );
+    println!(
+        "{}",
+        guide_line("inferred or ambiguous", Style::new().dim(), options)
+    );
     if fragile_edges.is_empty() {
-        println!("  (none)");
+        println!("{}", guide_line("None", Style::new().dim(), options));
     }
     for edge in &fragile_edges {
         println!(
-            "  {} -> {} ({}, {})",
-            edge.source,
-            edge.target,
-            edge.relation,
-            edge.confidence.as_str()
+            "{}",
+            guide_line(
+                format!(
+                    "{} → {} · {} · {}",
+                    edge.source,
+                    edge.target,
+                    edge.relation,
+                    edge.confidence.as_str()
+                ),
+                Style::new(),
+                options,
+            )
         );
     }
+    println!("{}", guide('└', options));
 
     Ok(())
 }

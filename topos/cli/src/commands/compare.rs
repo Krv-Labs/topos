@@ -6,10 +6,12 @@
 use std::path::PathBuf;
 
 use clap::Args;
+use console::Style;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 
 use super::lang::detect_language;
+use super::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
 pub struct CompareArgs {
@@ -36,22 +38,52 @@ pub fn run(args: CompareArgs) -> Result<(), String> {
 
     let result = calculate_ast_distance(source_ast, target_ast);
 
-    println!("Source: {}", args.source.display());
-    println!("Target: {}", args.target.display());
-    println!();
-    println!("Edit distance: {}", result.raw_distance);
+    let options = RenderOptions::stdout();
+    let similarity = (1.0 - result.normalized_distance) * 100.0;
     println!(
-        "Similarity: {:.1}%",
-        (1.0 - result.normalized_distance) * 100.0
+        "{}",
+        paint("◇  Compared 2 files", Style::new().bold(), options)
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!("{} → {}", args.source.display(), args.target.display()),
+            Style::new().dim(),
+            options,
+        )
+    );
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line(
+            format!("Similarity   {similarity:>5.1}%"),
+            Style::new().bold(),
+            options,
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!("Edit distance  {}", result.raw_distance),
+            Style::new(),
+            options,
+        )
     );
 
     if args.verbose {
-        println!();
-        println!("Operations:");
+        println!("{}", guide('│', options));
+        println!(
+            "{}",
+            guide_line("OPERATIONS", Style::new().cyan().bold(), options)
+        );
         for kind in ["insertions", "deletions", "substitutions"] {
             let count = result.operations.get(kind).copied().unwrap_or(0);
-            println!("  {kind}: {count}");
+            println!(
+                "{}",
+                guide_line(format!("{kind:<14} {count}"), Style::new(), options)
+            );
         }
     }
+    println!("{}", guide('└', options));
     Ok(())
 }

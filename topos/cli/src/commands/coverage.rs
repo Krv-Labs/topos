@@ -1,20 +1,21 @@
 //! `topos coverage` — structural (UAST) test coverage between a
 //! program-under-test and its test suite.
 //!
-//! Ported from `topos/cli/commands/coverage.py`, calling straight into
-//! [`structural_test_coverage::declaration_coverage`] and
-//! [`policies::coverage::score_declaration_coverage`]. The Python
-//! original's JSON output mode and MCP-schema-shaped payload are not
-//! ported here — this pass is plain-text only (see issue #147 scope).
+//! Calls straight into [`structural_test_coverage::declaration_coverage`] and
+//! [`policies::coverage::score_declaration_coverage`]. Structured coverage is
+//! available through MCP; this CLI command intentionally stays human-readable.
 
 use std::path::PathBuf;
 
 use clap::Args;
+use console::Style;
 use topos_engine::evaluation::policies::coverage::score_declaration_coverage;
 use topos_engine::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
 use topos_engine::graphs::ast::dispatch::parse_source;
 use topos_engine::graphs::ast::languages::SUPPORTED_LANGUAGES;
 use topos_engine::graphs::uast::models::UASTNode;
+
+use super::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
 pub struct CoverageArgs {
@@ -78,79 +79,136 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     let decision = score_declaration_coverage(&report, args.coverage_threshold);
 
-    println!("Topos Structural Test Coverage");
-    println!("Language: {}", args.language);
+    let options = RenderOptions::stdout();
+    let pass = decision.coverage_rate >= decision.threshold;
+    let (symbol, status, status_style) = if pass {
+        ("✓", "PASS", Style::new().green().bold())
+    } else {
+        ("X", "FAIL", Style::new().red().bold())
+    };
     println!(
-        "PUT files ({}): {}",
-        args.put_paths.len(),
-        display_paths(&args.put_paths)
+        "{}",
+        paint("◇  Structural coverage", Style::new().bold(), options)
     );
     println!(
-        "Test files ({}): {}",
-        args.test_paths.len(),
-        display_paths(&args.test_paths)
-    );
-    println!();
-
-    println!("UAST Declaration-Level Coverage");
-    println!("{}", "-".repeat(52));
-    println!(
-        "  Mean declaration coverage:  {:.4}",
-        report.mean_declaration_coverage
-    );
-    println!(
-        "  Declaration coverage rate:  {:.4}",
-        decision.coverage_rate
-    );
-    println!("  Coverage threshold:         {:.2}", decision.threshold);
-    println!(
-        "  PUT declarations:           {}",
-        report.put_declaration_count
+        "{}",
+        guide_line(
+            format!(
+                "{} · {} source · {} test · k={}",
+                args.language,
+                args.put_paths.len(),
+                args.test_paths.len(),
+                report.k
+            ),
+            Style::new().dim(),
+            options,
+        )
     );
     println!(
-        "  Test declarations:          {}",
-        report.test_declaration_count
+        "{}",
+        guide_line(
+            format!("sources  {}", display_paths(&args.put_paths)),
+            Style::new().dim(),
+            options,
+        )
     );
-    println!();
-
-    println!("Category-Stratified Recall (disjoint)");
-    println!("{}", "-".repeat(52));
-    println!("  Statement recall:           {:.4}", report.stmt_recall);
-    println!("  Expression recall:          {:.4}", report.expr_recall);
-    println!();
-
-    println!("Precision and F-score");
-    println!("{}", "-".repeat(52));
     println!(
-        "  Mean test precision:        {:.4}",
-        report.mean_test_precision
+        "{}",
+        guide_line(
+            format!("tests    {}", display_paths(&args.test_paths)),
+            Style::new().dim(),
+            options,
+        )
     );
-    println!("  F2 score (beta=2):          {:.4}", decision.f2_score);
-    println!();
-
-    println!("Path Recall (declaration-scoped k={} grams)", report.k);
-    println!("{}", "-".repeat(52));
+    println!("{}", guide('│', options));
     println!(
-        "  Decl path recall:           {:.4}",
-        report.declaration_path_recall_kgram
+        "{}",
+        guide_line(
+            format!(
+                "{symbol} {status} · {:.1}% declaration coverage",
+                decision.coverage_rate * 100.0
+            ),
+            status_style,
+            options,
+        )
+    );
+    println!(
+        "{}",
+        guide_line(
+            format!(
+                "threshold {:.0}% · F2 {:.4}",
+                decision.threshold * 100.0,
+                decision.f2_score
+            ),
+            Style::new().dim(),
+            options,
+        )
+    );
+    println!("{}", guide('│', options));
+    println!(
+        "{}",
+        guide_line("METRICS", Style::new().cyan().bold(), options)
+    );
+    for (label, value) in [
+        (
+            "Mean declaration coverage",
+            report.mean_declaration_coverage,
+        ),
+        ("Statement recall", report.stmt_recall),
+        ("Expression recall", report.expr_recall),
+        ("Mean test precision", report.mean_test_precision),
+        (
+            "Declaration path recall",
+            report.declaration_path_recall_kgram,
+        ),
+    ] {
+        println!(
+            "{}",
+            guide_line(format!("{label:<28} {value:.4}"), Style::new(), options)
+        );
+    }
+    println!(
+        "{}",
+        guide_line(
+            format!(
+                "Declarations                 {} source · {} test",
+                report.put_declaration_count, report.test_declaration_count
+            ),
+            Style::new(),
+            options,
+        )
     );
 
     if !decision.uncovered_declarations.is_empty() {
-        println!();
+        println!("{}", guide('│', options));
         println!(
-            "Uncovered PUT declarations (below {:.0}%)",
-            decision.threshold * 100.0
+            "{}",
+            guide_line(
+                format!("UNCOVERED · BELOW {:.0}%", decision.threshold * 100.0),
+                Style::new().cyan().bold(),
+                options,
+            )
         );
-        println!("{}", "-".repeat(52));
         let mut uncovered = decision.uncovered_declarations.clone();
         uncovered.sort_by(|a, b| a.1.total_cmp(&b.1));
         for (loc, score) in &uncovered {
-            println!("  {loc}  (best score: {score:.3})");
+            println!(
+                "{}",
+                guide_line(format!("{score:.3}  {loc}"), Style::new(), options)
+            );
         }
     } else {
-        println!();
-        println!("All measured declarations meet the threshold.");
+        println!("{}", guide('│', options));
+        println!(
+            "{}",
+            guide_line(
+                "All measured declarations meet the threshold.",
+                Style::new().green(),
+                options,
+            )
+        );
     }
+    println!("{}", guide('└', options));
 
     Ok(())
 }

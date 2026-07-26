@@ -98,7 +98,7 @@ jobs:
           test ! -d .gitnexus/lbug
           OUT="$(mktemp)"
           ERR="$(mktemp)"
-          "$BIN" evaluate --language rust src/lib.rs >"$OUT" 2>"$ERR"
+          "$BIN" evaluate --language rust src/lib.rs --json >"$OUT" 2>"$ERR"
           echo "=== stdout ==="
           cat "$OUT"
           echo "=== stderr ==="
@@ -107,7 +107,7 @@ jobs:
             echo "COMPOSABLE silently fell back to no-store messaging" >&2
             exit 1
           fi
-          if ! grep -E -q 'composable:' "$OUT"; then
+          if ! jq -e '.results[0].scores.composable != null' "$OUT" >/dev/null; then
             echo "COMPOSABLE pillar missing from evaluate output" >&2
             exit 1
           fi

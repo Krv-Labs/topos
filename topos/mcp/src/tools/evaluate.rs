@@ -9,6 +9,7 @@ use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue};
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::weakest_score;
 
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
 use crate::evaluation::{
@@ -551,15 +552,7 @@ fn aggregate_floor_verdict(rolled: &HashMap<String, EvaluationValue>) -> Lattice
 }
 
 fn worst_key(entry: &ProjectFileEntry) -> f64 {
-    entry
-        .scores
-        .values()
-        .fold(f64::INFINITY, |acc, &v| acc.min(v))
-        .min(if entry.scores.is_empty() {
-            0.0
-        } else {
-            f64::INFINITY
-        })
+    weakest_score(&entry.scores)
 }
 
 fn build_language_rollups(

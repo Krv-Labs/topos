@@ -45,6 +45,7 @@ const SUGGESTION_ORDER: &[&str] = &[
     "ast.max_function_complexity",
     "ast.entropy",
     "mdg.instability",
+    "mdg.main_sequence_distance",
     "mdg.fan_out",
     "mdg.fan_in",
 ];
@@ -158,6 +159,9 @@ fn gate_message(r: &GateResult) -> String {
             "Rebalance dependencies (instability {value:.2}; aim for {}–{}).",
             r.spec.low.unwrap_or(0.0),
             r.spec.high.unwrap_or(1.0)
+        ),
+        "mdg.main_sequence_distance" => format!(
+            "Rebalance abstraction and dependencies (main-sequence distance {value:.2} > {threshold:.2})."
         ),
         "mdg.fan_out" => format!(
             "Reduce fan-out {value:.0} (> {threshold:.0}) — introduce an interface or invert the dependency."
@@ -337,6 +341,26 @@ mod tests {
         assert!(suggestions
             .iter()
             .any(|s| s.metric.as_deref() == Some("mdg.fan_out")));
+    }
+
+    #[test]
+    fn main_sequence_failure_gets_actionable_composable_suggestion() {
+        let result = result(
+            HashMap::from([("composable".to_string(), EvaluationValue::Slop)]),
+            HashMap::from([
+                ("mdg.instability".to_string(), 0.3),
+                ("mdg.abstractness".to_string(), 0.0),
+                ("mdg.fan_in".to_string(), 1.0),
+                ("mdg.fan_out".to_string(), 5.0),
+            ]),
+            EvaluationValue::Slop,
+        );
+
+        let suggestions = suggest_refactors(&result, &[]);
+        let suggestion = by_metric(&suggestions, "mdg.main_sequence_distance");
+        assert_eq!(suggestion.severity, "fix");
+        assert!(suggestion.message.contains("Rebalance abstraction"));
+        assert!(suggestion.message.contains("0.70 > 0.50"));
     }
 
     #[test]

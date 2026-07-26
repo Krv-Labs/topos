@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-07-26
+
+### Fixed
+
+- **Rebuild release artifacts without spurious OpenSSL linkage** — v0.4.1 macOS CLI and PyPI wheels linked Homebrew `openssl@3` paths and aborted under library validation; source fixes landed in PR [#246](https://github.com/Krv-Labs/topos/pull/246) but users still received the broken v0.4.1 binaries until this release.
+
+### Changed
+
+- **Drop stale OpenSSL from PyPI wheel and Glama Docker builds** — remove unused `openssl@3` / `libssl-dev` install steps from the maturin wheel job; CI already rejects macOS wheels with non-system dylib linkage.
+
 ## [0.4.1] - 2026-07-25
 
 ### Fixed

@@ -451,16 +451,13 @@ jobs:
         if: runner.os == 'macOS'
         run: ./scripts/setup-lbug-prebuilt.sh
 
-      # lbug 0.17.1 statically links mbedtls and needs no OpenSSL; the stale
-      # claim that it does is what produced the -lssl/-lcrypto linkage that
-      # broke the v0.4.1 macOS binary. cmake and a deployment target new enough
-      # for C++ `to_chars` (macOS 13.3+) are still needed for source fallbacks.
-      # openssl@3 is kept only because the maturin wheel path is not verified
-      # here; it has no known remaining consumer and can likely be dropped.
+      # lbug 0.17.1 statically links mbedtls and needs no OpenSSL. cmake and a
+      # deployment target new enough for C++ `to_chars` (macOS 13.3+) are still
+      # needed for source fallbacks.
       - name: Install macOS build deps (lbug)
         if: runner.os == 'macOS'
         run: |
-          brew install openssl@3 cmake
+          brew install cmake
           echo "MACOSX_DEPLOYMENT_TARGET=13.3" >> "$GITHUB_ENV"
 
       - name: Build bin wheel
@@ -468,28 +465,19 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          # manylinux images are AlmaLinux-based; openssl must be installed
-          # inside the container (host apt packages are invisible).
+          # Install cmake inside the manylinux container (host packages are invisible).
           before-script-linux: |
             if command -v dnf >/dev/null 2>&1; then
-              # openssl-devel/cmake live in base/AppStream; skip EPEL to avoid mirror flakes.
-              dnf install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+              dnf install -y --disablerepo='epel*' cmake pkgconfig
             elif command -v yum >/dev/null 2>&1; then
-              yum install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+              yum install -y --disablerepo='epel*' cmake pkgconfig
             elif command -v apt-get >/dev/null 2>&1; then
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                libssl-dev cmake pkg-config
+                cmake pkg-config
             else
               echo "No supported package manager in manylinux container" >&2
               exit 1
-            fi
-            # Sanity: lbug prebuilts need OpenSSL 3 symbols.
-            if ! ldconfig -p 2>/dev/null | grep -q 'libssl\.so\.3'; then
-              if [ ! -e /usr/lib64/libssl.so.3 ] && [ ! -e /usr/lib/libssl.so.3 ]; then
-                echo "OpenSSL 3 not found in manylinux image; lbug link will fail" >&2
-                exit 1
-              fi
             fi
           args: >-
             --release --bindings bin

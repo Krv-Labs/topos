@@ -423,8 +423,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 2_34 (AlmaLinux 9) ships OpenSSL 3 — required by the lbug
-          # prebuilt (SSL_get1_peer_certificate). 2_28 only has OpenSSL 1.1.
+          # manylinux 2_34 (AlmaLinux 9) for a modern glibc/toolchain. lbug
+          # 0.17.1 statically links mbedtls and needs no OpenSSL at link time.
           - os: ubuntu-latest
             target: x86_64
             manylinux: "2_34"
@@ -484,11 +484,9 @@ jobs:
             --manifest-path topos/mcp/Cargo.toml
             --out dist
 
-      # The v0.4.1 macOS wheel shipped a topos-mcp that linked Homebrew's
-      # openssl@3 by absolute path, so it fails with "Library not loaded" for
-      # anyone without that formula. Linux wheels are covered by auditwheel
-      # (manylinux tags reject a non-allowlisted libssl); macOS has no
-      # equivalent here, so check it explicitly.
+      # Guard against non-portable dylib paths in the wheel binary. v0.4.1
+      # wheels linked Homebrew openssl@3 and failed on machines without it.
+      # Linux wheels are covered by auditwheel; macOS has no equivalent.
       - name: Verify macOS wheel binary has no non-system linkage
         if: runner.os == 'macOS'
         run: |

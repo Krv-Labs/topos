@@ -38,7 +38,7 @@ For CFG changes, keep `graphs/cfg/edge_contracts.rs` and deep-nesting tests pass
 
 - **rust:** version and skill checks, workspace format/Clippy/tests, plus an MCP stdio `tools/list` smoke test.
 - **composable:** installs pinned GitNexus, creates a committed fixture repository, runs GitNexus, and asserts that CLI evaluation includes COMPOSABLE rather than falling back to a missing-store message.
-- **wheel:** builds the `topos-mcp` Maturin `bin` wheel on manylinux 2.34 with OpenSSL/CMake dependencies required by Ladybug.
+- **wheel:** builds the `topos-mcp` Maturin `bin` wheel on manylinux 2.34 with CMake/pkg-config; Ladybug statically links mbedtls and does not require OpenSSL at link time. Release CI extracts the Linux wheel binary and checks its `readelf` `DT_NEEDED` entries so unexpected dynamic linkage fails explicitly.
 - **extension:** type-checks, lints, and unit-tests the VS Code package.
 
 Run the job matching the contract you change; engine-only success does not validate packaging or editor behavior.
@@ -48,7 +48,7 @@ Run the job matching the contract you change; engine-only success does not valid
 - **Version source of truth:** workspace `Cargo.toml`.
 - **Parity check:** `scripts/check_versions.py` checks relevant distribution metadata.
 - **CLI release artifact:** `.github/workflows/release.yml` builds `topos` for Linux amd64/arm64 and macOS arm64 directly with Cargo. It restores the Cargo cache before running `scripts/setup-lbug-prebuilt.sh`, which supplies the pinned LadybugDB static library through `LBUG_LIBRARY_DIR`; on macOS the script rejects source-build overrides to avoid the duplicate-symbol linker failure. Keep that order and fail-fast guard when changing the release build. The workflow also rejects unexpected non-system dynamic linkage before signing, smoke-tests the staged artifact, and on signed macOS releases smoke-tests again under hardened-runtime library validation; these checks protect the artifacts consumed by the [distribution surfaces](../integrations/distribution.md).
-- **MCP artifact:** `topos-mcp` is packaged as a Maturin `bin` wheel; it ships a compiled server rather than a Python runtime.
+- **MCP artifact:** `topos-mcp` is packaged as a Maturin `bin` wheel; it ships a compiled server rather than a Python runtime. The release workflow checks extracted macOS wheel binaries for non-system links and Linux wheel binaries for unexpected `DT_NEEDED` entries; together these guards protect portability of the [distribution surfaces](../integrations/distribution.md).
 - **VS Code:** release builds stage the matching native CLI into platform VSIX artifacts.
 - **Homebrew:** after release, workflow automation renders a checksum-backed formula PR for the tap; tap CI gates its merge.
 

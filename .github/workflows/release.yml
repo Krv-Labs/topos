@@ -423,8 +423,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 2_34 (AlmaLinux 9) ships OpenSSL 3 — required by the lbug
-          # prebuilt (SSL_get1_peer_certificate). 2_28 only has OpenSSL 1.1.
+          # manylinux 2_34 (AlmaLinux 9) for a modern glibc/toolchain. lbug
+          # 0.17.1 statically links mbedtls and needs no OpenSSL at link time.
           - os: ubuntu-latest
             target: x86_64
             manylinux: "2_34"
@@ -451,16 +451,13 @@ jobs:
         if: runner.os == 'macOS'
         run: ./scripts/setup-lbug-prebuilt.sh
 
-      # lbug 0.17.1 statically links mbedtls and needs no OpenSSL; the stale
-      # claim that it does is what produced the -lssl/-lcrypto linkage that
-      # broke the v0.4.1 macOS binary. cmake and a deployment target new enough
-      # for C++ `to_chars` (macOS 13.3+) are still needed for source fallbacks.
-      # openssl@3 is kept only because the maturin wheel path is not verified
-      # here; it has no known remaining consumer and can likely be dropped.
+      # lbug 0.17.1 statically links mbedtls and needs no OpenSSL. cmake and a
+      # deployment target new enough for C++ `to_chars` (macOS 13.3+) are still
+      # needed for source fallbacks.
       - name: Install macOS build deps (lbug)
         if: runner.os == 'macOS'
         run: |
-          brew install openssl@3 cmake
+          brew install cmake
           echo "MACOSX_DEPLOYMENT_TARGET=13.3" >> "$GITHUB_ENV"
 
       - name: Build bin wheel
@@ -468,39 +465,28 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          # manylinux images are AlmaLinux-based; openssl must be installed
-          # inside the container (host apt packages are invisible).
+          # Install cmake inside the manylinux container (host packages are invisible).
           before-script-linux: |
             if command -v dnf >/dev/null 2>&1; then
-              # openssl-devel/cmake live in base/AppStream; skip EPEL to avoid mirror flakes.
-              dnf install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+              dnf install -y --disablerepo='epel*' cmake pkgconfig
             elif command -v yum >/dev/null 2>&1; then
-              yum install -y --disablerepo='epel*' openssl-devel cmake pkgconfig
+              yum install -y --disablerepo='epel*' cmake pkgconfig
             elif command -v apt-get >/dev/null 2>&1; then
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                libssl-dev cmake pkg-config
+                cmake pkg-config
             else
               echo "No supported package manager in manylinux container" >&2
               exit 1
-            fi
-            # Sanity: lbug prebuilts need OpenSSL 3 symbols.
-            if ! ldconfig -p 2>/dev/null | grep -q 'libssl\.so\.3'; then
-              if [ ! -e /usr/lib64/libssl.so.3 ] && [ ! -e /usr/lib/libssl.so.3 ]; then
-                echo "OpenSSL 3 not found in manylinux image; lbug link will fail" >&2
-                exit 1
-              fi
             fi
           args: >-
             --release --bindings bin
             --manifest-path topos/mcp/Cargo.toml
             --out dist
 
-      # The v0.4.1 macOS wheel shipped a topos-mcp that linked Homebrew's
-      # openssl@3 by absolute path, so it fails with "Library not loaded" for
-      # anyone without that formula. Linux wheels are covered by auditwheel
-      # (manylinux tags reject a non-allowlisted libssl); macOS has no
-      # equivalent here, so check it explicitly.
+      # Guard against non-portable dylib paths in the wheel binary. v0.4.1
+      # wheels linked Homebrew openssl@3 and failed on machines without it.
+      # Linux wheels are covered by auditwheel; macOS has no equivalent.
       - name: Verify macOS wheel binary has no non-system linkage
         if: runner.os == 'macOS'
         run: |
@@ -532,6 +518,44 @@ jobs:
               echo "${bad}"
               exit 1
             fi
+          done < "${workdir}/bins.txt"
+          if [ "${found}" -eq 0 ]; then
+            echo "::error title=Wheel check found no binary::expected a *.data/scripts/ entry"
+            exit 1
+          fi
+
+      # auditwheel only rejects a non-allowlisted libssl if it runs; nothing
+      # here proves it did. Check the DT_NEEDED entries directly so removing
+      # openssl-devel from this job is actually demonstrated, not assumed.
+      - name: Verify Linux wheel binary has no unexpected linkage
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          workdir="$(mktemp -d)"
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "::error title=No wheel built::dist/ contains no .whl"
+            exit 1
+          fi
+          for whl in "${wheels[@]}"; do
+            unzip -qo "${whl}" -d "${workdir}"
+          done
+          find "${workdir}" -type f -path '*.data/scripts/*' > "${workdir}/bins.txt"
+          found=0
+          while IFS= read -r bin; do
+            [ -n "${bin}" ] || continue
+            found=1
+            echo "checking ${bin}"
+            bad="$(readelf -d "${bin}" \
+              | grep 'NEEDED' \
+              | grep -vE 'lib(c|m|dl|pthread|rt|gcc_s|stdc\+\+)\.so|ld-linux-[a-z0-9_-]*\.so' || true)"
+            if [ -n "${bad}" ]; then
+              echo "::error title=Non-portable Linux wheel::${bin} has unexpected DT_NEEDED entries"
+              echo "${bad}"
+              exit 1
+            fi
+            readelf -d "${bin}" | grep 'NEEDED'
           done < "${workdir}/bins.txt"
           if [ "${found}" -eq 0 ]; then
             echo "::error title=Wheel check found no binary::expected a *.data/scripts/ entry"

@@ -22,7 +22,7 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential curl cmake libssl-dev pkg-config \
+        build-essential curl cmake pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain stable \

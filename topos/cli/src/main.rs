@@ -19,7 +19,7 @@ const ROOT_COMMANDS: [(&str, &str); 8] = [
     ("inspect", "Explain one file"),
     ("config", "Set project priorities"),
     ("compare", "Compare two files"),
-    ("coverage", "Measure structural test coverage"),
+    ("coverage", "Compare source structure with tests"),
     ("depgraph", "Build the COMPOSABLE graph"),
     ("graphify", "Inspect graph health"),
     ("mcp", "Start the MCP server"),
@@ -47,7 +47,11 @@ enum Command {
     Inspect(inspect::InspectArgs),
     /// Compare structural distance between two files.
     Compare(compare::CompareArgs),
-    /// Measure structural test coverage.
+    /// Compare source structure with tests without executing them.
+    #[command(
+        arg_required_else_help = true,
+        after_help = "Examples:\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
+    )]
     Coverage(coverage::CoverageArgs),
     /// Generate or inspect a Graphify knowledge graph.
     Graphify(graphify::GraphifyArgs),
@@ -143,7 +147,9 @@ fn root_help(styled: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{root_help, ROOT_COMMANDS};
+    use clap::{error::ErrorKind, Parser};
+
+    use super::{root_help, Cli, ROOT_COMMANDS};
 
     #[test]
     fn root_help_uses_the_terminal_grammar_and_keeps_every_command() {
@@ -166,5 +172,20 @@ mod tests {
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
         assert_eq!(ROOT_COMMANDS.len(), 8);
+    }
+
+    #[test]
+    fn bare_coverage_shows_examples_instead_of_only_missing_arguments() {
+        let error = match Cli::try_parse_from(["topos", "coverage"]) {
+            Ok(_) => panic!("bare coverage unexpectedly parsed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.kind(),
+            ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+        let help = error.to_string();
+        assert!(help.contains("SOURCE_PATHS"));
+        assert!(help.contains("topos coverage src/lib.rs --tests tests/lib.rs"));
     }
 }

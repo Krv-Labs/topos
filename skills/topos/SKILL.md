@@ -113,7 +113,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos config` | View or edit project priority and preference settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
-| `topos coverage <put>... --tests <test>` | Structural test coverage (UAST + k-gram recall) |
+| `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |
 | `topos depgraph generate` | Build GitNexus graph for COMPOSABLE scoring |
 | `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos mcp` | Start the MCP server for tool-based agent loops |

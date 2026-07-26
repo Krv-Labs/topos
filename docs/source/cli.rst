@@ -214,7 +214,7 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
 
 .. code-block:: bash
 
-   topos coverage [PUT_PATHS]... --tests TEST_PATH [OPTIONS]
+   topos coverage SOURCE_PATHS... --tests TEST_PATH [OPTIONS]
 
 .. list-table::
    :header-rows: 1
@@ -223,9 +223,12 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
    * - Option
      - Description
    * - ``--tests PATH`` *(required, repeatable)*
-     - Test file path; pass multiple times for several modules.
+     - Test file or directory; repeat for multiple test paths.
+   * - ``-r, --recursive``
+     - Recursively discover files when source or test paths are directories.
    * - ``--language [python|rust|javascript|typescript|cpp|go]``
-     - Language for parsing (default: ``python``).
+     - Language for parsing. Inferred when all discovered files use one language;
+       required for mixed-language inputs.
    * - ``--k INTEGER``
      - DFS kind n-gram length for path recall (default: ``3``).
    * - ``--coverage-threshold FLOAT``
@@ -238,6 +241,17 @@ Declaration-level bipartite matching and k-gram path recall. No test execution r
 .. code-block:: bash
 
    topos coverage src/logic.py --tests tests/test_logic.py --k 3
+
+Directories use the same ignored-path discovery rules as ``evaluate``:
+
+.. code-block:: bash
+
+   topos coverage src/ --tests tests/ -r --language python
+
+The headline reports mean declaration coverage. The following line reports
+the percentage of individual source declarations meeting the configured
+threshold. Topos rejects inputs with no measurable source or test declarations
+instead of treating an empty corpus as covered.
 
 .. note::
    ``--json`` is not yet ported to this CLI — plain-text output only. The

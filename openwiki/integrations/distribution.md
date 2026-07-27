@@ -28,7 +28,7 @@ Missing, stale, invalid-path, branch-mismatched, or schema-mismatched stores deg
 
 ## MCP package and registry
 
-`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml` and VS Code metadata using `scripts/check_versions.py`.
+`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. For its `uvx` runtime hint, the manifest declares the PyPI base URL and passes `--index-url https://pypi.org/simple`, pinning package resolution to PyPI. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill. Keep registry metadata version-aligned with `Cargo.toml` and VS Code metadata using `scripts/check_versions.py`.
 
 ## Container and editor surfaces
 

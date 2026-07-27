@@ -7,9 +7,11 @@ use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::evaluation::suggestions::Suggestion;
 use topos_mcp::schemas::RefactorTarget;
 
-pub(super) struct FileDetails {
-    pub(super) targets: Vec<RefactorTarget>,
-    pub(super) suggestions: Vec<Suggestion>,
+use crate::commands::render::{paint, truncate_right, RenderOptions};
+
+pub(crate) struct FileDetails {
+    pub(crate) targets: Vec<RefactorTarget>,
+    pub(crate) suggestions: Vec<Suggestion>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -28,7 +30,7 @@ pub(super) fn detail_lines(
     lines.push(paint(
         format!("◇  {}", path.display()),
         Style::new().bold(),
-        styled,
+        RenderOptions { styled, width },
     ));
     lines.push(format!(
         "│  {} · weakest {} {:.0}%",
@@ -60,7 +62,7 @@ pub(super) fn detail_lines(
     lines
 }
 
-pub(super) fn recommendation_lines(
+pub(crate) fn recommendation_lines(
     details: &FileDetails,
     width: usize,
     styled: bool,
@@ -73,7 +75,11 @@ pub(super) fn recommendation_lines(
     let item_prefix = if guided { "│  " } else { "  " };
     let mut lines = vec![format!(
         "{prefix}{}",
-        paint("Recommended changes", Style::new().bold(), styled)
+        paint(
+            "Recommended changes",
+            Style::new().bold(),
+            RenderOptions { styled, width }
+        )
     )];
     for (index, target) in details.targets.iter().enumerate() {
         lines.push(if guided { "│" } else { "" }.to_string());
@@ -111,7 +117,7 @@ fn push_target_lines(
         .to_ascii_uppercase();
     lines.push(format!(
         "{prefix}{index}. {} {} · {pillar}",
-        paint(marker, marker_style, styled),
+        paint(marker, marker_style, RenderOptions { styled, width }),
         target.severity.to_ascii_uppercase(),
     ));
     let guide = prefix.chars().next().unwrap_or(' ');
@@ -227,28 +233,6 @@ fn weakest_dimension(result: &ClassificationResult) -> (&'static str, f64) {
         .filter_map(|pillar| result.scores.get(pillar).map(|score| (pillar, *score)))
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .unwrap_or(("unmeasured", 0.0))
-}
-
-fn paint(text: impl ToString, style: Style, styled: bool) -> String {
-    let text = text.to_string();
-    if styled {
-        style.force_styling(true).apply_to(text).to_string()
-    } else {
-        text
-    }
-}
-
-fn truncate_right(value: &str, width: usize) -> String {
-    if value.chars().count() <= width {
-        return value.to_string();
-    }
-    format!(
-        "{}…",
-        value
-            .chars()
-            .take(width.saturating_sub(1))
-            .collect::<String>()
-    )
 }
 
 #[cfg(test)]

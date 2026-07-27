@@ -105,7 +105,7 @@ fn set_config(cwd: &Path, raw_priority: Option<String>) -> Result<(), String> {
         PriorityInput::Ranking(ranking) => (priority_for_generator(ranking[0]), ranking),
         PriorityInput::Single(priority) => (priority, resolved_ranking(&current, priority)),
     };
-    write_settings(cwd, priority, ranking)?;
+    write_settings(cwd, ranking)?;
     let options = RenderOptions::stdout();
     println!(
         "{}",
@@ -175,7 +175,7 @@ fn interactive(cwd: &Path) -> Result<(), String> {
     let Some(priority) = result? else {
         return Ok(());
     };
-    write_settings(cwd, priority, resolved_ranking(&config, priority))?;
+    write_settings(cwd, resolved_ranking(&config, priority))?;
     term.write_line(&format!(
         "◇  Saved {} priority to {}",
         priority_name(priority),
@@ -230,7 +230,10 @@ fn selector_lines(selected: usize, options: RenderOptions) -> Vec<String> {
     lines
 }
 
-fn write_settings(cwd: &Path, priority: Priority, ranking: [Generator; 3]) -> Result<(), String> {
+/// Persist evaluation settings using the canonical single-key schema:
+/// `priority` is the full ranking array. Legacy `preferences` is removed so
+/// the file has one source of truth that `load_topos_config` round-trips.
+fn write_settings(cwd: &Path, ranking: [Generator; 3]) -> Result<(), String> {
     let path = config_path(cwd);
     let source = fs::read_to_string(&path).unwrap_or_default();
     let mut document = source
@@ -239,12 +242,14 @@ fn write_settings(cwd: &Path, priority: Priority, ranking: [Generator; 3]) -> Re
     if !document.as_table().contains_key("evaluation") {
         document["evaluation"] = Item::Table(Table::new());
     }
-    document["evaluation"]["priority"] = value(priority_name(priority));
     let mut values = Array::new();
     for generator in ranking {
         values.push(generator.as_str());
     }
-    document["evaluation"]["preferences"] = value(values);
+    document["evaluation"]["priority"] = value(values);
+    if let Some(evaluation) = document["evaluation"].as_table_mut() {
+        evaluation.remove("preferences");
+    }
     fs::write(&path, document.to_string()).map_err(|e| format!("writing {}: {e}", path.display()))
 }
 
@@ -374,16 +379,64 @@ mod tests {
 
         write_settings(
             &dir,
-            Priority::Secure,
             [Generator::Secure, Generator::Simple, Generator::Composable],
         )
         .unwrap();
 
-        let updated = fs::read_to_string(path).unwrap();
+        let updated = fs::read_to_string(&path).unwrap();
         assert!(updated.contains("# keep this"));
         assert!(updated.contains("[[secure.allow]]"));
-        assert!(updated.contains("priority = \"secure\""));
-        assert!(updated.contains("preferences = [\"secure\", \"simple\", \"composable\"]"));
+        assert!(updated.contains("priority = [\"secure\", \"simple\", \"composable\"]"));
+        assert!(!updated.contains("preferences"));
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn writing_settings_round_trips_through_load_topos_config() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cli-config-roundtrip-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let ranking = [Generator::Composable, Generator::Secure, Generator::Simple];
+
+        write_settings(&dir, ranking).unwrap();
+
+        let loaded = load_topos_config(&dir);
+        assert_eq!(loaded.priority, None);
+        assert_eq!(loaded.preferences, Some(ranking));
+        assert_eq!(loaded.effective_priority(), Priority::Composable);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn writing_settings_migrates_legacy_preferences_key_away() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cli-config-migrate-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".topos.toml");
+        fs::write(
+            &path,
+            "[evaluation]\npriority = \"simple\"\npreferences = [\"simple\", \"composable\", \"secure\"]\n",
+        )
+        .unwrap();
+
+        write_settings(
+            &dir,
+            [Generator::Secure, Generator::Composable, Generator::Simple],
+        )
+        .unwrap();
+
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains("priority = [\"secure\", \"composable\", \"simple\"]"));
+        assert!(!updated.contains("preferences"));
+        let loaded = load_topos_config(&dir);
+        assert_eq!(
+            loaded.preferences,
+            Some([Generator::Secure, Generator::Composable, Generator::Simple])
+        );
         fs::remove_dir_all(dir).ok();
     }
 

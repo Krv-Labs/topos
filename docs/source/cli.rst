@@ -293,6 +293,12 @@ replaces it outright. Explicit ``evaluate`` flags override project settings.
 A full ranking is the stronger statement of intent, so its first pillar
 becomes the effective priority.
 
+On disk, ``[evaluation].priority`` is a single key: a pillar string
+(``priority = "secure"``) or a full ranking array
+(``priority = ["composable", "secure", "simple"]``). ``config set`` always
+writes the array form. A legacy ``preferences`` array is still read when
+present, then dropped on the next write.
+
 depgraph
 --------
 

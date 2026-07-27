@@ -228,7 +228,11 @@ fn resolve_target_ranking(
     config: &ToposConfig,
 ) -> Result<Option<[Generator; 3]>, String> {
     let Some(raw) = &args.priority else {
-        return Ok(config.preferences);
+        return Ok(config.preferences.or_else(|| {
+            config
+                .priority
+                .map(|priority| focused_ranking(priority.top_generator(), None))
+        }));
     };
     Ok(Some(match parse_priority_input(raw)? {
         PriorityInput::Ranking(ranking) => ranking,
@@ -313,6 +317,21 @@ mod tests {
         let config = ToposConfig::default();
 
         assert_eq!(resolve_priority(&args, &config).unwrap(), Priority::Secure);
+        assert_eq!(
+            resolve_target_ranking(&args, &config).unwrap(),
+            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+        );
+    }
+
+    #[test]
+    fn configured_single_priority_infers_a_focused_target_ranking() {
+        let mut args = args_with_priority("secure");
+        args.priority = None;
+        let config = ToposConfig {
+            priority: Some(Priority::Secure),
+            ..Default::default()
+        };
+
         assert_eq!(
             resolve_target_ranking(&args, &config).unwrap(),
             Some([Generator::Secure, Generator::Simple, Generator::Composable])

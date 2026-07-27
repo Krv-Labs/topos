@@ -126,8 +126,8 @@ How to Set Preferences
 For a one-off CLI evaluation, pass the complete ranking as a comma-separated
 value. Persist project defaults with ``topos config``::
 
-   topos evaluate src/ -r --preferences composable,secure,simple
-   topos config set --preferences composable,secure,simple
+   topos evaluate src/ -r --priority composable,secure,simple
+   topos config set --priority composable,secure,simple
 
 In MCP tools, pass ``preferences.ranking``:
 

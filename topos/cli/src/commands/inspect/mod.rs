@@ -11,13 +11,16 @@ use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::functors::probes::ast::complexity::calculate_function_complexity_entries;
 
+mod detail;
+
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
-use super::evaluate_info::details_for_source;
-use super::inspect_render::inspection_detail_lines;
+use super::evaluate::info::details_for_source;
+use super::evaluate::summary::print_inspection_summary;
 use super::lang::detect_language;
 use super::render::{paint, print_lines, spinner, RenderOptions};
-use super::summary::print_inspection_summary;
+
+use self::detail::inspection_detail_lines;
 
 #[derive(Args)]
 pub struct InspectArgs {

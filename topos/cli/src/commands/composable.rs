@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn inspect_always_captures_gitnexus_output() {
         // Collapse whitespace so rustfmt line-wrapping can't break the match.
-        let src: String = include_str!("inspect.rs")
+        let src: String = include_str!("inspect/mod.rs")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");

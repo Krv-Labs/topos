@@ -4,8 +4,8 @@ use console::Style;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::functors::probes::ast::complexity::FunctionComplexityEntry;
 
-use super::evaluate_info_render::{recommendation_lines, FileDetails};
-use super::render::{paint, wrap_text, RenderOptions};
+use crate::commands::evaluate::info_render::{recommendation_lines, FileDetails};
+use crate::commands::render::{paint, truncate_right, wrap_text, RenderOptions};
 
 pub(super) fn inspection_detail_lines(
     result: &ClassificationResult,
@@ -161,19 +161,6 @@ fn plural(count: usize) -> &'static str {
     } else {
         "s"
     }
-}
-
-fn truncate_right(value: &str, width: usize) -> String {
-    if value.chars().count() <= width {
-        return value.to_string();
-    }
-    format!(
-        "{}…",
-        value
-            .chars()
-            .take(width.saturating_sub(1))
-            .collect::<String>()
-    )
 }
 
 #[cfg(test)]

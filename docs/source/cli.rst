@@ -92,10 +92,11 @@ primary command for **Code Quality Medals** across the three pillars (see
    * - ``--failures [simple|composable|secure]``
      - List every file whose policy gates fail the selected pillar, ordered by
        that pillar's diagnostic score. Cannot be combined with ``--json``.
-   * - ``--priority [simple|composable|secure]``
-     - Set the run's primary guidance pillar. This does not change fixed pass/fail gates.
-   * - ``--preferences RANKING``
-     - Rank all three pillars, comma-separated and most important first.
+   * - ``--priority PILLAR|RANKING``
+     - Either a single pillar (``simple``, ``composable``, ``secure``) as the
+       run's primary guidance pillar, or a full comma-separated ranking of
+       all three, most important first. This does not change fixed
+       pass/fail gates.
    * - ``--no-composable``
      - Skip GitNexus and score SIMPLE/SECURE only.
    * - ``--gitnexus-dir PATH``
@@ -284,11 +285,19 @@ falls back to ``show`` when input is non-interactive.
    topos config
    topos config show
    topos config set --priority secure
-   topos config set --preferences composable,secure,simple
+   topos config set --priority composable,secure,simple
 
-Explicit ``evaluate`` flags override project settings. A preference ranking
-is the stronger statement of intent, so its first pillar becomes the effective
-priority.
+``--priority`` accepts either form: a single pillar sets the emphasis and
+reorders the existing ranking around it; a full comma-separated ranking
+replaces it outright. Explicit ``evaluate`` flags override project settings.
+A full ranking is the stronger statement of intent, so its first pillar
+becomes the effective priority.
+
+On disk, ``[evaluation].priority`` is a single key: a pillar string
+(``priority = "secure"``) or a full ranking array
+(``priority = ["composable", "secure", "simple"]``). ``config set`` always
+writes the array form. A legacy ``preferences`` array is still read when
+present, then dropped on the next write.
 
 depgraph
 --------

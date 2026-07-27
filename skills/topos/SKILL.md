@@ -119,7 +119,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos mcp` | Start the MCP server for tool-based agent loops |
 
-Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, or `--no-composable` to score SIMPLE/SECURE only. The CLI accepts one-run `--priority` / `--preferences` overrides and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
+Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, or `--no-composable` to score SIMPLE/SECURE only. The CLI accepts a one-run `--priority` override (a single pillar or a full comma-separated ranking) and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
 
 ## MCP Tool Reference
 

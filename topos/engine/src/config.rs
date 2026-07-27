@@ -157,12 +157,19 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
         .map(|v| parse_allow_entries(v))
         .unwrap_or_default();
     let evaluation = data.get("evaluation").and_then(toml::Value::as_table);
-    let priority = evaluation
-        .and_then(|table| non_empty_str(table.get("priority")))
-        .and_then(|value| parse_priority(&value));
-    let preferences = evaluation
-        .and_then(|table| table.get("preferences"))
-        .and_then(parse_preferences);
+    // Canonical on-disk shape is a single `priority` key: a pillar string
+    // (`"secure"`) or a full ranking array (`["secure", "simple", "composable"]`).
+    // Legacy files may still carry a separate `preferences` array from before
+    // that collapse; read it only when `priority` did not supply a ranking.
+    let priority_value = evaluation.and_then(|table| table.get("priority"));
+    let priority = priority_value
+        .and_then(toml::Value::as_str)
+        .and_then(parse_priority);
+    let preferences = priority_value.and_then(parse_preferences).or_else(|| {
+        evaluation
+            .and_then(|table| table.get("preferences"))
+            .and_then(parse_preferences)
+    });
     ToposConfig {
         allow,
         priority,
@@ -337,23 +344,44 @@ mod tests {
     }
 
     #[test]
-    fn evaluation_settings_are_loaded_and_preferences_take_priority() {
+    fn evaluation_priority_accepts_a_full_ranking() {
         let dir =
             std::env::temp_dir().join(format!("topos-cfg-evaluation-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npriority = \"simple\"\npreferences = [\"composable\", \"secure\", \"simple\"]\n",
+            "[evaluation]\npriority = [\"composable\", \"secure\", \"simple\"]\n",
         )
         .unwrap();
 
         let config = load_topos_config(&dir);
-        assert_eq!(config.priority, Some(Priority::Simple));
+        assert_eq!(config.priority, None);
         assert_eq!(
             config.preferences,
             Some([Generator::Composable, Generator::Secure, Generator::Simple])
         );
         assert_eq!(config.effective_priority(), Priority::Composable);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn evaluation_priority_accepts_a_single_pillar() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-single-priority-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = \"secure\"\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, Some(Priority::Secure));
+        assert_eq!(config.preferences, None);
+        assert_eq!(config.effective_priority(), Priority::Secure);
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -367,11 +395,60 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npreferences = [\"secure\", \"secure\", \"simple\"]\n",
+            "[evaluation]\npriority = [\"secure\", \"secure\", \"simple\"]\n",
         )
         .unwrap();
 
         assert_eq!(load_topos_config(&dir).preferences, None);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn legacy_preferences_key_is_still_loaded() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-legacy-preferences-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = \"simple\"\npreferences = [\"composable\", \"secure\", \"simple\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, Some(Priority::Simple));
+        assert_eq!(
+            config.preferences,
+            Some([Generator::Composable, Generator::Secure, Generator::Simple])
+        );
+        // Full ranking is the stronger statement of intent.
+        assert_eq!(config.effective_priority(), Priority::Composable);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn legacy_preferences_only_file_is_still_loaded() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-legacy-preferences-only-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npreferences = [\"secure\", \"simple\", \"composable\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, None);
+        assert_eq!(
+            config.preferences,
+            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+        );
+        assert_eq!(config.effective_priority(), Priority::Secure);
 
         fs::remove_dir_all(&dir).ok();
     }

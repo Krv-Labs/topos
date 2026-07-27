@@ -120,8 +120,8 @@ Pick a preference ranking, then let your agent evaluate and iterate on its own o
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --preferences simple,composable,secure
-   topos config set --preferences simple,composable,secure
+   topos evaluate src/ -r --priority simple,composable,secure
+   topos config set --priority simple,composable,secure
    topos inspect module.py
    topos coverage src/logic.py --tests tests/test_logic.py
    topos compare before.py after.py

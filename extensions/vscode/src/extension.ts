@@ -568,7 +568,7 @@ function buildEvaluateCliArgs(
         cliArgs.push("-v");
     }
     if (options.preferences) {
-        cliArgs.push("--preferences", options.preferences);
+        cliArgs.push("--priority", options.preferences);
     }
     if (options.hasGitnexus) {
         cliArgs.push("--gitnexus-dir", ".gitnexus");

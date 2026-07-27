@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 use console::{Key, Term};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
-use topos_engine::config::{find_config_file, load_topos_config};
+use topos_engine::config::{find_config_file, load_topos_config, ToposConfig};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{Generator, UserPreferences};
 
@@ -28,19 +28,17 @@ enum ConfigCommand {
 
 #[derive(Args)]
 struct ConfigSetArgs {
-    /// Primary quality pillar: simple, composable, or secure.
-    #[arg(long)]
+    /// Pillar to prioritize (simple, composable, secure), or a full
+    /// comma-separated ranking, most important first.
+    #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE")]
     priority: Option<String>,
-    /// Complete pillar ranking, most important first.
-    #[arg(long, value_name = "SIMPLE,COMPOSABLE,SECURE")]
-    preferences: Option<String>,
 }
 
 pub(crate) fn run(args: ConfigArgs) -> Result<(), String> {
     let cwd = std::env::current_dir().map_err(|e| format!("resolving current directory: {e}"))?;
     match args.command {
         Some(ConfigCommand::Show) => show(&cwd),
-        Some(ConfigCommand::Set(set)) => set_config(&cwd, set.priority, set.preferences),
+        Some(ConfigCommand::Set(set)) => set_config(&cwd, set.priority),
         None if Term::stderr().is_term() => interactive(&cwd),
         None => show(&cwd),
     }
@@ -98,27 +96,16 @@ fn show(cwd: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn set_config(
-    cwd: &Path,
-    raw_priority: Option<String>,
-    raw_preferences: Option<String>,
-) -> Result<(), String> {
-    if raw_priority.is_none() && raw_preferences.is_none() {
-        return Err("config set requires --priority or --preferences".to_string());
-    }
+fn set_config(cwd: &Path, raw_priority: Option<String>) -> Result<(), String> {
+    let Some(raw_priority) = raw_priority else {
+        return Err("config set requires --priority".to_string());
+    };
     let current = load_topos_config(cwd);
-    let explicit_priority = raw_priority.as_deref().map(parse_priority).transpose()?;
-    let mut ranking = raw_preferences
-        .as_deref()
-        .map(parse_ranking)
-        .transpose()?
-        .or(current.preferences)
-        .unwrap_or_else(default_ranking);
-    if let Some(priority) = explicit_priority {
-        ranking = move_first(ranking, generator_for_priority(priority));
-    }
-    let priority = explicit_priority.unwrap_or_else(|| priority_for_generator(ranking[0]));
-    write_settings(cwd, priority, ranking)?;
+    let (priority, ranking) = match parse_priority_input(&raw_priority)? {
+        PriorityInput::Ranking(ranking) => (priority_for_generator(ranking[0]), ranking),
+        PriorityInput::Single(priority) => (priority, resolved_ranking(&current, priority)),
+    };
+    write_settings(cwd, ranking)?;
     let options = RenderOptions::stdout();
     println!(
         "{}",
@@ -159,7 +146,8 @@ fn set_config(
 
 fn interactive(cwd: &Path) -> Result<(), String> {
     let term = Term::stderr();
-    let current = load_topos_config(cwd).effective_priority();
+    let config = load_topos_config(cwd);
+    let current = config.effective_priority();
     let choices = [Priority::Simple, Priority::Composable, Priority::Secure];
     let mut selected = choices.iter().position(|p| *p == current).unwrap_or(2);
     let mut rendered = 0;
@@ -187,8 +175,7 @@ fn interactive(cwd: &Path) -> Result<(), String> {
     let Some(priority) = result? else {
         return Ok(());
     };
-    let ranking = preset_ranking(priority);
-    write_settings(cwd, priority, ranking)?;
+    write_settings(cwd, resolved_ranking(&config, priority))?;
     term.write_line(&format!(
         "◇  Saved {} priority to {}",
         priority_name(priority),
@@ -243,7 +230,10 @@ fn selector_lines(selected: usize, options: RenderOptions) -> Vec<String> {
     lines
 }
 
-fn write_settings(cwd: &Path, priority: Priority, ranking: [Generator; 3]) -> Result<(), String> {
+/// Persist evaluation settings using the canonical single-key schema:
+/// `priority` is the full ranking array. Legacy `preferences` is removed so
+/// the file has one source of truth that `load_topos_config` round-trips.
+fn write_settings(cwd: &Path, ranking: [Generator; 3]) -> Result<(), String> {
     let path = config_path(cwd);
     let source = fs::read_to_string(&path).unwrap_or_default();
     let mut document = source
@@ -252,12 +242,14 @@ fn write_settings(cwd: &Path, priority: Priority, ranking: [Generator; 3]) -> Re
     if !document.as_table().contains_key("evaluation") {
         document["evaluation"] = Item::Table(Table::new());
     }
-    document["evaluation"]["priority"] = value(priority_name(priority));
     let mut values = Array::new();
     for generator in ranking {
         values.push(generator.as_str());
     }
-    document["evaluation"]["preferences"] = value(values);
+    document["evaluation"]["priority"] = value(values);
+    if let Some(evaluation) = document["evaluation"].as_table_mut() {
+        evaluation.remove("preferences");
+    }
     fs::write(&path, document.to_string()).map_err(|e| format!("writing {}: {e}", path.display()))
 }
 
@@ -297,6 +289,21 @@ pub(crate) fn parse_ranking(value: &str) -> Result<[Generator; 3], String> {
         .map_err(|e| e.to_string())
 }
 
+/// One `--priority` value: either a single pillar, or a full ranking
+/// (comma-separated, most important first).
+pub(crate) enum PriorityInput {
+    Single(Priority),
+    Ranking([Generator; 3]),
+}
+
+pub(crate) fn parse_priority_input(value: &str) -> Result<PriorityInput, String> {
+    if value.contains(',') {
+        parse_ranking(value).map(PriorityInput::Ranking)
+    } else {
+        parse_priority(value).map(PriorityInput::Single)
+    }
+}
+
 pub(crate) fn priority_for_generator(generator: Generator) -> Priority {
     match generator {
         Generator::Simple => Priority::Simple,
@@ -321,8 +328,11 @@ fn default_ranking() -> [Generator; 3] {
     [Generator::Simple, Generator::Composable, Generator::Secure]
 }
 
-fn preset_ranking(priority: Priority) -> [Generator; 3] {
-    move_first(default_ranking(), generator_for_priority(priority))
+/// Ranking to persist for `priority`, preserving the relative order of the
+/// other two pillars from `config` rather than resetting to the default.
+fn resolved_ranking(config: &ToposConfig, priority: Priority) -> [Generator; 3] {
+    let base = config.preferences.unwrap_or_else(default_ranking);
+    move_first(base, generator_for_priority(priority))
 }
 
 fn move_first(ranking: [Generator; 3], first: Generator) -> [Generator; 3] {
@@ -369,16 +379,97 @@ mod tests {
 
         write_settings(
             &dir,
-            Priority::Secure,
             [Generator::Secure, Generator::Simple, Generator::Composable],
         )
         .unwrap();
 
-        let updated = fs::read_to_string(path).unwrap();
+        let updated = fs::read_to_string(&path).unwrap();
         assert!(updated.contains("# keep this"));
         assert!(updated.contains("[[secure.allow]]"));
-        assert!(updated.contains("priority = \"secure\""));
-        assert!(updated.contains("preferences = [\"secure\", \"simple\", \"composable\"]"));
+        assert!(updated.contains("priority = [\"secure\", \"simple\", \"composable\"]"));
+        assert!(!updated.contains("preferences"));
         fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn writing_settings_round_trips_through_load_topos_config() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cli-config-roundtrip-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let ranking = [Generator::Composable, Generator::Secure, Generator::Simple];
+
+        write_settings(&dir, ranking).unwrap();
+
+        let loaded = load_topos_config(&dir);
+        assert_eq!(loaded.priority, None);
+        assert_eq!(loaded.preferences, Some(ranking));
+        assert_eq!(loaded.effective_priority(), Priority::Composable);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn writing_settings_migrates_legacy_preferences_key_away() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cli-config-migrate-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(".topos.toml");
+        fs::write(
+            &path,
+            "[evaluation]\npriority = \"simple\"\npreferences = [\"simple\", \"composable\", \"secure\"]\n",
+        )
+        .unwrap();
+
+        write_settings(
+            &dir,
+            [Generator::Secure, Generator::Composable, Generator::Simple],
+        )
+        .unwrap();
+
+        let updated = fs::read_to_string(path).unwrap();
+        assert!(updated.contains("priority = [\"secure\", \"composable\", \"simple\"]"));
+        assert!(!updated.contains("preferences"));
+        let loaded = load_topos_config(&dir);
+        assert_eq!(
+            loaded.preferences,
+            Some([Generator::Secure, Generator::Composable, Generator::Simple])
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn resolved_ranking_preserves_existing_order_around_the_new_priority() {
+        let config = ToposConfig {
+            preferences: Some([Generator::Composable, Generator::Secure, Generator::Simple]),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolved_ranking(&config, Priority::Secure),
+            [Generator::Secure, Generator::Composable, Generator::Simple]
+        );
+    }
+
+    #[test]
+    fn resolved_ranking_falls_back_to_default_order_without_existing_preferences() {
+        let config = ToposConfig::default();
+        assert_eq!(
+            resolved_ranking(&config, Priority::Secure),
+            [Generator::Secure, Generator::Simple, Generator::Composable]
+        );
+    }
+
+    #[test]
+    fn a_single_pillar_parses_as_priority_and_a_list_parses_as_ranking() {
+        assert!(matches!(
+            parse_priority_input("secure").unwrap(),
+            PriorityInput::Single(Priority::Secure)
+        ));
+        assert!(matches!(
+            parse_priority_input("secure,simple,composable").unwrap(),
+            PriorityInput::Ranking([Generator::Secure, Generator::Simple, Generator::Composable])
+        ));
     }
 }

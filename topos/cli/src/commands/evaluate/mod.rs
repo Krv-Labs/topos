@@ -34,7 +34,7 @@ use std::path::PathBuf;
 use clap::Args;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use topos_engine::adapters::discovery::collect_source_files;
-use topos_engine::config::load_topos_config;
+use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
@@ -43,7 +43,7 @@ use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LAN
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
-use super::config::{parse_priority, parse_ranking, priority_for_generator};
+use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
 use super::render::{print_classification, print_raw_metrics, spinner};
 
 use self::info::{show_evaluation_info, show_pillar_failures};
@@ -78,12 +78,10 @@ pub struct EvaluateArgs {
     /// List files that fail one pillar; combine with --info to inspect them.
     #[arg(long, value_name = "PILLAR")]
     pub failures: Option<String>,
-    /// Emphasize one quality pillar for result metadata and guidance.
-    #[arg(long)]
+    /// Pillar to prioritize (simple, composable, secure), or a full
+    /// comma-separated ranking, most important first.
+    #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE")]
     pub priority: Option<String>,
-    /// Rank all pillars, most important first.
-    #[arg(long, value_name = "SIMPLE,COMPOSABLE,SECURE")]
-    pub preferences: Option<String>,
 }
 
 pub fn run(args: EvaluateArgs) -> Result<(), String> {
@@ -227,28 +225,31 @@ fn focused_ranking(focus: Generator, configured: Option<&[Generator; 3]>) -> [Ge
 
 fn resolve_target_ranking(
     args: &EvaluateArgs,
-    config: &topos_engine::config::ToposConfig,
-) -> Result<Option<[topos_engine::evaluation::preferences::Generator; 3]>, String> {
-    if let Some(ranking) = &args.preferences {
-        return parse_ranking(ranking).map(Some);
-    }
-    if args.priority.is_some() {
-        return Ok(None);
-    }
-    Ok(config.preferences)
+    config: &ToposConfig,
+) -> Result<Option<[Generator; 3]>, String> {
+    let Some(raw) = &args.priority else {
+        return Ok(config.preferences.or_else(|| {
+            config
+                .priority
+                .map(|priority| focused_ranking(priority.top_generator(), None))
+        }));
+    };
+    Ok(Some(match parse_priority_input(raw)? {
+        PriorityInput::Ranking(ranking) => ranking,
+        PriorityInput::Single(priority) => {
+            focused_ranking(priority.top_generator(), config.preferences.as_ref())
+        }
+    }))
 }
 
-fn resolve_priority(
-    args: &EvaluateArgs,
-    config: &topos_engine::config::ToposConfig,
-) -> Result<Priority, String> {
-    if let Some(ranking) = &args.preferences {
-        return parse_ranking(ranking).map(|ranking| priority_for_generator(ranking[0]));
-    }
-    if let Some(priority) = &args.priority {
-        return parse_priority(priority);
-    }
-    Ok(config.effective_priority())
+fn resolve_priority(args: &EvaluateArgs, config: &ToposConfig) -> Result<Priority, String> {
+    let Some(raw) = &args.priority else {
+        return Ok(config.effective_priority());
+    };
+    Ok(match parse_priority_input(raw)? {
+        PriorityInput::Single(priority) => priority,
+        PriorityInput::Ranking(ranking) => priority_for_generator(ranking[0]),
+    })
 }
 
 fn progress_bar(len: usize, hidden: bool) -> ProgressBar {
@@ -277,6 +278,63 @@ mod tests {
                 Some(&[Generator::Composable, Generator::Simple, Generator::Secure,])
             ),
             [Generator::Secure, Generator::Composable, Generator::Simple,]
+        );
+    }
+
+    fn args_with_priority(priority: &str) -> EvaluateArgs {
+        EvaluateArgs {
+            paths: Vec::new(),
+            recursive: false,
+            language: "rust".to_string(),
+            no_composable: false,
+            gitnexus_dir: None,
+            verbose: false,
+            json: false,
+            info: false,
+            failures: None,
+            priority: Some(priority.to_string()),
+        }
+    }
+
+    #[test]
+    fn single_priority_flag_reorders_persisted_preferences_instead_of_dropping_them() {
+        let args = args_with_priority("secure");
+        let config = ToposConfig {
+            preferences: Some([Generator::Composable, Generator::Simple, Generator::Secure]),
+            ..Default::default()
+        };
+
+        assert_eq!(resolve_priority(&args, &config).unwrap(), Priority::Secure);
+        assert_eq!(
+            resolve_target_ranking(&args, &config).unwrap(),
+            Some([Generator::Secure, Generator::Composable, Generator::Simple])
+        );
+    }
+
+    #[test]
+    fn ranking_priority_flag_is_used_verbatim() {
+        let args = args_with_priority("secure,simple,composable");
+        let config = ToposConfig::default();
+
+        assert_eq!(resolve_priority(&args, &config).unwrap(), Priority::Secure);
+        assert_eq!(
+            resolve_target_ranking(&args, &config).unwrap(),
+            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+        );
+    }
+
+    #[test]
+    fn configured_single_priority_infers_a_focused_target_ranking() {
+        let mut args = args_with_priority("secure");
+        args.priority = None;
+        let config = ToposConfig {
+            priority: Some(Priority::Secure),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            resolve_target_ranking(&args, &config).unwrap(),
+            Some([Generator::Secure, Generator::Simple, Generator::Composable])
         );
     }
 }

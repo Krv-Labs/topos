@@ -25,6 +25,10 @@
 //! [`ModuleDependencyGraph`]: topos_engine::graphs::mdg::object::ModuleDependencyGraph
 //! [`ProgramDependenceGraph`]: topos_engine::graphs::pdg::object::ProgramDependenceGraph
 
+pub(crate) mod info;
+pub(crate) mod info_render;
+pub(crate) mod summary;
+
 use std::path::PathBuf;
 
 use clap::Args;
@@ -40,9 +44,10 @@ use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LAN
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
 use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
-use super::evaluate_info::{show_evaluation_info, show_pillar_failures};
 use super::render::{print_classification, print_raw_metrics, spinner};
-use super::summary::{json_output, pillar_measured, print_summary};
+
+use self::info::{show_evaluation_info, show_pillar_failures};
+use self::summary::{json_output, pillar_measured, print_summary};
 
 #[derive(Args)]
 pub struct EvaluateArgs {

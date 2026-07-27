@@ -93,7 +93,18 @@ pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
     lines
 }
 
-fn truncate_right(value: &str, width: usize) -> String {
+pub(crate) fn truncate_left(value: &str, width: usize) -> String {
+    let count = value.chars().count();
+    if count <= width {
+        return value.to_string();
+    }
+    format!(
+        "…{}",
+        value.chars().skip(count - width + 1).collect::<String>()
+    )
+}
+
+pub(crate) fn truncate_right(value: &str, width: usize) -> String {
     if value.chars().count() <= width {
         return value.to_string();
     }

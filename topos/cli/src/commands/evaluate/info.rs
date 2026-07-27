@@ -11,7 +11,7 @@ use topos_mcp::metric_locations::build_metric_locations;
 use topos_mcp::refactor_targets::build_refactor_targets;
 use topos_mcp::schemas::GeneratorInput;
 
-use super::evaluate_info_render::{detail_lines, FileDetails};
+use super::info_render::{detail_lines, FileDetails};
 use super::summary::{attention_lines, failure_file_indices, failure_lines, ranked_file_indices};
 
 enum BrowserAction {
@@ -265,7 +265,7 @@ fn details_for_file(
     Ok(details_for_source(path, result, &source, language, ranking))
 }
 
-pub(super) fn details_for_source(
+pub(crate) fn details_for_source(
     path: &Path,
     result: &ClassificationResult,
     source: &str,

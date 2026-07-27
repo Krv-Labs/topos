@@ -9,7 +9,9 @@ use topos_engine::core::omega::EvaluationValue;
 
 const PILLARS: [&str; 3] = ["simple", "composable", "secure"];
 
-use super::render::{guide as guide_char, guide_line, paint, RenderOptions};
+use crate::commands::render::{
+    guide as guide_char, guide_line, paint, truncate_left, RenderOptions,
+};
 
 pub(crate) fn print_summary(
     files: &[PathBuf],
@@ -78,7 +80,7 @@ fn render_summary(
         lines.push(guide_line(
             format!(
                 "{language} · priority {} · COMPOSABLE {}",
-                super::config::priority_name(result.priority),
+                crate::commands::config::priority_name(result.priority),
                 if composable {
                     "enabled"
                 } else {
@@ -220,7 +222,7 @@ fn failure_count(results: &[ClassificationResult], pillar: &str) -> usize {
 fn hinted_failure(results: &[ClassificationResult]) -> Option<(&'static str, usize)> {
     let priority = results
         .first()
-        .map(|result| super::config::priority_name(result.priority));
+        .map(|result| crate::commands::config::priority_name(result.priority));
     priority.into_iter().chain(PILLARS).find_map(|pillar| {
         let count = failure_count(results, pillar);
         (pillar_measured(results, pillar) && count > 0).then_some((pillar, count))
@@ -377,7 +379,7 @@ pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -
                 "lattice_symbol": result.summary().symbol(),
                 "dimensions": dimensions,
                 "scores": scores,
-                "priority": super::config::priority_name(result.priority),
+                "priority": crate::commands::config::priority_name(result.priority),
                 "raw_metrics": result.raw_metrics,
             })
         })
@@ -495,17 +497,6 @@ fn common_parent(files: &[PathBuf]) -> Option<PathBuf> {
         }
     }
     (!common.as_os_str().is_empty()).then_some(common)
-}
-
-fn truncate_left(value: &str, width: usize) -> String {
-    let count = value.chars().count();
-    if count <= width {
-        return value.to_string();
-    }
-    format!(
-        "…{}",
-        value.chars().skip(count - width + 1).collect::<String>()
-    )
 }
 
 #[cfg(test)]

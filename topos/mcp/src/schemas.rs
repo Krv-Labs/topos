@@ -230,9 +230,11 @@ pub struct EvaluateCodeInput {
 pub struct EvaluateFileInput {
     /// Source file path.
     pub filepath: String,
-    /// .gitnexus directory for COMPOSABLE scoring. When omitted, it is
-    /// auto-detected at `<file root>/.gitnexus`; if missing or stale, this
-    /// tool generates/refreshes it first (see `no_composable`).
+    /// `.gitnexus` store under the MCP file root (default:
+    /// `<file root>/.gitnexus`). Freshness and regeneration always use the
+    /// file root as the project root; this only selects the store path
+    /// inside it. If missing or stale, this tool generates/refreshes first
+    /// (see `no_composable`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
@@ -283,12 +285,12 @@ pub struct EvaluateProjectInput {
     /// SIMPLE priority.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
-    /// Path to a `.gitnexus` dependency-graph directory, for COMPOSABLE
-    /// scoring. When omitted, it is auto-detected from the project root;
-    /// if missing or stale, this tool generates/refreshes it first (see
-    /// `no_composable`). If generation isn't possible (GitNexus not
-    /// installed, generation failure), COMPOSABLE is reported as
-    /// unavailable rather than failing the whole evaluation.
+    /// `.gitnexus` store under the MCP file root (default:
+    /// `<file root>/.gitnexus`). Freshness and regeneration always use the
+    /// file root as the project root; this only selects the store path
+    /// inside it. If missing or stale, this tool generates/refreshes first
+    /// (see `no_composable`). If generation isn't possible, COMPOSABLE is
+    /// reported as unavailable rather than failing the whole evaluation.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
@@ -475,9 +477,9 @@ pub struct InspectCodeInput {
     /// autodetected from the file extension.
     #[serde(default = "default_language")]
     pub language: String,
-    /// .gitnexus directory for COMPOSABLE scoring. When omitted, it is
-    /// auto-detected at `<file root>/.gitnexus`; if missing or stale, this
-    /// tool generates/refreshes it first (see `no_composable`). Only used
+    /// `.gitnexus` store under the MCP file root (default:
+    /// `<file root>/.gitnexus`). Freshness/regeneration use the file root
+    /// as the project root; this only selects the store path. Only used
     /// with `filepath` — inline `code` has no module to place in the graph.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
@@ -550,7 +552,8 @@ pub struct PreferenceWalkInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DepgraphStatusInput {
-    /// Override .gitnexus directory (default: <root>/.gitnexus).
+    /// `.gitnexus` store under the MCP file root (default:
+    /// `<file root>/.gitnexus`). Does not change the file root.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
 }

@@ -26,6 +26,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::evaluation::policies::base::Priority;
+use crate::evaluation::preferences::Generator;
+
 const CONFIG_FILENAME: &str = ".topos.toml";
 const CLI_REASON: &str = "CLI --allow (ephemeral)";
 
@@ -64,11 +67,24 @@ impl AllowEntry {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ToposConfig {
     pub allow: Vec<AllowEntry>,
+    /// Optional project-wide evaluation emphasis.
+    pub priority: Option<Priority>,
+    /// Optional strict ordering of the three quality generators.
+    pub preferences: Option<[Generator; 3]>,
     /// Directory the `.topos.toml` lives in (scope base for `entries_for`).
     pub root: Option<PathBuf>,
 }
 
 impl ToposConfig {
+    /// Effective scorer emphasis. A full preference ranking takes precedence
+    /// because its first generator is the stronger statement of intent.
+    pub fn effective_priority(&self) -> Priority {
+        self.preferences
+            .map(|ranking| priority_for_generator(ranking[0]))
+            .or(self.priority)
+            .unwrap_or_default()
+    }
+
     /// Allow entries whose scope covers `file_path`.
     pub fn entries_for(&self, file_path: Option<&Path>) -> Vec<&AllowEntry> {
         let rel = self.relativize(file_path);
@@ -119,12 +135,16 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
     let Ok(text) = fs::read_to_string(&config_file) else {
         return ToposConfig {
             allow: Vec::new(),
+            priority: None,
+            preferences: None,
             root,
         };
     };
     let Ok(data) = text.parse::<toml::Table>() else {
         return ToposConfig {
             allow: Vec::new(),
+            priority: None,
+            preferences: None,
             root,
         };
     };
@@ -136,7 +156,60 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
     let allow = raw_entries
         .map(|v| parse_allow_entries(v))
         .unwrap_or_default();
-    ToposConfig { allow, root }
+    let evaluation = data.get("evaluation").and_then(toml::Value::as_table);
+    // Canonical on-disk shape is a single `priority` key: a pillar string
+    // (`"secure"`) or a full ranking array (`["secure", "simple", "composable"]`).
+    // Legacy files may still carry a separate `preferences` array from before
+    // that collapse; read it only when `priority` did not supply a ranking.
+    let priority_value = evaluation.and_then(|table| table.get("priority"));
+    let priority = priority_value
+        .and_then(toml::Value::as_str)
+        .and_then(parse_priority);
+    let preferences = priority_value.and_then(parse_preferences).or_else(|| {
+        evaluation
+            .and_then(|table| table.get("preferences"))
+            .and_then(parse_preferences)
+    });
+    ToposConfig {
+        allow,
+        priority,
+        preferences,
+        root,
+    }
+}
+
+fn parse_priority(value: &str) -> Option<Priority> {
+    match value {
+        "simple" => Some(Priority::Simple),
+        "composable" => Some(Priority::Composable),
+        "secure" => Some(Priority::Secure),
+        _ => None,
+    }
+}
+
+fn parse_preferences(value: &toml::Value) -> Option<[Generator; 3]> {
+    let values = value.as_array()?;
+    let parsed: Vec<Generator> = values
+        .iter()
+        .map(|value| match value.as_str()? {
+            "simple" => Some(Generator::Simple),
+            "composable" => Some(Generator::Composable),
+            "secure" => Some(Generator::Secure),
+            _ => None,
+        })
+        .collect::<Option<_>>()?;
+    let ranking: [Generator; 3] = parsed.try_into().ok()?;
+    crate::evaluation::preferences::UserPreferences::new(ranking)
+        .ok()
+        .map(|prefs| prefs.ranking())
+}
+
+fn priority_for_generator(generator: Generator) -> Priority {
+    match generator {
+        Generator::Simple => Priority::Simple,
+        Generator::Composable => Priority::Composable,
+        Generator::Secure => Priority::Secure,
+    }
 }
 
 fn parse_allow_entries(raw_entries: &[toml::Value]) -> Vec<AllowEntry> {
@@ -182,6 +255,8 @@ pub fn merge_cli_allows(config: ToposConfig, allows: &[&str]) -> ToposConfig {
     allow.extend(extra);
     ToposConfig {
         allow,
+        priority: config.priority,
+        preferences: config.preferences,
         root: config.root,
     }
 }
@@ -266,5 +341,115 @@ mod tests {
     fn default_scope_matches_everything() {
         let entry = AllowEntry::new("eval", "ok");
         assert!(entry.matches_path("anything/at/all.py"));
+    }
+
+    #[test]
+    fn evaluation_priority_accepts_a_full_ranking() {
+        let dir =
+            std::env::temp_dir().join(format!("topos-cfg-evaluation-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = [\"composable\", \"secure\", \"simple\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, None);
+        assert_eq!(
+            config.preferences,
+            Some([Generator::Composable, Generator::Secure, Generator::Simple])
+        );
+        assert_eq!(config.effective_priority(), Priority::Composable);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn evaluation_priority_accepts_a_single_pillar() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-single-priority-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = \"secure\"\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, Some(Priority::Secure));
+        assert_eq!(config.preferences, None);
+        assert_eq!(config.effective_priority(), Priority::Secure);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn invalid_preference_ranking_is_ignored() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-invalid-preferences-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = [\"secure\", \"secure\", \"simple\"]\n",
+        )
+        .unwrap();
+
+        assert_eq!(load_topos_config(&dir).preferences, None);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn legacy_preferences_key_is_still_loaded() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-legacy-preferences-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = \"simple\"\npreferences = [\"composable\", \"secure\", \"simple\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, Some(Priority::Simple));
+        assert_eq!(
+            config.preferences,
+            Some([Generator::Composable, Generator::Secure, Generator::Simple])
+        );
+        // Full ranking is the stronger statement of intent.
+        assert_eq!(config.effective_priority(), Priority::Composable);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn legacy_preferences_only_file_is_still_loaded() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-legacy-preferences-only-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npreferences = [\"secure\", \"simple\", \"composable\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.priority, None);
+        assert_eq!(
+            config.preferences,
+            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+        );
+        assert_eq!(config.effective_priority(), Priority::Secure);
+
+        fs::remove_dir_all(&dir).ok();
     }
 }

@@ -3,6 +3,7 @@
 mod classify;
 pub mod compare;
 mod composable;
+pub mod config;
 pub mod coverage;
 pub mod depgraph;
 pub mod evaluate;

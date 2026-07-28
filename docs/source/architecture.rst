@@ -34,8 +34,8 @@ The three crates
        subprocess wrappers — never library imports — so ``topos-engine`` never
        depends on anything installed outside the Rust toolchain.
    * - ``topos``
-     - The CLI binary: ``evaluate`` / ``inspect`` / ``compare`` /
-       ``coverage`` / ``graphify`` / ``mcp``. Calls straight into
+     - The CLI binary: ``config`` / ``evaluate`` / ``inspect`` / ``compare`` /
+       ``coverage`` / ``depgraph`` / ``graphify`` / ``mcp``. Calls straight into
        ``topos-engine``; no logic is duplicated with ``topos-mcp``.
    * - ``topos-mcp``
      - The MCP server (the ``topos-mcp`` binary, and also what ``topos mcp``

@@ -1,45 +1,51 @@
 //! `topos inspect` — detailed single-file metrics.
 //!
-//! Ported from `topos/cli/commands/quality.py::inspect`, scoped down
-//! per issue #147: the security-findings / suggestions / suppression
-//! sections are out of scope here (same rationale as [`super::evaluate`]).
+//! Human output follows the same compact summary-first grammar as
+//! [`super::evaluate`], then keeps the full metric evidence below it.
 
 use std::path::PathBuf;
 
 use clap::Args;
+use topos_engine::config::load_topos_config;
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
-use topos_engine::evaluation::policies::simple::describe_entropy_ratio;
-use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
+use topos_engine::functors::probes::ast::complexity::calculate_function_complexity_entries;
+
+mod detail;
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
+use super::evaluate::info::details_for_source;
+use super::evaluate::summary::print_inspection_summary;
 use super::lang::detect_language;
+use super::render::{paint, print_lines, spinner, RenderOptions};
+
+use self::detail::inspection_detail_lines;
 
 #[derive(Args)]
 pub struct InspectArgs {
     /// The file to inspect.
     pub path: PathBuf,
-    /// Output the inspection as a single JSON object, matching the
-    /// field names of the pure-Python `topos inspect --json` (a subset:
-    /// `secure_raw`/`suggestions`/etc. depend on
-    /// suggestions/suppression/security_guidance rendering, which this
-    /// pass of issue #147 doesn't wire into the CLI — see this crate's
-    /// module docs). Intended for machine comparison (e.g. Python/Rust
-    /// parity tests), not primarily human reading.
+    /// Output a machine-readable inspection object. Human-only recommendations
+    /// and security findings are not included.
     #[arg(long)]
     pub json: bool,
     /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
-    /// Override the `.gitnexus` directory (default: `<cwd>/.gitnexus`).
+    /// `.gitnexus` store under the process cwd (default: `<cwd>/.gitnexus`).
+    /// COMPOSABLE freshness/regeneration always use cwd as the project root —
+    /// run from the repo that owns the graph. This flag only selects the store
+    /// path; it does not change the root.
     #[arg(long)]
     pub gitnexus_dir: Option<String>,
 }
 
 pub fn run(args: InspectArgs) -> Result<(), String> {
     let language = detect_language(&args.path);
-    let mut morphism = ProgramMorphism::from_file(&args.path, language)
+    let config = load_topos_config(&args.path);
+    let priority = config.effective_priority();
+    let mut morphism = ProgramMorphism::from_file(&args.path, language.clone())
         .map_err(|e| format!("reading {}: {e}", args.path.display()))?;
     let classifier = CharacteristicMorphism;
     // Attach the COMPOSABLE MDG the same way `evaluate` does (auto-detect /
@@ -49,11 +55,16 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     let mut mdg = if args.no_composable {
         None
     } else {
+        let progress = spinner(args.json, "Checking dependency graph");
         match std::env::current_dir() {
             Ok(project_root) => {
-                resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), args.json)
+                let graph =
+                    resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true);
+                progress.finish_and_clear();
+                graph
             }
             Err(e) => {
+                progress.finish_and_clear();
                 eprintln!(
                     "gitnexus: could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
                 );
@@ -64,58 +75,57 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     if let Some(g) = mdg.as_mut() {
         g.target_file = args.path.to_string_lossy().into_owned();
     }
-    let result = classify_with_representations(&classifier, &mut morphism, mdg.as_ref());
+    let result = classify_with_representations(&classifier, &mut morphism, mdg.as_ref(), priority);
 
     if args.json {
         return print_json(&args.path, &result);
     }
 
-    println!("File: {}", args.path.display());
-    println!();
-
-    println!("Classification");
-    println!("{}", "-".repeat(40));
     if !result.is_parseable {
         // Match Python's `print(...)` + `sys.exit(1)`: emit the SLOP line to
         // stdout, then exit non-zero — a parse failure is a CLI failure, so
         // `topos inspect broken.py` must fail a shell gate. (JSON mode above
         // returns 0 for an unparseable file, matching Python too.)
-        println!("⊥ SLOP — parse failure");
+        let options = RenderOptions::stdout();
+        println!(
+            "{}",
+            paint(
+                format!("◇  Inspected {}", args.path.display()),
+                console::Style::new().bold(),
+                options,
+            )
+        );
+        println!(
+            "└  {} SLOP · parse failure",
+            paint("X", console::Style::new().red().bold(), options)
+        );
         std::process::exit(1);
     }
-    for dim in ["simple", "composable", "secure"] {
-        if let Some(val) = result.dimensions.get(dim) {
-            println!("  {dim}: {val}");
-        }
-    }
-    println!("  Valid syntax: {}", result.is_parseable);
-    println!();
 
-    println!("Raw Metrics");
-    println!("{}", "-".repeat(40));
-    let mut keys: Vec<&String> = result.raw_metrics.keys().collect();
-    keys.sort();
-    for key in keys {
-        let value = result.raw_metrics[key];
-        let interp = result
-            .interpretation
-            .get(key)
-            .map(String::as_str)
-            .unwrap_or("");
-        let suffix = if interp.is_empty() {
-            String::new()
-        } else {
-            format!("  ({interp})")
-        };
-        println!("  {key}: {value:.3}{suffix}");
-    }
-
-    println!();
-    println!("Entropy Analysis");
-    println!("{}", "-".repeat(40));
-    let ratio = calculate_kolmogorov_proxy(&morphism.source);
-    println!("  Compression ratio: {ratio:.3}");
-    println!("  Interpretation: {}", describe_entropy_ratio(ratio));
+    let mut functions = morphism
+        .ast
+        .as_ref()
+        .map(|ast| calculate_function_complexity_entries(&ast.uast_root, &morphism.source))
+        .unwrap_or_default();
+    functions.sort_by(|a, b| {
+        b.complexity
+            .cmp(&a.complexity)
+            .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+    });
+    let details = details_for_source(
+        &args.path,
+        &result,
+        &morphism.source,
+        &language,
+        config.preferences.as_ref(),
+    );
+    print_inspection_summary(&args.path, &result, &language);
+    print_lines(inspection_detail_lines(
+        &result,
+        &functions,
+        &details,
+        RenderOptions::stdout(),
+    ));
 
     Ok(())
 }

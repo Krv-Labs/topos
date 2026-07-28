@@ -70,12 +70,15 @@ Outside MCP, `topos-mcp --version` prints the same report.
   `{"filepath": "..."}` — by default this also detects and
   generates/refreshes `.gitnexus` (missing or stale → runs `gitnexus
   analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
-  Pass `gitnexus_dir` to point at a specific graph, or `no_composable:
-  true` to skip detection/generation and score SIMPLE/SECURE only. If
-  GitNexus isn't installed or generation fails, `coupling_available` is
-  `false` and any verdict containing COMPOSABLE (including 🥇 **GOLD**) is
-  unreachable — the result includes both top-level `warnings` and a
-  COMPOSABLE-pillar `mdg.unavailable` interpretation explaining why.
+  Pass `gitnexus_dir` to select a store under the MCP **file root** (the
+  project root for freshness/`gitnexus analyze`), or `no_composable:
+  true` to skip detection/generation and score SIMPLE/SECURE only.
+  `gitnexus_dir` does not change the file root — point the server's file
+  root at the repo that owns the graph. If GitNexus isn't installed or
+  generation fails, `coupling_available` is `false` and any verdict
+  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable — the
+  result includes both top-level `warnings` and a COMPOSABLE-pillar
+  `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
   a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the

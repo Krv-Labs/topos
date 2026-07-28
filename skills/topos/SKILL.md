@@ -96,7 +96,7 @@ Mitigation: Stop when MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`; require `IM
 
 ## Agent Loop
 
-1. **Measure** — `topos evaluate <path> -r` (CLI) or `topos_evaluate_file` / `topos_evaluate_project` (MCP). COMPOSABLE is included by default; pass `gitnexus_dir` only to point at a non-default graph.
+1. **Measure** — `topos evaluate <path> -r` (CLI) or `topos_evaluate_file` / `topos_evaluate_project` (MCP). COMPOSABLE is included by default; run the CLI from the repo root (MCP: set file root to that repo). Pass `gitnexus_dir` only to select a non-default store under that root.
 2. **Inspect** — `topos inspect <file>` or `topos_inspect_code` for per-function complexity and metric detail.
 3. **Edit** — one focused structural change (extract helper, simplify branch, decouple import).
 4. **Verify** — re-run evaluate, or use `topos_assess_worktree_change` (baseline `HEAD`) for MCP loops. For untracked baselines: `topos_begin_refactor` → edit → `topos_assess_snapshot`.
@@ -108,15 +108,20 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 
 | Command | Purpose |
 | --- | --- |
-| `topos evaluate <path> -r` | Rank files; show worst offenders and cheapest fixes |
+| `topos evaluate <path> -r` | Show the cumulative project quality rollup |
+| `topos evaluate <path> -r --failures <pillar>` | List the files whose gates fail one pillar |
+| `topos evaluate <path> -r --info` | Select a weak file and show ranked line-level refactor targets |
+| `topos config` | View or edit project priority and preference settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
-| `topos coverage <put>... --tests <test>` | Structural test coverage (UAST + k-gram recall) |
+| `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |
 | `topos depgraph generate` | Build GitNexus graph for COMPOSABLE scoring |
 | `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos mcp` | Start the MCP server for tool-based agent loops |
 
-Pass `--gitnexus-dir .gitnexus` when the graph lives outside the default path, or `--no-composable` to score SIMPLE/SECURE only. Preference ranking is an MCP-only input (`preferences.ranking`); the CLI has no `--preferences` flag. Advisory `cycles`/`dependencies`/`process` hints are likewise MCP-only, via `topos_refactor`.
+Run CLI `evaluate` / `inspect` / `depgraph` from the **repo root that owns `.gitnexus`**. COMPOSABLE freshness and `gitnexus analyze` always use process **cwd** as the project root; `--gitnexus-dir` only selects a store path under that cwd (default `<cwd>/.gitnexus`) — it does not retarget the root. Pass `--no-composable` to score SIMPLE/SECURE only. The CLI accepts a one-run `--priority` override (a single pillar or a full comma-separated ranking) and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
+
+For MCP, the same rule uses the server **file root** (`TOPOS_MCP_FILE_ROOT`, else server cwd): set the file root to the repo, and use `gitnexus_dir` only for a non-default store under that root.
 
 ## MCP Tool Reference
 
@@ -143,6 +148,7 @@ MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params
 ## Pitfalls
 
 - **No GitNexus → no COMPOSABLE.** The graph is generated automatically, but only if `gitnexus` is installed. If it isn't, `coupling_available` is `false` and GOLD is unreachable — check `warnings`.
+- **Wrong cwd / file root → slow or hung COMPOSABLE setup.** Freshness fingerprints the whole project root (CLI cwd / MCP file root). Running from `$HOME` with `--gitnexus-dir ~/…/repo/.gitnexus` still walks home and can appear stuck on “indexing”; `cd` into the repo (or point MCP `TOPOS_MCP_FILE_ROOT` at it) instead.
 - **Cosmetic edits don't count.** Whitespace and rename-only changes won't move the lattice; MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - **SECURE is structural, not full SAST.** Pair with dedicated security tooling for high-stakes code.
 - **`topos refactor` is advisory.** It does not replace `topos evaluate` for scoring.

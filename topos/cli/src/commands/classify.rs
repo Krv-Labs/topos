@@ -20,6 +20,7 @@ pub(crate) fn classify_with_representations(
     classifier: &CharacteristicMorphism,
     morphism: &mut ProgramMorphism,
     mdg: Option<&ModuleDependencyGraph>,
+    priority: Priority,
 ) -> ClassificationResult {
     let cfg = morphism.build_cfg().cloned();
     let pdg = morphism.build_pdg().cloned();
@@ -44,7 +45,7 @@ pub(crate) fn classify_with_representations(
     if let Some(mdg) = mdg {
         representations.push(mdg);
     }
-    classifier.classify_detailed(morphism, &representations, Priority::default())
+    classifier.classify_detailed(morphism, &representations, priority)
 }
 
 #[cfg(test)]
@@ -88,13 +89,19 @@ mod tests {
         mdg.add_node(node("File:b.py", "File", "b.py"));
         mdg.add_relationship(rel("i1", "File:a.py", "File:b.py", "IMPORTS"));
 
-        let without = classify_with_representations(&classifier, &mut morphism, None);
+        let without =
+            classify_with_representations(&classifier, &mut morphism, None, Priority::default());
         assert!(
             !without.dimensions.contains_key("composable"),
             "composable must not appear without an MDG representation"
         );
 
-        let with = classify_with_representations(&classifier, &mut morphism, Some(&mdg));
+        let with = classify_with_representations(
+            &classifier,
+            &mut morphism,
+            Some(&mdg),
+            Priority::default(),
+        );
         assert!(
             with.dimensions.contains_key("composable"),
             "composable must appear once an MDG representation is attached"
@@ -117,8 +124,12 @@ mod tests {
 
         for (language, source) in cases {
             let mut morphism = ProgramMorphism::new(source, language);
-            let result =
-                classify_with_representations(&CharacteristicMorphism, &mut morphism, None);
+            let result = classify_with_representations(
+                &CharacteristicMorphism,
+                &mut morphism,
+                None,
+                Priority::default(),
+            );
 
             assert!(result.is_parseable, "failed for {language}");
         }

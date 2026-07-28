@@ -219,21 +219,27 @@ Enable optional metrics
       :sync: composable
 
       GitNexus builds the repository dependency graph used by the COMPOSABLE
-      pillar. As of v0.4.0, wiring it up is **MCP-only** — the ``topos`` CLI's
-      ``evaluate``/``inspect`` commands don't build or read ``.gitnexus`` yet
-      (that CLI wiring is tracked, not yet ported; see :doc:`cli`).
+      pillar. ``topos evaluate`` and ``topos inspect`` resolve or refresh the
+      repository's ``.gitnexus`` store automatically. Use ``topos depgraph
+      generate`` to build it explicitly, or ``--no-composable`` when you only
+      want SIMPLE and SECURE.
 
       .. code-block:: bash
 
          pnpm add -g gitnexus  # or: npm install -g gitnexus
-         claude mcp add --transport stdio topos -- topos mcp
-         # then, from an agent:
-         #   topos_generate_depgraph()
-         #   topos_evaluate_file(filepath=..., gitnexus_dir=".gitnexus")
+         topos depgraph generate
+         topos evaluate . -r
 
-      Re-run ``topos_generate_depgraph`` (or use its ``force=true``) after
-      imports, module names, or directory structure change; it also
-      no-ops safely when the graph is already current. See :doc:`agents`.
+      MCP tools use the same graph lifecycle. For an agent integration:
+
+      .. code-block:: bash
+
+         claude mcp add --transport stdio topos -- topos mcp
+
+      Both ``topos depgraph generate`` and ``topos_generate_depgraph`` no-op
+      safely when the graph is already current; pass ``--force`` or
+      ``force=true`` after imports, module names, or directory structure
+      change. See :doc:`agents`.
 
    .. tab-item:: Graphify (advisory)
       :sync: graphify
@@ -267,6 +273,10 @@ First useful commands
      - ``topos inspect path/to/file.py``
    * - Evaluate your repo
      - ``topos evaluate . -r`` (from the repo root)
+   * - Inspect the five weakest files
+     - ``topos evaluate . -r --info``
+   * - Configure project priorities
+     - ``topos config``
    * - Measure test structure
      - ``topos coverage src/logic.py --tests tests/test_logic.py``
    * - Advisory refactor hotspots

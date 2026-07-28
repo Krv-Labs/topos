@@ -1583,8 +1583,11 @@ name = "topos"
 version = "0.4.2"
 dependencies = [
  "clap",
+ "console",
+ "indicatif",
  "serde_json",
  "tokio",
+ "toml_edit",
  "topos-engine",
  "topos-mcp",
 ]

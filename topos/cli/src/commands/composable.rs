@@ -25,12 +25,9 @@ use topos_mcp::evaluation::ensure_gitnexus_dir;
 /// `target_file` — a fit for arbitrary single-file tool calls, but N cache
 /// misses across a directory walk of N files).
 ///
-/// `quiet` must be set whenever the command writes a machine-readable payload
-/// to stdout (`inspect --json`). GitNexus generation otherwise *inherits*
-/// stdout to stream its progress banner live, which lands in the middle of the
-/// document and makes it unparseable — but only on the first run in a
-/// repository, since a present graph skips generation entirely. Capturing the
-/// child's output keeps stdout to just the JSON.
+/// `quiet` captures GitNexus output. Machine-readable callers require this to
+/// keep stdout valid; interactive callers can also capture it while presenting
+/// their own stable progress indicator.
 pub(crate) fn resolve_composable_mdg(
     project_root: &Path,
     gitnexus_dir_override: Option<&str>,
@@ -117,22 +114,20 @@ mod tests {
         std::fs::remove_dir_all(&outside).ok();
     }
 
-    /// `inspect --json` must pass `quiet`, or GitNexus generation inherits
-    /// stdout and its progress banner corrupts the JSON document — on the
-    /// first run in a repository only, which is exactly the fresh-clone path
-    /// an agent or parity script hits.
+    /// `inspect` always captures GitNexus output: JSON must remain parseable,
+    /// while human output owns its transient spinner and stable stderr text.
     #[test]
-    fn inspect_passes_json_flag_through_as_quiet() {
+    fn inspect_always_captures_gitnexus_output() {
         // Collapse whitespace so rustfmt line-wrapping can't break the match.
-        let src: String = include_str!("inspect.rs")
+        let src: String = include_str!("inspect/mod.rs")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
             src.contains(
-                "resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), args.json)"
+                "resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true)"
             ),
-            "inspect must forward `args.json` as `quiet` so --json output stays parseable"
+            "inspect must capture GitNexus output so it cannot corrupt the CLI renderer"
         );
     }
 }

@@ -176,6 +176,7 @@ mod tests {
         let config = ToposConfig {
             allow: vec![AllowEntry::new("eval", "trusted REPL")],
             root: None,
+            ..Default::default()
         };
 
         let verdict = apply_allowlist(&result, &[eval_finding()], &config, None, Some(&cpg));
@@ -214,6 +215,7 @@ mod tests {
         let config = ToposConfig {
             allow: vec![AllowEntry::new("eval", "trusted")],
             root: None,
+            ..Default::default()
         };
         let verdict = apply_allowlist(&result, &[eval_finding()], &config, None, Some(&cpg));
 
@@ -241,6 +243,7 @@ mod tests {
         let config = ToposConfig {
             allow: vec![AllowEntry::new("eval", "ok here").with_scope("experiments/**")],
             root: Some(root.clone()),
+            ..Default::default()
         };
 
         let in_scope = apply_allowlist(

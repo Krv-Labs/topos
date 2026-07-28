@@ -262,14 +262,10 @@ structural feedback made subsequent agent work cheaper to complete.
 
    .. note::
       This experiment predates the v0.4.0 Rust migration and its CLI
-      commands use pre-migration flags (``topos evaluate --gitnexus-dir
-      ... --json``, ``topos coverage --json``) that the current ``topos``
-      CLI doesn't have yet — COMPOSABLE and JSON output are MCP-only as of
-      v0.4.0 (see :doc:`cli`). Reproducing this today means substituting the
-      equivalent MCP tool calls (``topos_generate_depgraph``,
-      ``topos_evaluate_project(gitnexus_dir=...)``,
-      ``topos_calculate_coverage``) for the ``--gitnexus-dir``/``--json``
-      commands below.
+      commands. The current Rust CLI supports COMPOSABLE, ``--gitnexus-dir``,
+      and JSON evaluation output. Structural coverage remains human-readable
+      only; use ``topos_calculate_coverage`` when a structured coverage payload
+      is required (see :doc:`cli`).
 
    **Fixture target**
 
@@ -324,9 +320,8 @@ structural feedback made subsequent agent work cheaper to complete.
 
       topos coverage \
         --tests tests/test_claims_engine.py \
-        --json \
         $(rg --files -g '*.py' claims_engine) \
-        > baseline_coverage.json
+        > baseline_coverage.txt
 
    The fixture used in this case study had ``adjudicator.py`` as the intended
    structural problem: SIMPLE 0.0, cyclomatic complexity 34, and maximum

@@ -33,7 +33,10 @@ pub struct InspectArgs {
     /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
-    /// Override the `.gitnexus` directory (default: `<cwd>/.gitnexus`).
+    /// `.gitnexus` store under the process cwd (default: `<cwd>/.gitnexus`).
+    /// COMPOSABLE freshness/regeneration always use cwd as the project root —
+    /// run from the repo that owns the graph. This flag only selects the store
+    /// path; it does not change the root.
     #[arg(long)]
     pub gitnexus_dir: Option<String>,
 }
@@ -52,7 +55,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     let mut mdg = if args.no_composable {
         None
     } else {
-        let progress = spinner(args.json, "Indexing dependency graph");
+        let progress = spinner(args.json, "Checking dependency graph");
         match std::env::current_dir() {
             Ok(project_root) => {
                 let graph =

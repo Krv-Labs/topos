@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-07-28
+
+### Added
+
+- **First-class CLI terminal UX restored** ([#251](https://github.com/Krv-Labs/topos/pull/251)) — `topos evaluate` prints one stable pillar summary instead of streaming every file; TTY progress stays on stderr. `--info` adds a bounded weak-file drill-down; `--failures <pillar>` lists failing paths. New `topos config` interactively sets evaluation priority and writes `.topos.toml`.
+- **Unified `--priority` flag** ([#255](https://github.com/Krv-Labs/topos/pull/255)) — `topos evaluate` and `topos config set` accept either a single pillar or a full comma-separated ranking; on-disk schema collapses to one `priority` key (legacy `preferences` still loads for one release).
+
+### Changed
+
+- **`topos inspect` and supporting CLI commands** — actionable single-file detail, medal tier in the evaluate footer, clearer composable-unavailable and diagnostic-score guidance; Rust CLI docs refreshed and Python-era references removed.
+
 ## [0.4.2] - 2026-07-26
 
 ### Fixed

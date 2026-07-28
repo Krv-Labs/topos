@@ -408,13 +408,63 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
+          set -euo pipefail
           if [ -z "$VSCE_PAT" ]; then
             echo "VSCE_PAT is required to publish VS Code Marketplace packages."
             exit 1
           fi
-          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-darwin-arm64.vsix
-          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-linux-arm64.vsix
-          npx --yes @vscode/vsce@3.9.2 publish --packagePath dist/topos-vscode-linux-x64.vsix
+
+          # --skip-duplicate exits 0 when version+target already exists
+          # (reruns after partial publish/timeout). Surface skip vs publish
+          # as Actions notices + job summary so reviewers see it in the UI.
+          # vsce messages (3.9.2): "already published. Skipping publish."
+          # / "Published ${description}."
+          published=0
+          skipped=0
+          {
+            echo "## VS Code Marketplace"
+            echo ""
+            echo "| VSIX | Result |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for vsix in dist/topos-vscode-darwin-arm64.vsix dist/topos-vscode-linux-arm64.vsix dist/topos-vscode-linux-x64.vsix; do
+            name="$(basename "$vsix")"
+            echo "::group::Publish ${name}"
+            log="$(mktemp)"
+            set +e
+            npx --yes @vscode/vsce@3.9.2 publish --skip-duplicate --packagePath "$vsix" 2>&1 | tee "$log"
+            status=${PIPESTATUS[0]}
+            set -e
+            echo "::endgroup::"
+
+            if [ "$status" -ne 0 ]; then
+              echo "::error title=VSCE publish failed::${name} (exit ${status})"
+              echo "| \`${name}\` | failed (exit ${status}) |" >> "$GITHUB_STEP_SUMMARY"
+              exit "$status"
+            fi
+
+            if grep -q 'already published\. Skipping publish\.' "$log"; then
+              skipped=$((skipped + 1))
+              echo "::notice title=VSCE skipped (already on Marketplace)::${name}"
+              echo "| \`${name}\` | skipped (already published) |" >> "$GITHUB_STEP_SUMMARY"
+            elif grep -q 'Published ' "$log"; then
+              published=$((published + 1))
+              echo "::notice title=VSCE published::${name}"
+              echo "| \`${name}\` | published |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              # --skip-duplicate succeeded but output did not match known
+              # strings — do not hide that from reviewers.
+              echo "::warning title=VSCE outcome unclear::${name}: publish exited 0 without a known success/skip line"
+              echo "| \`${name}\` | unknown (exit 0, unmatched log) |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          {
+            echo ""
+            echo "**Summary:** ${published} published, ${skipped} skipped as duplicate."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=VSCE Marketplace summary::${published} published, ${skipped} skipped as duplicate"
 
   # ---- PyPI: thin `bin` wheels wrapping the topos-mcp server binary --------
   build-pypi-wheels:
@@ -583,7 +633,132 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
 
+      # Preflight so skip-existing is visible in the Actions UI. Twine only
+      # prints "Skipping … already exist" inside the publish action logs;
+      # notices + job summary make reruns obvious to reviewers.
+      - name: Classify wheels already on PyPI
+        id: pypi_preflight
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl dist/*.tar.gz)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "::error title=No PyPI artifacts::dist/ has no .whl/.tar.gz to publish"
+            exit 1
+          fi
+
+          # stdout → job summary; stderr → log + workflow commands (::notice).
+          python3 -u <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          import re
+          import sys
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          def notice(title: str, message: str) -> None:
+              # Workflow commands must be full lines on the runner log stream.
+              print(f"::notice title={title}::{message}", file=sys.stderr, flush=True)
+
+          def error(title: str, message: str) -> None:
+              print(f"::error title={title}::{message}", file=sys.stderr, flush=True)
+
+          dist = Path("dist")
+          artifacts = sorted(
+              [p for p in dist.iterdir() if p.suffix == ".whl" or p.name.endswith(".tar.gz")],
+              key=lambda p: p.name,
+          )
+          if not artifacts:
+              error("No PyPI artifacts", "dist/ has no .whl/.tar.gz")
+              sys.exit(1)
+
+          # maturin bin wheels: topos_mcp-0.4.3-py3-none-....whl
+          version = None
+          for path in artifacts:
+              m = re.match(r"topos_mcp-([0-9][^-\s]+)-", path.name)
+              if m:
+                  version = m.group(1)
+                  break
+          if version is None:
+              error("Could not parse wheel version", "expected topos_mcp-<version>-*.whl")
+              sys.exit(1)
+
+          project = "topos-mcp"
+          url = f"https://pypi.org/pypi/{project}/{version}/json"
+          existing: set[str] = set()
+          try:
+              with urllib.request.urlopen(url, timeout=30) as resp:
+                  payload = json.load(resp)
+              existing = {item["filename"] for item in payload.get("urls", [])}
+              print(f"### PyPI preflight (`{project}=={version}`)")
+              print()
+              print(f"Found **{len(existing)}** file(s) already on the index for this version.")
+          except urllib.error.HTTPError as err:
+              if err.code == 404:
+                  print(f"### PyPI preflight (`{project}=={version}`)")
+                  print()
+                  print("Version not on PyPI yet (404) — all local artifacts are new.")
+              else:
+                  raise
+
+          already = []
+          missing = []
+          print()
+          print("| Artifact | Before publish |")
+          print("| --- | --- |")
+          for path in artifacts:
+              if path.name in existing:
+                  already.append(path.name)
+                  print(f"| `{path.name}` | already on index |")
+                  notice("PyPI will skip (already on index)", path.name)
+              else:
+                  missing.append(path.name)
+                  print(f"| `{path.name}` | will upload |")
+                  notice("PyPI will upload", path.name)
+
+          print()
+          print(
+              f"**Preflight:** {len(missing)} to upload, "
+              f"{len(already)} already on index (skip-existing)."
+          )
+          notice(
+              "PyPI preflight",
+              f"{len(missing)} to upload, {len(already)} already on index",
+          )
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"already_count={len(already)}\n")
+              fh.write(f"upload_count={len(missing)}\n")
+          PY
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          # Official input → twine --skip-existing. Needed for release reruns
+          # / partial multi-wheel uploads. Default is false.
+          skip-existing: true
+
+      - name: Summarize PyPI publish
+        if: ${{ always() && steps.pypi_preflight.outcome == 'success' }}
+        env:
+          PRE_ALREADY: ${{ steps.pypi_preflight.outputs.already_count }}
+          PRE_UPLOAD: ${{ steps.pypi_preflight.outputs.upload_count }}
+          VERSION: ${{ steps.pypi_preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo ""
+            echo "### PyPI publish result (`topos-mcp==${VERSION}`)"
+            echo ""
+            echo "Used \`skip-existing: true\`. Preflight classification:"
+            echo ""
+            echo "- **${PRE_UPLOAD}** artifact(s) not on the index before this job (upload attempted)"
+            echo "- **${PRE_ALREADY}** artifact(s) already on the index (twine skips these)"
+            echo ""
+            echo "Twine also logs \`Skipping <file> because it appears to already exist\` inside the Publish step when a duplicate is hit."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=PyPI publish finished::topos-mcp==${VERSION}: ${PRE_UPLOAD} attempted upload(s), ${PRE_ALREADY} pre-existing skip(s)"

@@ -22,7 +22,7 @@ The Clap CLI and RMCP stdio server are two interfaces over the shared [analysis 
 | `topos depgraph generate [PATH]` | Prepare or refresh GitNexus topology |
 | `topos mcp` | Start the Rust stdio MCP server |
 
-`evaluate` supports recursive discovery, JSON, `--language`, preferences, GitNexus directory selection, and security acknowledgements. The command surface is defined in `topos/cli/src/main.rs`; do not restore removed Python-package self-update/uninstall assumptions without an explicit distribution design.
+`evaluate` supports recursive discovery, JSON, `--language`, priority-based remediation guidance, GitNexus directory selection, and security acknowledgements. `--priority` accepts either one pillar or a full comma-separated `simple,composable,secure` ranking: a single pillar moves that pillar to the front of the existing project ranking, while a full ranking replaces it. `topos config set --priority …` persists the resolved ranking as `[evaluation].priority`; the legacy `preferences` array remains load-compatible but is removed on the next config write. Priority changes refactor ordering and output metadata, not the fixed gates in the [quality model](../domain/quality-model.md). The command surface is defined in `topos/cli/src/main.rs`; do not restore removed Python-package self-update/uninstall assumptions without an explicit distribution design.
 
 ## Baseline evaluation loop
 
@@ -36,7 +36,7 @@ topos depgraph generate
 topos evaluate src/ -r --gitnexus-dir .gitnexus
 ```
 
-`depgraph generate` first checks status, does not regenerate a current store unless `--force` is set, and reports schema mismatch as an error. Regenerate after import/module/directory changes and relevant working-tree edits; COMPOSABLE must not silently score stale topology. See [GitNexus integration details](../integrations/distribution.md#gitnexus-for-composable).
+`evaluate` and `inspect` resolve or generate GitNexus state unless `--no-composable` is set. Their project root is always the process working directory; `--gitnexus-dir` selects a store under that root and is **not** a project-root override. `depgraph generate` first checks status, does not regenerate a current store unless `--force` is set, and reports schema mismatch as an error. If GitNexus is unavailable, generation fails, or the store cannot be loaded, evaluation continues with SIMPLE and SECURE while COMPOSABLE is reported as unmeasured rather than failed. Regenerate after import/module/directory changes and relevant working-tree edits; COMPOSABLE must not silently score stale topology. See [GitNexus integration details](../integrations/distribution.md#gitnexus-for-composable).
 
 ## MCP agent loop
 

@@ -163,7 +163,7 @@ fn render_summary(
     let floor = floor_verdict(&overall);
     lines.push(guide_char('│', options));
     lines.push(guide_line(
-        "Status reflects policy gates; scores are diagnostic.",
+        "Status reflects policy gates; scores are diagnostic — use them to guide refactoring.",
         Style::new().dim(),
         options,
     ));

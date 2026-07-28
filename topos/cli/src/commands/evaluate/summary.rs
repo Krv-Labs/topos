@@ -58,7 +58,7 @@ fn render_summary(
     results: &[ClassificationResult],
     language: &str,
     options: RenderOptions,
-    composable_requested: bool,
+    _composable_requested: bool,
     show_info_hint: bool,
     action: &str,
 ) -> Vec<String> {
@@ -169,24 +169,11 @@ fn render_summary(
     ));
     lines.push(floor_line(floor, mean, options));
 
-    let composable_measured = results
-        .iter()
-        .any(|result| result.scores.contains_key("composable"));
-    if composable_requested && !composable_measured {
-        lines.push(String::new());
-        lines.push(paint(
-            "!  COMPOSABLE not measured · run topos depgraph generate",
-            Style::new().yellow(),
-            options,
-        ));
-    }
-
     if show_info_hint {
         lines.push(String::new());
         lines.push(paint(
             if results.len() == 1 {
-                "Tip: use topos inspect for metrics, functions, and guidance."
-                    .to_string()
+                "Tip: use `topos inspect` for metrics, functions, and guidance.".to_string()
             } else if let Some((pillar, count)) = hinted_failure(results) {
                 format!(
                     "Tip: add --failures {pillar} to list its {count} failing file{}; --info shows overall weak spots.",
@@ -431,18 +418,28 @@ fn status_text(passing: bool, options: RenderOptions) -> String {
     format!("{} {label}", paint(symbol, style, options))
 }
 
+fn medal_tier_name(floor: EvaluationValue) -> &'static str {
+    match floor.bits().count_ones() {
+        3 => "GOLD",
+        2 => "SILVER",
+        1 => "BRONZE",
+        _ => "SLOP",
+    }
+}
+
 fn floor_line(floor: EvaluationValue, mean: f64, options: RenderOptions) -> String {
-    let (symbol, style) = match floor {
-        EvaluationValue::Ideal => ("✓", Style::new().green().bold()),
+    let (status_symbol, style) = match floor {
         EvaluationValue::Slop => ("X", Style::new().red().bold()),
-        _ => ("~", Style::new().yellow().bold()),
+        _ => ("✓", Style::new().green().bold()),
     };
     format!(
-        "{}  {} {} floor · {:.0}% average",
+        "{}  {} {} {} · {} · {:.0}% average.",
         guide_char('└', options),
-        paint(symbol, style.clone(), options),
+        paint(status_symbol, style.clone(), options),
+        floor.symbol(),
+        medal_tier_name(floor),
         paint(floor.name(), style, options),
-        mean * 100.0
+        mean * 100.0,
     )
 }
 
@@ -559,7 +556,7 @@ mod tests {
             "Tip: add --failures simple to list its 1 failing file; --info shows overall weak spots."
         ));
         assert!(!output.contains("Weak spots"));
-        assert!(!output.contains('❌'));
+        assert!(output.contains("SLOP · SLOP ·"));
         assert!(!output.contains('🥉'));
     }
 
@@ -614,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn requested_unmeasured_composable_has_recovery_hint() {
+    fn requested_unmeasured_composable_still_shows_inspect_tip() {
         let output = render_summary(
             &[PathBuf::from("a.rs")],
             &[result(true)],
@@ -624,12 +621,57 @@ mod tests {
                 width: 120,
             },
             true,
-            false,
+            true,
             "Evaluated",
         )
         .join("\n");
 
-        assert!(output.contains("!  COMPOSABLE not measured · run topos depgraph generate"));
+        assert!(!output.contains("topos depgraph generate"));
+        assert!(output.contains(
+            "Tip: use `topos inspect` for metrics, functions, and guidance."
+        ));
+    }
+
+    #[test]
+    fn floor_line_shows_gold_medal_and_lattice_name() {
+        let line = floor_line(
+            EvaluationValue::Ideal,
+            0.67,
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+        );
+        assert!(line.contains("✓"));
+        assert!(line.contains("GOLD · IDEAL · 67% average."));
+    }
+
+    #[test]
+    fn floor_line_shows_silver_medal_and_lattice_name() {
+        let line = floor_line(
+            EvaluationValue::SimpleSecure,
+            0.8,
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+        );
+        assert!(line.contains("✓"));
+        assert!(line.contains("SILVER · SIMPLE_SECURE · 80% average."));
+    }
+
+    #[test]
+    fn floor_line_shows_slop_without_pass_glyph() {
+        let line = floor_line(
+            EvaluationValue::Slop,
+            0.2,
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+        );
+        assert!(line.contains("X"));
+        assert!(line.contains("SLOP · SLOP · 20% average."));
     }
 
     #[test]
@@ -822,7 +864,7 @@ mod tests {
         assert!(!output.contains("AVG"));
         assert!(!output.contains("MIN"));
         assert!(!output.contains("FAILURES"));
-        assert!(output.contains("Tip: use topos inspect for metrics, functions, and guidance."));
+        assert!(output.contains("Tip: use `topos inspect` for metrics, functions, and guidance."));
     }
 
     #[test]

@@ -141,8 +141,8 @@ Representative directory output:
    │  COMPOSABLE    X FAIL    60%     0%     8 / 20    ━━━━━━━━◆──────
    │  SECURE        ✓ PASS   100%   100%     0 / 20    ━━━━━━━━━━━━━━◆
    │
-   │  Status reflects policy gates; scores are diagnostic.
-   └  ~ SECURE floor · 70% average
+   │  Status reflects policy gates; scores are diagnostic — use them to guide refactoring.
+   └  ✓ 🥈 SILVER · SIMPLE_SECURE · 70% average.
 
    Tip: add --failures simple to list its 3 failing files; --info shows overall weak spots.
 

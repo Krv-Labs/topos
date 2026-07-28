@@ -627,9 +627,7 @@ mod tests {
         .join("\n");
 
         assert!(!output.contains("topos depgraph generate"));
-        assert!(output.contains(
-            "Tip: use `topos inspect` for metrics, functions, and guidance."
-        ));
+        assert!(output.contains("Tip: use `topos inspect` for metrics, functions, and guidance."));
     }
 
     #[test]

@@ -68,18 +68,59 @@ fn normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// Resolve a path (absolute or root-relative) and check it's inside the
-/// root, without reading it. Symlinks are resolved when the path exists.
-pub fn resolve_within_root(filepath: &str) -> Result<PathBuf, String> {
-    let root = resolve_file_root()?;
+/// Resolve symlinks on the longest existing prefix, then re-append any
+/// missing tail — matching Python `Path.resolve(strict=False)`.
+///
+/// A plain `canonicalize().unwrap_or_else(normalize)` is unsafe: when the
+/// leaf is missing, lexical normalize does not follow symlinks on the
+/// existing prefix, so `/proj/link/newfile` with `link → /etc` would be
+/// accepted under root `/proj`.
+fn resolve_existing_prefix(path: &Path) -> PathBuf {
+    let mut existing = path.to_path_buf();
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    while !existing.as_os_str().is_empty() && !existing.exists() {
+        match existing.file_name() {
+            Some(name) => {
+                missing.push(name.to_os_string());
+                if !existing.pop() {
+                    break;
+                }
+            }
+            None => break,
+        }
+    }
+
+    let mut resolved = if existing.as_os_str().is_empty() || !existing.exists() {
+        normalize(path)
+    } else {
+        existing
+            .canonicalize()
+            .unwrap_or_else(|_| normalize(&existing))
+    };
+
+    for part in missing.into_iter().rev() {
+        if part == "." {
+            continue;
+        }
+        if part == ".." {
+            resolved.pop();
+            continue;
+        }
+        resolved.push(part);
+    }
+    resolved
+}
+
+/// Resolve `filepath` against `root` and reject paths that escape it.
+pub(crate) fn resolve_path_within(filepath: &str, root: &Path) -> Result<PathBuf, String> {
     let path = Path::new(filepath);
     let joined = if path.is_absolute() {
         path.to_path_buf()
     } else {
         root.join(path)
     };
-    let resolved = joined.canonicalize().unwrap_or_else(|_| normalize(&joined));
-    if resolved.starts_with(&root) {
+    let resolved = resolve_existing_prefix(&joined);
+    if resolved.starts_with(root) {
         Ok(resolved)
     } else {
         Err(format!(
@@ -88,6 +129,14 @@ pub fn resolve_within_root(filepath: &str) -> Result<PathBuf, String> {
             resolved.display()
         ))
     }
+}
+
+/// Resolve a path (absolute or root-relative) and check it's inside the
+/// root, without reading it. Symlinks on an existing prefix are resolved
+/// even when the final component is missing.
+pub fn resolve_within_root(filepath: &str) -> Result<PathBuf, String> {
+    let root = resolve_file_root()?;
+    resolve_path_within(filepath, &root)
 }
 
 /// Read a UTF-8 file if it is within the configured root.
@@ -136,5 +185,40 @@ mod tests {
         // sufficiently deep ../ chain always escapes it.
         let err = resolve_within_root("../../../../../../../../etc/passwd").unwrap_err();
         assert!(err.contains("Access denied"), "{err}");
+    }
+
+    #[test]
+    fn missing_in_root_leaf_is_allowed() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-security-missing-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = dir.canonicalize().unwrap();
+        let missing = root.join("does-not-exist-yet.rs");
+        let resolved = resolve_path_within(missing.to_str().unwrap(), &root).unwrap();
+        assert_eq!(resolved, missing);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_escape_via_missing_leaf_is_denied() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-security-symlink-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root_path = dir.join("proj");
+        std::fs::create_dir_all(&root_path).unwrap();
+        let root = root_path.canonicalize().unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink("/etc", &link).unwrap();
+        let request = link.join("newfile");
+        let err = resolve_path_within(request.to_str().unwrap(), &root).unwrap_err();
+        assert!(err.contains("Access denied"), "{err}");
+        assert!(err.contains("/etc"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

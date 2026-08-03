@@ -52,61 +52,49 @@ pub fn resolve_file_root() -> Result<PathBuf, String> {
     FILE_ROOT.get_or_init(compute_file_root).clone()
 }
 
-/// Lexically normalize `..` / `.` components without touching the
-/// filesystem, so a non-existent path can still be checked against the root.
-fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other),
-        }
-    }
-    out
-}
-
-/// Resolve symlinks on the longest existing prefix, then re-append any
-/// missing tail — matching Python `Path.resolve(strict=False)`.
+/// Resolve symlinks incrementally, one path component at a time, matching
+/// Python `Path.resolve(strict=False)`.
 ///
 /// A plain `canonicalize().unwrap_or_else(normalize)` is unsafe: when the
 /// leaf is missing, lexical normalize does not follow symlinks on the
 /// existing prefix, so `/proj/link/newfile` with `link → /etc` would be
 /// accepted under root `/proj`.
+///
+/// The previous fix for that walked the path *backwards* from the leaf,
+/// popping components until it found one that existed. That breaks as soon
+/// as a `..` component is involved: `Path::file_name()` returns `None` when
+/// the last component is `..`, so the walk bailed out to the same unsafe
+/// whole-path lexical normalize it was meant to replace — e.g.
+/// `/proj/link/subdir/../newfile` (an existing `link` symlink, missing
+/// `subdir`) was silently accepted even though it really resolves outside
+/// `/proj`. Walking *forwards* instead avoids that: once a component is
+/// found not to exist, nothing after it can be a symlink either, so the
+/// remaining components (including any `..`) are safe to apply lexically
+/// against the already-resolved real prefix.
 fn resolve_existing_prefix(path: &Path) -> PathBuf {
-    let mut existing = path.to_path_buf();
-    let mut missing: Vec<std::ffi::OsString> = Vec::new();
-    while !existing.as_os_str().is_empty() && !existing.exists() {
-        match existing.file_name() {
-            Some(name) => {
-                missing.push(name.to_os_string());
-                if !existing.pop() {
-                    break;
+    let mut resolved = PathBuf::new();
+    let mut past_missing = false;
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Prefix(_) | Component::RootDir => resolved.push(component),
+            Component::Normal(name) => {
+                if past_missing {
+                    resolved.push(name);
+                    continue;
+                }
+                match resolved.join(name).canonicalize() {
+                    Ok(real) => resolved = real,
+                    Err(_) => {
+                        past_missing = true;
+                        resolved.push(name);
+                    }
                 }
             }
-            None => break,
         }
-    }
-
-    let mut resolved = if existing.as_os_str().is_empty() || !existing.exists() {
-        normalize(path)
-    } else {
-        existing
-            .canonicalize()
-            .unwrap_or_else(|_| normalize(&existing))
-    };
-
-    for part in missing.into_iter().rev() {
-        if part == "." {
-            continue;
-        }
-        if part == ".." {
-            resolved.pop();
-            continue;
-        }
-        resolved.push(part);
     }
     resolved
 }
@@ -172,14 +160,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalize_collapses_parent_components() {
-        assert_eq!(
-            normalize(Path::new("/a/b/../c/./d")),
-            PathBuf::from("/a/c/d")
-        );
-    }
-
-    #[test]
     fn escape_via_dotdot_is_denied() {
         // The root is this repo (auto-detected or env-provided); a
         // sufficiently deep ../ chain always escapes it.
@@ -219,6 +199,38 @@ mod tests {
         let err = resolve_path_within(request.to_str().unwrap(), &root).unwrap_err();
         assert!(err.contains("Access denied"), "{err}");
         assert!(err.contains("/etc"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_escape_via_dotdot_and_missing_intermediate_is_denied() {
+        // Regression: the backward-walk implementation bailed to whole-path
+        // lexical normalize as soon as it hit a `..` component, silently
+        // accepting escapes like `link/subdir/../newfile` where `subdir`
+        // doesn't exist under the symlink target.
+        let dir = std::env::temp_dir().join(format!(
+            "topos-security-dotdot-symlink-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root_path = dir.join("proj");
+        std::fs::create_dir_all(&root_path).unwrap();
+        let root = root_path.canonicalize().unwrap();
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let outside = outside.canonicalize().unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let request = format!("{}/subdir/../newfile", link.display());
+        let err = resolve_path_within(&request, &root).unwrap_err();
+        assert!(err.contains("Access denied"), "{err}");
+        assert!(
+            err.contains(&outside.display().to_string()),
+            "expected resolved path under {}, got: {err}",
+            outside.display()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

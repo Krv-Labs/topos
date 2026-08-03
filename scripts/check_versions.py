@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tomllib
@@ -16,9 +17,33 @@ def cargo_version() -> str:
         return tomllib.load(f)["workspace"]["package"]["version"]
 
 
-def main() -> int:
+def normalize_tag(tag: str) -> str:
+    """Strip a leading ``v`` so ``v0.4.4`` and ``0.4.4`` compare equal."""
+    return tag[1:] if tag.startswith("v") else tag
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--tag",
+        help=(
+            "Release git tag (with or without leading v). When set, must equal "
+            "the Cargo.toml workspace version so GitHub/Homebrew tags cannot "
+            "drift from the maturin/PyPI wheel version."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     expected = cargo_version()
     errors: list[str] = []
+
+    if args.tag is not None:
+        tag_version = normalize_tag(args.tag)
+        if tag_version != expected:
+            errors.append(
+                f"release tag {args.tag!r} normalizes to {tag_version!r}, "
+                f"expected Cargo.toml workspace version {expected!r}"
+            )
 
     package_json = json.loads(
         (ROOT / "extensions/vscode/package.json").read_text(encoding="utf-8")
@@ -48,7 +73,10 @@ def main() -> int:
             print(message, file=sys.stderr)
         return 1
 
-    print(f"version check passed ({expected})")
+    if args.tag is not None:
+        print(f"version check passed ({expected}; tag {args.tag})")
+    else:
+        print(f"version check passed ({expected})")
     return 0
 
 

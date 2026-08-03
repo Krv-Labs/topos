@@ -404,9 +404,11 @@ Dependency Graph
    (falling back to file mtimes for graphs built before that marker existed), so
    a regenerate reliably clears ``stale``. Never shells out.
 
-``topos_generate_depgraph({"directory": ..., "force": ...})``
-   Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
-   approval-gated. Requires the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
+``topos_generate_depgraph({"directory": ..., "gitnexus_dir": ..., "force": ...})``
+   Runs ``gitnexus analyze`` and writes ``.gitnexus/``. When ``directory`` is
+   omitted, the analyze root is derived from ``gitnexus_dir`` the same way
+   ``topos_depgraph_status`` does. Side-effecting and approval-gated. Requires
+   the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
 
 Structure & Coverage
 ~~~~~~~~~~~~~~~~~~~~

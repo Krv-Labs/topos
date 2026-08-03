@@ -32,6 +32,10 @@ use serde_json::Value;
 
 use super::models::{parse_edge, parse_node, GraphifyEdge, GraphifyNode};
 
+/// Upper bound on a trusted-but-external `graph.json` read. Pathological
+/// Graphify output should fail closed rather than OOM the process.
+const MAX_GRAPH_JSON_BYTES: u64 = 32 * 1024 * 1024;
+
 /// Failure to load/parse a `graph.json` file.
 #[derive(Debug)]
 pub enum GraphifyError {
@@ -40,6 +44,8 @@ pub enum GraphifyError {
     Parse(serde_json::Error),
     /// Neither a `"links"` nor an `"edges"` top-level array was present.
     MissingEdgeKey,
+    /// File exceeded [`MAX_GRAPH_JSON_BYTES`].
+    TooLarge { path: PathBuf, size: u64 },
 }
 
 impl std::fmt::Display for GraphifyError {
@@ -56,6 +62,11 @@ impl std::fmt::Display for GraphifyError {
             GraphifyError::MissingEdgeKey => {
                 write!(f, "graph.json has neither a \"links\" nor \"edges\" array")
             }
+            GraphifyError::TooLarge { path, size } => write!(
+                f,
+                "graph.json at {} is {size} bytes (limit {MAX_GRAPH_JSON_BYTES})",
+                path.display()
+            ),
         }
     }
 }
@@ -75,6 +86,20 @@ impl GraphifyGraph {
     /// Load and parse a `graph.json` file from disk.
     pub fn from_json_file(path: impl AsRef<Path>) -> Result<Self, GraphifyError> {
         let path = path.as_ref();
+        let meta = std::fs::metadata(path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                GraphifyError::NotFound(path.to_path_buf())
+            } else {
+                GraphifyError::Io(e)
+            }
+        })?;
+        let size = meta.len();
+        if size > MAX_GRAPH_JSON_BYTES {
+            return Err(GraphifyError::TooLarge {
+                path: path.to_path_buf(),
+                size,
+            });
+        }
         let text = std::fs::read_to_string(path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 GraphifyError::NotFound(path.to_path_buf())
@@ -103,12 +128,18 @@ impl GraphifyGraph {
 
         // The edge-array key has flip-flopped between "links" and "edges"
         // across Graphify's own history — accept either, preferring
-        // "links" (the current default). An empty array under either key is
-        // valid (a graph can legitimately have zero edges); only the
-        // complete absence of both keys is an error.
-        let edges_json = match value.get("links").or_else(|| value.get("edges")) {
-            Some(arr) => arr.as_array().map(Vec::as_slice).unwrap_or(&[]),
-            None => return Err(GraphifyError::MissingEdgeKey),
+        // "links" (the current default). Require an actual JSON array: a
+        // present-but-non-array `"links"` (null / object) must not shadow a
+        // valid `"edges"` array. An empty array under either key is valid
+        // (a graph can legitimately have zero edges); only the complete
+        // absence of both array keys is an error.
+        let Some(edges_json) = value
+            .get("links")
+            .and_then(Value::as_array)
+            .or_else(|| value.get("edges").and_then(Value::as_array))
+            .map(Vec::as_slice)
+        else {
+            return Err(GraphifyError::MissingEdgeKey);
         };
         let mut edges = Vec::with_capacity(edges_json.len());
         let mut degree: HashMap<String, usize> = HashMap::new();
@@ -200,10 +231,54 @@ mod tests {
     }
 
     #[test]
+    fn non_array_links_does_not_shadow_edges() {
+        let raw = r#"{"nodes": [{"id": "a"}, {"id": "b"}],
+                       "links": null,
+                       "edges": [{"source": "a", "target": "b"}]}"#;
+        let graph = GraphifyGraph::from_json_str(raw).unwrap();
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.degree("a"), 1);
+
+        let raw = r#"{"nodes": [{"id": "a"}, {"id": "b"}],
+                       "links": {},
+                       "edges": [{"source": "a", "target": "b"}]}"#;
+        let graph = GraphifyGraph::from_json_str(raw).unwrap();
+        assert_eq!(graph.edges.len(), 1);
+    }
+
+    #[test]
+    fn non_array_links_and_edges_is_missing_edge_key() {
+        let raw = r#"{"nodes": [{"id": "a"}], "links": null, "edges": {}}"#;
+        let err = GraphifyGraph::from_json_str(raw).unwrap_err();
+        assert!(matches!(err, GraphifyError::MissingEdgeKey));
+    }
+
+    #[test]
     fn missing_edge_key_is_an_error() {
         let raw = r#"{"nodes": [{"id": "a"}]}"#;
         let err = GraphifyGraph::from_json_str(raw).unwrap_err();
         assert!(matches!(err, GraphifyError::MissingEdgeKey));
+    }
+
+    #[test]
+    fn oversized_file_is_rejected() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-graphify-oversized-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("graph.json");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_GRAPH_JSON_BYTES + 1).unwrap();
+        drop(file);
+        let err = GraphifyGraph::from_json_file(&path).unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
+        match err {
+            GraphifyError::TooLarge { size, .. } => {
+                assert_eq!(size, MAX_GRAPH_JSON_BYTES + 1);
+            }
+            other => panic!("expected TooLarge, got {other}"),
+        }
     }
 
     #[test]

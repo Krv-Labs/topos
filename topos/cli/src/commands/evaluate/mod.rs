@@ -132,12 +132,21 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
                     args.gitnexus_dir.as_deref(),
                     &cwd,
                 );
+                // Resolved to an absolute path against `cwd` — must be used
+                // here instead of `args.gitnexus_dir`, since `project_root`
+                // above already absorbed a relative override's subdirectory;
+                // rejoining the original relative string against it a second
+                // time would double that subdirectory.
+                let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
                 let mut on_phase = |msg: &'static str| {
                     spinner.set_message(msg);
                 };
                 let graph = resolve_composable_mdg(
                     &project_root,
-                    args.gitnexus_dir.as_deref(),
+                    resolved_override.as_deref(),
                     true,
                     &mut on_phase,
                 );

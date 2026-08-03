@@ -23,6 +23,8 @@ use std::path::{Path, PathBuf};
 
 use topos_engine::adapters::gitnexus::{generate_depgraph, gitnexus_available};
 
+use crate::security::resolve_existing_prefix;
+
 /// Stable prefixes shared by the producer (this module) and the
 /// agent-contract consumer (`formatting::composable_contract_signals`) so an
 /// invalid/denied override is matched on a single marker.
@@ -36,46 +38,39 @@ pub const BRANCH_NOT_INDEXED_MARKER: &str = "no gitnexus store indexed for branc
 /// Stable prefix for staleness warnings.
 pub const STALE_GITNEXUS_MARKER: &str = "gitnexus index may be stale";
 
-/// Resolve symlinks incrementally, one path component at a time, so a
-/// missing tail doesn't hide a symlink earlier in the path.
+/// Resolve `override_dir` (if any) into an absolute path: joining a relative
+/// override against `default_root` first, then following symlinks on the
+/// existing prefix (see [`crate::security::resolve_existing_prefix`]) so a
+/// not-yet-generated store path still resolves through any real symlink
+/// ahead of the missing tail. `None` when no override is given.
 ///
-/// A plain `canonicalize().unwrap_or_else(lexical_normalize)` is unsafe:
-/// when the full path doesn't exist yet (the common case for an
-/// as-yet-ungenerated `.gitnexus` store), lexical normalize never follows
-/// symlinks on the existing prefix, so `--gitnexus-dir linkdir/.gitnexus`
-/// with `linkdir` a symlink out of the trusted root would derive a project
-/// root that lexically looks contained but really isn't. Walking forwards
-/// and canonicalizing each existing segment as we go — falling back to
-/// lexical join/pop only once a segment is found missing — keeps this in
-/// sync with the equivalent fix in `topos_mcp::security::resolve_within_root`
-/// (topos/mcp/src/security.rs).
-fn resolve_existing_prefix(path: &Path) -> PathBuf {
-    use std::path::Component;
-    let mut resolved = PathBuf::new();
-    let mut past_missing = false;
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                resolved.pop();
-            }
-            Component::Prefix(_) | Component::RootDir => resolved.push(component),
-            Component::Normal(name) => {
-                if past_missing {
-                    resolved.push(name);
-                    continue;
-                }
-                match resolved.join(name).canonicalize() {
-                    Ok(real) => resolved = real,
-                    Err(_) => {
-                        past_missing = true;
-                        resolved.push(name);
-                    }
-                }
-            }
-        }
-    }
-    resolved
+/// Downstream resolvers ([`resolve_gitnexus_dir`], [`check_override_warning`],
+/// [`depgraph_status`]) join a *relative* override against whatever project
+/// root they're handed. Once an override has been used to derive a
+/// non-default project root (see [`resolve_composable_project_root`]), that
+/// root has already absorbed the override's relative path — rejoining the
+/// original, still-relative string against it a second time would double it
+/// (`--gitnexus-dir repo/.gitnexus` from `$HOME` deriving root `$HOME/repo`,
+/// then rejoining `repo/.gitnexus` against that root, landing on
+/// `$HOME/repo/repo/.gitnexus`). Pass this function's result — already
+/// absolute — as the override for anything called alongside a project root
+/// derived from the same override, so it's used as-is instead of rejoined.
+pub fn resolve_override_for_root(
+    override_dir: Option<&str>,
+    default_root: &Path,
+) -> Option<String> {
+    let raw = override_dir?;
+    let path = PathBuf::from(raw);
+    let joined = if path.is_absolute() {
+        path
+    } else {
+        default_root.join(path)
+    };
+    Some(
+        resolve_existing_prefix(&joined)
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// Derive the COMPOSABLE **project root** used for freshness fingerprinting
@@ -85,24 +80,12 @@ fn resolve_existing_prefix(path: &Path) -> PathBuf {
 ///   project root is the parent of that store path (typically the parent of
 ///   `.gitnexus`). Relative overrides resolve against `default_root` first.
 /// - When unset, returns `default_root` (CLI cwd / MCP file root).
-pub fn resolve_composable_project_root(
-    override_dir: Option<&str>,
-    default_root: &Path,
-) -> PathBuf {
-    let Some(raw) = override_dir else {
+pub fn resolve_composable_project_root(override_dir: Option<&str>, default_root: &Path) -> PathBuf {
+    let Some(resolved) = resolve_override_for_root(override_dir, default_root) else {
         return default_root.to_path_buf();
     };
-    let path = PathBuf::from(raw);
-    let joined = if path.is_absolute() {
-        path
-    } else {
-        default_root.join(path)
-    };
-    let resolved = resolve_existing_prefix(&joined);
-    resolved
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or(resolved)
+    let resolved = PathBuf::from(resolved);
+    resolved.parent().map(Path::to_path_buf).unwrap_or(resolved)
 }
 
 /// MCP helper: same as [`resolve_composable_project_root`], but if a
@@ -189,8 +172,7 @@ pub fn ensure_gitnexus_dir_with_progress(
     skip: bool,
     capture: bool,
     progress: &mut dyn FnMut(&'static str),
-) -> GitnexusEnsureOutcome
-{
+) -> GitnexusEnsureOutcome {
     let resolve = || resolve_gitnexus_dir(override_dir, project_root);
     if skip {
         return GitnexusEnsureOutcome {
@@ -430,13 +412,53 @@ mod tests {
     }
 
     #[test]
+    fn resolve_gitnexus_dir_double_joins_a_relative_override_against_the_derived_root() {
+        // Documents the hazard resolve_override_for_root exists to route
+        // around: a *relative* override with a subdirectory component
+        // (e.g. `repo/.gitnexus` run from $HOME) re-joined against the
+        // project root resolve_composable_project_root already derived from
+        // it lands on `repo/repo/.gitnexus`, not the real store. Callers
+        // must use resolve_override_for_root's result (see the next test),
+        // never the original raw string, once a root has been derived.
+        let home = temp_dir("relative_override_double_join_home");
+        let repo = home.join("repo");
+        std::fs::create_dir_all(repo.join(".gitnexus")).unwrap();
+        let raw_override = "repo/.gitnexus";
+
+        let project_root = resolve_composable_project_root(Some(raw_override), &home);
+        assert_eq!(
+            resolve_gitnexus_dir(Some(raw_override), &project_root),
+            None,
+            "re-joining the raw relative override must miss the real store"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn resolve_override_for_root_avoids_the_double_join() {
+        let home = temp_dir("relative_override_fixed_home");
+        let repo = home.join("repo");
+        let store = repo.join(".gitnexus");
+        std::fs::create_dir_all(&store).unwrap();
+        let raw_override = "repo/.gitnexus";
+
+        let project_root = resolve_composable_project_root(Some(raw_override), &home);
+        let resolved_override = resolve_override_for_root(Some(raw_override), &home).unwrap();
+        assert_eq!(
+            resolve_gitnexus_dir(Some(&resolved_override), &project_root),
+            Some(store.canonicalize().unwrap()),
+            "the resolved (absolute) override must find the real store"
+        );
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
     fn resolve_mcp_composable_project_root_falls_back_when_override_escapes_file_root() {
         let file_root = temp_dir("mcp_file_root");
         let outside = temp_dir("mcp_outside_repo");
         let store = outside.join(".gitnexus");
         std::fs::create_dir_all(&store).unwrap();
-        let root =
-            resolve_mcp_composable_project_root(Some(store.to_str().unwrap()), &file_root);
+        let root = resolve_mcp_composable_project_root(Some(store.to_str().unwrap()), &file_root);
         assert_eq!(root, file_root);
         std::fs::remove_dir_all(&file_root).ok();
         std::fs::remove_dir_all(&outside).ok();
@@ -464,10 +486,8 @@ mod tests {
         std::os::unix::fs::symlink(&outside, &link).unwrap();
 
         let override_dir = link.join(".gitnexus");
-        let root = resolve_mcp_composable_project_root(
-            Some(override_dir.to_str().unwrap()),
-            &file_root,
-        );
+        let root =
+            resolve_mcp_composable_project_root(Some(override_dir.to_str().unwrap()), &file_root);
         assert_eq!(root, file_root);
         std::fs::remove_dir_all(&file_root).ok();
         std::fs::remove_dir_all(&outside).ok();

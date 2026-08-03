@@ -11,7 +11,8 @@ use rmcp::{tool, tool_router};
 use topos_engine::adapters::gitnexus::generate_depgraph;
 
 use crate::evaluation::{
-    cap_generation_detail, depgraph_status, resolve_mcp_composable_project_root, DepgraphStatus,
+    cap_generation_detail, depgraph_status, resolve_mcp_composable_project_root,
+    resolve_override_for_root, DepgraphStatus,
 };
 use crate::formatting::to_tool_result;
 use crate::schemas::{
@@ -295,17 +296,18 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> CallToolResult {
-        let project_root = match resolve_file_root() {
-            Ok(root) => crate::evaluation::resolve_mcp_composable_project_root(
-                params.gitnexus_dir.as_deref(),
-                &root,
-            ),
+        let file_root = match resolve_file_root() {
+            Ok(root) => root,
             Err(err) => {
                 let model = status_error(err);
                 let md = render_status_md(&model);
                 return to_tool_result(&model, md);
             }
         };
+        let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+            params.gitnexus_dir.as_deref(),
+            &file_root,
+        );
         if let Some(dir) = &params.gitnexus_dir {
             if let Err(err) = resolve_within_root(dir) {
                 let model = status_error(err);
@@ -313,8 +315,15 @@ impl ToposServer {
                 return to_tool_result(&model, md);
             }
         }
+        // Resolved to an absolute path against `file_root` — must be used
+        // below instead of `params.gitnexus_dir`, since `project_root` above
+        // already absorbed a relative override's subdirectory; rejoining the
+        // original relative string against it a second time would double
+        // that subdirectory.
+        let resolved_override =
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
         let status = depgraph_status(
-            params.gitnexus_dir.as_deref(),
+            resolved_override.as_deref(),
             &project_root,
             &project_root.to_string_lossy(),
         );
@@ -378,11 +387,23 @@ impl ToposServer {
             params.gitnexus_dir.as_deref(),
             &file_root,
         );
+        // Only when `target_dir` was itself derived from `gitnexus_dir`
+        // (no explicit `directory`) does it already absorb a relative
+        // override's subdirectory — rejoining the raw override against it
+        // would then double that subdirectory, so resolve it first in that
+        // case. An explicit `directory` is independent of `gitnexus_dir`,
+        // so the raw (still relative-to-`target_dir`) override is correct
+        // as-is there.
+        let status_override = if resolved_directory.is_none() {
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root)
+        } else {
+            params.gitnexus_dir.clone()
+        };
 
         let mut state_before = None;
         if !params.force {
             let status = depgraph_status(
-                params.gitnexus_dir.as_deref(),
+                status_override.as_deref(),
                 &target_dir,
                 &target_dir.to_string_lossy(),
             );
@@ -585,19 +606,16 @@ mod tests {
     fn resolve_generate_project_root_derives_from_gitnexus_dir_like_status() {
         // Callers pass a canonical file_root (resolve_file_root does); do the
         // same here so macOS /tmp -> /private/tmp does not fake an escape.
-        let file_root = std::env::temp_dir()
-            .join(format!("topos_generate_root_{}", std::process::id()));
+        let file_root =
+            std::env::temp_dir().join(format!("topos_generate_root_{}", std::process::id()));
         std::fs::create_dir_all(&file_root).unwrap();
         let file_root = file_root.canonicalize().unwrap();
         let nested = file_root.join("nested");
         std::fs::create_dir_all(nested.join(".gitnexus")).unwrap();
         let store = nested.join(".gitnexus");
 
-        let derived = resolve_generate_project_root(
-            None,
-            Some(store.to_str().unwrap()),
-            &file_root,
-        );
+        let derived =
+            resolve_generate_project_root(None, Some(store.to_str().unwrap()), &file_root);
         assert_eq!(derived, nested.canonicalize().unwrap());
 
         let explicit = resolve_generate_project_root(

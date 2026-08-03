@@ -14,7 +14,7 @@ use topos_engine::evaluation::weakest_score;
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
 use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
-    gitnexus_warnings, resolve_mcp_composable_project_root,
+    gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
     build_pillars, composable_contract_signals, error_md, render_evaluation_md,
@@ -208,8 +208,8 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         );
     }
 
-    let project_root = match resolve_file_root() {
-        Ok(root) => resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &root),
+    let file_root = match resolve_file_root() {
+        Ok(root) => root,
         Err(err) => {
             return err_eval(
                 "Access denied / path error",
@@ -219,8 +219,16 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
             )
         }
     };
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
+    // Resolved to an absolute path against `file_root` — must be used below
+    // instead of `params.gitnexus_dir`, since `project_root` above already
+    // absorbed a relative override's subdirectory; rejoining the original
+    // relative string against it a second time would double that
+    // subdirectory.
+    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
-        params.gitnexus_dir.as_deref(),
+        resolved_override.as_deref(),
         &project_root,
         params.no_composable,
         /* capture = */ true,
@@ -243,7 +251,7 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         None => None,
     };
     let mut warnings = gitnexus_warnings(
-        params.gitnexus_dir.as_deref(),
+        resolved_override.as_deref(),
         &project_root,
         gitnexus_dir.as_deref(),
         dep_graph.is_some(),
@@ -310,16 +318,22 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         }
     };
 
-    let project_root = match resolve_file_root() {
-        Ok(root) => resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &root),
+    let file_root = match resolve_file_root() {
+        Ok(root) => root,
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
             let md = render_project_md(&model);
             return to_tool_result(&model, md);
         }
     };
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
+    // See the matching comment in evaluate_file_sync: must use the resolved
+    // override below, not `params.gitnexus_dir`, since a relative override's
+    // subdirectory is already baked into `project_root` above.
+    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
-        params.gitnexus_dir.as_deref(),
+        resolved_override.as_deref(),
         &project_root,
         params.no_composable,
         /* capture = */ true,
@@ -392,6 +406,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         priority_source,
         coupling_available,
         project_root: &project_root,
+        resolved_gitnexus_override: resolved_override.as_deref(),
         gitnexus_dir: gitnexus_dir.as_deref(),
         generation_note: gitnexus_outcome.generation_note,
     });
@@ -615,6 +630,11 @@ struct BuildProjectArgs<'a> {
     priority_source: PrioritySource,
     coupling_available: bool,
     project_root: &'a Path,
+    /// The `gitnexus_dir` override resolved to an absolute path against the
+    /// MCP file root (see [`resolve_override_for_root`]) — pass this to
+    /// [`gitnexus_warnings`] instead of `params.gitnexus_dir`, which
+    /// `project_root` above has already derived a non-default root from.
+    resolved_gitnexus_override: Option<&'a str>,
     gitnexus_dir: Option<&'a Path>,
     generation_note: Option<String>,
 }
@@ -653,7 +673,7 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     let next_offset = has_more.then_some(args.params.offset + page.len());
 
     let mut project_warnings = gitnexus_warnings(
-        args.params.gitnexus_dir.as_deref(),
+        args.resolved_gitnexus_override,
         args.project_root,
         args.gitnexus_dir,
         args.any_dep_graph_loaded,
@@ -1088,6 +1108,7 @@ mod tests {
             priority_source: PrioritySource::Default,
             coupling_available: false,
             project_root: root,
+            resolved_gitnexus_override: None,
             gitnexus_dir: None,
             generation_note: None,
         })

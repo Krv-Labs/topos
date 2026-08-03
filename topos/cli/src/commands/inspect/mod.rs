@@ -59,12 +59,20 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
                     args.gitnexus_dir.as_deref(),
                     &cwd,
                 );
+                // See the matching comment in evaluate/mod.rs: must use the
+                // resolved override, not `args.gitnexus_dir`, since a
+                // relative override's subdirectory is already baked into
+                // `project_root` above.
+                let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
                 let mut on_phase = |msg: &'static str| {
                     progress.set_message(msg);
                 };
                 let graph = resolve_composable_mdg(
                     &project_root,
-                    args.gitnexus_dir.as_deref(),
+                    resolved_override.as_deref(),
                     true,
                     &mut on_phase,
                 );

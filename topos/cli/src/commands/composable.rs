@@ -135,7 +135,7 @@ mod tests {
             .join(" ");
         assert!(
             src.contains("resolve_composable_mdg(")
-                && src.contains("args.gitnexus_dir.as_deref(), true,")
+                && src.contains("resolved_override.as_deref(), true,")
                 && src.contains("&mut on_phase"),
             "inspect must capture GitNexus output so it cannot corrupt the CLI renderer"
         );

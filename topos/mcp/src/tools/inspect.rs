@@ -17,7 +17,7 @@ use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 use crate::diagnostics::overlay_for_source;
 use crate::evaluation::{
     classify_code_string, classify_file, detect_language, ensure_gitnexus_dir, gitnexus_warnings,
-    resolve_mcp_composable_project_root,
+    resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
     render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
@@ -72,22 +72,23 @@ struct InspectClassification {
 /// (issue #216: inspect used to skip the MDG entirely and read one medal
 /// lower).
 fn classify_inspected_file(
-    params: &InspectCodeInput,
+    resolved_gitnexus_override: Option<&str>,
+    no_composable: bool,
     project_root: &Path,
     path: &Path,
     priority: Priority,
 ) -> Result<InspectClassification, String> {
     let outcome = ensure_gitnexus_dir(
-        params.gitnexus_dir.as_deref(),
+        resolved_gitnexus_override,
         project_root,
-        params.no_composable,
+        no_composable,
         /* capture = */ true,
     );
     let gitnexus_dir = outcome.gitnexus_dir;
 
     let (result, dep_graph, load_error) = classify_file(path, priority, gitnexus_dir.as_deref())?;
     let mut warnings = gitnexus_warnings(
-        params.gitnexus_dir.as_deref(),
+        resolved_gitnexus_override,
         project_root,
         gitnexus_dir.as_deref(),
         dep_graph.is_some(),
@@ -125,7 +126,19 @@ fn classify_inspection(
     let file_root = resolve_file_root()?;
     let project_root =
         resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
-    classify_inspected_file(params, &project_root, path, priority)
+    // Resolved to an absolute path against `file_root` — must be used
+    // below instead of `params.gitnexus_dir`, since `project_root` above
+    // already absorbed a relative override's subdirectory; rejoining the
+    // original relative string against it a second time would double that
+    // subdirectory.
+    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    classify_inspected_file(
+        resolved_override.as_deref(),
+        params.no_composable,
+        &project_root,
+        path,
+        priority,
+    )
 }
 
 fn inspection_language(params: &InspectCodeInput, file_path: Option<&PathBuf>) -> String {
@@ -395,8 +408,14 @@ mod tests {
             "filepath": "sample.py",
             "no_composable": true,
         }));
-        let classified =
-            classify_inspected_file(&params, &project_root, &file, Priority::Simple).expect("runs");
+        let classified = classify_inspected_file(
+            params.gitnexus_dir.as_deref(),
+            params.no_composable,
+            &project_root,
+            &file,
+            Priority::Simple,
+        )
+        .expect("runs");
 
         assert!(!classified.coupling_available);
         assert!(

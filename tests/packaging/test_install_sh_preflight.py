@@ -183,6 +183,22 @@ def test_homebrew_formula_template_has_foreign_detection() -> None:
     )
 
 
+def test_homebrew_formula_template_has_no_explicit_version() -> None:
+    """Homebrew scans the version from the release tag in the URL.
+
+    A `version` stanza duplicates it, and since brew 6.0.14 `brew audit` fails
+    the tap with "`version X` is redundant with version scanned from URL".
+    """
+    template = (REPO_ROOT / "packaging" / "homebrew" / "topos.rb.template").read_text(
+        encoding="utf-8"
+    )
+    assert not any(
+        line.lstrip().startswith("version ") for line in template.splitlines()
+    )
+    # The tag in the URL is what brew parses the version out of.
+    assert "releases/download/v{{VERSION}}/" in template
+
+
 def test_docs_prefer_fully_qualified_homebrew_install() -> None:
     readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     install_rst = (REPO_ROOT / "docs" / "source" / "installation.rst").read_text(

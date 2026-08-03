@@ -36,20 +36,46 @@ pub const BRANCH_NOT_INDEXED_MARKER: &str = "no gitnexus store indexed for branc
 /// Stable prefix for staleness warnings.
 pub const STALE_GITNEXUS_MARKER: &str = "gitnexus index may be stale";
 
-/// Lexically normalize `..` / `.` without touching the filesystem.
-fn normalize_path(path: &Path) -> PathBuf {
+/// Resolve symlinks incrementally, one path component at a time, so a
+/// missing tail doesn't hide a symlink earlier in the path.
+///
+/// A plain `canonicalize().unwrap_or_else(lexical_normalize)` is unsafe:
+/// when the full path doesn't exist yet (the common case for an
+/// as-yet-ungenerated `.gitnexus` store), lexical normalize never follows
+/// symlinks on the existing prefix, so `--gitnexus-dir linkdir/.gitnexus`
+/// with `linkdir` a symlink out of the trusted root would derive a project
+/// root that lexically looks contained but really isn't. Walking forwards
+/// and canonicalizing each existing segment as we go — falling back to
+/// lexical join/pop only once a segment is found missing — keeps this in
+/// sync with the equivalent fix in `topos_mcp::security::resolve_within_root`
+/// (topos/mcp/src/security.rs).
+fn resolve_existing_prefix(path: &Path) -> PathBuf {
     use std::path::Component;
-    let mut out = PathBuf::new();
+    let mut resolved = PathBuf::new();
+    let mut past_missing = false;
     for component in path.components() {
         match component {
-            Component::ParentDir => {
-                out.pop();
-            }
             Component::CurDir => {}
-            other => out.push(other),
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            Component::Prefix(_) | Component::RootDir => resolved.push(component),
+            Component::Normal(name) => {
+                if past_missing {
+                    resolved.push(name);
+                    continue;
+                }
+                match resolved.join(name).canonicalize() {
+                    Ok(real) => resolved = real,
+                    Err(_) => {
+                        past_missing = true;
+                        resolved.push(name);
+                    }
+                }
+            }
         }
     }
-    out
+    resolved
 }
 
 /// Derive the COMPOSABLE **project root** used for freshness fingerprinting
@@ -72,9 +98,7 @@ pub fn resolve_composable_project_root(
     } else {
         default_root.join(path)
     };
-    let resolved = joined
-        .canonicalize()
-        .unwrap_or_else(|_| normalize_path(&joined));
+    let resolved = resolve_existing_prefix(&joined);
     resolved
         .parent()
         .map(Path::to_path_buf)
@@ -413,6 +437,37 @@ mod tests {
         std::fs::create_dir_all(&store).unwrap();
         let root =
             resolve_mcp_composable_project_root(Some(store.to_str().unwrap()), &file_root);
+        assert_eq!(root, file_root);
+        std::fs::remove_dir_all(&file_root).ok();
+        std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_mcp_composable_project_root_falls_back_when_override_escapes_via_symlink() {
+        // Regression: a gitnexus_dir override through a symlinked directory
+        // whose store doesn't exist yet used to canonicalize-fail on the
+        // whole path and fall back to lexical normalize, which never
+        // follows the symlink — so `linkdir/.gitnexus` (linkdir -> outside)
+        // derived a project root that lexically looked contained under
+        // file_root but really resolved outside it.
+        // Callers always pass an already-canonical file_root (resolve_file_root()
+        // canonicalizes), so canonicalize it here too — on macOS /tmp itself is
+        // a symlink (/var -> /private/var), and comparing a raw temp_dir()
+        // path against a canonicalized derived path would spuriously "escape"
+        // on that alone, masking the real symlink-escape behavior under test.
+        let file_root = temp_dir("mcp_symlink_file_root").canonicalize().unwrap();
+        let outside = temp_dir("mcp_symlink_outside_secret")
+            .canonicalize()
+            .unwrap();
+        let link = file_root.join("linkdir");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+
+        let override_dir = link.join(".gitnexus");
+        let root = resolve_mcp_composable_project_root(
+            Some(override_dir.to_str().unwrap()),
+            &file_root,
+        );
         assert_eq!(root, file_root);
         std::fs::remove_dir_all(&file_root).ok();
         std::fs::remove_dir_all(&outside).ok();

@@ -14,7 +14,7 @@ use topos_engine::evaluation::weakest_score;
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
 use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
-    gitnexus_warnings,
+    gitnexus_warnings, resolve_mcp_composable_project_root,
 };
 use crate::formatting::{
     build_pillars, composable_contract_signals, error_md, render_evaluation_md,
@@ -209,7 +209,7 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     }
 
     let project_root = match resolve_file_root() {
-        Ok(root) => root,
+        Ok(root) => resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &root),
         Err(err) => {
             return err_eval(
                 "Access denied / path error",
@@ -311,7 +311,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
     };
 
     let project_root = match resolve_file_root() {
-        Ok(root) => root,
+        Ok(root) => resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &root),
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
             let md = render_project_md(&model);

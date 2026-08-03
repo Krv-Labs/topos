@@ -278,7 +278,10 @@ impl ToposServer {
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> CallToolResult {
         let project_root = match resolve_file_root() {
-            Ok(root) => root,
+            Ok(root) => crate::evaluation::resolve_mcp_composable_project_root(
+                params.gitnexus_dir.as_deref(),
+                &root,
+            ),
             Err(err) => {
                 let model = status_error(err);
                 let md = render_status_md(&model);

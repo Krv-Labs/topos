@@ -9,18 +9,18 @@
 //!
 //! Unless `--no-composable` is passed, this command also attempts to
 //! attach a [`ModuleDependencyGraph`] (COMPOSABLE generator): it checks
-//! whether `<cwd>/.gitnexus` (or `--gitnexus-dir`) is present and fresh,
-//! and if it's missing or stale, generates it by shelling out to
-//! `gitnexus analyze --skip-agents-md` behind a stable spinner. That
-//! resolve-or-generate decision is
-//! shared with the MCP evaluate tools via
-//! `topos_mcp::evaluation::ensure_gitnexus_dir`, so the CLI and MCP
-//! server standardize on one policy. Any failure here — GitNexus not
-//! installed, generation failing, a schema mismatch — degrades
-//! gracefully to SIMPLE/SECURE only with a one-line `stderr` notice; it
-//! never fails the whole evaluate run, matching how the MCP tools treat
-//! COMPOSABLE as "not measured" rather than "failed" when coupling data
-//! is unavailable.
+//! whether the COMPOSABLE project root's `.gitnexus` (default
+//! `<cwd>/.gitnexus`, or `--gitnexus-dir` whose parent becomes the project
+//! root) is present and fresh, and if it's missing or stale, generates it
+//! by shelling out to `gitnexus analyze --skip-agents-md` behind a stable
+//! spinner. That resolve-or-generate decision is shared with the MCP
+//! evaluate tools via `topos_mcp::evaluation::ensure_gitnexus_dir`, so the
+//! CLI and MCP server standardize on one policy. Any failure here —
+//! GitNexus not installed, generation failing, a schema mismatch —
+//! degrades gracefully to SIMPLE/SECURE only with a one-line `stderr`
+//! notice; it never fails the whole evaluate run, matching how the MCP
+//! tools treat COMPOSABLE as "not measured" rather than "failed" when
+//! coupling data is unavailable.
 //!
 //! [`ModuleDependencyGraph`]: topos_engine::graphs::mdg::object::ModuleDependencyGraph
 //! [`ProgramDependenceGraph`]: topos_engine::graphs::pdg::object::ProgramDependenceGraph
@@ -63,10 +63,10 @@ pub struct EvaluateArgs {
     /// Skip GitNexus detection/generation; score SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
-    /// `.gitnexus` store under the process cwd (default: `<cwd>/.gitnexus`).
-    /// COMPOSABLE freshness/regeneration always use cwd as the project root —
-    /// run from the repo that owns the graph. This flag only selects the store
-    /// path; it does not change the root.
+    /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
+    /// freshness and `gitnexus analyze` use the store's parent directory as the
+    /// project root — so `topos evaluate … --gitnexus-dir ~/repo/.gitnexus` from
+    /// `$HOME` fingerprints `~/repo`, not `$HOME`.
     #[arg(long)]
     pub gitnexus_dir: Option<String>,
     /// Show the full per-file classification and raw metrics.
@@ -125,11 +125,22 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let mut mdg = if args.no_composable {
         None
     } else {
-        let spinner = spinner(args.json, "Checking dependency graph");
+        let spinner = spinner(args.json, "Checking dependency graph freshness");
         match std::env::current_dir() {
-            Ok(project_root) => {
-                let graph =
-                    resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true);
+            Ok(cwd) => {
+                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
+                let mut on_phase = |msg: &'static str| {
+                    spinner.set_message(msg);
+                };
+                let graph = resolve_composable_mdg(
+                    &project_root,
+                    args.gitnexus_dir.as_deref(),
+                    true,
+                    &mut on_phase,
+                );
                 spinner.finish_and_clear();
                 graph
             }

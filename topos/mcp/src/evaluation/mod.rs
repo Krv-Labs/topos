@@ -36,6 +36,67 @@ pub const BRANCH_NOT_INDEXED_MARKER: &str = "no gitnexus store indexed for branc
 /// Stable prefix for staleness warnings.
 pub const STALE_GITNEXUS_MARKER: &str = "gitnexus index may be stale";
 
+/// Lexically normalize `..` / `.` without touching the filesystem.
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Derive the COMPOSABLE **project root** used for freshness fingerprinting
+/// and `gitnexus analyze`.
+///
+/// - When `override_dir` (`--gitnexus-dir` / MCP `gitnexus_dir`) is set, the
+///   project root is the parent of that store path (typically the parent of
+///   `.gitnexus`). Relative overrides resolve against `default_root` first.
+/// - When unset, returns `default_root` (CLI cwd / MCP file root).
+pub fn resolve_composable_project_root(
+    override_dir: Option<&str>,
+    default_root: &Path,
+) -> PathBuf {
+    let Some(raw) = override_dir else {
+        return default_root.to_path_buf();
+    };
+    let path = PathBuf::from(raw);
+    let joined = if path.is_absolute() {
+        path
+    } else {
+        default_root.join(path)
+    };
+    let resolved = joined
+        .canonicalize()
+        .unwrap_or_else(|_| normalize_path(&joined));
+    resolved
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or(resolved)
+}
+
+/// MCP helper: same as [`resolve_composable_project_root`], but if a
+/// `gitnexus_dir` override would place the project root outside the trusted
+/// file root, fall back to `file_root` so existing invalid-override checks
+/// reject the store without fingerprinting an escaped tree.
+pub fn resolve_mcp_composable_project_root(
+    override_dir: Option<&str>,
+    file_root: &Path,
+) -> PathBuf {
+    let derived = resolve_composable_project_root(override_dir, file_root);
+    if override_dir.is_some() && !derived.starts_with(file_root) {
+        file_root.to_path_buf()
+    } else {
+        derived
+    }
+}
+
 /// Return the gitnexus dir to use, or None if not available.
 ///
 /// Preference: explicit override > `<project_root>/.gitnexus` if it exists.
@@ -92,6 +153,20 @@ pub fn ensure_gitnexus_dir(
     skip: bool,
     capture: bool,
 ) -> GitnexusEnsureOutcome {
+    ensure_gitnexus_dir_with_progress(override_dir, project_root, skip, capture, &mut |_| {})
+}
+
+/// Same as [`ensure_gitnexus_dir`], invoking `progress` with stable phase
+/// labels so CLI spinners can distinguish freshness checks from
+/// `gitnexus analyze`.
+pub fn ensure_gitnexus_dir_with_progress(
+    override_dir: Option<&str>,
+    project_root: &Path,
+    skip: bool,
+    capture: bool,
+    progress: &mut dyn FnMut(&'static str),
+) -> GitnexusEnsureOutcome
+{
     let resolve = || resolve_gitnexus_dir(override_dir, project_root);
     if skip {
         return GitnexusEnsureOutcome {
@@ -100,6 +175,7 @@ pub fn ensure_gitnexus_dir(
         };
     }
 
+    progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
     if !matches!(status.state, "missing" | "stale") {
         // present, or a problem generating won't fix (invalid_dir,
@@ -122,6 +198,7 @@ pub fn ensure_gitnexus_dir(
         };
     }
 
+    progress("Running gitnexus analyze");
     let result = generate_depgraph(project_root, capture, None);
     let generation_note = (!result.ok).then(|| generation_failure_note(&result.message));
     GitnexusEnsureOutcome {
@@ -304,6 +381,41 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn resolve_composable_project_root_uses_default_without_override() {
+        let home = temp_dir("home_default");
+        let root = resolve_composable_project_root(None, &home);
+        assert_eq!(root, home);
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn resolve_composable_project_root_derives_parent_of_gitnexus_dir() {
+        // From $HOME with --gitnexus-dir <repo>/.gitnexus, fingerprint/analyze
+        // must target <repo>, not $HOME.
+        let home = temp_dir("home_parent");
+        let repo = home.join("phil");
+        let store = repo.join(".gitnexus");
+        std::fs::create_dir_all(&store).unwrap();
+        let root = resolve_composable_project_root(Some(store.to_str().unwrap()), &home);
+        assert_eq!(root, repo.canonicalize().unwrap());
+        assert_ne!(root, home.canonicalize().unwrap());
+        std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn resolve_mcp_composable_project_root_falls_back_when_override_escapes_file_root() {
+        let file_root = temp_dir("mcp_file_root");
+        let outside = temp_dir("mcp_outside_repo");
+        let store = outside.join(".gitnexus");
+        std::fs::create_dir_all(&store).unwrap();
+        let root =
+            resolve_mcp_composable_project_root(Some(store.to_str().unwrap()), &file_root);
+        assert_eq!(root, file_root);
+        std::fs::remove_dir_all(&file_root).ok();
+        std::fs::remove_dir_all(&outside).ok();
     }
 
     #[test]

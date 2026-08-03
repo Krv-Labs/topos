@@ -10,7 +10,7 @@ use topos_engine::adapters::gitnexus::{
     current_git_branch, gitnexus_compat_warning, resolve_lbug_store,
 };
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
-use topos_mcp::evaluation::ensure_gitnexus_dir;
+use topos_mcp::evaluation::ensure_gitnexus_dir_with_progress;
 
 /// Ensure a fresh `.gitnexus` build exists for `project_root` and load its
 /// `ModuleDependencyGraph`, or return `None` (with an explanatory `stderr`
@@ -28,16 +28,21 @@ use topos_mcp::evaluation::ensure_gitnexus_dir;
 /// `quiet` captures GitNexus output. Machine-readable callers require this to
 /// keep stdout valid; interactive callers can also capture it while presenting
 /// their own stable progress indicator.
+///
+/// `progress` receives phase labels (`Checking dependency graph freshness`,
+/// `Running gitnexus analyze`) for spinner updates.
 pub(crate) fn resolve_composable_mdg(
     project_root: &Path,
     gitnexus_dir_override: Option<&str>,
     quiet: bool,
+    progress: &mut dyn FnMut(&'static str),
 ) -> Option<ModuleDependencyGraph> {
-    let outcome = ensure_gitnexus_dir(
+    let outcome = ensure_gitnexus_dir_with_progress(
         gitnexus_dir_override,
         project_root,
         /* skip = */ false,
         /* capture = */ quiet,
+        progress,
     );
     if let Some(note) = &outcome.generation_note {
         eprintln!("gitnexus: {note}");
@@ -107,7 +112,12 @@ mod tests {
         let project_root = temp_dir("root");
         let outside = temp_dir("outside");
 
-        let result = resolve_composable_mdg(&project_root, Some(&outside.to_string_lossy()), false);
+        let result = resolve_composable_mdg(
+            &project_root,
+            Some(&outside.to_string_lossy()),
+            false,
+            &mut |_| {},
+        );
         assert!(result.is_none());
 
         std::fs::remove_dir_all(&project_root).ok();
@@ -124,9 +134,9 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            src.contains(
-                "resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true)"
-            ),
+            src.contains("resolve_composable_mdg(")
+                && src.contains("args.gitnexus_dir.as_deref(), true,")
+                && src.contains("&mut on_phase"),
             "inspect must capture GitNexus output so it cannot corrupt the CLI renderer"
         );
     }

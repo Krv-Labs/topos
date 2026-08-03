@@ -17,6 +17,7 @@ use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 use crate::diagnostics::overlay_for_source;
 use crate::evaluation::{
     classify_code_string, classify_file, detect_language, ensure_gitnexus_dir, gitnexus_warnings,
+    resolve_mcp_composable_project_root,
 };
 use crate::formatting::{
     render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
@@ -121,7 +122,9 @@ fn classify_inspection(
             warnings: Vec::new(),
         });
     };
-    let project_root = resolve_file_root()?;
+    let file_root = resolve_file_root()?;
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
     classify_inspected_file(params, &project_root, path, priority)
 }
 

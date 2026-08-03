@@ -579,7 +579,11 @@ fn load_baseline(params: &AssessImprovementInput) -> Result<Baseline, String> {
             return Err(format!("Path is not a file: {}", resolved.display()));
         }
         let current_src = read_safe_utf8_file(filepath)?;
-        let project_root = resolve_file_root()?;
+        let file_root = resolve_file_root()?;
+        let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+            params.gitnexus_dir.as_deref(),
+            &file_root,
+        );
         let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
         let (dep_graph, load_error) =
             load_dep_graph(gitnexus_dir.as_deref(), &resolved.to_string_lossy());
@@ -640,7 +644,10 @@ fn assess_edit_in_place(
         Err(err) => return err_assessment(priority, priority_source, err, "file_not_found"),
     };
     let project_root = match resolve_file_root() {
-        Ok(root) => root,
+        Ok(root) => crate::evaluation::resolve_mcp_composable_project_root(
+            gitnexus_dir_override,
+            &root,
+        ),
         Err(err) => return err_assessment(priority, priority_source, err, "assessment_error"),
     };
     let gitnexus_dir = resolve_gitnexus_dir(gitnexus_dir_override, &project_root);
@@ -1354,7 +1361,10 @@ impl ToposServer {
             .as_ref()
             .and_then(|p| p.to_preferences().ok());
         let project_root = match resolve_file_root() {
-            Ok(root) => root,
+            Ok(root) => crate::evaluation::resolve_mcp_composable_project_root(
+                params.gitnexus_dir.as_deref(),
+                &root,
+            ),
             Err(err) => {
                 let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
                 return to_tool_result(&model, render_changeset_md(&model));

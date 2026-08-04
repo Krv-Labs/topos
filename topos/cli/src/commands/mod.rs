@@ -9,6 +9,7 @@ pub mod depgraph;
 pub mod evaluate;
 pub mod graphify;
 pub mod inspect;
+pub mod install;
 mod lang;
 pub mod mcp;
 mod render;

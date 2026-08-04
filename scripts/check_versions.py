@@ -67,6 +67,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"{package['identifier']!r} has {package['version']!r}, "
                 f"expected {expected!r}"
             )
+        # ponytail: pypi-only guard; generalize if a second registryType lands
+        if package.get("registryType") == "pypi":
+            if "registryBaseUrl" in package:
+                errors.append(
+                    ".mcp/server.json pypi package must omit registryBaseUrl: "
+                    "VS Code appends --index-url <registryBaseUrl> unconditionally, "
+                    "and the only publishable value is not a PEP 503 index"
+                )
+            if any(
+                arg.get("name") == "--index-url"
+                for arg in package.get("runtimeArguments", [])
+            ):
+                errors.append(
+                    ".mcp/server.json pypi package must not pin --index-url: "
+                    "uv rejects the flag when VS Code duplicates it"
+                )
 
     if errors:
         for message in errors:

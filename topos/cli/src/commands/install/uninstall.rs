@@ -19,6 +19,64 @@ use super::report;
 use super::state;
 use crate::commands::render::RenderOptions;
 
+/// One line the confirm UI (or `--dry-run`) shows for a planned removal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PlannedAction {
+    pub(crate) summary: String,
+}
+
+/// Build the uninstall plan without touching the filesystem or printing.
+///
+/// Interactive confirm uses this instead of a separate dry-run report so the
+/// user sees "here is what will happen" and No/Yes in one block.
+pub(crate) fn plan(home: &Path, selected: &[String], purge_backups: bool) -> Vec<PlannedAction> {
+    let binary = super::binary::resolve_binary_path().unwrap_or_else(|_| PathBuf::from("topos"));
+    let mut actions = Vec::new();
+    for id in selected {
+        let Some(harness) = spec(id) else {
+            actions.push(PlannedAction {
+                summary: format!("unknown harness: {id}"),
+            });
+            continue;
+        };
+        let path = (harness.config_path)(home);
+        let inspection = harness.artifact.inspect(&path, &binary);
+        let summary = match inspection.state {
+            State::Absent => format!("{} — already clear", harness.name),
+            State::Conflict => format!(
+                "{} — left untouched ({})",
+                harness.name,
+                inspection.detail.unwrap_or_else(|| "conflict".to_string())
+            ),
+            _ => format!(
+                "{} — remove MCP entry from {}",
+                harness.name,
+                display_path(home, &path)
+            ),
+        };
+        actions.push(PlannedAction { summary });
+        if purge_backups {
+            let backup = backup_path(&path);
+            if backup.is_file() {
+                actions.push(PlannedAction {
+                    summary: format!(
+                        "{} — delete backup {}",
+                        harness.name,
+                        display_path(home, &backup)
+                    ),
+                });
+            }
+        }
+    }
+    actions
+}
+
+fn display_path(home: &Path, path: &Path) -> String {
+    path.strip_prefix(home)
+        .map(|rest| format!("~/{}", rest.display()))
+        .unwrap_or_else(|_| path.display().to_string())
+}
+
 pub(crate) fn run(
     home: &Path,
     selected: &[String],
@@ -78,8 +136,8 @@ fn remove_spec(
             report::detail(
                 &report::removed(opts),
                 &format!(
-                    "[dry run] would remove the MCP server entry from {}",
-                    path.display()
+                    "would remove the MCP server entry from {}",
+                    display_path(home, &path)
                 ),
             );
             true
@@ -212,7 +270,7 @@ fn purge(home: &Path, selected: &[String], opts: RenderOptions) {
 
 fn finish(success: bool, dry_run: bool, opts: RenderOptions) -> Result<(), String> {
     let message = if dry_run {
-        "Done. (dry run — re-run without --dry-run to apply)"
+        "Preview only — nothing changed."
     } else {
         "Done."
     };
@@ -221,5 +279,47 @@ fn finish(success: bool, dry_run: bool, opts: RenderOptions) -> Result<(), Strin
         Ok(())
     } else {
         Err("one or more harnesses could not be cleaned up".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::install::testing::tmp_dir;
+    use std::fs;
+
+    #[test]
+    fn plan_describes_removal_without_dry_run_wording() {
+        let home = tmp_dir("uninstall-plan");
+        let codex = home.join(".codex");
+        fs::create_dir_all(&codex).unwrap();
+        fs::write(
+            codex.join("config.toml"),
+            "[mcp_servers.topos]\ncommand = \"/usr/bin/topos\"\nargs = [\"mcp\"]\n",
+        )
+        .unwrap();
+
+        let actions = plan(&home, &["codex".into()], false);
+        assert_eq!(actions.len(), 1);
+        let summary = &actions[0].summary;
+        assert!(summary.contains("Codex CLI"), "{summary}");
+        assert!(summary.contains("remove MCP entry"), "{summary}");
+        assert!(summary.contains("~/.codex/config.toml"), "{summary}");
+        assert!(
+            !summary.to_ascii_lowercase().contains("dry run"),
+            "{summary}"
+        );
+    }
+
+    #[test]
+    fn plan_marks_absent_harnesses_clearly() {
+        let home = tmp_dir("uninstall-plan-absent");
+        let actions = plan(&home, &["codex".into()], false);
+        assert_eq!(actions.len(), 1);
+        assert!(
+            actions[0].summary.contains("already clear"),
+            "{}",
+            actions[0].summary
+        );
     }
 }

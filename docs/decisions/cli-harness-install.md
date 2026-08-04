@@ -43,7 +43,7 @@ with checkboxes instead of a single choice.
 | --- | --- |
 | `topos install` | TTY, no args: interactive multi-select (↑↓/`j`/`k` move, space toggle, `a` toggle-all, enter confirm, esc cancel), pre-checking harnesses that are active, need repair, or are detected on disk. Non-TTY: requires explicit harness ids or `--all`, and errors clearly if neither is given. |
 | `topos install --dry-run` | Reports what each selected harness would get; writes nothing. |
-| `topos uninstall` | Interactive: preview, then a `[y/N]` prompt on stderr. `--yes` skips the prompt. `--dry-run` previews and stops. With no ids in a non-TTY, falls back to every harness whose state is not `Absent`. |
+| `topos uninstall` | Interactive: multi-select harnesses, then one confirm block on stderr listing what will be removed with **No** on top and pre-selected (arrow down to **Yes**). `--yes` skips the prompt. `--dry-run` prints the plan and stops. With no ids in a non-TTY, falls back to every harness whose state is not `Absent`. |
 | `topos uninstall --purge-backups` | Additionally deletes the `.topos.backup` files earlier installs left behind. Candidates are generated from the harness table, never a hardcoded list. |
 | `topos status` / `topos install status` | Every harness with its state, its per-harness message, any caveat note, and a residue section. `--json` for agents. |
 
@@ -54,9 +54,9 @@ Interactivity is a three-way gate rather than a boolean, resolved once from
 which of the three standard streams are terminals
 ([`mod.rs`](../../topos/cli/src/commands/install/mod.rs)):
 
-- **Interactive** — stderr is a tty. Prompt on it. Both the menu and the confirm
-  read `Term::stderr()`, so the gate and the read must be the same stream, or a
-  pty-allocated CI job prompts and then blocks forever.
+- **Interactive** — stderr is a tty. Prompt on it. Both the multi-select menu and
+  the plan+No/Yes confirm read `Term::stderr()`, so the gate and the read must
+  be the same stream, or a pty-allocated CI job prompts and then blocks forever.
 - **Headless** — no stream is a tty. True CI; uninstall applies.
 - **Ambiguous** — stderr is redirected but stdout or stdin is a tty: a human who
   typed `topos uninstall 2>log.txt`. The preview went somewhere they may never

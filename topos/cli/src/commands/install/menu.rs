@@ -114,6 +114,114 @@ pub(crate) fn run_menu(
     result
 }
 
+/// Destructive-action confirm: plan lines + single-select with **No** on top
+/// and pre-selected so Enter alone aborts. Arrow down to **Yes**. Esc/q = No.
+///
+/// Returns `true` only when the user explicitly selects Yes.
+pub(crate) fn run_confirm(title: &str, plan: &[String]) -> Result<bool, String> {
+    let term = Term::stderr();
+    // Index 0 = No (safe default). Index 1 = Yes.
+    let mut cursor = 0usize;
+    let mut rendered = 0usize;
+    term.hide_cursor().map_err(|e| e.to_string())?;
+    let result = (|| -> Result<bool, String> {
+        loop {
+            if rendered > 0 {
+                term.clear_last_lines(rendered).map_err(|e| e.to_string())?;
+            }
+            let lines = render_confirm(title, plan, cursor, RenderOptions::stderr());
+            rendered = lines.len();
+            for line in &lines {
+                term.write_line(line).map_err(|e| e.to_string())?;
+            }
+            match interpret_confirm_key(term.read_key().map_err(|e| e.to_string())?) {
+                ConfirmAction::Move(delta) => cursor = move_cursor(cursor, delta, 2),
+                ConfirmAction::Accept => return Ok(cursor == 1),
+                ConfirmAction::Yes => return Ok(true),
+                ConfirmAction::No => return Ok(false),
+                ConfirmAction::Ignore => {}
+            }
+        }
+    })();
+    term.show_cursor().ok();
+    result
+}
+
+enum ConfirmAction {
+    Move(isize),
+    /// Enter — take whatever the cursor is on.
+    Accept,
+    Yes,
+    No,
+    Ignore,
+}
+
+fn interpret_confirm_key(key: Key) -> ConfirmAction {
+    match key {
+        Key::ArrowUp | Key::Char('k') => ConfirmAction::Move(-1),
+        Key::ArrowDown | Key::Char('j') => ConfirmAction::Move(1),
+        Key::Enter => ConfirmAction::Accept,
+        Key::Char('y' | 'Y') => ConfirmAction::Yes,
+        Key::Char('n' | 'N') | Key::Escape | Key::CtrlC | Key::Char('q') => ConfirmAction::No,
+        _ => ConfirmAction::Ignore,
+    }
+}
+
+fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptions) -> Vec<String> {
+    let choices = ["No", "Yes"];
+    let mut lines = vec![
+        paint(format!("┌  {title}"), Style::new().bold(), opts),
+        "│".to_string(),
+    ];
+    if plan.is_empty() {
+        lines.push(format!(
+            "│  {}",
+            paint("nothing to change", Style::new().dim(), opts)
+        ));
+    } else {
+        for item in plan {
+            lines.push(format!(
+                "│  {} {}",
+                paint("·", Style::new().dim(), opts),
+                item
+            ));
+        }
+    }
+    lines.push("│".to_string());
+    for (idx, label) in choices.iter().enumerate() {
+        lines.push(format!(
+            "│ {}",
+            render_confirm_row(label, idx == cursor, opts)
+        ));
+    }
+    lines.push("│".to_string());
+    lines.push(format!(
+        "│  {}",
+        paint("↑↓ · enter · esc", Style::new().dim(), opts)
+    ));
+    lines.push("└".to_string());
+    lines
+}
+
+fn render_confirm_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
+    let pointer = if is_cursor {
+        paint("❯", Style::new().cyan(), opts)
+    } else {
+        " ".to_string()
+    };
+    let radio = if is_cursor {
+        paint("●", Style::new().green(), opts)
+    } else {
+        paint("○", Style::new().dim(), opts)
+    };
+    let text = if is_cursor {
+        paint(label, Style::new().bold(), opts)
+    } else {
+        label.to_string()
+    };
+    format!("{pointer} {radio} {text}")
+}
+
 fn render(title: &str, options: &[MenuOption], cursor: usize, opts: RenderOptions) -> Vec<String> {
     let mut lines = vec![
         paint(format!("┌  {title}"), Style::new().bold(), opts),
@@ -191,6 +299,88 @@ mod tests {
             styled: false,
             width: 80,
         }
+    }
+
+    #[test]
+    fn confirm_shows_plan_then_no_default() {
+        let plan = vec!["Codex CLI — remove MCP entry from ~/.codex/config.toml".into()];
+        let lines = render_confirm("Uninstall Topos from these agents?", &plan, 0, opts());
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("Uninstall Topos from these agents?"),
+            "{joined}"
+        );
+        assert!(joined.contains("Codex CLI — remove MCP entry"), "{joined}");
+        assert!(
+            !joined.contains("dry run") && !joined.contains("DRY RUN"),
+            "confirm is the real plan, not a dry-run report: {joined}"
+        );
+        // No is first choice; with cursor 0 the filled radio sits on No.
+        let no_idx = joined.find("\n│ ❯ ● No").or_else(|| joined.find("No"));
+        let yes_idx = joined.find("Yes");
+        assert!(no_idx.is_some() && yes_idx.is_some());
+        assert!(
+            no_idx.unwrap() < yes_idx.unwrap(),
+            "No must be listed above Yes"
+        );
+        let no_line = lines.iter().find(|l| l.contains("No")).unwrap();
+        let yes_line = lines.iter().find(|l| l.contains("Yes")).unwrap();
+        assert!(
+            no_line.contains('●'),
+            "No should be selected by default: {no_line}"
+        );
+        assert!(
+            yes_line.contains('○'),
+            "Yes should be unselected by default: {yes_line}"
+        );
+        assert!(no_line.contains('❯'), "cursor on No: {no_line}");
+        // Plan comes before the Yes/No rows.
+        let plan_idx = joined.find("Codex CLI").unwrap();
+        assert!(plan_idx < no_idx.unwrap());
+    }
+
+    #[test]
+    fn confirm_yes_row_selected_when_cursor_moves_down() {
+        let lines = render_confirm("Uninstall?", &[], 1, opts());
+        let yes_line = lines.iter().find(|l| l.contains("Yes")).unwrap();
+        let no_line = lines.iter().find(|l| l.contains("No")).unwrap();
+        assert!(
+            yes_line.contains('●') && yes_line.contains('❯'),
+            "{yes_line}"
+        );
+        assert!(no_line.contains('○'), "{no_line}");
+        assert!(
+            lines.iter().any(|l| l.contains("nothing to change")),
+            "empty plan should say so"
+        );
+    }
+
+    #[test]
+    fn confirm_keys_map_safely() {
+        assert!(matches!(
+            interpret_confirm_key(Key::Enter),
+            ConfirmAction::Accept
+        ));
+        assert!(matches!(
+            interpret_confirm_key(Key::Char('y')),
+            ConfirmAction::Yes
+        ));
+        assert!(matches!(
+            interpret_confirm_key(Key::Char('n')),
+            ConfirmAction::No
+        ));
+        assert!(matches!(
+            interpret_confirm_key(Key::Escape),
+            ConfirmAction::No
+        ));
+        assert!(matches!(
+            interpret_confirm_key(Key::ArrowDown),
+            ConfirmAction::Move(1)
+        ));
+        assert!(matches!(
+            interpret_confirm_key(Key::ArrowUp),
+            ConfirmAction::Move(-1)
+        ));
     }
 
     #[test]

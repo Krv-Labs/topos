@@ -34,11 +34,10 @@ use std::io::IsTerminal;
 use std::path::Path;
 
 use clap::{Args, Subcommand};
-use console::Term;
 
 use artifact::State;
 use harness::{ids, spec, HARNESSES};
-use menu::{run_menu, MenuOption};
+use menu::{run_confirm, run_menu, MenuOption};
 use paths::home_dir;
 
 #[derive(Args)]
@@ -175,19 +174,22 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<(), String> {
         return Ok(());
     }
     if args.dry_run {
-        return uninstall::run(&home, &selected, true, false);
+        return uninstall::run(&home, &selected, true, args.purge_backups);
     }
     if args.yes || matches!(mode, Interactivity::Headless) {
         return uninstall::run(&home, &selected, false, args.purge_backups);
     }
-    uninstall::run(&home, &selected, true, false)?;
     match mode {
-        Interactivity::Interactive if confirm("Apply these changes?")? => {
-            uninstall::run(&home, &selected, false, args.purge_backups)
+        Interactivity::Interactive => {
+            let plan = uninstall::plan(&home, &selected, args.purge_backups);
+            let lines: Vec<String> = plan.into_iter().map(|a| a.summary).collect();
+            if confirm("Uninstall Topos from these agents?", &lines)? {
+                uninstall::run(&home, &selected, false, args.purge_backups)
+            } else {
+                Ok(())
+            }
         }
-        Interactivity::Interactive => Ok(()),
-        // stderr is redirected, so the preview above went somewhere the user may
-        // never see and there is no stream left to prompt on.
+        // No tty on stderr: nowhere safe to confirm a destructive apply.
         _ => Err(
             "stderr is not a terminal, so there is nowhere to confirm — \
 re-run with --yes to apply, or --dry-run to preview"
@@ -286,13 +288,9 @@ fn menu_hint(
     }
 }
 
-fn confirm(prompt: &str) -> Result<bool, String> {
-    use std::io::Write as _;
-    eprint!("{prompt} [y/N] ");
-    std::io::stderr().flush().map_err(|e| e.to_string())?;
-    let key = Term::stderr().read_key().map_err(|e| e.to_string())?;
-    eprintln!();
-    Ok(matches!(key, console::Key::Char('y' | 'Y')))
+fn confirm(title: &str, plan: &[String]) -> Result<bool, String> {
+    // Plan + No/Yes in one block. No is top + pre-selected; Enter alone aborts.
+    run_confirm(title, plan)
 }
 
 pub fn run_status(args: StatusArgs) -> Result<(), String> {

@@ -56,11 +56,7 @@ pub(crate) fn label(state: State) -> &'static str {
 }
 
 pub(crate) fn header(title: &str, dry_run: bool, opts: RenderOptions) {
-    let mode = if dry_run {
-        " (DRY RUN — PREVIEW ONLY, NO CHANGES MADE)"
-    } else {
-        ""
-    };
+    let mode = if dry_run { " (preview)" } else { "" };
     println!(
         "{}",
         paint(format!("┌  {title}{mode}"), Style::new().bold(), opts)

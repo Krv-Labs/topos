@@ -12,9 +12,9 @@ use std::io::IsTerminal;
 use clap::{Parser, Subcommand};
 use console::Style;
 
-use commands::{compare, config, coverage, depgraph, evaluate, graphify, inspect, mcp};
+use commands::{compare, config, coverage, depgraph, evaluate, graphify, inspect, install, mcp};
 
-const ROOT_COMMANDS: [(&str, &str); 8] = [
+const ROOT_COMMANDS: [(&str, &str); 11] = [
     ("evaluate", "Score a file or directory"),
     ("inspect", "Explain one file"),
     ("config", "Set project priorities"),
@@ -22,6 +22,9 @@ const ROOT_COMMANDS: [(&str, &str); 8] = [
     ("coverage", "Compare source structure with tests"),
     ("depgraph", "Build the COMPOSABLE graph"),
     ("graphify", "Inspect graph health"),
+    ("install", "Configure agent harnesses to use Topos"),
+    ("uninstall", "Remove Topos from agent harnesses"),
+    ("status", "Show which harnesses are configured"),
     ("mcp", "Start the MCP server"),
 ];
 
@@ -57,6 +60,12 @@ enum Command {
     Graphify(graphify::GraphifyArgs),
     /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
+    /// Configure agent harnesses (Claude Code, Codex, Gemini, ...) to use Topos.
+    Install(install::InstallArgs),
+    /// Remove Topos-owned entries from agent harnesses.
+    Uninstall(install::UninstallArgs),
+    /// Show which agent harnesses are configured to use Topos.
+    Status(install::StatusArgs),
     /// Start the MCP server over stdio.
     Mcp(mcp::McpArgs),
 }
@@ -86,6 +95,9 @@ fn main() {
         Command::Coverage(args) => coverage::run(args),
         Command::Graphify(args) => graphify::run(args),
         Command::Depgraph(args) => depgraph::run(args),
+        Command::Install(args) => install::run_install(args),
+        Command::Uninstall(args) => install::run_uninstall(args),
+        Command::Status(args) => install::run_status(args),
         Command::Mcp(args) => mcp::run(args),
     };
     if let Err(message) = result {
@@ -157,7 +169,17 @@ mod tests {
         assert!(plain.starts_with("topos "));
         assert!(plain.contains("\n    topos <command>\n"));
         for command in [
-            "config", "evaluate", "inspect", "compare", "coverage", "graphify", "depgraph", "mcp",
+            "config",
+            "evaluate",
+            "inspect",
+            "compare",
+            "coverage",
+            "graphify",
+            "depgraph",
+            "install",
+            "uninstall",
+            "status",
+            "mcp",
         ] {
             assert!(
                 plain.contains(&format!("\n    {command}")),
@@ -171,7 +193,7 @@ mod tests {
         let styled = root_help(true);
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
-        assert_eq!(ROOT_COMMANDS.len(), 8);
+        assert_eq!(ROOT_COMMANDS.len(), 11);
     }
 
     #[test]

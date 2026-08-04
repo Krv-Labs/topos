@@ -1,7 +1,7 @@
 ---
 name: topos
 description: Structural code quality metrics, lattice verification, and refactor loops for agent-written code.
-version: "0.4.3"
+version: "0.4.4"
 homepage: https://docs.krv.ai/topos/
 metadata:
   openclaw:
@@ -54,7 +54,8 @@ Run `topos depgraph generate` only to force a refresh.
 **Optional MCP setup** (for tool-based agents, not required for CLI-only use):
 
 ```bash
-claude mcp add --transport stdio topos -- topos mcp
+topos install --all   # registers the MCP server in every supported harness
+topos status          # verify registration
 ```
 
 Do not include secrets in prompts, logs, or output. Topos reads local source files and git state only; it does not transmit code to external services.
@@ -96,7 +97,7 @@ Mitigation: Stop when MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`; require `IM
 
 ## Agent Loop
 
-1. **Measure** — `topos evaluate <path> -r` (CLI) or `topos_evaluate_file` / `topos_evaluate_project` (MCP). COMPOSABLE is included by default; run the CLI from the repo root (MCP: set file root to that repo). Pass `gitnexus_dir` only to select a non-default store under that root.
+1. **Measure** — `topos evaluate <path> -r` (CLI) or `topos_evaluate_file` / `topos_evaluate_project` (MCP). COMPOSABLE is included by default. Pass `--gitnexus-dir` / `gitnexus_dir` to select a store; its parent becomes the COMPOSABLE project root (so you can evaluate from `$HOME` against `~/repo/.gitnexus`).
 2. **Inspect** — `topos inspect <file>` or `topos_inspect_code` for per-function complexity and metric detail.
 3. **Edit** — one focused structural change (extract helper, simplify branch, decouple import).
 4. **Verify** — re-run evaluate, or use `topos_assess_worktree_change` (baseline `HEAD`) for MCP loops. For untracked baselines: `topos_begin_refactor` → edit → `topos_assess_snapshot`.
@@ -119,9 +120,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos mcp` | Start the MCP server for tool-based agent loops |
 
-Run CLI `evaluate` / `inspect` / `depgraph` from the **repo root that owns `.gitnexus`**. COMPOSABLE freshness and `gitnexus analyze` always use process **cwd** as the project root; `--gitnexus-dir` only selects a store path under that cwd (default `<cwd>/.gitnexus`) — it does not retarget the root. Pass `--no-composable` to score SIMPLE/SECURE only. The CLI accepts a one-run `--priority` override (a single pillar or a full comma-separated ranking) and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
-
-For MCP, the same rule uses the server **file root** (`TOPOS_MCP_FILE_ROOT`, else server cwd): set the file root to the repo, and use `gitnexus_dir` only for a non-default store under that root.
+Without `--gitnexus-dir`, COMPOSABLE uses process **cwd** (CLI) or the MCP **file root** (`TOPOS_MCP_FILE_ROOT`, else server cwd), with store at `<root>/.gitnexus`. With `--gitnexus-dir` / `gitnexus_dir`, the store's parent is the COMPOSABLE project root for freshness and `gitnexus analyze` (CLI allows absolute paths outside cwd; MCP still requires the store under the file root). Pass `--no-composable` to score SIMPLE/SECURE only. The CLI accepts a one-run `--priority` override (a single pillar or a full comma-separated ranking) and `topos config` persists project defaults; MCP additionally returns the induced preference walk. Advisory `cycles`/`dependencies`/`process` hints are MCP-only, via `topos_refactor`.
 
 ## MCP Tool Reference
 
@@ -148,7 +147,7 @@ MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params
 ## Pitfalls
 
 - **No GitNexus → no COMPOSABLE.** The graph is generated automatically, but only if `gitnexus` is installed. If it isn't, `coupling_available` is `false` and GOLD is unreachable — check `warnings`.
-- **Wrong cwd / file root → slow or hung COMPOSABLE setup.** Freshness fingerprints the whole project root (CLI cwd / MCP file root). Running from `$HOME` with `--gitnexus-dir ~/…/repo/.gitnexus` still walks home and can appear stuck on “indexing”; `cd` into the repo (or point MCP `TOPOS_MCP_FILE_ROOT` at it) instead.
+- **Missing `--gitnexus-dir` from a parent directory → slow COMPOSABLE setup.** Without the override, freshness fingerprints CLI cwd / MCP file root. Prefer `--gitnexus-dir <repo>/.gitnexus` (or `cd` into the repo / set `TOPOS_MCP_FILE_ROOT`) so only that repo is walked.
 - **Cosmetic edits don't count.** Whitespace and rename-only changes won't move the lattice; MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - **SECURE is structural, not full SAST.** Pair with dedicated security tooling for high-stakes code.
 - **`topos refactor` is advisory.** It does not replace `topos evaluate` for scoring.

@@ -9,37 +9,36 @@
 //!
 //! Unless `--no-composable` is passed, this command also attempts to
 //! attach a [`ModuleDependencyGraph`] (COMPOSABLE generator): it checks
-//! whether `<cwd>/.gitnexus` (or `--gitnexus-dir`) is present and fresh,
-//! and if it's missing or stale, generates it by shelling out to
-//! `gitnexus analyze --skip-agents-md` behind a stable spinner. That
-//! resolve-or-generate decision is
-//! shared with the MCP evaluate tools via
-//! `topos_mcp::evaluation::ensure_gitnexus_dir`, so the CLI and MCP
-//! server standardize on one policy. Any failure here — GitNexus not
-//! installed, generation failing, a schema mismatch — degrades
-//! gracefully to SIMPLE/SECURE only with a one-line `stderr` notice; it
-//! never fails the whole evaluate run, matching how the MCP tools treat
-//! COMPOSABLE as "not measured" rather than "failed" when coupling data
-//! is unavailable.
+//! whether the COMPOSABLE project root's `.gitnexus` (default
+//! `<cwd>/.gitnexus`, or `--gitnexus-dir` whose parent becomes the project
+//! root) is present and fresh, and if it's missing or stale, generates it
+//! by shelling out to `gitnexus analyze --skip-agents-md` behind a stable
+//! spinner. That resolve-or-generate decision is shared with the MCP
+//! evaluate tools via `topos_mcp::evaluation::ensure_gitnexus_dir`, so the
+//! CLI and MCP server standardize on one policy. Any failure here —
+//! GitNexus not installed, generation failing, a schema mismatch —
+//! degrades gracefully to SIMPLE/SECURE only with a one-line `stderr`
+//! notice; it never fails the whole evaluate run, matching how the MCP
+//! tools treat COMPOSABLE as "not measured" rather than "failed" when
+//! coupling data is unavailable.
 //!
 //! [`ModuleDependencyGraph`]: topos_engine::graphs::mdg::object::ModuleDependencyGraph
 //! [`ProgramDependenceGraph`]: topos_engine::graphs::pdg::object::ProgramDependenceGraph
 
 pub(crate) mod info;
 pub(crate) mod info_render;
+pub(crate) mod inputs;
 pub(crate) mod summary;
 
 use std::path::PathBuf;
 
 use clap::Args;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use topos_engine::adapters::discovery::collect_source_files;
 use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::Generator;
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
@@ -47,6 +46,7 @@ use super::config::{parse_priority, parse_priority_input, priority_for_generator
 use super::render::{print_classification, print_raw_metrics, spinner};
 
 use self::info::{show_evaluation_info, show_pillar_failures};
+use self::inputs::{language_label, resolve_evaluate_inputs};
 use self::summary::{json_output, pillar_measured, print_summary};
 
 #[derive(Args)]
@@ -57,16 +57,18 @@ pub struct EvaluateArgs {
     /// Recursively evaluate directories.
     #[arg(short = 'r', long)]
     pub recursive: bool,
-    /// Source language for parsing and file discovery when paths are directories.
-    #[arg(long, default_value = "python")]
-    pub language: String,
+    /// Optional language filter for discovery (e.g. only `.py`). When omitted,
+    /// every supported language is discovered and each file is parsed with its
+    /// inferred language (same multi-language default as MCP project evaluate).
+    #[arg(long, value_name = "LANGUAGE")]
+    pub language: Option<String>,
     /// Skip GitNexus detection/generation; score SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
-    /// `.gitnexus` store under the process cwd (default: `<cwd>/.gitnexus`).
-    /// COMPOSABLE freshness/regeneration always use cwd as the project root —
-    /// run from the repo that owns the graph. This flag only selects the store
-    /// path; it does not change the root.
+    /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
+    /// freshness and `gitnexus analyze` use the store's parent directory as the
+    /// project root — so `topos evaluate … --gitnexus-dir ~/repo/.gitnexus` from
+    /// `$HOME` fingerprints `~/repo`, not `$HOME`.
     #[arg(long)]
     pub gitnexus_dir: Option<String>,
     /// Show the full per-file classification and raw metrics.
@@ -100,56 +102,69 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         .map(parse_priority)
         .transpose()?
         .map(Priority::top_generator);
-    if !SUPPORTED_LANGUAGES.contains(&args.language.as_str()) {
-        return Err(format!(
-            "unsupported language '{}' (expected one of: {})",
-            args.language,
-            SUPPORTED_LANGUAGES.join(", ")
-        ));
-    }
-    let suffixes =
-        language_file_suffixes(&args.language).expect("checked against SUPPORTED_LANGUAGES above");
-    let files = collect_source_files(&args.paths, suffixes, args.recursive);
-    if files.is_empty() {
-        return Err(format!(
-            "no {} source files found (expected suffixes: {})",
-            args.language,
-            suffixes.join(", ")
-        ));
-    }
+    let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
+    let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
+    let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
+    let summary_language = language_label(&inputs);
 
     let project_config = load_topos_config(&files[0]);
     let priority = resolve_priority(&args, &project_config)?;
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
+    let mut composable_warnings = Vec::new();
     let mut mdg = if args.no_composable {
         None
     } else {
-        let spinner = spinner(args.json, "Checking dependency graph");
+        let spinner = spinner(args.json, "Checking dependency graph freshness");
         match std::env::current_dir() {
-            Ok(project_root) => {
-                let graph =
-                    resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true);
+            Ok(cwd) => {
+                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
+                // Resolved to an absolute path against `cwd` — must be used
+                // here instead of `args.gitnexus_dir`, since `project_root`
+                // above already absorbed a relative override's subdirectory;
+                // rejoining the original relative string against it a second
+                // time would double that subdirectory.
+                let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
+                let mut on_phase = |msg: &'static str| {
+                    spinner.set_message(msg);
+                };
+                let resolved = resolve_composable_mdg(
+                    &project_root,
+                    resolved_override.as_deref(),
+                    true,
+                    &mut on_phase,
+                );
                 spinner.finish_and_clear();
-                graph
+                composable_warnings = resolved.warnings;
+                resolved.mdg
             }
             Err(e) => {
                 spinner.finish_and_clear();
-                eprintln!("gitnexus: could not resolve current directory ({e}); evaluating SIMPLE/SECURE only.");
+                // Human card + JSON carry the notice; no separate stderr dump.
+                composable_warnings.push(format!(
+                    "could not resolve current directory ({e}); evaluating SIMPLE/SECURE only."
+                ));
                 None
             }
         }
     };
 
     let classifier = CharacteristicMorphism;
-    let mut results = Vec::with_capacity(files.len());
-    let progress = progress_bar(files.len(), args.json);
-    for file in &files {
+    let mut results = Vec::with_capacity(inputs.len());
+    let progress = progress_bar(inputs.len(), args.json);
+    for input in &inputs {
+        let file = &input.path;
         progress.set_message(file.file_name().map_or_else(
             || file.display().to_string(),
             |name| name.to_string_lossy().into(),
         ));
-        let mut morphism = ProgramMorphism::from_file(file, args.language.clone())
+        let mut morphism = ProgramMorphism::from_file(file, input.language.clone())
             .map_err(|e| format!("reading {}: {e}", file.display()))?;
         if let Some(g) = mdg.as_mut() {
             g.target_file = file.to_string_lossy().into_owned();
@@ -173,8 +188,13 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     if args.json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&json_output(&files, &results))
-                .map_err(|e| format!("serializing evaluation: {e}"))?
+            serde_json::to_string_pretty(&json_output(
+                &files,
+                &results,
+                &languages,
+                &composable_warnings
+            ))
+            .map_err(|e| format!("serializing evaluation: {e}"))?
         );
     } else {
         if args.verbose && results.len() > 1 {
@@ -187,9 +207,10 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         print_summary(
             &files,
             &results,
-            &args.language,
+            &summary_language,
             !args.no_composable,
             !args.info && failure_pillar.is_none(),
+            &composable_warnings,
         );
         if args.verbose && results.len() == 1 {
             print_raw_metrics(&results[0]);
@@ -199,13 +220,13 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
             show_pillar_failures(
                 &files,
                 &results,
-                &args.language,
+                &languages,
                 pillar.as_str(),
                 args.info,
                 Some(&focused),
             )?;
         } else if args.info {
-            show_evaluation_info(&files, &results, &args.language, target_ranking.as_ref())?;
+            show_evaluation_info(&files, &results, &languages, target_ranking.as_ref())?;
         }
     }
     Ok(())
@@ -288,7 +309,7 @@ mod tests {
         EvaluateArgs {
             paths: Vec::new(),
             recursive: false,
-            language: "rust".to_string(),
+            language: None,
             no_composable: false,
             gitnexus_dir: None,
             verbose: false,

@@ -87,9 +87,9 @@ it elsewhere.
   "packages": [
     {
       "registryType": "pypi",
-      "registryBaseUrl": "https://pypi.org/simple",
       "identifier": "topos-mcp",
       "version": "0.4.1",
+      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
       }
@@ -97,6 +97,33 @@ it elsewhere.
   ]
 }
 ```
+
+> [!IMPORTANT]
+> **Do not set `registryBaseUrl` for the PyPI package, and do not pin an index
+> with `runtimeArguments`.** Both have bitten this repo:
+>
+> - The registry rejects anything other than the exact string `https://pypi.org`
+>   (`internal/validators/registries/pypi.go` compares with `!=`), so
+>   `https://pypi.org/simple` cannot be published.
+> - VS Code appends `--index-url <registryBaseUrl>` verbatim to the `uvx`
+>   command (`mcpManagementService.ts`, `case RegistryType.PYTHON`). The only
+>   publishable value, `https://pypi.org`, is not a PEP 503 index — `uvx
+>   --index-url https://pypi.org topos-mcp` fails to resolve the package.
+> - Adding a corrective `--index-url` via `runtimeArguments` does not fix that;
+>   it produces the flag *twice*, and `uv` hard-fails with
+>   `the argument '--index-url <INDEX_URL>' cannot be used multiple times`.
+>
+> Omitting the field entirely is the fix: VS Code injects nothing and runs
+> `uvx topos-mcp@<version>`, which resolves against uv's default index —
+> `https://pypi.org/simple`. Registry-side, the omitted value is defaulted to
+> `https://pypi.org` on a by-value copy purely for the ownership check, so the
+> published record stays clean.
+>
+> `mcp-publisher validate` does **not** catch any of this — it passes all three
+> shapes, including the unpublishable one. It is not a publish preflight.
+
+`registryType: "pypi"` is load-bearing: VS Code derives `command: "uvx"` from
+that field alone (`getCommandName`), not from `runtimeHint`.
 
 ## Publish Steps
 

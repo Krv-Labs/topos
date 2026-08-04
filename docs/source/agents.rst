@@ -18,7 +18,7 @@ Find the MCP server
 
 Topos is published as ``io.github.Krv-Labs/topos`` on the official MCP Registry
 and mirrored on Glama. Use either listing when discovering servers from a host
-UI, or follow the setup tabs below to register it directly.
+UI, or run ``topos install`` (below) to register it directly.
 
 - `Official MCP Registry <https://registry.modelcontextprotocol.io/?q=topos>`_
 - `Glama MCP server page <https://glama.ai/mcp/servers/Krv-Labs/topos>`_
@@ -28,151 +28,210 @@ UI, or follow the setup tabs below to register it directly.
 MCP Setup
 ---------
 
-Start with the path your agent will actually use. The install path should be
-short; troubleshooting belongs after the client is registered.
+You no longer register Topos agent by agent. ``topos install`` detects the
+harnesses on your machine and shows them as a checklist — the ones already
+configured or found on disk come pre-checked, and you pick where Topos goes.
 
-Choose an agent path
-~~~~~~~~~~~~~~~~~~~~
+.. code-block:: bash
 
-.. tab-set::
+   topos install
 
-   .. tab-item:: VS Code / Cursor
-      :sync: vscode-extension
+.. code-block:: text
 
-      VS Code exposes **two different install surfaces**. Pick **one** — do not
-      install both, or agent mode can register two Topos MCP servers and double
-      tool calls / trust prompts.
+   ┌  Which agent integrations do you want to configure?
+   │
+   │  ↑↓ move · space toggle · a all · enter confirm · esc cancel
+   │
+   │ ❯ ● Claude Code         (✓ active)
+   │   ○ Claude Desktop      (not configured)
+   │   ● Codex CLI           (detected)
+   │   ○ Gemini CLI          (not configured)
+   │   ○ GitHub Copilot CLI  (not configured)
+   │   ● Cursor              (detected)
+   │   ● VS Code             (▲ needs repair)
+   │   ○ Google Antigravity  (not configured)
+   └
 
-      **Recommended — MCP server (``@mcp`` gallery)**
+Enter writes one thing per harness: the Topos MCP server entry, with an
+**absolute** ``command`` path so GUI-launched apps (which inherit a minimal
+``PATH``) can still spawn it. It never writes skill files, instruction blocks,
+or ``@import`` lines.
 
-      This is the official MCP Registry entry (``io.github.Krv-Labs/topos``),
-      not the Marketplace extension. The registry points at the PyPI package
-      ``topos-mcp``; VS Code installs/runs that package and owns registration,
-      trust, and lifecycle. You do **not** need a separate local Topos install
-      or the Marketplace extension.
+.. code-block:: text
 
-      1. Open the Extensions view (``Ctrl+Shift+X`` / ``Cmd+Shift+X``).
-      2. Search ``@mcp topos`` and install **Topos**.
-      3. Or open the `GitHub MCP Registry page
-         <https://github.com/mcp/Krv-Labs/topos>`_ and use **Install MCP
-         server**.
+   ┌  Topos Harness Install
+   │
+   │  Using /opt/homebrew/bin/topos
+   │
+   │  Claude Code
+   │    ✓ MCP server registered in ~/.claude.json (unchanged)
+   │
+   │  Codex CLI
+   │    ✓ [mcp_servers.topos] present in ~/.codex/config.toml
+   │
+   │  Cursor
+   │    ✓ MCP server registered in ~/.cursor/mcp.json
+   │
+   │  VS Code
+   │    ✓ repaired — servers.topos present in the VS Code user mcp.json
+   │
+   └  Done. Restart any running agent for it to pick up the new server.
 
-      See `Add MCP servers in VS Code
-      <https://code.visualstudio.com/docs/copilot/customization/mcp-servers>`_
-      for gallery vs ``mcp.json`` details.
+Skip the menu with harness ids or ``--all``, and preview with ``--dry-run``:
 
-      **Optional — full Marketplace extension**
+.. code-block:: bash
 
-      Use this when you want Command Palette workflows (**Topos: Evaluate
-      Project**, **Topos: Generate Dependency Graph**), bundled runtime
-      resolution, and an editor-owned MCP provider — not only agent tools.
+   topos install claude codex   # ids: claude, claude-desktop, codex, gemini,
+                                #      copilot, cursor, vscode, antigravity
+   topos install --all
+   topos install --all --dry-run
 
-      .. button-link:: https://marketplace.visualstudio.com/items?itemName=KrvLabs.topos-vscode
-         :color: primary
-         :shadow:
+Non-interactive shells (CI, scripts) must pass ids or ``--all`` — there is no
+menu to fall back on, and ``topos install`` says so rather than guessing.
 
-         Topos: Code Quality Targets for Agents (``KrvLabs.topos-vscode``)
+Check and repair
+~~~~~~~~~~~~~~~~
 
-      The extension registers a ``topos-mcp`` server provider, resolves a
-      bundled, cached, local, or downloaded Topos runtime, and starts
-      ``topos mcp`` for agent mode. Topos still runs locally; the editor owns
-      server registration and trust prompts.
+``topos status`` — also ``topos install status``, with ``--json`` for agents —
+shows every harness, worst-first, plus anything Topos found but will not touch:
 
-      .. important::
-         Install **either** ``@mcp topos`` **or** ``KrvLabs.topos-vscode``, not
-         both. If you already have the full extension, skip the ``@mcp``
-         install (and vice versa). Cursor builds that lack the MCP gallery
-         should use the Marketplace extension or the Manual JSON tab.
+.. code-block:: text
 
-   .. tab-item:: Agent CLIs
-      :sync: agent-cli
+   ┌  Topos Harness Status
+   │
+   │  Binary: /opt/homebrew/bin/topos
+   │
+   │  Claude Code
+   │    ✓ MCP server registered in ~/.claude.json
+   │
+   │  Codex CLI
+   │    ✓ [mcp_servers.topos] present in ~/.codex/config.toml
+   │
+   │  VS Code
+   │    ↻ `/usr/local/bin/topos` no longer exists — run `topos install vscode`
+   │
+   │  Cursor
+   │    ▲ `topos` in ~/.cursor/mcp.json is an MCP entry topos did not write —
+   │      inspect it by hand
+   │
+   │  Claude Desktop
+   │    ○ no MCP server entry in the Claude Desktop config
+   │
+   │  Found but not managed by topos
+   │    ▲ ~/.claude/skills/topos/SKILL.md — topos agent skill, installed by
+   │      openclaw rather than by `topos install`
+   │      remove it with `openclaw skills uninstall @Krv-Labs/topos`, or delete
+   │      the `topos` skill directory by hand
+   │
+   └  3/8 harness integrations active.
 
-      Run setup from the repository root you want Topos to evaluate. Prefer the
-      CLI-native registration path for your agent so the host owns trust,
-      lifecycle, and status checks.
+Four states, one glyph each:
 
-      .. dropdown:: Claude Code
+.. list-table::
+   :header-rows: 1
+   :widths: 20 44 36
 
-         Claude Code uses ``claude mcp add``. The double dash is required:
-         everything after it is passed to ``topos`` unchanged.
+   * - State
+     - Meaning
+     - What to do
+   * - ``✓`` Active
+     - Registered, pointing at this binary.
+     - Nothing.
+   * - ``↻`` Incomplete
+     - Ours, but needs repair — usually the recorded path drifted after an
+       upgrade or reinstall.
+     - Re-run ``topos install``. Never ``topos uninstall``.
+   * - ``▲`` Conflict
+     - The file will not parse, or the ``topos`` key holds something Topos did
+       not write.
+     - Topos reports the path and writes nothing. Resolve it by hand.
+   * - ``○`` Absent
+     - No entry.
+     - ``topos install``.
 
-         .. code-block:: bash
+The residue block is read-only: skill files, instruction blocks, and
+``@import`` lines written by other tools or by pre-0.4.4 Topos. Topos names them
+and their owner, then leaves them alone.
 
-            claude mcp add --transport stdio topos -- topos mcp
-            claude mcp list
+Uninstall
+~~~~~~~~~
 
-         For a team-shared project config, add ``--scope project``; Claude will
-         write ``.mcp.json`` and ask each user to approve it.
+Same checklist, then a preview and a confirm that defaults to **No**:
 
-      .. dropdown:: Codex CLI
+.. code-block:: text
 
-         Codex stores MCP servers in ``config.toml`` and shares that setup
-         between the CLI and IDE extension.
+   ┌  Uninstall Topos from these agents?
+   │
+   │  · Claude Code — remove the MCP server entry from ~/.claude.json
+   │  · Codex CLI — remove [mcp_servers.topos] from ~/.codex/config.toml
+   │
+   │ ❯ ● No
+   │   ○ Yes
+   │
+   │  ↑↓ · enter · esc
+   └
 
-         .. code-block:: bash
+.. code-block:: bash
 
-            codex mcp add topos -- topos mcp
+   topos uninstall                        # select, preview, confirm
+   topos uninstall --all --yes            # no prompts
+   topos uninstall --all --dry-run        # preview only
+   topos uninstall --all --purge-backups  # also delete .topos.backup files
 
-         In the Codex TUI, run ``/mcp`` to confirm the server is active. For a
-         project-scoped setup, put the equivalent table in ``.codex/config.toml``
-         after trusting the project:
+Uninstall removes only the entries Topos wrote plus the files and directories it
+created, leaves hand-made entries and other servers alone, and never replaces a
+symlinked config with a regular file. It does not remove the ``topos`` binary —
+see :doc:`installation` for that.
 
-         .. code-block:: toml
+.. dropdown:: Other clients, and editor-owned alternatives
 
-            [mcp_servers.topos]
-            command = "topos"
-            args = ["mcp"]
+   **Any other MCP client.** Add this stdio server to its MCP settings — use an
+   absolute path to ``topos`` if the client is a GUI app:
 
-      .. dropdown:: Gemini CLI
+   .. code-block:: json
 
-         Gemini CLI can add the stdio server directly and defaults to project
-         scope.
+      { "mcpServers": { "topos": { "command": "topos", "args": ["mcp"] } } }
 
-         .. code-block:: bash
+   **VS Code / Cursor.** ``topos install vscode`` / ``topos install cursor``
+   registers your local binary and is the recommended path. Two editor-owned
+   alternatives exist; pick **one** of the three, or agent mode can register two
+   Topos servers and double tool calls and trust prompts.
 
-            gemini mcp add topos topos mcp
-            gemini mcp list
+   *MCP gallery* — Extensions view (``Ctrl+Shift+X`` / ``Cmd+Shift+X``), search
+   ``@mcp topos``, install **Topos**; or use **Install MCP server** on the
+   `GitHub MCP Registry page <https://github.com/mcp/Krv-Labs/topos>`_. This
+   pulls the registry's PyPI package (``topos-mcp``) and VS Code owns
+   registration, trust, and lifecycle — no local Topos install needed. See
+   `Add MCP servers in VS Code
+   <https://code.visualstudio.com/docs/copilot/customization/mcp-servers>`_.
 
-         If Gemini reports the server as disconnected in an untrusted folder,
-         trust the repository first:
+   *Marketplace extension* — for Command Palette workflows (**Topos: Evaluate
+   Project**, **Topos: Generate Dependency Graph**) and bundled runtime
+   resolution, not only agent tools.
 
-         .. code-block:: bash
+   .. button-link:: https://marketplace.visualstudio.com/items?itemName=KrvLabs.topos-vscode
+      :color: primary
+      :shadow:
 
-            gemini trust
+      Topos: Code Quality Targets for Agents (``KrvLabs.topos-vscode``)
 
-      .. dropdown:: Antigravity CLI / ``agy``
+   Cursor builds without the MCP gallery should use ``topos install cursor`` or
+   the Marketplace extension.
 
-         The current ``agy`` CLI does not expose a documented ``mcp`` setup
-         command. Use one of these verified paths instead:
+   **Antigravity.** The ``agy`` CLI exposes no documented MCP setup command;
+   ``topos install antigravity`` writes ``~/.gemini/config/mcp_config.json``
+   directly. If Antigravity has not migrated to that location yet,
+   ``topos status`` says so.
 
-         - In VS Code or Cursor, use the VS Code tab above (``@mcp topos`` or
-           the full Marketplace extension — not both).
-         - If your Antigravity build exposes manual MCP JSON, use the
-           ``Manual JSON`` tab below.
-         - If you already manage MCP through Claude or Gemini plugins, import
-           that host's plugin configuration with Antigravity's plugin commands,
-           then verify in Antigravity before relying on Topos tools.
+.. dropdown:: Troubleshooting
 
-   .. tab-item:: Manual JSON
-      :sync: manual-json
-
-      Use this for Cursor JSON, Windsurf, or another MCP client that accepts
-      a stdio server configuration.
-
-      Add this server configuration in your client's MCP settings:
-
-      .. code-block:: json
-
-         { "mcpServers": { "topos": { "command": "topos", "args": ["mcp"] } } }
-
-.. dropdown:: Troubleshooting and optional checks
-
-   Use these only when the server does not connect, Topos cannot see your files,
-   or COMPOSABLE / ``IDEAL`` is unavailable.
+   Use these when the server does not connect, Topos cannot see your files, or
+   COMPOSABLE / ``IDEAL`` is unavailable.
 
    Dependency graph
-      COMPOSABLE and ``IDEAL`` require a ``.gitnexus/`` store. SIMPLE, SECURE,
-      AST comparison, MCP docs, and UAST coverage work without it.
+      COMPOSABLE is scored by default and needs a ``.gitnexus/`` store, which
+      Topos generates and refreshes on its own. SIMPLE, SECURE, AST comparison,
+      MCP docs, and UAST coverage work without it.
 
       Prefer the MCP tools (no shell required):
 
@@ -404,9 +463,11 @@ Dependency Graph
    (falling back to file mtimes for graphs built before that marker existed), so
    a regenerate reliably clears ``stale``. Never shells out.
 
-``topos_generate_depgraph({"directory": ..., "force": ...})``
-   Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and
-   approval-gated. Requires the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
+``topos_generate_depgraph({"directory": ..., "gitnexus_dir": ..., "force": ...})``
+   Runs ``gitnexus analyze`` and writes ``.gitnexus/``. When ``directory`` is
+   omitted, the analyze root is derived from ``gitnexus_dir`` the same way
+   ``topos_depgraph_status`` does. Side-effecting and approval-gated. Requires
+   the ``gitnexus`` CLI (``pnpm add -g gitnexus  # or: npm install -g gitnexus``).
 
 Structure & Coverage
 ~~~~~~~~~~~~~~~~~~~~

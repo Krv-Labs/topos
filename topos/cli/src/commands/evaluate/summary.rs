@@ -13,22 +13,34 @@ use crate::commands::render::{
     guide as guide_char, guide_line, paint, truncate_left, RenderOptions,
 };
 
+struct SummaryView<'a> {
+    language: &'a str,
+    options: RenderOptions,
+    composable_requested: bool,
+    show_info_hint: bool,
+    composable_notices: &'a [String],
+    action: &'a str,
+}
+
 pub(crate) fn print_summary(
     files: &[PathBuf],
     results: &[ClassificationResult],
     language: &str,
     composable_requested: bool,
     show_info_hint: bool,
+    composable_notices: &[String],
 ) {
-    let options = RenderOptions::stdout();
     for line in render_summary(
         files,
         results,
-        language,
-        options,
-        composable_requested,
-        show_info_hint,
-        "Evaluated",
+        SummaryView {
+            language,
+            options: RenderOptions::stdout(),
+            composable_requested,
+            show_info_hint,
+            composable_notices,
+            action: "Evaluated",
+        },
     ) {
         println!("{line}");
     }
@@ -38,16 +50,19 @@ pub(crate) fn print_inspection_summary(
     path: &PathBuf,
     result: &ClassificationResult,
     language: &str,
+    composable_notices: &[String],
 ) {
-    let options = RenderOptions::stdout();
     for line in render_summary(
         std::slice::from_ref(path),
         std::slice::from_ref(result),
-        language,
-        options,
-        false,
-        false,
-        "Inspected",
+        SummaryView {
+            language,
+            options: RenderOptions::stdout(),
+            composable_requested: false,
+            show_info_hint: false,
+            composable_notices,
+            action: "Inspected",
+        },
     ) {
         println!("{line}");
     }
@@ -56,12 +71,16 @@ pub(crate) fn print_inspection_summary(
 fn render_summary(
     files: &[PathBuf],
     results: &[ClassificationResult],
-    language: &str,
-    options: RenderOptions,
-    _composable_requested: bool,
-    show_info_hint: bool,
-    action: &str,
+    view: SummaryView<'_>,
 ) -> Vec<String> {
+    let SummaryView {
+        language,
+        options,
+        composable_requested,
+        show_info_hint,
+        composable_notices,
+        action,
+    } = view;
     let mut lines = Vec::new();
     let single_file = results.len() == 1;
     let title = if single_file {
@@ -73,10 +92,10 @@ fn render_summary(
         format!("◇  {action} {} files", results.len())
     };
     lines.push(paint(title, Style::new().bold(), options));
+    let composable = results
+        .iter()
+        .any(|result| result.scores.contains_key("composable"));
     if let Some(result) = results.first() {
-        let composable = results
-            .iter()
-            .any(|result| result.scores.contains_key("composable"));
         lines.push(guide_line(
             format!(
                 "{language} · priority {} · COMPOSABLE {}",
@@ -90,6 +109,9 @@ fn render_summary(
             Style::new().dim(),
             options,
         ));
+    }
+    for notice in human_composable_notices(composable_notices) {
+        lines.push(composable_notice_line(&notice, options));
     }
     lines.push(guide_char('│', options));
 
@@ -169,24 +191,198 @@ fn render_summary(
     ));
     lines.push(floor_line(floor, mean, options));
 
+    // COMPOSABLE recovery is part of the finished card whenever setup warnings
+    // exist — not gated on --info. Mid-run stderr stays quiet.
+    let mut tips = Vec::new();
+    if composable_requested && wants_depgraph_recovery_tip(composable_notices) {
+        tips.push(depgraph_recovery_tip(composable_notices));
+    }
     if show_info_hint {
+        if results.len() == 1 {
+            tips.push("Tip: use `topos inspect` for metrics, functions, and guidance.".to_string());
+        } else if let Some((pillar, count)) = hinted_failure(results) {
+            tips.push(format!(
+                "Tip: add --failures {pillar} to list its {count} failing file{}; --info shows overall weak spots.",
+                if count == 1 { "" } else { "s" }
+            ));
+        } else {
+            tips.push("Tip: add --info to inspect the five weakest files.".to_string());
+        }
+    }
+    if !tips.is_empty() {
         lines.push(String::new());
-        lines.push(paint(
-            if results.len() == 1 {
-                "Tip: use `topos inspect` for metrics, functions, and guidance.".to_string()
-            } else if let Some((pillar, count)) = hinted_failure(results) {
-                format!(
-                    "Tip: add --failures {pillar} to list its {count} failing file{}; --info shows overall weak spots.",
-                    if count == 1 { "" } else { "s" }
-                )
-            } else {
-                "Tip: add --info to inspect the five weakest files.".to_string()
-            },
-            Style::new().dim(),
-            options,
-        ));
+        for tip in tips {
+            lines.push(paint(tip, Style::new().dim(), options));
+        }
     }
     lines
+}
+
+/// Human card notices derived from machine `warnings`.
+///
+/// JSON keeps the full list; the card collapses overlapping setup reasons so
+/// "branch not indexed" does not also show a stale warning about another
+/// branch's store, and mid-run stderr is not required for the same facts.
+fn human_composable_notices(warnings: &[String]) -> Vec<String> {
+    let hard_miss = warnings.iter().any(|warning| {
+        matches!(
+            notice_kind(warning),
+            NoticeKind::BranchNotIndexed | NoticeKind::MissingStore | NoticeKind::LoadFailure
+        )
+    });
+
+    let mut notices = Vec::new();
+    for warning in warnings {
+        let kind = notice_kind(warning);
+        if hard_miss && kind == NoticeKind::Stale {
+            continue;
+        }
+        let notice = humanize_composable_notice(warning);
+        if notice.is_empty() {
+            continue;
+        }
+        if notices.iter().any(|existing| existing == &notice) {
+            continue;
+        }
+        notices.push(notice);
+    }
+    notices
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoticeKind {
+    BranchNotIndexed,
+    MissingStore,
+    LoadFailure,
+    Schema,
+    Stale,
+    Other,
+}
+
+fn notice_kind(warning: &str) -> NoticeKind {
+    let lower = warning.to_ascii_lowercase();
+    if lower.contains("no gitnexus store indexed for branch")
+        || lower.contains("current branch is not indexed")
+    {
+        NoticeKind::BranchNotIndexed
+    } else if lower.contains("no .gitnexus directory found") {
+        NoticeKind::MissingStore
+    } else if lower.contains("could not be loaded") || lower.contains("no indexed store found") {
+        NoticeKind::LoadFailure
+    } else if lower.contains("storage version") || lower.contains("ladybug") {
+        NoticeKind::Schema
+    } else if lower.contains("may be stale") || lower.contains("stale") {
+        NoticeKind::Stale
+    } else {
+        NoticeKind::Other
+    }
+}
+
+/// Short in-card copy for one COMPOSABLE setup warning (machine strings stay full in JSON).
+fn humanize_composable_notice(warning: &str) -> String {
+    let trimmed = warning
+        .trim()
+        .strip_prefix("COMPOSABLE not scored — ")
+        .unwrap_or(warning.trim());
+    let lower = trimmed.to_ascii_lowercase();
+
+    if lower.contains("no gitnexus store indexed for branch")
+        || lower.contains("current branch is not indexed")
+    {
+        return format_branch_not_indexed_notice(trimmed);
+    }
+    if lower.contains("no .gitnexus directory found") {
+        return "no .gitnexus store yet".to_string();
+    }
+    if lower.contains("could not be loaded") || lower.contains("no indexed store found") {
+        return "dependency graph could not be loaded".to_string();
+    }
+    if lower.contains("storage version") || lower.contains("ladybug") {
+        return "GitNexus store schema mismatch".to_string();
+    }
+    if lower.contains("may be stale") || lower.contains("stale") {
+        return "index may be stale".to_string();
+    }
+    // Keep invalid-override and other detail readable but strip trailing
+    // "evaluating SIMPLE/SECURE only" noise — the meta line already says so.
+    trimmed
+        .trim_end_matches('.')
+        .trim_end_matches(" — evaluating SIMPLE/SECURE only")
+        .trim_end_matches("; evaluating SIMPLE/SECURE only")
+        .to_string()
+}
+
+fn format_branch_not_indexed_notice(message: &str) -> String {
+    // Machine shapes:
+    //   no gitnexus store indexed for branch 'x' (indexed: main, foo)
+    //   no gitnexus store indexed for branch x; indexed: main, foo
+    //   current branch is not indexed (indexed: main)
+    let lower = message.to_ascii_lowercase();
+    let indexed = if let Some(idx) = lower.find("(indexed:") {
+        message[idx + "(indexed:".len()..]
+            .trim()
+            .trim_end_matches(')')
+            .trim()
+    } else if let Some(idx) = lower.find("; indexed:") {
+        message[idx + "; indexed:".len()..]
+            .trim()
+            .trim_end_matches('.')
+            .trim()
+    } else if let Some(idx) = lower.find("indexed:") {
+        message[idx + "indexed:".len()..]
+            .trim()
+            .trim_start_matches(')')
+            .trim_end_matches(')')
+            .trim()
+    } else {
+        ""
+    };
+    if indexed.is_empty() {
+        "branch not indexed".to_string()
+    } else {
+        format!("branch not indexed (have: {indexed})")
+    }
+}
+
+fn composable_notice_line(notice: &str, options: RenderOptions) -> String {
+    format!(
+        "{}  {} {}",
+        guide_char('│', options),
+        paint("↻", Style::new().color256(208), options),
+        paint(notice, Style::new().dim(), options),
+    )
+}
+
+fn wants_depgraph_recovery_tip(notices: &[String]) -> bool {
+    notices.iter().any(|warning| {
+        matches!(
+            notice_kind(warning),
+            NoticeKind::BranchNotIndexed
+                | NoticeKind::MissingStore
+                | NoticeKind::LoadFailure
+                | NoticeKind::Schema
+                | NoticeKind::Stale
+        ) || {
+            let lower = warning.to_ascii_lowercase();
+            lower.contains("depgraph generate") || lower.contains("topos depgraph")
+        }
+    })
+}
+
+fn depgraph_recovery_tip(notices: &[String]) -> String {
+    if notices
+        .iter()
+        .any(|warning| notice_kind(warning) == NoticeKind::BranchNotIndexed)
+    {
+        "Tip: run `topos depgraph generate` to index this branch for COMPOSABLE.".to_string()
+    } else if notices
+        .iter()
+        .any(|warning| notice_kind(warning) == NoticeKind::Stale)
+    {
+        "Tip: run `topos depgraph generate` to refresh COMPOSABLE.".to_string()
+    } else {
+        "Tip: run `topos depgraph generate` to enable COMPOSABLE scoring.".to_string()
+    }
 }
 
 pub(crate) fn pillar_measured(results: &[ClassificationResult], pillar: &str) -> bool {
@@ -344,11 +540,17 @@ fn attention_lines_with_options(
     lines
 }
 
-pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -> Value {
+pub(crate) fn json_output(
+    files: &[PathBuf],
+    results: &[ClassificationResult],
+    languages: &[String],
+    warnings: &[String],
+) -> Value {
     let rows: Vec<Value> = files
         .iter()
         .zip(results)
-        .map(|(path, result)| {
+        .enumerate()
+        .map(|(index, (path, result))| {
             let dimensions: serde_json::Map<String, Value> = result
                 .dimensions
                 .iter()
@@ -359,8 +561,13 @@ pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -
                 .iter()
                 .map(|(name, score)| (name.clone(), json!((score * 1000.0).round() / 10.0)))
                 .collect();
+            let language = languages
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or("unknown");
             json!({
                 "file": path,
+                "language": language,
                 "is_parseable": result.is_parseable,
                 "lattice_element": result.summary().name(),
                 "lattice_symbol": result.summary().symbol(),
@@ -371,7 +578,14 @@ pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -
             })
         })
         .collect();
-    json!({ "version": env!("CARGO_PKG_VERSION"), "results": rows })
+    // Top-level `warnings` mirrors MCP evaluate payloads so machines can see
+    // COMPOSABLE setup failures (invalid override, generation miss, …)
+    // instead of only inferring them from a missing `composable` score.
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "results": rows,
+        "warnings": warnings,
+    })
 }
 
 pub(crate) fn ranked_file_indices(
@@ -428,19 +642,29 @@ fn medal_tier_name(floor: EvaluationValue) -> &'static str {
 }
 
 fn floor_line(floor: EvaluationValue, mean: f64, options: RenderOptions) -> String {
-    let (status_symbol, style) = match floor {
-        EvaluationValue::Slop => ("X", Style::new().red().bold()),
-        _ => ("✓", Style::new().green().bold()),
-    };
-    format!(
-        "{}  {} {} {} · {} · {:.0}% average.",
-        guide_char('└', options),
-        paint(status_symbol, style.clone(), options),
-        floor.symbol(),
-        medal_tier_name(floor),
-        paint(floor.name(), style, options),
-        mean * 100.0,
-    )
+    match floor {
+        // SLOP is already the failure tier — no medal emoji and no second
+        // lattice-name echo (`X ❌ SLOP · SLOP` read as four failure cues).
+        EvaluationValue::Slop => format!(
+            "{}  {}  {} · {:.0}% average.",
+            guide_char('└', options),
+            paint("X", Style::new().red().bold(), options),
+            paint(medal_tier_name(floor), Style::new().red().bold(), options),
+            mean * 100.0,
+        ),
+        other => {
+            let style = Style::new().green().bold();
+            format!(
+                "{}  {} {} {} · {} · {:.0}% average.",
+                guide_char('└', options),
+                paint("✓", style.clone(), options),
+                other.symbol(),
+                medal_tier_name(other),
+                paint(other.name(), style, options),
+                mean * 100.0,
+            )
+        }
+    }
 }
 
 fn verdict_text(verdict: EvaluationValue, options: RenderOptions) -> String {
@@ -540,14 +764,17 @@ mod tests {
         let output = render_summary(
             &files,
             &[result(false), result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            true,
-            "Evaluated",
         )
         .join("\n");
 
@@ -556,7 +783,9 @@ mod tests {
             "Tip: add --failures simple to list its 1 failing file; --info shows overall weak spots."
         ));
         assert!(!output.contains("Weak spots"));
-        assert!(output.contains("SLOP · SLOP ·"));
+        assert!(output.contains("X  SLOP ·"));
+        assert!(!output.contains("SLOP · SLOP"));
+        assert!(!output.contains('❌'));
         assert!(!output.contains('🥉'));
     }
 
@@ -577,14 +806,17 @@ mod tests {
         let output = render_summary(
             &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
             &[first, second],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            true,
-            "Evaluated",
         )
         .join("\n");
 
@@ -596,14 +828,17 @@ mod tests {
         let output = render_summary(
             &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
             &[result(true), result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            true,
-            "Evaluated",
         )
         .join("\n");
 
@@ -611,23 +846,143 @@ mod tests {
     }
 
     #[test]
-    fn requested_unmeasured_composable_still_shows_inspect_tip() {
+    fn requested_unmeasured_composable_without_notice_keeps_inspect_tip() {
         let output = render_summary(
             &[PathBuf::from("a.rs")],
             &[result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            true,
-            true,
-            "Evaluated",
         )
         .join("\n");
 
         assert!(!output.contains("topos depgraph generate"));
         assert!(output.contains("Tip: use `topos inspect` for metrics, functions, and guidance."));
+    }
+
+    #[test]
+    fn branch_not_indexed_notice_and_recovery_tip() {
+        let notice = "COMPOSABLE not scored — no gitnexus store indexed for branch 'feat/x' (indexed: main, release/v0.4.4)";
+        let output = render_summary(
+            &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
+            &[result(false), result(true)],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: true,
+                composable_notices: &[notice.to_string()],
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+
+        assert!(
+            output.contains("↻ branch not indexed (have: main, release/v0.4.4)"),
+            "{output}"
+        );
+        assert!(!output.contains("gitnexus:"));
+        assert!(output
+            .contains("Tip: run `topos depgraph generate` to index this branch for COMPOSABLE."));
+        assert!(output.contains("Tip: add --failures simple"));
+        assert!(output.contains("X  SLOP ·"));
+        assert!(!output.contains('❌'));
+    }
+
+    #[test]
+    fn human_card_drops_stale_when_branch_is_not_indexed() {
+        let notices = [
+            "gitnexus index may be stale — source tree content changed since the dependency graph was generated; run 'topos depgraph generate' before trusting COMPOSABLE.".to_string(),
+            "COMPOSABLE not scored — no gitnexus store indexed for branch 'release/044-issue-fixes'; indexed: main, codex/restore-cli-terminal-ux".to_string(),
+        ];
+        let human = human_composable_notices(&notices);
+        assert_eq!(
+            human,
+            vec!["branch not indexed (have: main, codex/restore-cli-terminal-ux)".to_string()]
+        );
+
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result(false)],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: false,
+                composable_notices: &notices,
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+
+        assert!(
+            output.contains("↻ branch not indexed (have: main, codex/restore-cli-terminal-ux)"),
+            "{output}"
+        );
+        assert!(!output.contains("stale"), "{output}");
+        assert!(
+            output.contains(
+                "Tip: run `topos depgraph generate` to index this branch for COMPOSABLE."
+            ),
+            "{output}"
+        );
+        // JSON still receives the full machine list from the caller — only the
+        // human card collapses overlapping setup reasons.
+        assert_eq!(notices.len(), 2);
+    }
+
+    #[test]
+    fn stale_only_notice_uses_refresh_tip() {
+        let notices = [
+            "gitnexus index may be stale — source tree content changed since the dependency graph was generated; run 'topos depgraph generate' before trusting COMPOSABLE.".to_string(),
+        ];
+        assert_eq!(
+            human_composable_notices(&notices),
+            vec!["index may be stale".to_string()]
+        );
+
+        let mut result = result(true);
+        result
+            .dimensions
+            .insert("composable".to_string(), EvaluationValue::Composable);
+        result.scores.insert("composable".to_string(), 0.9);
+
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: false,
+                composable_notices: &notices,
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+
+        assert!(output.contains("↻ index may be stale"), "{output}");
+        assert!(
+            output.contains("Tip: run `topos depgraph generate` to refresh COMPOSABLE."),
+            "{output}"
+        );
     }
 
     #[test]
@@ -669,7 +1024,9 @@ mod tests {
             },
         );
         assert!(line.contains("X"));
-        assert!(line.contains("SLOP · SLOP · 20% average."));
+        assert!(line.contains("X  SLOP · 20% average."));
+        assert!(!line.contains('❌'));
+        assert!(!line.contains("SLOP · SLOP"));
     }
 
     #[test]
@@ -677,14 +1034,17 @@ mod tests {
         let output = render_summary(
             &[PathBuf::from("a.rs")],
             &[result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: false,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            false,
-            "Evaluated",
         )
         .join("\n");
 
@@ -828,14 +1188,17 @@ mod tests {
         let output = render_summary(
             &[PathBuf::from("a.rs")],
             &[result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 72,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 72,
+                },
+                composable_requested: false,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            true,
-            "Evaluated",
         )
         .join("\n");
         assert!(!output.contains("QUALITY"));
@@ -847,14 +1210,17 @@ mod tests {
         let output = render_summary(
             &[PathBuf::from("src/main.rs")],
             &[result(true)],
-            "rust",
-            RenderOptions {
-                styled: false,
-                width: 120,
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: true,
+                composable_notices: &[],
+                action: "Evaluated",
             },
-            false,
-            true,
-            "Evaluated",
         )
         .join("\n");
         assert!(output.contains("◇  Evaluated src/main.rs"));

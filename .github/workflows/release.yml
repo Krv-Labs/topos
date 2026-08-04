@@ -21,9 +21,32 @@ permissions:
   contents: write
 
 jobs:
+  # Fail fast when a release tag (or workflow_dispatch version) does not match
+  # Cargo.toml — maturin/PyPI take the workspace version, while GitHub Release
+  # + Homebrew take the git tag. See #217.
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check published metadata vs Cargo.toml
+        run: python3 scripts/check_versions.py
+
+      - name: Check release tag matches Cargo.toml
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ github.event.inputs.version }}"
+          else
+            RAW="${GITHUB_REF#refs/tags/}"
+          fi
+          python3 scripts/check_versions.py --tag "$RAW"
+
   # ---- Native `topos` binary (includes `topos mcp`) per platform -----------
   build:
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}
+    needs:
+      - verify-version
     strategy:
       fail-fast: false
       matrix:
@@ -244,6 +267,7 @@ jobs:
   release:
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}
     needs:
+      - verify-version
       - build
       - package-vscode
     runs-on: ubuntu-latest
@@ -289,6 +313,7 @@ jobs:
   publish-homebrew:
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs.pypi_only) }}
     needs:
+      - verify-version
       - release
     runs-on: ubuntu-latest
     steps:
@@ -468,6 +493,8 @@ jobs:
 
   # ---- PyPI: thin `bin` wheels wrapping the topos-mcp server binary --------
   build-pypi-wheels:
+    needs:
+      - verify-version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -762,3 +789,7 @@ jobs:
             echo "Twine also logs \`Skipping <file> because it appears to already exist\` inside the Publish step when a duplicate is hit."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice title=PyPI publish finished::topos-mcp==${VERSION}: ${PRE_UPLOAD} attempted upload(s), ${PRE_ALREADY} pre-existing skip(s)"
+
+
+
+

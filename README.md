@@ -128,7 +128,7 @@ topos evaluate . -r
 > [!TIP]
 > Want GOLD? Run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
 
-Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaults to Python; use `--language rust|go|javascript|typescript|cpp` for another language. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
+Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go, and discovers all of them by default — pass `--language` only to narrow a run to one. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 ## More ways to use Topos
 

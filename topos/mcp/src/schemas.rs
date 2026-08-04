@@ -9,13 +9,21 @@ use std::collections::HashMap;
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use topos_engine::core::omega::EvaluationValue;
+use topos_engine::core::omega::{EvaluationValue, OMEGA_SIZE};
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::preferences::{Generator, UserPreferences};
+use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
 
-/// The 8 elements of the free Heyting algebra H(G_qual) on the three
-/// generators SIMPLE, COMPOSABLE, SECURE, mirroring `EvaluationValue` on
-/// the MCP wire.
+/// The 16 elements of the free Heyting algebra H(G_qual) on the four
+/// generators SIMPLE, COMPOSABLE, SECURE, NAVIGABLE, mirroring
+/// `EvaluationValue` on the MCP wire.
+///
+/// Note for clients pinned to the pre-v0.5.0 shape: `IDEAL` now requires
+/// all four pillars. The verdict that used to be `IDEAL` — the top of the
+/// three-generator algebra — serializes as `SIMPLE_COMPOSABLE_SECURE`.
+/// Variants are declared in **bitmask order**, matching
+/// `EvaluationValue::ALL`, so the two enums convert by position. Serde
+/// keys on variant names, so this ordering is an implementation detail
+/// and not part of the wire contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default)]
 #[allow(non_camel_case_types)]
 pub enum LatticeElement {
@@ -23,52 +31,56 @@ pub enum LatticeElement {
     SLOP,
     SIMPLE,
     COMPOSABLE,
-    SECURE,
     SIMPLE_COMPOSABLE,
+    SECURE,
     SIMPLE_SECURE,
     COMPOSABLE_SECURE,
+    SIMPLE_COMPOSABLE_SECURE,
+    NAVIGABLE,
+    SIMPLE_NAVIGABLE,
+    COMPOSABLE_NAVIGABLE,
+    SIMPLE_COMPOSABLE_NAVIGABLE,
+    SECURE_NAVIGABLE,
+    SIMPLE_SECURE_NAVIGABLE,
+    COMPOSABLE_SECURE_NAVIGABLE,
     IDEAL,
 }
 
 impl LatticeElement {
+    const ALL: [LatticeElement; OMEGA_SIZE] = [
+        LatticeElement::SLOP,
+        LatticeElement::SIMPLE,
+        LatticeElement::COMPOSABLE,
+        LatticeElement::SIMPLE_COMPOSABLE,
+        LatticeElement::SECURE,
+        LatticeElement::SIMPLE_SECURE,
+        LatticeElement::COMPOSABLE_SECURE,
+        LatticeElement::SIMPLE_COMPOSABLE_SECURE,
+        LatticeElement::NAVIGABLE,
+        LatticeElement::SIMPLE_NAVIGABLE,
+        LatticeElement::COMPOSABLE_NAVIGABLE,
+        LatticeElement::SIMPLE_COMPOSABLE_NAVIGABLE,
+        LatticeElement::SECURE_NAVIGABLE,
+        LatticeElement::SIMPLE_SECURE_NAVIGABLE,
+        LatticeElement::COMPOSABLE_SECURE_NAVIGABLE,
+        LatticeElement::IDEAL,
+    ];
+
     pub fn as_str(self) -> &'static str {
-        match self {
-            LatticeElement::SLOP => "SLOP",
-            LatticeElement::SIMPLE => "SIMPLE",
-            LatticeElement::COMPOSABLE => "COMPOSABLE",
-            LatticeElement::SECURE => "SECURE",
-            LatticeElement::SIMPLE_COMPOSABLE => "SIMPLE_COMPOSABLE",
-            LatticeElement::SIMPLE_SECURE => "SIMPLE_SECURE",
-            LatticeElement::COMPOSABLE_SECURE => "COMPOSABLE_SECURE",
-            LatticeElement::IDEAL => "IDEAL",
-        }
+        str_to_lattice(self).name()
     }
 }
 
 pub fn lattice_to_str(value: EvaluationValue) -> LatticeElement {
-    match value {
-        EvaluationValue::Slop => LatticeElement::SLOP,
-        EvaluationValue::Simple => LatticeElement::SIMPLE,
-        EvaluationValue::Composable => LatticeElement::COMPOSABLE,
-        EvaluationValue::Secure => LatticeElement::SECURE,
-        EvaluationValue::SimpleComposable => LatticeElement::SIMPLE_COMPOSABLE,
-        EvaluationValue::SimpleSecure => LatticeElement::SIMPLE_SECURE,
-        EvaluationValue::ComposableSecure => LatticeElement::COMPOSABLE_SECURE,
-        EvaluationValue::Ideal => LatticeElement::IDEAL,
-    }
+    LatticeElement::ALL[value.bits() as usize]
 }
 
 pub fn str_to_lattice(value: LatticeElement) -> EvaluationValue {
-    match value {
-        LatticeElement::SLOP => EvaluationValue::Slop,
-        LatticeElement::SIMPLE => EvaluationValue::Simple,
-        LatticeElement::COMPOSABLE => EvaluationValue::Composable,
-        LatticeElement::SECURE => EvaluationValue::Secure,
-        LatticeElement::SIMPLE_COMPOSABLE => EvaluationValue::SimpleComposable,
-        LatticeElement::SIMPLE_SECURE => EvaluationValue::SimpleSecure,
-        LatticeElement::COMPOSABLE_SECURE => EvaluationValue::ComposableSecure,
-        LatticeElement::IDEAL => EvaluationValue::Ideal,
-    }
+    let index = LatticeElement::ALL
+        .iter()
+        .position(|candidate| *candidate == value)
+        .expect("ALL lists every variant");
+    EvaluationValue::ALL[index]
 }
 
 /// Outcome of comparing a proposed change to the baseline.
@@ -110,11 +122,7 @@ pub enum PrioritySource {
 
 /// Serialize `Priority` the way the Python wire did (lowercase value).
 pub fn priority_str(priority: Priority) -> &'static str {
-    match priority {
-        Priority::Simple => "simple",
-        Priority::Composable => "composable",
-        Priority::Secure => "secure",
-    }
+    priority.top_generator().as_str()
 }
 
 /// Wire form of a generator name.
@@ -124,23 +132,38 @@ pub enum GeneratorInput {
     Simple,
     Composable,
     Secure,
+    Navigable,
 }
 
 impl GeneratorInput {
+    pub const ALL: [GeneratorInput; RANKING_LEN] = [
+        GeneratorInput::Simple,
+        GeneratorInput::Composable,
+        GeneratorInput::Secure,
+        GeneratorInput::Navigable,
+    ];
+
     pub fn to_generator(self) -> Generator {
         match self {
             GeneratorInput::Simple => Generator::Simple,
             GeneratorInput::Composable => Generator::Composable,
             GeneratorInput::Secure => Generator::Secure,
+            GeneratorInput::Navigable => Generator::Navigable,
         }
     }
 
+    /// Inverse of [`GeneratorInput::to_generator`], so callers rendering a
+    /// domain ranking onto the wire don't each keep their own copy of the
+    /// mapping.
+    pub fn from_generator(g: Generator) -> GeneratorInput {
+        GeneratorInput::ALL
+            .into_iter()
+            .find(|candidate| candidate.to_generator() == g)
+            .expect("ALL covers every Generator")
+    }
+
     pub fn as_str(self) -> &'static str {
-        match self {
-            GeneratorInput::Simple => "simple",
-            GeneratorInput::Composable => "composable",
-            GeneratorInput::Secure => "secure",
-        }
+        self.to_generator().as_str()
     }
 }
 
@@ -148,11 +171,11 @@ impl GeneratorInput {
 // Input models
 // ---------------------------------------------------------------------------
 
-/// Strict ranking over simple, composable, and secure.
+/// Strict ranking over simple, composable, secure, and navigable.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UserPreferencesInput {
-    /// Permutation of simple/composable/secure, best first.
+    /// Permutation of simple/composable/secure/navigable, best first.
     pub ranking: Vec<GeneratorInput>,
     /// Optional explicit target verdict.
     #[serde(default)]
@@ -163,9 +186,9 @@ impl UserPreferencesInput {
     /// Convert into the domain-layer `UserPreferences`.
     pub fn to_preferences(&self) -> Result<UserPreferences, String> {
         let ranking: Vec<Generator> = self.ranking.iter().map(|g| g.to_generator()).collect();
-        let arr: [Generator; 3] = ranking
-            .try_into()
-            .map_err(|_| "ranking must contain exactly simple, composable, secure".to_string())?;
+        let arr: [Generator; RANKING_LEN] = ranking.try_into().map_err(|_| {
+            "ranking must contain exactly simple, composable, secure, navigable".to_string()
+        })?;
         let base = UserPreferences::new(arr).map_err(|e| e.to_string())?;
         match self.target {
             Some(t) => UserPreferences::with_target(arr, Some(str_to_lattice(t)))
@@ -177,9 +200,11 @@ impl UserPreferencesInput {
     /// Use the top-ranked generator as the scorer priority.
     pub fn to_priority(&self) -> Priority {
         match self.ranking.first() {
-            Some(GeneratorInput::Simple) | None => Priority::Simple,
+            None => Priority::Simple,
+            Some(GeneratorInput::Simple) => Priority::Simple,
             Some(GeneratorInput::Composable) => Priority::Composable,
             Some(GeneratorInput::Secure) => Priority::Secure,
+            Some(GeneratorInput::Navigable) => Priority::Navigable,
         }
     }
 }

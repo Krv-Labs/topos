@@ -7,7 +7,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
-use topos_engine::core::omega::{verdict_from_generators, EvaluationValue};
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::weakest_score;
 
@@ -559,11 +559,11 @@ fn min_scores_by_dim(results: &[ClassificationResult]) -> HashMap<String, f64> {
 }
 
 fn aggregate_floor_verdict(rolled: &HashMap<String, EvaluationValue>) -> LatticeElement {
-    lattice_to_str(verdict_from_generators(
-        rolled.get("simple") == Some(&EvaluationValue::Simple),
-        rolled.get("composable") == Some(&EvaluationValue::Composable),
-        rolled.get("secure") == Some(&EvaluationValue::Secure),
-    ))
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|g| rolled.get(g.as_str()) == Some(&g.value()))
+        .collect();
+    lattice_to_str(verdict_from_generators(&satisfied))
 }
 
 fn worst_key(entry: &ProjectFileEntry) -> f64 {

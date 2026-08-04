@@ -13,9 +13,18 @@
 mod tests {
     use crate::server::ToposServer;
 
-    /// Baseline from Python (2026-07-06 measured 33_736; ceiling = +~750).
-    const TOTAL_CEILING_CHARS: usize = 34_500;
-    const PER_TOOL_CEILING_CHARS: usize = 4_500;
+    /// Re-baselined for the NAVIGABLE pillar (v0.5.0): `LatticeElement`
+    /// went from 8 variants to 16 and `GeneratorInput` from 3 to 4, and
+    /// both are enumerated in every input schema that accepts a verdict or
+    /// a preference ranking. Measured 39_584 after that change (was 33_736
+    /// under the three-generator algebra); ceilings keep the same ~2%
+    /// headroom convention as the Python baseline they inherit from.
+    ///
+    /// This growth is the price of a genuinely larger `Ω`, not schema
+    /// bloat — but it is a one-time payment. Treat any further increase as
+    /// a regression to investigate rather than a number to raise again.
+    const TOTAL_CEILING_CHARS: usize = 40_500;
+    const PER_TOOL_CEILING_CHARS: usize = 5_000;
 
     fn approx_tokens(chars: usize) -> usize {
         chars / 4

@@ -5,9 +5,17 @@ use std::path::PathBuf;
 use console::Style;
 use serde_json::{json, Value};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
-use topos_engine::core::omega::EvaluationValue;
+use topos_engine::core::omega::{EvaluationValue, Generator};
+use topos_engine::evaluation::preferences::RANKING_LEN;
 
-const PILLARS: [&str; 3] = ["simple", "composable", "secure"];
+/// Pillar rows, in `Generator::ALL` order so the table cannot fall out of
+/// step with the algebra.
+const PILLARS: [&str; RANKING_LEN] = [
+    Generator::Simple.as_str(),
+    Generator::Composable.as_str(),
+    Generator::Secure.as_str(),
+    Generator::Navigable.as_str(),
+];
 
 use crate::commands::render::{
     guide as guide_char, guide_line, paint, truncate_left, RenderOptions,
@@ -632,13 +640,10 @@ fn status_text(passing: bool, options: RenderOptions) -> String {
     format!("{} {label}", paint(symbol, style, options))
 }
 
+/// Medal banding lives in `Ω`, not here — see
+/// [`EvaluationValue::medal_tier`].
 fn medal_tier_name(floor: EvaluationValue) -> &'static str {
-    match floor.bits().count_ones() {
-        3 => "GOLD",
-        2 => "SILVER",
-        1 => "BRONZE",
-        _ => "SLOP",
-    }
+    floor.medal_tier()
 }
 
 fn floor_line(floor: EvaluationValue, mean: f64, options: RenderOptions) -> String {
@@ -986,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn floor_line_shows_gold_medal_and_lattice_name() {
+    fn floor_line_shows_platinum_medal_and_lattice_name() {
         let line = floor_line(
             EvaluationValue::Ideal,
             0.67,
@@ -996,7 +1001,21 @@ mod tests {
             },
         );
         assert!(line.contains("✓"));
-        assert!(line.contains("GOLD · IDEAL · 67% average."));
+        assert!(line.contains("PLATINUM · IDEAL · 67% average."));
+    }
+
+    /// All four pillars is PLATINUM; three of four is GOLD.
+    #[test]
+    fn floor_line_shows_gold_medal_for_three_of_four_pillars() {
+        let line = floor_line(
+            EvaluationValue::SimpleComposableSecure,
+            0.67,
+            RenderOptions {
+                styled: false,
+                width: 120,
+            },
+        );
+        assert!(line.contains("GOLD · SIMPLE_COMPOSABLE_SECURE · 67% average."));
     }
 
     #[test]

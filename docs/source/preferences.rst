@@ -7,70 +7,106 @@ Preferences
 Preferences tell Topos how an agent should trade off quality goals when a file
 cannot reach ``IDEAL`` within the available iteration budget.
 
-Topos measures three independent quality generators:
+Topos measures four independent quality generators:
 
 * ``SIMPLE`` — low internal complexity.
 * ``COMPOSABLE`` — healthy module coupling.
 * ``SECURE`` — no known dangerous calls or taint paths.
+* ``NAVIGABLE`` — shallow nesting, cheap for an agent to read.
 
-These generators form an eight-element lattice. ``IDEAL`` means all three are
+These generators form a sixteen-element lattice. ``IDEAL`` means all four are
 satisfied, but the single-generator states are intentionally incomparable:
-``SIMPLE`` is not inherently better than ``SECURE`` or ``COMPOSABLE``. A
-preference ranking makes that tradeoff explicit.
+``SIMPLE`` is not inherently better than ``SECURE``, ``COMPOSABLE``, or
+``NAVIGABLE``. A preference ranking makes that tradeoff explicit.
 
 What Preferences Do
 -------------------
 
-``preferences.ranking`` is a strict ordering of the three generators:
+``preferences.ranking`` is a strict ordering of **all four** generators — a
+three-element ranking written before v0.5.0 is no longer a valid permutation
+and is rejected in favour of the default:
 
 .. code-block:: text
 
-   composable > secure > simple
+   composable > secure > simple > navigable
 
-This means: first try to satisfy all three generators. If that stalls, prefer
+This means: first try to satisfy all four generators. If that stalls, prefer
 the best result that preserves ``COMPOSABLE`` and ``SECURE`` before spending
 more effort on ``SIMPLE``.
 
 Topos turns the ranking into a total order over lattice verdicts by weighting
-the ranked generators ``4 / 2 / 1``. With:
+the ranked generators ``8 / 4 / 2 / 1`` — each weight exceeds all the lower
+ones combined, making the order strictly lexicographic. With:
 
 .. code-block:: text
 
-   simple > composable > secure
+   simple > composable > secure > navigable
 
 the induced order is:
 
 .. list-table::
    :header-rows: 1
-   :widths: 28 16 56
+   :widths: 40 12 48
 
    * - Verdict
      - Score
      - Meaning
    * - ``IDEAL``
-     - ``7``
-     - all three generators satisfied
+     - ``15``
+     - all four generators satisfied
+   * - ``SIMPLE_COMPOSABLE_SECURE``
+     - ``14``
+     - concedes only the last-ranked generator
+   * - ``SIMPLE_COMPOSABLE_NAVIGABLE``
+     - ``13``
+     -
    * - ``SIMPLE_COMPOSABLE``
-     - ``6``
+     - ``12``
      - fallback target if ``IDEAL`` stalls
+   * - ``SIMPLE_SECURE_NAVIGABLE``
+     - ``11``
+     -
    * - ``SIMPLE_SECURE``
-     - ``5``
-     - keeps the first and third preferences
+     - ``10``
+     -
+   * - ``SIMPLE_NAVIGABLE``
+     - ``9``
+     -
    * - ``SIMPLE``
-     - ``4``
+     - ``8``
      - keeps the top preference only
+   * - ``COMPOSABLE_SECURE_NAVIGABLE``
+     - ``7``
+     - satisfies the lower three preferences
    * - ``COMPOSABLE_SECURE``
-     - ``3``
-     - satisfies the lower two preferences
+     - ``6``
+     -
+   * - ``COMPOSABLE_NAVIGABLE``
+     - ``5``
+     -
    * - ``COMPOSABLE``
-     - ``2``
+     - ``4``
      - keeps the second preference only
+   * - ``SECURE_NAVIGABLE``
+     - ``3``
+     -
    * - ``SECURE``
-     - ``1``
+     - ``2``
      - keeps the third preference only
+   * - ``NAVIGABLE``
+     - ``1``
+     - keeps the last preference only
    * - ``SLOP``
      - ``0``
      - no generator satisfied
+
+.. versionchanged:: 0.5.0
+   The fallback target is no longer the element directly below ``IDEAL``.
+   With three generators, "meet of the top two" and "one step below
+   ``IDEAL``" were the same verdict; with four they differ. One step below
+   ``IDEAL`` concedes only the lowest-ranked generator
+   (``SIMPLE_COMPOSABLE_SECURE`` above); the fallback concedes the bottom
+   two.
 
 The important behavior is the **fallback target**: when ``IDEAL`` plateaus, the
 agent should aim for the meet of the top two ranked generators.
@@ -82,15 +118,15 @@ agent should aim for the meet of the top two ranked generators.
    * - Ranking
      - First target
      - Fallback target
-   * - ``simple > composable > secure``
+   * - ``simple > composable > secure > navigable``
      - ``IDEAL``
      - ``SIMPLE_COMPOSABLE``
-   * - ``secure > simple > composable``
+   * - ``secure > simple > composable > navigable``
      - ``IDEAL``
      - ``SIMPLE_SECURE``
-   * - ``composable > secure > simple``
+   * - ``navigable > composable > secure > simple``
      - ``IDEAL``
-     - ``COMPOSABLE_SECURE``
+     - ``COMPOSABLE_NAVIGABLE``
 
 How Agents Use Preferences
 --------------------------

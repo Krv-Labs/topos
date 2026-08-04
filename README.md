@@ -9,7 +9,7 @@
 <h3 align="center">A structural quality gate for coding agents.</h3>
 
 <p align="center">
-  Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
+  Topos measures complexity, coupling, risky data flows, and agent cognitive load, then gives your agent a concrete target&mdash;from SLOP to PLATINUM.
 </p>
 
 <p align="center">
@@ -124,7 +124,7 @@ topos evaluate . -r
 ```
 
 > [!TIP]
-> Want GOLD? Run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
+> Want PLATINUM? COMPOSABLE needs a dependency graph: run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
 
 Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaults to Python; use `--language rust|go|javascript|typescript|cpp` for another language. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
@@ -138,27 +138,31 @@ Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaul
 
 ## What Topos checks
 
-Every file gets three independent verdicts:
+Every file gets four independent verdicts:
 
 - **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
 - **COMPOSABLE** — stays decoupled from the repository using module-dependency structure and Martin instability.
 - **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
+- **NAVIGABLE** — stays shallow enough for an agent to read and change in one pass, using depth-weighted nesting divergence over the AST scope tree.
 
 Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
 
 | Medal | Criteria |
 | :--- | :--- |
-| 🥇 **GOLD** | Passes all 3 |
-| 🥈 **SILVER** | Passes 2 of 3 |
-| 🥉 **BRONZE** | Passes 1 of 3 |
+| 🏆 **PLATINUM** | Passes all 4 |
+| 🥇 **GOLD** | Passes 3 of 4 |
+| 🥈 **SILVER** | Passes 2 of 4 |
+| 🥉 **BRONZE** | Passes 1 of 4 |
 | ❌ **SLOP** | Passes 0, or fails to parse |
+
+> **SIMPLE and NAVIGABLE are not the same check.** SIMPLE counts *branches*; NAVIGABLE measures *nesting*. Ten sequential `if`s are complex but perfectly flat, and score 0 divergence. Fold the same branches four levels deep and NAVIGABLE degrades while SIMPLE does not move — because nesting, not branch count, is what predicts an LLM losing track of the code.
 
 Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings. Advisory findings never silently change the scored medal.
 
 <details>
 <summary>How the medal system is derived</summary>
 
-The three pillars are pairwise incomparable and form an eight-element evaluation lattice; GOLD is their intersection.
+The four pillars are pairwise incomparable and form a sixteen-element evaluation lattice (a 4-cube); PLATINUM is their intersection. Labels below abbreviate the pillars as **S**imple, **C**omposable, **Sc** = Secure, **N**avigable.
 
 ```mermaid
 ---
@@ -167,36 +171,72 @@ config:
   theme: neutral
 ---
 graph BT
-    SLOP["❌ SLOP<br/>No Medal"]
-    SIMPLE["🥉 BRONZE<br/>Simple"]
-    COMPOSABLE["🥉 BRONZE<br/>Composable"]
-    SECURE["🥉 BRONZE<br/>Secure"]
-    SC["🥈 SILVER<br/>S ∧ C"]
-    SSc["🥈 SILVER<br/>S ∧ Sc"]
-    CSc["🥈 SILVER<br/>C ∧ Sc"]
-    IDEAL["🥇 GOLD<br/>Quality Code"]
+    SLOP["❌ SLOP"]
+    S["🥉 S"]
+    C["🥉 C"]
+    Sc["🥉 Sc"]
+    N["🥉 N"]
+    SC["🥈 S∧C"]
+    SSc["🥈 S∧Sc"]
+    SN["🥈 S∧N"]
+    CSc["🥈 C∧Sc"]
+    CN["🥈 C∧N"]
+    ScN["🥈 Sc∧N"]
+    SCSc["🥇 S∧C∧Sc"]
+    SCN["🥇 S∧C∧N"]
+    SScN["🥇 S∧Sc∧N"]
+    CScN["🥇 C∧Sc∧N"]
+    IDEAL["🏆 PLATINUM<br/>Quality Code"]
 
-    SLOP --> SIMPLE
-    SLOP --> COMPOSABLE
-    SLOP --> SECURE
-    SIMPLE --> SC
-    SIMPLE --> SSc
-    COMPOSABLE --> SC
-    COMPOSABLE --> CSc
-    SECURE --> SSc
-    SECURE --> CSc
-    SC --> IDEAL
-    SSc --> IDEAL
-    CSc --> IDEAL
+    SLOP --> S
+    SLOP --> C
+    SLOP --> Sc
+    SLOP --> N
+    S --> SC
+    S --> SSc
+    S --> SN
+    C --> SC
+    C --> CSc
+    C --> CN
+    Sc --> SSc
+    Sc --> CSc
+    Sc --> ScN
+    N --> SN
+    N --> CN
+    N --> ScN
+    SC --> SCSc
+    SC --> SCN
+    SSc --> SCSc
+    SSc --> SScN
+    SN --> SCN
+    SN --> SScN
+    CSc --> SCSc
+    CSc --> CScN
+    CN --> SCN
+    CN --> CScN
+    ScN --> SScN
+    ScN --> CScN
+    SCSc --> IDEAL
+    SCN --> IDEAL
+    SScN --> IDEAL
+    CScN --> IDEAL
 
-    style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-    style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style IDEAL      fill:#ffd700,stroke:#856404,color:#000
+    style SLOP   fill:#f8d7da,stroke:#842029,color:#000
+    style S      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style C      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style Sc     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style N      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SC     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style ScN    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SCSc   fill:#ffd700,stroke:#856404,color:#000
+    style SCN    fill:#ffd700,stroke:#856404,color:#000
+    style SScN   fill:#ffd700,stroke:#856404,color:#000
+    style CScN   fill:#ffd700,stroke:#856404,color:#000
+    style IDEAL  fill:#e5e4e2,stroke:#4a4a4a,color:#000
 ```
 
 [Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)

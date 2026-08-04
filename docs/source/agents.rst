@@ -171,8 +171,9 @@ Choose an agent path
    or COMPOSABLE / ``IDEAL`` is unavailable.
 
    Dependency graph
-      COMPOSABLE and ``IDEAL`` require a ``.gitnexus/`` store. SIMPLE, SECURE,
-      AST comparison, MCP docs, and UAST coverage work without it.
+      COMPOSABLE and ``IDEAL`` require a ``.gitnexus/`` store. SIMPLE,
+      SECURE, NAVIGABLE, AST comparison, MCP docs, and UAST coverage work
+      without it.
 
       Prefer the MCP tools (no shell required):
 
@@ -263,14 +264,16 @@ Choose an agent path
 Setting Preferences
 -------------------
 
-A **preference ranking** is a strict total order over the three quality pillars:
-``simple``, ``composable``, and ``secure``. Topos uses the ranking to compute a
-**relaxation walk**: the sequence of lattice targets an agent should try when
-``IDEAL`` is not reachable within the available time or token budget.
+A **preference ranking** is a strict total order over the four quality pillars:
+``simple``, ``composable``, ``secure``, and ``navigable``. Topos uses the
+ranking to compute a **relaxation walk**: the sequence of lattice targets an
+agent should try when ``IDEAL`` is not reachable within the available time or
+token budget.
 
 Use it when you care about the order of tradeoffs. For example,
-``["simple", "composable", "secure"]`` tells the agent to preserve simplicity
-first, then composability, then security if all three cannot be improved at once.
+``["simple", "composable", "secure", "navigable"]`` tells the agent to preserve
+simplicity first, then composability, then security, and to give up on
+navigability first if all four cannot be improved at once.
 
 .. list-table::
    :widths: 15 35 50
@@ -282,16 +285,19 @@ first, then composability, then security if all three cannot be improved at once
    * - 1 (Top)
      - Mandatory
      - The property that must be achieved first.
-   * - 2 (Middle)
+   * - 2
      - Aspirational
      - The secondary goal; forms the "ideal intersection" with Rank 1.
-   * - 3 (Bottom)
+   * - 3
      - Pragmatic
-     - The final property needed to reach ``IDEAL``.
+     - Conceded before Rank 1 or 2, but held ahead of Rank 4.
+   * - 4 (Bottom)
+     - First to concede
+     - The property dropped first when the budget runs short.
 
-Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE)``
+Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE, NAVIGABLE)``
 
-1. **Aspirational target**: The agent first tries to reach ``IDEAL`` (all three pillars pass).
+1. **Aspirational target**: The agent first tries to reach ``IDEAL`` (all four pillars pass).
 2. **Pragmatic fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE``
    (the intersection of the top two).
 
@@ -500,7 +506,7 @@ support:
 
 - ``topos://docs/agent-contract`` — compact outcome-first loop contract and done gates
 - ``topos://docs/workflows`` — expanded review → plan → refactor → re-measure guide
-- ``topos://docs/lattice`` — the 8-element Quality Badge lattice
+- ``topos://docs/lattice`` — the 16-element Quality Badge lattice
 - ``topos://docs/metrics`` — every metric key, pillar, and threshold
-- ``topos://docs/priority`` — priority profiles (simple / composable / secure)
+- ``topos://docs/priority`` — priority profiles (simple / composable / secure / navigable)
 - ``topos://docs/preferences`` — strict generator rankings and preference walks

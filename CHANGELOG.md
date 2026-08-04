@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **NAVIGABLE — a fourth evaluation pillar for agentic cognitive load.** Measures how expensive a file is for an LLM agent to read, reason over, and safely change, via **Semantic Compositional Divergence**: `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside each function, gated on the per-function maximum (`nav.max_function_divergence`). Computed from the same UAST as SIMPLE, so it needs no external tooling and is always available across all six supported languages.
+
+  NAVIGABLE is deliberately orthogonal to SIMPLE: SIMPLE counts *branches*, NAVIGABLE measures *nesting*. A flat function scores `0.0` no matter how many branches it has, while the same branches nested four deep score badly. Nesting is what keeps predicting LLM task failure once code length is controlled for. Ternaries and short-circuit boolean operators are excluded — expression-level branching opens no block, and counting it would re-measure SIMPLE.
+
+  A failing gate resolves to the offending functions worst-first with real line spans, so it becomes an actionable `refactor_target` (`extract_helper`) rather than an un-fixable verdict.
+
+- **🏆 PLATINUM medal tier** — awarded when all four pillars pass.
+
+- **`navigable` accepted everywhere a pillar is named** — `--priority navigable`, `.topos.toml` rankings, the `topos config` interactive selector, and MCP `preferences.ranking`.
+
+### Changed
+
+- **`Ω` extended from 8 to 16 elements.** `G_qual` gains a fourth generator, so the subobject classifier is now a 4-cube. Medal tiers band on the count of satisfied pillars: 4 → PLATINUM, 3 → GOLD, 2 → SILVER, 1 → BRONZE, 0 → SLOP. `Omega`'s lattice operations were already generic over the cover relation and needed no change.
+- **Preference weights are now `8 / 4 / 2 / 1`** down the ranking, preserving the strict lexicographic order.
+- Deleted the unused `WeightProfile` rather than growing it a fourth field.
+
+### Breaking
+
+- **`IDEAL` now requires all four pillars.** The verdict formerly named `IDEAL` — the top of the three-generator algebra — is now `SIMPLE_COMPOSABLE_SECURE`, and it bands as GOLD rather than the top tier. **CI pinned to `IDEAL` will start failing** on files that pass the original three pillars but fail NAVIGABLE.
+- **Medal tiers re-grade in both directions**, since the banding is now over four pillars.
+- **`LatticeElement` gains 8 variants** on the MCP wire — a JSON-schema change for clients.
+- **A `priority` / `preferences` ranking must list all four pillars.** A three-element ranking in `.topos.toml` is no longer a permutation of `G_qual`; it is dropped and the default order applies, matching the best-effort contract every other malformed key already gets.
+- The MCP tool-definition context budget grew from 33,736 to 39,584 chars, from the larger `LatticeElement` and `GeneratorInput` enums appearing in every schema that accepts a verdict or ranking.
+
+### Notes
+
+> **The NAVIGABLE threshold is PROVISIONAL.** `max_function_divergence = 8.0` and the `0.40` score floor are first-pass estimates that have **not** been through the corpus ECDF calibration the SIMPLE and SECURE constants received. On Topos's own 157 Rust files the distribution is median `0.69`, p75 `2.08`, p90 `4.56`, p95 `5.98` — so `8.0` currently sits near p97 and fails 2.5% of files. A calibration run must set the real value before this release is tagged.
+
+Docs figures under `docs/source/_static/figures/topos-lattice*.svg` still depict the three-generator sub-cube; captions now say so explicitly, but the artwork has not been redrawn for 16 elements.
+
 ## [0.4.3] - 2026-07-28
 
 ### Added

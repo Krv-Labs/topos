@@ -18,17 +18,17 @@ metadata:
 
 # Topos
 
-Topos scores code on three pillars — **SIMPLE**, **COMPOSABLE**, **SECURE** — and maps results to a medal lattice (SLOP → GOLD). Use it in a closed loop: measure, edit, re-measure.
+Topos scores code on four pillars — **SIMPLE**, **COMPOSABLE**, **SECURE**, **NAVIGABLE** — and maps results to a medal lattice (SLOP → PLATINUM). Use it in a closed loop: measure, edit, re-measure.
 
 ## Use Case
 
-Developers and AI coding agents use this skill to improve structural code quality, reduce complexity, verify refactors, and optimize toward GOLD or SILVER medals. It supports both CLI and MCP agent loops on local repositories.
+Developers and AI coding agents use this skill to improve structural code quality, reduce complexity, verify refactors, and optimize toward PLATINUM or GOLD medals. It supports both CLI and MCP agent loops on local repositories.
 
 **Deployment geography:** Global (local execution; no region-restricted services).
 
 ## When to Use
 
-Load this skill when the user asks to improve code quality, reduce complexity, check structural security footguns, verify a refactor, or optimize toward GOLD/SILVER medals.
+Load this skill when the user asks to improve code quality, reduce complexity, check structural security footguns, verify a refactor, or optimize toward PLATINUM/GOLD medals.
 
 ## Requirements / Dependencies
 
@@ -40,12 +40,12 @@ Load this skill when the user asks to improve code quality, reduce complexity, c
 
 ```bash
 curl -fsSL https://docs.krv.ai/topos/install.sh | bash
-npm install -g gitnexus   # enables COMPOSABLE / GOLD scoring
+npm install -g gitnexus   # enables COMPOSABLE / PLATINUM scoring
 ```
 
 - `topos` CLI on `PATH` (install via [docs.krv.ai/topos/install.sh](https://docs.krv.ai/topos/install.sh))
 - Git repository for baseline comparisons (`topos assess_worktree_change`, untracked baselines via snapshot flow)
-- `.gitnexus` dependency graph for COMPOSABLE / GOLD scoring (generated automatically when `gitnexus` is installed; force refresh with `topos depgraph generate` or `topos_generate_depgraph`)
+- `.gitnexus` dependency graph for COMPOSABLE / PLATINUM scoring (generated automatically when `gitnexus` is installed; force refresh with `topos depgraph generate` or `topos_generate_depgraph`)
 
 COMPOSABLE is scored by default: `evaluate` / `inspect` and the MCP evaluate
 tools detect a missing or stale `.gitnexus` and regenerate it before scoring.
@@ -69,7 +69,7 @@ Risk: Agents may trust SECURE medal findings as full security assurance; Topos S
 
 Mitigation: Pair with dedicated security tooling for high-stakes code; acknowledge remaining SECURE findings explicitly.
 
-Risk: Without GitNexus installed, COMPOSABLE scores are unavailable and GOLD is unreachable.
+Risk: Without GitNexus installed, COMPOSABLE scores are unavailable and PLATINUM is unreachable.
 
 Mitigation: Install `gitnexus` (`npm install -g gitnexus`); check MCP `warnings` and `coupling_available` before trusting composability scores.
 
@@ -83,7 +83,7 @@ Mitigation: Stop when MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`; require `IM
 
 **Output format:** CLI tables and ranked file lists; MCP structured payloads with `agent_contract` fields; per-function inspect detail
 
-**Output parameters:** Medal verdict (SLOP → GOLD), pillar scores (SIMPLE, COMPOSABLE, SECURE), ranked refactor targets, assessment status (`IMPROVEMENT`, `REGRESSION`, etc.)
+**Output parameters:** Medal verdict (SLOP → PLATINUM), pillar scores (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), ranked refactor targets, assessment status (`IMPROVEMENT`, `REGRESSION`, etc.)
 
 **Other properties:** Writes `.gitnexus` graph artifacts when depgraph is generated; does not modify source files unless the agent chooses to edit based on guidance
 
@@ -147,7 +147,7 @@ MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params
 
 ## Pitfalls
 
-- **No GitNexus → no COMPOSABLE.** The graph is generated automatically, but only if `gitnexus` is installed. If it isn't, `coupling_available` is `false` and GOLD is unreachable — check `warnings`.
+- **No GitNexus → no COMPOSABLE.** The graph is generated automatically, but only if `gitnexus` is installed. If it isn't, `coupling_available` is `false` and PLATINUM is unreachable — check `warnings`.
 - **Wrong cwd / file root → slow or hung COMPOSABLE setup.** Freshness fingerprints the whole project root (CLI cwd / MCP file root). Running from `$HOME` with `--gitnexus-dir ~/…/repo/.gitnexus` still walks home and can appear stuck on “indexing”; `cd` into the repo (or point MCP `TOPOS_MCP_FILE_ROOT` at it) instead.
 - **Cosmetic edits don't count.** Whitespace and rename-only changes won't move the lattice; MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - **SECURE is structural, not full SAST.** Pair with dedicated security tooling for high-stakes code.

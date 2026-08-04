@@ -18,6 +18,7 @@ use std::collections::HashMap;
 
 use crate::core::object::ProgramObject;
 use crate::functors::probes::ast::complexity::calculate_max_function_complexity;
+use crate::functors::probes::ast::divergence::calculate_max_function_divergence;
 use crate::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 use crate::graphs::base::Representation;
 use crate::graphs::uast::models::UASTNode;
@@ -41,6 +42,42 @@ impl<'a> AstRepresentation<'a> {
             source,
             uast_root,
         }
+    }
+}
+
+/// Wraps the same UAST as [`AstRepresentation`], but exposes the
+/// NAVIGABLE dimension.
+///
+/// A [`Representation`] declares exactly one `dimension()`, so the
+/// divergence metric cannot ride along on `AstRepresentation` even though
+/// it comes off the same parse. It lives here rather than in a `graphs/nav/`
+/// module of its own because there is no new *graph* — just a second
+/// reading of the AST.
+pub struct NavigableRepresentation<'a> {
+    pub uast_root: &'a UASTNode,
+}
+
+impl<'a> NavigableRepresentation<'a> {
+    pub fn new(uast_root: &'a UASTNode) -> Self {
+        NavigableRepresentation { uast_root }
+    }
+}
+
+impl Representation for NavigableRepresentation<'_> {
+    fn name(&self) -> &str {
+        "nav"
+    }
+
+    /// Feeds the NAVIGABLE generator via `nav.max_function_divergence`.
+    fn dimension(&self) -> &str {
+        "navigable"
+    }
+
+    fn metrics(&self) -> HashMap<String, f64> {
+        HashMap::from([(
+            "nav.max_function_divergence".to_string(),
+            calculate_max_function_divergence(self.uast_root),
+        )])
     }
 }
 

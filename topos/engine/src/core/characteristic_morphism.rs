@@ -20,10 +20,10 @@
 //! 1. Builds every available representation (AST + CFG + MDG + CPG) for
 //!    the morphism.
 //! 2. Groups them by generator (each representation declares its
-//!    `dimension()` ∈ `{"simple", "composable", "secure"}`).
+//!    `dimension()` ∈ [`Generator::as_str`] values).
 //! 3. Runs the matching policy translator `Φᵢ` on the collected metrics
 //!    (`simple` → `Φ_SIMPLE`, etc.).
-//! 4. Combines the three Boolean truth values via
+//! 4. Combines the Boolean truth values via
 //!    [`crate::core::omega::verdict_from_generators`] into the final `Ω`
 //!    element.
 //!
@@ -33,14 +33,17 @@
 //! # Simplification vs. the Python original
 //!
 //! Python groups representations by dimension into a generic
-//! `dict[str, list[Representation]]` before dispatching. In practice
-//! exactly three dimension strings exist across every representation in
-//! this crate (`"simple"`, `"composable"`, `"secure"` — including PDG's
-//! neutral `"composable"`), so this groups directly into three named
-//! buckets instead of a dynamic map keyed by an open-ended string. A
-//! representation with a fourth dimension value would have its metrics
-//! silently excluded from `raw_metrics` here (Python still records
-//! them, just never scores them) — revisit if one is ever added.
+//! `dict[str, list[Representation]]` before dispatching. This groups into
+//! one named bucket per generator instead of a dynamic map keyed by an
+//! open-ended string. The `_ => {}` arm therefore drops metrics from any
+//! dimension not in `G_qual` — adding a generator means adding a bucket
+//! here, which is exactly what NAVIGABLE did.
+//!
+//! `AstRepresentation` and `NavigableRepresentation` are always built
+//! from the morphism itself, so SIMPLE and NAVIGABLE are evaluated for
+//! every parseable file with no external input. COMPOSABLE needs an MDG
+//! and SECURE needs a CPG, so both are reported as "not measured" when
+//! the caller supplies no such representation.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -50,9 +53,10 @@ use crate::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
 use crate::evaluation::policies::composable::score_coupling;
+use crate::evaluation::policies::navigable::score_navigable;
 use crate::evaluation::policies::secure::score_secure;
 use crate::evaluation::policies::simple::score_simple;
-use crate::graphs::ast::object::AstRepresentation;
+use crate::graphs::ast::object::{AstRepresentation, NavigableRepresentation};
 use crate::graphs::base::Representation;
 
 /// The image of one program morphism under `χ_S : P → Ω`.
@@ -182,11 +186,13 @@ impl CharacteristicMorphism {
         let mut simple_raw = ast_rep.metrics();
         let mut composable_raw: HashMap<String, f64> = HashMap::new();
         let mut secure_raw: HashMap<String, f64> = HashMap::new();
+        let mut navigable_raw = NavigableRepresentation::new(&ast.uast_root).metrics();
         for rep in representations {
             match rep.dimension() {
                 "simple" => simple_raw.extend(rep.metrics()),
                 "composable" => composable_raw.extend(rep.metrics()),
                 "secure" => secure_raw.extend(rep.metrics()),
+                "navigable" => navigable_raw.extend(rep.metrics()),
                 _ => {}
             }
         }
@@ -195,6 +201,7 @@ impl CharacteristicMorphism {
         raw_metrics.extend(simple_raw.clone());
         raw_metrics.extend(composable_raw.clone());
         raw_metrics.extend(secure_raw.clone());
+        raw_metrics.extend(navigable_raw.clone());
 
         let mut dimensions = HashMap::new();
         let mut scores = HashMap::new();
@@ -228,6 +235,16 @@ impl CharacteristicMorphism {
                 &mut interpretation,
                 "secure",
                 EvaluationValue::Secure,
+                decision,
+            );
+        }
+        if let Some(decision) = score_navigable_dim(&navigable_raw) {
+            record(
+                &mut dimensions,
+                &mut scores,
+                &mut interpretation,
+                "navigable",
+                EvaluationValue::Navigable,
                 decision,
             );
         }
@@ -271,8 +288,9 @@ impl CharacteristicMorphism {
         &self,
         results: &[ClassificationResult],
     ) -> HashMap<String, EvaluationValue> {
-        ["simple", "composable", "secure"]
+        Generator::ALL
             .into_iter()
+            .map(|g| g.as_str())
             .filter(|dim| results.iter().any(|r| r.dimensions.contains_key(*dim)))
             .map(|dim| {
                 let generator = dimension_generator(dim);
@@ -369,16 +387,23 @@ fn score_secure_dim(raw: &HashMap<String, f64>) -> Option<ScoredDecision> {
     ))
 }
 
-/// Map each *dimension* name to the singleton generator value it
-/// produces when satisfied. These three generators are pairwise
-/// incomparable in `H`.
-fn dimension_generator(dim: &str) -> EvaluationValue {
-    match dim {
-        "simple" => EvaluationValue::Simple,
-        "composable" => EvaluationValue::Composable,
-        "secure" => EvaluationValue::Secure,
-        _ => EvaluationValue::Slop,
+fn score_navigable_dim(raw: &HashMap<String, f64>) -> Option<ScoredDecision> {
+    if !raw.contains_key("nav.max_function_divergence") {
+        return None;
     }
+    Some(score_navigable(
+        raw.get("nav.max_function_divergence").copied(),
+    ))
+}
+
+/// Map each *dimension* name to the singleton generator value it
+/// produces when satisfied. The generators are pairwise incomparable
+/// in `H`.
+fn dimension_generator(dim: &str) -> EvaluationValue {
+    Generator::ALL
+        .into_iter()
+        .find(|g| g.as_str() == dim)
+        .map_or(EvaluationValue::Slop, |g| g.value())
 }
 
 #[cfg(test)]
@@ -405,6 +430,54 @@ mod tests {
         let classifier = CharacteristicMorphism;
         let morphism = ProgramMorphism::new("def broken(:", "python");
         assert_eq!(classifier.classify(&morphism), EvaluationValue::Slop);
+    }
+
+    /// NAVIGABLE needs no external representation: it comes off the same
+    /// UAST as SIMPLE, so every parseable file gets a verdict for it.
+    #[test]
+    fn navigable_is_evaluated_without_any_extra_representation() {
+        let classifier = CharacteristicMorphism;
+        let morphism = ProgramMorphism::new("def f(x):\n    return x\n", "python");
+
+        let result = classifier.classify_detailed(&morphism, &[], Priority::default());
+        assert_eq!(
+            result.dimensions.get("navigable"),
+            Some(&EvaluationValue::Navigable)
+        );
+        assert_eq!(result.raw_metrics["nav.max_function_divergence"], 0.0);
+        assert_eq!(result.scores["navigable"], 1.0);
+    }
+
+    /// Deep nesting must actually move the verdict — the NAVIGABLE bit
+    /// clears while SIMPLE's stays put, which is the orthogonality claim.
+    #[test]
+    fn deep_nesting_clears_only_the_navigable_bit() {
+        let classifier = CharacteristicMorphism;
+        // Eight levels of nesting, but each level is a single branch, so
+        // cyclomatic complexity stays inside SIMPLE's gate.
+        let mut source = String::from("def f(xs):\n");
+        for depth in 0..8 {
+            source.push_str(&"    ".repeat(depth + 1));
+            source.push_str(&format!("if xs[{depth}]:\n"));
+        }
+        source.push_str(&"    ".repeat(9));
+        source.push_str("return 1\n");
+
+        let morphism = ProgramMorphism::new(&source, "python");
+        let result = classifier.classify_detailed(&morphism, &[], Priority::default());
+
+        assert_eq!(
+            result.dimensions.get("navigable"),
+            Some(&EvaluationValue::Slop),
+            "divergence was {}",
+            result.raw_metrics["nav.max_function_divergence"]
+        );
+        assert_eq!(
+            result.dimensions.get("simple"),
+            Some(&EvaluationValue::Simple),
+            "SIMPLE must be unaffected: nesting is not branching"
+        );
+        assert_eq!(result.lattice_element, EvaluationValue::Simple);
     }
 
     #[test]

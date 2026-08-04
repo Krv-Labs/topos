@@ -102,11 +102,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         .map(parse_priority)
         .transpose()?
         .map(Priority::top_generator);
-    let inputs = resolve_evaluate_inputs(
-        &args.paths,
-        args.language.as_deref(),
-        args.recursive,
-    )?;
+    let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
     let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
     let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
     let summary_language = language_label(&inputs);
@@ -150,11 +146,10 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
             }
             Err(e) => {
                 spinner.finish_and_clear();
-                let note = format!(
+                // Human card + JSON carry the notice; no separate stderr dump.
+                composable_warnings.push(format!(
                     "could not resolve current directory ({e}); evaluating SIMPLE/SECURE only."
-                );
-                eprintln!("gitnexus: {note}");
-                composable_warnings.push(note);
+                ));
                 None
             }
         }
@@ -215,6 +210,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
             &summary_language,
             !args.no_composable,
             !args.info && failure_pillar.is_none(),
+            &composable_warnings,
         );
         if args.verbose && results.len() == 1 {
             print_raw_metrics(&results[0]);

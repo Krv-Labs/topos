@@ -49,6 +49,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
     // Attach the COMPOSABLE MDG the same way `evaluate` does (auto-detect /
     // generate, or `--gitnexus-dir` deriving the project root), so `inspect`
     // reports COMPOSABLE too. `--no-composable` opts out.
+    let mut composable_warnings = Vec::new();
     let mut mdg = if args.no_composable {
         None
     } else {
@@ -77,13 +78,14 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
                     &mut on_phase,
                 );
                 progress.finish_and_clear();
+                composable_warnings = resolved.warnings;
                 resolved.mdg
             }
             Err(e) => {
                 progress.finish_and_clear();
-                eprintln!(
-                    "gitnexus: could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
-                );
+                composable_warnings.push(format!(
+                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
+                ));
                 None
             }
         }
@@ -135,7 +137,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         &language,
         config.preferences.as_ref(),
     );
-    print_inspection_summary(&args.path, &result, &language);
+    print_inspection_summary(&args.path, &result, &language, &composable_warnings);
     print_lines(inspection_detail_lines(
         &result,
         &functions,

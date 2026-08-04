@@ -38,9 +38,10 @@ pub(crate) struct ComposableResolve {
 /// `target_file` — a fit for arbitrary single-file tool calls, but N cache
 /// misses across a directory walk of N files).
 ///
-/// Warnings are both returned (for `--json`) and printed to stderr with a
-/// `gitnexus:` prefix so interactive runs stay informative without requiring
-/// the caller to remember a second channel.
+/// Warnings are returned for `--json` and for the evaluate/inspect summary
+/// card (orange `↻` notice). Callers that print a card should not also dump
+/// the same strings to stderr — that doubles the noise. Only advisory
+/// compatibility nags still print immediately.
 ///
 /// `quiet` captures GitNexus output. Machine-readable callers require this to
 /// keep stdout valid; interactive callers can also capture it while presenting
@@ -75,7 +76,6 @@ pub(crate) fn resolve_composable_mdg(
             false,
             None,
         ));
-        emit_warnings(&warnings);
         return ComposableResolve {
             mdg: None,
             warnings,
@@ -107,7 +107,6 @@ pub(crate) fn resolve_composable_mdg(
             false,
             Some(&load_error),
         ));
-        emit_warnings(&warnings);
         return ComposableResolve {
             mdg: None,
             warnings,
@@ -123,7 +122,6 @@ pub(crate) fn resolve_composable_mdg(
             false,
             Some(&load_error),
         ));
-        emit_warnings(&warnings);
         return ComposableResolve {
             mdg: None,
             warnings,
@@ -141,7 +139,6 @@ pub(crate) fn resolve_composable_mdg(
                 true,
                 None,
             ));
-            emit_warnings(&warnings);
             ComposableResolve {
                 mdg: Some(graph),
                 warnings,
@@ -156,18 +153,11 @@ pub(crate) fn resolve_composable_mdg(
                 false,
                 Some(&load_error),
             ));
-            emit_warnings(&warnings);
             ComposableResolve {
                 mdg: None,
                 warnings,
             }
         }
-    }
-}
-
-fn emit_warnings(warnings: &[String]) {
-    for warn in warnings {
-        eprintln!("gitnexus: {warn}");
     }
 }
 

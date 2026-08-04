@@ -1,8 +1,7 @@
 # CLI harness install / uninstall (`topos install`)
 
-Status: **DRAFT IMPLEMENTATION** (v0.4.4) — owned by @sgathrid; needs a
-review pass on the schema assumptions called out in `integrations.rs`
-before it ships.
+Status: **HARDENING** (v0.4.4) — owned by @sgathrid. The draft shipped in
+#256; the review pass it asked for is tracked in "Hardening pass" below.
 Issue: [#256](https://github.com/Krv-Labs/topos/issues/256).
 
 A first implementation lands in `topos/cli/src/commands/install/`,
@@ -146,3 +145,120 @@ those merged.
   content is `include_str!`'d into the binary at compile time and written
   out (not symlinked) to each target path; uninstall only deletes it if
   the on-disk content still matches exactly, so a user edit is preserved.
+
+## Hardening pass
+
+Findings from a review of the shipped draft, each reproduced against a
+scratch `$HOME` before being written down. Ordered by severity.
+
+### P0 — correctness and safety
+
+1. **`~/.claude.json` loses its `0600` mode.** `atomic_write` writes a fresh
+   temp file (default umask) and renames it over the target, so the mode is
+   reset rather than preserved. `~/.claude.json` ships `0600` and holds OAuth
+   account state and project history; installing widens it to `0644`.
+   *Fix:* carry the existing file's permissions onto the temp file before the
+   rename.
+
+2. **A bare `topos` command only resolves for harnesses that inherit a shell
+   `PATH`.** Claude Desktop, Cursor, and Antigravity are launched by the
+   desktop environment, not a login shell, so a `topos` in `~/.local/bin` or
+   `~/.cargo/bin` fails to spawn and the server silently never starts.
+   *Fix:* write the absolute `std::env::current_exe()` path. Detection stays
+   location-agnostic by accepting any `mcpServers.topos` whose `args` are
+   `["mcp"]` and whose `command` basename is `topos`, so re-installing from a
+   different location is not reported as stale.
+
+3. **The report claims writes and removals that did not happen.**
+   `apply_step` / `removal_step` discard the `Ok(bool)` their closures
+   return and print the applied message unconditionally. Reproduced: with a
+   locally edited `~/.claude/skills/topos/SKILL.md`, `topos uninstall claude
+   --apply` prints `● removed …/SKILL.md` while the file is left in place.
+   `remove_owned_file` behaves correctly — only the reporting lies, which
+   makes the "a user edit is preserved and reported" rule above untrue.
+   *Fix:* branch on the returned bool and report preserved-vs-removed.
+
+4. **`topos uninstall --apply` with no target removes every harness.** In a
+   non-TTY with no names and no `--all`, uninstall falls back to "everything
+   not `Absent`" and, with `--apply`, mutates all seven without a
+   confirmation. `install` rejects exactly this input.
+   *Fix:* make the non-interactive path require explicit names or `--all`,
+   matching install.
+
+### P1 — data safety and robustness
+
+5. **`.topos.backup` is overwritten by every later write,** so the pristine
+   pre-Topos snapshot is gone after the second install (verified: an install
+   over a stale entry replaced the original backup with the stale content).
+   *Fix:* first write wins — never overwrite an existing backup.
+
+6. **A full re-serialization reorders every key.** `serde_json`'s default map
+   is a `BTreeMap`, so merging one entry alphabetizes a 260 KB
+   `~/.claude.json` that Claude Code itself also writes.
+   *Fix:* enable `serde_json`'s `preserve_order` feature for the CLI crate.
+
+7. **Blank-file deletion bypasses the ownership check.**
+   `remove_copilot_block` deletes the instructions file whenever the residue
+   is blank, and `remove_antigravity_import` does the same to `GEMINI.md`
+   (`fs::remove_file(&gemini_md).ok()`), even though
+   `delete_text_if_blank_and_owned` exists for precisely this. The
+   antigravity pointer file is also deleted unconditionally, unlike every
+   other written file, which goes through `remove_owned_file`'s content-match
+   policy.
+   *Fix:* route both through the existing owned-deletion helpers.
+
+8. **`--all` creates directories for harnesses that are not installed,**
+   leaving `~/.copilot`, `~/.cursor`, and friends behind on machines that
+   never had them. *Fix:* `--all` selects detected harnesses; naming a
+   harness explicitly still forces it.
+
+9. **`purge_backup_files` keeps its own path list** and omits the skill files
+   and the antigravity pointer, so their backups survive `--purge-backups`.
+
+10. **The install-state file ignores `XDG_STATE_HOME`,** hardcoding
+    `~/.local/state/topos/install.json`.
+
+### P2 — structure (`topos evaluate --language rust`)
+
+`topos evaluate topos/cli/src/commands/install -r --language rust` scores the
+module 🥈 SILVER / 46%, with five of six files over the SIMPLE cyclomatic
+gate of 15:
+
+| File | `cfg.cyclomatic` | SIMPLE |
+| --- | --- | --- |
+| `integrations.rs` | 140 | 0% |
+| `uninstall.rs` | 37 | 7% |
+| `mod.rs` | 36 | 10% |
+| `menu.rs` | 32 | 20% |
+| `configure.rs` | 29 | 28% |
+| `status.rs` | 13 | 60% |
+
+`--info` ranks the same two changes on every failing file: cut branching, and
+rebalance an instability of 1.00.
+
+The branching has one source. The harness set is spelled out in seven
+parallel lists keyed by id — `SUPPORTED`, `harness_name`, `detect_dir`,
+`integration_state`, `configure::HANDLERS`, `uninstall::HANDLERS`, and
+`purge_backup_files`'s candidates — so adding a harness means seven edits and
+missing one is silent. Finding 9 is already that bug.
+
+*Fix:* collapse them into one `const HARNESSES: &[Harness]` table where each
+entry names its label, its detection directory, and the artifacts it owns
+(`JsonMcp`, `TomlMcp`, `MarkerBlock`, `OwnedFile`, `ImportLine`). Install,
+uninstall, status, detection, and backup purging each become a single loop
+over `harness.artifacts`, which deletes the fourteen near-identical
+`install_*` / `uninstall_*` functions. This removes a layer rather than
+adding one: no trait, no adapter per harness, one table.
+
+The flat per-harness dispatch was ported from brian on purpose (see "Module
+layout"), and it was the right call while the artifact kinds were still being
+discovered. They have stopped moving — five kinds cover all seven harnesses —
+so the table is now the smaller design.
+
+### Not changing
+
+- The harness config locations themselves. Each was re-checked against the
+  matrix above and is correct; Copilot CLI keeps its marker block rather than
+  an MCP entry.
+- The `--apply`-instead-of-`--dry-run` shape of uninstall. Preview-by-default
+  is the safer asymmetry and matches #256's mock-up.

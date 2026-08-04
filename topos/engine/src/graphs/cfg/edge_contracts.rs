@@ -46,20 +46,6 @@ edge nested[] -break-> loop_after[]
 edge nested[] -continue-> loop_header[ForStmt]
 edge nested[] -unconditional-> loop_header[ForStmt]"#;
 
-const GO_BRANCH_LOOP: &str = r#"blocks=10 edges=12
-edge call_FunctionDecl[] -unconditional-> exit[]
-edge call_FunctionDecl[] -unconditional-> loop_header[ForStmt]
-edge entry[] -unconditional-> call_FunctionDecl[]
-edge entry[] -unconditional-> call_FunctionDecl[]
-edge if_else[] -continue-> loop_header[ForStmt]
-edge if_join[] -loop_back-> loop_header[ForStmt]
-edge if_then[] -break-> loop_after[ReturnStmt]
-edge loop_after[ReturnStmt] -return-> exit[]
-edge loop_body[IfStmt] -false-> if_else[]
-edge loop_body[IfStmt] -true-> if_then[]
-edge loop_header[ForStmt] -false-> loop_after[ReturnStmt]
-edge loop_header[ForStmt] -true-> loop_body[IfStmt]"#;
-
 const MATCH_RETURN: &str = r#"blocks=8 edges=10
 edge call_FunctionDecl[MatchStmt] -switch_case-> match_arm[]
 edge call_FunctionDecl[MatchStmt] -switch_case-> match_arm[]
@@ -82,20 +68,6 @@ edge match_arm[] -unconditional-> nested[ReturnStmt]
 edge match_join[] -unconditional-> exit[]
 edge nested[MatchStmt] -switch_case-> match_arm[]
 edge nested[MatchStmt] -switch_case-> match_arm[]
-edge nested[ReturnStmt] -return-> exit[]
-edge nested[ReturnStmt] -return-> exit[]"#;
-
-const GO_MATCH_RETURN: &str = r#"blocks=9 edges=12
-edge call_FunctionDecl[MatchStmt] -switch_case-> match_arm[]
-edge call_FunctionDecl[MatchStmt] -switch_case-> match_arm[]
-edge call_FunctionDecl[] -unconditional-> exit[]
-edge entry[] -unconditional-> call_FunctionDecl[MatchStmt]
-edge entry[] -unconditional-> call_FunctionDecl[]
-edge match_arm[] -unconditional-> match_join[]
-edge match_arm[] -unconditional-> match_join[]
-edge match_arm[] -unconditional-> nested[ReturnStmt]
-edge match_arm[] -unconditional-> nested[ReturnStmt]
-edge match_join[] -unconditional-> exit[]
 edge nested[ReturnStmt] -return-> exit[]
 edge nested[ReturnStmt] -return-> exit[]"#;
 
@@ -143,7 +115,7 @@ const CASES: &[Case] = &[
         language: "go",
         name: "branch_loop",
         source: "package p\nfunc f(xs []int) int {\n\tfor _, x := range xs {\n\t\tif x > 0 { break } else { continue }\n\t}\n\treturn 0\n}\n",
-        expected: GO_BRANCH_LOOP,
+        expected: BRANCH_LOOP,
     },
     Case {
         language: "python",
@@ -179,7 +151,7 @@ const CASES: &[Case] = &[
         language: "go",
         name: "match_return",
         source: "package p\nfunc f(x int) int {\n\tswitch x {\n\tcase 0:\n\t\treturn 0\n\tdefault:\n\t\treturn 1\n\t}\n}\n",
-        expected: GO_MATCH_RETURN,
+        expected: MATCH_RETURN,
     },
     Case {
         language: "python",

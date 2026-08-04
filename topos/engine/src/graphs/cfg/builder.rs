@@ -628,15 +628,25 @@ fn collect_callable_bodies(root: &UASTNode) -> Vec<CallableBody<'_>> {
 
     if root.kind == "File" {
         // Module-level top: everything not nested inside a callable.
+        //
+        // Emptiness is tested on the *unwrapped statements*, not on the
+        // raw children — issue #230. A file can have module-level
+        // children that contain no statement at all (Go's `package`
+        // clause, Go/JS `import`, Python bare `import`, a C++
+        // `#include`), and gating on the raw list gave those files an
+        // extra empty callable worth one block and two edges, inflating
+        // `cfg.cyclomatic` by exactly 1 relative to the same program in
+        // a language without a module preamble.
         let module_children = root
             .children
             .iter()
             .filter(|c| !matches!(c.kind.as_str(), "FunctionDecl" | "MethodDecl" | "TypeDecl"))
             .collect::<Vec<_>>();
-        if !module_children.is_empty() {
+        let statements = unwrap_to_statements(module_children);
+        if !statements.is_empty() {
             found.push(CallableBody {
                 label: "FunctionDecl".to_string(),
-                statements: unwrap_to_statements(module_children),
+                statements,
             });
         }
     }

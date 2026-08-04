@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use super::artifact::State;
-use super::fsops::{backup_path, prune_dirs, read_json_object};
+use super::fsops::{backup_path, prune_dirs, read_json_object, resolve_symlink};
 use super::harness::{spec, HarnessSpec, HARNESSES};
 use super::report;
 use super::state;
@@ -56,7 +56,7 @@ pub(crate) fn plan(home: &Path, selected: &[String], purge_backups: bool) -> Vec
         };
         actions.push(PlannedAction { summary });
         if purge_backups {
-            let backup = backup_path(&path);
+            let backup = backup_path(&resolve_symlink(&path));
             if backup.is_file() {
                 actions.push(PlannedAction {
                     summary: format!(
@@ -258,7 +258,7 @@ fn purge(home: &Path, selected: &[String], opts: RenderOptions) {
         .iter()
         .filter(|harness| selected.iter().any(|id| id == harness.id))
     {
-        let backup = backup_path(&(harness.config_path)(home));
+        let backup = backup_path(&resolve_symlink(&(harness.config_path)(home)));
         if backup.is_file() && std::fs::remove_file(&backup).is_ok() {
             report::detail(
                 &report::removed(opts),
@@ -321,5 +321,32 @@ mod tests {
             "{}",
             actions[0].summary
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn purge_removes_a_backup_beside_a_symlink_target() {
+        let home = tmp_dir("uninstall-purge-symlink");
+        let codex_dir = home.join(".codex");
+        let target = home.join("dotfiles/config.toml");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(&target, "").unwrap();
+        std::os::unix::fs::symlink(&target, codex_dir.join("config.toml")).unwrap();
+        let backup = backup_path(&target);
+        fs::write(&backup, "original").unwrap();
+
+        let actions = plan(&home, &["codex".into()], true);
+        assert!(
+            actions
+                .iter()
+                .any(|action| action.summary.contains("dotfiles/config.toml.topos.backup")),
+            "{actions:?}"
+        );
+
+        purge(&home, &["codex".into()], RenderOptions::stdout());
+
+        assert!(!backup.exists());
+        fs::remove_dir_all(home).ok();
     }
 }

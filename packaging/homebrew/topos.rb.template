@@ -5,7 +5,6 @@ class Topos < Formula
   # URL must exist so `brew readall --os=all --arch=all` can load the formula
   # on Intel macOS, where no binary ships (guarded by depends_on arch below).
   url "https://github.com/Krv-Labs/topos/releases/download/v{{VERSION}}/topos-macos-arm64"
-  version "{{VERSION}}"
   sha256 "{{SHA_MACOS_ARM64}}"
   license "BSD-3-Clause"
 

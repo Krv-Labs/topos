@@ -67,12 +67,27 @@ pub(crate) fn atomic_write(
     // the rename cannot replace a symlink with a regular file.
     let target = resolve_symlink(path);
     let created_file = !target.exists();
+    #[cfg(unix)]
+    let permissions = if created_file {
+        None
+    } else {
+        Some(
+            fs::metadata(&target)
+                .map_err(|e| format!("reading permissions for {}: {e}", target.display()))?
+                .permissions(),
+        )
+    };
     if backup && !created_file {
         fs::copy(&target, backup_path(&target))
             .map_err(|e| format!("backing up {}: {e}", target.display()))?;
     }
     let tmp = tmp_path(&target);
     fs::write(&tmp, contents).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
+    #[cfg(unix)]
+    if let Some(permissions) = permissions {
+        fs::set_permissions(&tmp, permissions)
+            .map_err(|e| format!("setting permissions on {}: {e}", tmp.display()))?;
+    }
     fs::rename(&tmp, &target).map_err(|e| format!("replacing {}: {e}", target.display()))?;
     Ok(WriteOutcome {
         created_dirs,
@@ -88,7 +103,7 @@ pub(crate) fn atomic_write(
 /// link with a regular file, orphan the dotfile repository, and leave the file
 /// behind after uninstall. A broken link has no target to follow, so it is
 /// written literally.
-fn resolve_symlink(path: &Path) -> PathBuf {
+pub(crate) fn resolve_symlink(path: &Path) -> PathBuf {
     let is_link = fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
     if !is_link {
         return path.to_path_buf();
@@ -344,6 +359,25 @@ mod tests {
         assert!(outcome.created_dirs.is_empty());
         assert!(!outcome.created_file);
         assert!(!backup_path(&path).exists(), "backup was not requested");
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacing_an_existing_file_preserves_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tmp_dir("permissions");
+        let path = dir.join("config.toml");
+        fs::write(&path, "secret").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        atomic_write(&path, "updated", false).unwrap();
+
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         fs::remove_dir_all(dir).ok();
     }
 

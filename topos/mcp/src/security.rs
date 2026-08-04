@@ -69,27 +69,30 @@ pub fn resolve_file_root() -> Result<PathBuf, String> {
 /// `subdir`) was silently accepted even though it really resolves outside
 /// `/proj`. Walking *forwards* instead avoids that: once a component is
 /// found not to exist, nothing after it can be a symlink either, so the
-/// remaining components (including any `..`) are safe to apply lexically
-/// against the already-resolved real prefix.
+/// remaining components are safe to apply lexically against the
+/// already-resolved real prefix. The unresolved depth is tracked so that a
+/// `..` which removes every missing component resumes symlink resolution.
 pub(crate) fn resolve_existing_prefix(path: &Path) -> PathBuf {
     let mut resolved = PathBuf::new();
-    let mut past_missing = false;
+    let mut missing_components: usize = 0;
     for component in path.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
                 resolved.pop();
+                missing_components = missing_components.saturating_sub(1);
             }
             Component::Prefix(_) | Component::RootDir => resolved.push(component),
             Component::Normal(name) => {
-                if past_missing {
+                if missing_components > 0 {
                     resolved.push(name);
+                    missing_components += 1;
                     continue;
                 }
                 match resolved.join(name).canonicalize() {
                     Ok(real) => resolved = real,
                     Err(_) => {
-                        past_missing = true;
+                        missing_components = 1;
                         resolved.push(name);
                     }
                 }
@@ -227,6 +230,30 @@ mod tests {
             "expected resolved path under {}, got: {err}",
             outside.display()
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_checks_resume_after_dotdot_removes_a_missing_component() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-security-missing-dotdot-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root_path = dir.join("proj");
+        let outside = dir.join("outside");
+        std::fs::create_dir_all(&root_path).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let root = root_path.canonicalize().unwrap();
+        let outside = outside.canonicalize().unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+
+        let request = root.join("missing/../link/file");
+        let err = resolve_path_within(request.to_str().unwrap(), &root).unwrap_err();
+
+        assert!(err.contains("Access denied"), "{err}");
+        assert!(err.contains(&outside.display().to_string()), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

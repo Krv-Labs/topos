@@ -28,6 +28,8 @@ Quick reference
 
 .. code-block:: bash
 
+   topos install
+   topos status
    topos evaluate . -r
    topos config
    topos inspect module.py
@@ -52,9 +54,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
 
-      Project settings, advisory refactor hotspots, and the MCP server.
+      Agent registration, project settings, advisory refactor hotspots, and the MCP server.
       ^^^
-      ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
+      ``install`` · ``status`` · ``uninstall`` · ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
 
 Quality commands
 ================
@@ -272,6 +274,53 @@ instead of treating an empty corpus as covered.
 
 Other commands
 ===============
+
+install / uninstall / status
+----------------------------
+
+Register the Topos MCP server in your agent harnesses, and take it back out.
+One entry per harness, with an absolute ``command`` path; no skill files, no
+instruction blocks. See :doc:`agents` for the harness table and state model.
+
+.. code-block:: bash
+
+   topos install [HARNESSES]... [OPTIONS]
+   topos uninstall [HARNESSES]... [OPTIONS]
+   topos status [--json]
+
+Harness ids: ``claude``, ``claude-desktop``, ``codex``, ``gemini``,
+``copilot``, ``cursor``, ``vscode``, ``antigravity``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Flag
+     - Behavior
+   * - ``--all``
+     - Target every supported harness. Required in a non-interactive shell
+       when no ids are given (``install`` errors without it).
+   * - ``--dry-run``
+     - Print the plan and write nothing.
+   * - ``-y``, ``--yes``
+     - ``uninstall`` only — skip the confirmation prompt.
+   * - ``--purge-backups``
+     - ``uninstall`` only — also delete the ``.topos.backup`` files earlier
+       installs left behind.
+   * - ``--json``
+     - ``status`` only — machine-readable output for agents.
+
+With no ids in a terminal, both commands open a multi-select checklist.
+``topos uninstall`` always previews what it will remove and asks first;
+``topos install status`` is an alias for ``topos status``.
+
+**Example**
+
+.. code-block:: bash
+
+   topos install --all --dry-run   # see what would change
+   topos install claude codex      # just those two
+   topos status --json             # for scripts and agents
 
 config
 ------

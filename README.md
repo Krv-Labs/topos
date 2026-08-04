@@ -93,15 +93,17 @@ Then ask agent mode:
 
 See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for tool permissions and troubleshooting.
 
-### Other MCP clients [*Claude Code*]
+### Other MCP clients
 
-Run the self-contained MCP server on demand—no persistent Topos or Python installation required:
+With the [CLI](#standalone-cli) installed, one command registers the MCP server everywhere—Claude Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor, VS Code, and Google Antigravity:
 
 ```bash
-claude mcp add --transport stdio topos -- uvx topos-mcp
+topos install     # interactive checklist; --all for every harness
+topos status      # what is registered, and what needs repair
+topos uninstall   # take it back out
 ```
 
-Setup for Codex, Gemini CLI, Cursor, Windsurf, Antigravity, and manual JSON lives in the [agent setup guide](https://docs.krv.ai/topos/agents.html).
+No persistent install? Claude Code can run the self-contained server on demand with `claude mcp add --transport stdio topos -- uvx topos-mcp`. Manual JSON and Windsurf setup lives in the [agent setup guide](https://docs.krv.ai/topos/agents.html).
 
 ### Standalone CLI
 

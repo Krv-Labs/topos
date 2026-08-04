@@ -1,76 +1,23 @@
-//! `topos uninstall` — remove Topos-owned entries from one or more agent
-//! harnesses. Defaults to a dry-run preview; the caller decides whether to
-//! actually apply (see `mod.rs`'s `--apply` handling).
+//! `topos uninstall` — remove Topos-owned MCP registrations and leave no trace.
+//!
+//! "No trace" is the demanding half. Removing the entry is easy; what the draft
+//! got wrong was everything after it — the emptied config files topos created,
+//! the directories it created to hold them, its own backup files, and the state
+//! file recording all of it. The order those come off matters and is fixed in
+//! [`clean_up`].
+//!
+//! Nothing outside a Topos-owned MCP entry is ever removed. Prose instruction
+//! blocks, `@import` lines and skill files are reported by
+//! [`super::residue`] and left exactly where they are.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use console::Style;
-
-use super::integrations::{
-    self, antigravity_pointer_path, backup_path, claude_desktop_config_path, clear_created_files,
-    delete_if_empty_and_owned, delete_text_if_blank_and_owned, remove_antigravity_import,
-    remove_codex_entry, remove_copilot_block, remove_mcp_entry, remove_owned_file,
-    skill_path_agents, skill_path_claude, State, SKILL_MD,
-};
-use crate::commands::render::{paint, RenderOptions};
-
-fn removed(opts: RenderOptions) -> String {
-    paint("●", Style::new().red(), opts)
-}
-
-fn absent(opts: RenderOptions) -> String {
-    paint("○", Style::new().dim(), opts)
-}
-
-fn err(opts: RenderOptions) -> String {
-    paint("✕", Style::new().red(), opts)
-}
-
-/// Shared three-way branch every uninstall step follows: nothing to do,
-/// a dry-run preview, or an actual removal.
-fn removal_step(
-    state: State,
-    dry_run: bool,
-    absent_msg: &str,
-    preview_msg: &str,
-    removed_msg: &str,
-    apply: impl FnOnce() -> Result<bool, String>,
-    opts: RenderOptions,
-) -> bool {
-    if state == State::Absent {
-        println!("│    {} {absent_msg}", absent(opts));
-        return true;
-    }
-    if dry_run {
-        println!("│    {} [dry run] {preview_msg}", removed(opts));
-        return true;
-    }
-    match apply() {
-        Ok(_) => {
-            println!("│    {} {removed_msg}", removed(opts));
-            true
-        }
-        Err(e) => {
-            println!("│    {} {e}", err(opts));
-            false
-        }
-    }
-}
-
-type Handler = fn(&Path, bool, RenderOptions) -> bool;
-
-/// One entry per supported harness id — a data table instead of a match arm
-/// per harness keeps `run` itself flat regardless of how many harnesses
-/// exist.
-const HANDLERS: &[(&str, Handler)] = &[
-    ("claude", uninstall_claude),
-    ("claude-desktop", uninstall_claude_desktop),
-    ("codex", uninstall_codex),
-    ("gemini", uninstall_gemini),
-    ("copilot", uninstall_copilot),
-    ("skills", uninstall_skills),
-    ("antigravity", uninstall_antigravity),
-];
+use super::artifact::State;
+use super::fsops::{backup_path, prune_dirs, read_json_object};
+use super::harness::{spec, HarnessSpec, HARNESSES};
+use super::report;
+use super::state;
+use crate::commands::render::RenderOptions;
 
 pub(crate) fn run(
     home: &Path,
@@ -79,280 +26,200 @@ pub(crate) fn run(
     purge_backups: bool,
 ) -> Result<(), String> {
     let opts = RenderOptions::stdout();
-    print_header(dry_run, opts);
+    report::header("Topos Harness Uninstall", dry_run, opts);
 
-    let mut success = true;
-    for id in selected {
-        success &= dispatch(id, home, dry_run, opts);
-    }
+    let binary = super::binary::resolve_binary_path().unwrap_or_else(|_| PathBuf::from("topos"));
+    let outcomes: Vec<bool> = selected
+        .iter()
+        .map(|id| remove_one(id, home, &binary, dry_run, opts))
+        .collect();
 
-    if purge_backups && !dry_run {
-        println!("│  Purging backup files...");
-        purge_backup_files(home, opts);
-        println!("│");
-    }
-
-    print_summary(success, dry_run, opts)
+    clean_up(home, selected, dry_run, purge_backups, opts);
+    finish(outcomes.iter().all(|ok| *ok), dry_run, opts)
 }
 
-fn dispatch(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    match HANDLERS.iter().find(|(harness_id, _)| *harness_id == id) {
-        Some((_, handler)) => handler(home, dry_run, opts),
-        None => {
-            println!("│  {} unknown harness: {id}", err(opts));
+fn remove_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    let Some(harness) = spec(id) else {
+        report::detail(&report::failed(opts), &format!("unknown harness: {id}"));
+        return false;
+    };
+    report::harness_line(harness.name, opts);
+    let success = remove_spec(harness, home, binary, dry_run, opts);
+    println!("│");
+    success
+}
+
+fn remove_spec(
+    harness: &HarnessSpec,
+    home: &Path,
+    binary: &Path,
+    dry_run: bool,
+    opts: RenderOptions,
+) -> bool {
+    let path = (harness.config_path)(home);
+    let inspection = harness.artifact.inspect(&path, binary);
+    match inspection.state {
+        State::Absent => {
+            report::detail(&report::absent(opts), harness.absent_msg);
+            true
+        }
+        // Not ours to remove — a hand-made entry under the `topos` key, or a
+        // file topos cannot parse. Either way, deleting it would be guessing.
+        State::Conflict => {
+            report::detail(
+                &report::conflict(opts),
+                &inspection
+                    .detail
+                    .unwrap_or_else(|| format!("{} left untouched", path.display())),
+            );
+            true
+        }
+        _ if dry_run => {
+            report::detail(
+                &report::removed(opts),
+                &format!(
+                    "[dry run] would remove the MCP server entry from {}",
+                    path.display()
+                ),
+            );
+            true
+        }
+        _ => apply_removal(harness, home, &path, opts),
+    }
+}
+
+fn apply_removal(harness: &HarnessSpec, home: &Path, path: &Path, opts: RenderOptions) -> bool {
+    match harness.artifact.remove(path, false) {
+        Ok(_) => {
+            delete_if_emptied_and_ours(home, harness.id, path);
+            report::detail(
+                &report::removed(opts),
+                &format!("removed the MCP server entry from {}", path.display()),
+            );
+            true
+        }
+        Err(message) => {
+            report::detail(&report::failed(opts), &message);
             false
         }
     }
 }
 
-fn print_header(dry_run: bool, opts: RenderOptions) {
-    let mode = if dry_run {
-        " (DRY RUN — PREVIEW ONLY, NO CHANGES MADE)"
-    } else {
-        ""
-    };
-    println!(
-        "{}",
-        paint(
-            format!("┌  Topos Harness Uninstall{mode}"),
-            Style::new().bold(),
-            opts
-        )
-    );
-    println!("│");
+/// Delete a config file only when `topos install` created it AND removing our
+/// entry left nothing else in it.
+///
+/// A pre-existing file that happens to end up empty is the user's, not ours, so
+/// the ownership ledger — not emptiness alone — is what authorizes the delete.
+fn delete_if_emptied_and_ours(home: &Path, id: &str, path: &Path) {
+    if !state::was_created_by_install(home, id, path) {
+        return;
+    }
+    if !is_empty_config(path) {
+        return;
+    }
+    std::fs::remove_file(path).ok();
 }
 
-fn print_summary(success: bool, dry_run: bool, opts: RenderOptions) -> Result<(), String> {
-    let summary = if dry_run {
-        "Done. (dry run — re-run with --apply to make these changes)"
+/// True when the file holds no meaningful content left. TOML is judged by
+/// whitespace because a config topos created contains only its own table.
+fn is_empty_config(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    match read_json_object(path) {
+        Ok(map) => map.is_empty(),
+        // Not JSON: fall back to "is there anything but whitespace".
+        Err(_) => std::fs::read_to_string(path)
+            .map(|text| text.trim().is_empty())
+            .unwrap_or(false),
+    }
+}
+
+/// Everything after the entries themselves, in the one order that works.
+///
+/// `install.json` lives inside a directory that is itself a prune candidate, so
+/// the directory list has to be read before the state file is deleted, and the
+/// state directory pruned after it.
+fn clean_up(
+    home: &Path,
+    selected: &[String],
+    dry_run: bool,
+    purge_backups: bool,
+    opts: RenderOptions,
+) {
+    if dry_run {
+        return;
+    }
+    if purge_backups {
+        purge(home, selected, opts);
+    }
+    for id in selected {
+        state::clear_created_files(home, id).ok();
+    }
+    if !uninstalled_everything(home) {
+        return;
+    }
+    let dirs = state::created_dirs(home);
+    let pruned = prune_dirs(&dirs, false);
+    state::remove_state_file(home).ok();
+    prune_dirs(&[state::state_dir(home)], false);
+    for dir in pruned {
+        report::detail(
+            &report::removed(opts),
+            &format!("removed {}", dir.display()),
+        );
+    }
+}
+
+/// True when no harness still holds a Topos registration, so the shared state
+/// file and the directories it records are safe to take down.
+fn uninstalled_everything(home: &Path) -> bool {
+    let binary = super::binary::resolve_binary_path().unwrap_or_else(|_| PathBuf::from("topos"));
+    HARNESSES.iter().all(|harness| {
+        matches!(
+            harness
+                .artifact
+                .inspect(&(harness.config_path)(home), &binary)
+                .state,
+            State::Absent | State::Conflict
+        )
+    })
+}
+
+/// Delete the `.topos.backup` snapshots topos took for the harnesses being
+/// uninstalled.
+///
+/// Scoped to `selected` rather than the whole table: a backup is the only copy
+/// of a config as it stood before topos touched it, so
+/// `topos uninstall codex --purge-backups` must not destroy the snapshot
+/// belonging to a Claude Code install the user is keeping. The candidate paths
+/// still come from the harness table rather than a hardcoded list, so a newly
+/// added harness cannot be forgotten.
+fn purge(home: &Path, selected: &[String], opts: RenderOptions) {
+    for harness in HARNESSES
+        .iter()
+        .filter(|harness| selected.iter().any(|id| id == harness.id))
+    {
+        let backup = backup_path(&(harness.config_path)(home));
+        if backup.is_file() && std::fs::remove_file(&backup).is_ok() {
+            report::detail(
+                &report::removed(opts),
+                &format!("removed backup {}", backup.display()),
+            );
+        }
+    }
+}
+
+fn finish(success: bool, dry_run: bool, opts: RenderOptions) -> Result<(), String> {
+    let message = if dry_run {
+        "Done. (dry run — re-run without --dry-run to apply)"
     } else {
         "Done."
     };
-    println!("└  {}", paint(summary, Style::new().bold(), opts));
+    report::footer(message, opts);
     if success {
         Ok(())
     } else {
-        Err("one or more harnesses failed to uninstall cleanly".to_string())
-    }
-}
-
-fn uninstall_claude(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Claude Code (~/.claude)", Style::new().bold(), opts)
-    );
-    let config = home.join(".claude.json");
-    let mut success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "claude", false).ok();
-    }
-    let skill = skill_path_claude(home);
-    success &= removal_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "no skill file found",
-        &format!("would remove {}", skill.display()),
-        &format!("removed {}", skill.display()),
-        || remove_owned_file(&skill, SKILL_MD, false),
-        opts,
-    );
-    if !dry_run {
-        clear_created_files(home, "claude").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_claude_desktop(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    let config = claude_desktop_config_path(home);
-    println!(
-        "│  {}",
-        paint(
-            format!("Claude Desktop App ({})", config.display()),
-            Style::new().bold(),
-            opts
-        )
-    );
-    let success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "claude-desktop", false).ok();
-        clear_created_files(home, "claude-desktop").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_codex(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Codex CLI (~/.codex)", Style::new().bold(), opts)
-    );
-    let config = home.join(".codex/config.toml");
-    let success = removal_step(
-        integrations::codex_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        "would remove [mcp_servers.topos] from ~/.codex/config.toml",
-        "removed [mcp_servers.topos] from ~/.codex/config.toml",
-        || remove_codex_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_text_if_blank_and_owned(&config, home, "codex", false).ok();
-        clear_created_files(home, "codex").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_gemini(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Gemini CLI (~/.gemini)", Style::new().bold(), opts)
-    );
-    let config = home.join(".gemini/settings.json");
-    let success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "gemini", false).ok();
-        clear_created_files(home, "gemini").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_copilot(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("GitHub Copilot CLI (~/.copilot)", Style::new().bold(), opts)
-    );
-    let config = home.join(".copilot/copilot-instructions.md");
-    let success = removal_step(
-        integrations::copilot_state(&config),
-        dry_run,
-        "no instruction block found",
-        "would remove the instruction block from ~/.copilot/copilot-instructions.md",
-        "removed the instruction block from ~/.copilot/copilot-instructions.md",
-        || remove_copilot_block(&config, false),
-        opts,
-    );
-    if !dry_run {
-        clear_created_files(home, "copilot").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_skills(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Cursor & VS Code (~/.agents/skills)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let skill = skill_path_agents(home);
-    let mut success = removal_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "no skill file found",
-        &format!("would remove {}", skill.display()),
-        &format!("removed {}", skill.display()),
-        || remove_owned_file(&skill, SKILL_MD, false),
-        opts,
-    );
-    let mcp_config = home.join(".cursor/mcp.json");
-    success &= removal_step(
-        integrations::json_mcp_state(&mcp_config),
-        dry_run,
-        "no MCP server entry found",
-        &format!(
-            "would remove MCP server entry from {}",
-            mcp_config.display()
-        ),
-        &format!("removed MCP server entry from {}", mcp_config.display()),
-        || remove_mcp_entry(&mcp_config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&mcp_config, home, "skills", false).ok();
-        clear_created_files(home, "skills").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_antigravity(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Google Antigravity (~/.gemini/GEMINI.md)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let pointer = antigravity_pointer_path(home);
-    let success = removal_step(
-        integrations::antigravity_state(home),
-        dry_run,
-        "no @import found",
-        &format!(
-            "would remove the @import from ~/.gemini/GEMINI.md and delete {}",
-            pointer.display()
-        ),
-        &format!(
-            "removed the @import from ~/.gemini/GEMINI.md and deleted {}",
-            pointer.display()
-        ),
-        || remove_antigravity_import(home, false),
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn purge_backup_files(home: &Path, opts: RenderOptions) {
-    let candidates = [
-        home.join(".claude.json"),
-        claude_desktop_config_path(home),
-        home.join(".codex/config.toml"),
-        home.join(".gemini/settings.json"),
-        home.join(".copilot/copilot-instructions.md"),
-        home.join(".cursor/mcp.json"),
-        home.join(".gemini/GEMINI.md"),
-    ];
-    for path in candidates {
-        let backup = backup_path(&path);
-        if backup.is_file() && std::fs::remove_file(&backup).is_ok() {
-            println!(
-                "│    {} removed backup: {}",
-                removed(opts),
-                backup.display()
-            );
-        }
+        Err("one or more harnesses could not be cleaned up".to_string())
     }
 }

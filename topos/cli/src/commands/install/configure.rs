@@ -1,342 +1,148 @@
-//! `topos install` — configure one or more agent harnesses to use Topos.
+//! `topos install` — register the Topos MCP server in the selected harnesses.
+//!
+//! A loop over the harness table with no per-harness branching: everything that
+//! differs between harnesses lives in [`super::harness::HarnessSpec`], and
+//! everything that differs between config formats lives in
+//! [`super::artifact::Artifact`].
 
 use std::path::Path;
 
-use console::Style;
+use super::artifact::State;
+use super::harness::{spec, HarnessSpec};
+use super::report;
+use super::state;
+use crate::commands::render::RenderOptions;
 
-use super::integrations::{
-    self, antigravity_pointer_path, claude_desktop_config_path, record_created_file,
-    set_antigravity_import, set_codex_entry, set_copilot_block, set_mcp_entry, skill_path_agents,
-    skill_path_claude, write_skill, State,
-};
-use crate::commands::render::{paint, RenderOptions};
-
-fn ok(opts: RenderOptions) -> String {
-    paint("✓", Style::new().green(), opts)
-}
-
-fn pending(opts: RenderOptions) -> String {
-    paint("○", Style::new().color256(208), opts)
-}
-
-fn err(opts: RenderOptions) -> String {
-    paint("✕", Style::new().red(), opts)
-}
-
-/// Shared three-way branch every install step follows: already active, a
-/// dry-run preview, or an actual write. `apply` performs the write and
-/// returns whether anything changed.
-fn apply_step(
-    state: State,
+pub(crate) fn run(
+    home: &Path,
+    binary: &Path,
+    selected: &[String],
     dry_run: bool,
-    active_msg: &str,
-    preview_msg: &str,
-    applied_msg: &str,
-    apply: impl FnOnce() -> Result<bool, String>,
+) -> Result<(), String> {
+    let opts = RenderOptions::stdout();
+    report::header("Topos Harness Install", dry_run, opts);
+    println!("│  Using {}", binary.display());
+    println!("│");
+
+    let outcomes: Vec<bool> = selected
+        .iter()
+        .map(|id| configure_one(id, home, binary, dry_run, opts))
+        .collect();
+
+    finish(outcomes.iter().all(|ok| *ok), dry_run, opts)
+}
+
+fn configure_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    let Some(harness) = spec(id) else {
+        report::detail(&report::failed(opts), &format!("unknown harness: {id}"));
+        return false;
+    };
+    report::harness_line(harness.name, opts);
+    let success = configure_spec(harness, home, binary, dry_run, opts);
+    if let Some(message) = (harness.note)(home) {
+        report::note(&message, opts);
+    }
+    println!("│");
+    success
+}
+
+fn configure_spec(
+    harness: &HarnessSpec,
+    home: &Path,
+    binary: &Path,
+    dry_run: bool,
     opts: RenderOptions,
 ) -> bool {
-    match state {
+    let path = (harness.config_path)(home);
+    let inspection = harness.artifact.inspect(&path, binary);
+    match inspection.state {
         State::Active => {
-            println!("│    {} {active_msg}", ok(opts));
+            report::detail(&report::ok(opts), harness.active_msg);
             true
+        }
+        // A conflict needs a human decision. Reporting it and moving on is the
+        // whole point: topos never rewrites a file it cannot account for.
+        State::Conflict => {
+            report::detail(
+                &report::conflict(opts),
+                &conflict_message(&inspection, &path),
+            );
+            false
         }
         _ if dry_run => {
-            println!("│    {} [dry run] {preview_msg}", pending(opts));
+            report::detail(&report::pending(opts), &preview_message(&inspection, &path));
             true
         }
-        _ => match apply() {
-            Ok(_) => {
-                println!("│    {} {applied_msg}", ok(opts));
-                true
-            }
-            Err(e) => {
-                println!("│    {} {e}", err(opts));
-                false
-            }
-        },
+        _ => write_entry(harness, home, binary, &path, opts),
     }
 }
 
-type Handler = fn(&Path, bool, RenderOptions) -> bool;
-
-/// One entry per supported harness id — a data table instead of a match arm
-/// per harness keeps `run` itself flat regardless of how many harnesses
-/// exist.
-const HANDLERS: &[(&str, Handler)] = &[
-    ("claude", install_claude),
-    ("claude-desktop", install_claude_desktop),
-    ("codex", install_codex),
-    ("gemini", install_gemini),
-    ("copilot", install_copilot),
-    ("skills", install_skills),
-    ("antigravity", install_antigravity),
-];
-
-pub(crate) fn run(home: &Path, selected: &[String], dry_run: bool) -> Result<(), String> {
-    let opts = RenderOptions::stdout();
-    print_header(dry_run, opts);
-
-    let mut success = true;
-    for id in selected {
-        success &= dispatch(id, home, dry_run, opts);
-    }
-
-    print_summary(success, opts)
+fn conflict_message(inspection: &super::artifact::Inspection, path: &Path) -> String {
+    inspection
+        .detail
+        .clone()
+        .unwrap_or_else(|| format!("{} needs manual attention", path.display()))
 }
 
-fn dispatch(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    match HANDLERS.iter().find(|(harness_id, _)| *harness_id == id) {
-        Some((_, handler)) => handler(home, dry_run, opts),
-        None => {
-            println!("│  {} unknown harness: {id}", err(opts));
+fn preview_message(inspection: &super::artifact::Inspection, path: &Path) -> String {
+    match &inspection.detail {
+        Some(reason) => format!("[dry run] would repair {}: {reason}", path.display()),
+        None => format!(
+            "[dry run] would register the MCP server in {}",
+            path.display()
+        ),
+    }
+}
+
+fn write_entry(
+    harness: &HarnessSpec,
+    home: &Path,
+    binary: &Path,
+    path: &Path,
+    opts: RenderOptions,
+) -> bool {
+    match harness.artifact.apply(path, binary) {
+        Ok(outcome) => {
+            record(harness.id, home, path, outcome);
+            report::detail(&report::ok(opts), harness.active_msg);
+            true
+        }
+        Err(message) => {
+            report::detail(&report::failed(opts), &message);
             false
         }
     }
 }
 
-fn print_header(dry_run: bool, opts: RenderOptions) {
-    let mode = if dry_run {
-        " (DRY RUN — PREVIEW ONLY, NO CHANGES MADE)"
-    } else {
-        ""
+/// Remember what this write brought into existence, so uninstall can undo
+/// exactly that much and nothing more.
+///
+/// A failure to record is reported but does not fail the install: the entry is
+/// already written and working, and the only cost is that uninstall will leave
+/// an empty file or directory behind rather than something the user notices.
+fn record(id: &str, home: &Path, path: &Path, outcome: Option<super::fsops::WriteOutcome>) {
+    let Some(outcome) = outcome else {
+        return;
     };
-    println!(
-        "{}",
-        paint(
-            format!("┌  Topos Harness Install{mode}"),
-            Style::new().bold(),
-            opts
-        )
-    );
-    println!("│");
-}
-
-fn print_summary(success: bool, opts: RenderOptions) -> Result<(), String> {
-    if success {
-        println!("└  {}", paint("Done.", Style::new().bold(), opts));
-        Ok(())
-    } else {
-        println!(
-            "└  {}",
-            paint(
-                "Incomplete — existing files were preserved; review the errors above.",
-                Style::new().bold(),
-                opts
-            )
-        );
-        Err("one or more harnesses failed to configure".to_string())
+    if outcome.created_file {
+        state::record_created_file(home, id, path).ok();
     }
+    state::record_created_dirs(home, &outcome.created_dirs).ok();
 }
 
-fn install_claude(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Claude Code (~/.claude)", Style::new().bold(), opts)
-    );
-    let config = home.join(".claude.json");
-    let existed = config.is_file();
-    let mut success = apply_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "MCP server already configured",
-        &format!("would add MCP server entry to {}", config.display()),
-        &format!("added MCP server entry to {}", config.display()),
-        || {
-            let changed = set_mcp_entry(&config)?;
-            if changed && !existed {
-                record_created_file(home, "claude", &config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    let skill = skill_path_claude(home);
-    success &= apply_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "skill already up to date",
-        &format!("would write skill to {}", skill.display()),
-        &format!("wrote skill to {}", skill.display()),
-        || write_skill(&skill),
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_claude_desktop(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    let config = claude_desktop_config_path(home);
-    println!(
-        "│  {}",
-        paint(
-            format!("Claude Desktop App ({})", config.display()),
-            Style::new().bold(),
-            opts
-        )
-    );
-    let existed = config.is_file();
-    let success = apply_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "MCP server already configured",
-        &format!("would add MCP server entry to {}", config.display()),
-        &format!("added MCP server entry to {}", config.display()),
-        || {
-            let changed = set_mcp_entry(&config)?;
-            if changed && !existed {
-                record_created_file(home, "claude-desktop", &config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_codex(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Codex CLI (~/.codex)", Style::new().bold(), opts)
-    );
-    let config = home.join(".codex/config.toml");
-    let existed = config.is_file();
-    let success = apply_step(
-        integrations::codex_state(&config),
-        dry_run,
-        "MCP server already configured",
-        "would add [mcp_servers.topos] to ~/.codex/config.toml",
-        "added [mcp_servers.topos] to ~/.codex/config.toml",
-        || {
-            let changed = set_codex_entry(&config)?;
-            if changed && !existed {
-                record_created_file(home, "codex", &config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_gemini(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Gemini CLI (~/.gemini)", Style::new().bold(), opts)
-    );
-    let config = home.join(".gemini/settings.json");
-    let existed = config.is_file();
-    let success = apply_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "MCP server already configured",
-        &format!("would add MCP server entry to {}", config.display()),
-        &format!("added MCP server entry to {}", config.display()),
-        || {
-            let changed = set_mcp_entry(&config)?;
-            if changed && !existed {
-                record_created_file(home, "gemini", &config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_copilot(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("GitHub Copilot CLI (~/.copilot)", Style::new().bold(), opts)
-    );
-    let config = home.join(".copilot/copilot-instructions.md");
-    let existed = config.is_file();
-    let success = apply_step(
-        integrations::copilot_state(&config),
-        dry_run,
-        "instructions already present",
-        "would add an instruction block to ~/.copilot/copilot-instructions.md",
-        "added an instruction block to ~/.copilot/copilot-instructions.md",
-        || {
-            let changed = set_copilot_block(&config)?;
-            if changed && !existed {
-                record_created_file(home, "copilot", &config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_skills(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Cursor & VS Code (~/.agents/skills)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let skill = skill_path_agents(home);
-    let mut success = apply_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "skill already up to date",
-        &format!("would write skill to {}", skill.display()),
-        &format!("wrote skill to {}", skill.display()),
-        || write_skill(&skill),
-        opts,
-    );
-    let mcp_config = home.join(".cursor/mcp.json");
-    let existed = mcp_config.is_file();
-    success &= apply_step(
-        integrations::json_mcp_state(&mcp_config),
-        dry_run,
-        "MCP server already configured",
-        &format!("would add MCP server entry to {}", mcp_config.display()),
-        &format!("added MCP server entry to {}", mcp_config.display()),
-        || {
-            let changed = set_mcp_entry(&mcp_config)?;
-            if changed && !existed {
-                record_created_file(home, "skills", &mcp_config)?;
-            }
-            Ok(changed)
-        },
-        opts,
-    );
-    println!("│");
-    success
-}
-
-fn install_antigravity(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Google Antigravity (~/.gemini/GEMINI.md)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let pointer = antigravity_pointer_path(home);
-    let success = apply_step(
-        integrations::antigravity_state(home),
-        dry_run,
-        "import already configured",
-        &format!(
-            "would write {} and add its @import to ~/.gemini/GEMINI.md",
-            pointer.display()
-        ),
-        &format!(
-            "wrote {} and added its @import to ~/.gemini/GEMINI.md",
-            pointer.display()
-        ),
-        || set_antigravity_import(home),
-        opts,
-    );
-    println!("│");
-    success
+fn finish(success: bool, dry_run: bool, opts: RenderOptions) -> Result<(), String> {
+    if !success {
+        report::footer(
+            "Incomplete — existing files were preserved; review the entries above.",
+            opts,
+        );
+        return Err("one or more harnesses could not be configured".to_string());
+    }
+    let message = if dry_run {
+        "Done. (dry run — re-run without --dry-run to apply)"
+    } else {
+        "Done. Restart any running agent for it to pick up the new server."
+    };
+    report::footer(message, opts);
+    Ok(())
 }

@@ -45,7 +45,10 @@ pub enum GraphifyError {
     /// Neither a `"links"` nor an `"edges"` top-level array was present.
     MissingEdgeKey,
     /// File exceeded [`MAX_GRAPH_JSON_BYTES`].
-    TooLarge { path: PathBuf, size: u64 },
+    TooLarge {
+        path: PathBuf,
+        size: u64,
+    },
 }
 
 impl std::fmt::Display for GraphifyError {
@@ -262,10 +265,8 @@ mod tests {
 
     #[test]
     fn oversized_file_is_rejected() {
-        let dir = std::env::temp_dir().join(format!(
-            "topos-graphify-oversized-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("topos-graphify-oversized-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("graph.json");
         let file = std::fs::File::create(&path).unwrap();

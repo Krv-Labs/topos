@@ -38,6 +38,26 @@ fn resolve_generate_project_root(
     }
 }
 
+/// Choose the `gitnexus_dir` override to pass to [`depgraph_status`]
+/// alongside the root [`resolve_generate_project_root`] just derived.
+///
+/// Only when that root was itself derived from `gitnexus_dir` (no explicit
+/// `directory`) has it already absorbed a relative override's subdirectory
+/// — rejoining the raw override against it would then double that
+/// subdirectory, so resolve it to an absolute path first in that case. An
+/// explicit `directory` is independent of `gitnexus_dir`, so the raw
+/// (still relative-to-`directory`) override is correct as-is there.
+fn resolve_generate_status_override(
+    directory: Option<&Path>,
+    gitnexus_dir: Option<&str>,
+    file_root: &Path,
+) -> Option<String> {
+    match directory {
+        Some(_) => gitnexus_dir.map(str::to_string),
+        None => resolve_override_for_root(gitnexus_dir, file_root),
+    }
+}
+
 fn parse_state(state: &str) -> DepgraphState {
     match state {
         "missing" => DepgraphState::Missing,
@@ -387,18 +407,11 @@ impl ToposServer {
             params.gitnexus_dir.as_deref(),
             &file_root,
         );
-        // Only when `target_dir` was itself derived from `gitnexus_dir`
-        // (no explicit `directory`) does it already absorb a relative
-        // override's subdirectory — rejoining the raw override against it
-        // would then double that subdirectory, so resolve it first in that
-        // case. An explicit `directory` is independent of `gitnexus_dir`,
-        // so the raw (still relative-to-`target_dir`) override is correct
-        // as-is there.
-        let status_override = if resolved_directory.is_none() {
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root)
-        } else {
-            params.gitnexus_dir.clone()
-        };
+        let status_override = resolve_generate_status_override(
+            resolved_directory.as_deref(),
+            params.gitnexus_dir.as_deref(),
+            &file_root,
+        );
 
         let mut state_before = None;
         if !params.force {
@@ -624,6 +637,44 @@ mod tests {
             &file_root,
         );
         assert_eq!(explicit, file_root);
+
+        std::fs::remove_dir_all(&file_root).ok();
+    }
+
+    #[test]
+    fn resolve_generate_status_override_matches_the_root_it_pairs_with() {
+        // Regression: `depgraph_status` re-joins a *relative* override
+        // against whatever root it's given. When `directory` is omitted,
+        // `resolve_generate_project_root` derives a root from a relative
+        // `gitnexus_dir` with a subdirectory (e.g. `repo/.gitnexus`) — so
+        // the override paired with it must already be resolved to an
+        // absolute path, or the subdirectory doubles
+        // (`repo/.gitnexus` -> `repo/repo/.gitnexus`).
+        let file_root = std::env::temp_dir().join(format!(
+            "topos_generate_status_override_{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(file_root.join("repo/.gitnexus")).unwrap();
+        let file_root = file_root.canonicalize().unwrap();
+        let raw_override = "repo/.gitnexus";
+
+        let derived_override =
+            resolve_generate_status_override(None, Some(raw_override), &file_root);
+        assert_eq!(
+            derived_override.as_deref(),
+            file_root.join("repo/.gitnexus").to_str(),
+            "must resolve to the real store, not double the subdirectory"
+        );
+
+        // An explicit `directory` is independent of `gitnexus_dir` — pass
+        // the raw override through unresolved, still relative to that
+        // directory.
+        let explicit_override = resolve_generate_status_override(
+            Some(file_root.as_path()),
+            Some(raw_override),
+            &file_root,
+        );
+        assert_eq!(explicit_override.as_deref(), Some(raw_override));
 
         std::fs::remove_dir_all(&file_root).ok();
     }

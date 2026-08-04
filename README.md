@@ -6,10 +6,10 @@
   </picture>
 </p>
 
-<h3 align="center">A structural quality gate for coding agents.</h3>
+<h3 align="center">the agent harness for structural code quality</h3>
 
 <p align="center">
-  Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
+ Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
 </p>
 
 <p align="center">
@@ -67,6 +67,76 @@ Topos computes that signal from program structure—not from an LLM review or a 
 
 > Grounded in category theory, powered by a native-Rust engine.
 
+## Install and Quick Start
+
+One binary. Every supported agent harness. A clean way back out.
+
+### 1. Install the CLI
+
+Use the verified release installer:
+
+```bash
+curl -fsSL https://docs.krv.ai/topos/install.sh | bash
+```
+
+Or install with Homebrew:
+
+```bash
+brew install krv-labs/tap/topos
+```
+
+> [!TIP]
+> **Prefer an editor-managed install?** In VS Code or Cursor, search `@mcp topos` in the Extensions view or choose [Install MCP server](https://github.com/mcp/Krv-Labs/topos). This is an alternative to `topos install`: your editor installs and manages the Topos MCP server for you.
+
+### 2. Connect your coding agents
+
+`topos install` detects every supported MCP harness and lets you configure any—or all—of them from one interactive checklist:
+
+```bash
+topos install
+```
+
+```text
+┌  Which agent integrations do you want to configure?
+│
+│  ↑↓ move · space toggle · a all · enter confirm · esc cancel
+│
+│ ❯ ○ Claude Code          (detected)
+│   ○ Claude Desktop       (detected)
+│   ● Codex CLI            (✓ active)
+│   ● Gemini CLI           (✓ active)
+│   ○ GitHub Copilot CLI   (detected)
+│   ○ Cursor               (detected)
+│   ○ VS Code              (detected)
+│   ○ Google Antigravity   (detected)
+└
+```
+
+Restart the agents you configured, then ask:
+
+> *"Use Topos to find this repository's worst structural problem, make one focused improvement, and verify the result."*
+
+
+> [!IMPORTANT]
+> Too many tools spray MCP servers across agent JSON files, scatter symlinks around your machine, then leave you to burn half a Claude session untangling the mess—or pull your own hair out doing it. Topos does not play that game. We follow a leave-no-trace policy: `topos status` shows every registration, while **`topos uninstall` opens the same selector, previews exactly what will change, and removes everything Topos installed.** If Topos makes it easy to do, it should be just as easy to undo.
+>
+> ```bash
+> topos status
+> topos uninstall
+> ```
+
+
+See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for permissions, manual configuration, and troubleshooting.
+
+### 3. Evaluate from the terminal
+
+```bash
+topos evaluate . -r
+```
+
+Topos discovers Python, Rust, JavaScript, TypeScript, C++, and Go automatically. Pass `--language` only when you want to narrow the run.
+
+See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 ## Under the hood
 
@@ -81,54 +151,6 @@ Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your s
 
 The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
 
-## Install and Quick Start
-
-### VS Code MCP Extension
-
-Open the Extensions view, search **`@mcp topos`**, select **Topos**, and choose **Install**. Or view here: [Topos: GitHub's MCP Registry](https://github.com/mcp/Krv-Labs/topos).
-
-Then ask agent mode:
-
-> Use Topos to find this repository's worst structural problem, make one focused improvement, and verify the result.
-
-See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for tool permissions and troubleshooting.
-
-### Other MCP clients
-
-With the [CLI](#standalone-cli) installed, one command registers the MCP server everywhere—Claude Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor, VS Code, and Google Antigravity:
-
-```bash
-topos install     # interactive checklist; --all for every harness
-topos status      # what is registered, and what needs repair
-topos uninstall   # take it back out
-```
-
-No persistent install? Claude Code can run the self-contained server on demand with `claude mcp add --transport stdio topos -- uvx topos-mcp`. Manual JSON and Windsurf setup lives in the [agent setup guide](https://docs.krv.ai/topos/agents.html).
-
-### Standalone CLI
-
-```bash
-curl -fsSL https://docs.krv.ai/topos/install.sh | bash
-```
-
-Prefer Homebrew?
-
-```bash
-brew install krv-labs/tap/topos
-```
-
-On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you `brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos` before `brew install topos`.
-
-
-Then run:
-```bash
-topos evaluate . -r
-```
-
-> [!TIP]
-> Want GOLD? Run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
-
-Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go, and discovers all of them by default — pass `--language` only to narrow a run to one. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 ## More ways to use Topos
 
@@ -136,7 +158,6 @@ Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go, and discovers 
 - **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
 - **MCP Registry name:** `io.github.Krv-Labs/topos`
 - **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
-
 
 ## What Topos checks
 

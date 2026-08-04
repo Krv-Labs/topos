@@ -277,4 +277,12 @@ The `0.4.3` registry record cannot be fixed, so until 0.4.4 publishes, bypass th
 }
 ```
 
-Verified working by the stdio handshake in §3. Note this drops the `gallery` and `version` keys the `@mcp` install added, and renames the key off the gallery id — both deliberate, so VS Code treats it as a manual entry rather than a gallery-managed one.
+Verified working by the stdio handshake in §3.
+
+**Renaming the key off the gallery id (`io.github.Krv-Labs/topos` → `topos`) is the part that protects the edit.** The `gallery` and `version` keys are incidental — dropping them is tidy but not load-bearing. Traced through `microsoft/vscode@219ad590fe97`:
+
+- Nothing re-syncs `mcp.json` automatically. `updateLocal` (`mcpManagementService.ts:396`) only *scans* the file and diffs against the in-memory map; the file-watcher path (`:339`) is the same read-only call. `updateMetadata` (`:537`) writes only sidecar `manifest.json` / `README.md` under `getLocation`, and its payload carries no `config`/`args`. There is no update-checking machinery at all (`checkForUpdates` → 0 hits under `src/vs/platform/mcp` and `src/vs/workbench/contrib/mcp`).
+- The `gallery` field is read at three sites (`:447`, `:468`, `:580`) and all three are read-only classification — provenance label and sidecar lookup.
+- The **only** writer is `mcpResourceScannerService.addMcpServers`, reached from an explicit Install action, and it replaces the entry wholesale keyed by name (`mcpResourceScannerService.ts:75-76`: `existingServers[name] = config`) — **whether or not `gallery` is present**.
+
+So a hand-edit survives startup, file-watch reload, and metadata refresh. It does not survive clicking Install again on the gallery entry — and under a different key, that install lands beside the hand-edit rather than on top of it.

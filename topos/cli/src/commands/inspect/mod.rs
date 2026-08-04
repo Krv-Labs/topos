@@ -70,14 +70,14 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
                 let mut on_phase = |msg: &'static str| {
                     progress.set_message(msg);
                 };
-                let graph = resolve_composable_mdg(
+                let resolved = resolve_composable_mdg(
                     &project_root,
                     resolved_override.as_deref(),
                     true,
                     &mut on_phase,
                 );
                 progress.finish_and_clear();
-                graph
+                resolved.mdg
             }
             Err(e) => {
                 progress.finish_and_clear();

@@ -100,9 +100,7 @@ pub fn composable_contract_signals(
             blocked_by,
             risk_flags,
             next_tool: None,
-            next_action: Some(
-                "fix gitnexus_dir — it must be an existing directory inside the file root".into(),
-            ),
+            next_action: Some("fix gitnexus_dir — it must resolve inside the file root".into()),
         };
     }
     if blocked_by

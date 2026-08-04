@@ -122,6 +122,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let priority = resolve_priority(&args, &project_config)?;
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
+    let mut composable_warnings = Vec::new();
     let mut mdg = if args.no_composable {
         None
     } else {
@@ -144,18 +145,23 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
                 let mut on_phase = |msg: &'static str| {
                     spinner.set_message(msg);
                 };
-                let graph = resolve_composable_mdg(
+                let resolved = resolve_composable_mdg(
                     &project_root,
                     resolved_override.as_deref(),
                     true,
                     &mut on_phase,
                 );
                 spinner.finish_and_clear();
-                graph
+                composable_warnings = resolved.warnings;
+                resolved.mdg
             }
             Err(e) => {
                 spinner.finish_and_clear();
-                eprintln!("gitnexus: could not resolve current directory ({e}); evaluating SIMPLE/SECURE only.");
+                let note = format!(
+                    "could not resolve current directory ({e}); evaluating SIMPLE/SECURE only."
+                );
+                eprintln!("gitnexus: {note}");
+                composable_warnings.push(note);
                 None
             }
         }
@@ -193,7 +199,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     if args.json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&json_output(&files, &results))
+            serde_json::to_string_pretty(&json_output(&files, &results, &composable_warnings))
                 .map_err(|e| format!("serializing evaluation: {e}"))?
         );
     } else {

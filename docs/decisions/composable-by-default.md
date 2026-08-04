@@ -46,11 +46,14 @@ none), a project root, a `skip` flag, and a `capture` flag, it:
 2. Otherwise classifies state via the already-existing
    `depgraph_status` staleness check (content hash → commit SHA →
    mtime walk).
-3. On `present`, or on a state generation can't fix (`invalid_dir`,
-   `schema_mismatch`, `branch_not_indexed`, `load_error`), does
-   nothing further — the existing `gitnexus_warnings`/
-   `composable_contract_signals` machinery already explains those
-   cases well; no need to duplicate that.
+3. On `present`, or on a state generation can't fix (`invalid_dir`
+   for an override that escapes the project root, `schema_mismatch`,
+   `branch_not_indexed`, `load_error`), does nothing further — the
+   existing `gitnexus_warnings`/`composable_contract_signals`
+   machinery already explains those cases well; no need to
+   duplicate that. An in-root override whose store is not created
+   yet is `missing` (not `invalid_dir`) so the next step can
+   generate it — see #287.
 4. On `missing`/`stale`: checks `gitnexus_available()` ($PATH scan);
    if absent, returns a `generation_note` explaining that and telling
    the caller how to install it. If present, calls

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **First-run `--gitnexus-dir` no longer skips COMPOSABLE generation** ([#287](https://github.com/Krv-Labs/topos/issues/287)) — an in-root override whose store does not exist yet is classified as `missing` (generate), not `invalid_dir`. Outside-root overrides remain hard rejects. CLI `evaluate` now surfaces the same `gitnexus_warnings` explanations MCP already returns, including a top-level `--json` `warnings` array.
 - **Graphify edge loading and oversized `graph.json` reads** ([#214](https://github.com/Krv-Labs/topos/issues/214), [#268](https://github.com/Krv-Labs/topos/pull/268)) — prefer array-valued `links`, else array-valued `edges`; reject oversized `graph.json` before parsing so pathological tool output cannot OOM the process.
 - **`resolve_within_root` symlink / `..` containment** ([#215](https://github.com/Krv-Labs/topos/issues/215), [#269](https://github.com/Krv-Labs/topos/pull/269)) — walk path components forwards and canonicalize existing segments so a missing leaf under a symlinked prefix (or `..` after a missing segment) cannot escape the file root.
 - **MCP registry `server.json` no longer ships a broken PyPI index URL** ([#276](https://github.com/Krv-Labs/topos/pull/276), [#277](https://github.com/Krv-Labs/topos/pull/277)) — drop `registryBaseUrl` and `--index-url` runtime arguments that caused VS Code `@mcp` installs to hard-fail with a duplicated `--index-url`. CI now guards the invariant and runs on `release/**` branches.

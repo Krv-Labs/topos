@@ -344,7 +344,11 @@ fn attention_lines_with_options(
     lines
 }
 
-pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -> Value {
+pub(crate) fn json_output(
+    files: &[PathBuf],
+    results: &[ClassificationResult],
+    warnings: &[String],
+) -> Value {
     let rows: Vec<Value> = files
         .iter()
         .zip(results)
@@ -371,7 +375,14 @@ pub(crate) fn json_output(files: &[PathBuf], results: &[ClassificationResult]) -
             })
         })
         .collect();
-    json!({ "version": env!("CARGO_PKG_VERSION"), "results": rows })
+    // Top-level `warnings` mirrors MCP evaluate payloads so machines can see
+    // COMPOSABLE setup failures (invalid override, generation miss, …)
+    // instead of only inferring them from a missing `composable` score.
+    json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "results": rows,
+        "warnings": warnings,
+    })
 }
 
 pub(crate) fn ranked_file_indices(

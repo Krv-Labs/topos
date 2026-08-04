@@ -238,13 +238,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-
-    fn scratch(label: &str) -> PathBuf {
-        let dir = env::temp_dir().join(format!("topos-binary-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     /// A real, executable stand-in for the topos binary, in its own directory
     /// so it can be placed on a synthetic `$PATH`.
@@ -282,7 +276,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn path_alias_search_matches_what_a_shell_would_run() {
-        let root = scratch("alias");
+        let root = tmp_dir("alias");
         let real = executable_in(&root, "real");
         let link = link_dir(&root, "lnkbin", &real);
         let broken = link_dir(&root, "brokenbin", &root.join("nowhere"));
@@ -355,7 +349,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn two_spellings_of_one_file_do_not_drift() {
-        let root = scratch("spellings");
+        let root = tmp_dir("spellings");
         let real = executable_in(&root, "bin");
         let link = link_dir(&root, "lnkbin", &real);
 
@@ -367,7 +361,7 @@ mod tests {
 
     #[test]
     fn a_command_that_cannot_spawn_this_topos_drifts_with_a_reason() {
-        let root = scratch("drift");
+        let root = tmp_dir("drift");
         let real = executable_in(&root, "bin");
         let other = executable_in(&root, "other");
 
@@ -396,7 +390,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_file_without_an_execute_bit_drifts() {
-        let root = scratch("mode");
+        let root = tmp_dir("mode");
         let real = executable_in(&root, "bin");
         set_mode(&real, 0o644);
 
@@ -409,7 +403,7 @@ mod tests {
     /// unreadable side must answer "no", never panic.
     #[test]
     fn same_file_is_total_over_unreadable_paths() {
-        let root = scratch("total");
+        let root = tmp_dir("total");
         let real = executable_in(&root, "bin");
 
         assert!(same_file(&real, &real));

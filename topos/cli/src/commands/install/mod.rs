@@ -25,6 +25,8 @@ mod report;
 mod residue;
 mod state;
 mod status;
+#[cfg(test)]
+mod testing;
 mod toml_entry;
 mod uninstall;
 

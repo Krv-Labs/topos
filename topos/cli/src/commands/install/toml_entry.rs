@@ -164,14 +164,7 @@ mod tests {
     use super::*;
     use crate::commands::install::artifact::Artifact;
     use crate::commands::install::fsops::backup_path;
-
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("topos-toml-entry-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     fn fake_binary(dir: &Path) -> std::path::PathBuf {
         let path = dir.join("topos");
@@ -186,7 +179,7 @@ mod tests {
 
     #[test]
     fn entry_round_trips_and_preserves_comments_and_unrelated_tables() {
-        let dir = scratch("round-trip");
+        let dir = tmp_dir("round-trip");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         fs::write(&path, "# my codex config\n[model]\nname = \"gpt\"\n").unwrap();
@@ -212,7 +205,7 @@ mod tests {
 
     #[test]
     fn dry_run_removal_touches_nothing() {
-        let dir = scratch("dry-run");
+        let dir = tmp_dir("dry-run");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         Artifact::McpToml.apply(&path, &binary).unwrap();
@@ -230,7 +223,7 @@ mod tests {
 
     #[test]
     fn drift_is_repaired_without_replacing_the_pristine_backup() {
-        let dir = scratch("drift");
+        let dir = tmp_dir("drift");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         fs::write(&path, "[model]\nname = \"gpt\"\n").unwrap();
@@ -259,7 +252,7 @@ mod tests {
 
     #[test]
     fn a_hand_made_entry_under_our_key_is_a_conflict_and_survives_uninstall() {
-        let dir = scratch("foreign");
+        let dir = tmp_dir("foreign");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         let seed = "[mcp_servers.topos]\ncommand = \"uvx\"\nargs = [\"topos-mcp\"]\n";
@@ -276,7 +269,7 @@ mod tests {
 
     #[test]
     fn a_sibling_server_survives_removal() {
-        let dir = scratch("sibling");
+        let dir = tmp_dir("sibling");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         fs::write(&path, "[mcp_servers.other]\ncommand = \"foo\"\nargs = []\n").unwrap();
@@ -291,7 +284,7 @@ mod tests {
 
     #[test]
     fn an_unparseable_config_is_a_conflict_and_is_left_untouched() {
-        let dir = scratch("unparseable");
+        let dir = tmp_dir("unparseable");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         fs::write(&path, "[not = toml").unwrap();
@@ -307,7 +300,7 @@ mod tests {
 
     #[test]
     fn a_foreign_key_pointing_at_topos_is_reported_as_a_duplicate() {
-        let dir = scratch("duplicates");
+        let dir = tmp_dir("duplicates");
         let binary = fake_binary(&dir);
         let path = dir.join("config.toml");
         fs::write(

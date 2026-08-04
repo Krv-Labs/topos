@@ -212,14 +212,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-
-    fn scratch(label: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("topos-harness-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     #[test]
     fn ids_are_unique_and_match_the_table_order() {
@@ -250,7 +243,7 @@ mod tests {
 
     #[test]
     fn a_bare_gemini_directory_does_not_look_like_antigravity() {
-        let home = scratch("gemini-only");
+        let home = tmp_dir("gemini-only");
         fs::create_dir_all(home.join(".gemini")).unwrap();
 
         let antigravity = spec("antigravity").unwrap();
@@ -265,7 +258,7 @@ mod tests {
 
     #[test]
     fn the_migration_marker_makes_antigravity_detected_and_silences_the_note() {
-        let home = scratch("migrated");
+        let home = tmp_dir("migrated");
         fs::create_dir_all(home.join(".gemini/config")).unwrap();
         fs::write(home.join(".gemini/config/.migrated"), "").unwrap();
 
@@ -277,7 +270,7 @@ mod tests {
 
     #[test]
     fn an_unmigrated_install_is_detected_and_warns_that_the_entry_is_at_risk() {
-        let home = scratch("unmigrated");
+        let home = tmp_dir("unmigrated");
         fs::create_dir_all(home.join(".gemini/antigravity")).unwrap();
         fs::write(home.join(".gemini/antigravity/mcp_config.json"), "{}").unwrap();
 
@@ -290,7 +283,7 @@ mod tests {
 
     #[test]
     fn a_back_compat_symlink_is_not_mistaken_for_an_unmigrated_config() {
-        let home = scratch("symlinked");
+        let home = tmp_dir("symlinked");
         fs::create_dir_all(home.join(".gemini/config")).unwrap();
         fs::create_dir_all(home.join(".gemini/antigravity")).unwrap();
         fs::write(home.join(".gemini/config/mcp_config.json"), "{}").unwrap();
@@ -310,7 +303,7 @@ mod tests {
 
     #[test]
     fn only_antigravity_carries_a_note() {
-        let home = scratch("notes");
+        let home = tmp_dir("notes");
         for spec in HARNESSES.iter().filter(|spec| spec.id != "antigravity") {
             assert_eq!((spec.note)(&home), None, "{} added a note", spec.id);
         }

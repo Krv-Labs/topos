@@ -237,15 +237,7 @@ fn strings(map: &Map<String, Value>, key: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A private scratch `$HOME`. Every test passes its own label so the
-    /// threaded runner cannot race on one ledger.
-    fn scratch(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("topos-state-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     /// Write a ledger verbatim, for the shapes an earlier build left behind.
     fn seed_ledger(home: &Path, text: &str) {
@@ -270,7 +262,7 @@ mod tests {
 
     #[test]
     fn a_created_file_is_recorded_queried_and_cleared() {
-        let home = scratch("round-trip");
+        let home = tmp_dir("round-trip");
         let config = home.join(".cursor/mcp.json");
 
         assert!(!was_created_by_install(&home, "cursor", &config));
@@ -291,7 +283,7 @@ mod tests {
 
     #[test]
     fn a_file_recorded_for_one_harness_is_invisible_to_another() {
-        let home = scratch("isolation");
+        let home = tmp_dir("isolation");
         let shared_config = home.join(".gemini/settings.json");
         let antigravity_config = home.join(".gemini/config/mcp_config.json");
         record_created_file(&home, "gemini", &shared_config).unwrap();
@@ -316,7 +308,7 @@ mod tests {
 
     #[test]
     fn created_directories_are_deduplicated_within_and_across_calls() {
-        let home = scratch("dedupe");
+        let home = tmp_dir("dedupe");
         let copilot = home.join(".copilot");
 
         record_created_dirs(&home, &[copilot.clone(), copilot.clone()]).unwrap();
@@ -330,7 +322,7 @@ mod tests {
     /// would delete far outside topos's own scope.
     #[test]
     fn shared_directories_are_never_recorded_as_prunable() {
-        let home = scratch("never-prune");
+        let home = tmp_dir("never-prune");
         let ours = home.join(".local/state/topos");
 
         let mut dirs = never_prune(&home);
@@ -343,7 +335,7 @@ mod tests {
 
     #[test]
     fn recording_only_shared_directories_does_not_create_the_ledger() {
-        let home = scratch("no-ledger");
+        let home = tmp_dir("no-ledger");
 
         record_created_dirs(&home, &[home.join(".local"), home.clone()]).unwrap();
 
@@ -356,7 +348,7 @@ mod tests {
     /// disk, and it is the only record of what uninstall may delete.
     #[test]
     fn the_drafts_flat_schema_is_read_and_upgraded_in_place() {
-        let home = scratch("upgrade");
+        let home = tmp_dir("upgrade");
         let config = home.join(".claude.json");
         seed_ledger(
             &home,
@@ -381,7 +373,7 @@ mod tests {
     /// would silently lose the directory list mid-uninstall.
     #[test]
     fn an_upgrade_keeps_created_directories_where_they_can_be_read() {
-        let home = scratch("upgrade-dirs");
+        let home = tmp_dir("upgrade-dirs");
         seed_ledger(
             &home,
             &format!(
@@ -398,7 +390,7 @@ mod tests {
     /// not take the directory list with it.
     #[test]
     fn clearing_the_last_harness_leaves_the_directory_list_readable() {
-        let home = scratch("last-harness");
+        let home = tmp_dir("last-harness");
         let created = home.join(".copilot");
         record_created_file(&home, "copilot", &created.join("mcp-config.json")).unwrap();
         record_created_dirs(&home, std::slice::from_ref(&created)).unwrap();
@@ -412,7 +404,7 @@ mod tests {
 
     #[test]
     fn removing_the_ledger_is_idempotent_and_comes_after_reading_it() {
-        let home = scratch("remove");
+        let home = tmp_dir("remove");
         let created = home.join(".cursor");
         record_created_dirs(&home, std::slice::from_ref(&created)).unwrap();
 
@@ -432,7 +424,7 @@ mod tests {
     /// and a `.topos.backup` beside it would itself be a trace.
     #[test]
     fn the_ledger_is_never_backed_up_and_never_records_its_own_parents() {
-        let home = scratch("no-backup");
+        let home = tmp_dir("no-backup");
         record_created_file(&home, "claude", &home.join(".claude.json")).unwrap();
         record_created_file(&home, "claude", &home.join(".claude.json")).unwrap();
 
@@ -448,7 +440,7 @@ mod tests {
     /// A ledger someone truncated or hand-edited must not wedge install.
     #[test]
     fn an_unreadable_ledger_reads_as_empty_and_is_rewritten() {
-        let home = scratch("corrupt");
+        let home = tmp_dir("corrupt");
         let config = home.join(".claude.json");
         seed_ledger(&home, "{ not json");
 
@@ -461,7 +453,7 @@ mod tests {
 
     #[test]
     fn clearing_a_harness_on_a_machine_that_never_installed_writes_nothing() {
-        let home = scratch("clear-clean");
+        let home = tmp_dir("clear-clean");
 
         clear_created_files(&home, "claude").unwrap();
 

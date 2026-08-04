@@ -173,17 +173,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-
-    /// A scratch `$HOME`. Every test needs its own `label`: `cargo test` is
-    /// threaded and the process id is shared, so two tests reusing a label
-    /// would wipe each other's seeds.
-    fn scratch(label: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("topos-residue-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     /// Seed `home/relative` with `text`, creating parents.
     fn seed(home: &Path, relative: &str, text: &str) -> PathBuf {
@@ -242,7 +232,7 @@ mod tests {
 
     #[test]
     fn every_single_condition_is_detected_on_its_own() {
-        let root = scratch("single");
+        let root = tmp_dir("single");
         let binary = fake_binary(&root);
         for (index, (relative, text)) in SEEDS.iter().enumerate() {
             let home = root.join(format!("home{index}"));
@@ -260,7 +250,7 @@ mod tests {
 
     #[test]
     fn a_hand_made_second_registration_is_reported_but_named_as_the_users_own() {
-        let root = scratch("duplicate");
+        let root = tmp_dir("duplicate");
         let binary = fake_binary(&root);
         let home = root.join("home");
         // Antigravity's config, the one place a hand-rolled `topos-mcp` key was
@@ -285,7 +275,7 @@ mod tests {
 
     #[test]
     fn a_clean_home_has_no_residue() {
-        let home = scratch("clean");
+        let home = tmp_dir("clean");
         let binary = fake_binary(&home);
         assert!(scan(&home, &binary).is_empty());
         fs::remove_dir_all(home).ok();
@@ -293,7 +283,7 @@ mod tests {
 
     #[test]
     fn a_users_own_gemini_rules_and_imports_are_not_our_business() {
-        let root = scratch("foreign-import");
+        let root = tmp_dir("foreign-import");
         let binary = fake_binary(&root);
         let home = root.join("home");
         seed(
@@ -310,7 +300,7 @@ mod tests {
 
     #[test]
     fn skill_advice_never_suggests_a_topos_command() {
-        let root = scratch("skill-advice");
+        let root = tmp_dir("skill-advice");
         let binary = fake_binary(&root);
         let home = root.join("home");
         for relative in [
@@ -336,7 +326,7 @@ mod tests {
 
     #[test]
     fn scanning_writes_nothing_at_all() {
-        let root = scratch("read-only");
+        let root = tmp_dir("read-only");
         let binary = fake_binary(&root);
         let home = root.join("home");
         for (relative, text) in SEEDS {

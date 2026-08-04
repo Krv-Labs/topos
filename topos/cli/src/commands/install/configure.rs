@@ -73,7 +73,17 @@ fn configure_spec(
             report::detail(&report::pending(opts), &preview_message(&inspection, &path));
             true
         }
-        _ => write_entry(harness, home, binary, &path, opts),
+        // `Incomplete` is drift: the entry is ours but its recorded command no
+        // longer resolves, so this write is a repair rather than a first
+        // registration.
+        state => write_entry(
+            harness,
+            home,
+            binary,
+            &path,
+            state == State::Incomplete,
+            opts,
+        ),
     }
 }
 
@@ -99,18 +109,31 @@ fn write_entry(
     home: &Path,
     binary: &Path,
     path: &Path,
+    repair: bool,
     opts: RenderOptions,
 ) -> bool {
     match harness.artifact.apply(path, binary) {
         Ok(outcome) => {
+            // Report what the write actually did rather than restating the
+            // end state, so the output never claims a change that did not
+            // happen — and so a repair reads as a repair.
+            let wrote = outcome.is_some();
             record(harness.id, home, path, outcome);
-            report::detail(&report::ok(opts), harness.active_msg);
+            report::detail(&report::ok(opts), &applied_message(harness, repair, wrote));
             true
         }
         Err(message) => {
             report::detail(&report::failed(opts), &message);
             false
         }
+    }
+}
+
+fn applied_message(harness: &HarnessSpec, repair: bool, wrote: bool) -> String {
+    match (wrote, repair) {
+        (false, _) => format!("{} (unchanged)", harness.active_msg),
+        (true, true) => format!("repaired — {}", harness.active_msg),
+        (true, false) => harness.active_msg.to_string(),
     }
 }
 

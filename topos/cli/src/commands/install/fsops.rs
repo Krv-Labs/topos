@@ -330,17 +330,11 @@ fn remove_dir(dir: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn scratch(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("topos-fsops-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     #[test]
     fn a_write_replaces_contents_and_reports_no_new_directories() {
-        let dir = scratch("basic");
+        let dir = tmp_dir("basic");
         let path = dir.join("config.json");
         fs::write(&path, "old").unwrap();
 
@@ -355,7 +349,7 @@ mod tests {
 
     #[test]
     fn a_backup_captures_the_prior_bytes_only_when_there_are_any() {
-        let dir = scratch("backup");
+        let dir = tmp_dir("backup");
         let fresh = dir.join("fresh.json");
 
         // Nothing of the user's exists yet, so there is nothing to preserve.
@@ -377,7 +371,7 @@ mod tests {
     /// able to overwrite the pristine snapshot with topos's own output.
     #[test]
     fn a_second_write_without_backup_leaves_the_pristine_snapshot_intact() {
-        let dir = scratch("pristine");
+        let dir = tmp_dir("pristine");
         let path = dir.join("config.json");
         fs::write(&path, "user content").unwrap();
 
@@ -394,7 +388,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn writing_through_a_symlink_keeps_the_link_and_updates_its_target() {
-        let dir = scratch("symlink");
+        let dir = tmp_dir("symlink");
         let real = dir.join("dotfiles").join("claude.json");
         fs::create_dir_all(real.parent().unwrap()).unwrap();
         fs::write(&real, "original").unwrap();
@@ -418,7 +412,7 @@ mod tests {
 
     #[test]
     fn created_directories_are_reported_shallowest_first() {
-        let dir = scratch("dirs");
+        let dir = tmp_dir("dirs");
         let path = dir.join("a/b/c/config.json");
 
         let outcome = atomic_write(&path, "{}", false).unwrap();
@@ -433,7 +427,7 @@ mod tests {
 
     #[test]
     fn a_missing_or_blank_file_reads_as_an_empty_object() {
-        let dir = scratch("read");
+        let dir = tmp_dir("read");
         let blank = dir.join("blank.json");
         fs::write(&blank, "   \n").unwrap();
 
@@ -446,7 +440,7 @@ mod tests {
 
     #[test]
     fn unreadable_content_is_an_error_rather_than_a_silent_empty_object() {
-        let dir = scratch("bad");
+        let dir = tmp_dir("bad");
         let broken = dir.join("broken.json");
         fs::write(&broken, "{ nope").unwrap();
         let array = dir.join("array.json");
@@ -462,7 +456,7 @@ mod tests {
     fn key_order_survives_a_read_write_round_trip() {
         // Guards the `preserve_order` feature: without it every key in a user's
         // `~/.claude.json` is alphabetically re-sorted on install.
-        let dir = scratch("order");
+        let dir = tmp_dir("order");
         let path = dir.join("config.json");
         fs::write(&path, r#"{"zebra": 1, "apple": 2, "mango": 3}"#).unwrap();
 
@@ -510,7 +504,7 @@ mod tests {
 
     #[test]
     fn a_comment_free_file_reports_no_comments() {
-        let dir = scratch("jsonc-clean");
+        let dir = tmp_dir("jsonc-clean");
         let path = dir.join("mcp.json");
         fs::write(&path, r#"{"servers": {}}"#).unwrap();
 
@@ -522,7 +516,7 @@ mod tests {
 
     #[test]
     fn pruning_removes_empty_directories_child_first_and_stops_at_real_content() {
-        let dir = scratch("prune");
+        let dir = tmp_dir("prune");
         let empty = dir.join("keep/a/b");
         fs::create_dir_all(&empty).unwrap();
         let occupied = dir.join("occupied");
@@ -552,7 +546,7 @@ mod tests {
 
     #[test]
     fn a_directory_holding_only_ignorable_files_is_still_pruned() {
-        let dir = scratch("ignorable");
+        let dir = tmp_dir("ignorable");
         let target = dir.join("cursor");
         fs::create_dir_all(&target).unwrap();
         fs::write(target.join(".DS_Store"), "").unwrap();
@@ -569,7 +563,7 @@ mod tests {
 
     #[test]
     fn a_dry_run_prune_reports_without_removing() {
-        let dir = scratch("prune-dry");
+        let dir = tmp_dir("prune-dry");
         let target = dir.join("empty");
         fs::create_dir_all(&target).unwrap();
 

@@ -206,14 +206,7 @@ mod tests {
 
     use super::*;
     use crate::commands::install::fsops::backup_path;
-
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("topos-json-entry-{label}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::commands::install::testing::tmp_dir;
 
     /// A real, executable stand-in for the topos binary, so `drift` has
     /// something to compare identity against.
@@ -230,7 +223,7 @@ mod tests {
 
     #[test]
     fn entry_round_trips_and_leaves_foreign_content_alone() {
-        let dir = scratch("round-trip");
+        let dir = tmp_dir("round-trip");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         fs::write(
@@ -256,7 +249,7 @@ mod tests {
 
     #[test]
     fn the_recorded_command_is_absolute_and_args_are_exactly_mcp() {
-        let dir = scratch("absolute");
+        let dir = tmp_dir("absolute");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         Artifact::McpJson.apply(&path, &binary).unwrap();
@@ -278,7 +271,7 @@ mod tests {
 
     #[test]
     fn client_added_keys_survive_and_do_not_cause_a_rewrite_loop() {
-        let dir = scratch("field-wise");
+        let dir = tmp_dir("field-wise");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         Artifact::McpJson.apply(&path, &binary).unwrap();
@@ -306,7 +299,7 @@ mod tests {
 
     #[test]
     fn path_drift_is_incomplete_and_install_repairs_it_without_clobbering_the_backup() {
-        let dir = scratch("drift");
+        let dir = tmp_dir("drift");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         fs::write(&path, "{\"userKey\": 1}\n").unwrap();
@@ -336,7 +329,7 @@ mod tests {
 
     #[test]
     fn a_hand_made_entry_under_our_key_is_a_conflict_and_is_never_removed() {
-        let dir = scratch("foreign");
+        let dir = tmp_dir("foreign");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         let seed = r#"{"mcpServers": {"topos": {"command": "uvx", "args": ["topos-mcp"]}}}"#;
@@ -352,7 +345,7 @@ mod tests {
 
     #[test]
     fn an_unparseable_file_is_a_conflict_and_is_left_untouched() {
-        let dir = scratch("unparseable");
+        let dir = tmp_dir("unparseable");
         let binary = fake_binary(&dir);
         let path = dir.join("settings.json");
         fs::write(&path, "{ not json").unwrap();
@@ -368,7 +361,7 @@ mod tests {
 
     #[test]
     fn vscode_uses_the_servers_key_and_declares_a_stdio_transport() {
-        let dir = scratch("vscode");
+        let dir = tmp_dir("vscode");
         let binary = fake_binary(&dir);
         let path = dir.join("mcp.json");
 
@@ -385,7 +378,7 @@ mod tests {
 
     #[test]
     fn a_commented_vscode_config_is_a_conflict_carrying_the_entry_to_paste() {
-        let dir = scratch("jsonc");
+        let dir = tmp_dir("jsonc");
         let binary = fake_binary(&dir);
         let path = dir.join("mcp.json");
         let seed = "{\n  // my servers\n  \"servers\": {}\n}\n";
@@ -403,7 +396,7 @@ mod tests {
 
     #[test]
     fn foreign_keys_pointing_at_topos_are_reported_as_duplicates() {
-        let dir = scratch("duplicates");
+        let dir = tmp_dir("duplicates");
         let binary = fake_binary(&dir);
         let path = dir.join("mcp_config.json");
         fs::write(

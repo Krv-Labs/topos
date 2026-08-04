@@ -172,9 +172,11 @@ fn format_hint(option: &MenuOption, opts: RenderOptions) -> String {
     }
     let body = match option.hint_style {
         HintStyle::Active => paint(format!("✓ {}", option.hint), Style::new().green(), opts),
-        HintStyle::Repair => {
-            paint(format!("▲ {}", option.hint), Style::new().color256(208), opts)
-        }
+        HintStyle::Repair => paint(
+            format!("▲ {}", option.hint),
+            Style::new().color256(208),
+            opts,
+        ),
         HintStyle::Plain => paint(&option.hint, Style::new().dim(), opts),
     };
     format!(" ({body})")

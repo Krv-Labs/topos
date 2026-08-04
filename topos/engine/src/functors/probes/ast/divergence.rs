@@ -323,7 +323,8 @@ mod tests {
 
     #[test]
     fn entries_carry_names_and_spans() {
-        let source = "def outer(a, b):\n    if a:\n        if b:\n            return 1\n    return 0\n";
+        let source =
+            "def outer(a, b):\n    if a:\n        if b:\n            return 1\n    return 0\n";
         let result = parse_source(source, "python", None).unwrap();
         let entries = calculate_function_divergence_entries(&result.uast_root, source);
         assert_eq!(entries.len(), 1);

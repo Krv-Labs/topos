@@ -241,19 +241,10 @@ mod tests {
 // complexity" (keyed by opaque node id, fine for a gate check).
 // `calculate_function_complexity_entries` answers "which function, at
 // which lines" for agent-facing reporting — it needs a real name and a
-// span. Both requirements are satisfiable straight from the UAST: UAST
-// spans already carry real line numbers, and a `FunctionDecl`'s name is
-// its first `Identifier`-kind child (the mappers preserve that child;
-// they just don't duplicate its text into an attribute) — so this reuses
+// span. Both come from the shared `super::scopes` walk, so this reuses
 // `node_complexity` above rather than re-deriving complexity via a
 // second, tree-sitter-native pass. Genuinely multi-language, same as
 // `calculate_function_complexities`.
-
-const SCOPE_UAST_KINDS: &[&str] = &["FunctionDecl", "MethodDecl", "TypeDecl"];
-
-/// Label stem for callables the grammar gives no name at all; suffixed
-/// with `@<line>` so the entry still points at editable source.
-const ANONYMOUS_NAME: &str = "<anonymous>";
 
 /// One function/method/closure's complexity, name, span, and scope kind.
 pub struct FunctionComplexityEntry {
@@ -265,150 +256,26 @@ pub struct FunctionComplexityEntry {
     pub complexity: usize,
 }
 
-/// The direct child holding a declaration's name, if there is one.
-///
-/// The mappers put the declared name in an `Identifier` child of
-/// `FunctionDecl` / `MethodDecl` / `TypeDecl`, but *not* necessarily the
-/// first one: Rust leads with `visibility_modifier` and
-/// `function_modifiers` (`pub`, `async`, `unsafe`, …) and Go's
-/// `MethodDecl` leads with the receiver `parameter_list`. Insisting on
-/// `children.first()` therefore made every `pub fn` look anonymous —
-/// which silently dropped it from the location path while it still
-/// counted toward the `ast.max_function_complexity` gate. Scanning for
-/// the first `Identifier` child instead is language-neutral and correct
-/// for every grammar dumped so far, because modifiers and receivers are
-/// never mapped to `Identifier`.
-///
-/// JavaScript is the one exception: a `method_definition`'s name is a
-/// `property_identifier`, which has no UAST kind of its own, so that
-/// native kind is accepted too rather than leaving `C.m` anonymous.
-fn uast_name_node(node: &UASTNode) -> Option<&UASTNode> {
-    node.children
-        .iter()
-        .find(|child| child.kind == "Identifier" || child.native.node_kind == "property_identifier")
-}
-
-/// A UAST node's own declared name. Sliced from `source` by the name
-/// child's span (see [`uast_name_node`]), since UAST nodes don't carry
-/// token text themselves.
-fn uast_node_name(node: &UASTNode, source: &str) -> Option<String> {
-    let ident = uast_name_node(node)?;
-    source
-        .get(ident.span.start_byte..ident.span.end_byte)
-        .map(|s| s.to_string())
-}
-
-fn classify_kind(node: &UASTNode, source: &str, chain: &[(String, String)]) -> &'static str {
-    if let Some((enclosing_kind, _)) = chain.last() {
-        if enclosing_kind == "TypeDecl" {
-            return "method";
-        }
-        if enclosing_kind == "FunctionDecl" || enclosing_kind == "MethodDecl" {
-            return "closure";
-        }
-    }
-    if node.kind == "MethodDecl" {
-        return "method";
-    }
-    if is_async(node, source) {
-        "async_function"
-    } else {
-        "function"
-    }
-}
-
-/// Best-effort `async` detection: the mappers only keep *named* tree-sitter
-/// children (see `mapper_common::filtered_named_children`), and `async` is
-/// an anonymous keyword token in tree-sitter-python's grammar — the node
-/// kind stays `function_definition` either way, but its *span* still
-/// starts at `async` (tree-sitter includes leading anonymous tokens in the
-/// parent's span), so it never survives as a UAST child. Recovering it from
-/// the source text avoids touching the shared mapper.
-///
-/// The keyword is not always first, though: `pub async fn` starts the span
-/// at `pub`. So the check is over the whole *header* — everything from the
-/// declaration's start up to its name (or, for an anonymous callable, up to
-/// its first mapped child), which is exactly the run of modifier keywords.
-/// Matching whole tokens keeps identifiers like `async_run` from counting.
-fn is_async(node: &UASTNode, source: &str) -> bool {
-    let start = node.span.start_byte;
-    let end = uast_name_node(node)
-        .or_else(|| node.children.first())
-        .map_or(node.span.end_byte, |child| child.span.start_byte);
-    source.get(start..end.max(start)).is_some_and(|header| {
-        header
-            .split(|c: char| !c.is_alphanumeric() && c != '_')
-            .any(|token| token == "async")
-    })
-}
-
-fn collect_entries(
-    node: &UASTNode,
-    source: &str,
-    chain: &mut Vec<(String, String)>,
-    entries: &mut Vec<FunctionComplexityEntry>,
-) {
-    let is_function = matches!(node.kind.as_str(), "FunctionDecl" | "MethodDecl");
-    let is_scope = SCOPE_UAST_KINDS.contains(&node.kind.as_str());
-
-    // Every callable that `calculate_function_complexities` counts must get
-    // an entry, or the `ast.max_function_complexity` gate can fail with no
-    // location to point an agent at — an un-targetable, and therefore
-    // un-fixable, gate. Genuinely anonymous callables (JS function
-    // expressions, arrow functions taking a parameter list) get a synthetic
-    // label instead of being skipped; the line number keeps it stable and
-    // editable, and mirrors the `<module>` marker convention used on the
-    // MCP side for gates that are not attributable to a function at all.
-    let name = is_function.then(|| {
-        uast_node_name(node, source)
-            .unwrap_or_else(|| format!("{ANONYMOUS_NAME}@{}", node.span.start_line))
-    });
-
-    if let Some(name) = &name {
-        let mut qualified_parts: Vec<&str> = chain.iter().map(|(_, n)| n.as_str()).collect();
-        qualified_parts.push(name);
-        entries.push(FunctionComplexityEntry {
-            name: name.clone(),
-            qualified_name: qualified_parts.join("."),
-            kind: classify_kind(node, source, chain),
-            start_line: node.span.start_line,
-            end_line: node.span.end_line,
-            complexity: node_complexity(node),
-        });
-    }
-
-    let pushed = if is_scope {
-        // Reuse the callable's label (synthetic included) so a named function
-        // nested inside an anonymous one still gets a qualified name.
-        name.or_else(|| uast_node_name(node, source)).map(|label| {
-            chain.push((node.kind.clone(), label));
-        })
-    } else {
-        None
-    };
-
-    for child in &node.children {
-        collect_entries(child, source, chain, entries);
-    }
-
-    if pushed.is_some() {
-        chain.pop();
-    }
-}
-
 /// Per-function complexity with locations, parallel to the gate metric.
 ///
 /// Same decision-node counting as [`calculate_function_complexities`],
-/// but keyed by real (dotted, qualified) names with spans. `source` is
-/// needed to slice out identifier text (see [`uast_node_name`]).
+/// but keyed by real (dotted, qualified) names with spans, from the
+/// shared [`super::scopes::function_scopes`] walk.
 pub fn calculate_function_complexity_entries(
     uast_root: &UASTNode,
     source: &str,
 ) -> Vec<FunctionComplexityEntry> {
-    let mut entries = Vec::new();
-    let mut chain = Vec::new();
-    collect_entries(uast_root, source, &mut chain, &mut entries);
-    entries
+    super::scopes::function_scopes(uast_root, source)
+        .into_iter()
+        .map(|scope| FunctionComplexityEntry {
+            name: scope.name,
+            qualified_name: scope.qualified_name,
+            kind: scope.kind,
+            start_line: scope.start_line,
+            end_line: scope.end_line,
+            complexity: node_complexity(scope.node),
+        })
+        .collect()
 }
 
 #[cfg(test)]

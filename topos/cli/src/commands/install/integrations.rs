@@ -1,24 +1,27 @@
-//! Per-harness config paths, state detection, and the small persistence
-//! primitives `install`/`uninstall`/`status` build on: atomic writes with
-//! backups, and a tiny ownership-tracking file so uninstall only ever
-//! deletes what a previous `topos install` actually created.
+//! The harness table and the persistence primitives `install` / `uninstall`
+//! / `status` build on: atomic writes with backups, marker-based idempotent
+//! edits, and a small ownership-tracking file so uninstall only ever deletes
+//! what a previous `topos install` actually created.
 //!
-//! Ported from the harness-installer pattern in sgathrid/brian
-//! (`wikicli/lifecycle/{integrations,install,uninstall}.py`): a flat
-//! per-harness dispatch, marker-based idempotent edits, and an
-//! install-state file recording exactly what was added so uninstall never
-//! touches a setting it didn't create. Brian injects session-start context
-//! via hooks; Topos exposes MCP tools instead, so the Topos adapters
-//! register an MCP server (or, where a harness has no MCP support, drop a
-//! marked instructions block / skill file) rather than porting the hook
+//! [`HARNESSES`] is the single source of truth. Each entry names its display
+//! label, the directory whose presence means "this harness is installed on
+//! this machine", and the [`Artifact`]s Topos owns inside it. Install,
+//! uninstall, status, detection, and backup purging are all loops over
+//! `harness.artifacts`, so adding a harness is one table entry rather than an
+//! edit in each of those five places.
+//!
+//! The mechanism is derived from the harness-installer pattern in
+//! sgathrid/brian (`wikicli/lifecycle/`), but brian injects session-start
+//! context via hooks; Topos exposes MCP tools, so these adapters register an
+//! MCP server (or, for harnesses without MCP support, drop a marked
+//! instructions block or a skill file) rather than porting the hook
 //! machinery.
 //!
-//! Schema notes worth re-checking against each harness's current docs
-//! before this ships out of draft:
+//! Schema notes:
 //! - Claude Code stores user-scope MCP servers in `~/.claude.json`, not
 //!   `~/.claude/settings.json` (settings.json is hooks/permissions only).
 //! - Codex CLI, Gemini CLI, and Cursor accept the same
-//!   `{"command": "topos", "args": ["mcp"]}` shape Claude Desktop uses.
+//!   `{"command": …, "args": ["mcp"]}` shape Claude Desktop uses.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,31 +29,141 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
-/// Embedded so a globally-installed `topos` binary (cargo install, the
-/// curl installer, a package manager) can drop the skill file without a
-/// checkout of this repository on disk.
+/// Embedded so a globally-installed `topos` binary (cargo install, the curl
+/// installer, a package manager) can drop the skill file without a checkout
+/// of this repository on disk.
 pub(crate) const SKILL_MD: &str = include_str!("../../../../../skills/topos/SKILL.md");
 
-pub(crate) const SUPPORTED: [&str; 7] = [
-    "claude",
-    "claude-desktop",
-    "codex",
-    "gemini",
-    "copilot",
-    "skills",
-    "antigravity",
+// Claude Desktop is not currently distributed for Linux; the non-macOS path
+// is kept so status/uninstall can still clean up a config left by an earlier
+// install.
+const CLAUDE_DESKTOP_CONFIG: &str = if cfg!(target_os = "macos") {
+    "Library/Application Support/Claude/claude_desktop_config.json"
+} else {
+    ".config/Claude/claude_desktop_config.json"
+};
+
+const CLAUDE_DESKTOP_DIR: &str = if cfg!(target_os = "macos") {
+    "Library/Application Support/Claude"
+} else {
+    ".config/Claude"
+};
+
+/// One thing Topos owns inside a harness's configuration. Paths are relative
+/// to the user's home directory.
+pub(crate) enum Artifact {
+    /// `mcpServers.topos` inside a JSON config.
+    JsonMcp(&'static str),
+    /// `[mcp_servers.topos]` inside a TOML config.
+    TomlMcp(&'static str),
+    /// A `<!-- topos:start -->` … `<!-- topos:end -->` block in a Markdown file.
+    MarkerBlock(&'static str),
+    /// A written-out copy of [`SKILL_MD`].
+    SkillFile(&'static str),
+    /// An `@import` line in `host` pointing at a written skill copy at `pointer`.
+    ImportLine {
+        host: &'static str,
+        pointer: &'static str,
+    },
+}
+
+pub(crate) struct Harness {
+    pub(crate) id: &'static str,
+    pub(crate) name: &'static str,
+    /// Header shown by install/uninstall, e.g. `Claude Code (~/.claude)`.
+    pub(crate) label: &'static str,
+    /// Directory whose presence means this harness is installed locally.
+    pub(crate) detect: &'static str,
+    pub(crate) artifacts: &'static [Artifact],
+}
+
+pub(crate) const HARNESSES: &[Harness] = &[
+    Harness {
+        id: "claude",
+        name: "Claude Code",
+        label: "Claude Code (~/.claude)",
+        detect: ".claude",
+        artifacts: &[
+            Artifact::JsonMcp(".claude.json"),
+            Artifact::SkillFile(".claude/skills/topos/SKILL.md"),
+        ],
+    },
+    Harness {
+        id: "claude-desktop",
+        name: "Claude Desktop App",
+        label: "Claude Desktop App",
+        detect: CLAUDE_DESKTOP_DIR,
+        artifacts: &[Artifact::JsonMcp(CLAUDE_DESKTOP_CONFIG)],
+    },
+    Harness {
+        id: "codex",
+        name: "Codex CLI",
+        label: "Codex CLI (~/.codex)",
+        detect: ".codex",
+        artifacts: &[Artifact::TomlMcp(".codex/config.toml")],
+    },
+    Harness {
+        id: "gemini",
+        name: "Gemini CLI",
+        label: "Gemini CLI (~/.gemini)",
+        detect: ".gemini",
+        artifacts: &[Artifact::JsonMcp(".gemini/settings.json")],
+    },
+    Harness {
+        id: "copilot",
+        name: "GitHub Copilot CLI",
+        label: "GitHub Copilot CLI (~/.copilot)",
+        detect: ".copilot",
+        artifacts: &[Artifact::MarkerBlock(".copilot/copilot-instructions.md")],
+    },
+    Harness {
+        id: "skills",
+        name: "Cursor & VS Code",
+        label: "Cursor & VS Code (~/.agents/skills)",
+        detect: ".agents/skills",
+        artifacts: &[
+            Artifact::SkillFile(".agents/skills/topos/SKILL.md"),
+            Artifact::JsonMcp(".cursor/mcp.json"),
+        ],
+    },
+    Harness {
+        id: "antigravity",
+        name: "Google Antigravity",
+        label: "Google Antigravity (~/.gemini/GEMINI.md)",
+        detect: ".gemini",
+        artifacts: &[Artifact::ImportLine {
+            host: ".gemini/GEMINI.md",
+            pointer: ".gemini/topos-skill.md",
+        }],
+    },
 ];
 
-pub(crate) fn harness_name(id: &str) -> &'static str {
-    match id {
-        "claude" => "Claude Code",
-        "claude-desktop" => "Claude Desktop App",
-        "codex" => "Codex CLI",
-        "gemini" => "Gemini CLI",
-        "copilot" => "GitHub Copilot CLI",
-        "skills" => "Cursor & VS Code",
-        "antigravity" => "Google Antigravity",
-        _ => "Unknown harness",
+pub(crate) fn harness(id: &str) -> Option<&'static Harness> {
+    HARNESSES.iter().find(|h| h.id == id)
+}
+
+pub(crate) fn supported_ids() -> Vec<&'static str> {
+    HARNESSES.iter().map(|h| h.id).collect()
+}
+
+impl Harness {
+    /// Where install/uninstall look to decide whether this harness exists on
+    /// this machine at all.
+    pub(crate) fn detect_dir(&self, home: &Path) -> PathBuf {
+        home.join(self.detect)
+    }
+
+    pub(crate) fn is_detected(&self, home: &Path) -> bool {
+        self.detect_dir(home).exists()
+    }
+
+    /// Overall state, folding together every artifact this harness owns.
+    pub(crate) fn state(&self, home: &Path) -> State {
+        self.artifacts
+            .iter()
+            .map(|artifact| artifact.state(home))
+            .reduce(combine)
+            .unwrap_or(State::Absent)
     }
 }
 
@@ -61,6 +174,34 @@ pub(crate) enum State {
     Absent,
 }
 
+/// What a single install or uninstall step actually did — reported verbatim,
+/// so the output never claims a write or a removal that did not happen.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Outcome {
+    /// The file was written.
+    Changed,
+    /// Already in the requested state; nothing to do.
+    Unchanged,
+    /// Locally modified, so it was deliberately left alone.
+    Preserved,
+}
+
+fn changed_or_not(changed: bool) -> Outcome {
+    if changed {
+        Outcome::Changed
+    } else {
+        Outcome::Unchanged
+    }
+}
+
+fn combine(a: State, b: State) -> State {
+    match (a, b) {
+        (State::Active, State::Active) => State::Active,
+        (State::Absent, State::Absent) => State::Absent,
+        _ => State::Stale,
+    }
+}
+
 pub(crate) fn home_dir() -> Result<PathBuf, String> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -68,71 +209,195 @@ pub(crate) fn home_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "cannot resolve home directory (HOME is unset)".to_string())
 }
 
-pub(crate) fn claude_desktop_config_path(home: &Path) -> PathBuf {
-    if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/Claude/claude_desktop_config.json")
-    } else {
-        // Claude Desktop is not currently distributed for Linux; keep the
-        // conventional path so status/uninstall can clean up configs left
-        // by an earlier install.
-        home.join(".config/Claude/claude_desktop_config.json")
+impl Artifact {
+    /// The primary file this artifact lives in.
+    pub(crate) fn path(&self, home: &Path) -> PathBuf {
+        let relative = match self {
+            Artifact::JsonMcp(path)
+            | Artifact::TomlMcp(path)
+            | Artifact::MarkerBlock(path)
+            | Artifact::SkillFile(path) => path,
+            Artifact::ImportLine { host, .. } => host,
+        };
+        home.join(relative)
+    }
+
+    /// The written skill copy an [`Artifact::ImportLine`] points at.
+    fn pointer(&self, home: &Path) -> Option<PathBuf> {
+        match self {
+            Artifact::ImportLine { pointer, .. } => Some(home.join(pointer)),
+            _ => None,
+        }
+    }
+
+    /// Every file this artifact touches — used to purge backups.
+    pub(crate) fn paths(&self, home: &Path) -> Vec<PathBuf> {
+        let mut paths = vec![self.path(home)];
+        paths.extend(self.pointer(home));
+        paths
+    }
+
+    /// Human-readable phrase used in every install/uninstall line.
+    pub(crate) fn describe(&self, home: &Path) -> String {
+        let path = self.path(home);
+        match self {
+            Artifact::JsonMcp(_) => format!("MCP server entry in {}", path.display()),
+            Artifact::TomlMcp(_) => format!("[mcp_servers.topos] in {}", path.display()),
+            Artifact::MarkerBlock(_) => format!("instruction block in {}", path.display()),
+            Artifact::SkillFile(_) => format!("skill file {}", path.display()),
+            Artifact::ImportLine { .. } => format!("@import line in {}", path.display()),
+        }
+    }
+
+    pub(crate) fn state(&self, home: &Path) -> State {
+        let path = self.path(home);
+        match self {
+            Artifact::JsonMcp(_) => json_mcp_state(&path),
+            Artifact::TomlMcp(_) => toml_mcp_state(&path),
+            Artifact::MarkerBlock(_) => marker_state(&path),
+            Artifact::SkillFile(_) => skill_state(&path),
+            Artifact::ImportLine { .. } => {
+                import_state(&path, &self.pointer(home).unwrap_or_else(|| path.clone()))
+            }
+        }
+    }
+
+    pub(crate) fn install(&self, home: &Path, harness: &str) -> Result<Outcome, String> {
+        let path = self.path(home);
+        let existed = path.is_file();
+        let changed = match self {
+            Artifact::JsonMcp(_) => set_mcp_entry(&path)?,
+            Artifact::TomlMcp(_) => set_toml_mcp_entry(&path)?,
+            Artifact::MarkerBlock(_) => set_marker_block(&path)?,
+            Artifact::SkillFile(_) => write_skill(&path)?,
+            Artifact::ImportLine { .. } => {
+                set_import_line(&path, &self.pointer(home).unwrap_or_else(|| path.clone()))?
+            }
+        };
+        if changed && !existed {
+            record_created_file(home, harness, &path)?;
+        }
+        Ok(changed_or_not(changed))
+    }
+
+    pub(crate) fn remove(
+        &self,
+        home: &Path,
+        harness: &str,
+        dry_run: bool,
+    ) -> Result<Outcome, String> {
+        let path = self.path(home);
+        match self {
+            Artifact::JsonMcp(_) => {
+                let removed = remove_mcp_entry(&path, dry_run)?;
+                delete_if_empty_and_owned(&path, home, harness, dry_run)?;
+                Ok(changed_or_not(removed))
+            }
+            Artifact::TomlMcp(_) => {
+                let removed = remove_toml_mcp_entry(&path, dry_run)?;
+                delete_text_if_blank_and_owned(&path, home, harness, dry_run)?;
+                Ok(changed_or_not(removed))
+            }
+            Artifact::MarkerBlock(_) => {
+                let removed = remove_marker_block(&path, dry_run)?;
+                delete_text_if_blank_and_owned(&path, home, harness, dry_run)?;
+                Ok(changed_or_not(removed))
+            }
+            Artifact::SkillFile(_) => remove_written_file(&path, SKILL_MD, dry_run),
+            Artifact::ImportLine { .. } => remove_import_line(
+                &path,
+                &self.pointer(home).unwrap_or_else(|| path.clone()),
+                home,
+                harness,
+                dry_run,
+            ),
+        }
     }
 }
 
-pub(crate) fn skill_path_claude(home: &Path) -> PathBuf {
-    home.join(".claude/skills/topos/SKILL.md")
-}
-
-pub(crate) fn skill_path_agents(home: &Path) -> PathBuf {
-    home.join(".agents/skills/topos/SKILL.md")
-}
-
-/// Directory used by the interactive menu to pre-select "detected" harnesses
-/// that aren't yet configured for Topos.
-pub(crate) fn detect_dir(id: &str, home: &Path) -> PathBuf {
-    match id {
-        "claude" => home.join(".claude"),
-        "claude-desktop" => claude_desktop_config_path(home)
-            .parent()
-            .expect("claude desktop config path always has a parent")
-            .to_path_buf(),
-        "codex" => home.join(".codex"),
-        "gemini" | "antigravity" => home.join(".gemini"),
-        "copilot" => home.join(".copilot"),
-        "skills" => home.join(".agents/skills"),
-        _ => home.to_path_buf(),
-    }
-}
-
-fn mcp_entry() -> Value {
-    json!({ "command": "topos", "args": ["mcp"] })
-}
+// ---------------------------------------------------------------------------
+// Atomic writes and backups
+// ---------------------------------------------------------------------------
 
 pub(crate) fn backup_path(path: &Path) -> PathBuf {
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".topos.backup");
-    path.with_file_name(name)
+    suffixed(path, ".topos.backup")
 }
 
-fn tmp_path(path: &Path) -> PathBuf {
+fn suffixed(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(".topos.tmp");
+    name.push(suffix);
     path.with_file_name(name)
 }
 
 /// Write via a temp file + rename, optionally snapshotting the previous
 /// contents first. Creates parent directories as needed.
+///
+/// Two properties matter beyond atomicity. The target's permissions are
+/// carried onto the replacement, because several of these configs are
+/// deliberately `0600` (`~/.claude.json` holds account state) and a fresh
+/// temp file would otherwise widen them to the process umask. And an existing
+/// backup is never overwritten, so the snapshot stays the pre-Topos original
+/// instead of being replaced by already-modified content on a later write.
 fn atomic_write(path: &Path, contents: &str, backup: bool) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("creating {}: {e}", parent.display()))?;
     }
-    if backup && path.is_file() {
-        fs::copy(path, backup_path(path))
-            .map_err(|e| format!("backing up {}: {e}", path.display()))?;
+    let previous = fs::metadata(path).ok().filter(|meta| meta.is_file());
+    if backup && previous.is_some() {
+        let snapshot = backup_path(path);
+        if !snapshot.exists() {
+            fs::copy(path, &snapshot).map_err(|e| format!("backing up {}: {e}", path.display()))?;
+        }
     }
-    let tmp = tmp_path(path);
+    let tmp = suffixed(path, ".topos.tmp");
     fs::write(&tmp, contents).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
+    if let Some(metadata) = previous {
+        fs::set_permissions(&tmp, metadata.permissions())
+            .map_err(|e| format!("setting permissions on {}: {e}", tmp.display()))?;
+    }
     fs::rename(&tmp, path).map_err(|e| format!("replacing {}: {e}", path.display()))
+}
+
+// ---------------------------------------------------------------------------
+// The MCP server entry
+// ---------------------------------------------------------------------------
+
+/// Absolute path to the running binary, so harnesses launched by the desktop
+/// environment rather than a login shell (Claude Desktop, Cursor,
+/// Antigravity) can spawn it without a usable `PATH`. Falls back to the bare
+/// name if the path cannot be resolved.
+fn topos_command() -> String {
+    std::env::current_exe()
+        .and_then(|path| path.canonicalize())
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "topos".to_string())
+}
+
+fn mcp_entry() -> Value {
+    json!({ "command": topos_command(), "args": ["mcp"] })
+}
+
+/// Whether a command string launches the Topos binary. Any `topos` counts,
+/// wherever it lives, so re-installing from a different prefix (or over an
+/// entry written by `claude mcp add`) is neither reported as stale nor
+/// rewritten. The running binary's own path counts regardless of its file
+/// name, which keeps write-then-detect consistent when that name is not
+/// literally `topos` (a test binary, a renamed copy).
+fn is_topos_binary(command: &str) -> bool {
+    Path::new(command).file_stem() == Some(std::ffi::OsStr::new("topos"))
+        || command == topos_command()
+}
+
+fn is_topos_mcp_entry(entry: &Value) -> bool {
+    let command_ok = entry
+        .get("command")
+        .and_then(Value::as_str)
+        .is_some_and(is_topos_binary);
+    let args_ok = entry
+        .get("args")
+        .and_then(Value::as_array)
+        .is_some_and(|args| args.iter().filter_map(Value::as_str).eq(["mcp"]));
+    command_ok && args_ok
 }
 
 /// Read a JSON object config, treating a missing file as empty. Errors on
@@ -161,13 +426,13 @@ fn write_json_object(path: &Path, data: &Map<String, Value>, backup: bool) -> Re
     atomic_write(path, &contents, backup)
 }
 
-/// `Active` when `mcpServers.topos` matches exactly, `Stale` when the key
-/// exists with different content (or the file fails to parse), `Absent`
-/// otherwise.
+/// `Active` when `mcpServers.topos` already launches Topos, `Stale` when the
+/// key exists pointing at something else (or the file fails to parse),
+/// `Absent` otherwise.
 pub(crate) fn json_mcp_state(path: &Path) -> State {
     match read_json_object(path) {
         Ok(map) => match map.get("mcpServers").and_then(|v| v.get("topos")) {
-            Some(entry) if *entry == mcp_entry() => State::Active,
+            Some(entry) if is_topos_mcp_entry(entry) => State::Active,
             Some(_) => State::Stale,
             None => State::Absent,
         },
@@ -175,9 +440,12 @@ pub(crate) fn json_mcp_state(path: &Path) -> State {
     }
 }
 
-/// Merge `mcpServers.topos` into a JSON config. Returns `Ok(true)` if a
-/// write happened (the entry was missing or different).
+/// Merge `mcpServers.topos` into a JSON config. Returns `Ok(true)` if a write
+/// happened (the entry was missing or pointed elsewhere).
 pub(crate) fn set_mcp_entry(path: &Path) -> Result<bool, String> {
+    if json_mcp_state(path) == State::Active {
+        return Ok(false);
+    }
     let mut map = read_json_object(path)?;
     let servers = map
         .entry("mcpServers".to_string())
@@ -185,9 +453,6 @@ pub(crate) fn set_mcp_entry(path: &Path) -> Result<bool, String> {
     let Value::Object(servers_map) = servers else {
         return Err(format!("{} mcpServers must be an object", path.display()));
     };
-    if servers_map.get("topos") == Some(&mcp_entry()) {
-        return Ok(false);
-    }
     servers_map.insert("topos".to_string(), mcp_entry());
     write_json_object(path, &map, true)?;
     Ok(true)
@@ -216,47 +481,7 @@ pub(crate) fn remove_mcp_entry(path: &Path, dry_run: bool) -> Result<bool, Strin
     Ok(removed)
 }
 
-/// Delete a JSON config entirely if `topos install` created it and it has
-/// since been emptied back out by uninstall.
-pub(crate) fn delete_if_empty_and_owned(
-    path: &Path,
-    home: &Path,
-    harness: &str,
-    dry_run: bool,
-) -> Result<bool, String> {
-    if dry_run || !path.is_file() || !was_created_by_install(home, harness, path) {
-        return Ok(false);
-    }
-    if !read_json_object(path).unwrap_or_default().is_empty() {
-        return Ok(false);
-    }
-    fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
-    Ok(true)
-}
-
-/// Delete a text config entirely if `topos install` created it and its
-/// content has since been trimmed down to nothing.
-pub(crate) fn delete_text_if_blank_and_owned(
-    path: &Path,
-    home: &Path,
-    harness: &str,
-    dry_run: bool,
-) -> Result<bool, String> {
-    if dry_run || !path.is_file() || !was_created_by_install(home, harness, path) {
-        return Ok(false);
-    }
-    if !fs::read_to_string(path)
-        .unwrap_or_default()
-        .trim()
-        .is_empty()
-    {
-        return Ok(false);
-    }
-    fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
-    Ok(true)
-}
-
-pub(crate) fn codex_state(path: &Path) -> State {
+pub(crate) fn toml_mcp_state(path: &Path) -> State {
     let Ok(text) = fs::read_to_string(path) else {
         return State::Absent;
     };
@@ -272,21 +497,23 @@ pub(crate) fn codex_state(path: &Path) -> State {
     let Some(table) = entry.as_table() else {
         return State::Stale;
     };
-    let command = table.get("command").and_then(Item::as_str);
+    let command_ok = table
+        .get("command")
+        .and_then(Item::as_str)
+        .is_some_and(is_topos_binary);
     let args_ok = table
         .get("args")
         .and_then(Item::as_array)
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>() == vec!["mcp"])
-        .unwrap_or(false);
-    if command == Some("topos") && args_ok {
+        .is_some_and(|args| args.iter().filter_map(|v| v.as_str()).eq(["mcp"]));
+    if command_ok && args_ok {
         State::Active
     } else {
         State::Stale
     }
 }
 
-pub(crate) fn set_codex_entry(path: &Path) -> Result<bool, String> {
-    if codex_state(path) == State::Active {
+pub(crate) fn set_toml_mcp_entry(path: &Path) -> Result<bool, String> {
+    if toml_mcp_state(path) == State::Active {
         return Ok(false);
     }
     let text = fs::read_to_string(path).unwrap_or_default();
@@ -300,7 +527,7 @@ pub(crate) fn set_codex_entry(path: &Path) -> Result<bool, String> {
         .as_table_mut()
         .ok_or_else(|| format!("{} mcp_servers must be a table", path.display()))?;
     let mut entry = Table::new();
-    entry["command"] = value("topos");
+    entry["command"] = value(topos_command());
     let mut args = Array::new();
     args.push("mcp");
     entry["args"] = value(args);
@@ -309,7 +536,7 @@ pub(crate) fn set_codex_entry(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-pub(crate) fn remove_codex_entry(path: &Path, dry_run: bool) -> Result<bool, String> {
+pub(crate) fn remove_toml_mcp_entry(path: &Path, dry_run: bool) -> Result<bool, String> {
     if !path.is_file() {
         return Ok(false);
     }
@@ -333,31 +560,35 @@ pub(crate) fn remove_codex_entry(path: &Path, dry_run: bool) -> Result<bool, Str
     Ok(removed)
 }
 
-const COPILOT_START: &str = "<!-- topos:start -->";
-const COPILOT_END: &str = "<!-- topos:end -->";
+// ---------------------------------------------------------------------------
+// Marker-delimited Markdown block
+// ---------------------------------------------------------------------------
 
-fn copilot_block() -> String {
+const MARKER_START: &str = "<!-- topos:start -->";
+const MARKER_END: &str = "<!-- topos:end -->";
+
+fn marker_block() -> String {
     format!(
-        "{COPILOT_START}\nTopos is available for structural code-quality checks: run \
+        "{MARKER_START}\nTopos is available for structural code-quality checks: run \
 `topos evaluate <path> -r` or `topos inspect <file>` before committing significant \
-changes. See `topos --help`.\n{COPILOT_END}\n"
+changes. See `topos --help`.\n{MARKER_END}\n"
     )
 }
 
-pub(crate) fn copilot_state(path: &Path) -> State {
+pub(crate) fn marker_state(path: &Path) -> State {
     let Ok(text) = fs::read_to_string(path) else {
         return State::Absent;
     };
-    match (text.contains(COPILOT_START), text.contains(COPILOT_END)) {
+    match (text.contains(MARKER_START), text.contains(MARKER_END)) {
         (true, true) => State::Active,
         (false, false) => State::Absent,
         _ => State::Stale,
     }
 }
 
-pub(crate) fn set_copilot_block(path: &Path) -> Result<bool, String> {
+pub(crate) fn set_marker_block(path: &Path) -> Result<bool, String> {
     let existing = fs::read_to_string(path).unwrap_or_default();
-    if existing.contains(COPILOT_START) {
+    if existing.contains(MARKER_START) {
         return Ok(false);
     }
     let separator = if existing.is_empty() || existing.ends_with('\n') {
@@ -365,36 +596,38 @@ pub(crate) fn set_copilot_block(path: &Path) -> Result<bool, String> {
     } else {
         "\n"
     };
-    let updated = format!("{existing}{separator}\n{}", copilot_block());
+    let updated = format!("{existing}{separator}\n{}", marker_block());
     atomic_write(path, &updated, true)?;
     Ok(true)
 }
 
-pub(crate) fn remove_copilot_block(path: &Path, dry_run: bool) -> Result<bool, String> {
+pub(crate) fn remove_marker_block(path: &Path, dry_run: bool) -> Result<bool, String> {
     if !path.is_file() {
         return Ok(false);
     }
     let text = fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
-    let (Some(start), Some(end_marker)) = (text.find(COPILOT_START), text.find(COPILOT_END)) else {
+    let (Some(start), Some(end_marker)) = (text.find(MARKER_START), text.find(MARKER_END)) else {
         return Ok(false);
     };
-    let end = end_marker + COPILOT_END.len();
     let before = text[..start].trim_end();
-    let after = text[end..].trim_start();
+    let after = text[end_marker + MARKER_END.len()..].trim_start();
     let mut updated = before.to_string();
     if !before.is_empty() && !after.is_empty() {
         updated.push_str("\n\n");
     }
     updated.push_str(after);
     if !dry_run {
-        if updated.trim().is_empty() {
-            fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
-        } else {
-            atomic_write(path, &(updated.trim_end().to_string() + "\n"), true)?;
-        }
+        // A file trimmed down to nothing is only deleted by
+        // `delete_text_if_blank_and_owned`, which checks that install created
+        // it; otherwise the now-blank file stays where the user put it.
+        atomic_write(path, &(updated.trim_end().to_string() + "\n"), true)?;
     }
     Ok(true)
 }
+
+// ---------------------------------------------------------------------------
+// Written skill files
+// ---------------------------------------------------------------------------
 
 pub(crate) fn skill_state(path: &Path) -> State {
     match fs::read_to_string(path) {
@@ -412,131 +645,103 @@ pub(crate) fn write_skill(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Remove a file this installer wrote only if its content still matches
-/// exactly what was written — a user edit is left in place, reported by the
-/// caller as preserved rather than silently overwritten or deleted.
-pub(crate) fn remove_owned_file(
+/// Delete a file this installer wrote, but only while its content still
+/// matches exactly what was written. A locally edited copy is reported as
+/// [`Outcome::Preserved`] rather than clobbered.
+pub(crate) fn remove_written_file(
     path: &Path,
     expected: &str,
     dry_run: bool,
-) -> Result<bool, String> {
+) -> Result<Outcome, String> {
     match fs::read_to_string(path) {
         Ok(text) if text == expected => {
             if !dry_run {
                 fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
             }
-            Ok(true)
+            Ok(Outcome::Changed)
         }
-        _ => Ok(false),
+        Ok(_) => Ok(Outcome::Preserved),
+        Err(_) => Ok(Outcome::Unchanged),
     }
 }
 
-pub(crate) fn antigravity_pointer_path(home: &Path) -> PathBuf {
-    home.join(".gemini/topos-skill.md")
+// ---------------------------------------------------------------------------
+// `@import` line plus its pointer file
+// ---------------------------------------------------------------------------
+
+fn import_line(pointer: &Path) -> String {
+    format!("@import {}", pointer.display())
 }
 
-fn antigravity_import_line(home: &Path) -> String {
-    format!("@import {}", antigravity_pointer_path(home).display())
+fn has_import_line(host: &Path, pointer: &Path) -> bool {
+    let wanted = import_line(pointer);
+    fs::read_to_string(host)
+        .map(|text| text.lines().any(|line| line.trim() == wanted))
+        .unwrap_or(false)
 }
 
-pub(crate) fn antigravity_state(home: &Path) -> State {
-    let gemini_md = home.join(".gemini/GEMINI.md");
-    let import_line = antigravity_import_line(home);
-    let import_present = fs::read_to_string(&gemini_md)
-        .map(|text| text.lines().any(|line| line.trim() == import_line))
-        .unwrap_or(false);
-    let pointer_present = antigravity_pointer_path(home).is_file();
-    match (import_present, pointer_present) {
-        (true, true) => State::Active,
-        (false, false) => State::Absent,
-        _ => State::Stale,
-    }
+pub(crate) fn import_state(host: &Path, pointer: &Path) -> State {
+    let line = if has_import_line(host, pointer) {
+        State::Active
+    } else {
+        State::Absent
+    };
+    combine(line, skill_state(pointer))
 }
 
-pub(crate) fn set_antigravity_import(home: &Path) -> Result<bool, String> {
-    let pointer = antigravity_pointer_path(home);
-    let pointer_changed = fs::read_to_string(&pointer).ok().as_deref() != Some(SKILL_MD);
-    if pointer_changed {
-        atomic_write(&pointer, SKILL_MD, pointer.is_file())?;
-    }
-    let gemini_md = home.join(".gemini/GEMINI.md");
-    let existing = fs::read_to_string(&gemini_md).unwrap_or_default();
-    let import_line = antigravity_import_line(home);
-    if existing.lines().any(|line| line.trim() == import_line) {
+pub(crate) fn set_import_line(host: &Path, pointer: &Path) -> Result<bool, String> {
+    let pointer_changed = write_skill(pointer)?;
+    if has_import_line(host, pointer) {
         return Ok(pointer_changed);
     }
+    let existing = fs::read_to_string(host).unwrap_or_default();
     let separator = if existing.is_empty() || existing.ends_with('\n') {
         ""
     } else {
         "\n"
     };
-    let updated = format!("{existing}{separator}{import_line}\n");
-    atomic_write(&gemini_md, &updated, true)?;
+    let updated = format!("{existing}{separator}{}\n", import_line(pointer));
+    atomic_write(host, &updated, true)?;
     Ok(true)
 }
 
-pub(crate) fn remove_antigravity_import(home: &Path, dry_run: bool) -> Result<bool, String> {
-    let gemini_md = home.join(".gemini/GEMINI.md");
-    let import_line = antigravity_import_line(home);
-    let mut changed = false;
-    if let Ok(text) = fs::read_to_string(&gemini_md) {
-        if text.lines().any(|line| line.trim() == import_line) {
-            changed = true;
+pub(crate) fn remove_import_line(
+    host: &Path,
+    pointer: &Path,
+    home: &Path,
+    harness: &str,
+    dry_run: bool,
+) -> Result<Outcome, String> {
+    let wanted = import_line(pointer);
+    let mut removed = false;
+    if let Ok(text) = fs::read_to_string(host) {
+        if text.lines().any(|line| line.trim() == wanted) {
+            removed = true;
             if !dry_run {
-                let kept: Vec<&str> = text
-                    .lines()
-                    .filter(|line| line.trim() != import_line)
-                    .collect();
-                if kept.iter().all(|line| line.trim().is_empty()) {
-                    fs::remove_file(&gemini_md).ok();
-                } else {
-                    atomic_write(&gemini_md, &(kept.join("\n") + "\n"), true)?;
-                }
+                let kept: Vec<&str> = text.lines().filter(|line| line.trim() != wanted).collect();
+                atomic_write(host, &(kept.join("\n").trim_end().to_string() + "\n"), true)?;
+                delete_text_if_blank_and_owned(host, home, harness, dry_run)?;
             }
         }
     }
-    let pointer = antigravity_pointer_path(home);
-    if pointer.is_file() {
-        changed = true;
-        if !dry_run {
-            fs::remove_file(&pointer)
-                .map_err(|e| format!("removing {}: {e}", pointer.display()))?;
-        }
-    }
-    Ok(changed)
-}
-
-fn combine(a: State, b: State) -> State {
-    match (a, b) {
-        (State::Active, State::Active) => State::Active,
-        (State::Absent, State::Absent) => State::Absent,
-        _ => State::Stale,
+    match remove_written_file(pointer, SKILL_MD, dry_run)? {
+        // A locally edited pointer is kept, and says so, even though the
+        // import line itself is gone.
+        Outcome::Preserved => Ok(Outcome::Preserved),
+        _ if removed => Ok(Outcome::Changed),
+        outcome => Ok(outcome),
     }
 }
 
-/// Overall state for one harness, folding together every artifact it owns
-/// (an MCP entry plus a skill file, for the two harnesses that get both).
-pub(crate) fn integration_state(id: &str, home: &Path) -> State {
-    match id {
-        "claude" => combine(
-            json_mcp_state(&home.join(".claude.json")),
-            skill_state(&skill_path_claude(home)),
-        ),
-        "claude-desktop" => json_mcp_state(&claude_desktop_config_path(home)),
-        "codex" => codex_state(&home.join(".codex/config.toml")),
-        "gemini" => json_mcp_state(&home.join(".gemini/settings.json")),
-        "copilot" => copilot_state(&home.join(".copilot/copilot-instructions.md")),
-        "skills" => combine(
-            json_mcp_state(&home.join(".cursor/mcp.json")),
-            skill_state(&skill_path_agents(home)),
-        ),
-        "antigravity" => antigravity_state(home),
-        _ => State::Absent,
-    }
-}
+// ---------------------------------------------------------------------------
+// Ownership tracking
+// ---------------------------------------------------------------------------
 
 fn state_file_path(home: &Path) -> PathBuf {
-    home.join(".local/state/topos/install.json")
+    match std::env::var_os("XDG_STATE_HOME").filter(|base| !base.is_empty()) {
+        Some(base) => PathBuf::from(base).join("topos/install.json"),
+        None => home.join(".local/state/topos/install.json"),
+    }
 }
 
 /// Record that `topos install` created `path` from scratch (it didn't exist
@@ -589,6 +794,46 @@ pub(crate) fn clear_created_files(home: &Path, harness: &str) -> Result<(), Stri
     }
 }
 
+/// Delete a JSON config entirely if `topos install` created it and it has
+/// since been emptied back out by uninstall.
+pub(crate) fn delete_if_empty_and_owned(
+    path: &Path,
+    home: &Path,
+    harness: &str,
+    dry_run: bool,
+) -> Result<bool, String> {
+    if dry_run || !path.is_file() || !was_created_by_install(home, harness, path) {
+        return Ok(false);
+    }
+    if !read_json_object(path).unwrap_or_default().is_empty() {
+        return Ok(false);
+    }
+    fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+/// Delete a text config entirely if `topos install` created it and its
+/// content has since been trimmed down to nothing.
+pub(crate) fn delete_text_if_blank_and_owned(
+    path: &Path,
+    home: &Path,
+    harness: &str,
+    dry_run: bool,
+) -> Result<bool, String> {
+    if dry_run || !path.is_file() || !was_created_by_install(home, harness, path) {
+        return Ok(false);
+    }
+    if !fs::read_to_string(path)
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        return Ok(false);
+    }
+    fs::remove_file(path).map_err(|e| format!("removing {}: {e}", path.display()))?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -599,6 +844,7 @@ mod tests {
             std::process::id(),
             label.len()
         ));
+        fs::remove_dir_all(&dir).ok();
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -654,19 +900,88 @@ mod tests {
         fs::remove_dir_all(dir).ok();
     }
 
+    /// A `topos` binary somewhere else on disk — what `claude mcp add` or an
+    /// install from a different prefix leaves behind — is already active, so
+    /// re-installing neither rewrites the file nor reports it stale.
     #[test]
-    fn codex_toml_entry_round_trips_and_preserves_unrelated_tables() {
+    fn a_topos_entry_from_another_location_counts_as_active() {
+        let dir = tmp_dir("foreign-prefix");
+        let path = dir.join("settings.json");
+        fs::write(
+            &path,
+            r#"{"mcpServers": {"topos": {"command": "/opt/homebrew/bin/topos", "args": ["mcp"]}}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(json_mcp_state(&path), State::Active);
+        assert!(!set_mcp_entry(&path).unwrap());
+        fs::remove_dir_all(dir).ok();
+    }
+
+    /// Harnesses launched by the desktop environment have no shell `PATH`, so
+    /// a bare command name would never resolve.
+    #[test]
+    fn installed_mcp_command_is_an_absolute_path() {
+        let dir = tmp_dir("absolute-command");
+        let path = dir.join("settings.json");
+        set_mcp_entry(&path).unwrap();
+
+        let map = read_json_object(&path).unwrap();
+        let command = map["mcpServers"]["topos"]["command"].as_str().unwrap();
+        assert!(
+            Path::new(command).is_absolute(),
+            "expected an absolute command, got {command}"
+        );
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_private_config_keeps_its_permissions() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tmp_dir("permissions");
+        let path = dir.join("claude.json");
+        fs::write(&path, "{}").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        set_mcp_entry(&path).unwrap();
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "install must not widen a 0600 config");
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn the_first_backup_is_the_pre_topos_original() {
+        let dir = tmp_dir("backup-original");
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"original": true}"#).unwrap();
+
+        set_mcp_entry(&path).unwrap();
+        // A later write (here: repairing a stale entry) must not replace the
+        // snapshot with already-modified content.
+        fs::write(&path, r#"{"mcpServers": {"topos": {"command": "stale"}}}"#).unwrap();
+        set_mcp_entry(&path).unwrap();
+
+        let backup = fs::read_to_string(backup_path(&path)).unwrap();
+        assert!(backup.contains("\"original\""), "got backup: {backup}");
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn toml_mcp_entry_round_trips_and_preserves_unrelated_tables() {
         let dir = tmp_dir("codex");
         let path = dir.join("config.toml");
         fs::write(&path, "[model]\nname = \"gpt\"\n").unwrap();
 
-        assert_eq!(codex_state(&path), State::Absent);
-        assert!(set_codex_entry(&path).unwrap());
-        assert_eq!(codex_state(&path), State::Active);
-        assert!(!set_codex_entry(&path).unwrap());
+        assert_eq!(toml_mcp_state(&path), State::Absent);
+        assert!(set_toml_mcp_entry(&path).unwrap());
+        assert_eq!(toml_mcp_state(&path), State::Active);
+        assert!(!set_toml_mcp_entry(&path).unwrap());
 
-        assert!(remove_codex_entry(&path, false).unwrap());
-        assert_eq!(codex_state(&path), State::Absent);
+        assert!(remove_toml_mcp_entry(&path, false).unwrap());
+        assert_eq!(toml_mcp_state(&path), State::Absent);
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("name = \"gpt\""));
         assert!(!text.contains("mcp_servers"));
@@ -674,36 +989,63 @@ mod tests {
     }
 
     #[test]
-    fn copilot_block_is_marker_delimited_and_leaves_other_content_alone() {
+    fn marker_block_is_delimited_and_leaves_other_content_alone() {
         let dir = tmp_dir("copilot");
         let path = dir.join("copilot-instructions.md");
         fs::write(&path, "# My instructions\nAlways use tabs.\n").unwrap();
 
-        assert!(set_copilot_block(&path).unwrap());
-        assert_eq!(copilot_state(&path), State::Active);
+        assert!(set_marker_block(&path).unwrap());
+        assert_eq!(marker_state(&path), State::Active);
 
-        assert!(remove_copilot_block(&path, false).unwrap());
-        assert_eq!(copilot_state(&path), State::Absent);
+        assert!(remove_marker_block(&path, false).unwrap());
+        assert_eq!(marker_state(&path), State::Absent);
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("Always use tabs."));
         assert!(!text.contains("topos:start"));
         fs::remove_dir_all(dir).ok();
     }
 
+    /// A file Topos did not create is kept even once our block was its only
+    /// content — deleting it is `delete_text_if_blank_and_owned`'s call, and
+    /// that only fires for files install created.
     #[test]
-    fn owned_file_is_only_removed_when_content_still_matches() {
+    fn an_unowned_file_survives_losing_its_last_block() {
+        let dir = tmp_dir("unowned-blank");
+        let path = dir.join("copilot-instructions.md");
+        fs::write(&path, "").unwrap();
+        set_marker_block(&path).unwrap();
+
+        remove_marker_block(&path, false).unwrap();
+        delete_text_if_blank_and_owned(&path, &dir, "copilot", false).unwrap();
+
+        assert!(path.is_file(), "an unowned file must not be deleted");
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn written_file_is_only_removed_when_content_still_matches() {
         let dir = tmp_dir("owned-file");
         let path = dir.join("SKILL.md");
-        fs::write(&path, "expected").unwrap();
 
-        // A user edit means the removal is skipped rather than clobbered.
+        // A user edit is reported as preserved rather than clobbered.
         fs::write(&path, "user edited this").unwrap();
-        assert!(!remove_owned_file(&path, "expected", false).unwrap());
+        assert_eq!(
+            remove_written_file(&path, "expected", false).unwrap(),
+            Outcome::Preserved
+        );
         assert!(path.is_file());
 
         fs::write(&path, "expected").unwrap();
-        assert!(remove_owned_file(&path, "expected", false).unwrap());
+        assert_eq!(
+            remove_written_file(&path, "expected", false).unwrap(),
+            Outcome::Changed
+        );
         assert!(!path.is_file());
+
+        assert_eq!(
+            remove_written_file(&path, "expected", false).unwrap(),
+            Outcome::Unchanged
+        );
         fs::remove_dir_all(dir).ok();
     }
 
@@ -722,19 +1064,64 @@ mod tests {
     }
 
     #[test]
-    fn antigravity_import_round_trips() {
+    fn import_line_round_trips() {
         let home = tmp_dir("antigravity");
+        let host = home.join(".gemini/GEMINI.md");
+        let pointer = home.join(".gemini/topos-skill.md");
         fs::create_dir_all(home.join(".gemini")).unwrap();
-        fs::write(home.join(".gemini/GEMINI.md"), "# My rules\nBe concise.\n").unwrap();
+        fs::write(&host, "# My rules\nBe concise.\n").unwrap();
 
-        assert_eq!(antigravity_state(&home), State::Absent);
-        assert!(set_antigravity_import(&home).unwrap());
-        assert_eq!(antigravity_state(&home), State::Active);
+        assert_eq!(import_state(&host, &pointer), State::Absent);
+        assert!(set_import_line(&host, &pointer).unwrap());
+        assert_eq!(import_state(&host, &pointer), State::Active);
 
-        assert!(remove_antigravity_import(&home, false).unwrap());
-        assert_eq!(antigravity_state(&home), State::Absent);
-        let text = fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap();
+        assert_eq!(
+            remove_import_line(&host, &pointer, &home, "antigravity", false).unwrap(),
+            Outcome::Changed
+        );
+        assert_eq!(import_state(&host, &pointer), State::Absent);
+        let text = fs::read_to_string(&host).unwrap();
         assert!(text.contains("Be concise."));
         fs::remove_dir_all(home).ok();
+    }
+
+    /// An edited pointer file is kept and reported as such, rather than being
+    /// deleted along with the import line that referenced it.
+    #[test]
+    fn an_edited_pointer_file_is_preserved() {
+        let home = tmp_dir("antigravity-edited");
+        let host = home.join(".gemini/GEMINI.md");
+        let pointer = home.join(".gemini/topos-skill.md");
+        fs::create_dir_all(home.join(".gemini")).unwrap();
+        set_import_line(&host, &pointer).unwrap();
+        fs::write(&pointer, "locally rewritten").unwrap();
+
+        assert_eq!(
+            remove_import_line(&host, &pointer, &home, "antigravity", false).unwrap(),
+            Outcome::Preserved
+        );
+        assert!(pointer.is_file(), "an edited pointer must survive");
+        fs::remove_dir_all(home).ok();
+    }
+
+    /// Every harness in the table must be reachable by id and own distinct
+    /// files — the check the seven hand-maintained id lists this table
+    /// replaced could not make.
+    #[test]
+    fn every_harness_is_addressable_and_owns_distinct_paths() {
+        let home = Path::new("/home/example");
+        for id in supported_ids() {
+            let entry = harness(id).expect("id resolves to a table entry");
+            assert!(!entry.artifacts.is_empty(), "{id} owns nothing");
+            let mut paths: Vec<PathBuf> = entry
+                .artifacts
+                .iter()
+                .flat_map(|artifact| artifact.paths(home))
+                .collect();
+            let total = paths.len();
+            paths.sort();
+            paths.dedup();
+            assert_eq!(paths.len(), total, "{id} lists a path twice");
+        }
     }
 }

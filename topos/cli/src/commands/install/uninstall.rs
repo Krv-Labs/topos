@@ -1,16 +1,17 @@
 //! `topos uninstall` — remove Topos-owned entries from one or more agent
 //! harnesses. Defaults to a dry-run preview; the caller decides whether to
 //! actually apply (see `mod.rs`'s `--apply` handling).
+//!
+//! Mirrors `configure.rs`: one loop over the
+//! [`HARNESSES`](super::integrations::HARNESSES) table, then one loop over
+//! that harness's artifacts.
 
 use std::path::Path;
 
 use console::Style;
 
 use super::integrations::{
-    self, antigravity_pointer_path, backup_path, claude_desktop_config_path, clear_created_files,
-    delete_if_empty_and_owned, delete_text_if_blank_and_owned, remove_antigravity_import,
-    remove_codex_entry, remove_copilot_block, remove_mcp_entry, remove_owned_file,
-    skill_path_agents, skill_path_claude, State, SKILL_MD,
+    backup_path, clear_created_files, harness, Artifact, Outcome, State, HARNESSES,
 };
 use crate::commands::render::{paint, RenderOptions};
 
@@ -22,55 +23,13 @@ fn absent(opts: RenderOptions) -> String {
     paint("○", Style::new().dim(), opts)
 }
 
+fn kept(opts: RenderOptions) -> String {
+    paint("▲", Style::new().color256(208), opts)
+}
+
 fn err(opts: RenderOptions) -> String {
     paint("✕", Style::new().red(), opts)
 }
-
-/// Shared three-way branch every uninstall step follows: nothing to do,
-/// a dry-run preview, or an actual removal.
-fn removal_step(
-    state: State,
-    dry_run: bool,
-    absent_msg: &str,
-    preview_msg: &str,
-    removed_msg: &str,
-    apply: impl FnOnce() -> Result<bool, String>,
-    opts: RenderOptions,
-) -> bool {
-    if state == State::Absent {
-        println!("│    {} {absent_msg}", absent(opts));
-        return true;
-    }
-    if dry_run {
-        println!("│    {} [dry run] {preview_msg}", removed(opts));
-        return true;
-    }
-    match apply() {
-        Ok(_) => {
-            println!("│    {} {removed_msg}", removed(opts));
-            true
-        }
-        Err(e) => {
-            println!("│    {} {e}", err(opts));
-            false
-        }
-    }
-}
-
-type Handler = fn(&Path, bool, RenderOptions) -> bool;
-
-/// One entry per supported harness id — a data table instead of a match arm
-/// per harness keeps `run` itself flat regardless of how many harnesses
-/// exist.
-const HANDLERS: &[(&str, Handler)] = &[
-    ("claude", uninstall_claude),
-    ("claude-desktop", uninstall_claude_desktop),
-    ("codex", uninstall_codex),
-    ("gemini", uninstall_gemini),
-    ("copilot", uninstall_copilot),
-    ("skills", uninstall_skills),
-    ("antigravity", uninstall_antigravity),
-];
 
 pub(crate) fn run(
     home: &Path,
@@ -83,7 +42,7 @@ pub(crate) fn run(
 
     let mut success = true;
     for id in selected {
-        success &= dispatch(id, home, dry_run, opts);
+        success &= uninstall_harness(id, home, dry_run, opts);
     }
 
     if purge_backups && !dry_run {
@@ -95,11 +54,54 @@ pub(crate) fn run(
     print_summary(success, dry_run, opts)
 }
 
-fn dispatch(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    match HANDLERS.iter().find(|(harness_id, _)| *harness_id == id) {
-        Some((_, handler)) => handler(home, dry_run, opts),
-        None => {
-            println!("│  {} unknown harness: {id}", err(opts));
+fn uninstall_harness(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    let Some(entry) = harness(id) else {
+        println!("│  {} unknown harness: {id}", err(opts));
+        return false;
+    };
+    println!("│  {}", paint(entry.label, Style::new().bold(), opts));
+    let mut success = true;
+    for artifact in entry.artifacts {
+        success &= remove_artifact(artifact, home, id, dry_run, opts);
+    }
+    if !dry_run {
+        clear_created_files(home, id).ok();
+    }
+    println!("│");
+    success
+}
+
+fn remove_artifact(
+    artifact: &Artifact,
+    home: &Path,
+    id: &str,
+    dry_run: bool,
+    opts: RenderOptions,
+) -> bool {
+    let what = artifact.describe(home);
+    if artifact.state(home) == State::Absent {
+        println!("│    {} no {what}", absent(opts));
+        return true;
+    }
+    if dry_run {
+        println!("│    {} [dry run] would remove {what}", removed(opts));
+        return true;
+    }
+    match artifact.remove(home, id, false) {
+        Ok(Outcome::Changed) => {
+            println!("│    {} removed {what}", removed(opts));
+            true
+        }
+        Ok(Outcome::Preserved) => {
+            println!("│    {} kept {what} — locally modified", kept(opts));
+            true
+        }
+        Ok(Outcome::Unchanged) => {
+            println!("│    {} no {what}", absent(opts));
+            true
+        }
+        Err(e) => {
+            println!("│    {} {e}", err(opts));
             false
         }
     }
@@ -136,217 +138,15 @@ fn print_summary(success: bool, dry_run: bool, opts: RenderOptions) -> Result<()
     }
 }
 
-fn uninstall_claude(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Claude Code (~/.claude)", Style::new().bold(), opts)
-    );
-    let config = home.join(".claude.json");
-    let mut success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "claude", false).ok();
-    }
-    let skill = skill_path_claude(home);
-    success &= removal_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "no skill file found",
-        &format!("would remove {}", skill.display()),
-        &format!("removed {}", skill.display()),
-        || remove_owned_file(&skill, SKILL_MD, false),
-        opts,
-    );
-    if !dry_run {
-        clear_created_files(home, "claude").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_claude_desktop(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    let config = claude_desktop_config_path(home);
-    println!(
-        "│  {}",
-        paint(
-            format!("Claude Desktop App ({})", config.display()),
-            Style::new().bold(),
-            opts
-        )
-    );
-    let success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "claude-desktop", false).ok();
-        clear_created_files(home, "claude-desktop").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_codex(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Codex CLI (~/.codex)", Style::new().bold(), opts)
-    );
-    let config = home.join(".codex/config.toml");
-    let success = removal_step(
-        integrations::codex_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        "would remove [mcp_servers.topos] from ~/.codex/config.toml",
-        "removed [mcp_servers.topos] from ~/.codex/config.toml",
-        || remove_codex_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_text_if_blank_and_owned(&config, home, "codex", false).ok();
-        clear_created_files(home, "codex").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_gemini(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("Gemini CLI (~/.gemini)", Style::new().bold(), opts)
-    );
-    let config = home.join(".gemini/settings.json");
-    let success = removal_step(
-        integrations::json_mcp_state(&config),
-        dry_run,
-        "no MCP server entry found",
-        &format!("would remove MCP server entry from {}", config.display()),
-        &format!("removed MCP server entry from {}", config.display()),
-        || remove_mcp_entry(&config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&config, home, "gemini", false).ok();
-        clear_created_files(home, "gemini").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_copilot(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint("GitHub Copilot CLI (~/.copilot)", Style::new().bold(), opts)
-    );
-    let config = home.join(".copilot/copilot-instructions.md");
-    let success = removal_step(
-        integrations::copilot_state(&config),
-        dry_run,
-        "no instruction block found",
-        "would remove the instruction block from ~/.copilot/copilot-instructions.md",
-        "removed the instruction block from ~/.copilot/copilot-instructions.md",
-        || remove_copilot_block(&config, false),
-        opts,
-    );
-    if !dry_run {
-        clear_created_files(home, "copilot").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_skills(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Cursor & VS Code (~/.agents/skills)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let skill = skill_path_agents(home);
-    let mut success = removal_step(
-        integrations::skill_state(&skill),
-        dry_run,
-        "no skill file found",
-        &format!("would remove {}", skill.display()),
-        &format!("removed {}", skill.display()),
-        || remove_owned_file(&skill, SKILL_MD, false),
-        opts,
-    );
-    let mcp_config = home.join(".cursor/mcp.json");
-    success &= removal_step(
-        integrations::json_mcp_state(&mcp_config),
-        dry_run,
-        "no MCP server entry found",
-        &format!(
-            "would remove MCP server entry from {}",
-            mcp_config.display()
-        ),
-        &format!("removed MCP server entry from {}", mcp_config.display()),
-        || remove_mcp_entry(&mcp_config, false),
-        opts,
-    );
-    if !dry_run {
-        delete_if_empty_and_owned(&mcp_config, home, "skills", false).ok();
-        clear_created_files(home, "skills").ok();
-    }
-    println!("│");
-    success
-}
-
-fn uninstall_antigravity(home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
-    println!(
-        "│  {}",
-        paint(
-            "Google Antigravity (~/.gemini/GEMINI.md)",
-            Style::new().bold(),
-            opts
-        )
-    );
-    let pointer = antigravity_pointer_path(home);
-    let success = removal_step(
-        integrations::antigravity_state(home),
-        dry_run,
-        "no @import found",
-        &format!(
-            "would remove the @import from ~/.gemini/GEMINI.md and delete {}",
-            pointer.display()
-        ),
-        &format!(
-            "removed the @import from ~/.gemini/GEMINI.md and deleted {}",
-            pointer.display()
-        ),
-        || remove_antigravity_import(home, false),
-        opts,
-    );
-    println!("│");
-    success
-}
-
+/// Covers every file any harness in the table touches, so a new harness's
+/// backups are purged without a second list to remember to update.
 fn purge_backup_files(home: &Path, opts: RenderOptions) {
-    let candidates = [
-        home.join(".claude.json"),
-        claude_desktop_config_path(home),
-        home.join(".codex/config.toml"),
-        home.join(".gemini/settings.json"),
-        home.join(".copilot/copilot-instructions.md"),
-        home.join(".cursor/mcp.json"),
-        home.join(".gemini/GEMINI.md"),
-    ];
-    for path in candidates {
-        let backup = backup_path(&path);
+    let backups = HARNESSES
+        .iter()
+        .flat_map(|entry| entry.artifacts)
+        .flat_map(|artifact| artifact.paths(home))
+        .map(|path| backup_path(&path));
+    for backup in backups {
         if backup.is_file() && std::fs::remove_file(&backup).is_ok() {
             println!(
                 "│    {} removed backup: {}",

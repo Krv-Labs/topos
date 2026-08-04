@@ -19,7 +19,10 @@ topos-mcp = { path = "../mcp" }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
 # Already a topos-engine dependency; used here for --json output.
-serde_json = "1.0"
+# `preserve_order` keeps key order when `topos install` merges an entry into a
+# harness config: the default BTreeMap would alphabetize every key in files as
+# large as `~/.claude.json`, which the harness itself also writes.
+serde_json = { version = "1.0", features = ["preserve_order"] }
 # Already present transitively through the MCP stack; used directly for
 # terminal progress and the lightweight interactive config selector.
 indicatif = "0.17.11"

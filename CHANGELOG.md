@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+> Release scaffolding. Entries are appended as each stacked PR merges into
+> `release/v0.5.0`; the `Unreleased` marker becomes a date at tag time.
+
+### Added
+
+- **`NAVIGABLE` — a fourth generator of $\Omega$** — Semantic Compositional Divergence
+  measures how deeply nested the worst function in a file is, the signal that keeps
+  predicting LLM task accuracy after cyclomatic complexity stops. $\Omega$ grows from
+  8 to 16 elements; the top medal is renamed `GOLD` → `PLATINUM` (4 of 4 pillars).
+
 ## [0.4.3] - 2026-07-28
 
 ### Added

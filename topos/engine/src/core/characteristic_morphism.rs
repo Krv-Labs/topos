@@ -46,7 +46,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::core::morphism::ProgramMorphism;
-use crate::core::omega::{verdict_from_generators, EvaluationValue};
+use crate::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
 use crate::evaluation::policies::composable::score_coupling;
@@ -232,11 +232,11 @@ impl CharacteristicMorphism {
             );
         }
 
-        let lattice_element = verdict_from_generators(
-            dimensions.get("simple") == Some(&EvaluationValue::Simple),
-            dimensions.get("composable") == Some(&EvaluationValue::Composable),
-            dimensions.get("secure") == Some(&EvaluationValue::Secure),
-        );
+        let satisfied: Vec<Generator> = Generator::ALL
+            .into_iter()
+            .filter(|g| dimensions.get(g.as_str()) == Some(&g.value()))
+            .collect();
+        let lattice_element = verdict_from_generators(&satisfied);
 
         ClassificationResult {
             is_parseable: true,

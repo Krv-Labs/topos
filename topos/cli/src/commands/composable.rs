@@ -64,18 +64,25 @@ pub(crate) fn resolve_composable_mdg(
     );
 
     let mut warnings = Vec::new();
+    let had_generation_note = outcome.generation_note.is_some();
     if let Some(note) = outcome.generation_note {
         warnings.push(note);
     }
 
     let Some(gitnexus_dir) = outcome.gitnexus_dir else {
-        warnings.extend(gitnexus_warnings(
-            gitnexus_dir_override,
-            project_root,
-            None,
-            false,
-            None,
-        ));
+        // generation_note already explains why ensure failed (missing
+        // GitNexus, analyze error, …). Don't also attach the generic
+        // "run topos depgraph generate" missing-store guidance — those
+        // recovery steps contradict each other.
+        if !had_generation_note {
+            warnings.extend(gitnexus_warnings(
+                gitnexus_dir_override,
+                project_root,
+                None,
+                false,
+                None,
+            ));
+        }
         return ComposableResolve {
             mdg: None,
             warnings,
@@ -165,6 +172,7 @@ pub(crate) fn resolve_composable_mdg(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use topos_engine::adapters::gitnexus::gitnexus_available;
     use topos_mcp::evaluation::{
         depgraph_status, gitnexus_warnings, resolve_composable_project_root,
         resolve_override_for_root, INVALID_GITNEXUS_MARKERS,
@@ -177,6 +185,35 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn generation_note_suppresses_generic_missing_store_warning() {
+        // When ensure already explained the failure (e.g. GitNexus not on
+        // $PATH), resolve must not also emit "run topos depgraph generate".
+        if gitnexus_available() {
+            return;
+        }
+        let project_root = temp_dir("gen_note_no_generic");
+        let result = resolve_composable_mdg(&project_root, None, true, &mut |_| {});
+        assert!(result.mdg.is_none());
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("not found on $PATH")),
+            "expected generation note, got {:?}",
+            result.warnings
+        );
+        assert!(
+            result
+                .warnings
+                .iter()
+                .all(|w| !w.contains("no .gitnexus directory found")),
+            "generation note must not be paired with generic missing-store guidance: {:?}",
+            result.warnings
+        );
+        std::fs::remove_dir_all(&project_root).ok();
     }
 
     #[test]

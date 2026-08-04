@@ -103,7 +103,9 @@ impl Generator {
         Generator::Navigable,
     ];
 
-    pub fn as_str(self) -> &'static str {
+    /// `const` so callers can build pillar tables at compile time from
+    /// `Generator::ALL` rather than repeating the strings.
+    pub const fn as_str(self) -> &'static str {
         match self {
             Generator::Simple => "simple",
             Generator::Composable => "composable",
@@ -256,11 +258,24 @@ impl EvaluationValue {
         NAMES[self.bits() as usize]
     }
 
-    /// Unicode symbol (medal) for this verdict.
+    /// The medal tier name for this verdict (`"PLATINUM"`, `"GOLD"`, …).
     ///
     /// Derived from [`EvaluationValue::satisfied_count`] rather than a
     /// parallel 16-entry table: the medal *is* the count, so computing it
-    /// keeps the two from drifting apart as `G_qual` grows.
+    /// keeps the two from drifting apart as `G_qual` grows. This is the
+    /// single source of the banding — renderers must call it rather than
+    /// re-deriving the popcount thresholds.
+    pub fn medal_tier(self) -> &'static str {
+        match self.satisfied_count() {
+            4 => "PLATINUM",
+            3 => "GOLD",
+            2 => "SILVER",
+            1 => "BRONZE",
+            _ => "SLOP",
+        }
+    }
+
+    /// Unicode symbol (medal) for this verdict.
     pub fn symbol(self) -> &'static str {
         match self.satisfied_count() {
             4 => "🏆",
@@ -274,14 +289,21 @@ impl EvaluationValue {
     /// Human-readable description of this evaluation value: the medal
     /// tier, then the generators it satisfies.
     pub fn description(self) -> String {
-        let tier = match self.satisfied_count() {
-            4 => "🏆 PLATINUM - Joint satisfaction of all four quality pillars",
-            3 => "🥇 GOLD - Three of four quality pillars satisfied",
-            2 => "🥈 SILVER - Two of four quality pillars satisfied",
-            1 => "🥉 BRONZE - One of four quality pillars satisfied",
-            _ => return "❌ NO MEDAL - Fails every generator; unconstrained code".to_string(),
+        let detail = match self.satisfied_count() {
+            4 => "Joint satisfaction of all four quality pillars",
+            3 => "Three of four quality pillars satisfied",
+            2 => "Two of four quality pillars satisfied",
+            1 => "One of four quality pillars satisfied",
+            _ => {
+                return "❌ NO MEDAL - Fails every generator; unconstrained code".to_string();
+            }
         };
-        format!("{tier} ({})", self.name())
+        format!(
+            "{} {} - {detail} ({})",
+            self.symbol(),
+            self.medal_tier(),
+            self.name()
+        )
     }
 
     /// Reconstruct a verdict from its bitmask. `None` if `bits > 0b1111`.

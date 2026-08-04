@@ -15,7 +15,7 @@ use serde_json::Value;
 use topos_engine::adapters::discovery::find_git_root;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
-use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Omega};
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 
@@ -875,11 +875,11 @@ fn rollup(evals: &[EvaluationResult]) -> RollupOut {
 }
 
 fn aggregate(achieved: &HashMap<String, bool>) -> LatticeElement {
-    lattice_to_str(verdict_from_generators(
-        achieved.get("simple").copied().unwrap_or(false),
-        achieved.get("composable").copied().unwrap_or(false),
-        achieved.get("secure").copied().unwrap_or(false),
-    ))
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|g| achieved.get(g.as_str()).copied().unwrap_or(false))
+        .collect();
+    lattice_to_str(verdict_from_generators(&satisfied))
 }
 
 pub(crate) fn render_snapshot_md(r: &SnapshotResult) -> String {

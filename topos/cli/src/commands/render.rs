@@ -8,6 +8,7 @@
 use console::{Style, Term};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
+use topos_engine::core::omega::Generator;
 
 #[derive(Clone, Copy)]
 pub(crate) struct RenderOptions {
@@ -124,7 +125,7 @@ pub(crate) fn print_classification(result: &ClassificationResult) {
         return;
     }
     println!("  Verdict: {}", result.summary());
-    for dim in ["simple", "composable", "secure"] {
+    for dim in Generator::ALL.map(Generator::as_str) {
         let Some(val) = result.dimensions.get(dim) else {
             continue;
         };

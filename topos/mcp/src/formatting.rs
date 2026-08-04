@@ -50,12 +50,7 @@ pub struct ComposableContractSignals {
 }
 
 fn generator_wire(g: topos_engine::evaluation::preferences::Generator) -> GeneratorInput {
-    use topos_engine::evaluation::preferences::Generator;
-    match g {
-        Generator::Simple => GeneratorInput::Simple,
-        Generator::Composable => GeneratorInput::Composable,
-        Generator::Secure => GeneratorInput::Secure,
-    }
+    GeneratorInput::from_generator(g)
 }
 
 /// Classify COMPOSABLE setup blockers from the shared warning markers.
@@ -153,6 +148,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
     let composable_ok = result.dimensions.get("composable") == Some(&EvaluationValue::Composable);
     let secure_ok = result.dimensions.get("secure") == Some(&EvaluationValue::Secure);
+    let navigable_ok = result.dimensions.get("navigable") == Some(&EvaluationValue::Navigable);
 
     match result.priority {
         Priority::Composable => {
@@ -165,8 +161,8 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  <= 15) to satisfy COMPOSABLE."
                     .into()
             } else {
-                "COMPOSABLE satisfied.  Simplify CFG/functions and address any CPG \
-                 security findings to reach GOLD."
+                "COMPOSABLE satisfied.  Simplify CFG/functions, flatten deep nesting, and \
+                 address any CPG security findings to reach PLATINUM."
                     .into()
             }
         }
@@ -176,7 +172,9 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
                     .into()
             } else {
-                "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach GOLD.".into()
+                "SIMPLE satisfied.  Add COMPOSABLE / SECURE / NAVIGABLE checks to reach \
+                 PLATINUM."
+                    .into()
             }
         }
         Priority::Secure => {
@@ -185,7 +183,20 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  SECURE."
                     .into()
             } else {
-                "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD.".into()
+                "SECURE satisfied.  Address SIMPLE / COMPOSABLE / NAVIGABLE generators to \
+                 reach PLATINUM."
+                    .into()
+            }
+        }
+        Priority::Navigable => {
+            if !navigable_ok {
+                "Flatten the deepest nested block in the worst function — extract it into a \
+                 top-level helper — to satisfy NAVIGABLE."
+                    .into()
+            } else {
+                "NAVIGABLE satisfied.  Address SIMPLE / COMPOSABLE / SECURE generators to \
+                 reach PLATINUM."
+                    .into()
             }
         }
     }

@@ -11,7 +11,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::omega::EvaluationValue;
-use topos_engine::evaluation::preferences::{Generator, UserPreferences};
+use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
 
 use crate::formatting::to_tool_result;
 use crate::schemas::{
@@ -133,13 +133,15 @@ impl ToposServer {
         Parameters(params): Parameters<PreferenceWalkInput>,
     ) -> CallToolResult {
         let ranking: Vec<Generator> = params.ranking.iter().map(|g| g.to_generator()).collect();
-        let arr: Result<[Generator; 3], _> = ranking.clone().try_into();
+        let arr: Result<[Generator; RANKING_LEN], _> = ranking.clone().try_into();
         let prefs = match arr {
             Ok(arr) => {
                 let target = params.target.map(str_to_lattice);
                 UserPreferences::with_target(arr, target).map_err(|e| e.to_string())
             }
-            Err(_) => Err("ranking must contain exactly simple, composable, secure".to_string()),
+            Err(_) => Err(
+                "ranking must contain exactly simple, composable, secure, navigable".to_string(),
+            ),
         };
         let prefs = match prefs {
             Ok(prefs) => prefs,
@@ -172,11 +174,7 @@ impl ToposServer {
             ranking: prefs
                 .ranking()
                 .iter()
-                .map(|&g| match g {
-                    Generator::Simple => GeneratorInput::Simple,
-                    Generator::Composable => GeneratorInput::Composable,
-                    Generator::Secure => GeneratorInput::Secure,
-                })
+                .map(|&g| GeneratorInput::from_generator(g))
                 .collect(),
             aspirational_target: lattice_to_str(prefs.aspirational_target()),
             fallback_target: lattice_to_str(prefs.fallback_target()),

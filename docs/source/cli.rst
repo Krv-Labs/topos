@@ -65,7 +65,7 @@ evaluate
 --------
 
 Evaluate code quality for one or more files or directories. This is the
-primary command for **Code Quality Medals** across the three pillars (see
+primary command for **Code Quality Medals** across the four pillars (see
 :doc:`measures`).
 
 .. code-block:: bash
@@ -100,10 +100,10 @@ primary command for **Code Quality Medals** across the three pillars (see
      - List every file whose policy gates fail the selected pillar, ordered by
        that pillar's diagnostic score. Cannot be combined with ``--json``.
    * - ``--priority PILLAR|RANKING``
-     - Either a single pillar (``simple``, ``composable``, ``secure``) as the
-       run's primary guidance pillar, or a full comma-separated ranking of
-       all three, most important first. This does not change fixed
-       pass/fail gates.
+     - Either a single pillar (``simple``, ``composable``, ``secure``,
+       ``navigable``) as the run's primary guidance pillar, or a full
+       comma-separated ranking of all four, most important first. This does
+       not change fixed pass/fail gates.
    * - ``--no-composable``
      - Skip GitNexus and score SIMPLE/SECURE only.
    * - ``--gitnexus-dir PATH``

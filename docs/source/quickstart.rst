@@ -241,9 +241,10 @@ dangerous call, or move the operation behind a safer API.
 Medals and agent iteration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Each file gets a result across the three pillars. ``GOLD`` means SIMPLE,
-COMPOSABLE, and SECURE all pass. ``SILVER`` means two pass. ``BRONZE`` means
-one passes. ``SLOP`` means none pass or the file cannot be parsed.
+Each file gets a result across the four pillars. ``PLATINUM`` means SIMPLE,
+COMPOSABLE, SECURE, and NAVIGABLE all pass. ``GOLD`` means three pass,
+``SILVER`` two, ``BRONZE`` one. ``SLOP`` means none pass or the file cannot
+be parsed.
 
 The point is not the medal itself. The point is that each failure tells an
 agent what kind of improvement to make next. "Make this better" is a vibes

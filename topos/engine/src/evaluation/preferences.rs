@@ -362,6 +362,39 @@ mod tests {
         assert_eq!(p.fallback_target(), EvaluationValue::ComposableNavigable);
     }
 
+    /// Pins the exact table published in `topos://docs/preferences`. If
+    /// this fails, that doc is now wrong and must be updated with it.
+    #[test]
+    fn default_ranking_induced_order_matches_the_published_table() {
+        use EvaluationValue::*;
+        let p = prefs(DEFAULT_RANKING);
+        let expected = [
+            (Ideal, 15),
+            (SimpleComposableSecure, 14),
+            (SimpleComposableNavigable, 13),
+            (SimpleComposable, 12),
+            (SimpleSecureNavigable, 11),
+            (SimpleSecure, 10),
+            (SimpleNavigable, 9),
+            (Simple, 8),
+            (ComposableSecureNavigable, 7),
+            (ComposableSecure, 6),
+            (ComposableNavigable, 5),
+            (Composable, 4),
+            (SecureNavigable, 3),
+            (Secure, 2),
+            (Navigable, 1),
+            (Slop, 0),
+        ];
+        let order = p.induced_total_order();
+        for (index, (value, score)) in expected.into_iter().enumerate() {
+            assert_eq!(order[index], value, "position {index}");
+            assert_eq!(p.score(value), score, "score of {value}");
+        }
+        assert_eq!(p.fallback_target(), SimpleComposable);
+        assert_eq!(p.next_step(Secure), Some(SecureNavigable));
+    }
+
     /// The fallback is the meet of the top two ranked generators for
     /// *every* ranking, not just the three spot-checked above.
     #[test]

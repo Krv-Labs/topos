@@ -6,10 +6,10 @@
   </picture>
 </p>
 
-<h3 align="center">the agent harness for structural code quality</h3>
+<h3 align="center">A structural quality gate for coding agents.</h3>
 
 <p align="center">
- Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
+  Topos measures complexity, coupling, risky data flows, and agent cognitive load, then gives your agent a concrete target&mdash;from SLOP to PLATINUM.
 </p>
 
 <p align="center">
@@ -67,76 +67,6 @@ Topos computes that signal from program structure—not from an LLM review or a 
 
 > Grounded in category theory, powered by a native-Rust engine.
 
-## Install and Quick Start
-
-One binary. Every supported agent harness. A clean way back out.
-
-### 1. Install the CLI
-
-Use the verified release installer:
-
-```bash
-curl -fsSL https://docs.krv.ai/topos/install.sh | bash
-```
-
-Or install with Homebrew:
-
-```bash
-brew install krv-labs/tap/topos
-```
-
-> [!TIP]
-> **Prefer an editor-managed install?** In VS Code or Cursor, search `@mcp topos` in the Extensions view or choose [Install MCP server](https://github.com/mcp/Krv-Labs/topos). This is an alternative to `topos install`: your editor installs and manages the Topos MCP server for you.
-
-### 2. Connect your coding agents
-
-`topos install` detects every supported MCP harness and lets you configure any—or all—of them from one interactive checklist:
-
-```bash
-topos install
-```
-
-```text
-┌  Which agent integrations do you want to configure?
-│
-│  ↑↓ move · space toggle · a all · enter confirm · esc cancel
-│
-│ ❯ ○ Claude Code          (detected)
-│   ○ Claude Desktop       (detected)
-│   ● Codex CLI            (✓ active)
-│   ● Gemini CLI           (✓ active)
-│   ○ GitHub Copilot CLI   (detected)
-│   ○ Cursor               (detected)
-│   ○ VS Code              (detected)
-│   ○ Google Antigravity   (detected)
-└
-```
-
-Restart the agents you configured, then ask:
-
-> *"Use Topos to find this repository's worst structural problem, make one focused improvement, and verify the result."*
-
-
-> [!IMPORTANT]
-> Too many tools spray MCP servers across agent JSON files, scatter symlinks around your machine, then leave you to burn half a Claude session untangling the mess—or pull your own hair out doing it. Topos does not play that game. We follow a leave-no-trace policy: `topos status` shows every registration, while **`topos uninstall` opens the same selector, previews exactly what will change, and removes everything Topos installed.** If Topos makes it easy to do, it should be just as easy to undo.
->
-> ```bash
-> topos status
-> topos uninstall
-> ```
-
-
-See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for permissions, manual configuration, and troubleshooting.
-
-### 3. Evaluate from the terminal
-
-```bash
-topos evaluate . -r
-```
-
-Topos discovers Python, Rust, JavaScript, TypeScript, C++, and Go automatically. Pass `--language` only when you want to narrow the run.
-
-See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 ## Under the hood
 
@@ -151,6 +81,52 @@ Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your s
 
 The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
 
+## Install and Quick Start
+
+### VS Code MCP Extension
+
+Open the Extensions view, search **`@mcp topos`**, select **Topos**, and choose **Install**. Or view here: [Topos: GitHub's MCP Registry](https://github.com/mcp/Krv-Labs/topos).
+
+Then ask agent mode:
+
+> Use Topos to find this repository's worst structural problem, make one focused improvement, and verify the result.
+
+See the [agent setup guide](https://docs.krv.ai/topos/agents.html) for tool permissions and troubleshooting.
+
+### Other MCP clients [*Claude Code*]
+
+Run the self-contained MCP server on demand—no persistent Topos or Python installation required:
+
+```bash
+claude mcp add --transport stdio topos -- uvx topos-mcp
+```
+
+Setup for Codex, Gemini CLI, Cursor, Windsurf, Antigravity, and manual JSON lives in the [agent setup guide](https://docs.krv.ai/topos/agents.html).
+
+### Standalone CLI
+
+```bash
+curl -fsSL https://docs.krv.ai/topos/install.sh | bash
+```
+
+Prefer Homebrew?
+
+```bash
+brew install krv-labs/tap/topos
+```
+
+On Homebrew 6+, that one-liner auto-taps and trusts only this formula. If you `brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos` before `brew install topos`.
+
+
+Then run:
+```bash
+topos evaluate . -r
+```
+
+> [!TIP]
+> Want PLATINUM? COMPOSABLE needs a dependency graph: run `topos depgraph generate` if your agent hasn't already (+ run again after big structural edits), then evaluate with the added CLI flag `--gitnexus-dir .gitnexus`.
+
+Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaults to Python; use `--language rust|go|javascript|typescript|cpp` for another language. See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 ## More ways to use Topos
 
@@ -159,29 +135,34 @@ The result is one agent-facing contract over several structural lenses: one scor
 - **MCP Registry name:** `io.github.Krv-Labs/topos`
 - **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
 
+
 ## What Topos checks
 
-Every file gets three independent verdicts:
+Every file gets four independent verdicts:
 
 - **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
 - **COMPOSABLE** — stays decoupled from the repository using module-dependency structure and Martin instability.
 - **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
+- **NAVIGABLE** — stays shallow enough for an agent to read and change in one pass, using depth-weighted nesting divergence over the AST scope tree.
 
 Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
 
 | Medal | Criteria |
 | :--- | :--- |
-| 🥇 **GOLD** | Passes all 3 |
-| 🥈 **SILVER** | Passes 2 of 3 |
-| 🥉 **BRONZE** | Passes 1 of 3 |
+| 🏆 **PLATINUM** | Passes all 4 |
+| 🥇 **GOLD** | Passes 3 of 4 |
+| 🥈 **SILVER** | Passes 2 of 4 |
+| 🥉 **BRONZE** | Passes 1 of 4 |
 | ❌ **SLOP** | Passes 0, or fails to parse |
+
+> **SIMPLE and NAVIGABLE are not the same check.** SIMPLE counts *branches*; NAVIGABLE measures *nesting*. Ten sequential `if`s are complex but perfectly flat, and score 0 divergence. Fold the same branches four levels deep and NAVIGABLE degrades while SIMPLE does not move — because nesting, not branch count, is what predicts an LLM losing track of the code.
 
 Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings. Advisory findings never silently change the scored medal.
 
 <details>
 <summary>How the medal system is derived</summary>
 
-The three pillars are pairwise incomparable and form an eight-element evaluation lattice; GOLD is their intersection.
+The four pillars are pairwise incomparable and form a sixteen-element evaluation lattice (a 4-cube); PLATINUM is their intersection. Labels below abbreviate the pillars as **S**imple, **C**omposable, **Sc** = Secure, **N**avigable.
 
 ```mermaid
 ---
@@ -190,36 +171,72 @@ config:
   theme: neutral
 ---
 graph BT
-    SLOP["❌ SLOP<br/>No Medal"]
-    SIMPLE["🥉 BRONZE<br/>Simple"]
-    COMPOSABLE["🥉 BRONZE<br/>Composable"]
-    SECURE["🥉 BRONZE<br/>Secure"]
-    SC["🥈 SILVER<br/>S ∧ C"]
-    SSc["🥈 SILVER<br/>S ∧ Sc"]
-    CSc["🥈 SILVER<br/>C ∧ Sc"]
-    IDEAL["🥇 GOLD<br/>Quality Code"]
+    SLOP["❌ SLOP"]
+    S["🥉 S"]
+    C["🥉 C"]
+    Sc["🥉 Sc"]
+    N["🥉 N"]
+    SC["🥈 S∧C"]
+    SSc["🥈 S∧Sc"]
+    SN["🥈 S∧N"]
+    CSc["🥈 C∧Sc"]
+    CN["🥈 C∧N"]
+    ScN["🥈 Sc∧N"]
+    SCSc["🥇 S∧C∧Sc"]
+    SCN["🥇 S∧C∧N"]
+    SScN["🥇 S∧Sc∧N"]
+    CScN["🥇 C∧Sc∧N"]
+    IDEAL["🏆 PLATINUM<br/>Quality Code"]
 
-    SLOP --> SIMPLE
-    SLOP --> COMPOSABLE
-    SLOP --> SECURE
-    SIMPLE --> SC
-    SIMPLE --> SSc
-    COMPOSABLE --> SC
-    COMPOSABLE --> CSc
-    SECURE --> SSc
-    SECURE --> CSc
-    SC --> IDEAL
-    SSc --> IDEAL
-    CSc --> IDEAL
+    SLOP --> S
+    SLOP --> C
+    SLOP --> Sc
+    SLOP --> N
+    S --> SC
+    S --> SSc
+    S --> SN
+    C --> SC
+    C --> CSc
+    C --> CN
+    Sc --> SSc
+    Sc --> CSc
+    Sc --> ScN
+    N --> SN
+    N --> CN
+    N --> ScN
+    SC --> SCSc
+    SC --> SCN
+    SSc --> SCSc
+    SSc --> SScN
+    SN --> SCN
+    SN --> SScN
+    CSc --> SCSc
+    CSc --> CScN
+    CN --> SCN
+    CN --> CScN
+    ScN --> SScN
+    ScN --> CScN
+    SCSc --> IDEAL
+    SCN --> IDEAL
+    SScN --> IDEAL
+    CScN --> IDEAL
 
-    style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-    style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style IDEAL      fill:#ffd700,stroke:#856404,color:#000
+    style SLOP   fill:#f8d7da,stroke:#842029,color:#000
+    style S      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style C      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style Sc     fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style N      fill:#cd7f32,stroke:#5c3a1e,color:#fff
+    style SC     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style CN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style ScN    fill:#c0c0c0,stroke:#4a4a4a,color:#000
+    style SCSc   fill:#ffd700,stroke:#856404,color:#000
+    style SCN    fill:#ffd700,stroke:#856404,color:#000
+    style SScN   fill:#ffd700,stroke:#856404,color:#000
+    style CScN   fill:#ffd700,stroke:#856404,color:#000
+    style IDEAL  fill:#e5e4e2,stroke:#4a4a4a,color:#000
 ```
 
 [Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)

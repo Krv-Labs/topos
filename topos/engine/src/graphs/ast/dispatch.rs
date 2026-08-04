@@ -118,6 +118,27 @@ mod tests {
     }
 
     #[test]
+    fn a_rust_local_named_raw_is_not_a_parse_error() {
+        // `raw` is not a reserved word, so `&raw` on an ordinary local is
+        // valid, rustc-accepted code — but it collides with the `&raw const`
+        // / `&raw mut` raw-borrow syntax. tree-sitter-rust 0.23 resolved that
+        // collision by erroring, which marked the whole file unparseable and
+        // silently scored it SLOP with no explanation (#285). One such file
+        // shipped in this repo. Locks the 0.24 grammar in.
+        let result = parse_source("fn f(){ let raw = 1; g(&raw); }", "rust", None).unwrap();
+        assert!(!result.has_errors, "a local named `raw` broke the parse");
+    }
+
+    #[test]
+    fn rust_raw_borrow_syntax_still_parses() {
+        // The other side of the same collision: genuine raw-borrow syntax
+        // must keep working, so the fix cannot be to drop the grammar rule.
+        let source = "fn f(){ let mut x = 1; let p = &raw mut x; let q = &raw const x; }";
+        let result = parse_source(source, "rust", None).unwrap();
+        assert!(!result.has_errors, "raw-borrow syntax regressed");
+    }
+
+    #[test]
     fn unsupported_language_is_an_error_not_a_panic() {
         assert!(parse_source("x = 1", "cobol", None).is_err());
     }

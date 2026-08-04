@@ -35,10 +35,6 @@ struct GraphFingerprint {
 }
 
 fn read_graph_fingerprint(store_dir: &Path) -> Option<GraphFingerprint> {
-    // Named `raw_json`, not `raw`: tree-sitter-rust's grammar for the
-    // `&raw const`/`&raw mut` raw-reference syntax misparses a bare `&raw`
-    // local as an ERROR node, which would falsely mark this whole file
-    // unparseable (is_parseable=false) despite valid, rustc-accepted syntax.
     let raw_json = std::fs::read_to_string(store_dir.join(GITNEXUS_FINGERPRINT_FILE)).ok()?;
     let payload: Value = serde_json::from_str(&raw_json).ok()?;
     Some(GraphFingerprint {

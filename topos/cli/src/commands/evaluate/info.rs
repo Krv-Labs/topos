@@ -34,7 +34,7 @@ pub(crate) fn can_browse_evaluation_info(file_count: usize) -> bool {
 pub(crate) fn show_evaluation_info(
     files: &[PathBuf],
     results: &[ClassificationResult],
-    language: &str,
+    languages: &[String],
     ranking: Option<&[Generator; 3]>,
 ) -> Result<(), String> {
     let ranked = ranked_file_indices(files, results, 5);
@@ -42,7 +42,7 @@ pub(crate) fn show_evaluation_info(
         files,
         results,
         &ranked,
-        language,
+        languages,
         ranking,
         SelectorKind::WeakSpots,
     )
@@ -51,7 +51,7 @@ pub(crate) fn show_evaluation_info(
 pub(crate) fn show_pillar_failures(
     files: &[PathBuf],
     results: &[ClassificationResult],
-    language: &str,
+    languages: &[String],
     pillar: &str,
     inspect: bool,
     ranking: Option<&[Generator; 3]>,
@@ -76,7 +76,7 @@ pub(crate) fn show_pillar_failures(
         files,
         results,
         &ranked,
-        language,
+        languages,
         ranking,
         SelectorKind::Failures(pillar),
     )
@@ -86,12 +86,12 @@ fn show_ranked_info(
     files: &[PathBuf],
     results: &[ClassificationResult],
     ranked: &[usize],
-    language: &str,
+    languages: &[String],
     ranking: Option<&[Generator; 3]>,
     kind: SelectorKind<'_>,
 ) -> Result<(), String> {
     if can_browse_evaluation_info(ranked.len()) {
-        browse_files(files, results, ranked, language, ranking, kind)?;
+        browse_files(files, results, ranked, languages, ranking, kind)?;
         for line in selector_lines_for(
             files,
             results,
@@ -119,7 +119,12 @@ fn show_ranked_info(
     let Some(selected) = ranked.first().copied() else {
         return Ok(());
     };
-    let details = details_for_file(&files[selected], &results[selected], language, ranking)?;
+    let details = details_for_file(
+        &files[selected],
+        &results[selected],
+        language_for(languages, selected),
+        ranking,
+    )?;
     println!();
     for line in detail_lines(
         &files[selected],
@@ -140,7 +145,7 @@ fn browse_files(
     files: &[PathBuf],
     results: &[ClassificationResult],
     ranked: &[usize],
-    language: &str,
+    languages: &[String],
     ranking: Option<&[Generator; 3]>,
     kind: SelectorKind<'_>,
 ) -> Result<(), String> {
@@ -177,10 +182,11 @@ fn browse_files(
                 BrowserAction::Stay => {}
                 BrowserAction::Back => detail = None,
                 BrowserAction::Open => {
+                    let file_index = ranked[selected];
                     detail = Some(details_for_file(
-                        &files[ranked[selected]],
-                        &results[ranked[selected]],
-                        language,
+                        &files[file_index],
+                        &results[file_index],
+                        language_for(languages, file_index),
                         ranking,
                     )?);
                 }
@@ -193,6 +199,10 @@ fn browse_files(
     }
     term.show_cursor().ok();
     result
+}
+
+fn language_for(languages: &[String], index: usize) -> &str {
+    languages.get(index).map(String::as_str).unwrap_or("python")
 }
 
 fn browser_action(

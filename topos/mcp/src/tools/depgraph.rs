@@ -99,7 +99,7 @@ fn state_guidance(
             Some("gitnexus_schema_mismatch"),
         ),
         DepgraphState::InvalidDir => (
-            "The gitnexus_dir override is invalid (outside the file root or does not exist); \
+            "The gitnexus_dir override is invalid (outside the file root); \
              fix the path, then retry. Generating won't help.",
             None,
             Some("invalid_gitnexus_dir"),

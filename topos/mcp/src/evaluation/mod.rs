@@ -184,9 +184,11 @@ pub fn ensure_gitnexus_dir_with_progress(
     progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
     if !matches!(status.state, "missing" | "stale") {
-        // present, or a problem generating won't fix (invalid_dir,
-        // schema_mismatch, branch_not_indexed, load_error) — let
-        // gitnexus_warnings explain it from the resolved state.
+        // present, or a problem generating won't fix (invalid_dir for an
+        // outside-root override, schema_mismatch, branch_not_indexed,
+        // load_error) — let gitnexus_warnings explain it from the
+        // resolved state. In-root not-yet-created overrides are `missing`,
+        // not `invalid_dir` (#287).
         return GitnexusEnsureOutcome {
             gitnexus_dir: resolve(),
             generation_note: None,
@@ -286,6 +288,15 @@ pub fn resolve_graphify_dir(override_dir: Option<&str>, project_root: &Path) -> 
     default.exists().then_some(default)
 }
 
+/// Classify a `gitnexus_dir` override that cannot be used.
+///
+/// Only **escapes** are invalid: an override whose resolved path lies outside
+/// `project_root`. A path that is inside the root but does not exist yet is
+/// **not** invalid — that is the first-run case (`depgraph_status` →
+/// `missing` → [`ensure_gitnexus_dir`] generates into the store's parent).
+/// Collapsing "not created yet" into `invalid_dir` previously disabled
+/// auto-generation for the documented `--gitnexus-dir ~/repo/.gitnexus`
+/// workflow (see #287).
 pub(crate) fn check_override_warning(
     override_dir: &str,
     project_root: &Path,
@@ -296,18 +307,13 @@ pub(crate) fn check_override_warning(
     } else {
         project_root.join(path)
     };
+    // Prefer canonicalize so symlink escapes are caught; fall back to the
+    // joined path when the store does not exist yet (first-run override).
     let resolved = joined.canonicalize().unwrap_or(joined);
     if !resolved.starts_with(project_root) {
         return Some(vec![format!(
             "{} — override must be inside TOPOS_MCP_FILE_ROOT. Got: {}",
             INVALID_GITNEXUS_MARKERS[0],
-            resolved.display()
-        )]);
-    }
-    if !resolved.exists() {
-        return Some(vec![format!(
-            "{} — override path does not exist. Got: {}",
-            INVALID_GITNEXUS_MARKERS[1],
             resolved.display()
         )]);
     }
@@ -351,11 +357,17 @@ pub fn gitnexus_warnings(
     dep_graph_loaded: bool,
     load_error: Option<&str>,
 ) -> Vec<String> {
+    // Escape / outside-root overrides are hard rejects — explain and stop.
     if let Some(raw) = override_dir {
         if let Some(warn) = check_override_warning(raw, project_root) {
             return warn;
         }
-    } else if gitnexus_dir.is_none() {
+    }
+    // Missing store applies with or without an override. An in-root override
+    // that has not been generated yet is not invalid (see
+    // [`check_override_warning`]); once ensure has run, a still-missing dir
+    // needs the same recovery guidance as the default path.
+    if gitnexus_dir.is_none() {
         return vec![
             "COMPOSABLE not scored — no .gitnexus directory found; run 'topos depgraph \
              generate' to score this generator."
@@ -526,9 +538,54 @@ mod tests {
         // is attempted and no generation_note is set — gitnexus_warnings
         // (fed by depgraph_status separately) is what explains it.
         assert!(outcome.generation_note.is_none());
+        let status = depgraph_status(
+            Some(&outside.to_string_lossy()),
+            &project_root,
+            &project_root.to_string_lossy(),
+        );
+        assert_eq!(status.state, "invalid_dir");
 
         std::fs::remove_dir_all(&project_root).ok();
         std::fs::remove_dir_all(&outside).ok();
+    }
+
+    #[test]
+    fn in_root_missing_override_classifies_as_missing_not_invalid() {
+        // #287: `--gitnexus-dir <repo>/.gitnexus` before the store exists must
+        // not be `invalid_dir` — that short-circuits ensure and silently
+        // disables COMPOSABLE. In-root absence is the first-run `missing` case.
+        let home = temp_dir("first_run_home");
+        let repo = home.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let store = repo.join(".gitnexus");
+        assert!(!store.exists());
+
+        let project_root = resolve_composable_project_root(Some(store.to_str().unwrap()), &home);
+        let resolved = resolve_override_for_root(Some(store.to_str().unwrap()), &home).unwrap();
+        assert!(
+            check_override_warning(&resolved, &project_root).is_none(),
+            "in-root missing store is not an invalid override"
+        );
+
+        let status = depgraph_status(Some(&resolved), &project_root, &repo.to_string_lossy());
+        assert_eq!(status.state, "missing");
+
+        // gitnexus_warnings must not emit invalid_dir markers for this path.
+        let warns = gitnexus_warnings(Some(&resolved), &project_root, None, false, None);
+        assert!(
+            warns
+                .iter()
+                .all(|w| !INVALID_GITNEXUS_MARKERS.iter().any(|m| w.contains(m))),
+            "{warns:?}"
+        );
+        assert!(
+            warns
+                .iter()
+                .any(|w| w.contains("no .gitnexus directory found")),
+            "{warns:?}"
+        );
+
+        std::fs::remove_dir_all(&home).ok();
     }
 
     #[test]

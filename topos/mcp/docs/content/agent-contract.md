@@ -52,8 +52,9 @@ Evaluation, project, and assessment results may include `agent_contract`:
   scoring, so these now only surface when that generation itself couldn't
   happen — GitNexus not installed, or the `gitnexus analyze` run failed;
   `warnings` carries the specific reason. An `invalid_gitnexus_dir` code means
-  the supplied `gitnexus_dir` override is bad (outside the file root or
-  nonexistent) — fix the path rather than generating.
+  the supplied `gitnexus_dir` override escapes the file root — fix the path
+  rather than generating. A not-yet-created in-root override is treated as
+  missing and is auto-generated on evaluate (same as the default store path).
 - `verification_gates` — checks required before accepting a patch.
 - `risk_flags` — compact labels such as `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.

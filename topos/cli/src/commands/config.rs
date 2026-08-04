@@ -396,8 +396,8 @@ mod tests {
             [
                 Generator::Secure,
                 Generator::Simple,
-                Generator::Composable,
-                Generator::Navigable
+                Generator::Navigable,
+                Generator::Composable
             ]
         );
     }
@@ -533,8 +533,8 @@ mod tests {
             [
                 Generator::Secure,
                 Generator::Simple,
-                Generator::Composable,
-                Generator::Navigable
+                Generator::Navigable,
+                Generator::Composable
             ]
         );
     }

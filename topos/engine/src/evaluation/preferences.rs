@@ -268,22 +268,36 @@ impl UserPreferences {
     }
 }
 
-/// Conservative default: `SIMPLE ≻ COMPOSABLE ≻ SECURE ≻ NAVIGABLE`.
+/// Default: `SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE`.
 ///
-/// Simplicity comes first (the cheapest property to verify and currently
-/// our strongest measure), then composability (the most cross-cutting, and
-/// the only one requiring an external dependency graph), then security,
-/// then navigability — ranked last for now because its threshold is still
-/// provisional, so it should be the first thing a relaxation walk gives
-/// up on.
+/// Ordered by what an agent can act on locally. `SIMPLE` and `NAVIGABLE`
+/// are the two agent-cognition pillars — branch count and nesting depth —
+/// and both are computed from the same UAST with no external dependency,
+/// so they are always available and always fixable inside one file. They
+/// rank highest.
+///
+/// `SECURE` follows: also local, but zero-tolerance, so it is either
+/// already satisfied or a hard blocker rather than a gradient to climb.
+///
+/// `COMPOSABLE` ranks last precisely because it is the least actionable:
+/// it needs an external GitNexus graph, degrades to unavailable when that
+/// is missing, and is a property of a module's place in the whole
+/// dependency graph rather than of the file in front of you. Ranking it
+/// last means the relaxation walk concedes it first, which is the right
+/// thing to concede when `coupling_available` is `false`.
+///
+/// Note this puts `NAVIGABLE` second while its thresholds are still
+/// `PROVISIONAL` (see issue #282) — an agent will chase it early, so the
+/// calibration matters more under this ranking than it would if
+/// `NAVIGABLE` were conceded first.
 pub fn default_preferences() -> UserPreferences {
     UserPreferences::new([
         Generator::Simple,
-        Generator::Composable,
-        Generator::Secure,
         Generator::Navigable,
+        Generator::Secure,
+        Generator::Composable,
     ])
-    .expect("(SIMPLE, COMPOSABLE, SECURE, NAVIGABLE) is trivially a permutation")
+    .expect("(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE) is trivially a permutation")
 }
 
 #[cfg(test)]
@@ -292,12 +306,14 @@ mod tests {
     use crate::core::omega::Omega;
     use std::collections::HashSet;
 
-    const DEFAULT_RANKING: [Generator; RANKING_LEN] = [
-        Generator::Simple,
-        Generator::Composable,
-        Generator::Secure,
-        Generator::Navigable,
-    ];
+    /// Derived from [`default_preferences`] rather than restated, so these
+    /// tests keep exercising the *actual* default if the ranking is retuned.
+    /// Currently `SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE`, so the
+    /// least-preferred generator — the first one a walk concedes — is
+    /// `COMPOSABLE`.
+    fn default_ranking() -> [Generator; RANKING_LEN] {
+        default_preferences().ranking()
+    }
 
     fn prefs(ranking: [Generator; RANKING_LEN]) -> UserPreferences {
         UserPreferences::new(ranking).unwrap()
@@ -336,14 +352,14 @@ mod tests {
 
     #[test]
     fn aspirational_target_is_ideal_by_default() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         assert_eq!(p.aspirational_target(), EvaluationValue::Ideal);
     }
 
     #[test]
     fn fallback_target_is_top_two_meet() {
-        let p = prefs(DEFAULT_RANKING);
-        assert_eq!(p.fallback_target(), EvaluationValue::SimpleComposable);
+        let p = prefs(default_ranking());
+        assert_eq!(p.fallback_target(), EvaluationValue::SimpleNavigable);
 
         let p = prefs([
             Generator::Secure,
@@ -367,23 +383,24 @@ mod tests {
     #[test]
     fn default_ranking_induced_order_matches_the_published_table() {
         use EvaluationValue::*;
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
+        // Weights under SIMPLE(8) ≻ NAVIGABLE(4) ≻ SECURE(2) ≻ COMPOSABLE(1).
         let expected = [
             (Ideal, 15),
-            (SimpleComposableSecure, 14),
+            (SimpleSecureNavigable, 14),
             (SimpleComposableNavigable, 13),
-            (SimpleComposable, 12),
-            (SimpleSecureNavigable, 11),
+            (SimpleNavigable, 12),
+            (SimpleComposableSecure, 11),
             (SimpleSecure, 10),
-            (SimpleNavigable, 9),
+            (SimpleComposable, 9),
             (Simple, 8),
             (ComposableSecureNavigable, 7),
-            (ComposableSecure, 6),
+            (SecureNavigable, 6),
             (ComposableNavigable, 5),
-            (Composable, 4),
-            (SecureNavigable, 3),
+            (Navigable, 4),
+            (ComposableSecure, 3),
             (Secure, 2),
-            (Navigable, 1),
+            (Composable, 1),
             (Slop, 0),
         ];
         let order = p.induced_total_order();
@@ -391,8 +408,8 @@ mod tests {
             assert_eq!(order[index], value, "position {index}");
             assert_eq!(p.score(value), score, "score of {value}");
         }
-        assert_eq!(p.fallback_target(), SimpleComposable);
-        assert_eq!(p.next_step(Secure), Some(SecureNavigable));
+        assert_eq!(p.fallback_target(), SimpleNavigable);
+        assert_eq!(p.next_step(Secure), Some(ComposableSecure));
     }
 
     /// The fallback is the meet of the top two ranked generators for
@@ -411,23 +428,25 @@ mod tests {
 
     #[test]
     fn explicit_target_override() {
-        let p =
-            UserPreferences::with_target(DEFAULT_RANKING, Some(EvaluationValue::SimpleComposable))
-                .unwrap();
+        let p = UserPreferences::with_target(
+            default_ranking(),
+            Some(EvaluationValue::SimpleComposable),
+        )
+        .unwrap();
         assert_eq!(p.aspirational_target(), EvaluationValue::SimpleComposable);
     }
 
     #[test]
     fn induced_order_is_lex_on_weights() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         let order = p.induced_total_order();
         // Weights 8/4/2/1: the order is the descending binary count on the
         // satisfied-generator bits, read in preference order.
         assert_eq!(order[0], EvaluationValue::Ideal);
-        assert_eq!(order[1], EvaluationValue::SimpleComposableSecure);
+        assert_eq!(order[1], EvaluationValue::SimpleSecureNavigable);
         assert_eq!(order[2], EvaluationValue::SimpleComposableNavigable);
-        assert_eq!(order[3], EvaluationValue::SimpleComposable);
-        assert_eq!(order[4], EvaluationValue::SimpleSecureNavigable);
+        assert_eq!(order[3], EvaluationValue::SimpleNavigable);
+        assert_eq!(order[4], EvaluationValue::SimpleComposableSecure);
         assert_eq!(*order.last().unwrap(), EvaluationValue::Slop);
     }
 
@@ -460,12 +479,13 @@ mod tests {
 
     #[test]
     fn relaxation_walk_starts_at_ideal_then_fallback() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         let walk = p.relaxation_walk(Some(EvaluationValue::Slop));
         // IDEAL is the aspirational target — first in the walk.
         assert_eq!(walk[0], EvaluationValue::Ideal);
-        // One step below IDEAL is "drop only the least-preferred pillar".
-        assert_eq!(walk[1], EvaluationValue::SimpleComposableSecure);
+        // One step below IDEAL is "drop only the least-preferred pillar",
+        // which under the default ranking is COMPOSABLE.
+        assert_eq!(walk[1], EvaluationValue::SimpleSecureNavigable);
         // The fallback target — guarantee the top two, concede the rest —
         // is further down the walk, not adjacent to IDEAL. At three
         // generators those two elements coincided; at four they do not.
@@ -475,7 +495,7 @@ mod tests {
 
     #[test]
     fn relaxation_walk_stops_above_current() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         let walk = p.relaxation_walk(Some(EvaluationValue::Simple));
         // All walk entries must outrank the current verdict.
         for &v in &walk {
@@ -493,42 +513,54 @@ mod tests {
 
     #[test]
     fn relaxation_walk_empty_at_ideal() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         assert!(p.relaxation_walk(Some(EvaluationValue::Ideal)).is_empty());
         assert_eq!(p.next_step(EvaluationValue::Ideal), None);
     }
 
     #[test]
     fn next_step_is_smallest_improvement() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         // From SLOP the smallest improvement is the lowest-ranked verdict
-        // strictly above SLOP — which is NAVIGABLE (weight 1, ranked last).
+        // strictly above SLOP — COMPOSABLE (weight 1, ranked last).
         assert_eq!(
             p.next_step(EvaluationValue::Slop),
-            Some(EvaluationValue::Navigable)
+            Some(EvaluationValue::Composable)
         );
-        // From NAVIGABLE -> SECURE (weight 2).
+        // From COMPOSABLE -> SECURE (weight 2).
         assert_eq!(
-            p.next_step(EvaluationValue::Navigable),
+            p.next_step(EvaluationValue::Composable),
             Some(EvaluationValue::Secure)
         );
     }
 
     #[test]
     fn progress_reaches_one_at_ideal() {
-        let p = prefs(DEFAULT_RANKING);
+        let p = prefs(default_ranking());
         assert_eq!(p.progress(EvaluationValue::Slop), 0.0);
         assert_eq!(p.progress(EvaluationValue::Ideal), 1.0);
-        // Fallback target is partial progress (12/15 with weights 8+4+2+1).
-        let mid = p.progress(EvaluationValue::SimpleComposable);
-        assert!(mid > 0.75 && mid < 1.0);
+        // Fallback target is partial progress: top two of 8/4/2/1 is
+        // 12/15, so strictly between the SIMPLE-only floor and IDEAL.
+        let mid = p.progress(p.fallback_target());
+        assert!(mid > 0.75 && mid < 1.0, "{mid}");
     }
 
     #[test]
     fn default_preferences_ranking_and_targets() {
         let p = default_preferences();
-        assert_eq!(p.ranking()[0], Generator::Simple);
+        // Pins the ranking decision itself, not just its head: the two
+        // agent-cognition pillars rank highest, COMPOSABLE last because it
+        // is the least locally actionable.
+        assert_eq!(
+            p.ranking(),
+            [
+                Generator::Simple,
+                Generator::Navigable,
+                Generator::Secure,
+                Generator::Composable
+            ]
+        );
         assert_eq!(p.aspirational_target(), EvaluationValue::Ideal);
-        assert_eq!(p.fallback_target(), EvaluationValue::SimpleComposable);
+        assert_eq!(p.fallback_target(), EvaluationValue::SimpleNavigable);
     }
 }

@@ -38,7 +38,7 @@ use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::preferences::{Generator, RANKING_LEN};
+use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
 use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::classify::classify_with_representations;
@@ -234,11 +234,17 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
 }
 
 /// `focus` promoted to the front, the rest keeping their configured order.
+///
+/// With nothing configured the base is [`default_preferences`], not
+/// `Generator::ALL` — the latter is declaration order (and drives display
+/// column order), which is not a statement about preference.
 fn focused_ranking(
     focus: Generator,
     configured: Option<&[Generator; RANKING_LEN]>,
 ) -> [Generator; RANKING_LEN] {
-    let base = configured.copied().unwrap_or(Generator::ALL);
+    let base = configured
+        .copied()
+        .unwrap_or_else(|| default_preferences().ranking());
     let mut ranking = vec![focus];
     ranking.extend(base.into_iter().filter(|generator| *generator != focus));
     ranking
@@ -385,8 +391,8 @@ mod tests {
             Some([
                 Generator::Secure,
                 Generator::Simple,
-                Generator::Composable,
-                Generator::Navigable
+                Generator::Navigable,
+                Generator::Composable
             ])
         );
     }

@@ -40,9 +40,9 @@ ones combined, making the order strictly lexicographic. With:
 
 .. code-block:: text
 
-   simple > composable > secure > navigable
+   simple > navigable > secure > composable
 
-the induced order is:
+which is the **default** ranking, the induced order is:
 
 .. list-table::
    :header-rows: 1
@@ -54,22 +54,22 @@ the induced order is:
    * - ``IDEAL``
      - ``15``
      - all four generators satisfied
-   * - ``SIMPLE_COMPOSABLE_SECURE``
+   * - ``SIMPLE_SECURE_NAVIGABLE``
      - ``14``
      - concedes only the last-ranked generator
    * - ``SIMPLE_COMPOSABLE_NAVIGABLE``
      - ``13``
      -
-   * - ``SIMPLE_COMPOSABLE``
+   * - ``SIMPLE_NAVIGABLE``
      - ``12``
      - fallback target if ``IDEAL`` stalls
-   * - ``SIMPLE_SECURE_NAVIGABLE``
+   * - ``SIMPLE_COMPOSABLE_SECURE``
      - ``11``
      -
    * - ``SIMPLE_SECURE``
      - ``10``
      -
-   * - ``SIMPLE_NAVIGABLE``
+   * - ``SIMPLE_COMPOSABLE``
      - ``9``
      -
    * - ``SIMPLE``
@@ -78,22 +78,22 @@ the induced order is:
    * - ``COMPOSABLE_SECURE_NAVIGABLE``
      - ``7``
      - satisfies the lower three preferences
-   * - ``COMPOSABLE_SECURE``
+   * - ``SECURE_NAVIGABLE``
      - ``6``
      -
    * - ``COMPOSABLE_NAVIGABLE``
      - ``5``
      -
-   * - ``COMPOSABLE``
+   * - ``NAVIGABLE``
      - ``4``
      - keeps the second preference only
-   * - ``SECURE_NAVIGABLE``
+   * - ``COMPOSABLE_SECURE``
      - ``3``
      -
    * - ``SECURE``
      - ``2``
      - keeps the third preference only
-   * - ``NAVIGABLE``
+   * - ``COMPOSABLE``
      - ``1``
      - keeps the last preference only
    * - ``SLOP``
@@ -105,8 +105,15 @@ the induced order is:
    With three generators, "meet of the top two" and "one step below
    ``IDEAL``" were the same verdict; with four they differ. One step below
    ``IDEAL`` concedes only the lowest-ranked generator
-   (``SIMPLE_COMPOSABLE_SECURE`` above); the fallback concedes the bottom
+   (``SIMPLE_SECURE_NAVIGABLE`` above); the fallback concedes the bottom
    two.
+
+.. versionchanged:: 0.5.0
+   The default ranking is ``simple > navigable > secure > composable``. The
+   two pillars an agent can always compute and always fix inside one file
+   rank highest; ``COMPOSABLE`` ranks last because it needs an external
+   dependency graph and describes a module's place in the whole project,
+   so it is the right thing to concede first when coupling data is absent.
 
 The important behavior is the **fallback target**: when ``IDEAL`` plateaus, the
 agent should aim for the meet of the top two ranked generators.
@@ -118,9 +125,9 @@ agent should aim for the meet of the top two ranked generators.
    * - Ranking
      - First target
      - Fallback target
-   * - ``simple > composable > secure > navigable``
+   * - ``simple > navigable > secure > composable`` (default)
      - ``IDEAL``
-     - ``SIMPLE_COMPOSABLE``
+     - ``SIMPLE_NAVIGABLE``
    * - ``secure > simple > composable > navigable``
      - ``IDEAL``
      - ``SIMPLE_SECURE``
@@ -142,7 +149,7 @@ For example, with:
 
 .. code-block:: text
 
-   ranking = simple > composable > secure
+   ranking = simple > navigable > secure > composable
    current = SECURE
 
 Topos can return:
@@ -150,8 +157,8 @@ Topos can return:
 .. code-block:: text
 
    target          = IDEAL
-   fallback_target = SIMPLE_COMPOSABLE
-   next_step       = COMPOSABLE
+   fallback_target = SIMPLE_NAVIGABLE
+   next_step       = COMPOSABLE_SECURE
 
 ``next_step`` is the smallest improvement above the current verdict that still
 respects the user's ranking.

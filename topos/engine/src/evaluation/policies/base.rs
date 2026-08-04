@@ -62,9 +62,13 @@ pub fn meet_satisfied(scores: &HashMap<Generator, f64>) -> HashMap<Generator, bo
 /// implementations do not change `achieved` based on priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Priority {
+    /// Default emphasis, matching the head of
+    /// [`crate::evaluation::preferences::default_preferences`] and MCP's
+    /// `resolve_priority(None)`. These three defaults must agree — they
+    /// previously did not (engine said `Secure`, MCP said `Simple`).
+    #[default]
     Simple,
     Composable,
-    #[default]
     Secure,
     Navigable,
 }

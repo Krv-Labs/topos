@@ -74,7 +74,7 @@ User Preferences and the Relaxation Walk
 While the lattice :math:`\Omega` is only partially ordered, users often have specific quality goals. Topos uses **User Preferences** — a strict total order (permutation) of the four pillars — to linearize the lattice and guide agent iteration.
 
 **The Induced Total Order**
-   A preference ranking like ``(SIMPLE, COMPOSABLE, SECURE, NAVIGABLE)`` induces a total order on the 16 Quality Medals. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied, with weights ``8 / 4 / 2 / 1`` down the ranking.
+   A preference ranking like the default ``(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)`` induces a total order on the 16 Quality Medals. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied, with weights ``8 / 4 / 2 / 1`` down the ranking.
 
 **Aspirational vs. Pragmatic Targets**
    - **Aspirational Target**: Usually ``PLATINUM`` (🏆). The agent first attempts to satisfy all four quality pillars.

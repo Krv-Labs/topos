@@ -25,26 +25,37 @@ score(v) = 8·⟦g₁ satisfied⟧ + 4·⟦g₂ satisfied⟧ + 2·⟦g₃ satisf
 
 Weights halve down the ranking, so each generator outranks every
 lower-ranked one combined — the order is strictly lexicographic. With the
-default ranking `[SIMPLE, COMPOSABLE, SECURE, NAVIGABLE]`:
+default ranking `[SIMPLE, NAVIGABLE, SECURE, COMPOSABLE]`:
 
 | Verdict                         | Score | Role                                    |
 |---------------------------------|-------|-----------------------------------------|
 | **IDEAL**                       | 15    | ← aspirational target (try first)       |
-| SIMPLE_COMPOSABLE_SECURE        | 14    | ← concede only the last-ranked pillar   |
+| SIMPLE_SECURE_NAVIGABLE         | 14    | ← concede only the last-ranked pillar   |
 | SIMPLE_COMPOSABLE_NAVIGABLE     | 13    |                                         |
-| **SIMPLE_COMPOSABLE**           | 12    | ← fallback (divert if IDEAL plateaus)   |
-| SIMPLE_SECURE_NAVIGABLE         | 11    |                                         |
+| **SIMPLE_NAVIGABLE**            | 12    | ← fallback (divert if IDEAL plateaus)   |
+| SIMPLE_COMPOSABLE_SECURE        | 11    |                                         |
 | SIMPLE_SECURE                   | 10    |                                         |
-| SIMPLE_NAVIGABLE                | 9     |                                         |
+| SIMPLE_COMPOSABLE               | 9     |                                         |
 | SIMPLE                          | 8     |                                         |
 | COMPOSABLE_SECURE_NAVIGABLE     | 7     |                                         |
-| COMPOSABLE_SECURE               | 6     |                                         |
+| SECURE_NAVIGABLE                | 6     |                                         |
 | COMPOSABLE_NAVIGABLE            | 5     |                                         |
-| COMPOSABLE                      | 4     |                                         |
-| SECURE_NAVIGABLE                | 3     |                                         |
+| NAVIGABLE                       | 4     |                                         |
+| COMPOSABLE_SECURE               | 3     |                                         |
 | SECURE                          | 2     |                                         |
-| NAVIGABLE                       | 1     |                                         |
+| COMPOSABLE                      | 1     |                                         |
 | SLOP                            | 0     |                                         |
+
+The default ranks the two **agent-cognition** pillars highest — `SIMPLE`
+(branch count) and `NAVIGABLE` (nesting depth), both read from the same
+UAST with no external dependency, so both are always available and always
+fixable inside one file. `SECURE` follows: also local, but zero-tolerance,
+so it is a blocker rather than a gradient. `COMPOSABLE` ranks last because
+it is the least locally actionable — it needs an external GitNexus graph,
+degrades to unavailable without one, and is a property of a module's place
+in the whole dependency graph rather than of the file in front of you.
+Ranking it last means the walk concedes it first, which is the right thing
+to concede when `coupling_available` is `false`.
 
 This refines Ω's Heyting partial order: `a ≤_H b ⟹ a ⪯_r b`. Where the
 Heyting order leaves atoms incomparable, the preference order
@@ -63,7 +74,7 @@ The agent's strategy is **two-stage**:
 
 | Ranking (top → bottom)                       | Aspirational | Fallback (ideal intersection) |
 |----------------------------------------------|--------------|-------------------------------|
-| SIMPLE ≻ COMPOSABLE ≻ SECURE ≻ NAVIGABLE     | IDEAL        | `SIMPLE_COMPOSABLE`           |
+| SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE     | IDEAL        | `SIMPLE_NAVIGABLE` (default)  |
 | SECURE ≻ SIMPLE ≻ COMPOSABLE ≻ NAVIGABLE     | IDEAL        | `SIMPLE_SECURE`               |
 | NAVIGABLE ≻ COMPOSABLE ≻ SECURE ≻ SIMPLE     | IDEAL        | `COMPOSABLE_NAVIGABLE`        |
 | …                                            | …            | …                             |
@@ -75,7 +86,8 @@ knows up front that IDEAL is out of reach for the file.
 > IDEAL in the walk. With three generators, "meet of the top two" and "one
 > step below IDEAL" happened to be the same element; with four they differ.
 > One step below IDEAL concedes only the single lowest-ranked generator
-> (`SIMPLE_COMPOSABLE_SECURE` above); the fallback concedes the bottom two.
+> (`SIMPLE_SECURE_NAVIGABLE` under the default ranking); the fallback
+> concedes the bottom two.
 
 ## The targeted relaxation walk
 
@@ -84,14 +96,14 @@ preference-ordered list of verdicts from the aspirational target down
 to (but not including) the current verdict.
 
 ```
-ranking = [SIMPLE, COMPOSABLE, SECURE, NAVIGABLE]   current = SECURE
-target  = IDEAL                                     fallback = SIMPLE_COMPOSABLE
-walk    = [IDEAL, SIMPLE_COMPOSABLE_SECURE, SIMPLE_COMPOSABLE_NAVIGABLE,
-           SIMPLE_COMPOSABLE, SIMPLE_SECURE_NAVIGABLE, SIMPLE_SECURE,
-           SIMPLE_NAVIGABLE, SIMPLE, COMPOSABLE_SECURE_NAVIGABLE,
-           COMPOSABLE_SECURE, COMPOSABLE_NAVIGABLE, COMPOSABLE,
-           SECURE_NAVIGABLE]
-next_step = SECURE_NAVIGABLE
+ranking = [SIMPLE, NAVIGABLE, SECURE, COMPOSABLE]   current = SECURE
+target  = IDEAL                                     fallback = SIMPLE_NAVIGABLE
+walk    = [IDEAL, SIMPLE_SECURE_NAVIGABLE, SIMPLE_COMPOSABLE_NAVIGABLE,
+           SIMPLE_NAVIGABLE, SIMPLE_COMPOSABLE_SECURE, SIMPLE_SECURE,
+           SIMPLE_COMPOSABLE, SIMPLE, COMPOSABLE_SECURE_NAVIGABLE,
+           SECURE_NAVIGABLE, COMPOSABLE_NAVIGABLE, NAVIGABLE,
+           COMPOSABLE_SECURE]
+next_step = COMPOSABLE_SECURE
 ```
 
 The `next_step` field is the *smallest* improvement that still respects

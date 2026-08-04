@@ -295,10 +295,10 @@ navigability first if all four cannot be improved at once.
      - First to concede
      - The property dropped first when the budget runs short.
 
-Example Ranking: ``(SIMPLE, COMPOSABLE, SECURE, NAVIGABLE)``
+Default Ranking: ``(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)``
 
 1. **Aspirational target**: The agent first tries to reach ``IDEAL`` (all four pillars pass).
-2. **Pragmatic fallback**: If progress stalls, the agent diverts to ``SIMPLE_COMPOSABLE``
+2. **Pragmatic fallback**: If progress stalls, the agent diverts to ``SIMPLE_NAVIGABLE``
    (the intersection of the top two).
 
 MCP Tools

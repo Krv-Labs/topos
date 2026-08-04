@@ -71,7 +71,7 @@ pub fn resolve_file_root() -> Result<PathBuf, String> {
 /// found not to exist, nothing after it can be a symlink either, so the
 /// remaining components (including any `..`) are safe to apply lexically
 /// against the already-resolved real prefix.
-fn resolve_existing_prefix(path: &Path) -> PathBuf {
+pub(crate) fn resolve_existing_prefix(path: &Path) -> PathBuf {
     let mut resolved = PathBuf::new();
     let mut past_missing = false;
     for component in path.components() {
@@ -169,10 +169,8 @@ mod tests {
 
     #[test]
     fn missing_in_root_leaf_is_allowed() {
-        let dir = std::env::temp_dir().join(format!(
-            "topos-security-missing-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("topos-security-missing-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.canonicalize().unwrap();
@@ -185,10 +183,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn symlink_escape_via_missing_leaf_is_denied() {
-        let dir = std::env::temp_dir().join(format!(
-            "topos-security-symlink-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("topos-security-symlink-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let root_path = dir.join("proj");
         std::fs::create_dir_all(&root_path).unwrap();

@@ -83,8 +83,9 @@ pub(crate) fn resolve_composable_mdg(
     };
 
     if let Some(warn) = gitnexus_compat_warning() {
-        // Compat is advisory — keep it on stderr only so JSON consumers that
-        // key off setup failures are not flooded with version nags.
+        // Compat is advisory and rare. Prefer the finished summary card for
+        // setup misses; only version nags stay on stderr so they are not lost
+        // when COMPOSABLE still loads.
         eprintln!("gitnexus: {warn}");
     }
 

@@ -110,11 +110,7 @@ fn render_summary(
             options,
         ));
     }
-    for notice in composable_notices
-        .iter()
-        .map(|warning| humanize_composable_notice(warning))
-        .filter(|notice| !notice.is_empty())
-    {
+    for notice in human_composable_notices(composable_notices) {
         lines.push(composable_notice_line(&notice, options));
     }
     lines.push(guide_char('│', options));
@@ -195,12 +191,13 @@ fn render_summary(
     ));
     lines.push(floor_line(floor, mean, options));
 
+    // COMPOSABLE recovery is part of the finished card whenever setup warnings
+    // exist — not gated on --info. Mid-run stderr stays quiet.
+    let mut tips = Vec::new();
+    if composable_requested && wants_depgraph_recovery_tip(composable_notices) {
+        tips.push(depgraph_recovery_tip(composable_notices));
+    }
     if show_info_hint {
-        lines.push(String::new());
-        let mut tips = Vec::new();
-        if composable_requested && !composable && wants_depgraph_recovery_tip(composable_notices) {
-            tips.push(depgraph_recovery_tip(composable_notices));
-        }
         if results.len() == 1 {
             tips.push(
                 "Tip: use `topos inspect` for metrics, functions, and guidance.".to_string(),
@@ -213,6 +210,9 @@ fn render_summary(
         } else {
             tips.push("Tip: add --info to inspect the five weakest files.".to_string());
         }
+    }
+    if !tips.is_empty() {
+        lines.push(String::new());
         for tip in tips {
             lines.push(paint(tip, Style::new().dim(), options));
         }
@@ -220,7 +220,67 @@ fn render_summary(
     lines
 }
 
-/// Short in-card copy for COMPOSABLE setup warnings (machine strings stay full in JSON).
+/// Human card notices derived from machine `warnings`.
+///
+/// JSON keeps the full list; the card collapses overlapping setup reasons so
+/// "branch not indexed" does not also show a stale warning about another
+/// branch's store, and mid-run stderr is not required for the same facts.
+fn human_composable_notices(warnings: &[String]) -> Vec<String> {
+    let hard_miss = warnings.iter().any(|warning| {
+        matches!(
+            notice_kind(warning),
+            NoticeKind::BranchNotIndexed | NoticeKind::MissingStore | NoticeKind::LoadFailure
+        )
+    });
+
+    let mut notices = Vec::new();
+    for warning in warnings {
+        let kind = notice_kind(warning);
+        if hard_miss && kind == NoticeKind::Stale {
+            continue;
+        }
+        let notice = humanize_composable_notice(warning);
+        if notice.is_empty() {
+            continue;
+        }
+        if notices.iter().any(|existing| existing == &notice) {
+            continue;
+        }
+        notices.push(notice);
+    }
+    notices
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NoticeKind {
+    BranchNotIndexed,
+    MissingStore,
+    LoadFailure,
+    Schema,
+    Stale,
+    Other,
+}
+
+fn notice_kind(warning: &str) -> NoticeKind {
+    let lower = warning.to_ascii_lowercase();
+    if lower.contains("no gitnexus store indexed for branch")
+        || lower.contains("current branch is not indexed")
+    {
+        NoticeKind::BranchNotIndexed
+    } else if lower.contains("no .gitnexus directory found") {
+        NoticeKind::MissingStore
+    } else if lower.contains("could not be loaded") || lower.contains("no indexed store found") {
+        NoticeKind::LoadFailure
+    } else if lower.contains("storage version") || lower.contains("ladybug") {
+        NoticeKind::Schema
+    } else if lower.contains("may be stale") || lower.contains("stale") {
+        NoticeKind::Stale
+    } else {
+        NoticeKind::Other
+    }
+}
+
+/// Short in-card copy for one COMPOSABLE setup warning (machine strings stay full in JSON).
 fn humanize_composable_notice(warning: &str) -> String {
     let trimmed = warning
         .trim()
@@ -236,13 +296,16 @@ fn humanize_composable_notice(warning: &str) -> String {
     if lower.contains("no .gitnexus directory found") {
         return "no .gitnexus store yet".to_string();
     }
-    if lower.contains("could not be loaded") {
+    if lower.contains("could not be loaded") || lower.contains("no indexed store found") {
         return "dependency graph could not be loaded".to_string();
     }
     if lower.contains("storage version") || lower.contains("ladybug") {
         return "GitNexus store schema mismatch".to_string();
     }
-    // Keep invalid-override and freshness detail readable but strip trailing
+    if lower.contains("may be stale") || lower.contains("stale") {
+        return "index may be stale".to_string();
+    }
+    // Keep invalid-override and other detail readable but strip trailing
     // "evaluating SIMPLE/SECURE only" noise — the meta line already says so.
     trimmed
         .trim_end_matches('.')
@@ -291,26 +354,31 @@ fn composable_notice_line(notice: &str, options: RenderOptions) -> String {
 
 fn wants_depgraph_recovery_tip(notices: &[String]) -> bool {
     notices.iter().any(|warning| {
-        let lower = warning.to_ascii_lowercase();
-        lower.contains("no gitnexus store indexed for branch")
-            || lower.contains("current branch is not indexed")
-            || lower.contains("no .gitnexus directory found")
-            || lower.contains("could not be loaded")
-            || lower.contains("storage version")
-            || lower.contains("ladybug")
-            || lower.contains("depgraph generate")
-            || lower.contains("topos depgraph")
+        matches!(
+            notice_kind(warning),
+            NoticeKind::BranchNotIndexed
+                | NoticeKind::MissingStore
+                | NoticeKind::LoadFailure
+                | NoticeKind::Schema
+                | NoticeKind::Stale
+        ) || {
+            let lower = warning.to_ascii_lowercase();
+            lower.contains("depgraph generate") || lower.contains("topos depgraph")
+        }
     })
 }
 
 fn depgraph_recovery_tip(notices: &[String]) -> String {
-    let branch_miss = notices.iter().any(|warning| {
-        let lower = warning.to_ascii_lowercase();
-        lower.contains("no gitnexus store indexed for branch")
-            || lower.contains("current branch is not indexed")
-    });
-    if branch_miss {
+    if notices
+        .iter()
+        .any(|warning| notice_kind(warning) == NoticeKind::BranchNotIndexed)
+    {
         "Tip: run `topos depgraph generate` to index this branch for COMPOSABLE.".to_string()
+    } else if notices
+        .iter()
+        .any(|warning| notice_kind(warning) == NoticeKind::Stale)
+    {
+        "Tip: run `topos depgraph generate` to refresh COMPOSABLE.".to_string()
     } else {
         "Tip: run `topos depgraph generate` to enable COMPOSABLE scoring.".to_string()
     }
@@ -833,6 +901,91 @@ mod tests {
         assert!(output.contains("Tip: add --failures simple"));
         assert!(output.contains("X  SLOP ·"));
         assert!(!output.contains('❌'));
+    }
+
+    #[test]
+    fn human_card_drops_stale_when_branch_is_not_indexed() {
+        let notices = [
+            "gitnexus index may be stale — source tree content changed since the dependency graph was generated; run 'topos depgraph generate' before trusting COMPOSABLE.".to_string(),
+            "COMPOSABLE not scored — no gitnexus store indexed for branch 'release/044-issue-fixes'; indexed: main, codex/restore-cli-terminal-ux".to_string(),
+        ];
+        let human = human_composable_notices(&notices);
+        assert_eq!(
+            human,
+            vec!["branch not indexed (have: main, codex/restore-cli-terminal-ux)".to_string()]
+        );
+
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result(false)],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: false,
+                composable_notices: &notices,
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+
+        assert!(
+            output.contains("↻ branch not indexed (have: main, codex/restore-cli-terminal-ux)"),
+            "{output}"
+        );
+        assert!(!output.contains("stale"), "{output}");
+        assert!(
+            output.contains(
+                "Tip: run `topos depgraph generate` to index this branch for COMPOSABLE."
+            ),
+            "{output}"
+        );
+        // JSON still receives the full machine list from the caller — only the
+        // human card collapses overlapping setup reasons.
+        assert_eq!(notices.len(), 2);
+    }
+
+    #[test]
+    fn stale_only_notice_uses_refresh_tip() {
+        let notices = [
+            "gitnexus index may be stale — source tree content changed since the dependency graph was generated; run 'topos depgraph generate' before trusting COMPOSABLE.".to_string(),
+        ];
+        assert_eq!(
+            human_composable_notices(&notices),
+            vec!["index may be stale".to_string()]
+        );
+
+        let mut result = result(true);
+        result
+            .dimensions
+            .insert("composable".to_string(), EvaluationValue::Composable);
+        result.scores.insert("composable".to_string(), 0.9);
+
+        let output = render_summary(
+            &[PathBuf::from("a.rs")],
+            &[result],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: true,
+                show_info_hint: false,
+                composable_notices: &notices,
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+
+        assert!(output.contains("↻ index may be stale"), "{output}");
+        assert!(
+            output.contains("Tip: run `topos depgraph generate` to refresh COMPOSABLE."),
+            "{output}"
+        );
     }
 
     #[test]

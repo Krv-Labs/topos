@@ -54,7 +54,8 @@ Run `topos depgraph generate` only to force a refresh.
 **Optional MCP setup** (for tool-based agents, not required for CLI-only use):
 
 ```bash
-claude mcp add --transport stdio topos -- topos mcp
+topos install --all   # registers the MCP server in every supported harness
+topos status          # verify registration
 ```
 
 Do not include secrets in prompts, logs, or output. Topos reads local source files and git state only; it does not transmit code to external services.

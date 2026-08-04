@@ -12,8 +12,8 @@ As of v0.4.0 (`PR #159 <https://github.com/Krv-Labs/topos/pull/159>`_) Topos
 is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/topos>`_
 of three crates — ``topos-engine`` (the compute engine), ``topos`` (the
 CLI binary), and ``topos-mcp`` (the MCP server binary). There is no
-Python runtime anywhere in the stack. Install the CLI first, then add
-GitNexus only when you need COMPOSABLE.
+Python runtime anywhere in the stack. Install the CLI, register it with your
+agents, and you have all three pillars.
 
 .. list-table::
    :header-rows: 1
@@ -30,14 +30,18 @@ GitNexus only when you need COMPOSABLE.
      - Homebrew formula
      - Installs ``topos`` from the ``krv-labs/tap`` tap. macOS arm64 and Linux amd64/arm64 only.
    * - MCP server only
-     - PyPI package
-     - ``pip install topos-mcp`` installs *only* the ``topos-mcp`` server binary (a thin wheel, zero Python runtime dependency) — not the full ``topos`` CLI.
+     - PyPI package *(secondary)*
+     - ``pip install topos-mcp`` installs *only* the ``topos-mcp`` server binary (a thin wheel, zero Python runtime dependency) — not the full ``topos`` CLI, so no ``topos install``.
    * - Development
-     - Source checkout
+     - Source checkout *(secondary)*
      - Requires the Rust toolchain either way. Build with ``cargo`` for both binaries, or ``uv`` for a locally-built ``topos-mcp`` wheel.
 
-Choose an install path
-----------------------
+Install the CLI
+---------------
+
+Two supported channels, both giving you the full ``topos`` binary — CLI and MCP
+server in one. Pick whichever matches how you manage tooling; PATH order decides
+which wins if you install both.
 
 .. tab-set::
 
@@ -119,7 +123,7 @@ Choose an install path
          brew upgrade topos
 
       Homebrew installs do not install GitNexus automatically. Add it
-      separately when you need COMPOSABLE metrics:
+      separately so COMPOSABLE can score:
 
       .. code-block:: bash
 
@@ -131,133 +135,134 @@ Choose an install path
       interactively; remove the foreign binary or fix PATH if you intend to
       use the Homebrew install.
 
-   .. tab-item:: PyPI package
-      :sync: pypi
+Other install paths
+-------------------
 
-      Installs *only* the ``topos-mcp`` server binary (as the ``topos-mcp``
-      command) — a thin `maturin <https://www.maturin.rs/>`_ ``bin`` wheel
-      that bundles the compiled Rust binary with zero Python runtime or
-      import surface. This does **not** give you the ``topos`` CLI
-      (``evaluate``/``inspect``/``compare``/``coverage``/``graphify``) — use
-      the binary installer or a source build for that.
+Neither of these is the recommended route. Use them when you want the MCP server
+without the CLI, or you are working on Topos itself.
 
-      .. code-block:: bash
+.. dropdown:: MCP server only — PyPI package
 
-         uv pip install topos-mcp
-         # or run without a persistent install:
-         uvx topos-mcp
+   Installs *only* the ``topos-mcp`` server binary (as the ``topos-mcp``
+   command) — a thin `maturin <https://www.maturin.rs/>`_ ``bin`` wheel
+   that bundles the compiled Rust binary with zero Python runtime or
+   import surface. This does **not** give you the ``topos`` CLI
+   (``evaluate``/``inspect``/``compare``/``coverage``/``graphify``) — use
+   the binary installer or a source build for that.
 
-      PyPI installs do not install GitNexus automatically. Add it separately
-      when you need COMPOSABLE metrics:
+   .. code-block:: bash
 
-      .. code-block:: bash
+      uv pip install topos-mcp
+      # or run without a persistent install:
+      uvx topos-mcp
 
-         pnpm add -g gitnexus  # or: npm install -g gitnexus
+   PyPI installs do not install GitNexus automatically. Add it separately
+   so COMPOSABLE can score:
 
-   .. tab-item:: Source checkout
-      :sync: source
+   .. code-block:: bash
 
-      Use this for development, local patches, or repository integration.
-      Two build paths, depending on what you need — both require the Rust
-      toolchain (``cargo``); neither needs a Python runtime at *run* time.
+      pnpm add -g gitnexus  # or: npm install -g gitnexus
 
-      **Cargo — full Rust build.** Gives you both the ``topos`` CLI and the
-      ``topos-mcp`` server as native binaries, straight from the workspace.
+.. dropdown:: Development — source checkout
 
-      .. code-block:: bash
+   Use this for development, local patches, or repository integration.
+   Two build paths, depending on what you need — both require the Rust
+   toolchain (``cargo``); neither needs a Python runtime at *run* time.
 
-         git clone https://github.com/Krv-Labs/topos.git
-         cd topos
-         cargo build --release -p topos        # -> target/release/topos
-         cargo build --release -p topos-mcp   # -> target/release/topos-mcp
+   **Cargo — full Rust build.** Gives you both the ``topos`` CLI and the
+   ``topos-mcp`` server as native binaries, straight from the workspace.
 
-      **uv — the** ``topos-mcp`` **PyPI wheel, built locally.** Builds the
-      same thin ``bin`` wheel published to PyPI — `maturin
-      <https://www.maturin.rs/>`_ compiles ``topos/mcp`` under the
-      hood, per ``pyproject.toml``'s ``[build-system]``. Useful for testing
-      local ``topos-mcp`` changes through the exact install path end users
-      get, or for producing a wheel without a full workspace build. Cargo
-      still does the compiling; uv only drives the Python-side packaging.
+   .. code-block:: bash
 
-      .. code-block:: bash
+      git clone https://github.com/Krv-Labs/topos.git
+      cd topos
+      cargo build --release -p topos        # -> target/release/topos
+      cargo build --release -p topos-mcp   # -> target/release/topos-mcp
 
-         git clone https://github.com/Krv-Labs/topos.git
-         cd topos
-         uv sync              # builds + installs topos-mcp into .venv
-         uv run topos-mcp     # -> the compiled MCP server binary
+   **uv — the** ``topos-mcp`` **PyPI wheel, built locally.** Builds the
+   same thin ``bin`` wheel published to PyPI — `maturin
+   <https://www.maturin.rs/>`_ compiles ``topos/mcp`` under the
+   hood, per ``pyproject.toml``'s ``[build-system]``. Useful for testing
+   local ``topos-mcp`` changes through the exact install path end users
+   get, or for producing a wheel without a full workspace build. Cargo
+   still does the compiling; uv only drives the Python-side packaging.
 
-      Or produce a distributable wheel directly:
+   .. code-block:: bash
 
-      .. code-block:: bash
+      git clone https://github.com/Krv-Labs/topos.git
+      cd topos
+      uv sync              # builds + installs topos-mcp into .venv
+      uv run topos-mcp     # -> the compiled MCP server binary
 
-         uv build                              # -> dist/topos_mcp-*.whl
-         uv pip install dist/topos_mcp-*.whl
+   Or produce a distributable wheel directly:
 
-      This path does not build the ``topos`` CLI (``evaluate``/``inspect``/
-      ``compare``/``coverage``/``graphify``) — use the Cargo build above, or
-      the binary installer, for that.
+   .. code-block:: bash
 
-      Source installs do not install GitNexus automatically. Add it separately
-      when you need COMPOSABLE metrics:
+      uv build                              # -> dist/topos_mcp-*.whl
+      uv pip install dist/topos_mcp-*.whl
 
-      .. code-block:: bash
+   This path does not build the ``topos`` CLI (``evaluate``/``inspect``/
+   ``compare``/``coverage``/``graphify``) — use the Cargo build above, or
+   the binary installer, for that.
 
-         pnpm add -g gitnexus  # or: npm install -g gitnexus
+   Source installs do not install GitNexus automatically. Add it separately
+   so COMPOSABLE can score:
 
-      Run the local test suite:
+   .. code-block:: bash
 
-      .. code-block:: bash
+      pnpm add -g gitnexus  # or: npm install -g gitnexus
 
-         cargo test --workspace
+   Run the local test suite:
 
-Enable optional metrics
+   .. code-block:: bash
+
+      cargo test --workspace
+
+Register with your agents
+-------------------------
+
+``topos install`` writes the Topos MCP server entry into every agent harness you
+select — Claude Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI,
+Cursor, VS Code, and Google Antigravity. There is no per-client ``mcp add`` step.
+
+.. code-block:: bash
+
+   topos install          # interactive checklist in a terminal
+   topos install --all    # every supported harness, no prompts
+   topos status           # what is registered, and what needs repair
+   topos uninstall        # take the registrations back out
+
+The recorded ``command`` is the absolute path of the ``topos`` you ran it with,
+so GUI-launched apps can spawn it. Re-run ``topos install`` after switching
+install channels or upgrading in a way that moves the binary —
+``topos status`` reports that drift as ``↻ Incomplete``. Full harness table,
+state model, and flags are in :doc:`agents`.
+
+GitNexus and COMPOSABLE
 -----------------------
 
-.. tab-set::
+COMPOSABLE is scored by default. ``topos evaluate`` and ``topos inspect``
+resolve or refresh the repository's ``.gitnexus`` dependency graph before
+scoring, so the only setup is having GitNexus on ``PATH`` — the binary installer
+offers to do it for you:
 
-   .. tab-item:: COMPOSABLE
-      :sync: composable
+.. code-block:: bash
 
-      GitNexus builds the repository dependency graph used by the COMPOSABLE
-      pillar. ``topos evaluate`` and ``topos inspect`` resolve or refresh the
-      repository's ``.gitnexus`` store automatically. Use ``topos depgraph
-      generate`` to build it explicitly, or ``--no-composable`` when you only
-      want SIMPLE and SECURE.
+   pnpm add -g gitnexus  # or: npm install -g gitnexus
 
-      .. code-block:: bash
+Without it, SIMPLE and SECURE still score and COMPOSABLE reports as unavailable
+rather than failing. ``topos depgraph generate`` forces a rebuild;
+``--no-composable`` skips the pillar entirely.
 
-         pnpm add -g gitnexus  # or: npm install -g gitnexus
-         topos depgraph generate
-         topos evaluate . -r
+Graphify is different: it powers the **advisory** refactor suite
+(``topos graphify``, ``topos_refactor(target="graphify")``) and never affects
+the medal. Install it only if you want orphan and fragile-edge detection:
 
-      MCP tools use the same graph lifecycle. For an agent integration:
+.. code-block:: bash
 
-      .. code-block:: bash
+   pip install graphifyy   # or: uvx --from graphifyy graphify --version
 
-         claude mcp add --transport stdio topos -- topos mcp
-
-      Both ``topos depgraph generate`` and ``topos_generate_depgraph`` no-op
-      safely when the graph is already current; pass ``--force`` or
-      ``force=true`` after imports, module names, or directory structure
-      change. See :doc:`agents`.
-
-   .. tab-item:: Graphify (advisory)
-      :sync: graphify
-
-      `Graphify <https://github.com/Graphify-Labs/graphify>`_ builds a
-      tree-sitter-based knowledge graph used by the advisory refactor suite's
-      ``graphify`` target (orphan/dead-code detection, fragile-edge
-      flagging) — it never affects the SIMPLE/COMPOSABLE/SECURE medal.
-
-      .. code-block:: bash
-
-         pip install graphifyy   # or: uvx --from graphifyy graphify --version
-         cd /path/to/your/repo
-         topos graphify generate
-         topos graphify orphans src/module.py
-
-      See :doc:`cli` and the repository's ``docs/decisions/refactor-suite.md`` for the
-      full design.
+See :doc:`cli` and the repository's ``docs/decisions/refactor-suite.md``.
 
 First useful commands
 ---------------------
@@ -316,13 +321,25 @@ Details and troubleshooting
       brew upgrade topos
 
    Source checkouts should use ``git pull && cargo build --release -p
-   topos`` (Cargo path) or ``git pull && uv sync`` (uv path). There is
-   no built-in ``topos update``/``topos uninstall``
-   subcommand as of v0.4.0 — those were pip-specific self-update/uninstall
-   commands in the pre-migration Python CLI and don't carry over to a
-   cargo/homebrew-distributed binary.
+   topos`` (Cargo path) or ``git pull && uv sync`` (uv path). There is no
+   built-in ``topos update`` — that was a pip-specific self-update in the
+   pre-migration Python CLI and doesn't carry over to a cargo/homebrew-distributed
+   binary. ``topos uninstall`` exists, but it removes *agent MCP registrations*,
+   not the binary.
+
+   After an upgrade that moves the binary, re-run ``topos install`` so the
+   harness entries point at the new path.
 
 .. dropdown:: Clean uninstall
+
+   First remove the agent registrations, which also prunes files and directories
+   Topos created:
+
+   .. code-block:: bash
+
+      topos uninstall --all --purge-backups
+
+   Then remove the binary itself.
 
    Binary installs: delete the downloaded binary (default
    ``~/.local/bin/topos``) and remove any PATH block the installer added to

@@ -1,99 +1,163 @@
-//! `topos install status` — report which harnesses are configured.
+//! `topos status` (and its `topos install status` alias) — what is registered,
+//! what needs repair, and what topos found but will not touch.
+//!
+//! The command exists so that a harness which silently fails to start the Topos
+//! server has somewhere to say so. Three things therefore have to surface even
+//! when they are inconvenient: path drift, conflicts topos refuses to resolve,
+//! and [`super::residue`] left behind by an earlier draft or written by hand.
 
 use std::path::Path;
 
 use console::Style;
-use serde_json::json;
+use serde_json::{json, Value};
 
-use super::integrations::{harness_name, integration_state, State, SUPPORTED};
+use super::artifact::{Inspection, State};
+use super::binary::resolve_binary_path;
+use super::harness::{HarnessSpec, HARNESSES};
+use super::report;
+use super::residue::{self, Residue};
 use crate::commands::render::{paint, RenderOptions};
 
 pub(crate) fn run(home: &Path, json_output: bool) -> Result<(), String> {
-    let states: Vec<(&str, State)> = SUPPORTED
+    let binary = resolve_binary_path()?;
+    let rows: Vec<(&HarnessSpec, Inspection)> = HARNESSES
         .iter()
-        .map(|id| (*id, integration_state(id, home)))
+        .map(|harness| {
+            let inspection = harness
+                .artifact
+                .inspect(&(harness.config_path)(home), &binary);
+            (harness, inspection)
+        })
         .collect();
+    let found = residue::scan(home, &binary);
 
     if json_output {
-        let active = states.iter().filter(|(_, s)| *s == State::Active).count();
-        let harnesses: Vec<_> = states
-            .iter()
-            .map(|(id, state)| {
-                json!({
-                    "id": id,
-                    "name": harness_name(id),
-                    "state": state_label(*state),
-                })
-            })
-            .collect();
-        let payload = json!({
-            "active": active,
-            "total": SUPPORTED.len(),
-            "harnesses": harnesses,
-        });
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?
+        return print_json(home, &binary, &rows, &found);
+    }
+    print_human(home, &binary, &rows, &found);
+    Ok(())
+}
+
+fn print_human(home: &Path, binary: &Path, rows: &[(&HarnessSpec, Inspection)], found: &[Residue]) {
+    let opts = RenderOptions::stdout();
+    report::header("Topos Harness Status", false, opts);
+    println!("│  Binary: {}", binary.display());
+    println!("│");
+
+    for (harness, inspection) in sorted(rows) {
+        report::harness_line(harness.name, opts);
+        report::detail(
+            &report::glyph(inspection.state, opts),
+            &describe(harness, inspection),
         );
-        return Ok(());
+        if let Some(message) = (harness.note)(home) {
+            report::note(&message, opts);
+        }
+        println!("│");
     }
 
-    let opts = RenderOptions::stdout();
+    print_residue(found, opts);
+    let active = count(rows, State::Active);
+    report::footer(
+        &format!("{active}/{} harness integrations active.", rows.len()),
+        opts,
+    );
+}
+
+/// Active first, then anything needing attention, then the rest — the reader is
+/// usually looking for the row that is wrong.
+fn sorted<'a>(rows: &'a [(&'a HarnessSpec, Inspection)]) -> Vec<&'a (&'a HarnessSpec, Inspection)> {
+    let mut ordered: Vec<&(&HarnessSpec, Inspection)> = rows.iter().collect();
+    ordered.sort_by_key(|(_, inspection)| rank(inspection.state));
+    ordered
+}
+
+fn rank(state: State) -> u8 {
+    match state {
+        State::Active => 0,
+        State::Incomplete => 1,
+        State::Conflict => 2,
+        State::Absent => 3,
+    }
+}
+
+/// The per-harness message: the spec's own wording for the settled states, and
+/// the inspection's reason plus a repair instruction for the rest.
+fn describe(harness: &HarnessSpec, inspection: &Inspection) -> String {
+    match (inspection.state, &inspection.detail) {
+        (State::Active, _) => harness.active_msg.to_string(),
+        (State::Absent, _) => harness.absent_msg.to_string(),
+        (State::Incomplete, Some(reason)) => {
+            format!("{reason} — run `topos install {}`", harness.id)
+        }
+        (State::Incomplete, None) => format!("needs repair — run `topos install {}`", harness.id),
+        (State::Conflict, Some(reason)) => reason.clone(),
+        (State::Conflict, None) => "needs manual attention".to_string(),
+    }
+}
+
+fn count(rows: &[(&HarnessSpec, Inspection)], state: State) -> usize {
+    rows.iter()
+        .filter(|(_, inspection)| inspection.state == state)
+        .count()
+}
+
+fn print_residue(found: &[Residue], opts: RenderOptions) {
+    if found.is_empty() {
+        return;
+    }
+    report::harness_line("Found but not managed by topos", opts);
+    for item in found {
+        report::detail(
+            &paint("▲", Style::new().color256(208), opts),
+            &format!("{} — {}", item.path.display(), item.what),
+        );
+        println!("│      {}", paint(&item.advice, Style::new().dim(), opts));
+    }
+    println!("│");
+}
+
+fn print_json(
+    home: &Path,
+    binary: &Path,
+    rows: &[(&HarnessSpec, Inspection)],
+    found: &[Residue],
+) -> Result<(), String> {
+    let harnesses: Vec<Value> = rows
+        .iter()
+        .map(|(harness, inspection)| harness_json(home, harness, inspection))
+        .collect();
+    let residue: Vec<Value> = found
+        .iter()
+        .map(|item| {
+            json!({
+                "path": item.path.display().to_string(),
+                "what": item.what,
+                "advice": item.advice,
+            })
+        })
+        .collect();
+    let payload = json!({
+        "binary": binary.display().to_string(),
+        "active": count(rows, State::Active),
+        "total": rows.len(),
+        "harnesses": harnesses,
+        "residue": residue,
+    });
     println!(
         "{}",
-        paint("┌  Topos Harness Status", Style::new().bold(), opts)
-    );
-    println!("│");
-
-    let rank = |state: State| match state {
-        State::Active => 0,
-        State::Stale => 1,
-        State::Absent => 2,
-    };
-    let mut sorted = states;
-    sorted.sort_by_key(|(_, state)| rank(*state));
-
-    let mut active_count = 0;
-    for (idx, (id, state)) in sorted.iter().enumerate() {
-        println!("│  {}", paint(harness_name(id), Style::new().bold(), opts));
-        match state {
-            State::Active => {
-                println!("│    {} configured", paint("✓", Style::new().green(), opts));
-                active_count += 1;
-            }
-            State::Stale => println!(
-                "│    {} stale or incomplete — run `topos uninstall {id}` or `topos install {id}`",
-                paint("▲", Style::new().color256(208), opts)
-            ),
-            State::Absent => println!(
-                "│    {} not configured",
-                paint("○", Style::new().dim(), opts)
-            ),
-        }
-        if idx < sorted.len() - 1 {
-            println!("│");
-        }
-    }
-
-    println!("│");
-    println!(
-        "└  {}",
-        paint(
-            format!(
-                "Done. {active_count}/{} harness integrations active.",
-                SUPPORTED.len()
-            ),
-            Style::new().bold(),
-            opts,
-        )
+        serde_json::to_string_pretty(&payload).map_err(|e| e.to_string())?
     );
     Ok(())
 }
 
-fn state_label(state: State) -> &'static str {
-    match state {
-        State::Active => "active",
-        State::Stale => "stale",
-        State::Absent => "absent",
-    }
+fn harness_json(home: &Path, harness: &HarnessSpec, inspection: &Inspection) -> Value {
+    json!({
+        "id": harness.id,
+        "name": harness.name,
+        "state": report::label(inspection.state),
+        "config": (harness.config_path)(home).display().to_string(),
+        "detail": inspection.detail,
+        "note": (harness.note)(home),
+    })
 }

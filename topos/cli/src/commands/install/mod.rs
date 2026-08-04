@@ -241,28 +241,46 @@ fn interactive_select(home: &Path, mode: Selection) -> Result<Option<Vec<String>
                 .artifact
                 .inspect(&(spec.config_path)(home), &binary)
                 .state;
-            let (hint, checked) = menu_hint(mode, state, || (spec.detect)(home));
+            let (hint, hint_style, checked) = menu_hint(mode, state, || (spec.detect)(home));
             MenuOption {
                 id: spec.id,
                 name: spec.name,
                 hint,
+                hint_style,
                 checked,
+                // Blue radio only while the integration is already settled active.
+                is_active: state == State::Active,
             }
         })
         .collect();
     run_menu(title, options)
 }
 
-fn menu_hint(mode: Selection, state: State, detected: impl Fn() -> bool) -> (String, bool) {
+/// Hint body, how to paint it, and whether the row starts checked.
+fn menu_hint(
+    mode: Selection,
+    state: State,
+    detected: impl Fn() -> bool,
+) -> (String, menu::HintStyle, bool) {
     match (mode, state) {
-        (_, State::Active) => ("active".to_string(), true),
-        (_, State::Incomplete) => ("needs repair".to_string(), true),
+        (_, State::Active) => ("active".to_string(), menu::HintStyle::Active, true),
+        (_, State::Incomplete) => ("needs repair".to_string(), menu::HintStyle::Repair, true),
         // A conflict needs a human decision, so it is shown but never
         // pre-checked: install would refuse and uninstall would skip it.
-        (_, State::Conflict) => ("conflict — inspect by hand".to_string(), false),
-        (Selection::Install, State::Absent) if detected() => ("detected".to_string(), true),
-        (Selection::Install, State::Absent) => ("not configured".to_string(), false),
-        (Selection::Uninstall, State::Absent) => ("not configured".to_string(), false),
+        (_, State::Conflict) => (
+            "conflict — inspect by hand".to_string(),
+            menu::HintStyle::Plain,
+            false,
+        ),
+        (Selection::Install, State::Absent) if detected() => {
+            ("detected".to_string(), menu::HintStyle::Plain, true)
+        }
+        (Selection::Install, State::Absent) => {
+            ("not configured".to_string(), menu::HintStyle::Plain, false)
+        }
+        (Selection::Uninstall, State::Absent) => {
+            ("not configured".to_string(), menu::HintStyle::Plain, false)
+        }
     }
 }
 
@@ -368,25 +386,36 @@ mod tests {
     #[test]
     fn conflicts_are_shown_but_never_preselected() {
         for mode in [Selection::Install, Selection::Uninstall] {
-            let (hint, checked) = menu_hint(mode, State::Conflict, || true);
+            let (hint, style, checked) = menu_hint(mode, State::Conflict, || true);
             assert!(!checked, "a conflict needs a human decision first");
             assert!(hint.contains("conflict"));
+            assert_eq!(style, menu::HintStyle::Plain);
         }
     }
 
     #[test]
     fn install_preselects_detected_harnesses_but_uninstall_does_not() {
-        let (hint, checked) = menu_hint(Selection::Install, State::Absent, || true);
+        let (hint, style, checked) = menu_hint(Selection::Install, State::Absent, || true);
         assert_eq!(hint, "detected");
+        assert_eq!(style, menu::HintStyle::Plain);
         assert!(checked);
-        let (_, checked) = menu_hint(Selection::Uninstall, State::Absent, || true);
+        let (_, _, checked) = menu_hint(Selection::Uninstall, State::Absent, || true);
         assert!(!checked, "nothing to remove from an unconfigured harness");
     }
 
     #[test]
     fn drifted_entries_are_preselected_for_repair() {
-        let (hint, checked) = menu_hint(Selection::Install, State::Incomplete, || false);
+        let (hint, style, checked) = menu_hint(Selection::Install, State::Incomplete, || false);
         assert_eq!(hint, "needs repair");
+        assert_eq!(style, menu::HintStyle::Repair);
+        assert!(checked);
+    }
+
+    #[test]
+    fn active_entries_use_active_hint_style() {
+        let (hint, style, checked) = menu_hint(Selection::Install, State::Active, || false);
+        assert_eq!(hint, "active");
+        assert_eq!(style, menu::HintStyle::Active);
         assert!(checked);
     }
 }

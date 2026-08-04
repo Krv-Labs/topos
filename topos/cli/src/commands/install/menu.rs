@@ -1,16 +1,33 @@
 //! Interactive multi-select TTY menu for `topos install` / `topos
-//! uninstall`, styled after the single-select loop in `commands/config.rs`
-//! but with checkboxes instead of a single choice.
+//! uninstall`, styled after the kos wiki Clack-style multi-select:
+//! colored radio glyphs, cyan cursor, and hint styling — not whole-row
+//! paint.
 
-use console::{Key, Term};
+use console::{Key, Style, Term};
 
 use crate::commands::render::{paint, RenderOptions};
+
+/// How the trailing hint should be painted. Plain text stays in
+/// [`MenuOption::hint`]; the style decides the glyph + color wrapper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HintStyle {
+    /// Green `✓ active`.
+    Active,
+    /// Orange `▲ needs repair` (or similar attention copy).
+    Repair,
+    /// Dim unadorned text (`detected`, `not configured`, conflict copy).
+    Plain,
+}
 
 pub(crate) struct MenuOption {
     pub(crate) id: &'static str,
     pub(crate) name: &'static str,
+    /// Unstyled hint body (no leading glyph).
     pub(crate) hint: String,
+    pub(crate) hint_style: HintStyle,
     pub(crate) checked: bool,
+    /// When checked, paint the radio blue (already integrated) instead of green.
+    pub(crate) is_active: bool,
 }
 
 /// What a keypress means, independent of terminal/IO concerns — kept
@@ -99,31 +116,194 @@ pub(crate) fn run_menu(
 
 fn render(title: &str, options: &[MenuOption], cursor: usize, opts: RenderOptions) -> Vec<String> {
     let mut lines = vec![
-        paint(format!("┌  {title}"), console::Style::new().bold(), opts),
+        paint(format!("┌  {title}"), Style::new().bold(), opts),
         "│".to_string(),
         format!(
             "│  {}",
             paint(
                 "↑↓ move · space toggle · a all · enter confirm · esc cancel",
-                console::Style::new().dim(),
+                Style::new().dim(),
                 opts,
             )
         ),
         "│".to_string(),
     ];
     for (idx, option) in options.iter().enumerate() {
-        let pointer = if idx == cursor { "›" } else { " " };
-        let checkbox = if option.checked { "●" } else { "○" };
-        let row = format!("{pointer} {checkbox} {:<20} {}", option.name, option.hint);
-        let style = if idx == cursor {
-            console::Style::new().bold()
-        } else if option.checked {
-            console::Style::new()
-        } else {
-            console::Style::new().dim()
-        };
-        lines.push(format!("│ {}", paint(row, style, opts)));
+        lines.push(format!("│ {}", render_row(option, idx == cursor, opts)));
     }
     lines.push("└".to_string());
     lines
+}
+
+/// Radio + cursor take the color; the label is bold only under the cursor.
+fn render_row(option: &MenuOption, is_cursor: bool, opts: RenderOptions) -> String {
+    let pointer = if is_cursor {
+        paint("❯", Style::new().cyan(), opts)
+    } else {
+        " ".to_string()
+    };
+    let radio = radio_glyph(option.checked, option.is_active, opts);
+    let name = format!("{:<20}", option.name);
+    let label = if is_cursor {
+        paint(name, Style::new().bold(), opts)
+    } else {
+        name
+    };
+    let hint = format_hint(option, opts);
+    format!("{pointer} {radio} {label}{hint}")
+}
+
+fn radio_glyph(checked: bool, is_active: bool, opts: RenderOptions) -> String {
+    if checked {
+        // Blue when already integrated (kos `is_active`); green when newly selected.
+        if is_active {
+            paint("●", Style::new().color256(39), opts)
+        } else {
+            paint("●", Style::new().green(), opts)
+        }
+    } else {
+        paint("○", Style::new().dim(), opts)
+    }
+}
+
+fn format_hint(option: &MenuOption, opts: RenderOptions) -> String {
+    if option.hint.is_empty() {
+        return String::new();
+    }
+    let body = match option.hint_style {
+        HintStyle::Active => paint(format!("✓ {}", option.hint), Style::new().green(), opts),
+        HintStyle::Repair => {
+            paint(format!("▲ {}", option.hint), Style::new().color256(208), opts)
+        }
+        HintStyle::Plain => paint(&option.hint, Style::new().dim(), opts),
+    };
+    format!(" ({body})")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts() -> RenderOptions {
+        RenderOptions {
+            styled: false,
+            width: 80,
+        }
+    }
+
+    #[test]
+    fn active_checked_radio_is_filled_dot() {
+        let row = render_row(
+            &MenuOption {
+                id: "claude",
+                name: "Claude Code",
+                hint: "active".into(),
+                hint_style: HintStyle::Active,
+                checked: true,
+                is_active: true,
+            },
+            false,
+            opts(),
+        );
+        assert!(row.contains('●'), "{row}");
+        assert!(row.contains("✓ active"), "{row}");
+    }
+
+    #[test]
+    fn selected_but_not_active_still_filled() {
+        let row = render_row(
+            &MenuOption {
+                id: "codex",
+                name: "Codex",
+                hint: "detected".into(),
+                hint_style: HintStyle::Plain,
+                checked: true,
+                is_active: false,
+            },
+            false,
+            opts(),
+        );
+        assert!(row.contains('●'), "{row}");
+        assert!(row.contains("detected"), "{row}");
+    }
+
+    #[test]
+    fn cursor_uses_clack_chevron() {
+        let row = render_row(
+            &MenuOption {
+                id: "gemini",
+                name: "Gemini CLI",
+                hint: "not configured".into(),
+                hint_style: HintStyle::Plain,
+                checked: false,
+                is_active: false,
+            },
+            true,
+            opts(),
+        );
+        assert!(row.contains('❯'), "{row}");
+        assert!(row.contains('○'), "{row}");
+    }
+
+    #[test]
+    fn repair_hint_gets_triangle_prefix() {
+        let row = render_row(
+            &MenuOption {
+                id: "cursor",
+                name: "Cursor",
+                hint: "needs repair".into(),
+                hint_style: HintStyle::Repair,
+                checked: true,
+                is_active: false,
+            },
+            false,
+            opts(),
+        );
+        assert!(row.contains("▲ needs repair"), "{row}");
+    }
+
+    #[test]
+    fn styled_radios_distinguish_active_blue_from_selected_green() {
+        let styled = RenderOptions {
+            styled: true,
+            width: 80,
+        };
+        let active = render_row(
+            &MenuOption {
+                id: "claude",
+                name: "Claude Code",
+                hint: "active".into(),
+                hint_style: HintStyle::Active,
+                checked: true,
+                is_active: true,
+            },
+            false,
+            styled,
+        );
+        let selected = render_row(
+            &MenuOption {
+                id: "codex",
+                name: "Codex",
+                hint: "detected".into(),
+                hint_style: HintStyle::Plain,
+                checked: true,
+                is_active: false,
+            },
+            true,
+            styled,
+        );
+        // 256-color blue (39) vs standard green — same glyph, different paint.
+        assert!(
+            active.contains("38;5;39") || active.contains("38:5:39"),
+            "active radio should be blue-ish: {active:?}"
+        );
+        assert!(
+            selected.contains("32m") || selected.contains("32;"),
+            "selected non-active radio should be green: {selected:?}"
+        );
+        assert!(
+            selected.contains("36m") || selected.contains("36;"),
+            "cursor should be cyan: {selected:?}"
+        );
+    }
 }

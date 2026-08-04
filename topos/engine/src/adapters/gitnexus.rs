@@ -37,7 +37,6 @@ use blake2::Blake2bVar;
 
 use super::discovery::iter_source_files;
 use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
-use crate::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
 
@@ -219,16 +218,7 @@ pub struct SourceFingerprint {
 /// Hash source-file paths and bytes under `root` using existing discovery.
 pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let suffixes: Vec<&str> = {
-        let mut all: Vec<&str> = SUPPORTED_LANGUAGES
-            .iter()
-            .filter_map(|lang| language_file_suffixes(lang))
-            .flat_map(|group| group.iter().copied())
-            .collect();
-        all.sort_unstable();
-        all.dedup();
-        all
-    };
+    let suffixes = crate::graphs::ast::languages::all_source_suffixes();
 
     let mut files = iter_source_files(&root, &suffixes, true, None, false);
     files.sort_by(|a, b| {

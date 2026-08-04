@@ -6,10 +6,14 @@ use serde_json::Value;
 use topos_engine::adapters::gitnexus::{
     current_git_branch, resolve_lbug_store, source_fingerprint, GITNEXUS_FINGERPRINT_FILE,
 };
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::gitref::{git_head_mtime, git_head_sha, gitnexus_mtime, mtime_f64};
 use super::STALE_GITNEXUS_MARKER;
+
+/// All supported source suffixes, deduped.
+///
+/// Re-export of the engine helper so MCP call sites keep a stable path.
+pub use topos_engine::graphs::ast::languages::all_source_suffixes;
 
 /// Freshness stat-walk ceiling: beyond this many source files the mtime
 /// pass returns "fresh" rather than making every evaluate call pay for a
@@ -50,18 +54,6 @@ fn read_graph_fingerprint(store_dir: &Path) -> Option<GraphFingerprint> {
             .and_then(Value::as_str)
             .map(str::to_string),
     })
-}
-
-/// All supported source suffixes, deduped.
-pub fn all_source_suffixes() -> Vec<&'static str> {
-    let mut all: Vec<&str> = SUPPORTED_LANGUAGES
-        .iter()
-        .filter_map(|lang| language_file_suffixes(lang))
-        .flat_map(|group| group.iter().copied())
-        .collect();
-    all.sort_unstable();
-    all.dedup();
-    all
 }
 
 /// First source file (or directory) modified after `generated_at`, or None.

@@ -27,19 +27,18 @@
 
 pub(crate) mod info;
 pub(crate) mod info_render;
+pub(crate) mod inputs;
 pub(crate) mod summary;
 
 use std::path::PathBuf;
 
 use clap::Args;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use topos_engine::adapters::discovery::collect_source_files;
 use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::Generator;
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
@@ -47,6 +46,7 @@ use super::config::{parse_priority, parse_priority_input, priority_for_generator
 use super::render::{print_classification, print_raw_metrics, spinner};
 
 use self::info::{show_evaluation_info, show_pillar_failures};
+use self::inputs::{language_label, resolve_evaluate_inputs};
 use self::summary::{json_output, pillar_measured, print_summary};
 
 #[derive(Args)]
@@ -57,9 +57,11 @@ pub struct EvaluateArgs {
     /// Recursively evaluate directories.
     #[arg(short = 'r', long)]
     pub recursive: bool,
-    /// Source language for parsing and file discovery when paths are directories.
-    #[arg(long, default_value = "python")]
-    pub language: String,
+    /// Optional language filter for discovery (e.g. only `.py`). When omitted,
+    /// every supported language is discovered and each file is parsed with its
+    /// inferred language (same multi-language default as MCP project evaluate).
+    #[arg(long, value_name = "LANGUAGE")]
+    pub language: Option<String>,
     /// Skip GitNexus detection/generation; score SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
@@ -100,23 +102,14 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         .map(parse_priority)
         .transpose()?
         .map(Priority::top_generator);
-    if !SUPPORTED_LANGUAGES.contains(&args.language.as_str()) {
-        return Err(format!(
-            "unsupported language '{}' (expected one of: {})",
-            args.language,
-            SUPPORTED_LANGUAGES.join(", ")
-        ));
-    }
-    let suffixes =
-        language_file_suffixes(&args.language).expect("checked against SUPPORTED_LANGUAGES above");
-    let files = collect_source_files(&args.paths, suffixes, args.recursive);
-    if files.is_empty() {
-        return Err(format!(
-            "no {} source files found (expected suffixes: {})",
-            args.language,
-            suffixes.join(", ")
-        ));
-    }
+    let inputs = resolve_evaluate_inputs(
+        &args.paths,
+        args.language.as_deref(),
+        args.recursive,
+    )?;
+    let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
+    let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
+    let summary_language = language_label(&inputs);
 
     let project_config = load_topos_config(&files[0]);
     let priority = resolve_priority(&args, &project_config)?;
@@ -168,14 +161,15 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     };
 
     let classifier = CharacteristicMorphism;
-    let mut results = Vec::with_capacity(files.len());
-    let progress = progress_bar(files.len(), args.json);
-    for file in &files {
+    let mut results = Vec::with_capacity(inputs.len());
+    let progress = progress_bar(inputs.len(), args.json);
+    for input in &inputs {
+        let file = &input.path;
         progress.set_message(file.file_name().map_or_else(
             || file.display().to_string(),
             |name| name.to_string_lossy().into(),
         ));
-        let mut morphism = ProgramMorphism::from_file(file, args.language.clone())
+        let mut morphism = ProgramMorphism::from_file(file, input.language.clone())
             .map_err(|e| format!("reading {}: {e}", file.display()))?;
         if let Some(g) = mdg.as_mut() {
             g.target_file = file.to_string_lossy().into_owned();
@@ -199,8 +193,13 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     if args.json {
         println!(
             "{}",
-            serde_json::to_string_pretty(&json_output(&files, &results, &composable_warnings))
-                .map_err(|e| format!("serializing evaluation: {e}"))?
+            serde_json::to_string_pretty(&json_output(
+                &files,
+                &results,
+                &languages,
+                &composable_warnings
+            ))
+            .map_err(|e| format!("serializing evaluation: {e}"))?
         );
     } else {
         if args.verbose && results.len() > 1 {
@@ -213,7 +212,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         print_summary(
             &files,
             &results,
-            &args.language,
+            &summary_language,
             !args.no_composable,
             !args.info && failure_pillar.is_none(),
         );
@@ -225,13 +224,13 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
             show_pillar_failures(
                 &files,
                 &results,
-                &args.language,
+                &languages,
                 pillar.as_str(),
                 args.info,
                 Some(&focused),
             )?;
         } else if args.info {
-            show_evaluation_info(&files, &results, &args.language, target_ranking.as_ref())?;
+            show_evaluation_info(&files, &results, &languages, target_ranking.as_ref())?;
         }
     }
     Ok(())
@@ -314,7 +313,7 @@ mod tests {
         EvaluateArgs {
             paths: Vec::new(),
             recursive: false,
-            language: "rust".to_string(),
+            language: None,
             no_composable: false,
             gitnexus_dir: None,
             verbose: false,

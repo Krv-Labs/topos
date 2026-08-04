@@ -347,12 +347,14 @@ fn attention_lines_with_options(
 pub(crate) fn json_output(
     files: &[PathBuf],
     results: &[ClassificationResult],
+    languages: &[String],
     warnings: &[String],
 ) -> Value {
     let rows: Vec<Value> = files
         .iter()
         .zip(results)
-        .map(|(path, result)| {
+        .enumerate()
+        .map(|(index, (path, result))| {
             let dimensions: serde_json::Map<String, Value> = result
                 .dimensions
                 .iter()
@@ -363,8 +365,13 @@ pub(crate) fn json_output(
                 .iter()
                 .map(|(name, score)| (name.clone(), json!((score * 1000.0).round() / 10.0)))
                 .collect();
+            let language = languages
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or("unknown");
             json!({
                 "file": path,
+                "language": language,
                 "is_parseable": result.is_parseable,
                 "lattice_element": result.summary().name(),
                 "lattice_symbol": result.summary().symbol(),

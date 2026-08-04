@@ -1393,8 +1393,7 @@ mod tests {
 
     #[test]
     fn generate_depgraph_accepts_and_advertises_gitnexus_dir() {
-        let defaulted: GenerateDepgraphInput =
-            serde_json::from_str(r#"{}"#).expect("deserialize");
+        let defaulted: GenerateDepgraphInput = serde_json::from_str(r#"{}"#).expect("deserialize");
         assert!(defaulted.gitnexus_dir.is_none());
         assert!(defaulted.directory.is_none());
         assert!(!defaulted.force);

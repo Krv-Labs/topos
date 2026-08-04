@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-08-04
+
+### Added
+
+- **`topos install` / `topos uninstall` / `topos status` for agent harnesses** ([#256](https://github.com/Krv-Labs/topos/issues/256), [#271](https://github.com/Krv-Labs/topos/pull/271), [#278](https://github.com/Krv-Labs/topos/pull/278)) — registers a resolvable MCP server entry across Claude Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor, VS Code, and Google Antigravity. Install is interactive in a TTY (or takes explicit names / `--all`); uninstall always previews and requires `--apply` (or confirmation) to mutate. Absolute command paths, leave-no-trace uninstall, backup pristineness, and a four-state status model (Active / Incomplete / Conflict / Absent). See [`docs/decisions/cli-harness-install.md`](docs/decisions/cli-harness-install.md).
+- **`--gitnexus-dir` / `gitnexus_dir` as COMPOSABLE project root** ([#258](https://github.com/Krv-Labs/topos/issues/258), [#270](https://github.com/Krv-Labs/topos/pull/270)) — derive freshness fingerprinting and `gitnexus analyze` from the store path's parent so evaluating from an ancestor directory with an absolute or nested override no longer walks the wrong tree. CLI, MCP tools, agent contract, and skill docs updated.
+
+### Fixed
+
+- **Graphify edge loading and oversized `graph.json` reads** ([#214](https://github.com/Krv-Labs/topos/issues/214), [#268](https://github.com/Krv-Labs/topos/pull/268)) — prefer array-valued `links`, else array-valued `edges`; reject oversized `graph.json` before parsing so pathological tool output cannot OOM the process.
+- **`resolve_within_root` symlink / `..` containment** ([#215](https://github.com/Krv-Labs/topos/issues/215), [#269](https://github.com/Krv-Labs/topos/pull/269)) — walk path components forwards and canonicalize existing segments so a missing leaf under a symlinked prefix (or `..` after a missing segment) cannot escape the file root.
+- **MCP registry `server.json` no longer ships a broken PyPI index URL** ([#276](https://github.com/Krv-Labs/topos/pull/276), [#277](https://github.com/Krv-Labs/topos/pull/277)) — drop `registryBaseUrl` and `--index-url` runtime arguments that caused VS Code `@mcp` installs to hard-fail with a duplicated `--index-url`. CI now guards the invariant and runs on `release/**` branches.
+- **Rust locals named `raw` parse again** ([#285](https://github.com/Krv-Labs/topos/issues/285)) — upgrade `tree-sitter-rust` so an ordinary `let raw = ...` is not treated as colliding with `&raw const` / `&raw mut` syntax (which previously made whole files unparseable / SLOP with no dimensions).
+
+### Changed
+
+- **Document JS/TS `switch_statement` → `MatchStmt` as an intentional UAST delta** ([#213](https://github.com/Krv-Labs/topos/issues/213), [#266](https://github.com/Krv-Labs/topos/pull/266)) — cross-version histogram diffs on switch statements are not regressions versus Python 0.3.12. See [`docs/decisions/js-switch-matchstmt.md`](docs/decisions/js-switch-matchstmt.md).
+- **Release tags must match Cargo / wheel version** ([#217](https://github.com/Krv-Labs/topos/issues/217), [#267](https://github.com/Krv-Labs/topos/pull/267)) — `check_versions.py --tag` gates release / PyPI / Homebrew jobs so GitHub and Homebrew cannot advertise a version maturin would not publish.
+
+### Breaking
+
+- **Harness install targets MCP registration only** ([#278](https://github.com/Krv-Labs/topos/pull/278)) — the combined `skills` harness id is replaced by separate `cursor` and `vscode` targets; `topos install` no longer writes skill files or instruction / `@import` prose blocks (those are reported as residue and left to ClawHub / openclaw / the user).
+
 ## [0.4.3] - 2026-07-28
 
 ### Added

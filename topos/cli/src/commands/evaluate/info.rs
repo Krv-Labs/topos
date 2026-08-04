@@ -202,10 +202,7 @@ fn browse_files(
 }
 
 fn language_for(languages: &[String], index: usize) -> &str {
-    languages
-        .get(index)
-        .map(String::as_str)
-        .unwrap_or("python")
+    languages.get(index).map(String::as_str).unwrap_or("python")
 }
 
 fn browser_action(

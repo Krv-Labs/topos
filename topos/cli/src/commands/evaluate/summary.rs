@@ -31,8 +31,8 @@ pub(crate) fn print_summary(
     composable_notices: &[String],
 ) {
     for line in render_summary(
-            files,
-            results,
+        files,
+        results,
         SummaryView {
             language,
             options: RenderOptions::stdout(),
@@ -199,9 +199,7 @@ fn render_summary(
     }
     if show_info_hint {
         if results.len() == 1 {
-            tips.push(
-                "Tip: use `topos inspect` for metrics, functions, and guidance.".to_string(),
-            );
+            tips.push("Tip: use `topos inspect` for metrics, functions, and guidance.".to_string());
         } else if let Some((pillar, count)) = hinted_failure(results) {
             tips.push(format!(
                 "Tip: add --failures {pillar} to list its {count} failing file{}; --info shows overall weak spots.",
@@ -326,7 +324,10 @@ fn format_branch_not_indexed_notice(message: &str) -> String {
             .trim_end_matches(')')
             .trim()
     } else if let Some(idx) = lower.find("; indexed:") {
-        message[idx + "; indexed:".len()..].trim().trim_end_matches('.').trim()
+        message[idx + "; indexed:".len()..]
+            .trim()
+            .trim_end_matches('.')
+            .trim()
     } else if let Some(idx) = lower.find("indexed:") {
         message[idx + "indexed:".len()..]
             .trim()
@@ -766,9 +767,9 @@ mod tests {
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: false,
                 show_info_hint: true,
                 composable_notices: &[],
@@ -803,15 +804,14 @@ mod tests {
             .insert("secure".to_string(), EvaluationValue::Secure);
         second.scores.insert("secure".to_string(), 0.2);
         let output = render_summary(
-            &[PathBuf::from("a.rs"),
-            PathBuf::from("b.rs")],
+            &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
             &[first, second],
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: false,
                 show_info_hint: true,
                 composable_notices: &[],
@@ -826,15 +826,14 @@ mod tests {
     #[test]
     fn all_pillars_passing_keeps_the_general_info_hint() {
         let output = render_summary(
-            &[PathBuf::from("a.rs"),
-            PathBuf::from("b.rs")],
+            &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
             &[result(true), result(true)],
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: false,
                 show_info_hint: true,
                 composable_notices: &[],
@@ -854,9 +853,9 @@ mod tests {
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: true,
                 show_info_hint: true,
                 composable_notices: &[],
@@ -873,15 +872,14 @@ mod tests {
     fn branch_not_indexed_notice_and_recovery_tip() {
         let notice = "COMPOSABLE not scored — no gitnexus store indexed for branch 'feat/x' (indexed: main, release/v0.4.4)";
         let output = render_summary(
-            &[PathBuf::from("a.rs"),
-            PathBuf::from("b.rs")],
+            &[PathBuf::from("a.rs"), PathBuf::from("b.rs")],
             &[result(false), result(true)],
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: true,
                 show_info_hint: true,
                 composable_notices: &[notice.to_string()],
@@ -895,9 +893,8 @@ mod tests {
             "{output}"
         );
         assert!(!output.contains("gitnexus:"));
-        assert!(output.contains(
-            "Tip: run `topos depgraph generate` to index this branch for COMPOSABLE."
-        ));
+        assert!(output
+            .contains("Tip: run `topos depgraph generate` to index this branch for COMPOSABLE."));
         assert!(output.contains("Tip: add --failures simple"));
         assert!(output.contains("X  SLOP ·"));
         assert!(!output.contains('❌'));
@@ -1040,9 +1037,9 @@ mod tests {
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: false,
                 show_info_hint: false,
                 composable_notices: &[],
@@ -1194,9 +1191,9 @@ mod tests {
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 72,
-            },
+                    styled: false,
+                    width: 72,
+                },
                 composable_requested: false,
                 show_info_hint: true,
                 composable_notices: &[],
@@ -1216,9 +1213,9 @@ mod tests {
             SummaryView {
                 language: "rust",
                 options: RenderOptions {
-                styled: false,
-                width: 120,
-            },
+                    styled: false,
+                    width: 120,
+                },
                 composable_requested: false,
                 show_info_hint: true,
                 composable_notices: &[],

@@ -125,7 +125,12 @@ pass the matching --language or omit --language to evaluate all supported langua
 
     let files = collect_source_files(paths, &suffixes, recursive);
     if files.is_empty() {
-        return Err(empty_discovery_message(language_filter, &suffixes, paths, recursive));
+        return Err(empty_discovery_message(
+            language_filter,
+            &suffixes,
+            paths,
+            recursive,
+        ));
     }
 
     Ok(files
@@ -267,7 +272,8 @@ mod tests {
         assert!(err.contains("b.rs"), "{err}");
         assert!(err.contains("--language is 'python'"), "{err}");
 
-        let inputs = resolve_evaluate_inputs(std::slice::from_ref(&py), Some("python"), false).unwrap();
+        let inputs =
+            resolve_evaluate_inputs(std::slice::from_ref(&py), Some("python"), false).unwrap();
         assert_eq!(inputs.len(), 1);
         assert_eq!(inputs[0].language, "python");
 

@@ -3,13 +3,18 @@
 //! GitHub Copilot CLI, Cursor & VS Code, Google Antigravity).
 //!
 //! `integrations.rs` holds the harness table every command here loops over,
-//! along with the write/ownership primitives and the schema notes for each
-//! harness's config format.
+//! plus the schema notes for each harness's config format; `edits.rs` has the
+//! per-format read-modify-write primitives, and `ownership.rs` tracks which
+//! files install created so uninstall only deletes those.
 
 mod configure;
+mod edits;
 mod integrations;
 mod menu;
+mod ownership;
 mod status;
+#[cfg(test)]
+mod testing;
 mod uninstall;
 
 use std::path::Path;

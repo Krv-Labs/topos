@@ -40,26 +40,28 @@ Inspired by skills.sh-style TTY selection and the existing
 
 ```text
 topos/cli/src/commands/install/
-  mod.rs           # clap args, target resolution (explicit/--all/interactive), dispatch
-  integrations.rs  # per-harness paths, State (Active/Stale/Absent), atomic write+backup,
-                    # ownership-tracking state file — the brian-derived core
+  mod.rs           # clap args, target resolution (explicit/--all/interactive)
+  integrations.rs  # the HARNESSES table + Artifact and its dispatch
+  edits.rs         # one read-modify-write pair per config format, atomic+backed-up
+  ownership.rs     # which files install created; owned deletion
   menu.rs          # multi-select TTY checkbox list
-  configure.rs     # topos install: one function per harness
-  uninstall.rs     # topos uninstall: one function per harness, mirrors configure.rs
+  configure.rs     # topos install: one loop over the table
+  uninstall.rs     # topos uninstall: mirrors configure.rs
   status.rs        # topos install status
 ```
 
-No `adapters/` directory or `HarnessAdapter` trait: brian's own installer
-uses a flat per-harness `if/elif` dispatch over shared helper functions
-rather than trait objects, and porting that directly kept each harness's
-install/uninstall/state-check logic next to its counterpart instead of
-split across a trait impl per file. `ToposPaths`-style resolution wasn't
-needed either — the MCP entry is the literal `{"command": "topos", "args":
-["mcp"]}` already documented in `skills/topos/SKILL.md`'s `claude mcp add`
-example (PATH-based, matching how the skill tells users to configure it
-by hand today), and the skill content is `include_str!`'d from
-`skills/topos/SKILL.md` into the binary — a real filesystem checkout of
-this repo isn't available once `topos` is installed globally.
+No `adapters/` directory or `HarnessAdapter` trait. The first draft used a
+flat per-harness dispatch ported from brian's `if/elif` chain — one
+`install_*` and one `uninstall_*` function each — which spread the harness set
+across seven parallel id-keyed lists; see "Hardening pass" for why that was
+replaced by a single `HARNESSES` table of artifacts rather than by a trait.
+
+The skill content is `include_str!`'d from `skills/topos/SKILL.md` into the
+binary, since a filesystem checkout of this repo isn't available once `topos`
+is installed globally. The MCP entry records the absolute path of the running
+binary rather than the bare `topos` that `skills/topos/SKILL.md`'s `claude mcp
+add` example uses: harnesses launched by the desktop environment have no shell
+`PATH` (finding 2).
 
 Wired into [`topos/cli/src/main.rs`](../../topos/cli/src/main.rs) as
 top-level `Command::Install` / `Command::Uninstall`, with `status` as a
@@ -221,20 +223,25 @@ scratch `$HOME` before being written down. Ordered by severity.
 ### P2 — structure (`topos evaluate --language rust`)
 
 `topos evaluate topos/cli/src/commands/install -r --language rust` scores the
-module 🥈 SILVER / 46%, with five of six files over the SIMPLE cyclomatic
-gate of 15:
+module 🥈 SILVER / 46%. Five of six files are over the SIMPLE cyclomatic gate
+of 15 (measured on the production code, with the inline test modules stripped
+so the tests don't inflate the number):
 
-| File | `cfg.cyclomatic` | SIMPLE |
+| File | `cfg.cyclomatic` | worst single function |
 | --- | --- | --- |
-| `integrations.rs` | 140 | 0% |
-| `uninstall.rs` | 37 | 7% |
-| `mod.rs` | 36 | 10% |
-| `menu.rs` | 32 | 20% |
-| `configure.rs` | 29 | 28% |
-| `status.rs` | 13 | 60% |
+| `integrations.rs` | 140 | 8 |
+| `uninstall.rs` | 37 | 4 |
+| `mod.rs` | 36 | 9 |
+| `menu.rs` | 32 | 10 |
+| `configure.rs` | 29 | 4 |
+| `status.rs` | 13 | 8 |
 
 `--info` ranks the same two changes on every failing file: cut branching, and
 rebalance an instability of 1.00.
+
+A gate of 15 per file is not this crate's working standard — `config.rs` is at
+51 and `evaluate/summary.rs` at 62 — and no single function here is above 10.
+So the goal is not the gate; it is the duplication the score is pointing at.
 
 The branching has one source. The harness set is spelled out in seven
 parallel lists keyed by id — `SUPPORTED`, `harness_name`, `detect_dir`,
@@ -254,6 +261,44 @@ The flat per-harness dispatch was ported from brian on purpose (see "Module
 layout"), and it was the right call while the artifact kinds were still being
 discovered. They have stopped moving — five kinds cover all seven harnesses —
 so the table is now the smaller design.
+
+#### Result
+
+The table landed, and `integrations.rs` then split three ways — the same move
+`render.rs` documents making out of `evaluate.rs` ("printing is a separate
+concern ... bundling both pushed the file's cyclomatic total over the SIMPLE
+gate"):
+
+| Module | Holds |
+| --- | --- |
+| `integrations.rs` | the `HARNESSES` table, `Artifact`, and their dispatch |
+| `edits.rs` | one read-modify-write pair per config format |
+| `ownership.rs` | which files install created, and owned deletion |
+
+Production code, tests stripped from both sides:
+
+| File | `cfg.cyclomatic` | worst function |
+| --- | --- | --- |
+| `edits.rs` | 90 | 7 |
+| `integrations.rs` | 39 | 7 |
+| `mod.rs` | 37 | 5 |
+| `menu.rs` | 32 (untouched) | 10 |
+| `uninstall.rs` | 28 | 6 |
+| `configure.rs` | 21 | 5 |
+| `ownership.rs` | 20 | 5 |
+| `status.rs` | 17 | 4 |
+
+- Worst file: **140 → 90**. SIMPLE average **21% → 27%**.
+- Production lines: **1730 → 1652**, while absorbing all ten fixes.
+- `configure.rs` 342 → 117 and `uninstall.rs` 358 → 158, since the fourteen
+  per-harness functions became two loops.
+- Tests: 8 → 16, all of them regression tests for the findings above.
+
+Two honest caveats. `edits.rs` at 90 is now the outlier, but its worst single
+function is 7 — it is a collection of small independent primitives, not hard
+logic, so splitting it further would be chasing the metric rather than the
+complexity. And `menu.rs` was left alone: nothing in the findings touches it,
+and its 32 is the keypress/render dispatch a checkbox list needs.
 
 ### Not changing
 

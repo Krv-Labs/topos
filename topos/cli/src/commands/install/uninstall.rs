@@ -10,9 +10,9 @@ use std::path::Path;
 
 use console::Style;
 
-use super::integrations::{
-    backup_path, clear_created_files, harness, Artifact, Outcome, State, HARNESSES,
-};
+use super::edits::backup_path;
+use super::integrations::{harness, Artifact, Outcome, State, HARNESSES};
+use super::ownership::clear_created_files;
 use crate::commands::render::{paint, RenderOptions};
 
 fn removed(opts: RenderOptions) -> String {

@@ -34,6 +34,7 @@ The stable declaration-leaf exemption prevents a genuinely concrete, low-instabi
 
 ### SECURE
 
+<!-- openwiki: broken internal link [../integrations/distribution.md#sighthound-for-secure] heading anchor "sighthound-for-secure" does not exist in "../integrations/distribution.md". Fix the href or restore the target, then delete this comment. -->
 SECURE is a zero-findings gate over CPG dangerous-call and taint-flow evidence. The CPG joins AST, CFG, and PDG dependence families; PDG dataflow is deliberately a coarse textual-order approximation, so it is not a full alias- or flow-sensitive proof. The MCP distribution embeds Sighthound for supplementary findings; native CPG probes remain the stable local scoring path. Review [Sighthound behavior](../integrations/distribution.md#sighthound-for-secure) when changing diagnostics or baselines.
 
 ## Security acknowledgements are disclosed, not silent overrides

@@ -4,6 +4,10 @@ title: Topos maintenance source map
 description: Maps Topos maintenance tasks to current Rust workspace source, tests, documentation, and automation locations without duplicating domain behavior.
 resource: /topos
 tags: [source-map, maintenance, navigation, rust]
+openwiki:
+  roles: [repository, testing]
+  change_kinds: [navigation]
+  source_paths: [topos, extensions/vscode, .github/workflows]
 ---
 
 # Topos maintenance source map
@@ -15,15 +19,17 @@ Use this map to start implementation work, then follow the linked concept page f
 | Workspace metadata | `Cargo.toml`, `topos/{engine,cli,mcp}/Cargo.toml` | `scripts/check_versions.py` | [Testing and release operations](operations/testing-and-release.md) |
 | Categorical core and lattice | `topos/engine/src/core/` | crate unit tests | [Architecture overview](architecture/overview.md) |
 | Parsing, language registry, UAST mapping | `topos/engine/src/graphs/{ast,uast}/` | module unit tests, `docs/decisions/uast-industry-standards.md` | [Architecture overview](architecture/overview.md) |
-| CFG, PDG, CPG graphs | `topos/engine/src/graphs/{cfg,pdg,cpg}/` | inline unit tests; `cfg/edge_contracts.rs` locks cross-language CFG layouts | [Architecture overview](architecture/overview.md) |
+| CFG, PDG, CPG graphs | `topos/engine/src/graphs/{cfg,pdg,cpg}/`, `functors/probes/cfg/` | inline unit tests; `cfg/edge_contracts.rs` locks cross-language CFG layouts and nesting-depth regressions protect loop handling | [Architecture overview](architecture/overview.md) |
 | Metrics and structural comparisons | `topos/engine/src/functors/` | inline crate tests | [Quality model](domain/quality-model.md) |
 | Evaluation, gates, preferences, suppression | `topos/engine/src/evaluation/`, `topos/engine/src/config.rs` | inline crate tests and MCP result behavior | [Quality model](domain/quality-model.md) |
 | CLI | `topos/cli/src/{main.rs,commands/}` | CLI crate tests and direct command smoke cases | [Agent and CLI workflows](workflows/agent-and-cli.md) |
+| Agent-harness MCP registration | `topos/cli/src/commands/install/` | `topos/cli/tests/install_e2e.rs` drives the real binary and snapshots `$HOME` | [Agent-harness registration](workflows/harness-registration.md) |
 | MCP server, schemas, tools, resources | `topos/mcp/src/` | crate tests and CI stdio smoke test | [Agent and CLI workflows](workflows/agent-and-cli.md) |
 | GitNexus dependency topology | `topos/engine/src/{adapters/gitnexus.rs,graphs/mdg/}` | `.github/workflows/ci.yml` composable fixture | [Integrations and distribution](integrations/distribution.md) |
 | Embedded Sighthound handling | `topos/mcp/src/{security.rs,security_findings.rs,sighthound.rs}` | MCP crate tests | [Integrations and distribution](integrations/distribution.md) |
 | Graphify / advisory analysis | `topos/cli/src/commands/graphify/`, `topos/mcp/src/tools/{graphify.rs,refactor.rs}` | crate tests | [Agent and CLI workflows](workflows/agent-and-cli.md#advisory-analysis) |
-| Container / MCP registry | `Dockerfile`, `.mcp/server.json` | wheel and release workflow | [Integrations and distribution](integrations/distribution.md) |
+| MCP file-root containment | `topos/mcp/src/security.rs` | symlink and missing-path regression tests in the module | [Integrations and distribution](integrations/distribution.md#mcp-file-access-boundary) |
+| Container / MCP registry | `Dockerfile`, `.mcp/server.json`, `scripts/check_versions.py` | wheel and release workflow; metadata/tag guard | [Integrations and distribution](integrations/distribution.md) |
 | VS Code extension | `extensions/vscode/` | package scripts and release workflow | [Integrations and distribution](integrations/distribution.md) |
 | CI, docs, releases | `.github/workflows/`, `install.sh`, `docs/source/` | workflow jobs | [Testing and release operations](operations/testing-and-release.md) |
 

@@ -4,6 +4,14 @@ title: Rust analysis and evaluation architecture
 description: Explains how the Rust workspace turns supported-language source into normalized program graphs, policy decisions, and three-pillar lattice verdicts.
 resource: /topos/engine/src/lib.rs
 tags: [architecture, rust, program-graphs, evaluation]
+openwiki:
+  roles: [architecture, domain, testing]
+  change_kinds: [parser, uast, cfg, policy]
+  source_paths: [topos/engine/src/graphs/ast/dispatch.rs, topos/engine/src/graphs/uast, topos/engine/src/graphs/cfg/builder.rs]
+  symbols: [node_key, ast.max_function_complexity]
+  test_paths: [topos/engine/src/graphs/cfg/edge_contracts.rs]
+  invariants: [Derived graph endpoints must use the same UAST node key, CFG edge contracts span every registered language.]
+  validation_commands: [cargo test -p topos-engine]
 ---
 
 # Rust analysis and evaluation architecture
@@ -18,6 +26,18 @@ Topos is a Rust workspace: `topos/engine` contains pure structural analysis, whi
 4. **Measure and decide.** Engine probes supply metrics to policy translators, which produce SIMPLE, COMPOSABLE, and SECURE results and their lattice outcome.
 5. **Present a contract.** The CLI and MCP server link the same engine, so their differences should be output/routing concerns rather than separate scoring logic.
 
+```mermaid
+flowchart TD
+    Source["Supported-language source"] --> Parse["AST dispatch and UAST mapping"]
+    Parse --> Graphs["CFG PDG and CPG builders"]
+    Graphs --> Metrics["Engine probes and policy translators"]
+    GitNexus["Optional GitNexus topology"] --> Metrics
+    Metrics --> Verdict["Three-pillar lattice verdict"]
+    Verdict --> Interfaces["CLI and MCP result contracts"]
+```
+
+This is the shared engine path: GitNexus adds COMPOSABLE topology while CLI and MCP only present the resulting evaluation.
+
 ## Representation boundaries
 
 | Representation | Scope and primary use | Key anchors |
@@ -29,6 +49,7 @@ Topos is a Rust workspace: `topos/engine` contains pure structural analysis, whi
 | MDG | GitNexus inter-module topology for COMPOSABLE | `topos/engine/src/graphs/mdg/` |
 | Process graph | GitNexus process transitions for advisory refactoring | `topos/engine/src/graphs/process/` |
 
+<!-- openwiki: broken internal link [../../topos/engine/src/graphs/cpg/builder.rs] link "../../topos/engine/src/graphs/cpg/builder.rs" is outside the wiki root. Fix the href or restore the target, then delete this comment. -->
 The [CPG builder](../../topos/engine/src/graphs/cpg/builder.rs) fuses AST edges with projected CFG edges and PDG DDG/CDG edges. PDG reaching definitions are deliberately textual-order approximations rather than alias-, SSA-, or flow-sensitive analysis; do not overstate them when changing SECURE diagnostics.
 
 ## UAST and graph identity contract
@@ -37,7 +58,11 @@ Mappers assign deterministic UAST IDs. For hand-built nodes without an ID, `grap
 
 UAST clone, drop, and equality are iterative, and CFG construction uses an iterative continuation machine. These stack-safety properties protect deeply nested source, but derived `Debug` formatting remains recursive and is not appropriate for extremely deep trees.
 
-CFG behavior is protected by `graphs/cfg/edge_contracts.rs`, which locks branch/loop, match/switch-return, and supported try-return edge layouts across every registered language. Preserve that contract when altering traversal; add an explicit fixture and expectation for a genuinely new control-flow shape.
+CFG behavior is protected by `graphs/cfg/edge_contracts.rs`, which locks branch/loop, match/switch-return, and supported try-return edge layouts across every registered language. Preserve that contract when altering traversal; add an explicit fixture and expectation for a genuinely new control-flow shape. `cfg.nesting_depth` must use the forward CFG DAG calculation rather than repeatedly traversing loopback/continue cycles: cycle re-entry incorrectly turns block count into static nesting. Preserve the regression tests around loops and untagged-cycle degradation when changing `graphs/cfg/` or its probes.
+
+## Parser and mapper maintenance
+
+The Rust parser uses `tree-sitter-rust` 0.24. This version is required for ordinary Rust locals named `raw` to parse while retaining genuine raw-borrow syntax; do not reintroduce mapper-side naming workarounds for a grammar defect. The JavaScript and TypeScript UAST maps `switch_statement` to `MatchStmt` intentionally, recorded in `docs/decisions/js-switch-matchstmt.md`; histogram differences from the former Python implementation are therefore expected mapping semantics rather than a regression.
 
 ## SIMPLE complexity boundary
 

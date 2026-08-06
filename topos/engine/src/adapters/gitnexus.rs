@@ -597,7 +597,7 @@ mod tests {
                 .output()
                 .unwrap();
         };
-        run(&["init"]);
+        run(&["init", "-b", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
         std::fs::write(root.join("f.py"), "x = 1\n").unwrap();
@@ -686,11 +686,12 @@ mod tests {
     fn generate_writes_fingerprint_to_branch_scoped_store() {
         let tmp = unique_tmp_dir("fingerprint_branch_scoped");
         init_repo(&tmp);
+        let current_branch = current_git_branch(&tmp).expect("test repo has a named branch");
         let branch_store = tmp.join(".gitnexus/branches/abc123");
         std::fs::create_dir_all(branch_store.join("lbug")).unwrap();
         std::fs::write(
             branch_store.join(GITNEXUS_META_FILE),
-            r#"{"branch":"main"}"#,
+            format!(r#"{{"branch":"{current_branch}"}}"#),
         )
         .unwrap();
 

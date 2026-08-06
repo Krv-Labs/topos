@@ -30,6 +30,7 @@ pub fn map_node_kind(node: &Node) -> &'static str {
         ("throw_statement", "ThrowStmt"),
         ("try_statement", "TryStmt"),
         ("catch_clause", "CatchClause"),
+        ("finally_clause", "FinallyClause"),
         ("expression_statement", "ExprStmt"),
         ("assignment", "AssignExpr"),
         ("augmented_assignment", "AssignExpr"),

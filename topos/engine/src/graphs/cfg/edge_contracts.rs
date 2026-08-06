@@ -71,14 +71,35 @@ edge nested[MatchStmt] -switch_case-> match_arm[]
 edge nested[ReturnStmt] -return-> exit[]
 edge nested[ReturnStmt] -return-> exit[]"#;
 
-const TRY_RETURN: &str = r#"blocks=6 edges=7
-edge call_FunctionDecl[TryStmt] -exception-> try_join[]
-edge call_FunctionDecl[TryStmt] -unconditional-> try_body[]
+const TRY_RETURN: &str = r#"blocks=6 edges=5
+edge call_FunctionDecl[TryStmt] -unconditional-> try_body[ReturnStmt]
+edge catch_handler[ReturnStmt] -return-> exit[]
 edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
-edge nested[ReturnStmt] -return-> exit[]
-edge try_body[] -unconditional-> nested[ReturnStmt]
-edge try_body[] -unconditional-> try_join[]
-edge try_join[] -unconditional-> exit[]"#;
+edge try_body[ReturnStmt] -exception-> catch_handler[ReturnStmt]
+edge try_body[ReturnStmt] -return-> exit[]"#;
+const SWITCH_BREAK: &str = r#"blocks=11 edges=14
+edge call_FunctionDecl[] -unconditional-> loop_header[ForStmt]
+edge entry[] -unconditional-> call_FunctionDecl[]
+edge loop_after[ReturnStmt] -return-> exit[]
+edge loop_body[MatchStmt] -switch_case-> match_arm[]
+edge loop_body[MatchStmt] -switch_case-> match_arm[]
+edge loop_header[ForStmt] -false-> loop_after[ReturnStmt]
+edge loop_header[ForStmt] -true-> loop_body[MatchStmt]
+edge match_arm[] -unconditional-> match_join[]
+edge match_arm[] -unconditional-> match_join[]
+edge match_arm[] -unconditional-> nested[]
+edge match_arm[] -unconditional-> nested[]
+edge match_join[] -loop_back-> loop_header[ForStmt]
+edge nested[] -break-> match_join[]
+edge nested[] -continue-> loop_header[ForStmt]"#;
+
+const TRY_FINALLY: &str = r#"blocks=7 edges=6
+edge call_FunctionDecl[TryStmt] -unconditional-> try_body[ReturnStmt]
+edge catch_handler[ReturnStmt] -unconditional-> try_finally[]
+edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
+edge try_body[ReturnStmt] -exception-> catch_handler[ReturnStmt]
+edge try_body[ReturnStmt] -unconditional-> try_finally[]
+edge try_finally[] -return-> exit[]"#;
 
 const CASES: &[Case] = &[
     Case {
@@ -176,6 +197,76 @@ const CASES: &[Case] = &[
         name: "try_return",
         source: "int f() {\n  try { return 1; } catch (...) { return 0; }\n}\n",
         expected: TRY_RETURN,
+    },
+
+    Case {
+        language: "javascript",
+        name: "switch_break",
+        source: "function f(xs) {
+  for (let i = 0; i < xs.length; i++) {
+    switch (xs[i]) {
+      case 0: break;
+      default: continue;
+    }
+  }
+  return 0;
+}
+",
+        expected: SWITCH_BREAK,
+    },
+    Case {
+        language: "typescript",
+        name: "switch_break",
+        source: "function f(xs: number[]): number {
+  for (let i = 0; i < xs.length; i++) {
+    switch (xs[i]) {
+      case 0: break;
+      default: continue;
+    }
+  }
+  return 0;
+}
+",
+        expected: SWITCH_BREAK,
+    },
+    Case {
+        language: "cpp",
+        name: "switch_break",
+        source: "int f(const int* xs, int n) {
+  for (int i = 0; i < n; ++i) {
+    switch (xs[i]) {
+      case 0: break;
+      default: continue;
+    }
+  }
+  return 0;
+}
+",
+        expected: SWITCH_BREAK,
+    },
+    Case {
+        language: "go",
+        name: "switch_break",
+        source: "package p\nfunc f(xs []int) int {\n\tfor _, x := range xs {\n\t\tswitch x {\n\t\tcase 0:\n\t\t\tbreak\n\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t}\n\treturn 0\n}\n",
+        expected: SWITCH_BREAK,
+    },
+    Case {
+        language: "python",
+        name: "try_finally",
+        source: "def f():\n    try:\n        return 1\n    except Exception:\n        return 0\n    finally:\n        pass\n",
+        expected: TRY_FINALLY,
+    },
+    Case {
+        language: "javascript",
+        name: "try_finally",
+        source: "function f() { try { return 1; } catch (e) { return 0; } finally {} }\n",
+        expected: TRY_FINALLY,
+    },
+    Case {
+        language: "typescript",
+        name: "try_finally",
+        source: "function f(): number { try { return 1; } catch (e) { return 0; } finally {} }\n",
+        expected: TRY_FINALLY,
     },
 ];
 

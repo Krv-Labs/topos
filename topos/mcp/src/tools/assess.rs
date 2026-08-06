@@ -25,7 +25,8 @@ use crate::evaluation::{
     resolve_override_for_root,
 };
 use crate::formatting::{
-    composable_contract_signals, to_evaluation_result, to_tool_result, EvalResultOptions,
+    agent_contract_prelude, finish_agent_contract, to_evaluation_result, to_tool_result,
+    AgentContractPreludeInput, EvalResultOptions,
 };
 use crate::schemas::{
     lattice_to_str, priority_str, resolve_priority, AgentContract, AssessChangesetInput,
@@ -372,22 +373,17 @@ fn assessment_contract(
     warnings: &[String],
     proposed_eval: &EvaluationResult,
 ) -> AgentContract {
-    let mut risk_flags: Vec<String> = Vec::new();
-    let mut blocked_by: Vec<String> = Vec::new();
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available: proposed_eval.coupling_available,
+        warnings,
+        grade_capped: proposed_eval.grade_capped,
+        active_security_findings: proposed_eval.secure_adjusted == Some(false),
+        ..Default::default()
+    });
+    let mut blocked_by = prelude.blocked_by;
+    let mut risk_flags = prelude.risk_flags;
+    let composable = prelude.composable;
     let mut next_actions: Vec<String> = Vec::new();
-
-    let composable = composable_contract_signals(proposed_eval.coupling_available, warnings, false);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
-    if proposed_eval.grade_capped {
-        risk_flags.push("grade_capped".into());
-    }
-    if proposed_eval.secure_adjusted == Some(false) {
-        risk_flags.push("active_security_findings".into());
-    }
 
     let next_tool = if let Some(action) = composable.next_action {
         next_actions.push(action);
@@ -413,17 +409,17 @@ fn assessment_contract(
         Some("topos_inspect_code".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        blocked_by,
+        risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
-        verification_gates: vec![
+        vec![
             "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE".into(),
             "assessment status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE".into(),
             "behavior tests or type/lint checks pass when available".into(),
         ],
-        risk_flags,
-    }
+    )
 }
 
 fn err_assessment(
@@ -1616,16 +1612,16 @@ fn changeset_contract(
     coupling_available: bool,
     warnings: &[String],
 ) -> AgentContract {
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut risk_flags: Vec<String> = Vec::new();
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available,
+        warnings,
+        ..Default::default()
+    });
+    let mut blocked_by = prelude.blocked_by;
+    let mut risk_flags = prelude.risk_flags;
+    let composable = prelude.composable;
     let mut next_actions: Vec<String> = Vec::new();
 
-    let composable = composable_contract_signals(coupling_available, warnings, true);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
     if !relocated_files.is_empty() {
         risk_flags.push("complexity_relocated_within_file".into());
         next_actions.push(
@@ -1645,17 +1641,17 @@ fn changeset_contract(
         Some("topos_evaluate_project".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        blocked_by,
+        risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
-        verification_gates: vec![
+        vec![
             "no project_regression in the rollup".into(),
             "no complexity_relocated_within_file flags remain".into(),
             "behavior tests or type/lint checks pass when available".into(),
         ],
-        risk_flags,
-    }
+    )
 }
 
 fn changeset_error(

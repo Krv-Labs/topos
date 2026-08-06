@@ -32,7 +32,7 @@ use crate::evaluation::{
 use crate::formatting::to_tool_result;
 use crate::refactor_hotspots::render_hotspots_md;
 use crate::schemas::{RefactorHotspot, RefactorInput, RefactorResult, RefactorTargetKind};
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{read_safe_utf8_file, resolve_project_path, resolve_within_root};
 use crate::server::ToposServer;
 
 const DEFAULT_ORPHAN_DEGREE_THRESHOLD: usize = 1;
@@ -118,8 +118,8 @@ fn span(cycle: &topos_engine::functors::probes::cfg::homology::SourceCycle) -> u
 }
 
 fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Dependencies, &params.filepath, err);
             return (model, render_hotspots_md("Dependency hotspots", &[]));
@@ -190,8 +190,8 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
 }
 
 fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Process, &params.filepath, err);
             return (model, render_hotspots_md("Process choke points", &[]));
@@ -271,8 +271,8 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
 const FRAGILE_EDGE_SCORE: f64 = -1.0;
 
 fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Graphify, &params.filepath, err);
             return (model, render_hotspots_md("Graphify orphan hotspots", &[]));
@@ -422,7 +422,9 @@ mod graphify_dispatch_tests {
         // gracefully, mirroring refactor_dependencies/refactor_process's
         // no-op contract: no hotspots, no error, just tool_available: false.
         let (model, _) = refactor_graphify(&params(
-            "src/lib.rs",
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/lib.rs")
+                .to_string_lossy(),
             "topos-nonexistent-graphify-out-dir-for-tests",
         ));
         assert_eq!(model.tool_available, Some(false));
@@ -447,22 +449,25 @@ mod graphify_dispatch_tests {
                     .as_nanos()
             ));
         std::fs::create_dir_all(&dir).unwrap();
+        let filepath = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/lib.rs")
+            .to_string_lossy()
+            .to_string();
         std::fs::write(
             dir.join("graph.json"),
-            r#"{
+            format!(r#"{{
                 "nodes": [
-                    {"id": "a", "label": "a()", "source_file": "src/a.rs"},
-                    {"id": "b", "label": "b()", "source_file": "src/b.rs"}
+                    {{"id": "a", "label": "a()", "source_file": "{filepath}"}},
+                    {{"id": "b", "label": "b()", "source_file": "src/b.rs"}}
                 ],
                 "links": [
-                    {"source": "a", "target": "b", "confidence": "INFERRED",
-                     "relation": "calls"}
+                    {{"source": "a", "target": "b", "confidence": "INFERRED",
+                     "relation": "calls"}}
                 ]
-            }"#,
+            }}"#),
         )
         .unwrap();
-
-        let (model, _) = refactor_graphify(&params("src/a.rs", &dir.to_string_lossy()));
+        let (model, _) = refactor_graphify(&params(&filepath, &dir.to_string_lossy()));
 
         assert_eq!(model.tool_available, Some(true));
         assert!(model.error.is_none());
@@ -470,7 +475,7 @@ mod graphify_dispatch_tests {
         // source_file matches; node "b" (also degree 1) belongs to a
         // different file and must not leak in. The fragile edge touches
         // "src/a.rs" as its source, so it's included too.
-        assert!(model.hotspots.iter().all(|h| h.filepath == "src/a.rs"));
+        assert!(model.hotspots.iter().all(|h| h.filepath == filepath));
         assert!(model.hotspots.iter().any(|h| h.kind == "graphify_orphan"));
         assert!(model
             .hotspots

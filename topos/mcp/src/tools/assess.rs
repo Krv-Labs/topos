@@ -33,7 +33,7 @@ use crate::schemas::{
     AssessmentStatus, BeginRefactorInput, ChangesetFileEntry, ChangesetResult, EvaluationResult,
     GeneratorInput, LatticeElement, PrioritySource, SnapshotResult, UserPreferencesInput,
 };
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{read_safe_utf8_file, resolve_project_path, resolve_within_root};
 use crate::server::ToposServer;
 use crate::snapshots::{now as snapshot_now, read_snapshot, sha256_hex, write_snapshot};
 
@@ -575,12 +575,11 @@ struct Baseline {
 
 fn load_baseline(params: &AssessImprovementInput) -> Result<Baseline, String> {
     if let Some(filepath) = &params.filepath {
-        let resolved = resolve_within_root(filepath)?;
+        let (resolved, file_root) = resolve_project_path(filepath)?;
         if !resolved.is_file() {
             return Err(format!("Path is not a file: {}", resolved.display()));
         }
         let current_src = read_safe_utf8_file(filepath)?;
-        let file_root = resolve_file_root()?;
         let project_root = crate::evaluation::resolve_mcp_composable_project_root(
             params.gitnexus_dir.as_deref(),
             &file_root,
@@ -651,8 +650,8 @@ fn assess_edit_in_place(
         Ok(src) => src,
         Err(err) => return err_assessment(priority, priority_source, err, "file_not_found"),
     };
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_resolved, file_root) = match resolve_project_path(&resolved_path.to_string_lossy()) {
+        Ok(context) => context,
         Err(err) => return err_assessment(priority, priority_source, err, "assessment_error"),
     };
     let project_root =
@@ -1228,8 +1227,8 @@ impl ToposServer {
                 .unwrap_or(Value::Null),
         );
         let created_at = snapshot_now();
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+            Ok(context) => context,
             Err(err) => {
                 let model = err_snapshot(&params.filepath, err);
                 return to_tool_result(&model, render_snapshot_md(&model));
@@ -1297,8 +1296,8 @@ impl ToposServer {
                 return to_tool_result(&model, render_assessment_md(&model));
             }
         };
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+            Ok(context) => context,
             Err(err) => {
                 let model = err_assessment(
                     Priority::Simple,
@@ -1373,8 +1372,12 @@ impl ToposServer {
             .preferences
             .as_ref()
             .and_then(|p| p.to_preferences().ok());
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
+        let Some(first_path) = params.files.first() else {
+            let model = changeset_error(priority, priority_source, &params.baseline_ref, "Provide at least one file.".to_string());
+            return to_tool_result(&model, render_changeset_md(&model));
+        };
+        let (_resolved_path, file_root) = match resolve_project_path(first_path) {
+            Ok(context) => context,
             Err(err) => {
                 let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
                 return to_tool_result(&model, render_changeset_md(&model));
@@ -1399,6 +1402,22 @@ impl ToposServer {
         let mut any_coupling = false;
 
         for filepath in &params.files {
+            match resolve_project_path(filepath) {
+                Ok((_path, root)) if root == file_root => {}
+                Ok(_) => {
+                    let model = changeset_error(
+                        priority,
+                        priority_source,
+                        &params.baseline_ref,
+                        "All changeset files must belong to one project.".to_string(),
+                    );
+                    return to_tool_result(&model, render_changeset_md(&model));
+                }
+                Err(err) => {
+                    let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
+                    return to_tool_result(&model, render_changeset_md(&model));
+                }
+            }
             match assess_one_changeset_file(
                 filepath,
                 &params,

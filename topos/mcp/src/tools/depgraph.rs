@@ -19,7 +19,7 @@ use crate::schemas::{
     AgentContract, DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
     GenerateDepgraphResult,
 };
-use crate::security::{resolve_file_root, resolve_within_root};
+use crate::security::{resolve_path_within, resolve_project_path};
 use crate::server::ToposServer;
 use std::path::{Path, PathBuf};
 
@@ -316,8 +316,8 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> CallToolResult {
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (_directory, file_root) = match resolve_project_path(&params.directory) {
+            Ok(context) => context,
             Err(err) => {
                 let model = status_error(err);
                 let md = render_status_md(&model);
@@ -329,7 +329,7 @@ impl ToposServer {
             &file_root,
         );
         if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_within_root(dir) {
+            if let Err(err) = resolve_path_within(dir, &file_root) {
                 let model = status_error(err);
                 let md = render_status_md(&model);
                 return to_tool_result(&model, md);
@@ -371,8 +371,8 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<GenerateDepgraphInput>,
     ) -> CallToolResult {
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (resolved_directory, file_root) = match resolve_project_path(&params.directory) {
+            Ok(context) => context,
             Err(err) => {
                 let model = generate_error(err);
                 let md = render_generate_md(&model);
@@ -380,35 +380,24 @@ impl ToposServer {
             }
         };
         if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_within_root(dir) {
+            if let Err(err) = resolve_path_within(dir, &file_root) {
                 let model = generate_error(err);
                 let md = render_generate_md(&model);
                 return to_tool_result(&model, md);
             }
         }
-        let resolved_directory = match &params.directory {
-            Some(dir) => match resolve_within_root(dir) {
-                Ok(resolved) if resolved.is_dir() => Some(resolved),
-                Ok(resolved) => {
-                    let model = generate_error(format!("Not a directory: {}", resolved.display()));
-                    let md = render_generate_md(&model);
-                    return to_tool_result(&model, md);
-                }
-                Err(err) => {
-                    let model = generate_error(err);
-                    let md = render_generate_md(&model);
-                    return to_tool_result(&model, md);
-                }
-            },
-            None => None,
-        };
+        if !resolved_directory.is_dir() {
+            let model = generate_error(format!("Not a directory: {}", resolved_directory.display()));
+            let md = render_generate_md(&model);
+            return to_tool_result(&model, md);
+        }
         let target_dir = resolve_generate_project_root(
-            resolved_directory.as_deref(),
+            Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
             &file_root,
         );
         let status_override = resolve_generate_status_override(
-            resolved_directory.as_deref(),
+            Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
             &file_root,
         );

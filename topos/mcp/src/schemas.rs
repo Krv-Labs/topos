@@ -552,8 +552,10 @@ pub struct PreferenceWalkInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DepgraphStatusInput {
-    /// `.gitnexus` store under the MCP file root (default:
-    /// `<file root>/.gitnexus`). Does not change the file root.
+    /// Absolute directory in the project whose dependency graph to inspect.
+    pub directory: String,
+    /// `.gitnexus` store under the project root (default:
+    /// `<project root>/.gitnexus`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
 }
@@ -562,13 +564,9 @@ pub struct DepgraphStatusInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateDepgraphInput {
-    /// Repo root to analyze (default: derived from `gitnexus_dir` when set,
-    /// otherwise the MCP file root). Explicit `directory` wins over derivation.
-    #[serde(default)]
-    pub directory: Option<String>,
-    /// `.gitnexus` store under the MCP file root. When `directory` is omitted,
-    /// the analyze root is the parent of this path — same derivation
-    /// `topos_depgraph_status` uses — so status → generate stay aligned.
+    /// Absolute directory in the project to analyze.
+    pub directory: String,
+    /// `.gitnexus` store under the project root.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Regenerate even when current.
@@ -1318,9 +1316,8 @@ pub struct RefactorResult {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateGraphifyInput {
-    /// Directory to analyze (default: MCP file root).
-    #[serde(default)]
-    pub directory: Option<String>,
+    /// Absolute directory in the project to analyze.
+    pub directory: String,
     /// Regenerate even when current.
     #[serde(default)]
     pub force: bool,
@@ -1393,16 +1390,13 @@ mod tests {
 
     #[test]
     fn generate_depgraph_accepts_and_advertises_gitnexus_dir() {
-        let defaulted: GenerateDepgraphInput = serde_json::from_str(r#"{}"#).expect("deserialize");
-        assert!(defaulted.gitnexus_dir.is_none());
-        assert!(defaulted.directory.is_none());
-        assert!(!defaulted.force);
+        assert!(serde_json::from_str::<GenerateDepgraphInput>(r#"{}"#).is_err());
 
         let explicit: GenerateDepgraphInput = serde_json::from_str(
             r#"{"directory": "nested", "gitnexus_dir": "nested/.gitnexus", "force": true}"#,
         )
         .expect("deserialize");
-        assert_eq!(explicit.directory.as_deref(), Some("nested"));
+        assert_eq!(explicit.directory, "nested");
         assert_eq!(explicit.gitnexus_dir.as_deref(), Some("nested/.gitnexus"));
         assert!(explicit.force);
 

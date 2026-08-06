@@ -17,8 +17,9 @@ use crate::evaluation::{
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
-    build_pillars, composable_contract_signals, error_md, render_evaluation_md,
-    to_evaluation_result, to_tool_result, EvalResultOptions,
+    agent_contract_prelude, build_pillars, error_md, finish_agent_contract,
+    render_evaluation_md, to_evaluation_result, to_tool_result, AgentContractPreludeInput,
+    EvalResultOptions,
 };
 use crate::metric_locations::build_metric_locations;
 use crate::refactor_targets::build_refactor_targets;
@@ -860,53 +861,41 @@ fn project_contract(
     warnings: &[String],
     parse_failures: usize,
 ) -> AgentContract {
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut risk_flags: Vec<String> = Vec::new();
-    let mut next_actions: Vec<String> = Vec::new();
-
-    let composable = composable_contract_signals(coupling_available, warnings, true);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if parse_failures > 0 {
-        blocked_by.push("parse_failures".into());
-        risk_flags.push("parse_failures".into());
-    }
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
-    if worst_files.iter().any(|f| f.grade_capped) {
-        risk_flags.push("grade_capped".into());
-    }
-    // Verdict-anchored, not payload-anchored: secure_adjusted is false
-    // exactly when active findings survive the allowlist, and it is
-    // unaffected by the include_security_findings payload gate.
-    if worst_files.iter().any(|f| f.secure_adjusted == Some(false)) {
-        risk_flags.push("active_security_findings".into());
-    }
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available,
+        warnings,
+        parse_failures,
+        grade_capped: worst_files.iter().any(|f| f.grade_capped),
+        active_security_findings: worst_files
+            .iter()
+            .any(|f| f.secure_adjusted == Some(false)),
+        ..Default::default()
+    });
 
     let verification_gates = vec![
         "topos_assess_worktree_change validates each accepted in-place refactor".to_string(),
         "project rollup does not regress after non-trivial changes".to_string(),
         "behavior tests or type/lint checks pass when available".to_string(),
     ];
-    if let Some(action) = composable.next_action {
-        return AgentContract {
-            next_tool: composable.next_tool,
-            next_actions: vec![action],
-            blocked_by,
+    if let Some(action) = prelude.composable.next_action {
+        return finish_agent_contract(
+            prelude.blocked_by,
+            prelude.risk_flags,
+            prelude.composable.next_tool,
+            vec![action],
             verification_gates,
-            risk_flags,
-        };
+        );
     }
     let Some(worst) = worst_files.first() else {
-        return AgentContract {
-            next_tool: None,
-            next_actions,
-            blocked_by,
-            verification_gates: Vec::new(),
-            risk_flags,
-        };
+        return finish_agent_contract(
+            prelude.blocked_by,
+            prelude.risk_flags,
+            None,
+            Vec::new(),
+            verification_gates,
+        );
     };
+    let mut next_actions = Vec::new();
     let next_tool = if overall == LatticeElement::IDEAL {
         next_actions.push("preserve behavior checks before accepting".into());
         None
@@ -918,13 +907,13 @@ fn project_contract(
         Some("topos_inspect_code".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        prelude.blocked_by,
+        prelude.risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
         verification_gates,
-        risk_flags,
-    }
+    )
 }
 
 /// The "## Agent Contract" section of the project markdown report.

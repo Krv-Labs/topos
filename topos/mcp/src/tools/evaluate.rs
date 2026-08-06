@@ -21,9 +21,8 @@ use crate::evaluation::{
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
-    agent_contract_prelude, build_pillars, error_md, finish_agent_contract,
-    render_evaluation_md, to_evaluation_result, to_tool_result, AgentContractPreludeInput,
-    EvalResultOptions,
+    agent_contract_prelude, build_pillars, error_md, finish_agent_contract, render_evaluation_md,
+    to_evaluation_result, to_tool_result, AgentContractPreludeInput, EvalResultOptions,
 };
 use crate::metric_locations::build_metric_locations;
 use crate::refactor_targets::build_refactor_targets;
@@ -678,7 +677,13 @@ fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
     }
 }
 
-fn classify_project_rows(rows: &[ScoredProjectRow]) -> (Vec<WorstFileEntry>, Vec<WorstFileEntry>, Vec<WorstFileEntry>) {
+fn classify_project_rows(
+    rows: &[ScoredProjectRow],
+) -> (
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+) {
     let mut hard: Vec<&ScoredProjectRow> = rows
         .iter()
         .filter(|row| is_hard_fail(&row.result))
@@ -714,8 +719,14 @@ fn classify_project_rows(rows: &[ScoredProjectRow]) -> (Vec<WorstFileEntry>, Vec
 
     (
         hard.iter().map(|row| to_worst_entry(&row.entry)).collect(),
-        leaves.iter().map(|row| to_worst_entry(&row.entry)).collect(),
-        giants.iter().map(|row| to_worst_entry(&row.entry)).collect(),
+        leaves
+            .iter()
+            .map(|row| to_worst_entry(&row.entry))
+            .collect(),
+        giants
+            .iter()
+            .map(|row| to_worst_entry(&row.entry))
+            .collect(),
     )
 }
 
@@ -767,8 +778,10 @@ fn build_language_rollups(
                     .iter()
                     .cloned()
                     .map(|entry| {
-                        let mut result = ClassificationResult::default();
-                        result.is_parseable = entry.is_parseable;
+                        let result = ClassificationResult {
+                            is_parseable: entry.is_parseable,
+                            ..Default::default()
+                        };
                         ScoredProjectRow { entry, result }
                     })
                     .collect(),
@@ -846,8 +859,10 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
         args.entries
             .into_iter()
             .map(|entry| {
-                let mut result = ClassificationResult::default();
-                result.is_parseable = entry.is_parseable;
+                let result = ClassificationResult {
+                    is_parseable: entry.is_parseable,
+                    ..Default::default()
+                };
                 ScoredProjectRow { entry, result }
             })
             .collect()
@@ -1018,13 +1033,15 @@ fn aggregate_explanation(
         .map(|(dim, _)| dim)
         .collect();
     failed.sort();
-    let worst = hard_fail_head.or_else(|| {
-        entries.iter().min_by(|a, b| {
-            worst_key(a)
-                .partial_cmp(&worst_key(b))
-                .unwrap_or(Ordering::Equal)
+    let worst = hard_fail_head
+        .or_else(|| {
+            entries.iter().min_by(|a, b| {
+                worst_key(a)
+                    .partial_cmp(&worst_key(b))
+                    .unwrap_or(Ordering::Equal)
+            })
         })
-    }).expect("entries is non-empty");
+        .expect("entries is non-empty");
     if !failed.is_empty() {
         let dim = failed
             .iter()
@@ -1093,18 +1110,14 @@ fn project_contract(
     warnings: &[String],
     parse_failures: usize,
 ) -> AgentContract {
-    let scan_rows: Vec<&ProjectFileEntry> = hard_fail_head
-        .into_iter()
-        .chain(entries.iter())
-        .collect();
+    let scan_rows: Vec<&ProjectFileEntry> =
+        hard_fail_head.into_iter().chain(entries.iter()).collect();
     let prelude = agent_contract_prelude(AgentContractPreludeInput {
         coupling_available,
         warnings,
         parse_failures,
         grade_capped: scan_rows.iter().any(|f| f.grade_capped),
-        active_security_findings: scan_rows
-            .iter()
-            .any(|f| f.secure_adjusted == Some(false)),
+        active_security_findings: scan_rows.iter().any(|f| f.secure_adjusted == Some(false)),
         ..Default::default()
     });
 
@@ -1409,9 +1422,13 @@ mod tests {
     }
 
     fn composable_leaf_result() -> ClassificationResult {
-        let mut result = ClassificationResult::default();
-        result.is_parseable = true;
-        result.raw_metrics.insert("mdg.instability".to_string(), 0.0);
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("mdg.instability".to_string(), 0.0);
         result.raw_metrics.insert("mdg.fan_in".to_string(), 0.0);
         result.raw_metrics.insert("mdg.fan_out".to_string(), 0.0);
         result
@@ -1429,9 +1446,13 @@ mod tests {
 
     #[test]
     fn hard_fails_surface_simple_gate_failures() {
-        let mut result = ClassificationResult::default();
-        result.is_parseable = true;
-        result.raw_metrics.insert("ast.max_function_complexity".to_string(), 30.0);
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("ast.max_function_complexity".to_string(), 30.0);
         let entry = entry("fail.py", 10.0);
         let rows = vec![classified_row(result, entry.clone())];
         let (hard, leaves, _) = classify_project_rows(&rows);
@@ -1451,9 +1472,13 @@ mod tests {
 
     #[test]
     fn maintainability_giants_rank_advisory_cyclomatic() {
-        let mut result = ClassificationResult::default();
-        result.is_parseable = true;
-        result.raw_metrics.insert("cfg.cyclomatic".to_string(), SIMPLE.max_cyclomatic + 5.0);
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("cfg.cyclomatic".to_string(), SIMPLE.max_cyclomatic + 5.0);
         let entry = entry("big.py", 90.0);
         let rows = vec![classified_row(result, entry)];
         let (hard, _, giants) = classify_project_rows(&rows);

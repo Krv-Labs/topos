@@ -705,7 +705,6 @@ mod tests {
         std::fs::remove_dir_all(&tmp).ok();
     }
 
-
     #[test]
     fn generate_in_non_git_dir_writes_sha_less_fingerprint() {
         let tmp = unique_tmp_dir("fingerprint_no_git");

@@ -146,8 +146,7 @@ pub struct AgentContractPrelude {
 
 /// Always uses `include_missing = true` (D2a).
 pub fn agent_contract_prelude(input: AgentContractPreludeInput<'_>) -> AgentContractPrelude {
-    let composable =
-        composable_contract_signals(input.coupling_available, input.warnings, true);
+    let composable = composable_contract_signals(input.coupling_available, input.warnings, true);
     let mut blocked_by = composable.blocked_by.clone();
     let mut risk_flags = composable.risk_flags.clone();
 
@@ -209,7 +208,6 @@ pub fn depgraph_unavailable_risk_flags(blocked_by: &[String]) -> Vec<String> {
     flags.extend(blocked_by.iter().cloned());
     flags
 }
-
 
 /// Materialize a `PreferenceWalk` for the result schema.
 pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) -> PreferenceWalk {

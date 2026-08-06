@@ -32,6 +32,10 @@ pub(crate) mod summary;
 
 use std::path::PathBuf;
 
+use super::classify::classify_with_representations;
+use super::composable::resolve_composable_mdg;
+use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
+use super::render::{print_classification, print_raw_metrics, spinner};
 use clap::Args;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use topos_engine::config::{load_topos_config, ToposConfig};
@@ -39,12 +43,6 @@ use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
-
-use super::classify::classify_with_representations;
-use super::composable::resolve_composable_mdg;
-use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
-use super::render::{print_classification, print_raw_metrics, spinner};
 
 use self::info::{show_evaluation_info, show_pillar_failures};
 use self::inputs::{language_label, resolve_evaluate_inputs};

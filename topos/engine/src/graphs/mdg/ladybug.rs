@@ -32,13 +32,11 @@ impl ModuleDependencyGraph {
 fn open_database(lbug_path: &Path) -> Result<Database, MdgError> {
     match Database::new(lbug_path, SystemConfig::default().read_only(true)) {
         Ok(db) => Ok(db),
-        Err(read_only_err) => {
-            Database::new(lbug_path, SystemConfig::default()).map_err(|rw_err| {
-                MdgError::LadybugNativeFailed(format!(
-                    "read_only open failed ({read_only_err}); read_write retry failed ({rw_err})"
-                ))
-            })
-        }
+        Err(read_only_err) => Database::new(lbug_path, SystemConfig::default()).map_err(|rw_err| {
+            MdgError::LadybugNativeFailed(format!(
+                "read_only open failed ({read_only_err}); read_write retry failed ({rw_err})"
+            ))
+        }),
     }
 }
 
@@ -244,7 +242,10 @@ mod tests {
     #[test]
     fn relationship_confidence_and_reason_use_fallbacks() {
         assert_eq!(as_f64(&LbugValue::Double(0.75)).unwrap_or(1.0), 0.75);
-        assert_eq!(as_f64(&LbugValue::String("nope".into())).unwrap_or(1.0), 1.0);
+        assert_eq!(
+            as_f64(&LbugValue::String("nope".into())).unwrap_or(1.0),
+            1.0
+        );
     }
 
     #[test]

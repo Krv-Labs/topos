@@ -191,7 +191,6 @@ pub fn map_cpp_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UA
     )
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

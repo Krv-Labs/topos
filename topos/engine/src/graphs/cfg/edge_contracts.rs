@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use super::object::ControlFlowGraph;
+use super::{models::EdgeKind, object::ControlFlowGraph};
 use crate::graphs::ast::dispatch::parse_source;
 use crate::graphs::ast::languages::SUPPORTED_LANGUAGES;
 
@@ -100,6 +100,33 @@ edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
 edge try_body[ReturnStmt] -exception-> catch_handler[ReturnStmt]
 edge try_body[ReturnStmt] -unconditional-> try_finally[]
 edge try_finally[] -return-> exit[]"#;
+
+const CONDITIONAL_RETURN_FINALLY: &str = r#"blocks=8 edges=10
+edge call_FunctionDecl[TryStmt] -unconditional-> try_body[IfStmt]
+edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
+edge if_join[ExprStmt] -unconditional-> try_finally[ExprStmt]
+edge if_then[ReturnStmt] -unconditional-> try_finally[ExprStmt]
+edge try_body[IfStmt] -exception-> try_join[ReturnStmt]
+edge try_body[IfStmt] -false-> if_join[ExprStmt]
+edge try_body[IfStmt] -true-> if_then[ReturnStmt]
+edge try_finally[ExprStmt] -return-> exit[]
+edge try_finally[ExprStmt] -unconditional-> try_join[ReturnStmt]
+edge try_join[ReturnStmt] -return-> exit[]"#;
+const RETURN_INSIDE_FINALLY: &str = r#"blocks=6 edges=5
+edge call_FunctionDecl[TryStmt] -unconditional-> try_body[ExprStmt]
+edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
+edge try_body[ExprStmt] -exception-> try_join[]
+edge try_body[ExprStmt] -unconditional-> try_finally[ReturnStmt]
+edge try_finally[ReturnStmt] -return-> exit[]"#;
+const NESTED_FINALLY: &str = r#"blocks=9 edges=8
+edge call_FunctionDecl[TryStmt] -unconditional-> try_body[TryStmt]
+edge entry[] -unconditional-> call_FunctionDecl[TryStmt]
+edge try_body[ReturnStmt] -exception-> try_join[]
+edge try_body[ReturnStmt] -unconditional-> try_finally[ExprStmt]
+edge try_body[TryStmt] -exception-> try_join[]
+edge try_body[TryStmt] -unconditional-> try_body[ReturnStmt]
+edge try_finally[ExprStmt] -return-> exit[]
+edge try_finally[ExprStmt] -unconditional-> try_finally[ExprStmt]"#;
 
 const CASES: &[Case] = &[
     Case {
@@ -257,6 +284,24 @@ const CASES: &[Case] = &[
         expected: TRY_FINALLY,
     },
     Case {
+        language: "python",
+        name: "conditional_return_finally",
+        source: "def f(flag):\n    try:\n        if flag:\n            return 1\n        work()\n    finally:\n        cleanup()\n    return 0\n",
+        expected: CONDITIONAL_RETURN_FINALLY,
+    },
+    Case {
+        language: "python",
+        name: "return_inside_finally",
+        source: "def f():\n    try:\n        work()\n    finally:\n        return 1\n",
+        expected: RETURN_INSIDE_FINALLY,
+    },
+    Case {
+        language: "python",
+        name: "nested_finally",
+        source: "def f():\n    try:\n        try:\n            return 1\n        finally:\n            inner_cleanup()\n    finally:\n        outer_cleanup()\n",
+        expected: NESTED_FINALLY,
+    },
+    Case {
         language: "javascript",
         name: "try_finally",
         source: "function f() { try { return 1; } catch (e) { return 0; } finally {} }\n",
@@ -301,6 +346,64 @@ fn normalized_edge_contract(cfg: &ControlFlowGraph) -> String {
         cfg.edges.len(),
         edges.join("\n")
     )
+}
+
+fn cfg_for_python_case(name: &str) -> ControlFlowGraph {
+    let case = CASES
+        .iter()
+        .find(|case| case.language == "python" && case.name == name)
+        .expect("named Python CFG fixture exists");
+    let parsed = parse_source(case.source, case.language, None).expect("fixture parses");
+    assert!(!parsed.has_errors, "fixture must parse cleanly");
+    ControlFlowGraph::from_uast(&parsed.uast_root)
+}
+
+#[test]
+fn finally_paths_keep_distinct_completions_and_frames() {
+    let conditional = cfg_for_python_case("conditional_return_finally");
+    let conditional_finally = conditional
+        .blocks
+        .values()
+        .find(|block| block.label == "try_finally")
+        .expect("finally block exists")
+        .id;
+    assert!(conditional
+        .edges
+        .iter()
+        .any(|edge| { edge.source == conditional_finally && edge.kind == EdgeKind::Return }));
+    assert!(conditional.edges.iter().any(|edge| {
+        edge.source == conditional_finally && edge.kind == EdgeKind::Unconditional
+    }));
+
+    let returning = cfg_for_python_case("return_inside_finally");
+    assert!(returning
+        .edges
+        .iter()
+        .all(|edge| edge.source != edge.target));
+
+    let nested = cfg_for_python_case("nested_finally");
+    let finally_ids = nested
+        .blocks
+        .values()
+        .filter(|block| block.label == "try_finally")
+        .map(|block| block.id)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(finally_ids.len(), 2);
+    let inner_to_outer = nested
+        .edges
+        .iter()
+        .find(|edge| {
+            finally_ids.contains(&edge.source)
+                && finally_ids.contains(&edge.target)
+                && edge.source != edge.target
+                && edge.kind == EdgeKind::Unconditional
+        })
+        .expect("inner finally flows through distinct outer finally");
+    assert!(nested.edges.iter().any(|edge| {
+        edge.source == inner_to_outer.target
+            && edge.target == nested.exit_id
+            && edge.kind == EdgeKind::Return
+    }));
 }
 
 #[test]

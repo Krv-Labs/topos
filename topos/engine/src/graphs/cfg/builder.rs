@@ -35,11 +35,11 @@ struct LoopContext {
     continue_target: usize,
 }
 
-/// Pending control-flow destination after a `finally` block completes.
-enum FinallyExit {
-    Return,
-    Throw,
-    FallThrough { target: usize },
+/// Pending control-flow destinations after a `finally` block completes.
+struct FinallyExit {
+    fall_through_target: usize,
+    returns: bool,
+    throws: bool,
 }
 
 /// Mutable state threaded through the iterative builder.
@@ -142,7 +142,7 @@ fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: 
             state.push_statement(current_id, stmt);
             if let Some(finally_id) = state.finally_stack.last().map(|(id, _)| *id) {
                 if let Some(entry) = state.finally_stack.last_mut() {
-                    entry.1 = FinallyExit::Return;
+                    entry.1.returns = true;
                 }
                 state.add_edge(current_id, finally_id, EdgeKind::Unconditional);
             } else {
@@ -153,7 +153,7 @@ fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: 
             state.push_statement(current_id, stmt);
             if let Some(finally_id) = state.finally_stack.last().map(|(id, _)| *id) {
                 if let Some(entry) = state.finally_stack.last_mut() {
-                    entry.1 = FinallyExit::Throw;
+                    entry.1.throws = true;
                 }
                 state.add_edge(current_id, finally_id, EdgeKind::Unconditional);
             } else {
@@ -245,7 +245,7 @@ enum ContinuationTask<'a> {
     },
     TryFinallyDone {
         finally_output: usize,
-        join_block: usize,
+        exit: FinallyExit,
         output: usize,
         any_normal_path: bool,
     },
@@ -469,9 +469,14 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
         let parts = try_parts(stmt);
         let finally_block = parts.finally_clause.map(|_| {
             let fb = self.state.new_block("try_finally");
-            self.state
-                .finally_stack
-                .push((fb, FinallyExit::FallThrough { target: join_block }));
+            self.state.finally_stack.push((
+                fb,
+                FinallyExit {
+                    fall_through_target: join_block,
+                    returns: false,
+                    throws: false,
+                },
+            ));
             fb
         });
         let body_output = self.new_output();
@@ -559,10 +564,10 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
             } => self.finish_try_catch_arm(catch_output, cursor, post_handler_target),
             ContinuationTask::TryFinallyDone {
                 finally_output,
-                join_block,
+                exit,
                 output,
                 any_normal_path,
-            } => self.finish_try_finally(finally_output, join_block, output, any_normal_path),
+            } => self.finish_try_finally(finally_output, exit, output, any_normal_path),
         }
     }
 
@@ -662,12 +667,7 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
                 EdgeKind::Exception,
             );
             if let Some(finally) = cursor.finally_clause {
-                self.start_finally_build(
-                    finally,
-                    cursor.join_block,
-                    cursor.output,
-                    body_had_normal,
-                );
+                self.start_finally_build(finally, cursor.output, body_had_normal);
             } else {
                 self.outputs[cursor.output] = if body_had_normal {
                     Some(cursor.join_block)
@@ -699,7 +699,6 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
             if let Some(finally) = cursor.finally_clause {
                 self.start_finally_build(
                     finally,
-                    cursor.join_block,
                     cursor.output,
                     cursor.body_had_normal || cursor.any_handler_normal,
                 );
@@ -748,24 +747,17 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
             )));
     }
 
-    fn start_finally_build(
-        &mut self,
-        finally: &'a UASTNode,
-        join_block: usize,
-        output: usize,
-        any_normal_path: bool,
-    ) {
-        let finally_block = self
+    fn start_finally_build(&mut self, finally: &'a UASTNode, output: usize, any_normal_path: bool) {
+        let (finally_block, exit) = self
             .state
             .finally_stack
-            .last()
-            .map(|(id, _)| *id)
+            .pop()
             .expect("finally_stack pushed before building finally body");
         let finally_output = self.new_output();
         self.tasks
             .push(BuildTask::Continuation(ContinuationTask::TryFinallyDone {
                 finally_output,
-                join_block,
+                exit,
                 output,
                 any_normal_path,
             }));
@@ -775,45 +767,48 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
     fn finish_try_finally(
         &mut self,
         finally_output: usize,
-        join_block: usize,
+        exit: FinallyExit,
         output: usize,
         any_normal_path: bool,
     ) {
-        let Some((_, exit)) = self.state.finally_stack.pop() else {
-            self.outputs[output] = if any_normal_path {
-                Some(join_block)
-            } else {
-                None
-            };
-            return;
-        };
         let finally_tail = self.outputs[finally_output];
-        match exit {
-            FinallyExit::Return => {
-                if let Some(tail) = finally_tail {
+        if let Some(tail) = finally_tail {
+            let mut routed_to_outer = false;
+            if exit.returns {
+                if let Some((outer_finally, outer_exit)) = self.state.finally_stack.last_mut() {
+                    let outer_finally = *outer_finally;
+                    outer_exit.returns = true;
+                    self.state
+                        .add_edge(tail, outer_finally, EdgeKind::Unconditional);
+                    routed_to_outer = true;
+                } else {
                     self.state
                         .add_edge(tail, self.state.exit_id, EdgeKind::Return);
                 }
-                self.outputs[output] = None;
             }
-            FinallyExit::Throw => {
-                if let Some(tail) = finally_tail {
+            if exit.throws {
+                if let Some((outer_finally, outer_exit)) = self.state.finally_stack.last_mut() {
+                    let outer_finally = *outer_finally;
+                    outer_exit.throws = true;
+                    if !routed_to_outer {
+                        self.state
+                            .add_edge(tail, outer_finally, EdgeKind::Unconditional);
+                    }
+                } else {
                     self.state
                         .add_edge(tail, self.state.exit_id, EdgeKind::Exception);
                 }
-                self.outputs[output] = None;
             }
-            FinallyExit::FallThrough { target } => {
-                if let Some(tail) = finally_tail {
-                    self.state.add_edge(tail, target, EdgeKind::Unconditional);
-                }
-                self.outputs[output] = if any_normal_path {
-                    Some(join_block)
-                } else {
-                    None
-                };
+            if any_normal_path {
+                self.state
+                    .add_edge(tail, exit.fall_through_target, EdgeKind::Unconditional);
             }
         }
+        self.outputs[output] = if finally_tail.is_some() && any_normal_path {
+            Some(exit.fall_through_target)
+        } else {
+            None
+        };
     }
 }
 

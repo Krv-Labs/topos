@@ -21,66 +21,49 @@ that follows.
 .. admonition:: The short version
    :class: philosophy-box
 
-   **Recommended:** run Topos through Claude Code, VS Code ``@mcp topos``, or
-   the optional full VS Code extension. If you want package installs, source
-   builds, or other MCP hosts, use :doc:`installation` and :doc:`agents`.
+   **Recommended:** install the ``topos`` binary, then run ``topos install`` to
+   register the MCP server in every agent harness you use. If you want package
+   installs, source builds, or other MCP hosts, use :doc:`installation` and
+   :doc:`agents`.
 
 Install
 -------
 
-Choose the environment where your agent already works. Both options run Topos
-locally and expose the same structural quality tools.
+Two commands: get the binary, then register it with your agents.
 
-.. dropdown:: Claude Code
+.. code-block:: bash
 
-   Best when you already use Claude Code for repo work. Topos becomes the
-   structural verifier in the same agent loop: measure, edit, verify, repeat.
+   curl -fsSL https://docs.krv.ai/topos/install.sh | bash
+   topos install
 
-   You do not need a persistent install. Let ``uvx`` resolve and run the
-   ``topos-mcp`` server binary when Claude starts the MCP server — the
-   PyPI ``topos-mcp`` package is a thin wheel bundling that compiled Rust
-   binary, so there's no Python runtime involved.
+``topos install`` opens a checklist of the agent harnesses it finds — Claude
+Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor,
+VS Code, Google Antigravity — and registers the Topos MCP server in the ones you
+pick. ``topos status`` shows what is wired up and what drifted; ``topos
+uninstall`` takes it back out. Other channels for the binary itself (Homebrew,
+PyPI, source) are in :doc:`installation`.
 
-   .. code-block:: bash
+Restart your agent, then ask it:
 
-      claude mcp add --transport stdio topos -- uvx topos-mcp
+.. code-block:: text
 
-   Prefer the full ``topos`` binary (CLI + MCP server) instead? Install it
-   with the script in :doc:`installation`, then run
-   ``claude mcp add --transport stdio topos -- topos mcp``.
+   Use Topos to evaluate the worst files in <whatever directory/project you are working on>.
+   Propose a refactor, make the change, and verify it with Topos.
 
-   To confirm the install + MCP server status, you can run:
+This is the happy path: the agent gets a concrete structural signal instead of a
+vague "clean it up" prompt. Tests say whether it ran; Topos tells the agent
+whether the shape improved.
 
-   .. code-block:: bash
+.. dropdown:: VS Code / Cursor without a local Topos install
 
-      claude mcp list
+   VS Code can pull the MCP server itself: Extensions view → search
+   ``@mcp topos`` → install **Topos**, or use **Install MCP server** on the
+   `GitHub MCP Registry page <https://github.com/mcp/Krv-Labs/topos>`_. It runs
+   the registry's PyPI package (``topos-mcp``) and owns registration, trust, and
+   lifecycle.
 
-   Then ask Claude Code:
-
-   .. code-block:: text
-
-      Use Topos to evaluate the worst files in <whatever directory/project you are working on>.
-      Propose a refactor, make the change, and verify it with Topos.
-
-   This is the happy path: the agent gets a concrete structural signal instead
-   of a vague "clean it up" prompt. Tests say whether it ran; Topos tells the
-   agent whether the shape improved.
-
-.. dropdown:: VS Code / Cursor
-
-   Best when your review happens in the editor. Pick **one** install path — do
-   not install both, or agent mode can register two Topos MCP servers.
-
-   **Recommended — MCP server (``@mcp`` gallery)**
-
-   1. Extensions view → search ``@mcp topos`` → install **Topos**.
-   2. Or use **Install MCP server** on the `GitHub MCP Registry page
-      <https://github.com/mcp/Krv-Labs/topos>`_.
-
-   VS Code pulls the registry PyPI package (``topos-mcp``) and owns
-   registration, trust, and lifecycle — no separate Topos install required.
-
-   **Optional — full Marketplace extension** (Command Palette + bundled runtime)
+   There is also a full Marketplace extension, for Command Palette workflows and
+   bundled runtime resolution:
 
    .. button-link:: https://marketplace.visualstudio.com/items?itemName=KrvLabs.topos-vscode
       :color: primary
@@ -88,14 +71,9 @@ locally and expose the same structural quality tools.
 
       Install ``KrvLabs.topos-vscode``
 
-   In agent mode, ask:
-
-   .. code-block:: text
-
-      Use Topos to evaluate this project and identify the lowest-hanging
-      structural improvement.
-
-   Full setup, and why not to install both paths, is in :doc:`agents`.
+   Pick **one** of ``topos install vscode``, ``@mcp topos``, or the extension —
+   two of them together can register two Topos MCP servers and double tool calls
+   and trust prompts. Details in :doc:`agents`.
 
 When to use Topos
 -----------------

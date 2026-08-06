@@ -33,10 +33,8 @@ pub struct InspectArgs {
     /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
     #[arg(long)]
     pub no_composable: bool,
-    /// `.gitnexus` store under the process cwd (default: `<cwd>/.gitnexus`).
-    /// COMPOSABLE freshness/regeneration always use cwd as the project root —
-    /// run from the repo that owns the graph. This flag only selects the store
-    /// path; it does not change the root.
+    /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
+    /// freshness and `gitnexus analyze` use the store's parent as the project root.
     #[arg(long)]
     pub gitnexus_dir: Option<String>,
 }
@@ -49,25 +47,45 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         .map_err(|e| format!("reading {}: {e}", args.path.display()))?;
     let classifier = CharacteristicMorphism;
     // Attach the COMPOSABLE MDG the same way `evaluate` does (auto-detect /
-    // generate `<cwd>/.gitnexus`, or `--gitnexus-dir`), so `inspect` reports
-    // COMPOSABLE too. Python's `inspect` fed `--gitnexus-dir` through the same
-    // `classify_file` pipeline as evaluate; `--no-composable` opts out.
+    // generate, or `--gitnexus-dir` deriving the project root), so `inspect`
+    // reports COMPOSABLE too. `--no-composable` opts out.
+    let mut composable_warnings = Vec::new();
     let mut mdg = if args.no_composable {
         None
     } else {
-        let progress = spinner(args.json, "Checking dependency graph");
+        let progress = spinner(args.json, "Checking dependency graph freshness");
         match std::env::current_dir() {
-            Ok(project_root) => {
-                let graph =
-                    resolve_composable_mdg(&project_root, args.gitnexus_dir.as_deref(), true);
+            Ok(cwd) => {
+                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
+                // See the matching comment in evaluate/mod.rs: must use the
+                // resolved override, not `args.gitnexus_dir`, since a
+                // relative override's subdirectory is already baked into
+                // `project_root` above.
+                let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
+                    args.gitnexus_dir.as_deref(),
+                    &cwd,
+                );
+                let mut on_phase = |msg: &'static str| {
+                    progress.set_message(msg);
+                };
+                let resolved = resolve_composable_mdg(
+                    &project_root,
+                    resolved_override.as_deref(),
+                    true,
+                    &mut on_phase,
+                );
                 progress.finish_and_clear();
-                graph
+                composable_warnings = resolved.warnings;
+                resolved.mdg
             }
             Err(e) => {
                 progress.finish_and_clear();
-                eprintln!(
-                    "gitnexus: could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
-                );
+                composable_warnings.push(format!(
+                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
+                ));
                 None
             }
         }
@@ -119,7 +137,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         &language,
         config.preferences.as_ref(),
     );
-    print_inspection_summary(&args.path, &result, &language);
+    print_inspection_summary(&args.path, &result, &language, &composable_warnings);
     print_lines(inspection_detail_lines(
         &result,
         &functions,

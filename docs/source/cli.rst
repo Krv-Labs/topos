@@ -28,6 +28,8 @@ Quick reference
 
 .. code-block:: bash
 
+   topos install
+   topos status
    topos evaluate . -r
    topos config
    topos inspect module.py
@@ -52,9 +54,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
 
-      Project settings, advisory refactor hotspots, and the MCP server.
+      Agent registration, project settings, advisory refactor hotspots, and the MCP server.
       ^^^
-      ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
+      ``install`` · ``status`` · ``uninstall`` · ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
 
 Quality commands
 ================
@@ -79,11 +81,16 @@ primary command for **Code Quality Medals** across the three pillars (see
    * - ``-r``, ``--recursive``
      - Recursively evaluate directories.
    * - ``--language [python|rust|javascript|typescript|cpp|go]``
-     - Source language for parsing and file discovery when paths are directories (default: ``python``).
+     - Optional discovery **filter**. Omit it and every supported language is
+       discovered, each file parsed with its inferred language — the same
+       multi-language default as MCP project evaluate. A named path that misses
+       the filter, or does not exist, errors with the real cause.
    * - ``-v``, ``--verbose``
      - Print every file's full classification and raw metrics.
    * - ``--json``
-     - Emit a machine-readable document without terminal progress.
+     - Emit a machine-readable document without terminal progress. Each result
+       carries its own ``language``, and COMPOSABLE problems surface in a
+       top-level ``warnings`` array.
    * - ``--info``
      - Select one of the five weakest files in a TTY and show its top three
        line-level refactor targets. When piped, inspect the weakest file
@@ -106,10 +113,11 @@ primary command for **Code Quality Medals** across the three pillars (see
 
 .. code-block:: bash
 
-   topos evaluate . -r --language rust
-   topos evaluate . -r --language rust --failures simple
-   topos evaluate . -r --language rust --info
-   topos evaluate . -r --language rust --failures simple --info
+   topos evaluate . -r                          # every supported language
+   topos evaluate . -r --failures simple
+   topos evaluate . -r --info
+   topos evaluate . -r --failures simple --info
+   topos evaluate . -r --language rust          # narrow to one language
 
 For a directory, terminal output is a cumulative pillar table with status,
 average and minimum diagnostic scores, failure counts, quality rails, and the
@@ -129,12 +137,13 @@ columns and point to ``topos inspect`` for the full file-level analysis.
 Use ``--verbose`` only when a script or debugging session needs the legacy
 inline raw-metric stream.
 
-Representative directory output:
+Representative directory output. The second line names the language when every
+discovered file agrees and ``N languages`` when they do not:
 
 .. code-block:: text
 
    ◇  Evaluated 20 files
-   │  rust · priority simple · COMPOSABLE enabled
+   │  3 languages · priority simple · COMPOSABLE enabled
    │
    │  PILLAR        STATUS    AVG    MIN   FAILURES   SCORE
    │  SIMPLE        X FAIL    51%     0%     3 / 20    ━━━━━━━◆───────
@@ -145,6 +154,15 @@ Representative directory output:
    └  ✓ 🥈 SILVER · SIMPLE_SECURE · 70% average.
 
    Tip: add --failures simple to list its 3 failing files; --info shows overall weak spots.
+
+When COMPOSABLE cannot be scored, the reason appears on the finished card rather
+than as mid-run noise, and recoverable cases point at the fix:
+
+.. code-block:: text
+
+   ◇  Evaluated 20 files
+   │  3 languages · priority simple · COMPOSABLE not measured
+   │  ↻ GitNexus generation failed (Not inside a git repository.) — COMPOSABLE not scored
 
 .. note::
    Pillar status comes from the raw policy gates. Normalized quality scores
@@ -272,6 +290,53 @@ instead of treating an empty corpus as covered.
 
 Other commands
 ===============
+
+install / uninstall / status
+----------------------------
+
+Register the Topos MCP server in your agent harnesses, and take it back out.
+One entry per harness, with an absolute ``command`` path; no skill files, no
+instruction blocks. See :doc:`agents` for the harness table and state model.
+
+.. code-block:: bash
+
+   topos install [HARNESSES]... [OPTIONS]
+   topos uninstall [HARNESSES]... [OPTIONS]
+   topos status [--json]
+
+Harness ids: ``claude``, ``claude-desktop``, ``codex``, ``gemini``,
+``copilot``, ``cursor``, ``vscode``, ``antigravity``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Flag
+     - Behavior
+   * - ``--all``
+     - Target every supported harness. Required in a non-interactive shell
+       when no ids are given (``install`` errors without it).
+   * - ``--dry-run``
+     - Print the plan and write nothing.
+   * - ``-y``, ``--yes``
+     - ``uninstall`` only — skip the confirmation prompt.
+   * - ``--purge-backups``
+     - ``uninstall`` only — also delete the ``.topos.backup`` files earlier
+       installs left behind.
+   * - ``--json``
+     - ``status`` only — machine-readable output for agents.
+
+With no ids in a terminal, both commands open a multi-select checklist.
+``topos uninstall`` always previews what it will remove and asks first;
+``topos install status`` is an alias for ``topos status``.
+
+**Example**
+
+.. code-block:: bash
+
+   topos install --all --dry-run   # see what would change
+   topos install claude codex      # just those two
+   topos status --json             # for scripts and agents
 
 config
 ------

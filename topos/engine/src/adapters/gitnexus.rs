@@ -37,7 +37,6 @@ use blake2::Blake2bVar;
 
 use super::discovery::iter_source_files;
 use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
-use crate::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
 
@@ -219,16 +218,7 @@ pub struct SourceFingerprint {
 /// Hash source-file paths and bytes under `root` using existing discovery.
 pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let suffixes: Vec<&str> = {
-        let mut all: Vec<&str> = SUPPORTED_LANGUAGES
-            .iter()
-            .filter_map(|lang| language_file_suffixes(lang))
-            .flat_map(|group| group.iter().copied())
-            .collect();
-        all.sort_unstable();
-        all.dedup();
-        all
-    };
+    let suffixes = crate::graphs::ast::languages::all_source_suffixes();
 
     let mut files = iter_source_files(&root, &suffixes, true, None, false);
     files.sort_by(|a, b| {
@@ -470,10 +460,6 @@ pub struct ResolvedLbugStore {
 /// `None` on any read/parse error or a missing `"branch"` key — callers
 /// treat that identically to "no metadata, can't branch-match."
 fn read_store_meta(store_dir: &Path) -> Option<LbugStoreMeta> {
-    // Named `raw_json`, not `raw`: tree-sitter-rust's grammar for the
-    // `&raw const`/`&raw mut` raw-reference syntax misparses a bare `&raw`
-    // local as an ERROR node, which would falsely mark this whole file
-    // unparseable (is_parseable=false) despite valid, rustc-accepted syntax.
     let raw_json = std::fs::read_to_string(store_dir.join(GITNEXUS_META_FILE)).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw_json).ok()?;
     let branch = value.get("branch")?.as_str()?.to_string();

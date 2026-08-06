@@ -175,6 +175,10 @@ def test_homebrew_formula_template_has_foreign_detection() -> None:
     assert "bundle_openssl_on_macos if OS.mac?" in template
     assert "def bundle_openssl_on_macos" in template
     assert "def rewrite_openssl_links" in template
+    assert "releases/download/v{{VERSION}}/" in template
+    assert not any(
+        line.lstrip().startswith("version ") for line in template.splitlines()
+    )
     # Prefer a behavioral smoke beyond --version alone.
     assert 'assert_match "evaluate"' in template
     # Cross-channel only: no formula-to-formula conflicts_with stanza.

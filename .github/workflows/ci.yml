@@ -12,13 +12,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install build deps (lbug / OpenSSL)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake libssl-dev pkg-config
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
+      # Clippy and the test suite link topos-engine, so this job needs liblbug
+      # just as much as `composable` does. Without it, a cold cargo cache fails
+      # at link time with "could not find native static library `lbug`".
+      # See scripts/setup-lbug-prebuilt.sh and issue #239.
+      #
+      # This runs *before* the cargo cache is restored, so `LBUG_LIBRARY_DIR`
+      # is already exported when `rust-cache` computes its key. That matters:
+      # lbug's build script only emits `-L` when that variable is set, and it
+      # registers no `rerun-if-env-changed` for it, so a `target/` restored
+      # from a run without the variable keeps stale build-script output and
+      # fails to link no matter what the environment now says.
+      - name: Cache lbug prebuilt
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/lbug-prebuilt
+          key: lbug-prebuilt-0.17.1-static-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup lbug prebuilt
+        run: ./scripts/setup-lbug-prebuilt.sh
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # Keys caches to how lbug was provisioned, so one built without it is
+          # never restored into a job that needs it.
+          env-vars: CARGO CC CFLAGS CXX CMAKE RUST LBUG_LIBRARY_DIR
 
       - name: Check versions (Cargo.toml is source of truth)
         run: python3 scripts/check_versions.py

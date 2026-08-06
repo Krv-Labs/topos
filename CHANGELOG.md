@@ -16,6 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measures how deeply nested the worst function in a file is, the signal that keeps
   predicting LLM task accuracy after cyclomatic complexity stops. $\Omega$ grows from
   8 to 16 elements; the top medal is renamed `GOLD` → `PLATINUM` (4 of 4 pillars).
+## [0.4.4] - 2026-08-04
+
+### Added
+
+- **`topos install` / `topos uninstall` / `topos status` for agent harnesses** ([#256](https://github.com/Krv-Labs/topos/issues/256), [#271](https://github.com/Krv-Labs/topos/pull/271), [#278](https://github.com/Krv-Labs/topos/pull/278)) — registers a resolvable MCP server entry across Claude Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor, VS Code, and Google Antigravity. Install is interactive in a TTY (or takes explicit names / `--all`); uninstall always previews and requires confirmation (or `--yes`) to mutate, with `--dry-run` to stop after the preview. Absolute command paths, leave-no-trace uninstall, backup pristineness, and a four-state status model (Active / Incomplete / Conflict / Absent). See [`docs/decisions/cli-harness-install.md`](docs/decisions/cli-harness-install.md).
+- **`--gitnexus-dir` / `gitnexus_dir` as COMPOSABLE project root** ([#258](https://github.com/Krv-Labs/topos/issues/258), [#270](https://github.com/Krv-Labs/topos/pull/270)) — derive freshness fingerprinting and `gitnexus analyze` from the store path's parent so evaluating from an ancestor directory with an absolute or nested override no longer walks the wrong tree. CLI, MCP tools, agent contract, and skill docs updated.
+
+### Fixed
+
+- **Evaluate summary floor and COMPOSABLE notices** — SLOP floor is `X  SLOP · N% average` (no ❌ medal + duplicate lattice name). GitNexus setup stays spinner-only mid-run; finished-card notices use the install orange `↻` glyph (branch-not-indexed supersedes stale about another branch’s store). Recoverable misses tip `topos depgraph generate`. JSON `warnings` stay full machine strings.
+- **`topos evaluate` no longer requires `--language` for named non-Python files** ([#289](https://github.com/Krv-Labs/topos/issues/289)) — default discovery covers every supported suffix and parses each file with its inferred language (MCP project-evaluate parity). `--language` is an optional filter only; explicitly named paths that miss the filter or do not exist error with the real cause instead of `no python source files found`. JSON results include per-file `language`.
+- **`cfg.nesting_depth` no longer inflates through loop back-edges** ([#288](https://github.com/Krv-Labs/topos/issues/288)) — nesting depth now runs the same forward-DAG DP as `cfg.longest_path` (strip `Loopback`/`Continue`, topo-order, increment only on `True`/`SwitchCase`). Branches inside loops report static depth instead of climbing to `≈2|V|`. Diagnostic-only metric; SIMPLE gates/scores unchanged.
+- **First-run `--gitnexus-dir` no longer skips COMPOSABLE generation** ([#287](https://github.com/Krv-Labs/topos/issues/287)) — an in-root override whose store does not exist yet is classified as `missing` (generate), not `invalid_dir`. Outside-root overrides remain hard rejects. CLI `evaluate` now surfaces the same `gitnexus_warnings` explanations MCP already returns, including a top-level `--json` `warnings` array.
+- **Graphify edge loading and oversized `graph.json` reads** ([#214](https://github.com/Krv-Labs/topos/issues/214), [#268](https://github.com/Krv-Labs/topos/pull/268)) — prefer array-valued `links`, else array-valued `edges`; reject oversized `graph.json` before parsing so pathological tool output cannot OOM the process.
+- **`resolve_within_root` symlink / `..` containment** ([#215](https://github.com/Krv-Labs/topos/issues/215), [#269](https://github.com/Krv-Labs/topos/pull/269)) — walk path components forwards and canonicalize existing segments so a missing leaf under a symlinked prefix (or `..` after a missing segment) cannot escape the file root.
+- **MCP registry `server.json` no longer ships a broken PyPI index URL** ([#276](https://github.com/Krv-Labs/topos/pull/276), [#277](https://github.com/Krv-Labs/topos/pull/277)) — drop `registryBaseUrl` and `--index-url` runtime arguments that caused VS Code `@mcp` installs to hard-fail with a duplicated `--index-url`. CI now guards the invariant and runs on `release/**` branches.
+- **Rust locals named `raw` parse again** ([#285](https://github.com/Krv-Labs/topos/issues/285)) — upgrade `tree-sitter-rust` so an ordinary `let raw = ...` is not treated as colliding with `&raw const` / `&raw mut` syntax (which previously made whole files unparseable / SLOP with no dimensions).
+
+### Changed
+
+- **Document JS/TS `switch_statement` → `MatchStmt` as an intentional UAST delta** ([#213](https://github.com/Krv-Labs/topos/issues/213), [#266](https://github.com/Krv-Labs/topos/pull/266)) — cross-version histogram diffs on switch statements are not regressions versus Python 0.3.12. See [`docs/decisions/js-switch-matchstmt.md`](docs/decisions/js-switch-matchstmt.md).
+- **Release tags must match Cargo / wheel version** ([#217](https://github.com/Krv-Labs/topos/issues/217), [#267](https://github.com/Krv-Labs/topos/pull/267)) — `check_versions.py --tag` gates release / PyPI / Homebrew jobs so GitHub and Homebrew cannot advertise a version maturin would not publish.
+
+### Breaking
+
+- **Harness install targets MCP registration only** ([#278](https://github.com/Krv-Labs/topos/pull/278)) — the combined `skills` harness id is replaced by separate `cursor` and `vscode` targets; `topos install` no longer writes skill files or instruction / `@import` prose blocks (those are reported as residue and left to ClawHub / openclaw / the user).
 
 ## [0.4.3] - 2026-07-28
 

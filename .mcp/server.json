@@ -19,20 +19,13 @@
   "packages": [
     {
       "registryType": "pypi",
-      "registryBaseUrl": "https://pypi.org",
       "identifier": "topos-mcp",
       "version": "0.5.0",
       "runtimeHint": "uvx",
-      "runtimeArguments": [
-        {
-          "type": "named",
-          "name": "--index-url",
-          "value": "https://pypi.org/simple"
-        }
-      ],
       "transport": {
         "type": "stdio"
       }
     }
   ]
 }
+

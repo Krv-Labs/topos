@@ -52,8 +52,9 @@ Evaluation, project, and assessment results may include `agent_contract`:
   scoring, so these now only surface when that generation itself couldn't
   happen — GitNexus not installed, or the `gitnexus analyze` run failed;
   `warnings` carries the specific reason. An `invalid_gitnexus_dir` code means
-  the supplied `gitnexus_dir` override is bad (outside the file root or
-  nonexistent) — fix the path rather than generating.
+  the supplied `gitnexus_dir` override escapes the file root — fix the path
+  rather than generating. A not-yet-created in-root override is treated as
+  missing and is auto-generated on evaluate (same as the default store path).
 - `verification_gates` — checks required before accepting a patch.
 - `risk_flags` — compact labels such as `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.
@@ -121,19 +122,18 @@ which never affects medals. See `topos://docs/workflows` § Advisory refactoring
 
 - COMPOSABLE is scored automatically — `topos_evaluate_file`/
   `topos_evaluate_project` detect and generate/refresh `.gitnexus` by
-  default (`gitnexus_dir` to point at a specific store under the project
-  root, `no_composable: true` to skip detection/generation). The project
-  root is the MCP **file root** (`TOPOS_MCP_FILE_ROOT`, else the server
-  cwd) — freshness fingerprints that whole tree, and regeneration runs
-  `gitnexus analyze` there. `gitnexus_dir` only selects the store path
-  inside that root; it does not retarget the root. For the CLI, the same
-  rule applies with **process cwd** as the root: run `topos evaluate` /
-  `inspect` from the repo that owns `.gitnexus`, not from `$HOME` or a
-  parent directory (a nested `--gitnexus-dir` still walks cwd and can
-  hang). If GitNexus isn't installed or generation fails, any verdict
-  containing COMPOSABLE, including `IDEAL`, is unreachable — check
-  `warnings` for why. `topos_depgraph_status` gives a read-only diagnosis
-  without triggering generation; force an explicit refresh with
+  default (`no_composable: true` to skip). When `gitnexus_dir` /
+  `--gitnexus-dir` is unset, the project root is the MCP **file root**
+  (`TOPOS_MCP_FILE_ROOT`, else server cwd) or the CLI **process cwd**.
+  When the override is set, the COMPOSABLE project root is the **parent
+  of that store path** (typically the parent of `.gitnexus`): freshness
+  and `gitnexus analyze` target that derived root, not cwd/file-root.
+  MCP still requires the store (and derived root) to stay inside the
+  file root; the CLI allows absolute overrides outside cwd. If GitNexus
+  isn't installed or generation fails, any verdict containing
+  COMPOSABLE, including `IDEAL`, is unreachable — check `warnings` for
+  why. `topos_depgraph_status` gives a read-only diagnosis without
+  triggering generation; force an explicit refresh with
   `topos_generate_depgraph` rather than shelling out yourself.
 - Use `allow` only for intentional dangerous calls. Acknowledged risks stay
   disclosed and can cap the grade.

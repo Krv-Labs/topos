@@ -22,6 +22,7 @@ use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 use crate::diagnostics::{overlay_for_source, SecurityOverlay};
 use crate::evaluation::{
     classify_morphism, detect_language, gitnexus_warnings, load_dep_graph, resolve_gitnexus_dir,
+    resolve_override_for_root,
 };
 use crate::formatting::{
     composable_contract_signals, to_evaluation_result, to_tool_result, EvalResultOptions,
@@ -579,12 +580,23 @@ fn load_baseline(params: &AssessImprovementInput) -> Result<Baseline, String> {
             return Err(format!("Path is not a file: {}", resolved.display()));
         }
         let current_src = read_safe_utf8_file(filepath)?;
-        let project_root = resolve_file_root()?;
-        let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+        let file_root = resolve_file_root()?;
+        let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+            params.gitnexus_dir.as_deref(),
+            &file_root,
+        );
+        // Resolved to an absolute path against `file_root` — must be used
+        // below instead of `params.gitnexus_dir`, since `project_root` above
+        // already absorbed a relative override's subdirectory; rejoining the
+        // original relative string against it a second time would double
+        // that subdirectory.
+        let resolved_override =
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+        let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
         let (dep_graph, load_error) =
             load_dep_graph(gitnexus_dir.as_deref(), &resolved.to_string_lossy());
         let warnings = gitnexus_warnings(
-            params.gitnexus_dir.as_deref(),
+            resolved_override.as_deref(),
             &project_root,
             gitnexus_dir.as_deref(),
             dep_graph.is_some(),
@@ -639,16 +651,24 @@ fn assess_edit_in_place(
         Ok(src) => src,
         Err(err) => return err_assessment(priority, priority_source, err, "file_not_found"),
     };
-    let project_root = match resolve_file_root() {
+    let file_root = match resolve_file_root() {
         Ok(root) => root,
         Err(err) => return err_assessment(priority, priority_source, err, "assessment_error"),
     };
-    let gitnexus_dir = resolve_gitnexus_dir(gitnexus_dir_override, &project_root);
+    let project_root =
+        crate::evaluation::resolve_mcp_composable_project_root(gitnexus_dir_override, &file_root);
+    // Resolved to an absolute path against `file_root` — must be used below
+    // instead of `gitnexus_dir_override`, since `project_root` above already
+    // absorbed a relative override's subdirectory; rejoining the original
+    // relative string against it a second time would double that
+    // subdirectory.
+    let resolved_override = resolve_override_for_root(gitnexus_dir_override, &file_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (dep_graph, load_error) =
         load_dep_graph(gitnexus_dir.as_deref(), &resolved_path.to_string_lossy());
     let mut warnings = extra_warnings;
     warnings.extend(gitnexus_warnings(
-        gitnexus_dir_override,
+        resolved_override.as_deref(),
         &project_root,
         gitnexus_dir.as_deref(),
         dep_graph.is_some(),
@@ -1353,14 +1373,25 @@ impl ToposServer {
             .preferences
             .as_ref()
             .and_then(|p| p.to_preferences().ok());
-        let project_root = match resolve_file_root() {
+        let file_root = match resolve_file_root() {
             Ok(root) => root,
             Err(err) => {
                 let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
                 return to_tool_result(&model, render_changeset_md(&model));
             }
         };
-        let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+        let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+            params.gitnexus_dir.as_deref(),
+            &file_root,
+        );
+        // Resolved to an absolute path against `file_root` — must be used
+        // below instead of `params.gitnexus_dir`, since `project_root` above
+        // already absorbed a relative override's subdirectory; rejoining the
+        // original relative string against it a second time would double
+        // that subdirectory.
+        let resolved_override =
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+        let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
 
         let mut entries: Vec<ChangesetFileEntry> = Vec::new();
         let mut before_evals: Vec<EvaluationResult> = Vec::new();
@@ -1397,7 +1428,7 @@ impl ToposServer {
 
         let load_error_placeholder = None;
         let warnings = gitnexus_warnings(
-            params.gitnexus_dir.as_deref(),
+            resolved_override.as_deref(),
             &project_root,
             gitnexus_dir.as_deref(),
             any_coupling,

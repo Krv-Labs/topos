@@ -793,3 +793,28 @@ jobs:
 
 
 
+  publish-mcp-registry:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs:
+      - publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL \
+            "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate MCP Registry metadata
+        run: ./mcp-publisher validate .mcp/server.json
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish .mcp/server.json

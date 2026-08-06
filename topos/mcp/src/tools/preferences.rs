@@ -32,6 +32,9 @@ fn generators_satisfied(value: EvaluationValue) -> Vec<GeneratorInput> {
     if bits & 0b100 != 0 {
         out.push(GeneratorInput::Secure);
     }
+    if bits & 0b1000 != 0 {
+        out.push(GeneratorInput::Navigable);
+    }
     out
 }
 
@@ -116,7 +119,7 @@ impl ToposServer {
     /// the goal gracefully under a token/time budget. Returns a
     /// PreferenceWalkResult: `walk` (steps from target down to just above
     /// `current`), `next_step`, `progress` in [0, 1],
-    /// `aspirational_target`/`fallback_target`, and `induced_order` (all 8
+    /// `aspirational_target`/`fallback_target`, and `induced_order` (all 16
     /// verdicts ranked).
     #[tool(
         name = "topos_preference_walk",
@@ -192,5 +195,35 @@ impl ToposServer {
         };
         let md = render_preference_walk_md(&model);
         to_tool_result(&model, md)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generators_satisfied_covers_all_four_generators() {
+        for value in EvaluationValue::ALL {
+            let generators = generators_satisfied(value);
+            let bits = value.bits();
+
+            assert_eq!(
+                generators.contains(&GeneratorInput::Simple),
+                bits & 0b0001 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Composable),
+                bits & 0b0010 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Secure),
+                bits & 0b0100 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Navigable),
+                bits & 0b1000 != 0
+            );
+        }
     }
 }

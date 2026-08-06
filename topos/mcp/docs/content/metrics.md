@@ -45,17 +45,6 @@ report `achieved: true` with `score: 0.0`: e.g. a large
 dispatch/discovery-class module with `cfg.cyclomatic: 63` (past the cap
 of 40 → quality 0.0) whose individual functions all stay under 10.
 
-> **Known language skew (Go).** Go files carry a constant **+1** on
-> `cfg.cyclomatic` relative to the other languages, because the CFG gains an
-> empty module-level callable. This has **no** effect on SIMPLE `achieved`:
-> `cfg.cyclomatic` does not gate, and per-function
-> `ast.max_function_complexity` is unaffected by the extra empty callable.
-> The residual effect is on the SIMPLE *score* — the constant offset nudges
-> the cyclomatic quality curve, which moves `score` only when cyclomatic is
-> the binding minimum. Deferred deliberately — the v0.4.0 CFG rewrite locks
-> pre-rewrite edge shapes as golden contracts, so correcting the offset is a
-> behavior change tracked separately in issue #230.
-
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
 `mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`

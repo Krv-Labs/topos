@@ -16,9 +16,11 @@
 //! migration started) and are relocated unchanged in logic, only
 //! stripped of `pyo3`/`serde` annotations `topos-core` doesn't need.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use petgraph::algo::dominators;
 use petgraph::prelude::*;
+use petgraph::visit::Reversed;
 
 use super::builder::build_cfg_from_uast;
 use super::models::{Blocks, CFGEdge, EdgeKind};
@@ -93,59 +95,112 @@ impl ControlFlowGraph {
         (unstructured + 1).max(1)
     }
 
-    /// Maximum static nesting depth along forward control flow.
+    /// Maximum static nesting depth: how many branch regions the most
+    /// deeply-buried block sits inside.
     ///
-    /// Counts `True` / `SwitchCase` edges on the acyclic CFG (loop
-    /// back-edges stripped — see [`Self::is_back_edge`]). Without that
-    /// strip, Bellman-Ford-style relaxation re-increments through
-    /// `Loopback`/`Continue` cycles and climbs to the iteration cap
-    /// (`≈ 2|V|`) instead of the real nest depth (issue #288).
+    /// A block is *inside* branch head `h` when it is reachable from one
+    /// of `h`'s `True`/`SwitchCase` successors **and does not
+    /// post-dominate `h`**. Post-domination is what closes the region:
+    /// the join where every path out of the branch reconverges
+    /// post-dominates the head, so the walk stops there and whatever
+    /// follows the branch is outside it.
     ///
-    /// Untagged residual cycles degrade to `0`, matching
-    /// [`Self::longest_acyclic_path`].
+    /// That second clause is the whole fix for issue #231.
+    ///
+    /// Successor walks skip [`Self::is_back_edge`] targets so loop
+    /// `Loopback`/`Continue` cycles cannot re-increment depth (issue #288). The previous
+    /// implementation relaxed a depth map monotonically along `True`
+    /// edges and never restored at a join, so *sequential* branches
+    /// accumulated as if they were nested — `adapters/discovery.rs`
+    /// reported 1008 against a true nesting of ~3.
+    ///
+    /// ponytail: a branch whose join does not post-dominate its head —
+    /// a `switch` where one arm returns — leaks one level onto the code
+    /// after it, because there is no join left to stop the walk. Bounded
+    /// and rare, where the old bug was unbounded and routine. The real
+    /// upgrade is to read nesting off the UAST scope tree, where it is
+    /// syntactic rather than recovered.
     pub fn max_nesting_depth(&self) -> usize {
-        // Edge weight = nesting increment contributed by that edge.
-        let Some((graph, indices)) = self.forward_cfg_dag(|edge| {
-            matches!(edge.kind, EdgeKind::True | EdgeKind::SwitchCase) as usize
-        }) else {
-            return 0;
-        };
-
-        let Ok(order) = petgraph::algo::toposort(&graph, None) else {
-            return 0;
-        };
-
-        let Some(&entry_idx) = indices.get(&self.entry_id) else {
-            return 0;
-        };
-        let mut depth: HashMap<NodeIndex, usize> = HashMap::new();
-        depth.insert(entry_idx, 0);
-        for node in order {
-            let Some(&d) = depth.get(&node) else {
-                continue;
-            };
-            for edge_ref in graph.edges(node) {
-                let candidate = d + *edge_ref.weight();
-                let entry = depth.entry(edge_ref.target()).or_insert(0);
-                if candidate > *entry {
-                    *entry = candidate;
-                }
+        let mut graph = DiGraph::<usize, ()>::new();
+        let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
+        for &id in self.blocks.keys() {
+            indices.insert(id, graph.add_node(id));
+        }
+        for edge in &self.edges {
+            if let (Some(&s), Some(&t)) = (indices.get(&edge.source), indices.get(&edge.target)) {
+                graph.add_edge(s, t, ());
             }
         }
+        let Some(&exit_idx) = indices.get(&self.exit_id) else {
+            return 0;
+        };
+        let post_dom = dominators::simple_fast(Reversed(&graph), exit_idx);
 
+        let mut depth: HashMap<usize, usize> = HashMap::new();
+        for &head in self.blocks.keys() {
+            let entries: Vec<usize> = self
+                .successors(head)
+                .iter()
+                .filter(|e| matches!(e.kind, EdgeKind::True | EdgeKind::SwitchCase))
+                .map(|e| e.target)
+                .collect();
+            if entries.is_empty() {
+                continue;
+            }
+            // Blocks that post-dominate the head bound the region. A head
+            // with no path to `exit` (an infinite loop) has none, so its
+            // region stays open — the same degrade-don't-panic stance
+            // `longest_acyclic_path` takes on an untagged cycle.
+            let stop: HashSet<usize> = indices
+                .get(&head)
+                .into_iter()
+                .flat_map(|&idx| post_dom.dominators(idx).into_iter().flatten())
+                .map(|idx| graph[idx])
+                .collect();
+
+            let mut seen = stop;
+            let mut stack = entries;
+            while let Some(id) = stack.pop() {
+                if !seen.insert(id) {
+                    continue;
+                }
+                *depth.entry(id).or_insert(0) += 1;
+                stack.extend(
+                    self.successors(id)
+                        .iter()
+                        .filter(|e| !Self::is_back_edge(e.kind))
+                        .map(|e| e.target),
+                );
+            }
+        }
         depth.values().copied().max().unwrap_or(0)
     }
 
-    /// Longest acyclic entry→exit path length (edge count).
+    /// `Loopback` and `Continue` are the only edge kinds the builder
+    /// ever uses to jump backward to an already-visited block (both
+    /// target a loop header). Stripping them makes the remaining graph a
+    /// true DAG, so a topological-sort DP replaces what used to be
+    /// exponential path enumeration.
     ///
-    /// `Loopback` / `Continue` are stripped so the remaining graph is a
-    /// DAG and a topological DP replaces exponential path enumeration.
-    /// Untagged cycles degrade to `0` rather than panic — a single
-    /// unusual CFG shape must not crash `evaluate` / `inspect`.
+    /// If that invariant is ever violated by an edge case the builder
+    /// doesn't tag correctly, we degrade to `0` rather than panic — see
+    /// the `longest_acyclic_path_returns_zero_on_untagged_cycle` test
+    /// below. A single file with an unusual control-flow shape shouldn't
+    /// be able to crash a whole `evaluate`/`inspect` run.
     pub fn longest_acyclic_path(&self) -> usize {
-        let Some((graph, indices)) = self.forward_cfg_dag(|_| ()) else {
-            return 0;
-        };
+        let mut graph = DiGraph::<usize, ()>::new();
+        let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
+        for &id in self.blocks.keys() {
+            indices.insert(id, graph.add_node(id));
+        }
+        for edge in &self.edges {
+            if matches!(edge.kind, EdgeKind::Loopback | EdgeKind::Continue) {
+                continue;
+            }
+            if let (Some(&s), Some(&t)) = (indices.get(&edge.source), indices.get(&edge.target)) {
+                graph.add_edge(s, t, ());
+            }
+        }
 
         let Ok(order) = petgraph::algo::toposort(&graph, None) else {
             return 0;
@@ -179,35 +234,6 @@ impl ControlFlowGraph {
     /// Builder back-edges that close loop cycles (body/continue → header).
     fn is_back_edge(kind: EdgeKind) -> bool {
         matches!(kind, EdgeKind::Loopback | EdgeKind::Continue)
-    }
-
-    /// Forward-only CFG as a `petgraph` DAG. Edge payloads come from
-    /// `edge_weight`. Returns `None` only if the block map is empty.
-    /// Callers must still handle `toposort` failure for untagged cycles.
-    fn forward_cfg_dag<W, F>(
-        &self,
-        mut edge_weight: F,
-    ) -> Option<(DiGraph<usize, W>, HashMap<usize, NodeIndex>)>
-    where
-        F: FnMut(&CFGEdge) -> W,
-    {
-        if self.blocks.is_empty() {
-            return None;
-        }
-        let mut graph = DiGraph::<usize, W>::new();
-        let mut indices: HashMap<usize, NodeIndex> = HashMap::new();
-        for &id in self.blocks.keys() {
-            indices.insert(id, graph.add_node(id));
-        }
-        for edge in &self.edges {
-            if Self::is_back_edge(edge.kind) {
-                continue;
-            }
-            if let (Some(&s), Some(&t)) = (indices.get(&edge.source), indices.get(&edge.target)) {
-                graph.add_edge(s, t, edge_weight(edge));
-            }
-        }
-        Some((graph, indices))
     }
 
     fn connected_components(&self) -> usize {
@@ -321,18 +347,95 @@ mod tests {
         assert_eq!(cfg.essential_complexity(), 2);
     }
 
+    /// One `if` inside another's then-branch. Was previously asserted by
+    /// a test *named* `..._of_sequential_true_branches` that in fact
+    /// built this nested chain — so nothing in the suite pinned the
+    /// sibling case, which is how issue #231 survived.
     #[test]
-    fn max_nesting_depth_of_sequential_true_branches() {
+    fn max_nesting_depth_of_nested_branches() {
         let cfg = ControlFlowGraph::new(
-            blocks_from(&[(0, "entry"), (1, "inner"), (2, "exit")]),
+            blocks_from(&[
+                (0, "if_1"),
+                (1, "then_1/if_2"),
+                (2, "then_2"),
+                (3, "join_2"),
+                (4, "join_1"),
+                (5, "exit"),
+            ]),
             vec![
                 CFGEdge::new(0, 1, EdgeKind::True),
+                CFGEdge::new(0, 4, EdgeKind::False),
                 CFGEdge::new(1, 2, EdgeKind::True),
+                CFGEdge::new(1, 3, EdgeKind::False),
+                CFGEdge::new(2, 3, EdgeKind::Unconditional),
+                CFGEdge::new(3, 4, EdgeKind::Unconditional),
+                CFGEdge::new(4, 5, EdgeKind::Unconditional),
             ],
             0,
-            2,
+            5,
         );
         assert_eq!(cfg.max_nesting_depth(), 2);
+    }
+
+    /// Regression test for issue #231: two `if`s one after the other are
+    /// depth 1, not depth 2. The second branch starts from the first
+    /// one's join, which is *outside* it.
+    #[test]
+    fn max_nesting_depth_of_sequential_branches_does_not_accumulate() {
+        let cfg = ControlFlowGraph::new(
+            blocks_from(&[
+                (0, "if_1"),
+                (1, "then_1"),
+                (2, "join_1/if_2"),
+                (3, "then_2"),
+                (4, "join_2"),
+                (5, "exit"),
+            ]),
+            vec![
+                CFGEdge::new(0, 1, EdgeKind::True),
+                CFGEdge::new(0, 2, EdgeKind::False),
+                CFGEdge::new(1, 2, EdgeKind::Unconditional),
+                CFGEdge::new(2, 3, EdgeKind::True),
+                CFGEdge::new(2, 4, EdgeKind::False),
+                CFGEdge::new(3, 4, EdgeKind::Unconditional),
+                CFGEdge::new(4, 5, EdgeKind::Unconditional),
+            ],
+            0,
+            5,
+        );
+        assert_eq!(cfg.max_nesting_depth(), 1);
+    }
+
+    /// The shape that produced 1008 on a 460-line file: `k` sequential
+    /// diamonds. Depth is 1 no matter how long the file gets.
+    #[test]
+    fn max_nesting_depth_stays_flat_across_many_sequential_branches() {
+        let k = 40;
+        let mut blocks = Blocks::new();
+        let mut edges = Vec::new();
+        let mut next_id = 0usize;
+
+        blocks.insert(0, BasicBlock::new(0, "entry"));
+        next_id += 1;
+        let mut current_split = 0usize;
+
+        for _ in 0..k {
+            let true_id = next_id;
+            next_id += 1;
+            let join_id = next_id;
+            next_id += 1;
+            blocks.insert(true_id, BasicBlock::new(true_id, "if_then"));
+            blocks.insert(join_id, BasicBlock::new(join_id, "if_join"));
+
+            edges.push(CFGEdge::new(current_split, true_id, EdgeKind::True));
+            edges.push(CFGEdge::new(current_split, join_id, EdgeKind::False));
+            edges.push(CFGEdge::new(true_id, join_id, EdgeKind::Unconditional));
+
+            current_split = join_id;
+        }
+
+        let cfg = ControlFlowGraph::new(blocks, edges, 0, current_split);
+        assert_eq!(cfg.max_nesting_depth(), 1);
     }
 
     /// Issue #288: branch inside a loop must not re-count nesting through
@@ -368,9 +471,6 @@ mod tests {
     /// Nested ifs inside a loop: only the two True edges count.
     #[test]
     fn max_nesting_depth_nested_ifs_inside_loop() {
-        // header -True→ outer_then -True→ inner_then → join -Loopback→ header
-        //         -False→ after
-        //                   outer_then -False→ join
         let cfg = ControlFlowGraph::new(
             blocks_from(&[
                 (0, "entry"),
@@ -505,18 +605,6 @@ mod tests {
     }
 
     #[test]
-    fn max_nesting_depth_returns_zero_on_untagged_cycle() {
-        let blocks = blocks_from(&[(0, "a"), (1, "b"), (2, "c")]);
-        let edges = vec![
-            CFGEdge::new(0, 1, EdgeKind::True),
-            CFGEdge::new(1, 2, EdgeKind::True),
-            CFGEdge::new(2, 0, EdgeKind::True),
-        ];
-        let cfg = ControlFlowGraph::new(blocks, edges, 0, 2);
-        assert_eq!(cfg.max_nesting_depth(), 0);
-    }
-
-    #[test]
     fn from_uast_empty_file_is_trivially_connected() {
         use crate::graphs::ast::dispatch::parse_source;
         let result = parse_source("", "python", None).unwrap();
@@ -627,14 +715,16 @@ mod tests {
         let cfg = ControlFlowGraph::from_uast(&result.uast_root);
         // 3 case arms => exactly 3 SwitchCase branches, not one per statement
         // (regression: the discriminant-less Go switch used to flatten each
-        // case's statements into separate branches). Cyclomatic itself also
-        // picks up Go's module-level `package` callable, so assert the branch
-        // count directly.
+        // case's statements into separate branches).
         let switch_branches = cfg
             .edges
             .iter()
             .filter(|e| e.kind == EdgeKind::SwitchCase)
             .count();
         assert_eq!(switch_branches, 3);
+        // Cyclomatic used to read 4 here: the `package` clause survived the
+        // module-level filter and bought Go an empty extra callable worth
+        // +1 (issue #230). It now matches the identical C++ program above.
+        assert_eq!(cfg.cyclomatic_complexity(), 3);
     }
 }

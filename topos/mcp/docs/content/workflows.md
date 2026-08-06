@@ -81,8 +81,10 @@ Outside MCP, `topos-mcp --version` prints the same report.
   `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
-  a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the
-  codebase floor; use `worst_files` and `guidance` to pick the next action.
+  a rollup plus page-global lists (`hard_fails`, `leaf_composable_zeros`,
+  `maintainability_giants`; `worst_files` is deprecated). Treat
+  `aggregate_floor_verdict` as the codebase floor; start from `hard_fails[0]`
+  or `guidance`.
 
 ### 2. Plan
 

@@ -5,7 +5,7 @@ Measures
 ========
 
 .. tip::
-   Every program evaluated by Topos is measured along three independent **Quality Pillars**. These pillars are the generators for the **Quality Medals** you can earn. Topos never collapses these into a single number — you always see which pillar is the problem.
+   Every program evaluated by Topos is measured along four independent **Quality Pillars**. These pillars are the generators for the **Quality Medals** you can earn. Topos never collapses these into a single number — you always see which pillar is the problem.
 
 1. The SIMPLE Pillar (Code Complexity)
 ------------------------------------------
@@ -68,6 +68,56 @@ Evaluates whether the code flow can reach dangerous operations or untrusted data
    SECURE score itself, always come from the native CPG probes. Sighthound
    never feeds SECURE.
 
+4. The NAVIGABLE Pillar (Agentic Cognitive Load)
+-------------------------------------------------
+
+.. versionadded:: 0.5.0
+
+Evaluates how expensive the code is for an LLM agent to read, reason over,
+and safely change. Computed from the AST scope tree — no external tooling
+required, so NAVIGABLE is always available.
+
+* **Worst-function nesting divergence** (``nav.max_function_divergence``)
+  The maximum **Semantic Compositional Divergence** over the file's
+  functions:
+
+  .. math::
+
+     SCD(f) = \sum_{u \in f} \operatorname{depth}(u) \cdot \ln(1 + \operatorname{fanout}(u))
+
+  where :math:`\operatorname{depth}(u)` is a scope's nesting level relative
+  to the function body and :math:`\operatorname{fanout}(u)` its count of
+  immediate child scopes.
+
+**Why nesting, and not complexity.** Once code length is controlled for,
+classical complexity metrics stop correlating with LLM task accuracy —
+nesting depth keeps correlating. Each level is another hierarchical state
+the model must hold open while reading forward. Two properties of the
+formula follow deliberately from that:
+
+* A leaf scope contributes :math:`\ln(1) = 0`, so a **perfectly flat
+  function scores 0.0** no matter how many branches it has. Flat *is*
+  maximally navigable; branch count is SIMPLE's concern. Deep code is still
+  fully counted — the weight lands on the ancestors doing the nesting.
+* Ternaries and short-circuit boolean operators are **excluded**.
+  Expression-level branching opens no block, so it costs no reader state,
+  and counting it would just re-measure SIMPLE.
+
+Like ``ast.max_function_complexity``, the gate is the **per-function
+maximum** rather than a file-wide sum — a long file of short, flat
+functions must not fail merely for its length. When the gate fails, Topos
+reports the offending functions worst-first with real line spans, so the
+failure becomes an actionable refactor target: extract the deepest nested
+block into a top-level helper.
+
+.. warning::
+   The NAVIGABLE threshold is **provisional**. It has not yet been through
+   the corpus ECDF calibration the SIMPLE and SECURE constants received. On
+   Topos's own 157 Rust files the divergence distribution is median
+   ``0.69``, p75 ``2.08``, p90 ``4.56``, p95 ``5.98`` — so the current gate
+   of ``8.0`` sits near p97 and fails about 2.5% of files. Expect this
+   constant to move.
+
 Scoring and Manager Priorities
 ------------------------------
 
@@ -92,6 +142,9 @@ the "Quality Medals" reflect empirical software engineering standards.
    * - **SECURE**
      - ``1.00``
      - Zero ``dangerous_calls`` AND zero ``taint_flows``
+   * - **NAVIGABLE**
+     - ``0.40`` (provisional)
+     - ``max_function_divergence <= 8.0`` (provisional)
 
 Scores are reported as percentages (0–100%) in all CLI and MCP output.
 Note that while the thresholds are used for score-floor aggregation, the
@@ -158,34 +211,62 @@ Verdicts
 
 The per-pillar scores map to an 8-valued Heyting algebra (free lattice on 3 generators), representing the **Quality Medals**:
 
-* ``SLOP`` (❌): No pillars achieved (all scores below threshold) or syntax error. No medal awarded.
-* ``SIMPLE``: Only SIMPLE achieved (🥉 BRONZE).
-* ``COMPOSABLE``: Only COMPOSABLE achieved (🥉 BRONZE; requires GitNexus; unreachable from SIMPLE alone).
-* ``SECURE``: Only SECURE achieved (🥉 BRONZE).
-* ``SIMPLE_COMPOSABLE``: Both SIMPLE and COMPOSABLE achieved (🥈 SILVER).
-* ``SIMPLE_SECURE``: Both SIMPLE and SECURE achieved (🥈 SILVER).
-* ``COMPOSABLE_SECURE``: Both COMPOSABLE and SECURE achieved (🥈 SILVER).
-* ``IDEAL`` (🥇): All three pillars achieved. Perfectly simple, composable, and secure. GOLD medal awarded.
+The medal tier is the **count** of pillars achieved; *which* ones you
+achieved is named by the ``lattice_element`` and matters for diagnosis:
 
-The three pillars ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are **pairwise incomparable** — a
-file can achieve any subset of them independently. The overall ``lattice_element`` in the
-response is determined by which combination of pillars scored ≥ their calibrated thresholds:
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Pillars
+     - Medal
+     - Verdicts
+   * - 4 of 4
+     - 🏆 ``PLATINUM``
+     - ``IDEAL``
+   * - 3 of 4
+     - 🥇 ``GOLD``
+     - ``SIMPLE_COMPOSABLE_SECURE``, ``SIMPLE_COMPOSABLE_NAVIGABLE``, ``SIMPLE_SECURE_NAVIGABLE``, ``COMPOSABLE_SECURE_NAVIGABLE``
+   * - 2 of 4
+     - 🥈 ``SILVER``
+     - ``SIMPLE_COMPOSABLE``, ``SIMPLE_SECURE``, ``SIMPLE_NAVIGABLE``, ``COMPOSABLE_SECURE``, ``COMPOSABLE_NAVIGABLE``, ``SECURE_NAVIGABLE``
+   * - 1 of 4
+     - 🥉 ``BRONZE``
+     - ``SIMPLE``, ``COMPOSABLE``, ``SECURE``, ``NAVIGABLE``
+   * - 0 of 4
+     - ❌ none
+     - ``SLOP`` (all gates failed, or a syntax error)
+
+.. versionchanged:: 0.5.0
+   ``IDEAL`` now requires all four pillars and awards ``PLATINUM``. The
+   verdict formerly called ``IDEAL`` — the top of the three-generator
+   algebra — is now ``SIMPLE_COMPOSABLE_SECURE`` and bands as ``GOLD``.
+
+The four pillars ``SIMPLE``, ``COMPOSABLE``, ``SECURE``, and ``NAVIGABLE``
+are **pairwise incomparable** — a file can achieve any subset of them
+independently. The overall ``lattice_element`` is determined by which
+combination of pillars passed their calibrated gates:
 
 .. code-block:: text
 
-   SIMPLE = 1, COMPOSABLE = 1, SECURE = 1  → IDEAL
-   SIMPLE = 1, COMPOSABLE = 1, SECURE = 0  → SIMPLE_COMPOSABLE
-   SIMPLE = 1, COMPOSABLE = 0, SECURE = 1  → SIMPLE_SECURE
-   SIMPLE = 0, COMPOSABLE = 1, SECURE = 1  → COMPOSABLE_SECURE
-   SIMPLE = 1, COMPOSABLE = 0, SECURE = 0  → SIMPLE
-   SIMPLE = 0, COMPOSABLE = 1, SECURE = 0  → COMPOSABLE
-   SIMPLE = 0, COMPOSABLE = 0, SECURE = 1  → SECURE
-   SIMPLE = 0, COMPOSABLE = 0, SECURE = 0  → SLOP
+   SIMPLE  COMPOSABLE  SECURE  NAVIGABLE  → verdict
+        1           1       1          1  → IDEAL                        🏆
+        1           1       1          0  → SIMPLE_COMPOSABLE_SECURE     🥇
+        1           1       0          1  → SIMPLE_COMPOSABLE_NAVIGABLE  🥇
+        1           1       0          0  → SIMPLE_COMPOSABLE            🥈
+        1           0       0          1  → SIMPLE_NAVIGABLE             🥈
+        1           0       0          0  → SIMPLE                       🥉
+        0           0       0          0  → SLOP                         ❌
+
+``COMPOSABLE`` requires a GitNexus dependency graph and ``SECURE`` requires
+a CPG; either is reported as *not measured* rather than *failed* when its
+input is unavailable. ``SIMPLE`` and ``NAVIGABLE`` need only the file
+itself, so they are always evaluated.
 
 Comparing Programs (Profunctors)
 --------------------------------
 
-While the three quality pillars define a program's absolute placement on the evaluation lattice (the characteristic morphism), Topos also provides relational tools to measure the "distance" or "overlap" between two programs. In our category-theoretic model, these are **Profunctors**.
+While the four quality pillars define a program's absolute placement on the evaluation lattice (the characteristic morphism), Topos also provides relational tools to measure the "distance" or "overlap" between two programs. In our category-theoretic model, these are **Profunctors**.
 
 .. note::
    **Important:** Profunctors are comparative metrics. They are highly useful for agent workflows (e.g., "did this refactor actually change the structure?") but they **do not** influence the Quality Badges or the evaluation lattice.

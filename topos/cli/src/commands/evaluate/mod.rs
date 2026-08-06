@@ -38,7 +38,8 @@ use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::preferences::Generator;
+use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
+use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
@@ -83,9 +84,9 @@ pub struct EvaluateArgs {
     /// List files that fail one pillar; combine with --info to inspect them.
     #[arg(long, value_name = "PILLAR")]
     pub failures: Option<String>,
-    /// Pillar to prioritize (simple, composable, secure), or a full
-    /// comma-separated ranking, most important first.
-    #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE")]
+    /// Pillar to prioritize (simple, composable, secure, navigable), or a
+    /// full comma-separated ranking, most important first.
+    #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE,NAVIGABLE")]
     pub priority: Option<String>,
 }
 
@@ -232,25 +233,29 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn focused_ranking(focus: Generator, configured: Option<&[Generator; 3]>) -> [Generator; 3] {
-    let mut rest = configured
+/// `focus` promoted to the front, the rest keeping their configured order.
+///
+/// With nothing configured the base is [`default_preferences`], not
+/// `Generator::ALL` — the latter is declaration order (and drives display
+/// column order), which is not a statement about preference.
+fn focused_ranking(
+    focus: Generator,
+    configured: Option<&[Generator; RANKING_LEN]>,
+) -> [Generator; RANKING_LEN] {
+    let base = configured
         .copied()
-        .unwrap_or(Generator::ALL)
-        .into_iter()
-        .filter(|generator| *generator != focus);
-    [
-        focus,
-        rest.next()
-            .expect("three generators include two non-focus values"),
-        rest.next()
-            .expect("three generators include two non-focus values"),
-    ]
+        .unwrap_or_else(|| default_preferences().ranking());
+    let mut ranking = vec![focus];
+    ranking.extend(base.into_iter().filter(|generator| *generator != focus));
+    ranking
+        .try_into()
+        .expect("promoting one member of a permutation keeps its length")
 }
 
 fn resolve_target_ranking(
     args: &EvaluateArgs,
     config: &ToposConfig,
-) -> Result<Option<[Generator; 3]>, String> {
+) -> Result<Option<[Generator; RANKING_LEN]>, String> {
     let Some(raw) = &args.priority else {
         return Ok(config.preferences.or_else(|| {
             config
@@ -299,9 +304,19 @@ mod tests {
         assert_eq!(
             focused_ranking(
                 Generator::Secure,
-                Some(&[Generator::Composable, Generator::Simple, Generator::Secure,])
+                Some(&[
+                    Generator::Composable,
+                    Generator::Simple,
+                    Generator::Secure,
+                    Generator::Navigable
+                ])
             ),
-            [Generator::Secure, Generator::Composable, Generator::Simple,]
+            [
+                Generator::Secure,
+                Generator::Composable,
+                Generator::Simple,
+                Generator::Navigable
+            ]
         );
     }
 
@@ -324,26 +339,41 @@ mod tests {
     fn single_priority_flag_reorders_persisted_preferences_instead_of_dropping_them() {
         let args = args_with_priority("secure");
         let config = ToposConfig {
-            preferences: Some([Generator::Composable, Generator::Simple, Generator::Secure]),
+            preferences: Some([
+                Generator::Composable,
+                Generator::Simple,
+                Generator::Secure,
+                Generator::Navigable,
+            ]),
             ..Default::default()
         };
 
         assert_eq!(resolve_priority(&args, &config).unwrap(), Priority::Secure);
         assert_eq!(
             resolve_target_ranking(&args, &config).unwrap(),
-            Some([Generator::Secure, Generator::Composable, Generator::Simple])
+            Some([
+                Generator::Secure,
+                Generator::Composable,
+                Generator::Simple,
+                Generator::Navigable
+            ])
         );
     }
 
     #[test]
     fn ranking_priority_flag_is_used_verbatim() {
-        let args = args_with_priority("secure,simple,composable");
+        let args = args_with_priority("secure,simple,composable,navigable");
         let config = ToposConfig::default();
 
         assert_eq!(resolve_priority(&args, &config).unwrap(), Priority::Secure);
         assert_eq!(
             resolve_target_ranking(&args, &config).unwrap(),
-            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+            Some([
+                Generator::Secure,
+                Generator::Simple,
+                Generator::Composable,
+                Generator::Navigable
+            ])
         );
     }
 
@@ -358,7 +388,12 @@ mod tests {
 
         assert_eq!(
             resolve_target_ranking(&args, &config).unwrap(),
-            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+            Some([
+                Generator::Secure,
+                Generator::Simple,
+                Generator::Navigable,
+                Generator::Composable
+            ])
         );
     }
 }

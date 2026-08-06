@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use console::{Key, Term};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
-use topos_engine::evaluation::preferences::Generator;
+use topos_engine::evaluation::preferences::{Generator, RANKING_LEN};
 use topos_engine::evaluation::suggestions::suggest_refactors;
 use topos_mcp::diagnostics::overlay_for_file;
 use topos_mcp::metric_locations::build_metric_locations;
@@ -54,7 +54,7 @@ pub(crate) fn show_pillar_failures(
     languages: &[String],
     pillar: &str,
     inspect: bool,
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
 ) -> Result<(), String> {
     let mut ranked = failure_file_indices(files, results, pillar);
     if !inspect || ranked.is_empty() {
@@ -268,7 +268,7 @@ fn details_for_file(
     path: &Path,
     result: &ClassificationResult,
     language: &str,
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
 ) -> Result<FileDetails, String> {
     let source = std::fs::read_to_string(path)
         .map_err(|e| format!("reading {} for details: {e}", path.display()))?;
@@ -280,7 +280,7 @@ pub(crate) fn details_for_source(
     result: &ClassificationResult,
     source: &str,
     language: &str,
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
 ) -> FileDetails {
     let locations = build_metric_locations(source, language, result);
     let overlay = overlay_for_file(path, result, &[]);
@@ -304,11 +304,7 @@ pub(crate) fn details_for_source(
 }
 
 fn generator_input(generator: Generator) -> GeneratorInput {
-    match generator {
-        Generator::Simple => GeneratorInput::Simple,
-        Generator::Composable => GeneratorInput::Composable,
-        Generator::Secure => GeneratorInput::Secure,
-    }
+    GeneratorInput::from_generator(generator)
 }
 
 fn terminal_width(term: &Term, fallback: usize) -> usize {

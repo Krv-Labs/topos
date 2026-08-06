@@ -84,7 +84,9 @@ Topos measures each file along three independent quality pillars. Each pillar is
 - **COMPOSABLE** — The module is cleanly decoupled from other modules.
 - **SECURE** — The code is free of operations that are known to expose security vulnerabilities.
 
-Run ``topos evaluate`` or ``topos inspect`` on a file; Topos checks all three pillars and awards a **Code Quality Medal** from how many you pass. *Which* pillars you pass matters for diagnosis; the medal tier depends only on the count:
+- **NAVIGABLE** — The code is shallow enough for an AI agent to read and change in one pass, rather than deeply nested.
+
+Run ``topos evaluate`` or ``topos inspect`` on a file; Topos checks all four pillars and awards a **Code Quality Medal** from how many you pass. *Which* pillars you pass matters for diagnosis; the medal tier depends only on the count:
 
 .. list-table::
    :header-rows: 1
@@ -93,25 +95,28 @@ Run ``topos evaluate`` or ``topos inspect`` on a file; Topos checks all three pi
    * - Pillars passed
      - Medal
      - Example (any combination with this count)
-   * - **3 of 3**
+   * - **4 of 4**
+     - ``🏆 PLATINUM``
+     - SIMPLE + COMPOSABLE + SECURE + NAVIGABLE
+   * - **3 of 4**
      - ``🥇 GOLD``
-     - SIMPLE + COMPOSABLE + SECURE
-   * - **2 of 3**
+     - e.g. SIMPLE + COMPOSABLE + SECURE
+   * - **2 of 4**
      - ``🥈 SILVER``
-     - e.g. SIMPLE + SECURE, or COMPOSABLE + SECURE
-   * - **1 of 3**
+     - e.g. SIMPLE + SECURE, or COMPOSABLE + NAVIGABLE
+   * - **1 of 4**
      - ``🥉 BRONZE``
-     - e.g. SIMPLE only, or SECURE only
-   * - **0 of 3**
+     - e.g. SIMPLE only, or NAVIGABLE only
+   * - **0 of 4**
      - ``❌ NONE``
      - Fails every pillar (or the file could not be parsed)
 
 Manager Priorities & Agent Iteration
 ------------------------------------
 
-In a perfect world, every file would earn a ``🥇 GOLD`` medal. In reality, managers and developers have a finite budget of time and tokens. 
+In a perfect world, every file would earn a ``🏆 PLATINUM`` medal. In reality, managers and developers have a finite budget of time and tokens.
 
-Topos allows you to set **Preferences** — an ordering of these medals based on your immediate priorities. Coding agents use this ranking to aim for ``🥇 GOLD``. If achieving ``🥇 GOLD`` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality medal aligned with your priorities.
+Topos allows you to set **Preferences** — an ordering of these medals based on your immediate priorities. Coding agents use this ranking to aim for ``🏆 PLATINUM``. If achieving ``🏆 PLATINUM`` isn't feasible within the budget, the preference ranking tells the agent exactly how to *relax* its goals, ensuring it still delivers the highest possible quality medal aligned with your priorities.
 
 Quick look
 ----------
@@ -120,8 +125,8 @@ Pick a preference ranking, then let your agent evaluate and iterate on its own o
 
 .. code-block:: bash
 
-   topos evaluate src/ -r --priority simple,composable,secure
-   topos config set --priority simple,composable,secure
+   topos evaluate src/ -r --priority simple,composable,secure,navigable
+   topos config set --priority simple,composable,secure,navigable
    topos inspect module.py
    topos coverage src/logic.py --tests tests/test_logic.py
    topos compare before.py after.py
@@ -131,11 +136,12 @@ Each file gets a verdict per quality generator. You always see which generator i
 How it works
 ------------
 
-Topos measures code along the three independent quality generators and maps them to an 8-element evaluation lattice:
+Topos measures code along the four independent quality generators and maps them to a 16-element evaluation lattice:
 
 - **SIMPLE** — Built from the `abstract syntax tree <https://en.wikipedia.org/wiki/Abstract_syntax_tree>`_ (AST) and `control-flow graph <https://en.wikipedia.org/wiki/Control-flow_graph>`_ (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
 - **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, to capture inter-module dependencies. This is slightly different than the usual `program dependence graph <https://en.wikipedia.org/wiki/Program_dependence_graph>`_ (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
 - **SECURE** — Built from the `code property graph <https://en.wikipedia.org/wiki/Code_property_graph>`_ (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
+- **NAVIGABLE** — Built from the AST scope tree. We calculate depth-weighted nesting divergence (``Σ depth · ln(1 + fanout)``) per function to assess how much cognitive load the code imposes on an AI agent reading it. Orthogonal to SIMPLE: that one counts branches, this one measures nesting.
 
 .. raw:: html
 
@@ -148,16 +154,18 @@ Topos measures code along the three independent quality generators and maps them
 .. raw:: html
 
    <figure class="topos-figure topos-figure--framed">
-     <img class="only-light" src="_static/figures/topos-lattice.svg" alt="The Topos quality lattice — SLOP at the bottom, three single-pillar BRONZE states, three two-pillar SILVER states, and IDEAL (GOLD) at the top." />
+     <img class="only-light" src="_static/figures/topos-lattice.svg" alt="The SIMPLE/COMPOSABLE/SECURE sub-lattice — SLOP at the bottom, three single-pillar BRONZE states, three two-pillar SILVER states, and their meet at the top." />
      <img class="only-dark" src="_static/figures/topos-lattice-dark.svg" alt="" aria-hidden="true" />
-     <figcaption>The eight-element evaluation lattice. Climbing the order means satisfying more independent quality generators; GOLD is the meet of all three.</figcaption>
+     <figcaption>The <code>SIMPLE</code>/<code>COMPOSABLE</code>/<code>SECURE</code> sub-cube of the evaluation lattice. Climbing the order means satisfying more independent quality generators. <code>NAVIGABLE</code> adds a fourth axis, doubling this diagram to sixteen elements: a parallel copy hangs off <code>NAVIGABLE</code>, and <code>IDEAL</code> (🏆 <code>PLATINUM</code>) sits one level above the element at this diagram's apex.</figcaption>
    </figure>
 
 .. hint::
-   **Three Independent Pillars:** ``SIMPLE``, ``COMPOSABLE``, and ``SECURE`` are
-   **pairwise incomparable**. A file can achieve any subset of {S, C, Sc} independently.
-   ``🥇 GOLD`` is the intersection of all three. The **Preferences** (ranking) determine the order
-   in which an agent traverses through the lattice, attempting to earn the highest possible medal.
+   **Four Independent Pillars:** ``SIMPLE``, ``COMPOSABLE``, ``SECURE``, and
+   ``NAVIGABLE`` are **pairwise incomparable**. A file can achieve any subset of
+   {S, C, Sc, N} independently, giving :math:`2^4 = 16` verdicts.
+   ``🏆 PLATINUM`` is the intersection of all four. The **Preferences** (ranking)
+   determine the order in which an agent traverses through the lattice,
+   attempting to earn the highest possible medal.
 
 .. toctree::
    :maxdepth: 1

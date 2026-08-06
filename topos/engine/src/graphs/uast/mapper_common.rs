@@ -245,7 +245,7 @@ fn filtered_named_children<'a>(
 pub fn map_tree_sitter_to_uast(
     root: Node,
     language: &str,
-    map_node_kind: impl Fn(&str) -> &'static str,
+    map_node_kind: impl Fn(&Node) -> &'static str,
     source: &[u8],
     file: Option<&str>,
     is_test_node: Option<&dyn TestNodeFilter>,
@@ -295,7 +295,7 @@ pub fn map_tree_sitter_to_uast(
         uast_nodes.insert(
             node.id(),
             UASTNode {
-                kind: map_node_kind(node.kind()).to_string(),
+                kind: map_node_kind(&node).to_string(),
                 lang: language.to_string(),
                 span: SourceSpan {
                     file: file.map(str::to_string),

@@ -7,7 +7,8 @@ use tree_sitter::Node;
 use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast};
 use super::models::{AttributeValue, UASTNode};
 
-pub fn map_node_kind(kind: &str) -> &'static str {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    let kind = node.kind();
     const NODE_KIND_TABLE: &[(&str, &str)] = &[
         ("function_definition", "FunctionDecl"),
         ("function_declaration", "FunctionDecl"),

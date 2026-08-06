@@ -1,5 +1,6 @@
 //! Evaluation tools: code string, single file, and whole project.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -9,6 +10,9 @@ use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::policies::calibration::SIMPLE;
+use topos_engine::evaluation::policies::composable::coupling_gate_input;
+use topos_engine::evaluation::policies::gates::{evaluate_gates, GateResult};
 use topos_engine::evaluation::weakest_score;
 
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
@@ -147,9 +151,10 @@ impl ToposServer {
     /// Autodetects all supported languages (Python, Rust, JavaScript,
     /// TypeScript, C++, Go) in one walk — no language argument — and skips
     /// unsupported files. The rollup takes the project-wide minimum per
-    /// dimension (weakest file floors it). Returns a paginated per-file
-    /// table (worst first) plus per-language rollups; page with `limit` /
-    /// `offset`.
+    /// dimension (weakest file floors it). Returns page-global named lists
+    /// (`hard_fails`, `leaf_composable_zeros`, `maintainability_giants`)
+    /// plus a paginated per-file table (gate failures first); page with
+    /// `limit` / `offset`.
     ///
     /// Unless `no_composable` is set, generates/refreshes `.gitnexus` when
     /// missing or stale before scoring, same as `topos_evaluate_file` and
@@ -567,6 +572,170 @@ fn aggregate_floor_verdict(rolled: &HashMap<String, EvaluationValue>) -> Lattice
     lattice_to_str(verdict_from_generators(&satisfied))
 }
 
+#[derive(Clone)]
+struct ScoredProjectRow {
+    entry: ProjectFileEntry,
+    result: ClassificationResult,
+}
+
+/// Gate-input map for a file — mirrors the scorers and suggestion engine.
+fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
+    let instability = result.raw_metrics.get("mdg.instability").copied();
+    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
+    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
+    let mut gate_metrics = result.raw_metrics.clone();
+    gate_metrics.remove("mdg.instability");
+    gate_metrics.extend(coupling_gate_input(
+        instability,
+        fan_in,
+        fan_out,
+        result.raw_metrics.get("mdg.abstractness").copied(),
+    ));
+    gate_metrics
+}
+
+fn has_coupling_signal(fan_in: Option<f64>, fan_out: Option<f64>) -> bool {
+    !(fan_in == Some(0.0) && fan_out == Some(0.0))
+}
+
+/// `mdg.instability = 0.0` with no measured coupling — a structural leaf.
+fn is_leaf_composable_zero(result: &ClassificationResult) -> bool {
+    if !result.is_parseable {
+        return false;
+    }
+    if result.raw_metrics.get("mdg.instability").copied() != Some(0.0) {
+        return false;
+    }
+    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
+    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
+    !has_coupling_signal(fan_in, fan_out)
+}
+
+fn gating_gate_failures(result: &ClassificationResult) -> Vec<GateResult> {
+    let gate_metrics = gate_metrics_for(result);
+    let instability = result.raw_metrics.get("mdg.instability").copied();
+    evaluate_gates(
+        &gate_metrics,
+        None,
+        result.is_entrypoint_module,
+        result.is_stable_leaf_module,
+        instability,
+    )
+    .into_iter()
+    .filter(|r| r.spec.gates_achieved && !r.passed())
+    .collect()
+}
+
+fn is_hard_fail(result: &ClassificationResult) -> bool {
+    if !result.is_parseable {
+        return true;
+    }
+    let failures = gating_gate_failures(result);
+    if failures.is_empty() {
+        return false;
+    }
+    if is_leaf_composable_zero(result) {
+        return failures.iter().any(|r| r.spec.pillar != "composable");
+    }
+    true
+}
+
+fn is_maintainability_giant(result: &ClassificationResult) -> bool {
+    if !result.is_parseable || is_hard_fail(result) || is_leaf_composable_zero(result) {
+        return false;
+    }
+    gate_metrics_for(result)
+        .get("cfg.cyclomatic")
+        .is_some_and(|v| *v > SIMPLE.max_cyclomatic)
+}
+
+fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
+    let scores_pct: HashMap<String, f64> = result
+        .scores
+        .iter()
+        .map(|(dim, s)| (dim.clone(), s * 100.0))
+        .collect();
+    weakest_score(&scores_pct)
+}
+
+fn hard_fail_sort_key(result: &ClassificationResult) -> (usize, f64) {
+    let failures = gating_gate_failures(result);
+    let count = if is_leaf_composable_zero(result) {
+        failures
+            .iter()
+            .filter(|r| r.spec.pillar != "composable")
+            .count()
+    } else {
+        failures.len()
+    };
+    (count, weakest_score_from_result(result))
+}
+
+fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
+    WorstFileEntry {
+        filepath: entry.filepath.clone(),
+        lattice_element: entry.lattice_element,
+    }
+}
+
+fn classify_project_rows(rows: &[ScoredProjectRow]) -> (Vec<WorstFileEntry>, Vec<WorstFileEntry>, Vec<WorstFileEntry>) {
+    let mut hard: Vec<&ScoredProjectRow> = rows
+        .iter()
+        .filter(|row| is_hard_fail(&row.result))
+        .collect();
+    hard.sort_by(|a, b| {
+        let (ca, sa) = hard_fail_sort_key(&a.result);
+        let (cb, sb) = hard_fail_sort_key(&b.result);
+        cb.cmp(&ca)
+            .then_with(|| sa.partial_cmp(&sb).unwrap_or(Ordering::Equal))
+    });
+
+    let mut leaves: Vec<&ScoredProjectRow> = rows
+        .iter()
+        .filter(|row| is_leaf_composable_zero(&row.result))
+        .collect();
+    leaves.sort_by(|a, b| a.entry.filepath.cmp(&b.entry.filepath));
+
+    let mut giants: Vec<&ScoredProjectRow> = rows
+        .iter()
+        .filter(|row| is_maintainability_giant(&row.result))
+        .collect();
+    giants.sort_by(|a, b| {
+        let ca = gate_metrics_for(&a.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        let cb = gate_metrics_for(&b.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        cb.partial_cmp(&ca).unwrap_or(Ordering::Equal)
+    });
+
+    (
+        hard.iter().map(|row| to_worst_entry(&row.entry)).collect(),
+        leaves.iter().map(|row| to_worst_entry(&row.entry)).collect(),
+        giants.iter().map(|row| to_worst_entry(&row.entry)).collect(),
+    )
+}
+
+fn project_file_sort_key(row: &ScoredProjectRow) -> (u8, f64, f64) {
+    if is_hard_fail(&row.result) {
+        let (count, score) = hard_fail_sort_key(&row.result);
+        (0, -(count as f64), score)
+    } else if is_maintainability_giant(&row.result) {
+        let cyclomatic = gate_metrics_for(&row.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        (1, -cyclomatic, 0.0)
+    } else if is_leaf_composable_zero(&row.result) {
+        (3, worst_key(&row.entry), 0.0)
+    } else {
+        (2, worst_key(&row.entry), 0.0)
+    }
+}
+
 fn worst_key(entry: &ProjectFileEntry) -> f64 {
     weakest_score(&entry.scores)
 }
@@ -585,19 +754,35 @@ fn build_language_rollups(
             let results = &per_language_results[language];
             let rolled = classifier.combine_dimensions(results);
             let rolled_scores = min_scores_by_dim(results);
-            let mut entries: Vec<&ProjectFileEntry> = per_language_entries
-                .get(language)
-                .map(|v| v.iter().collect())
-                .unwrap_or_default();
-            entries.sort_by(|a, b| {
-                worst_key(a)
-                    .partial_cmp(&worst_key(b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
+            let lang_entries = per_language_entries.get(language);
+            let lang_results = per_language_results.get(language);
+            let mut rows: Vec<ScoredProjectRow> = match (lang_entries, lang_results) {
+                (Some(entries), Some(results)) if entries.len() == results.len() => entries
+                    .iter()
+                    .cloned()
+                    .zip(results.iter().cloned())
+                    .map(|(entry, result)| ScoredProjectRow { entry, result })
+                    .collect(),
+                (Some(entries), _) => entries
+                    .iter()
+                    .cloned()
+                    .map(|entry| {
+                        let mut result = ClassificationResult::default();
+                        result.is_parseable = entry.is_parseable;
+                        ScoredProjectRow { entry, result }
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            rows.sort_by(|a, b| {
+                project_file_sort_key(a)
+                    .partial_cmp(&project_file_sort_key(b))
+                    .unwrap_or(Ordering::Equal)
             });
-            let worst = entries.first();
+            let worst = rows.first().map(|row| &row.entry);
             ProjectLanguageRollup {
                 language: language.clone(),
-                file_count: entries.len(),
+                file_count: rows.len(),
                 parse_failures: per_language_parse_failures
                     .get(language)
                     .copied()
@@ -651,18 +836,56 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     );
 
     let overall = aggregate_floor_verdict(&rolled);
-    let mut entries = args.entries;
-    entries.sort_by(|a, b| {
-        worst_key(a)
-            .partial_cmp(&worst_key(b))
-            .unwrap_or(std::cmp::Ordering::Equal)
+    let mut rows: Vec<ScoredProjectRow> = if args.entries.len() == args.per_file_results.len() {
+        args.entries
+            .into_iter()
+            .zip(args.per_file_results)
+            .map(|(entry, result)| ScoredProjectRow { entry, result })
+            .collect()
+    } else {
+        args.entries
+            .into_iter()
+            .map(|entry| {
+                let mut result = ClassificationResult::default();
+                result.is_parseable = entry.is_parseable;
+                ScoredProjectRow { entry, result }
+            })
+            .collect()
+    };
+
+    let mut score_sorted = rows.clone();
+    score_sorted.sort_by(|a, b| {
+        worst_key(&a.entry)
+            .partial_cmp(&worst_key(&b.entry))
+            .unwrap_or(Ordering::Equal)
     });
-    let aggregate_explanation = aggregate_explanation(&rolled, &rolled_scores, &entries);
-    // Guidance and the agent contract need the full rows (warnings, scores,
-    // grade_capped, secure_adjusted); only the wire field is slimmed.
-    let worst_rows: &[ProjectFileEntry] = &entries[..entries.len().min(3)];
-    let worst_file_verdict = worst_rows.first().map(|w| w.lattice_element);
-    let guidance = project_guidance(worst_rows);
+    let worst_files: Vec<WorstFileEntry> = score_sorted
+        .iter()
+        .take(3)
+        .map(|row| to_worst_entry(&row.entry))
+        .collect();
+
+    let (hard_fails, leaf_composable_zeros, maintainability_giants) = classify_project_rows(&rows);
+    let hard_fail_head_owned = rows
+        .iter()
+        .find(|row| is_hard_fail(&row.result))
+        .map(|row| row.entry.clone());
+    let hard_fail_head = hard_fail_head_owned.as_ref();
+
+    rows.sort_by(|a, b| {
+        project_file_sort_key(a)
+            .partial_cmp(&project_file_sort_key(b))
+            .unwrap_or(Ordering::Equal)
+    });
+    let entries: Vec<ProjectFileEntry> = rows.iter().map(|row| row.entry.clone()).collect();
+
+    let aggregate_explanation =
+        aggregate_explanation(&rolled, &rolled_scores, hard_fail_head, &entries);
+    let worst_file_verdict = hard_fails
+        .first()
+        .map(|w| w.lattice_element)
+        .or_else(|| worst_files.first().map(|w| w.lattice_element));
+    let guidance = project_guidance(hard_fail_head, &entries);
 
     let page: Vec<ProjectFileEntry> = entries
         .iter()
@@ -685,18 +908,12 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     }
     let contract = project_contract(
         overall,
-        worst_rows,
+        hard_fail_head,
+        &entries,
         args.coupling_available,
         &project_warnings,
         args.parse_failures,
     );
-    let worst_files: Vec<WorstFileEntry> = worst_rows
-        .iter()
-        .map(|entry| WorstFileEntry {
-            filepath: entry.filepath.clone(),
-            lattice_element: entry.lattice_element,
-        })
-        .collect();
 
     ProjectEvaluationResult {
         root: args.resolved_root.to_string_lossy().to_string(),
@@ -711,6 +928,9 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
         language_rollups,
         aggregate_explanation,
         worst_file_verdict,
+        hard_fails,
+        leaf_composable_zeros,
+        maintainability_giants,
         worst_files,
         guidance,
         priority: priority_str(args.priority).to_string(),
@@ -746,6 +966,9 @@ fn empty_project_result(
         aggregate_explanation: "No files were evaluated, so the aggregate floor is SLOP."
             .to_string(),
         worst_file_verdict: None,
+        hard_fails: Vec::new(),
+        leaf_composable_zeros: Vec::new(),
+        maintainability_giants: Vec::new(),
         worst_files: Vec::new(),
         guidance: error
             .clone()
@@ -783,6 +1006,7 @@ fn empty_project_result(
 fn aggregate_explanation(
     rolled: &HashMap<String, EvaluationValue>,
     rolled_scores: &HashMap<String, f64>,
+    hard_fail_head: Option<&ProjectFileEntry>,
     entries: &[ProjectFileEntry],
 ) -> String {
     if entries.is_empty() {
@@ -794,14 +1018,13 @@ fn aggregate_explanation(
         .map(|(dim, _)| dim)
         .collect();
     failed.sort();
-    let worst = entries
-        .iter()
-        .min_by(|a, b| {
+    let worst = hard_fail_head.or_else(|| {
+        entries.iter().min_by(|a, b| {
             worst_key(a)
                 .partial_cmp(&worst_key(b))
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(Ordering::Equal)
         })
-        .expect("entries is non-empty");
+    }).expect("entries is non-empty");
     if !failed.is_empty() {
         let dim = failed
             .iter()
@@ -829,8 +1052,16 @@ fn aggregate_explanation(
     )
 }
 
-fn project_guidance(worst_files: &[ProjectFileEntry]) -> String {
-    let Some(worst) = worst_files.first() else {
+fn project_guidance(
+    hard_fail_head: Option<&ProjectFileEntry>,
+    entries: &[ProjectFileEntry],
+) -> String {
+    let score_worst = entries.iter().min_by(|a, b| {
+        worst_key(a)
+            .partial_cmp(&worst_key(b))
+            .unwrap_or(Ordering::Equal)
+    });
+    let Some(worst) = hard_fail_head.or(score_worst) else {
         return "No files were evaluated.".to_string();
     };
     if let Some(warning) = worst.warnings.first() {
@@ -856,17 +1087,22 @@ fn project_guidance(worst_files: &[ProjectFileEntry]) -> String {
 
 fn project_contract(
     overall: LatticeElement,
-    worst_files: &[ProjectFileEntry],
+    hard_fail_head: Option<&ProjectFileEntry>,
+    entries: &[ProjectFileEntry],
     coupling_available: bool,
     warnings: &[String],
     parse_failures: usize,
 ) -> AgentContract {
+    let scan_rows: Vec<&ProjectFileEntry> = hard_fail_head
+        .into_iter()
+        .chain(entries.iter())
+        .collect();
     let prelude = agent_contract_prelude(AgentContractPreludeInput {
         coupling_available,
         warnings,
         parse_failures,
-        grade_capped: worst_files.iter().any(|f| f.grade_capped),
-        active_security_findings: worst_files
+        grade_capped: scan_rows.iter().any(|f| f.grade_capped),
+        active_security_findings: scan_rows
             .iter()
             .any(|f| f.secure_adjusted == Some(false)),
         ..Default::default()
@@ -886,25 +1122,37 @@ fn project_contract(
             verification_gates,
         );
     }
-    let Some(worst) = worst_files.first() else {
+    let Some(head) = hard_fail_head else {
+        let mut next_actions = Vec::new();
+        let next_tool = if overall == LatticeElement::IDEAL {
+            next_actions.push("preserve behavior checks before accepting".into());
+            None
+        } else if let Some(fallback) = entries.first() {
+            next_actions.push(format!(
+                "start with {} using language {}",
+                fallback.filepath, fallback.language
+            ));
+            Some("topos_inspect_code".to_string())
+        } else {
+            None
+        };
         return finish_agent_contract(
             prelude.blocked_by,
             prelude.risk_flags,
-            None,
-            Vec::new(),
+            next_tool,
+            next_actions,
             verification_gates,
         );
     };
-    let mut next_actions = Vec::new();
+    let mut next_actions = vec![format!(
+        "evaluate `{}` with refactor_targets to surface gating targets",
+        head.filepath
+    )];
     let next_tool = if overall == LatticeElement::IDEAL {
         next_actions.push("preserve behavior checks before accepting".into());
         None
     } else {
-        next_actions.push(format!(
-            "start with worst file {} using language {}",
-            worst.filepath, worst.language
-        ));
-        Some("topos_inspect_code".to_string())
+        Some("topos_evaluate_file".to_string())
     };
 
     finish_agent_contract(
@@ -1103,8 +1351,8 @@ mod tests {
         })
     }
 
-    /// `worst_files` ranks the whole project, not the page: an agent that
-    /// pages forward must not see the "worst" list shift under it.
+    /// Named lists and deprecated `worst_files` are page-global: paging must
+    /// not shift them under the agent.
     #[test]
     fn worst_files_are_page_global_and_slim() {
         let first_page = project_result(&project_params(0));
@@ -1125,14 +1373,93 @@ mod tests {
                 .collect::<Vec<_>>(),
             "worst_files must not follow offset/limit"
         );
+        assert_eq!(
+            first_page.hard_fails, second_page.hard_fails,
+            "hard_fails must not follow offset/limit"
+        );
+        assert_eq!(
+            first_page.leaf_composable_zeros, second_page.leaf_composable_zeros,
+            "leaf_composable_zeros must not follow offset/limit"
+        );
+        assert_eq!(
+            first_page.maintainability_giants, second_page.maintainability_giants,
+            "maintainability_giants must not follow offset/limit"
+        );
         // Page 2 does not even contain the worst file, so the compact list
         // is the only place it is named.
         assert!(!second_page.files.iter().any(|f| f.filepath == "worst.py"));
 
         // Slim by construction: identity plus verdict, no row payload.
-        let json = serde_json::to_value(&first_page.worst_files[0]).expect("serialize");
-        let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
-        assert_eq!(keys, vec!["filepath", "lattice_element"]);
+        for list in [
+            &first_page.worst_files,
+            &first_page.hard_fails,
+            &first_page.leaf_composable_zeros,
+            &first_page.maintainability_giants,
+        ] {
+            if let Some(entry) = list.first() {
+                let json = serde_json::to_value(entry).expect("serialize");
+                let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
+                assert_eq!(keys, vec!["filepath", "lattice_element"]);
+            }
+        }
+    }
+
+    fn classified_row(result: ClassificationResult, entry: ProjectFileEntry) -> ScoredProjectRow {
+        ScoredProjectRow { entry, result }
+    }
+
+    fn composable_leaf_result() -> ClassificationResult {
+        let mut result = ClassificationResult::default();
+        result.is_parseable = true;
+        result.raw_metrics.insert("mdg.instability".to_string(), 0.0);
+        result.raw_metrics.insert("mdg.fan_in".to_string(), 0.0);
+        result.raw_metrics.insert("mdg.fan_out".to_string(), 0.0);
+        result
+    }
+
+    #[test]
+    fn leaf_composable_zero_is_excluded_from_hard_fails() {
+        let entry = entry("leaf.py", 95.0);
+        let rows = vec![classified_row(composable_leaf_result(), entry)];
+        let (hard, leaves, giants) = classify_project_rows(&rows);
+        assert!(hard.is_empty(), "structural leaf must not hard-fail");
+        assert_eq!(leaves.len(), 1);
+        assert!(giants.is_empty());
+    }
+
+    #[test]
+    fn hard_fails_surface_simple_gate_failures() {
+        let mut result = ClassificationResult::default();
+        result.is_parseable = true;
+        result.raw_metrics.insert("ast.max_function_complexity".to_string(), 30.0);
+        let entry = entry("fail.py", 10.0);
+        let rows = vec![classified_row(result, entry.clone())];
+        let (hard, leaves, _) = classify_project_rows(&rows);
+        assert_eq!(hard.len(), 1);
+        assert_eq!(hard[0].filepath, "fail.py");
+        assert!(leaves.is_empty());
+        let contract = project_contract(
+            LatticeElement::SLOP,
+            Some(&entry),
+            std::slice::from_ref(&entry),
+            false,
+            &[],
+            0,
+        );
+        assert_eq!(contract.next_tool.as_deref(), Some("topos_evaluate_file"));
+    }
+
+    #[test]
+    fn maintainability_giants_rank_advisory_cyclomatic() {
+        let mut result = ClassificationResult::default();
+        result.is_parseable = true;
+        result.raw_metrics.insert("cfg.cyclomatic".to_string(), SIMPLE.max_cyclomatic + 5.0);
+        let entry = entry("big.py", 90.0);
+        let rows = vec![classified_row(result, entry)];
+        let (hard, _, giants) = classify_project_rows(&rows);
+        assert!(hard.is_empty());
+        assert_eq!(giants.len(), 1);
+        assert_eq!(giants[0].filepath, "big.py");
     }
 
     /// The guidance and contract still read the *full* worst rows, which

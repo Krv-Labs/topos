@@ -1073,7 +1073,7 @@ pub struct ProjectFileEntry {
 /// Deliberately just the identity and the verdict: the full row for any of
 /// these files is already in `files` (or one page away), so repeating the
 /// whole `ProjectFileEntry` here duplicated the page's largest rows.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct WorstFileEntry {
     pub filepath: String,
     pub lattice_element: LatticeElement,
@@ -1104,11 +1104,22 @@ pub struct ProjectEvaluationResult {
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
     pub worst_file_verdict: Option<LatticeElement>,
-    /// The three lowest-scoring rows in the *whole* project, by the same
-    /// order `files` is sorted in: ascending minimum score across the
-    /// measured dimensions. Page-global — unaffected by `offset`/`limit`,
-    /// so it is identical on every page. This ranks by score alone; it is
-    /// not an estimate of effort, payoff, or fix order.
+    /// Files failing at least one gating gate (`GATE_SPECS` with
+    /// `gates_achieved: true`), excluding structural leaf composable zeros.
+    /// Page-global — unaffected by `offset`/`limit`. Prefer this over
+    /// `worst_files` for fix order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hard_fails: Vec<WorstFileEntry>,
+    /// Leaf modules at `mdg.instability = 0.0` with no coupling signal.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub leaf_composable_zeros: Vec<WorstFileEntry>,
+    /// High advisory cyclomatic complexity with all gating gates passing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub maintainability_giants: Vec<WorstFileEntry>,
+    /// **Deprecated** — kept for one release; use `hard_fails` /
+    /// `maintainability_giants` instead. The three lowest-scoring rows by
+    /// ascending minimum score across dimensions. Page-global — unaffected
+    /// by `offset`/`limit`. Not an estimate of effort, payoff, or fix order.
     pub worst_files: Vec<WorstFileEntry>,
     pub guidance: String,
     pub priority: String,

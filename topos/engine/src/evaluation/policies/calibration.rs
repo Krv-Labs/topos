@@ -125,22 +125,19 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
 pub struct NavigablePolicyThresholds {
     /// Worst-function Semantic Compositional Divergence a file may carry.
     ///
-    /// PROVISIONAL: a first-pass estimate, not yet run through the corpus
-    /// ECDF calibration the SIMPLE and SECURE constants received. Roughly
-    /// "a function may nest about four levels deep before an agent starts
-    /// paying for it" — a 4-deep single-child chain scores 4.16, and
-    /// realistic nesting with fan-out reaches this bound around the same
-    /// depth. Must be replaced with a calibrated value before v0.5.0 is
-    /// tagged; see the release checklist.
+    /// Calibrated 2026-08-06 on Topos's own Rust sources (176 files):
+    /// p50 `0.69`, p95 `5.65`, p99 `8.62`, max `12.19`. Gate set at the
+    /// p95 ceiling (`6.0`), matching the percentile target used for SIMPLE
+    /// and SECURE.
     pub max_function_divergence: f64,
-    /// Normalization (score only): divergence at which the score floors
-    /// at zero. Also PROVISIONAL.
+    /// Normalization (score only): divergence at which the score floors at
+    /// zero. Set between p99 and max so reported scores discriminate.
     pub divergence_cap: f64,
 }
 
 pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
-    max_function_divergence: 8.0,
-    divergence_cap: 20.0,
+    max_function_divergence: 6.0,
+    divergence_cap: 10.0,
 };
 
 /// Structural test-coverage policy (outside `Ω`).
@@ -176,8 +173,8 @@ pub fn score_floor(generator: Generator) -> f64 {
         Generator::Simple => 0.40,
         Generator::Composable => 0.80,
         Generator::Secure => 1.00,
-        // PROVISIONAL, matching `Generator::Simple` — the other AST-local
-        // pillar — until the divergence corpus says otherwise.
+        // Matches `Generator::Simple` — both are AST-local pillars with
+        // similar score distributions on the calibration corpus.
         Generator::Navigable => 0.40,
     }
 }

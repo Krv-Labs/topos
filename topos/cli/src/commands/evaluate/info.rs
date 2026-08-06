@@ -35,7 +35,7 @@ pub(crate) fn show_evaluation_info(
     files: &[PathBuf],
     results: &[ClassificationResult],
     languages: &[String],
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
 ) -> Result<(), String> {
     let ranked = ranked_file_indices(files, results, 5);
     show_ranked_info(
@@ -87,7 +87,7 @@ fn show_ranked_info(
     results: &[ClassificationResult],
     ranked: &[usize],
     languages: &[String],
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
     kind: SelectorKind<'_>,
 ) -> Result<(), String> {
     if can_browse_evaluation_info(ranked.len()) {
@@ -146,7 +146,7 @@ fn browse_files(
     results: &[ClassificationResult],
     ranked: &[usize],
     languages: &[String],
-    ranking: Option<&[Generator; 3]>,
+    ranking: Option<&[Generator; RANKING_LEN]>,
     kind: SelectorKind<'_>,
 ) -> Result<(), String> {
     let term = Term::stderr();

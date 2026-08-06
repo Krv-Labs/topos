@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-> **The NAVIGABLE threshold is PROVISIONAL.** `max_function_divergence = 8.0` and the `0.40` score floor are first-pass estimates that have **not** been through the corpus ECDF calibration the SIMPLE and SECURE constants received. On Topos's own 157 Rust files the distribution is median `0.69`, p75 `2.08`, p90 `4.56`, p95 `5.98` — so `8.0` currently sits near p97 and fails 2.5% of files. A calibration run must set the real value before this release is tagged.
+> **NAVIGABLE thresholds calibrated** on Topos's own Rust sources (176 files, 2026-08-06): `max_function_divergence = 6.0` (p95 `5.65`), `divergence_cap = 10.0` (between p99 `8.62` and max `12.19`).
 
 Docs figures under `docs/source/_static/figures/topos-lattice*.svg` still depict the three-generator sub-cube; captions now say so explicitly, but the artwork has not been redrawn for 16 elements.
 

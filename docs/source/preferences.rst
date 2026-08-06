@@ -169,8 +169,8 @@ How to Set Preferences
 For a one-off CLI evaluation, pass the complete ranking as a comma-separated
 value. Persist project defaults with ``topos config``::
 
-   topos evaluate src/ -r --priority composable,secure,simple
-   topos config set --priority composable,secure,simple
+   topos evaluate src/ -r --priority composable,secure,simple,navigable
+   topos config set --priority composable,secure,simple,navigable
 
 In MCP tools, pass ``preferences.ranking``:
 
@@ -179,14 +179,14 @@ In MCP tools, pass ``preferences.ranking``:
    {
      "filepath": "src/server.rs",
      "preferences": {
-       "ranking": ["composable", "secure", "simple"]
+       "ranking": ["composable", "secure", "simple", "navigable"]
      }
    }
 
-Use ``composable,secure,simple`` for library surfaces where coupling matters
-most. Use ``secure,simple,composable`` for files handling untrusted input. Use
-``simple,composable,secure`` for leaf implementation files where local
-complexity is the main source of drag.
+Use ``composable,secure,simple,navigable`` for library surfaces where coupling matters
+most. Use ``secure,simple,navigable,composable`` for files handling untrusted
+input. Use ``simple,navigable,secure,composable`` for leaf implementation files
+where local complexity is the main source of drag.
 
 Preferences vs. Priority
 ------------------------

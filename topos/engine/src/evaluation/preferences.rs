@@ -21,17 +21,17 @@
 //! score(v) = Σᵢ 2^(n − i) · ⟦gᵢ satisfied by v⟧
 //! ```
 //!
-//! For the default ranking `(SIMPLE, COMPOSABLE, SECURE, NAVIGABLE)`
+//! For the default ranking `(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)`
 //! (most → least preferred), that's weights `8 / 4 / 2 / 1`:
 //!
 //! ```text
 //! IDEAL                       = 8 + 4 + 2 + 1 = 15
-//! SIMPLE_COMPOSABLE_SECURE    = 8 + 4 + 2     = 14
+//! SIMPLE_SECURE_NAVIGABLE     = 8 + 4 + 2     = 14
 //! SIMPLE_COMPOSABLE_NAVIGABLE = 8 + 4     + 1 = 13
-//! SIMPLE_COMPOSABLE           = 8 + 4         = 12  <- fallback ("ideal ∩")
-//! SIMPLE_SECURE_NAVIGABLE     = 8     + 2 + 1 = 11
+//! SIMPLE_NAVIGABLE            = 8 + 4         = 12  <- fallback ("ideal ∩")
+//! SIMPLE_COMPOSABLE_SECURE    = 8     + 2 + 1 = 11
 //! ...
-//! NAVIGABLE                   =             1 =  1
+//! COMPOSABLE                  =             1 =  1
 //! SLOP                                        =  0
 //! ```
 //!
@@ -50,8 +50,8 @@
 //!    Heyting *meet* of the top-two ranked generators (the "ideal
 //!    intersection"): guarantee the two pillars the operator cares most
 //!    about, concede the rest. When `IDEAL` plateaus after a few refactor
-//!    iterations, the agent diverts here. For ranking `(SIMPLE, COMPOSABLE,
-//!    SECURE, NAVIGABLE)` the fallback is `SIMPLE_COMPOSABLE`; for
+//!    iterations, the agent diverts here. For the default ranking `(SIMPLE,
+//!    NAVIGABLE, SECURE, COMPOSABLE)` the fallback is `SIMPLE_NAVIGABLE`; for
 //!    `(COMPOSABLE, SECURE, SIMPLE, NAVIGABLE)` it is `COMPOSABLE_SECURE`.
 //!
 //!    Note this is *not* the element directly below `IDEAL` in the walk —
@@ -64,9 +64,8 @@
 //! [`UserPreferences::relaxation_walk`] returns the descending sequence of
 //! verdicts from the aspirational target down to (but not including) the
 //! current verdict — the **targeted relaxation walk**. An agent uses it to
-//! pick the next achievable goal one step at a time; the fallback target
-//! sits exactly one step below `IDEAL` in this walk, which is what makes it
-//! the natural divert point when `IDEAL` plateaus.
+//! pick the next achievable goal one step at a time; the fallback target is
+//! the point that preserves the top two preferences when `IDEAL` plateaus.
 //! [`UserPreferences::next_step`] takes the bottom of the walk (the
 //! smallest achievable improvement); [`UserPreferences::progress`] reports
 //! fractional progress toward the aspirational target.
@@ -200,9 +199,9 @@ impl UserPreferences {
     /// The pragmatic divert-point if `IDEAL` plateaus.
     ///
     /// This is the meet of the top-two ranked generators — the "ideal
-    /// intersection". For ranking `(COMPOSABLE, SECURE, SIMPLE)` this is
-    /// `COMPOSABLE_SECURE`; for `(SIMPLE, COMPOSABLE, SECURE)` it is
-    /// `SIMPLE_COMPOSABLE`.
+    /// intersection". For ranking `(COMPOSABLE, SECURE, SIMPLE, NAVIGABLE)`
+    /// this is `COMPOSABLE_SECURE`; for the default ranking `(SIMPLE,
+    /// NAVIGABLE, SECURE, COMPOSABLE)` it is `SIMPLE_NAVIGABLE`.
     pub fn fallback_target(&self) -> EvaluationValue {
         verdict_from_generators(&self.ranking[..2])
     }
@@ -219,9 +218,9 @@ impl UserPreferences {
     /// Returned in descending preference order, starting at the
     /// aspirational target (default `IDEAL`) and ending one step above
     /// `current`. The **second** element of the walk (when `current` is
-    /// `SLOP`, or when `current` is `None`) is the
-    /// [`UserPreferences::fallback_target`] — the natural divert point when
-    /// `IDEAL` proves unreachable.
+    /// `SLOP`, or when `current` is `None`) concedes only the least-preferred
+    /// generator. [`UserPreferences::fallback_target`] appears later in the
+    /// walk and preserves the top two generators.
     ///
     /// `current: None` returns the full descending walk down to (and
     /// including) `SLOP`. Empty when `current` already meets or exceeds the
@@ -286,10 +285,9 @@ impl UserPreferences {
 /// last means the relaxation walk concedes it first, which is the right
 /// thing to concede when `coupling_available` is `false`.
 ///
-/// Note this puts `NAVIGABLE` second while its thresholds are still
-/// `PROVISIONAL` (see issue #282) — an agent will chase it early, so the
-/// calibration matters more under this ranking than it would if
-/// `NAVIGABLE` were conceded first.
+/// NAVIGABLE's calibrated per-function divergence gate is `6.0`, so an
+/// agent can act on this ranking against the same fixed policy used by the
+/// scorer.
 pub fn default_preferences() -> UserPreferences {
     UserPreferences::new([
         Generator::Simple,

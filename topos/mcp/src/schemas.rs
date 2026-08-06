@@ -1377,6 +1377,20 @@ pub struct GenerateGraphifyResult {
 mod tests {
     use super::*;
 
+    #[test]
+    fn lattice_wire_values_are_complete_unique_and_positionally_aligned() {
+        let mut seen = std::collections::HashSet::new();
+
+        assert_eq!(LatticeElement::ALL.len(), OMEGA_SIZE);
+        assert_eq!(EvaluationValue::ALL.len(), OMEGA_SIZE);
+        for (index, lattice) in LatticeElement::ALL.into_iter().enumerate() {
+            let value = EvaluationValue::ALL[index];
+            assert!(seen.insert(lattice), "duplicate wire value at {index}");
+            assert_eq!(str_to_lattice(lattice), value);
+            assert_eq!(lattice_to_str(value), lattice);
+        }
+    }
+
     /// Task-C wire default: an agent that asks for nothing still gets the
     /// ranked spans its next edit needs, and `0` still means off.
     #[test]

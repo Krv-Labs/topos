@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - Unreleased
 
 ### Added
 
+- **MCP Registry publishing** now runs after a successful PyPI release using GitHub OIDC; the publisher binary is version-pinned and checksum-verified before receiving publication credentials.
+- **Gate-first project ranking lists** add `hard_fails`, `leaf_composable_zeros`, and `maintainability_giants`; `worst_files` remains deprecated for one release. Agent guidance starts from the first actual gate failure rather than a score-only ordering.
+- **Full LadybugDB ingestion** discovers every node-label table, loads real node properties, and preserves `confidence` and `reason` on `CodeRelation` edges.
 - **NAVIGABLE — a fourth evaluation pillar for agentic cognitive load.** Measures how expensive a file is for an LLM agent to read, reason over, and safely change, via **Semantic Compositional Divergence**: `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside each function, gated on the per-function maximum (`nav.max_function_divergence`). Computed from the same UAST as SIMPLE, so it needs no external tooling and is always available across all six supported languages.
 
   NAVIGABLE is deliberately orthogonal to SIMPLE: SIMPLE counts *branches*, NAVIGABLE measures *nesting*. A flat function scores `0.0` no matter how many branches it has, while the same branches nested four deep score badly. Nesting is what keeps predicting LLM task failure once code length is controlled for. Ternaries and short-circuit boolean operators are excluded — expression-level branching opens no block, and counting it would re-measure SIMPLE.
@@ -19,8 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`navigable` accepted everywhere a pillar is named** — `--priority navigable`, `.topos.toml` rankings, the `topos config` interactive selector, and MCP `preferences.ranking`.
 
+### Fixed
+
+- **CFG metric correctness** restores nesting depth at branch joins, excludes module preambles such as Go `package` clauses from implicit callables, and aligns equivalent fixtures across supported languages. `cfg.nesting_depth` remains diagnostic and `cfg.cyclomatic` remains advisory.
+- **CFG switch and try/catch/finally semantics** route switch `break` to the match join, model handlers as exception targets, and ensure normal, return, and throw paths traverse nested `finally` blocks correctly.
+- **C++ declaration and GitNexus fingerprint parity** maps header prototypes and pure-virtual declarations as functions and writes fingerprints beside the resolved branch-scoped graph store.
+- **CLI four-pillar ranking compatibility** uses `RANKING_LEN` throughout the info browser so NAVIGABLE rankings compile and display consistently.
+
 ### Changed
 
+- **Agent contracts share one prelude** for composability, parse, grade-cap, and security signals across evaluate, assess, project, and depgraph paths. The project contract keeps verification gates even when no `worst_files` rows exist.
 - **`Ω` extended from 8 to 16 elements.** `G_qual` gains a fourth generator, so the subobject classifier is now a 4-cube. Medal tiers band on the count of satisfied pillars: 4 → PLATINUM, 3 → GOLD, 2 → SILVER, 1 → BRONZE, 0 → SLOP. `Omega`'s lattice operations were already generic over the cover relation and needed no change.
 - **Preference weights are now `8 / 4 / 2 / 1`** down the ranking, preserving the strict lexicographic order.
 - **Default ranking is now `SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE`.** The two pillars an agent can always compute and always fix inside one file rank highest — both are UAST-derived and need no external tooling. `SECURE` follows (local, but zero-tolerance, so a blocker rather than a gradient). `COMPOSABLE` ranks **last** because it is the least locally actionable: it requires an external GitNexus graph, degrades to unavailable without one, and describes a module's place in the whole dependency graph rather than the file in front of you — so it is the right thing for a relaxation walk to concede first when `coupling_available` is `false`. Consequences: the default `fallback_target` is `SIMPLE_NAVIGABLE` (was `SIMPLE_COMPOSABLE`), one step below `IDEAL` is `SIMPLE_SECURE_NAVIGABLE`, and `next_step` from `SLOP` is `COMPOSABLE`. The published order table in `topos://docs/preferences` changed with it.
@@ -30,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Parse-blocker code normalized to `parse_failures`.** Single-file `agent_contract.blocked_by` and `risk_flags` previously emitted singular `parse_failure`; field names are unchanged.
+- **Project evaluation adds three ranking-list fields** (`hard_fails`, `leaf_composable_zeros`, and `maintainability_giants`) and deprecates `worst_files` for one release.
 - **`IDEAL` now requires all four pillars.** The verdict formerly named `IDEAL` — the top of the three-generator algebra — is now `SIMPLE_COMPOSABLE_SECURE`, and it bands as GOLD rather than the top tier. **CI pinned to `IDEAL` will start failing** on files that pass the original three pillars but fail NAVIGABLE.
 - **Medal tiers re-grade in both directions**, since the banding is now over four pillars.
 - **`LatticeElement` gains 8 variants** on the MCP wire — a JSON-schema change for clients.
@@ -41,6 +54,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **NAVIGABLE thresholds calibrated** on Topos's own Rust sources (176 files, 2026-08-06): `max_function_divergence = 6.0` (p95 `5.65`), `divergence_cap = 10.0` (between p99 `8.62` and max `12.19`).
 
 Docs figures under `docs/source/_static/figures/topos-lattice*.svg` still depict the three-generator sub-cube; captions now say so explicitly, but the artwork has not been redrawn for 16 elements.
+
+## [0.4.4] - 2026-08-04
+
+### Added
+
+- **`topos install` / `topos uninstall` / `topos status` for agent harnesses** ([#256](https://github.com/Krv-Labs/topos/issues/256), [#271](https://github.com/Krv-Labs/topos/pull/271), [#278](https://github.com/Krv-Labs/topos/pull/278)) — registers a resolvable MCP server entry across supported harnesses with preview, confirmation, dry-run, backup, and leave-no-trace uninstall behavior. See [`docs/decisions/cli-harness-install.md`](docs/decisions/cli-harness-install.md).
+- **`--gitnexus-dir` / `gitnexus_dir` as COMPOSABLE project root** ([#258](https://github.com/Krv-Labs/topos/issues/258), [#270](https://github.com/Krv-Labs/topos/pull/270)) — derives freshness and generation from the graph store's parent so nested or absolute overrides analyze the intended project.
+
+### Fixed
+
+- **Evaluate summary floor and COMPOSABLE notices** — keeps setup output out of JSON, presents recoverable graph misses consistently, and reports a clean SLOP floor.
+- **`topos evaluate` language inference for named files** ([#289](https://github.com/Krv-Labs/topos/issues/289)) — infers every supported suffix unless `--language` is explicitly supplied as a filter.
+- **`cfg.nesting_depth` loop handling** ([#288](https://github.com/Krv-Labs/topos/issues/288)) — computes static depth on the forward CFG without loop back-edge inflation.
+- **First-run COMPOSABLE generation with `--gitnexus-dir`** ([#287](https://github.com/Krv-Labs/topos/issues/287)) — treats an in-root store that does not exist yet as missing and eligible for generation.
+- **Graphify edge loading and bounded reads** ([#214](https://github.com/Krv-Labs/topos/issues/214), [#268](https://github.com/Krv-Labs/topos/pull/268)) — supports `links` or `edges` and rejects oversized graph files before parsing.
+- **Root containment for symlinks and `..`** ([#215](https://github.com/Krv-Labs/topos/issues/215), [#269](https://github.com/Krv-Labs/topos/pull/269)) — canonicalizes existing path prefixes before accepting missing leaves.
+- **MCP registry metadata no longer ships a broken PyPI index URL** ([#276](https://github.com/Krv-Labs/topos/pull/276), [#277](https://github.com/Krv-Labs/topos/pull/277)) — drops duplicate index arguments and adds a CI invariant.
+- **Rust locals named `raw` parse again** ([#285](https://github.com/Krv-Labs/topos/issues/285)) by upgrading `tree-sitter-rust`.
+
+### Changed
+
+- **Document JS/TS `switch_statement` → `MatchStmt` as intentional** ([#213](https://github.com/Krv-Labs/topos/issues/213), [#266](https://github.com/Krv-Labs/topos/pull/266)).
+- **Release tags must match Cargo and wheel versions** ([#217](https://github.com/Krv-Labs/topos/issues/217), [#267](https://github.com/Krv-Labs/topos/pull/267)).
+
+### Breaking
+
+- **Harness install targets MCP registration only** ([#278](https://github.com/Krv-Labs/topos/pull/278)); combined skill installation is replaced by separate Cursor and VS Code MCP targets.
 
 ## [0.4.3] - 2026-07-28
 

@@ -11,7 +11,8 @@ use super::models::{AttributeValue, UASTNode};
 /// kind, so both map structurally (by node type, not callee identifier)
 /// to plain expression statements -- consistent with how `panic(...)`
 /// stays an ordinary CallExpr below.
-pub fn map_node_kind(kind: &str) -> &'static str {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    let kind = node.kind();
     const NODE_KIND_TABLE: &[(&str, &str)] = &[
         ("function_declaration", "FunctionDecl"),
         ("method_declaration", "MethodDecl"),

@@ -110,13 +110,11 @@ reports the offending functions worst-first with real line spans, so the
 failure becomes an actionable refactor target: extract the deepest nested
 block into a top-level helper.
 
-.. warning::
-   The NAVIGABLE threshold is **provisional**. It has not yet been through
-   the corpus ECDF calibration the SIMPLE and SECURE constants received. On
-   Topos's own 157 Rust files the divergence distribution is median
-   ``0.69``, p75 ``2.08``, p90 ``4.56``, p95 ``5.98`` — so the current gate
-   of ``8.0`` sits near p97 and fails about 2.5% of files. Expect this
-   constant to move.
+.. note::
+   The NAVIGABLE threshold is calibrated from an ECDF over Topos's 176 Rust
+   source files. The observed p95 was ``5.65``, p99 was ``8.62``, and the
+   maximum was ``12.19``; the achieved gate is ``6.0`` and the score cap is
+   ``10.0``.
 
 Scoring and Manager Priorities
 ------------------------------
@@ -143,8 +141,8 @@ the "Quality Medals" reflect empirical software engineering standards.
      - ``1.00``
      - Zero ``dangerous_calls`` AND zero ``taint_flows``
    * - **NAVIGABLE**
-     - ``0.40`` (provisional)
-     - ``max_function_divergence <= 8.0`` (provisional)
+     - ``0.40``
+     - ``max_function_divergence <= 6.0``
 
 Scores are reported as percentages (0–100%) in all CLI and MCP output.
 Note that while the thresholds are used for score-floor aggregation, the

@@ -1198,6 +1198,7 @@ mod tests {
         if !model.is_parseable {
             let contract = model.agent_contract.expect("contract present");
             assert!(contract.blocked_by.contains(&"parse_failures".to_string()));
+            assert!(contract.risk_flags.contains(&"parse_failures".to_string()));
         }
     }
 }

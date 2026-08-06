@@ -109,7 +109,7 @@ is always available.
 
 | Key | What it measures | Gate |
 |---|---|---|
-| `nav.max_function_divergence` | Worst function's Semantic Compositional Divergence — `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside it. | **≤ 8.0** (achieved gate) |
+| `nav.max_function_divergence` | Worst function's Semantic Compositional Divergence — `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside it. | **≤ 6.0** (achieved gate) |
 
 **What this is for.** Once code length is controlled for, classical
 complexity metrics stop predicting LLM task accuracy but *nesting depth*
@@ -129,7 +129,7 @@ Two consequences of the formula are load-bearing:
 
 Like `ast.max_function_complexity`, the gate is the **per-function max**
 rather than a file-wide sum — a long file of short flat functions must not
-fail for its length. `Φ_NAVIGABLE` decays linearly to a cap of 20.0 for
+fail for its length. `Φ_NAVIGABLE` decays linearly to a cap of 10.0 for
 the reported score.
 
 When the gate fails, `metric_locations["nav.max_function_divergence"]`
@@ -137,12 +137,10 @@ carries the offending functions worst-first with real spans, so the failure
 becomes a `refactor_target`. The fix is `extract_helper`: lift the deepest
 nested block into a top-level function.
 
-> **PROVISIONAL calibration.** The `8.0` gate and `20.0` score cap are
-> first-pass estimates, not yet run through the corpus ECDF calibration the
-> SIMPLE and SECURE constants received. On Topos's own 157 Rust files the
-> distribution is median `0.69`, p75 `2.08`, p90 `4.56`, p95 `5.98` — so
-> `8.0` currently sits near p97 and fails 2.5% of files. Expect this
-> constant to move.
+> **Calibration.** The `6.0` gate is the p95 boundary from an ECDF over
+> Topos's 176 Rust source files; the observed p95 was `5.65`, p99 was `8.62`,
+> and the maximum was `12.19`. The `10.0` score cap keeps the tail useful
+> without allowing extreme outliers to dominate the score.
 
 ## Score floors (alternate path)
 
@@ -155,7 +153,7 @@ When callers already hold normalized scores without re-running a `Φᵢ`, the
 | SIMPLE | 0.40 |
 | COMPOSABLE | 0.80 |
 | SECURE | 1.00 |
-| NAVIGABLE | 0.40 (PROVISIONAL) |
+| NAVIGABLE | 0.40 |
 
 The live `CharacteristicMorphism` path uses each `Φᵢ`'s `ScoredDecision.achieved`
 (the AND of that generator's *gating* raw metrics — advisory ones excluded),

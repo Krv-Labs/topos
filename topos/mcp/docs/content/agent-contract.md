@@ -45,9 +45,9 @@ Evaluation, project, and assessment results may include `agent_contract`:
 
 - `next_tool` — the next Topos tool to call, if Topos can identify one.
 - `next_actions` — concise outcome-focused actions.
-- `blocked_by` — missing preconditions such as `missing_gitnexus_dir` (no
-  graph) or `stale_gitnexus_dir` (graph predates the latest commit or a source
-  file was modified after generation). `topos_evaluate_file`/
+- `blocked_by` — missing preconditions such as `parse_failures`,
+  `missing_gitnexus_dir` (no graph), or `stale_gitnexus_dir` (graph predates
+  the latest commit or a source file was modified after generation). `topos_evaluate_file`/
   `topos_evaluate_project` generate/refresh the graph automatically before
   scoring, so these now only surface when that generation itself couldn't
   happen — GitNexus not installed, or the `gitnexus analyze` run failed;
@@ -56,8 +56,12 @@ Evaluation, project, and assessment results may include `agent_contract`:
   rather than generating. A not-yet-created in-root override is treated as
   missing and is auto-generated on evaluate (same as the default store path).
 - `verification_gates` — checks required before accepting a patch.
-- `risk_flags` — compact labels such as `grade_capped`,
+- `risk_flags` — compact labels such as `parse_failures`, `grade_capped`,
   `active_security_findings`, or `metric_gaming_risk`.
+
+In v0.5.0, the single-file parse code changed from singular `parse_failure`
+to `parse_failures`, matching project evaluation. Field names remain
+`blocked_by` and `risk_flags`; only the code value changed.
 
 `next_tool`/`next_actions` never contradict `blocked_by`: when ranked refactor
 targets are returned alongside a setup blocker, `next_actions` carries both

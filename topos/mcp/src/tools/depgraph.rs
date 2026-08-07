@@ -382,7 +382,8 @@ impl ToposServer {
             }
         }
         if !resolved_directory.is_dir() {
-            let model = generate_error(format!("Not a directory: {}", resolved_directory.display()));
+            let model =
+                generate_error(format!("Not a directory: {}", resolved_directory.display()));
             let md = render_generate_md(&model);
             return to_tool_result(&model, md);
         }

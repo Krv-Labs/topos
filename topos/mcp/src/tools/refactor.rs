@@ -455,7 +455,8 @@ mod graphify_dispatch_tests {
             .to_string();
         std::fs::write(
             dir.join("graph.json"),
-            format!(r#"{{
+            format!(
+                r#"{{
                 "nodes": [
                     {{"id": "a", "label": "a()", "source_file": "{filepath}"}},
                     {{"id": "b", "label": "b()", "source_file": "src/b.rs"}}
@@ -464,7 +465,8 @@ mod graphify_dispatch_tests {
                     {{"source": "a", "target": "b", "confidence": "INFERRED",
                      "relation": "calls"}}
                 ]
-            }}"#),
+            }}"#
+            ),
         )
         .unwrap();
         let (model, _) = refactor_graphify(&params(&filepath, &dir.to_string_lossy()));

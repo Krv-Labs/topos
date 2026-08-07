@@ -53,7 +53,10 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     let resolved = if requested.is_absolute() {
         requested
     } else {
-        configured_root.as_ref().expect("checked above").join(requested)
+        configured_root
+            .as_ref()
+            .expect("checked above")
+            .join(requested)
     }
     .canonicalize()
     .map_err(|e| format!("Path is not readable: {e}"))?;
@@ -71,7 +74,9 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     let start = if resolved.is_dir() {
         resolved.as_path()
     } else {
-        resolved.parent().ok_or_else(|| "Path has no parent directory".to_string())?
+        resolved
+            .parent()
+            .ok_or_else(|| "Path has no parent directory".to_string())?
     };
     let project_root = auto_detect_root(start).ok_or_else(|| {
         format!(

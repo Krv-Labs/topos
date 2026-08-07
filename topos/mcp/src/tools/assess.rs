@@ -1369,7 +1369,12 @@ impl ToposServer {
             .as_ref()
             .and_then(|p| p.to_preferences().ok());
         let Some(first_path) = params.files.first() else {
-            let model = changeset_error(priority, priority_source, &params.baseline_ref, "Provide at least one file.".to_string());
+            let model = changeset_error(
+                priority,
+                priority_source,
+                &params.baseline_ref,
+                "Provide at least one file.".to_string(),
+            );
             return to_tool_result(&model, render_changeset_md(&model));
         };
         let (_resolved_path, file_root) = match resolve_project_path(first_path) {
@@ -1410,7 +1415,8 @@ impl ToposServer {
                     return to_tool_result(&model, render_changeset_md(&model));
                 }
                 Err(err) => {
-                    let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
+                    let model =
+                        changeset_error(priority, priority_source, &params.baseline_ref, err);
                     return to_tool_result(&model, render_changeset_md(&model));
                 }
             }

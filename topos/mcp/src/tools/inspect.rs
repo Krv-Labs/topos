@@ -27,7 +27,7 @@ use crate::schemas::{
     resolve_priority, EvaluationResult, FunctionEntry, InspectCodeInput, InspectionResult,
     PrioritySource,
 };
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{read_safe_utf8_file, resolve_project_path, resolve_within_root};
 use crate::server::ToposServer;
 use crate::tools::evaluate::overlay_opts;
 
@@ -123,7 +123,7 @@ fn classify_inspection(
             warnings: Vec::new(),
         });
     };
-    let file_root = resolve_file_root()?;
+    let (_resolved, file_root) = resolve_project_path(&path.to_string_lossy())?;
     let project_root =
         resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
     // Resolved to an absolute path against `file_root` — must be used

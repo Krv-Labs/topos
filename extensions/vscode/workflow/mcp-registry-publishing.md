@@ -226,8 +226,9 @@ icon used by `.mcp/server.json`.
   change.
 - VS Code's `@mcp` gallery is directly populated by the official MCP Registry. No manual inclusion request is required.
 - `@mcp` search requires `chat.mcp.gallery.enabled`.
-- Topos file access depends on the server starting from a workspace root or
-  having `TOPOS_MCP_FILE_ROOT` set.
+- Topos file and project tools derive their project from the absolute workspace
+  path supplied by the caller. `TOPOS_MCP_FILE_ROOT` is only an optional
+  maximum filesystem boundary for deployments that need one.
 - Raw GitHub release binaries are not enough for the current registry path unless
   they are packaged as MCPB artifacts.
 - Glama may show the GitHub namespace avatar until its own server profile or

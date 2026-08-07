@@ -32,7 +32,7 @@ use crate::schemas::{
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
     SecurityFinding, WorstFileEntry,
 };
-use crate::security::{read_resolved_utf8, resolve_file_root, resolve_within_root};
+use crate::security::{read_resolved_utf8, resolve_project_path};
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -193,8 +193,8 @@ impl ToposServer {
 
 fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-    let resolved = match resolve_within_root(&params.filepath) {
-        Ok(path) => path,
+    let (resolved, file_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             return err_eval(
                 "Access denied / path error",
@@ -213,17 +213,6 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         );
     }
 
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
-        Err(err) => {
-            return err_eval(
-                "Access denied / path error",
-                Priority::Simple,
-                priority_source,
-                err,
-            )
-        }
-    };
     let project_root =
         resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
     // Resolved to an absolute path against `file_root` — must be used below
@@ -323,8 +312,8 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         }
     };
 
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_requested_path, file_root) = match resolve_project_path(&params.path) {
+        Ok(context) => context,
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
             let md = render_project_md(&model);
@@ -533,7 +522,7 @@ fn evaluate_single_file(
 fn validate_and_collect_project(
     params: &EvaluateProjectInput,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let resolved_root = resolve_within_root(&params.path)?;
+    let (resolved_root, _) = resolve_project_path(&params.path)?;
     if !resolved_root.is_dir() {
         return Err(format!(
             "Path is not a directory: {}",

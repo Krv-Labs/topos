@@ -127,13 +127,14 @@ which never affects medals. See `topos://docs/workflows` § Advisory refactoring
 - COMPOSABLE is scored automatically — `topos_evaluate_file`/
   `topos_evaluate_project` detect and generate/refresh `.gitnexus` by
   default (`no_composable: true` to skip). When `gitnexus_dir` /
-  `--gitnexus-dir` is unset, the project root is the MCP **file root**
-  (`TOPOS_MCP_FILE_ROOT`, else server cwd) or the CLI **process cwd**.
+  `--gitnexus-dir` is unset, the project root is derived from the MCP tool's
+  absolute file or directory path (or the CLI **process cwd**).
   When the override is set, the COMPOSABLE project root is the **parent
   of that store path** (typically the parent of `.gitnexus`): freshness
   and `gitnexus analyze` target that derived root, not cwd/file-root.
   MCP still requires the store (and derived root) to stay inside the
-  file root; the CLI allows absolute overrides outside cwd. If GitNexus
+  derived project root (and any optional `TOPOS_MCP_FILE_ROOT` boundary);
+  the CLI allows absolute overrides outside cwd. If GitNexus
   isn't installed or generation fails, any verdict containing
   COMPOSABLE, including `IDEAL`, is unreachable — check `warnings` for
   why. `topos_depgraph_status` gives a read-only diagnosis without

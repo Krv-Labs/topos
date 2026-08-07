@@ -203,8 +203,10 @@ Choose an agent path
       ``topos depgraph generate`` forces a rebuild.
 
    Root override
-      If the MCP host starts Topos outside the repository, set the trusted root
-      explicitly:
+      MCP file and project tools accept an absolute workspace path and derive
+      their project root from it, so normal editor installs need no root
+      configuration. Set a trusted maximum boundary only for containers or
+      centrally sandboxed deployments:
 
       .. code-block:: json
 

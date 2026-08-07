@@ -24,6 +24,8 @@ UI, or run ``topos install`` (below) to register it directly.
 - `Glama MCP server page <https://glama.ai/mcp/servers/Krv-Labs/topos>`_
 - `ClawHub skill <https://clawhub.ai/krv-labs/skills/topos>`_ (OpenClaw):
   ``openclaw skills install @Krv-Labs/topos``
+- `Agent Plugins <https://agent-plugins.org/>`_ package at ``agent-plugin/``
+  (``plugin.json`` + skill + ``mcp.json``; requires ``topos`` on ``PATH``)
 
 MCP Setup
 ---------

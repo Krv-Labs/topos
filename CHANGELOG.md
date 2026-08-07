@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
+
 ## [0.4.4] - 2026-08-04
 
 ### Added

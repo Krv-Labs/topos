@@ -4,6 +4,7 @@ use std::path::Path;
 
 use console::Style;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
+use topos_engine::core::omega::Generator;
 use topos_engine::evaluation::suggestions::Suggestion;
 use topos_mcp::schemas::RefactorTarget;
 
@@ -228,7 +229,8 @@ fn push_wrapped(lines: &mut Vec<String>, prefix: &str, text: &str, width: usize)
 }
 
 fn weakest_dimension(result: &ClassificationResult) -> (&'static str, f64) {
-    ["simple", "composable", "secure"]
+    Generator::ALL
+        .map(Generator::as_str)
         .into_iter()
         .filter_map(|pillar| result.scores.get(pillar).map(|score| (pillar, *score)))
         .min_by(|a, b| a.1.total_cmp(&b.1))

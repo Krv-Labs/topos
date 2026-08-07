@@ -50,12 +50,7 @@ pub struct ComposableContractSignals {
 }
 
 fn generator_wire(g: topos_engine::evaluation::preferences::Generator) -> GeneratorInput {
-    use topos_engine::evaluation::preferences::Generator;
-    match g {
-        Generator::Simple => GeneratorInput::Simple,
-        Generator::Composable => GeneratorInput::Composable,
-        Generator::Secure => GeneratorInput::Secure,
-    }
+    GeneratorInput::from_generator(g)
 }
 
 /// Classify COMPOSABLE setup blockers from the shared warning markers.
@@ -130,6 +125,90 @@ pub fn composable_contract_signals(
     }
 }
 
+/// Shared `blocked_by` / `risk_flags` prelude for every `AgentContract` builder.
+#[derive(Debug, Default, Clone)]
+pub struct AgentContractPreludeInput<'a> {
+    pub coupling_available: bool,
+    pub warnings: &'a [String],
+    pub parse_failures: usize,
+    pub grade_capped: bool,
+    pub active_security_findings: bool,
+    pub acknowledged_security_risks: bool,
+}
+
+/// Shared prelude output: composable signals plus the common flag extensions.
+#[derive(Debug, Clone)]
+pub struct AgentContractPrelude {
+    pub blocked_by: Vec<String>,
+    pub risk_flags: Vec<String>,
+    pub composable: ComposableContractSignals,
+}
+
+/// Always uses `include_missing = true` (D2a).
+pub fn agent_contract_prelude(input: AgentContractPreludeInput<'_>) -> AgentContractPrelude {
+    let composable = composable_contract_signals(input.coupling_available, input.warnings, true);
+    let mut blocked_by = composable.blocked_by.clone();
+    let mut risk_flags = composable.risk_flags.clone();
+
+    if input.parse_failures > 0 {
+        blocked_by.push("parse_failures".into());
+        risk_flags.push("parse_failures".into());
+    }
+    if input.active_security_findings {
+        risk_flags.push("active_security_findings".into());
+    }
+    if input.acknowledged_security_risks {
+        risk_flags.push("acknowledged_security_risk".into());
+    }
+    if input.grade_capped {
+        risk_flags.push("grade_capped".into());
+    }
+    if !input.warnings.is_empty() {
+        risk_flags.push("warnings".into());
+    }
+
+    AgentContractPrelude {
+        blocked_by,
+        risk_flags,
+        composable,
+    }
+}
+
+/// Wire code for an unparseable single-file evaluation.
+pub fn agent_contract_parse_blocked() -> AgentContract {
+    AgentContract {
+        next_tool: None,
+        next_actions: vec!["restore parseable source".into()],
+        blocked_by: vec!["parse_failures".into()],
+        verification_gates: Vec::new(),
+        risk_flags: vec!["parse_failures".into()],
+    }
+}
+
+/// Assemble the final contract from a shared prelude and tool-specific fields.
+pub fn finish_agent_contract(
+    blocked_by: Vec<String>,
+    risk_flags: Vec<String>,
+    next_tool: Option<String>,
+    next_actions: Vec<String>,
+    verification_gates: Vec<String>,
+) -> AgentContract {
+    AgentContract {
+        next_tool,
+        next_actions,
+        blocked_by,
+        verification_gates,
+        risk_flags,
+    }
+}
+
+/// Risk flags for depgraph responses when COMPOSABLE is not scorable.
+pub fn depgraph_unavailable_risk_flags(blocked_by: &[String]) -> Vec<String> {
+    let mut flags = vec!["composable_unavailable".into()];
+    flags.extend(blocked_by.iter().cloned());
+    flags
+}
+
 /// Materialize a `PreferenceWalk` for the result schema.
 pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) -> PreferenceWalk {
     let target = prefs.aspirational_target();
@@ -151,6 +230,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
     let composable_ok = result.dimensions.get("composable") == Some(&EvaluationValue::Composable);
     let secure_ok = result.dimensions.get("secure") == Some(&EvaluationValue::Secure);
+    let navigable_ok = result.dimensions.get("navigable") == Some(&EvaluationValue::Navigable);
 
     match result.priority {
         Priority::Composable => {
@@ -163,8 +243,8 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  <= 15) to satisfy COMPOSABLE."
                     .into()
             } else {
-                "COMPOSABLE satisfied.  Simplify CFG/functions and address any CPG \
-                 security findings to reach GOLD."
+                "COMPOSABLE satisfied.  Simplify CFG/functions, flatten deep nesting, and \
+                 address any CPG security findings to reach PLATINUM."
                     .into()
             }
         }
@@ -174,7 +254,9 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
                     .into()
             } else {
-                "SIMPLE satisfied.  Add COMPOSABLE / SECURE checks to reach GOLD.".into()
+                "SIMPLE satisfied.  Add COMPOSABLE / SECURE / NAVIGABLE checks to reach \
+                 PLATINUM."
+                    .into()
             }
         }
         Priority::Secure => {
@@ -183,7 +265,20 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  SECURE."
                     .into()
             } else {
-                "SECURE satisfied.  Address SIMPLE / COMPOSABLE generators to reach GOLD.".into()
+                "SECURE satisfied.  Address SIMPLE / COMPOSABLE / NAVIGABLE generators to \
+                 reach PLATINUM."
+                    .into()
+            }
+        }
+        Priority::Navigable => {
+            if !navigable_ok {
+                "Flatten the deepest nested block in the worst function — extract it into a \
+                 top-level helper — to satisfy NAVIGABLE."
+                    .into()
+            } else {
+                "NAVIGABLE satisfied.  Address SIMPLE / COMPOSABLE / SECURE generators to \
+                 reach PLATINUM."
+                    .into()
             }
         }
     }
@@ -205,49 +300,35 @@ pub fn build_agent_contract(
     refactor_targets: Option<&[RefactorTarget]>,
     offer_refactor_targets: bool,
 ) -> AgentContract {
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut risk_flags: Vec<String> = Vec::new();
-    let mut next_actions: Vec<String> = Vec::new();
-
     if !result.is_parseable {
-        return AgentContract {
-            next_tool: None,
-            next_actions: vec!["restore parseable source".into()],
-            blocked_by: vec!["parse_failure".into()],
-            verification_gates: Vec::new(),
-            risk_flags: vec!["parse_failure".into()],
-        };
+        return agent_contract_parse_blocked();
     }
 
-    let composable = composable_contract_signals(coupling_available, warnings, true);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if !security_findings.is_empty() {
-        risk_flags.push("active_security_findings".into());
-    }
-    if !acknowledged_risks.is_empty() {
-        risk_flags.push("acknowledged_security_risk".into());
-    }
-    if grade_capped {
-        risk_flags.push("grade_capped".into());
-    }
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available,
+        warnings,
+        active_security_findings: !security_findings.is_empty(),
+        acknowledged_security_risks: !acknowledged_risks.is_empty(),
+        grade_capped,
+        ..Default::default()
+    });
 
     let summary = result.summary();
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
-    let missing_gitnexus = blocked_by.iter().any(|b| b == "missing_gitnexus_dir");
+    let missing_gitnexus = prelude
+        .blocked_by
+        .iter()
+        .any(|b| b == "missing_gitnexus_dir");
 
     let (next_tool, step_actions) = next_step_for_contract(
-        &composable,
+        &prelude.composable,
         refactor_targets,
         summary,
         simple_ok,
         security_findings,
         missing_gitnexus,
     );
-    next_actions.extend(step_actions);
+    let mut next_actions = step_actions;
 
     // Reachable only when the caller passed `refactor_targets=0`, since the
     // parameter now defaults to a non-zero count: this is a re-enable hint
@@ -260,18 +341,18 @@ pub fn build_agent_contract(
         );
     }
 
-    AgentContract {
+    finish_agent_contract(
+        prelude.blocked_by,
+        prelude.risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
-        verification_gates: vec![
+        vec![
             "verify in-place edits with topos_assess_worktree_change".into(),
             "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE".into(),
             "assessment status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE".into(),
             "behavior tests or type/lint checks pass when available".into(),
         ],
-        risk_flags,
-    }
+    )
 }
 
 /// Priority-ordered next-tool/next-action dispatch for the agent contract:
@@ -1116,7 +1197,8 @@ mod tests {
         let model = to_evaluation_result(&result, false, EvalResultOptions::new());
         if !model.is_parseable {
             let contract = model.agent_contract.expect("contract present");
-            assert!(contract.blocked_by.contains(&"parse_failure".to_string()));
+            assert!(contract.blocked_by.contains(&"parse_failures".to_string()));
+            assert!(contract.risk_flags.contains(&"parse_failures".to_string()));
         }
     }
 }

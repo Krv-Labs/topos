@@ -11,7 +11,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::omega::EvaluationValue;
-use topos_engine::evaluation::preferences::{Generator, UserPreferences};
+use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
 
 use crate::formatting::to_tool_result;
 use crate::schemas::{
@@ -31,6 +31,9 @@ fn generators_satisfied(value: EvaluationValue) -> Vec<GeneratorInput> {
     }
     if bits & 0b100 != 0 {
         out.push(GeneratorInput::Secure);
+    }
+    if bits & 0b1000 != 0 {
+        out.push(GeneratorInput::Navigable);
     }
     out
 }
@@ -116,7 +119,7 @@ impl ToposServer {
     /// the goal gracefully under a token/time budget. Returns a
     /// PreferenceWalkResult: `walk` (steps from target down to just above
     /// `current`), `next_step`, `progress` in [0, 1],
-    /// `aspirational_target`/`fallback_target`, and `induced_order` (all 8
+    /// `aspirational_target`/`fallback_target`, and `induced_order` (all 16
     /// verdicts ranked).
     #[tool(
         name = "topos_preference_walk",
@@ -133,13 +136,15 @@ impl ToposServer {
         Parameters(params): Parameters<PreferenceWalkInput>,
     ) -> CallToolResult {
         let ranking: Vec<Generator> = params.ranking.iter().map(|g| g.to_generator()).collect();
-        let arr: Result<[Generator; 3], _> = ranking.clone().try_into();
+        let arr: Result<[Generator; RANKING_LEN], _> = ranking.clone().try_into();
         let prefs = match arr {
             Ok(arr) => {
                 let target = params.target.map(str_to_lattice);
                 UserPreferences::with_target(arr, target).map_err(|e| e.to_string())
             }
-            Err(_) => Err("ranking must contain exactly simple, composable, secure".to_string()),
+            Err(_) => Err(
+                "ranking must contain exactly simple, composable, secure, navigable".to_string(),
+            ),
         };
         let prefs = match prefs {
             Ok(prefs) => prefs,
@@ -172,11 +177,7 @@ impl ToposServer {
             ranking: prefs
                 .ranking()
                 .iter()
-                .map(|&g| match g {
-                    Generator::Simple => GeneratorInput::Simple,
-                    Generator::Composable => GeneratorInput::Composable,
-                    Generator::Secure => GeneratorInput::Secure,
-                })
+                .map(|&g| GeneratorInput::from_generator(g))
                 .collect(),
             aspirational_target: lattice_to_str(prefs.aspirational_target()),
             fallback_target: lattice_to_str(prefs.fallback_target()),
@@ -194,5 +195,35 @@ impl ToposServer {
         };
         let md = render_preference_walk_md(&model);
         to_tool_result(&model, md)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generators_satisfied_covers_all_four_generators() {
+        for value in EvaluationValue::ALL {
+            let generators = generators_satisfied(value);
+            let bits = value.bits();
+
+            assert_eq!(
+                generators.contains(&GeneratorInput::Simple),
+                bits & 0b0001 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Composable),
+                bits & 0b0010 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Secure),
+                bits & 0b0100 != 0
+            );
+            assert_eq!(
+                generators.contains(&GeneratorInput::Navigable),
+                bits & 0b1000 != 0
+            );
+        }
     }
 }

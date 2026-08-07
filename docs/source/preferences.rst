@@ -7,70 +7,113 @@ Preferences
 Preferences tell Topos how an agent should trade off quality goals when a file
 cannot reach ``IDEAL`` within the available iteration budget.
 
-Topos measures three independent quality generators:
+Topos measures four independent quality generators:
 
 * ``SIMPLE`` — low internal complexity.
 * ``COMPOSABLE`` — healthy module coupling.
 * ``SECURE`` — no known dangerous calls or taint paths.
+* ``NAVIGABLE`` — shallow nesting, cheap for an agent to read.
 
-These generators form an eight-element lattice. ``IDEAL`` means all three are
+These generators form a sixteen-element lattice. ``IDEAL`` means all four are
 satisfied, but the single-generator states are intentionally incomparable:
-``SIMPLE`` is not inherently better than ``SECURE`` or ``COMPOSABLE``. A
-preference ranking makes that tradeoff explicit.
+``SIMPLE`` is not inherently better than ``SECURE``, ``COMPOSABLE``, or
+``NAVIGABLE``. A preference ranking makes that tradeoff explicit.
 
 What Preferences Do
 -------------------
 
-``preferences.ranking`` is a strict ordering of the three generators:
+``preferences.ranking`` is a strict ordering of **all four** generators — a
+three-element ranking written before v0.5.0 is no longer a valid permutation
+and is rejected in favour of the default:
 
 .. code-block:: text
 
-   composable > secure > simple
+   composable > secure > simple > navigable
 
-This means: first try to satisfy all three generators. If that stalls, prefer
+This means: first try to satisfy all four generators. If that stalls, prefer
 the best result that preserves ``COMPOSABLE`` and ``SECURE`` before spending
 more effort on ``SIMPLE``.
 
 Topos turns the ranking into a total order over lattice verdicts by weighting
-the ranked generators ``4 / 2 / 1``. With:
+the ranked generators ``8 / 4 / 2 / 1`` — each weight exceeds all the lower
+ones combined, making the order strictly lexicographic. With:
 
 .. code-block:: text
 
-   simple > composable > secure
+   simple > navigable > secure > composable
 
-the induced order is:
+which is the **default** ranking, the induced order is:
 
 .. list-table::
    :header-rows: 1
-   :widths: 28 16 56
+   :widths: 40 12 48
 
    * - Verdict
      - Score
      - Meaning
    * - ``IDEAL``
-     - ``7``
-     - all three generators satisfied
-   * - ``SIMPLE_COMPOSABLE``
-     - ``6``
+     - ``15``
+     - all four generators satisfied
+   * - ``SIMPLE_SECURE_NAVIGABLE``
+     - ``14``
+     - concedes only the last-ranked generator
+   * - ``SIMPLE_COMPOSABLE_NAVIGABLE``
+     - ``13``
+     -
+   * - ``SIMPLE_NAVIGABLE``
+     - ``12``
      - fallback target if ``IDEAL`` stalls
+   * - ``SIMPLE_COMPOSABLE_SECURE``
+     - ``11``
+     -
    * - ``SIMPLE_SECURE``
-     - ``5``
-     - keeps the first and third preferences
+     - ``10``
+     -
+   * - ``SIMPLE_COMPOSABLE``
+     - ``9``
+     -
    * - ``SIMPLE``
-     - ``4``
+     - ``8``
      - keeps the top preference only
+   * - ``COMPOSABLE_SECURE_NAVIGABLE``
+     - ``7``
+     - satisfies the lower three preferences
+   * - ``SECURE_NAVIGABLE``
+     - ``6``
+     -
+   * - ``COMPOSABLE_NAVIGABLE``
+     - ``5``
+     -
+   * - ``NAVIGABLE``
+     - ``4``
+     - keeps the second preference only
    * - ``COMPOSABLE_SECURE``
      - ``3``
-     - satisfies the lower two preferences
-   * - ``COMPOSABLE``
-     - ``2``
-     - keeps the second preference only
+     -
    * - ``SECURE``
-     - ``1``
+     - ``2``
      - keeps the third preference only
+   * - ``COMPOSABLE``
+     - ``1``
+     - keeps the last preference only
    * - ``SLOP``
      - ``0``
      - no generator satisfied
+
+.. versionchanged:: 0.5.0
+   The fallback target is no longer the element directly below ``IDEAL``.
+   With three generators, "meet of the top two" and "one step below
+   ``IDEAL``" were the same verdict; with four they differ. One step below
+   ``IDEAL`` concedes only the lowest-ranked generator
+   (``SIMPLE_SECURE_NAVIGABLE`` above); the fallback concedes the bottom
+   two.
+
+.. versionchanged:: 0.5.0
+   The default ranking is ``simple > navigable > secure > composable``. The
+   two pillars an agent can always compute and always fix inside one file
+   rank highest; ``COMPOSABLE`` ranks last because it needs an external
+   dependency graph and describes a module's place in the whole project,
+   so it is the right thing to concede first when coupling data is absent.
 
 The important behavior is the **fallback target**: when ``IDEAL`` plateaus, the
 agent should aim for the meet of the top two ranked generators.
@@ -82,15 +125,15 @@ agent should aim for the meet of the top two ranked generators.
    * - Ranking
      - First target
      - Fallback target
-   * - ``simple > composable > secure``
+   * - ``simple > navigable > secure > composable`` (default)
      - ``IDEAL``
-     - ``SIMPLE_COMPOSABLE``
-   * - ``secure > simple > composable``
+     - ``SIMPLE_NAVIGABLE``
+   * - ``secure > simple > composable > navigable``
      - ``IDEAL``
      - ``SIMPLE_SECURE``
-   * - ``composable > secure > simple``
+   * - ``navigable > composable > secure > simple``
      - ``IDEAL``
-     - ``COMPOSABLE_SECURE``
+     - ``COMPOSABLE_NAVIGABLE``
 
 How Agents Use Preferences
 --------------------------
@@ -106,7 +149,7 @@ For example, with:
 
 .. code-block:: text
 
-   ranking = simple > composable > secure
+   ranking = simple > navigable > secure > composable
    current = SECURE
 
 Topos can return:
@@ -114,8 +157,8 @@ Topos can return:
 .. code-block:: text
 
    target          = IDEAL
-   fallback_target = SIMPLE_COMPOSABLE
-   next_step       = COMPOSABLE
+   fallback_target = SIMPLE_NAVIGABLE
+   next_step       = COMPOSABLE_SECURE
 
 ``next_step`` is the smallest improvement above the current verdict that still
 respects the user's ranking.
@@ -126,8 +169,8 @@ How to Set Preferences
 For a one-off CLI evaluation, pass the complete ranking as a comma-separated
 value. Persist project defaults with ``topos config``::
 
-   topos evaluate src/ -r --priority composable,secure,simple
-   topos config set --priority composable,secure,simple
+   topos evaluate src/ -r --priority composable,secure,simple,navigable
+   topos config set --priority composable,secure,simple,navigable
 
 In MCP tools, pass ``preferences.ranking``:
 
@@ -136,14 +179,14 @@ In MCP tools, pass ``preferences.ranking``:
    {
      "filepath": "src/server.rs",
      "preferences": {
-       "ranking": ["composable", "secure", "simple"]
+       "ranking": ["composable", "secure", "simple", "navigable"]
      }
    }
 
-Use ``composable,secure,simple`` for library surfaces where coupling matters
-most. Use ``secure,simple,composable`` for files handling untrusted input. Use
-``simple,composable,secure`` for leaf implementation files where local
-complexity is the main source of drag.
+Use ``composable,secure,simple,navigable`` for library surfaces where coupling matters
+most. Use ``secure,simple,navigable,composable`` for files handling untrusted
+input. Use ``simple,navigable,secure,composable`` for leaf implementation files
+where local complexity is the main source of drag.
 
 Preferences vs. Priority
 ------------------------

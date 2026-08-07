@@ -22,6 +22,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
 
+use topos_engine::core::omega::Generator;
+
 use crate::docs::{doc_content_for_slug, DOC_SLUGS};
 
 const SERVER_INSTRUCTIONS: &str = "Topos evaluates structural code quality on a diamond lattice. \
@@ -166,7 +168,7 @@ fn build_refactor_prompt_text(
             .collect(),
         None => {
             let mut r = vec![priority.to_string()];
-            for g in ["simple", "composable", "secure"] {
+            for g in Generator::ALL.map(Generator::as_str) {
                 if g != priority {
                     r.push(g.to_string());
                 }

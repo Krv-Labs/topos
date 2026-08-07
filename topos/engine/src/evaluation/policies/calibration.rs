@@ -120,6 +120,26 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
     taint_scale: 3.0,
 };
 
+/// `Φ_NAVIGABLE` gates and normalization.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NavigablePolicyThresholds {
+    /// Worst-function Semantic Compositional Divergence a file may carry.
+    ///
+    /// Calibrated 2026-08-06 on Topos's own Rust sources (176 files):
+    /// p50 `0.69`, p95 `5.65`, p99 `8.62`, max `12.19`. Gate set at the
+    /// p95 ceiling (`6.0`), matching the percentile target used for SIMPLE
+    /// and SECURE.
+    pub max_function_divergence: f64,
+    /// Normalization (score only): divergence at which the score floors at
+    /// zero. Set between p99 and max so reported scores discriminate.
+    pub divergence_cap: f64,
+}
+
+pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
+    max_function_divergence: 6.0,
+    divergence_cap: 10.0,
+};
+
 /// Structural test-coverage policy (outside `Ω`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CoveragePolicyThresholds {
@@ -153,5 +173,8 @@ pub fn score_floor(generator: Generator) -> f64 {
         Generator::Simple => 0.40,
         Generator::Composable => 0.80,
         Generator::Secure => 1.00,
+        // Matches `Generator::Simple` — both are AST-local pillars with
+        // similar score distributions on the calibration corpus.
+        Generator::Navigable => 0.40,
     }
 }

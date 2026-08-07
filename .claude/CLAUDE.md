@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Note:** The core project architecture, rules, v1.0.0 evaluation model (SIMPLE, COMPOSABLE, SECURE), and refactoring workflows have been centralized. 
+> **Note:** The core project architecture, rules, evaluation model (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), and refactoring workflows have been centralized. 
 > 
 > **You MUST read `AGENTS.md` at the repository root (or `.agents/AGENTS.md`) for the canonical project rules.**
 

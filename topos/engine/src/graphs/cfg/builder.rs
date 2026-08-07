@@ -29,12 +29,17 @@
 use super::models::{BasicBlock, Blocks, CFGEdge, EdgeKind};
 use crate::graphs::uast::models::{node_key, UASTNode};
 
-/// Stack frame for break/continue resolution within a loop.
+/// Stack frame for `continue` resolution within a loop.
 struct LoopContext {
     /// Block id to jump to on `continue`.
     continue_target: usize,
-    /// Block id to jump to on `break`.
-    break_target: usize,
+}
+
+/// Pending control-flow destinations after a `finally` block completes.
+struct FinallyExit {
+    fall_through_target: usize,
+    returns: bool,
+    throws: bool,
 }
 
 /// Mutable state threaded through the iterative builder.
@@ -43,6 +48,10 @@ struct CFGBuildState {
     edges: Vec<CFGEdge>,
     next_id: usize,
     loop_stack: Vec<LoopContext>,
+    /// Innermost `break` target — loop `after` or switch/match join.
+    break_stack: Vec<usize>,
+    /// Active `finally` blocks and where each resumes afterward.
+    finally_stack: Vec<(usize, FinallyExit)>,
     exit_id: usize,
 }
 
@@ -53,6 +62,8 @@ impl CFGBuildState {
             edges: Vec::new(),
             next_id: 0,
             loop_stack: Vec::new(),
+            break_stack: Vec::new(),
+            finally_stack: Vec::new(),
             exit_id: 0,
         }
     }
@@ -129,14 +140,28 @@ fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: 
     match stmt.kind.as_str() {
         "ReturnStmt" => {
             state.push_statement(current_id, stmt);
-            state.add_edge(current_id, state.exit_id, EdgeKind::Return);
+            if let Some(finally_id) = state.finally_stack.last().map(|(id, _)| *id) {
+                if let Some(entry) = state.finally_stack.last_mut() {
+                    entry.1.returns = true;
+                }
+                state.add_edge(current_id, finally_id, EdgeKind::Unconditional);
+            } else {
+                state.add_edge(current_id, state.exit_id, EdgeKind::Return);
+            }
         }
         "ThrowStmt" => {
             state.push_statement(current_id, stmt);
-            state.add_edge(current_id, state.exit_id, EdgeKind::Exception);
+            if let Some(finally_id) = state.finally_stack.last().map(|(id, _)| *id) {
+                if let Some(entry) = state.finally_stack.last_mut() {
+                    entry.1.throws = true;
+                }
+                state.add_edge(current_id, finally_id, EdgeKind::Unconditional);
+            } else {
+                state.add_edge(current_id, state.exit_id, EdgeKind::Exception);
+            }
         }
         "BreakStmt" => {
-            if let Some(target) = state.loop_stack.last().map(|ctx| ctx.break_target) {
+            if let Some(target) = state.break_stack.last().copied() {
                 state.add_edge(current_id, target, EdgeKind::Break);
             }
         }
@@ -211,12 +236,41 @@ enum ContinuationTask<'a> {
         cursor: MatchCursor<'a>,
         arm_output: usize,
     },
-    Try {
-        body_output: usize,
-        current_id: usize,
-        join_block: usize,
-        output: usize,
+    TryBodyDone(TryBodyCursor<'a>),
+    TryCatchArm(TryCatchCursor<'a>),
+    TryCatchArmDone {
+        cursor: TryCatchCursor<'a>,
+        catch_output: usize,
+        post_handler_target: usize,
     },
+    TryFinallyDone {
+        finally_output: usize,
+        exit: FinallyExit,
+        output: usize,
+        any_normal_path: bool,
+    },
+}
+
+struct TryBodyCursor<'a> {
+    body_output: usize,
+    try_body_block: usize,
+    catches: Vec<&'a UASTNode>,
+    finally_clause: Option<&'a UASTNode>,
+    finally_block: Option<usize>,
+    join_block: usize,
+    output: usize,
+}
+
+struct TryCatchCursor<'a> {
+    catches: Vec<&'a UASTNode>,
+    index: usize,
+    try_body_block: usize,
+    post_handler_target: usize,
+    finally_clause: Option<&'a UASTNode>,
+    join_block: usize,
+    body_had_normal: bool,
+    any_handler_normal: bool,
+    output: usize,
 }
 
 struct BuildMachine<'state, 'a> {
@@ -369,8 +423,8 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
         self.state.add_edge(header, after, EdgeKind::False);
         self.state.loop_stack.push(LoopContext {
             continue_target: header,
-            break_target: after,
         });
+        self.state.break_stack.push(after);
         let body_output = self.new_output();
         self.tasks
             .push(BuildTask::Continuation(ContinuationTask::Loop {
@@ -385,8 +439,10 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
     fn start_match(&mut self, stmt: &'a UASTNode, current_id: usize, output: usize) {
         self.state.push_statement(current_id, stmt);
         let join_block = self.state.new_block("match_join");
+        self.state.break_stack.push(join_block);
         let arms = match_arms(stmt);
         if arms.is_empty() {
+            self.state.break_stack.pop();
             self.state
                 .add_edge(current_id, join_block, EdgeKind::Unconditional);
             self.outputs[output] = Some(join_block);
@@ -410,20 +466,33 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
         let body_block = self.state.new_block("try_body");
         self.state
             .add_edge(current_id, body_block, EdgeKind::Unconditional);
+        let parts = try_parts(stmt);
+        let finally_block = parts.finally_clause.map(|_| {
+            let fb = self.state.new_block("try_finally");
+            self.state.finally_stack.push((
+                fb,
+                FinallyExit {
+                    fall_through_target: join_block,
+                    returns: false,
+                    throws: false,
+                },
+            ));
+            fb
+        });
         let body_output = self.new_output();
         self.tasks
-            .push(BuildTask::Continuation(ContinuationTask::Try {
-                body_output,
-                current_id,
-                join_block,
-                output,
-            }));
-        let body = stmt
-            .children
-            .iter()
-            .filter(|child| child.kind != "Unknown")
-            .collect();
-        self.push_sequence(body, 0, body_block, body_output);
+            .push(BuildTask::Continuation(ContinuationTask::TryBodyDone(
+                TryBodyCursor {
+                    body_output,
+                    try_body_block: body_block,
+                    catches: parts.catches,
+                    finally_clause: parts.finally_clause,
+                    finally_block,
+                    join_block,
+                    output,
+                },
+            )));
+        self.push_sequence(parts.body, 0, body_block, body_output);
     }
 
     fn finish_terminal(&mut self, stmt: &UASTNode, current_id: usize, output: usize) {
@@ -486,12 +555,19 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
             ContinuationTask::MatchArmDone { cursor, arm_output } => {
                 self.finish_match_arm(cursor, arm_output)
             }
-            ContinuationTask::Try {
-                body_output,
-                current_id,
-                join_block,
+            ContinuationTask::TryBodyDone(cursor) => self.finish_try_body(cursor),
+            ContinuationTask::TryCatchArm(cursor) => self.start_try_catch_arm(cursor),
+            ContinuationTask::TryCatchArmDone {
+                cursor,
+                catch_output,
+                post_handler_target,
+            } => self.finish_try_catch_arm(catch_output, cursor, post_handler_target),
+            ContinuationTask::TryFinallyDone {
+                finally_output,
+                exit,
                 output,
-            } => self.finish_try(body_output, current_id, join_block, output),
+                any_normal_path,
+            } => self.finish_try_finally(finally_output, exit, output, any_normal_path),
         }
     }
 
@@ -530,6 +606,7 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
 
     fn finish_loop(&mut self, body_output: usize, header: usize, after: usize, output: usize) {
         self.state.loop_stack.pop();
+        self.state.break_stack.pop();
         if let Some(body_tail) = self.outputs[body_output] {
             self.state.add_edge(body_tail, header, EdgeKind::Loopback);
         }
@@ -538,6 +615,7 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
 
     fn start_match_arm(&mut self, cursor: MatchCursor<'a>) {
         let Some(&arm) = cursor.arms.get(cursor.index) else {
+            self.state.break_stack.pop();
             self.outputs[cursor.output] = Some(cursor.join_block);
             return;
         };
@@ -566,20 +644,171 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
             .push(BuildTask::Continuation(ContinuationTask::MatchArm(cursor)));
     }
 
-    fn finish_try(
-        &mut self,
-        body_output: usize,
-        current_id: usize,
-        join_block: usize,
-        output: usize,
-    ) {
-        if let Some(body_tail) = self.outputs[body_output] {
-            self.state
-                .add_edge(body_tail, join_block, EdgeKind::Unconditional);
+    fn finish_try_body(&mut self, cursor: TryBodyCursor<'a>) {
+        let body_had_normal = self.outputs[cursor.body_output].is_some();
+        let post_handler_target = if let Some(finally_block) = cursor.finally_block {
+            if let Some(body_tail) = self.outputs[cursor.body_output] {
+                self.state
+                    .add_edge(body_tail, finally_block, EdgeKind::Unconditional);
+            }
+            finally_block
+        } else {
+            if let Some(body_tail) = self.outputs[cursor.body_output] {
+                self.state
+                    .add_edge(body_tail, cursor.join_block, EdgeKind::Unconditional);
+            }
+            cursor.join_block
+        };
+
+        if cursor.catches.is_empty() {
+            self.state.add_edge(
+                cursor.try_body_block,
+                cursor.join_block,
+                EdgeKind::Exception,
+            );
+            if let Some(finally) = cursor.finally_clause {
+                self.start_finally_build(finally, cursor.output, body_had_normal);
+            } else {
+                self.outputs[cursor.output] = if body_had_normal {
+                    Some(cursor.join_block)
+                } else {
+                    None
+                };
+            }
+            return;
         }
+
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::TryCatchArm(
+                TryCatchCursor {
+                    catches: cursor.catches,
+                    index: 0,
+                    try_body_block: cursor.try_body_block,
+                    post_handler_target,
+                    finally_clause: cursor.finally_clause,
+                    join_block: cursor.join_block,
+                    body_had_normal,
+                    any_handler_normal: false,
+                    output: cursor.output,
+                },
+            )));
+    }
+
+    fn start_try_catch_arm(&mut self, cursor: TryCatchCursor<'a>) {
+        let Some(&catch) = cursor.catches.get(cursor.index) else {
+            if let Some(finally) = cursor.finally_clause {
+                self.start_finally_build(
+                    finally,
+                    cursor.output,
+                    cursor.body_had_normal || cursor.any_handler_normal,
+                );
+            } else {
+                self.outputs[cursor.output] = if cursor.body_had_normal || cursor.any_handler_normal
+                {
+                    Some(cursor.join_block)
+                } else {
+                    None
+                };
+            }
+            return;
+        };
+
+        let catch_block = self.state.new_block("catch_handler");
         self.state
-            .add_edge(current_id, join_block, EdgeKind::Exception);
-        self.outputs[output] = Some(join_block);
+            .add_edge(cursor.try_body_block, catch_block, EdgeKind::Exception);
+        let catch_output = self.new_output();
+        let next = TryCatchCursor {
+            index: cursor.index + 1,
+            ..cursor
+        };
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::TryCatchArmDone {
+                cursor: next,
+                catch_output,
+                post_handler_target: cursor.post_handler_target,
+            }));
+        self.push_sequence(catch_body(catch), 0, catch_block, catch_output);
+    }
+
+    fn finish_try_catch_arm(
+        &mut self,
+        catch_output: usize,
+        mut cursor: TryCatchCursor<'a>,
+        post_handler_target: usize,
+    ) {
+        if let Some(tail) = self.outputs[catch_output] {
+            self.state
+                .add_edge(tail, post_handler_target, EdgeKind::Unconditional);
+            cursor.any_handler_normal = true;
+        }
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::TryCatchArm(
+                cursor,
+            )));
+    }
+
+    fn start_finally_build(&mut self, finally: &'a UASTNode, output: usize, any_normal_path: bool) {
+        let (finally_block, exit) = self
+            .state
+            .finally_stack
+            .pop()
+            .expect("finally_stack pushed before building finally body");
+        let finally_output = self.new_output();
+        self.tasks
+            .push(BuildTask::Continuation(ContinuationTask::TryFinallyDone {
+                finally_output,
+                exit,
+                output,
+                any_normal_path,
+            }));
+        self.push_sequence(finally_body(finally), 0, finally_block, finally_output);
+    }
+
+    fn finish_try_finally(
+        &mut self,
+        finally_output: usize,
+        exit: FinallyExit,
+        output: usize,
+        any_normal_path: bool,
+    ) {
+        let finally_tail = self.outputs[finally_output];
+        if let Some(tail) = finally_tail {
+            let mut routed_to_outer = false;
+            if exit.returns {
+                if let Some((outer_finally, outer_exit)) = self.state.finally_stack.last_mut() {
+                    let outer_finally = *outer_finally;
+                    outer_exit.returns = true;
+                    self.state
+                        .add_edge(tail, outer_finally, EdgeKind::Unconditional);
+                    routed_to_outer = true;
+                } else {
+                    self.state
+                        .add_edge(tail, self.state.exit_id, EdgeKind::Return);
+                }
+            }
+            if exit.throws {
+                if let Some((outer_finally, outer_exit)) = self.state.finally_stack.last_mut() {
+                    let outer_finally = *outer_finally;
+                    outer_exit.throws = true;
+                    if !routed_to_outer {
+                        self.state
+                            .add_edge(tail, outer_finally, EdgeKind::Unconditional);
+                    }
+                } else {
+                    self.state
+                        .add_edge(tail, self.state.exit_id, EdgeKind::Exception);
+                }
+            }
+            if any_normal_path {
+                self.state
+                    .add_edge(tail, exit.fall_through_target, EdgeKind::Unconditional);
+            }
+        }
+        self.outputs[output] = if finally_tail.is_some() && any_normal_path {
+            Some(exit.fall_through_target)
+        } else {
+            None
+        };
     }
 }
 
@@ -628,15 +857,25 @@ fn collect_callable_bodies(root: &UASTNode) -> Vec<CallableBody<'_>> {
 
     if root.kind == "File" {
         // Module-level top: everything not nested inside a callable.
+        //
+        // Emptiness is tested on the *unwrapped statements*, not on the
+        // raw children — issue #230. A file can have module-level
+        // children that contain no statement at all (Go's `package`
+        // clause, Go/JS `import`, Python bare `import`, a C++
+        // `#include`), and gating on the raw list gave those files an
+        // extra empty callable worth one block and two edges, inflating
+        // `cfg.cyclomatic` by exactly 1 relative to the same program in
+        // a language without a module preamble.
         let module_children = root
             .children
             .iter()
             .filter(|c| !matches!(c.kind.as_str(), "FunctionDecl" | "MethodDecl" | "TypeDecl"))
             .collect::<Vec<_>>();
-        if !module_children.is_empty() {
+        let statements = unwrap_to_statements(module_children);
+        if !statements.is_empty() {
             found.push(CallableBody {
                 label: "FunctionDecl".to_string(),
-                statements: unwrap_to_statements(module_children),
+                statements,
             });
         }
     }
@@ -650,6 +889,8 @@ const STATEMENT_KINDS: &[&str] = &[
     "WhileStmt",
     "MatchStmt",
     "TryStmt",
+    "CatchClause",
+    "FinallyClause",
     "ReturnStmt",
     "BreakStmt",
     "ContinueStmt",
@@ -770,6 +1011,47 @@ fn loop_body(stmt: &UASTNode) -> Vec<&UASTNode> {
         None => Vec::new(),
     }
 }
+/// Parsed pieces of a `TryStmt`: body statements, handlers, optional `finally`.
+struct TryParts<'a> {
+    body: Vec<&'a UASTNode>,
+    catches: Vec<&'a UASTNode>,
+    finally_clause: Option<&'a UASTNode>,
+}
+
+fn try_parts(stmt: &UASTNode) -> TryParts<'_> {
+    let mut body = Vec::new();
+    let mut catches = Vec::new();
+    let mut finally_clause = None;
+    for child in &stmt.children {
+        match child.kind.as_str() {
+            "CatchClause" => catches.push(child),
+            "FinallyClause" => finally_clause = Some(child),
+            _ if is_block_container(child) && body.is_empty() => {
+                body = unwrap_to_statements(std::iter::once(child));
+            }
+            _ => {}
+        }
+    }
+    TryParts {
+        body,
+        catches,
+        finally_clause,
+    }
+}
+
+fn catch_body(catch: &UASTNode) -> Vec<&UASTNode> {
+    match catch.children.iter().find(|c| is_block_container(c)) {
+        Some(body) => unwrap_to_statements(std::iter::once(body)),
+        None => Vec::new(),
+    }
+}
+
+fn finally_body(finally: &UASTNode) -> Vec<&UASTNode> {
+    match finally.children.iter().find(|c| is_block_container(c)) {
+        Some(body) => unwrap_to_statements(std::iter::once(body)),
+        None => Vec::new(),
+    }
+}
 
 /// Extract case arms from a `MatchStmt`, one entry per arm.
 ///
@@ -821,6 +1103,8 @@ fn children_with_control_flow(node: &UASTNode) -> Vec<&UASTNode> {
         "WhileStmt",
         "MatchStmt",
         "TryStmt",
+        "CatchClause",
+        "FinallyClause",
         "ReturnStmt",
         "BreakStmt",
         "ContinueStmt",

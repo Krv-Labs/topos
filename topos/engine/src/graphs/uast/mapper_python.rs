@@ -89,7 +89,8 @@ fn is_guard(node: &Node, source: &[u8]) -> bool {
     }
 }
 
-pub fn map_node_kind(kind: &str) -> &'static str {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    let kind = node.kind();
     const NODE_KIND_TABLE: &[(&str, &str)] = &[
         ("function_definition", "FunctionDecl"),
         ("class_definition", "TypeDecl"),
@@ -104,6 +105,7 @@ pub fn map_node_kind(kind: &str) -> &'static str {
         ("continue_statement", "ContinueStmt"),
         ("try_statement", "TryStmt"),
         ("except_clause", "CatchClause"),
+        ("finally_clause", "FinallyClause"),
         ("with_statement", "WithStmt"),
         ("assert_statement", "AssertStmt"),
         ("conditional_expression", "ConditionalExpr"),

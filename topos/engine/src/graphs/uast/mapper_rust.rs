@@ -47,7 +47,8 @@ impl TestNodeFilter for CfgTestFilter {
     }
 }
 
-pub fn map_node_kind(kind: &str) -> &'static str {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    let kind = node.kind();
     const NODE_KIND_TABLE: &[(&str, &str)] = &[
         ("struct_item", "TypeDecl"),
         ("enum_item", "TypeDecl"),

@@ -62,10 +62,15 @@ pub fn meet_satisfied(scores: &HashMap<Generator, f64>) -> HashMap<Generator, bo
 /// implementations do not change `achieved` based on priority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Priority {
+    /// Default emphasis, matching the head of
+    /// [`crate::evaluation::preferences::default_preferences`] and MCP's
+    /// `resolve_priority(None)`. These three defaults must agree — they
+    /// previously did not (engine said `Secure`, MCP said `Simple`).
+    #[default]
     Simple,
     Composable,
-    #[default]
     Secure,
+    Navigable,
 }
 
 impl Priority {
@@ -75,44 +80,7 @@ impl Priority {
             Priority::Simple => Generator::Simple,
             Priority::Composable => Generator::Composable,
             Priority::Secure => Generator::Secure,
-        }
-    }
-}
-
-/// Legacy per-generator metric weights for a priority/ranking.
-///
-/// Current `Φᵢ` implementations use fixed AND-of-raw-thresholds and do
-/// not read these weights; retained for API parity with the Python
-/// original.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct WeightProfile {
-    /// Weight on cyclomatic_quality within `Φ_SIMPLE`. Entropy gets `1 - w_complexity`.
-    pub w_complexity: f64,
-    /// Weight on coupling_quality within `Φ_COMPOSABLE`. Instability gets `1 - w_coupling`.
-    pub w_coupling: f64,
-    /// Weight on taint_quality within `Φ_SECURE`. Dangerous-API reachability gets `1 - w_taint`.
-    pub w_taint: f64,
-}
-
-impl WeightProfile {
-    /// Look up the legacy `Priority`-keyed weight profile.
-    pub fn from_priority(priority: Priority) -> WeightProfile {
-        match priority {
-            Priority::Simple => WeightProfile {
-                w_complexity: 0.7,
-                w_coupling: 0.3,
-                w_taint: 0.3,
-            },
-            Priority::Composable => WeightProfile {
-                w_complexity: 0.3,
-                w_coupling: 0.7,
-                w_taint: 0.3,
-            },
-            Priority::Secure => WeightProfile {
-                w_complexity: 0.3,
-                w_coupling: 0.3,
-                w_taint: 0.7,
-            },
+            Priority::Navigable => Generator::Navigable,
         }
     }
 }
@@ -137,12 +105,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn priority_weight_profiles_are_in_unit_range() {
-        for priority in [Priority::Simple, Priority::Composable, Priority::Secure] {
-            let profile = WeightProfile::from_priority(priority);
-            assert!((0.0..=1.0).contains(&profile.w_complexity));
-            assert!((0.0..=1.0).contains(&profile.w_coupling));
-            assert!((0.0..=1.0).contains(&profile.w_taint));
+    fn every_priority_names_a_distinct_generator() {
+        let generators: std::collections::HashSet<_> =
+            Generator::ALL.iter().map(|g| g.as_str()).collect();
+        for priority in [
+            Priority::Simple,
+            Priority::Composable,
+            Priority::Secure,
+            Priority::Navigable,
+        ] {
+            assert!(generators.contains(priority.top_generator().as_str()));
         }
     }
 

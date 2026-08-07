@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use super::calibration::{COMPOSABLE, SECURE, SIMPLE};
+use super::calibration::{COMPOSABLE, NAVIGABLE, SECURE, SIMPLE};
 
 /// How a metric fared against its gate band.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,6 +294,21 @@ fn interpret_taint(value: f64, outcome: GateOutcome) -> String {
     }
 }
 
+fn interpret_divergence(value: f64, outcome: GateOutcome) -> String {
+    if outcome == GateOutcome::Pass {
+        format!(
+            "worst-function nesting divergence ({value:.1}) within threshold (<= {})",
+            NAVIGABLE.max_function_divergence
+        )
+    } else {
+        format!(
+            "worst-function nesting divergence ({value:.1}) exceeds threshold (> {}); \
+             flatten the deepest nested block",
+            NAVIGABLE.max_function_divergence
+        )
+    }
+}
+
 // --- The registry ---------------------------------------------------------
 // Ordered to match the scorers' interpretation insertion order.
 
@@ -410,6 +425,21 @@ pub static GATE_SPECS: &[GateSpec] = &[
         operations_high: &[],
         gates_achieved: true,
     },
+    GateSpec {
+        metric: "nav.max_function_divergence",
+        pillar: "navigable",
+        low: None,
+        high: Some(NAVIGABLE.max_function_divergence),
+        granularity: "function",
+        interpret: interpret_divergence,
+        exempt: None,
+        operations_low: &[],
+        // Same fix as a complexity failure — pull the nested block out
+        // into its own function — so it reuses the same operation
+        // vocabulary rather than inventing a NAVIGABLE-only verb.
+        operations_high: &["extract_helper", "split_decision_logic"],
+        gates_achieved: true,
+    },
 ];
 
 fn gate_for_metric(metric: &str) -> Option<&'static GateSpec> {
@@ -421,6 +451,7 @@ pub const PILLAR_METRIC_PREFIXES: &[(&str, &[&str])] = &[
     ("simple", &["cfg.", "ast."]),
     ("composable", &["mdg."]),
     ("secure", &["cpg."]),
+    ("navigable", &["nav."]),
 ];
 
 /// Map a namespaced raw-metric key to its pillar (default `"simple"`).

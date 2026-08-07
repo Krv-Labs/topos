@@ -66,7 +66,7 @@ The characteristic morphism is computed through three levels of abstraction:
    - **AST Distance**: Measures the topological drift between two programs using UAST edit distance.
    - **Structural Coverage**: Estimates how much of a program's structure is "covered" by a test suite.
 
-Profunctors operate outside the main three-generator lattice but provide essential signals for agent workflows, such as detecting if a refactor was purely cosmetic or structurally significant.
+Profunctors operate outside the main four-generator lattice but provide essential signals for agent workflows, such as detecting if a refactor was purely cosmetic or structurally significant.
 
 User Preferences and the Relaxation Walk
 -----------------------------------------

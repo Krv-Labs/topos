@@ -65,7 +65,7 @@ pub struct ClassificationResult {
     /// Whether the code parsed successfully.
     pub is_parseable: bool,
     /// Per-generator value in `Ω`: the singleton generator
-    /// (SIMPLE/COMPOSABLE/SECURE) when satisfied, SLOP otherwise.
+    /// (SIMPLE/COMPOSABLE/SECURE/NAVIGABLE) when satisfied, SLOP otherwise.
     pub dimensions: HashMap<String, EvaluationValue>,
     /// Per-generator normalized quality score in `[0.0, 1.0]`.
     pub scores: HashMap<String, f64>,
@@ -282,8 +282,8 @@ impl CharacteristicMorphism {
     ///
     /// An unparseable file satisfies no generator, so it drives every
     /// evaluated dimension to SLOP — a codebase with a file that won't
-    /// even compile is not SIMPLE/COMPOSABLE/SECURE. Only dimensions at
-    /// least one file actually evaluated are reported.
+    /// even compile is not SIMPLE/COMPOSABLE/SECURE/NAVIGABLE. Only
+    /// dimensions at least one file actually evaluated are reported.
     pub fn combine_dimensions(
         &self,
         results: &[ClassificationResult],

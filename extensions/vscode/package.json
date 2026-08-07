@@ -96,7 +96,7 @@
         "topos.evaluatePreferences": {
           "type": "string",
           "default": "",
-          "description": "Optional pillar (e.g. secure) or comma-separated ranking (e.g. simple,composable,secure) for evaluation. Passed as --priority."
+          "description": "Optional pillar (e.g. secure) or comma-separated ranking (e.g. simple,navigable,secure,composable) for evaluation. Passed as --priority."
         },
         "topos.evaluateVerbose": {
           "type": "boolean",

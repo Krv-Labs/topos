@@ -70,7 +70,7 @@ pulled into the scoring path:
 `Graphify <https://github.com/Graphify-Labs/graphify>`_
    Builds a tree-sitter-based knowledge graph consumed only by the advisory
    refactor suite's ``graphify`` target (orphan/dead-code detection, fragile
-   low-confidence edges). **Never** feeds SIMPLE/COMPOSABLE/SECURE.
+   low-confidence edges). **Never** feeds SIMPLE/COMPOSABLE/SECURE/NAVIGABLE.
 
 `Sighthound <https://github.com/Corgea/Sighthound>`_ is different from
 these two: it's compiled directly into ``topos-mcp`` as a Rust library
@@ -83,7 +83,7 @@ The advisory refactor suite
 
 Beyond the scored medal, ``topos_refactor`` (MCP) and, for Graphify, the
 ``topos graphify`` CLI subcommand, surface ranked structural hotspots from
-four independent engines. **None of these feed SIMPLE/COMPOSABLE/SECURE** —
+four independent engines. **None of these feed the four scored pillars** —
 see :doc:`agents` for the tool contract and ``docs/decisions/refactor-suite.md`` in the
 repository for the full design rationale:
 

@@ -57,7 +57,7 @@ impl ToposServer {
     /// Use before `topos_refactor(target="graphify")` when no graph exists.
     /// Skips regeneration when a graph is already present unless
     /// `force=true`. Wholly independent of `.gitnexus`/GitNexus — never
-    /// feeds SIMPLE/COMPOSABLE/SECURE. For GitNexus dep graphs use
+    /// feeds the scored pillars. For GitNexus dep graphs use
     /// `topos_generate_depgraph` instead.
     #[tool(
         name = "topos_generate_graphify_graph",

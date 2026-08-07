@@ -154,9 +154,9 @@ Topos measures code along the four independent quality generators and maps them 
 .. raw:: html
 
    <figure class="topos-figure topos-figure--framed">
-     <img class="only-light" src="_static/figures/topos-lattice.svg" alt="The SIMPLE/COMPOSABLE/SECURE sub-lattice — SLOP at the bottom, three single-pillar BRONZE states, three two-pillar SILVER states, and their meet at the top." />
+     <img class="only-light" src="_static/figures/topos-lattice.svg" alt="The full evaluation lattice — SLOP at the bottom, four single-pillar BRONZE states, six two-pillar SILVER states, four three-pillar GOLD states, and IDEAL (PLATINUM) at the top." />
      <img class="only-dark" src="_static/figures/topos-lattice-dark.svg" alt="" aria-hidden="true" />
-     <figcaption>The <code>SIMPLE</code>/<code>COMPOSABLE</code>/<code>SECURE</code> sub-cube of the evaluation lattice. Climbing the order means satisfying more independent quality generators. <code>NAVIGABLE</code> adds a fourth axis, doubling this diagram to sixteen elements: a parallel copy hangs off <code>NAVIGABLE</code>, and <code>IDEAL</code> (🏆 <code>PLATINUM</code>) sits one level above the element at this diagram's apex.</figcaption>
+     <figcaption>The evaluation lattice on all four generators — the sixteen-element 4-cube. Climbing the order means satisfying more independent quality generators; each level up is one medal tier, from <code>SLOP</code> to <code>IDEAL</code> (🏆 <code>PLATINUM</code>). Pillars abbreviate as <strong>S</strong>imple, <strong>C</strong>omposable, <strong>Sc</strong> = Secure, <strong>N</strong>avigable.</figcaption>
    </figure>
 
 .. hint::

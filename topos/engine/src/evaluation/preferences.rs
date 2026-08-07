@@ -189,7 +189,7 @@ impl UserPreferences {
 
     /// The first target the agent should attempt.
     ///
-    /// Defaults to `IDEAL` (beat the policy thresholds for all three
+    /// Defaults to `IDEAL` (beat the policy thresholds for all four
     /// generators). Overridden via [`UserPreferences::with_target`] if the
     /// caller knows a priori that `IDEAL` is unreachable for this codebase.
     pub fn aspirational_target(&self) -> EvaluationValue {

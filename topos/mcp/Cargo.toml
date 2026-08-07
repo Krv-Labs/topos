@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Topos MCP server: SIMPLE/COMPOSABLE/SECURE structural code-quality tools over the Model Context Protocol (stdio)."
+description = "Topos MCP server: SIMPLE/COMPOSABLE/SECURE/NAVIGABLE structural code-quality tools over the Model Context Protocol (stdio)."
 
 [dependencies]
 topos-engine = { path = "../engine" }

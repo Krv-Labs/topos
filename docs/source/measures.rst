@@ -209,7 +209,7 @@ by pillar and by the resulting medal mix.
 Verdicts
 --------
 
-The per-pillar scores map to an 8-valued Heyting algebra (free lattice on 3 generators), representing the **Quality Medals**:
+The per-pillar scores map to a 16-valued Heyting algebra (free lattice on 4 generators), representing the **Quality Medals**:
 
 The medal tier is the **count** of pillars achieved; *which* ones you
 achieved is named by the ``lattice_element`` and matters for diagnosis:

@@ -142,7 +142,7 @@ pub struct GitnexusEnsureOutcome {
 /// it first when missing or stale — the shared "ensure" decision behind
 /// both the CLI's default `topos evaluate` and the MCP evaluate tools'
 /// default behavior, so the two standardize on one "always try to score all
-/// three pillars" policy. `skip=true` reproduces the old read-only behavior
+/// four pillars" policy. `skip=true` reproduces the old read-only behavior
 /// (just [`resolve_gitnexus_dir`], no generation). `capture` is forwarded to
 /// `generate_depgraph`: `false` streams GitNexus's own output to the
 /// inherited stdio (the CLI, where a human is watching), `true` collects it

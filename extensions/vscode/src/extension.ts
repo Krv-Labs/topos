@@ -435,7 +435,7 @@ async function checkGitNexusAvailability(context: vscode.ExtensionContext, outpu
 
     const installCommand = resolveGitNexusInstallCommand();
     output.appendLine(
-        "GitNexus was not found on PATH. SIMPLE and SECURE work normally, but the COMPOSABLE pillar " +
+        "GitNexus was not found on PATH. SIMPLE, SECURE, and NAVIGABLE work normally, but the COMPOSABLE pillar " +
         `is unavailable until GitNexus is installed (${installCommand}) and a dependency graph is generated.`
     );
 
@@ -444,7 +444,7 @@ async function checkGitNexusAvailability(context: vscode.ExtensionContext, outpu
     }
 
     const selection = await vscode.window.showInformationMessage(
-        "Topos: install GitNexus to enable the COMPOSABLE code-quality pillar. SIMPLE and SECURE work without it.",
+        "Topos: install GitNexus to enable the COMPOSABLE code-quality pillar. The other three pillars work without it.",
         "Install GitNexus",
         "Learn More",
         "Don't Show Again"

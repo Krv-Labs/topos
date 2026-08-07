@@ -7,7 +7,7 @@
 //! `INFERRED`/`AMBIGUOUS` confidence).
 //!
 //! Purely advisory — never folded into any [`crate::graphs::base::Representation::metrics`]
-//! output or the SIMPLE/COMPOSABLE/SECURE score; only feeds
+//! output or the SIMPLE/COMPOSABLE/SECURE/NAVIGABLE score; only feeds
 //! `topos refactor graphify` (issue #150).
 
 use crate::graphs::graphify::{GraphifyConfidence, GraphifyGraph};

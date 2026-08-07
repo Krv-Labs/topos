@@ -434,7 +434,7 @@ Refactor Suite (advisory, not scored)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ranked, actionable structural hotspots from four independent engines.
-**None of these feed SIMPLE/COMPOSABLE/SECURE** — this is refactoring
+**None of these feed SIMPLE/COMPOSABLE/SECURE/NAVIGABLE** — this is refactoring
 guidance layered on top of the scored medal, distinct from the
 gate-failure ``refactor_targets`` surfaced *inside* ``topos_evaluate_file``.
 See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
@@ -478,7 +478,7 @@ See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
    the external ``graphify`` CLI (``pip install graphifyy``). Side-effecting;
    skips running ``graphify`` when a graph is already current unless
    ``force=true``. Feeds only ``topos_refactor(target="graphify")`` — never
-   SIMPLE/COMPOSABLE/SECURE.
+   SIMPLE/COMPOSABLE/SECURE/NAVIGABLE.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

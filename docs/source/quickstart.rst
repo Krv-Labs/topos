@@ -252,7 +252,7 @@ prompt. "Reduce branching in this function" or "lower fan-out in this module"
 is an engineering target.
 
 Preferences tell the agent which tradeoff matters most under time and token
-budgets. If ``GOLD`` is not reachable, the lattice defines the next-best target
+budgets. If ``PLATINUM`` is not reachable, the lattice defines the next-best target
 instead of leaving the agent stuck.
 
 Because Topos measures graph structure, cosmetic changes such as comment

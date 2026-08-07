@@ -10,32 +10,34 @@ On supported platforms the extension bundles the Topos runtime, so there's nothi
 
 1. Install and open a workspace.
 2. `⌘⇧I` → **Agent mode:** *"Use Topos to evaluate the code quality of this project."*
-3. `⌘⇧P` → **Topos: Generate Dependency Graph** *(optional; required for GOLD)*.
+3. `⌘⇧P` → **Topos: Generate Dependency Graph** *(optional; required for PLATINUM)*.
 
 Topos registers an MCP server with VS Code and can start on demand when an agent requests its tools. VS Code may ask you to trust the local server the first time it starts. No MCP is needed for **Topos: Evaluate Project** in the Command Palette.
 
 ## How scoring works
 
-Topos grades each file on three independent pillars:
+Topos grades each file on four independent pillars:
 
 | Pillar | What it checks |
 | :--- | :--- |
 | **SIMPLE** | Avoids unnecessary complexity (AST entropy + cyclomatic complexity). |
 | **COMPOSABLE** | Cleanly decoupled from other modules (dependency-graph instability, via GitNexus). |
 | **SECURE** | No dangerous-API reachability or taint paths (code-property-graph analysis). |
+| **NAVIGABLE** | Shallow enough to follow — depth-weighted nesting divergence per function. |
 
 It then awards a **Code Quality Medal** based on how many pillars pass:
 
 | Medal | Pillars passed |
 | :--- | :--- |
-| 🥇 GOLD | All 3 (SIMPLE + COMPOSABLE + SECURE) |
-| 🥈 SILVER | 2 of 3 |
-| 🥉 BRONZE | 1 of 3 |
+| 🏆 PLATINUM | All 4 (SIMPLE + COMPOSABLE + SECURE + NAVIGABLE) |
+| 🥇 GOLD | 3 of 4 |
+| 🥈 SILVER | 2 of 4 |
+| 🥉 BRONZE | 1 of 4 |
 | ❌ SLOP | 0 (or the file fails to parse) |
 
-When the agent can't reach Gold within your time or token budget, set **Preferences** (e.g. `simple,composable,secure`) to tell it which pillars to prioritize.
+When the agent can't reach Platinum within your time or token budget, set **Preferences** (e.g. `simple,navigable,secure,composable`) to tell it which pillars to prioritize.
 
-> **Note:** SIMPLE and SECURE work out of the box. COMPOSABLE needs a dependency graph — see below — so until you generate one, any verdict requiring COMPOSABLE (including GOLD) is unreachable. SIMPLE and SECURE are unaffected.
+> **Note:** SIMPLE, SECURE, and NAVIGABLE work out of the box. COMPOSABLE needs a dependency graph — see below — so until you generate one, any verdict requiring COMPOSABLE (including PLATINUM) is unreachable. The other three are unaffected.
 
 ## Commands
 
@@ -74,7 +76,7 @@ Install and MCP are separate requirements. The extension checks MCP at runtime (
 
 **Command Palette** workflows (**Topos: Evaluate Project**, **Topos: Generate Dependency Graph**) can work without MCP. Agent MCP tools require a host that exposes `vscode.lm` / `McpStdioServerDefinition`.
 
-Topos MCP tools can start on demand after VS Code trusts the local server. For COMPOSABLE scoring (and GOLD medals), run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
+Topos MCP tools can start on demand after VS Code trusts the local server. For COMPOSABLE scoring (and PLATINUM medals), run **Topos: Generate Dependency Graph** to create the `.gitnexus/` store.
 
 Cursor 2.0.x (reports VS Code API 1.99.x) does not satisfy the install engine and is unsupported.
 
@@ -97,7 +99,7 @@ Native Windows isn't supported yet — use WSL and install the Linux extension-h
 | `topos.autoDownload` | Download a SHA-256-verified standalone binary if no other runtime is found. |
 | `topos.evaluatePath` | Directory for **Evaluate Project** (default: `src/` if present, else workspace root). |
 | `topos.evaluateLanguage` | `auto` evaluates every detected language (default); set one to restrict the run. |
-| `topos.evaluatePreferences` | Optional pillar ranking, e.g. `simple,composable,secure`. |
+| `topos.evaluatePreferences` | Optional pillar ranking, e.g. `simple,navigable,secure,composable`. |
 | `topos.evaluateVerbose` | Per-file medal breakdown in the evaluate terminal (default: `true`). |
 
 ## Troubleshooting

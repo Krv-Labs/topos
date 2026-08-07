@@ -1,7 +1,7 @@
 [project]
 name = "topos-mcp"
 dynamic = ["version"]
-description = "Topos MCP server — structural code-quality tools (SIMPLE/COMPOSABLE/SECURE) for AI coding agents."
+description = "Topos MCP server — structural code-quality tools (SIMPLE/COMPOSABLE/SECURE/NAVIGABLE) for AI coding agents."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }

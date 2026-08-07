@@ -8,7 +8,7 @@
 //!
 //! - **Raw-metric gates** drive `ScoredDecision.achieved` (AND
 //!   semantics). Each `Φᵢ` compares probe values against these fields;
-//!   they are the decisive pass/fail criteria for the three quality
+//!   they are the decisive pass/fail criteria for the four quality
 //!   generators in `Ω`.
 //! - **Normalization caps/scales** map raw metrics to `[0, 1]` quality
 //!   scores for reporting and multi-file aggregation. They do **not**

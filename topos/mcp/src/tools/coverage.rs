@@ -127,8 +127,8 @@ impl ToposServer {
     /// Measure how well a test suite exercises its program-under-test, via
     /// structural (UAST) coverage (read-only).
     ///
-    /// A standalone signal, separate from the SIMPLE/COMPOSABLE/SECURE
-    /// lattice; for a quality verdict use `topos_evaluate_*` instead.
+    /// A standalone signal, separate from the four-pillar quality lattice;
+    /// for a quality verdict use `topos_evaluate_*` instead.
     /// Computes UAST bipartite declaration matching and k-gram path
     /// recall. Returns a CoverageResult.
     #[tool(

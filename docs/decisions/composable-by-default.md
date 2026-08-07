@@ -24,7 +24,7 @@ opt-in everywhere:
 That two-step dance was correct but easy to skip — an agent (or a
 human running the CLI) could go a whole session only ever seeing
 SIMPLE/SECURE, never realizing a third of Topos's signal was sitting
-unscored. Given COMPOSABLE is one of Topos's three pillars and a stated
+unscored. Given COMPOSABLE is one of Topos's quality pillars and a stated
 differentiator over single-axis linters, defaulting to "try to score
 all three" rather than "score one axis unless asked" is the right
 default.

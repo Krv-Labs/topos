@@ -12,7 +12,7 @@
 //!   external tool from GitNexus/the MDG (issue #150).
 //!
 //! All four are purely advisory — none of this feeds
-//! SIMPLE/COMPOSABLE/SECURE scoring.
+//! SIMPLE/COMPOSABLE/SECURE/NAVIGABLE scoring.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
@@ -369,7 +369,7 @@ fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
 impl ToposServer {
     /// Rank structural refactor hotspots for one file (read-only, advisory).
     ///
-    /// Does not score SIMPLE/COMPOSABLE/SECURE — use `topos_evaluate_*` for
+    /// Does not score the four pillars — use `topos_evaluate_*` for
     /// medals and `topos_assess_*` to verify edits afterward. `target`
     /// selects the engine: `cycles` (CFG loop/branch bodies),
     /// `dependencies` (MDG Forman curvature on imports; needs `.gitnexus`),

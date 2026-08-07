@@ -119,7 +119,7 @@ fn doc_description(slug: &str) -> &'static str {
         "metrics" => "Every metric key, good ranges, and how they roll up into dimension scores.",
         "priority" => {
             "Priority profiles (simple / composable / secure / navigable) and when to use each."
-        },
+        }
         "preferences" => {
             "User preferences over G_qual: induced total order on Ω and the targeted relaxation \
              walk toward the ideal intersection."

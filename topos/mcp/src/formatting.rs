@@ -90,38 +90,37 @@ pub fn composable_contract_signals(
         risk_flags.push("stale_gitnexus_dir".into());
     }
 
-    if blocked_by.iter().any(|b| b == "invalid_gitnexus_dir") {
-        return ComposableContractSignals {
-            blocked_by,
-            risk_flags,
-            next_tool: None,
-            next_action: Some("fix gitnexus_dir — it must resolve inside the file root".into()),
-        };
-    }
-    if blocked_by
+    const CONTRACT_ACTIONS: &[(&str, Option<&str>, &str)] = &[
+        (
+            "invalid_gitnexus_dir",
+            None,
+            "fix gitnexus_dir — it must resolve inside the file root",
+        ),
+        (
+            "branch_not_indexed_gitnexus_dir",
+            Some("topos_generate_depgraph"),
+            "run topos_generate_depgraph to index the current branch",
+        ),
+        (
+            "stale_gitnexus_dir",
+            Some("topos_generate_depgraph"),
+            "run topos_generate_depgraph to refresh COMPOSABLE",
+        ),
+    ];
+
+    let matched_action = CONTRACT_ACTIONS
         .iter()
-        .any(|b| b == "branch_not_indexed_gitnexus_dir")
-    {
-        return ComposableContractSignals {
-            blocked_by,
-            risk_flags,
-            next_tool: Some("topos_generate_depgraph".into()),
-            next_action: Some("run topos_generate_depgraph to index the current branch".into()),
-        };
-    }
-    if blocked_by.iter().any(|b| b == "stale_gitnexus_dir") {
-        return ComposableContractSignals {
-            blocked_by,
-            risk_flags,
-            next_tool: Some("topos_generate_depgraph".into()),
-            next_action: Some("run topos_generate_depgraph to refresh COMPOSABLE".into()),
-        };
-    }
+        .find(|(reason, _, _)| blocked_by.iter().any(|b| b == reason));
+    let (next_tool, next_action) = match matched_action {
+        Some((_, tool, action)) => (tool.map(str::to_string), Some(action.to_string())),
+        None => (None, None),
+    };
+
     ComposableContractSignals {
         blocked_by,
         risk_flags,
-        next_tool: None,
-        next_action: None,
+        next_tool,
+        next_action,
     }
 }
 
@@ -355,6 +354,26 @@ pub fn build_agent_contract(
     )
 }
 
+/// The follow-up action implied by a COMPOSABLE contract signal, or the
+/// fallback prompt to generate a depgraph when COMPOSABLE is unmeasured
+/// for another reason.
+///
+/// Extracted so the gating-target branch of [`next_step_for_contract`] stays
+/// flat — nesting an `if`/`else if` inside that branch is what pushed the
+/// function's NAVIGABLE divergence over the gate.
+fn supplementary_action_for_gating_target(
+    composable: &ComposableContractSignals,
+    missing_gitnexus: bool,
+) -> Option<String> {
+    if let Some(action) = &composable.next_action {
+        Some(action.clone())
+    } else if missing_gitnexus {
+        Some("run topos_generate_depgraph to score COMPOSABLE".into())
+    } else {
+        None
+    }
+}
+
 /// Priority-ordered next-tool/next-action dispatch for the agent contract:
 /// an in-progress refactor target, then a COMPOSABLE setup blocker, then
 /// IDEAL confirmation, then the weakest unmet pillar, in that fixed order.
@@ -371,38 +390,47 @@ fn next_step_for_contract(
     security_findings: &[SecurityFinding],
     missing_gitnexus: bool,
 ) -> (Option<String>, Vec<String>) {
-    let mut actions = Vec::new();
-    let next_tool = if let Some(first) = refactor_targets.and_then(top_gating_target) {
-        actions.push(format!(
+    if let Some(first) = refactor_targets.and_then(top_gating_target) {
+        let mut actions = vec![format!(
             "edit target {} ({}) — one focused structural change",
             first.target_id, first.metric
-        ));
-        if let Some(action) = &composable.next_action {
-            actions.push(action.clone());
-        } else if missing_gitnexus {
-            actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
+        )];
+        if let Some(action) = supplementary_action_for_gating_target(composable, missing_gitnexus) {
+            actions.push(action);
         }
-        Some("topos_assess_worktree_change".into())
-    } else if let Some(action) = &composable.next_action {
-        actions.push(action.clone());
-        composable.next_tool.clone()
-    } else if summary == EvaluationValue::Ideal {
-        actions.push("confirm project rollup and behavior tests before accepting".into());
-        Some("topos_evaluate_project".into())
-    } else if !simple_ok {
-        actions.push("inspect weakest measured pillar, then verify a focused patch".into());
-        Some("topos_inspect_code".into())
-    } else if !security_findings.is_empty() {
-        actions.push("remove active SECURE findings or acknowledge intentional risk".into());
-        Some("topos_inspect_code".into())
-    } else if missing_gitnexus {
-        actions.push("run topos_generate_depgraph to score COMPOSABLE".into());
-        Some("topos_generate_depgraph".into())
-    } else {
-        actions.push("inspect weakest measured pillar, then verify a focused patch".into());
-        Some("topos_inspect_code".into())
-    };
-    (next_tool, actions)
+        return (Some("topos_assess_worktree_change".into()), actions);
+    }
+    if let Some(action) = &composable.next_action {
+        return (composable.next_tool.clone(), vec![action.clone()]);
+    }
+    if summary == EvaluationValue::Ideal {
+        return (
+            Some("topos_evaluate_project".into()),
+            vec!["confirm project rollup and behavior tests before accepting".into()],
+        );
+    }
+    if !simple_ok {
+        return (
+            Some("topos_inspect_code".into()),
+            vec!["inspect weakest measured pillar, then verify a focused patch".into()],
+        );
+    }
+    if !security_findings.is_empty() {
+        return (
+            Some("topos_inspect_code".into()),
+            vec!["remove active SECURE findings or acknowledge intentional risk".into()],
+        );
+    }
+    if missing_gitnexus {
+        return (
+            Some("topos_generate_depgraph".into()),
+            vec!["run topos_generate_depgraph to score COMPOSABLE".into()],
+        );
+    }
+    (
+        Some("topos_inspect_code".into()),
+        vec!["inspect weakest measured pillar, then verify a focused patch".into()],
+    )
 }
 
 /// The 'COMPOSABLE not scored' note surfaced when no MDG is available.

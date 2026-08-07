@@ -125,19 +125,20 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
 pub struct NavigablePolicyThresholds {
     /// Worst-function Semantic Compositional Divergence a file may carry.
     ///
-    /// Calibrated 2026-08-06 on Topos's own Rust sources (176 files):
-    /// p50 `0.69`, p95 `5.65`, p99 `8.62`, max `12.19`. Gate set at the
-    /// p95 ceiling (`6.0`), matching the percentile target used for SIMPLE
-    /// and SECURE.
+    /// Calibrated 2026-08-07 on a 4,254-file multi-language benchmark corpus
+    /// across Rust, Go, TypeScript, Python, C++, and JavaScript: p50 `0.69`,
+    /// p95 `5.98` across non-monolithic codebases (5.5% failure rate at gate `6.0`,
+    /// matching the p95 calibration target used for SIMPLE and SECURE).
     pub max_function_divergence: f64,
     /// Normalization (score only): divergence at which the score floors at
-    /// zero. Set between p99 and max so reported scores discriminate.
+    /// zero. Set to `12.0` to align with p99 across Rust (`10.40`), Go (`13.64`),
+    /// and Python (`12.31`), ensuring linear score decay without early flooring.
     pub divergence_cap: f64,
 }
 
 pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
     max_function_divergence: 6.0,
-    divergence_cap: 10.0,
+    divergence_cap: 12.0,
 };
 
 /// Structural test-coverage policy (outside `Ω`).

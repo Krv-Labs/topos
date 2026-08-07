@@ -92,6 +92,12 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 Docs figures under `docs/source/_static/figures/topos-lattice*.svg` have been redrawn for the full sixteen-element 4-cube (PLATINUM down to SLOP). The benchmark figures (`topos-medal-mix*`, `topos-typical-profiles*`, `topos-library-profiles*`, `topos-bronze-ready*`) still plot the three-pillar corpus run and will be regenerated when the benchmark is re-run under NAVIGABLE.
 
+## [Unreleased]
+
+### Added
+
+- **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
+
 ## [0.4.4] - 2026-08-04
 
 ### Added

@@ -125,10 +125,10 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
 pub struct NavigablePolicyThresholds {
     /// Worst-function Semantic Compositional Divergence a file may carry.
     ///
-    /// Calibrated 2026-08-07 on a 4,254-file multi-language benchmark corpus
-    /// across Rust, Go, TypeScript, Python, C++, and JavaScript: p50 `0.69`,
-    /// p95 `5.98` across non-monolithic codebases (5.5% failure rate at gate `6.0`,
-    /// matching the p95 calibration target used for SIMPLE and SECURE).
+    /// Calibrated 2026-08-07 on a balanced 6,390-file leaderboard corpus
+    /// (equal strata per ecosystem: PyPI, Cargo, npm, C++, Go, MCP): p50 `0.0`,
+    /// p95 `10.37`. Gate `10.0` yields ~5.2% failure (MCP ~5.8%, Python ~6.0%),
+    /// matching the ~5.5% calibration target used for SIMPLE and SECURE.
     pub max_function_divergence: f64,
     /// Normalization (score only): divergence at which the score floors at
     /// zero. Set to `12.0` to align with p99 across Rust (`10.40`), Go (`13.64`),
@@ -137,7 +137,7 @@ pub struct NavigablePolicyThresholds {
 }
 
 pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
-    max_function_divergence: 6.0,
+    max_function_divergence: 10.0,
     divergence_cap: 12.0,
 };
 

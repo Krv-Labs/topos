@@ -111,10 +111,12 @@ failure becomes an actionable refactor target: extract the deepest nested
 block into a top-level helper.
 
 .. note::
-   The NAVIGABLE threshold is calibrated from an ECDF over Topos's 176 Rust
-   source files. The observed p95 was ``5.65``, p99 was ``8.62``, and the
-   maximum was ``12.19``; the achieved gate is ``6.0`` and the score cap is
-   ``10.0``.
+   The NAVIGABLE threshold is calibrated from a 4,254-file multi-language
+   benchmark corpus (Rust, Go, TypeScript, Python, C++, JavaScript). The
+   achieved gate is ``6.0`` (p95 ``5.98``, ~5.5% failure rate). The score cap
+   is ``12.0`` (spans p99 across Rust ``10.40``, Go ``13.64``, and Python
+   ``12.31``). Topos's 176 Rust sources remain the reference ECDF (p95
+   ``5.65``, p99 ``8.62``, max ``12.19``).
 
 Scoring and Manager Priorities
 ------------------------------

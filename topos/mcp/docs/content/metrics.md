@@ -129,7 +129,7 @@ Two consequences of the formula are load-bearing:
 
 Like `ast.max_function_complexity`, the gate is the **per-function max**
 rather than a file-wide sum — a long file of short flat functions must not
-fail for its length. `Φ_NAVIGABLE` decays linearly to a cap of 10.0 for
+fail for its length. `Φ_NAVIGABLE` decays linearly to a cap of 12.0 for
 the reported score.
 
 When the gate fails, `metric_locations["nav.max_function_divergence"]`
@@ -137,10 +137,11 @@ carries the offending functions worst-first with real spans, so the failure
 becomes a `refactor_target`. The fix is `extract_helper`: lift the deepest
 nested block into a top-level function.
 
-> **Calibration.** The `6.0` gate is the p95 boundary from an ECDF over
-> Topos's 176 Rust source files; the observed p95 was `5.65`, p99 was `8.62`,
-> and the maximum was `12.19`. The `10.0` score cap keeps the tail useful
-> without allowing extreme outliers to dominate the score.
+> **Calibration.** The `6.0` gate is the p95 boundary from a 4,254-file
+> multi-language benchmark corpus (p95 `5.98`, ~5.5% gate failure rate). The
+> `12.0` score cap spans p99 across Rust (`10.40`), Go (`13.64`), and Python
+> (`12.31`) so scores decay linearly without early flooring. Topos's 176 Rust
+> sources remain the reference ECDF (p95 `5.65`, p99 `8.62`, max `12.19`).
 
 ## Score floors (alternate path)
 

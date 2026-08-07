@@ -220,13 +220,13 @@ impl ToposServer {
     /// (`top_n_functions`, default 10), `total_functions`, and entropy
     /// details.
     ///
-    /// With `filepath`, the verdict is scored on all three generators and
+    /// With `filepath`, the verdict is scored on all four generators and
     /// agrees with `topos_evaluate_file`: unless `no_composable` is set,
     /// this generates/refreshes `.gitnexus` (given by `gitnexus_dir` or
     /// auto-detected at `<root>/.gitnexus`) when missing or stale, then
     /// attaches the ModuleDependencyGraph — so this tool is side-effecting.
     /// With inline `code` there is no module to place in the graph, so only
-    /// SIMPLE/SECURE are reachable, as in `topos_evaluate_code`.
+    /// SIMPLE/SECURE/NAVIGABLE are reachable, as in `topos_evaluate_code`.
     #[tool(
         name = "topos_inspect_code",
         annotations(

@@ -30,7 +30,7 @@ pub struct InspectArgs {
     /// and security findings are not included.
     #[arg(long)]
     pub json: bool,
-    /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
+    /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE/NAVIGABLE only.
     #[arg(long)]
     pub no_composable: bool,
     /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
@@ -84,7 +84,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
             Err(e) => {
                 progress.finish_and_clear();
                 composable_warnings.push(format!(
-                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
+                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE/NAVIGABLE only."
                 ));
                 None
             }

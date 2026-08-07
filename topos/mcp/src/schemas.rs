@@ -262,9 +262,9 @@ pub struct EvaluateFileInput {
     /// (see `no_composable`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
-    /// exactly like a missing `.gitnexus` did before this tool started
-    /// generating it automatically.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
+    /// only, exactly like a missing `.gitnexus` did before this tool
+    /// started generating it automatically.
     #[serde(default)]
     pub no_composable: bool,
     /// Optional generator ranking.
@@ -318,9 +318,9 @@ pub struct EvaluateProjectInput {
     /// reported as unavailable rather than failing the whole evaluation.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
-    /// exactly like a missing `.gitnexus` did before this tool started
-    /// generating it automatically.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
+    /// only, exactly like a missing `.gitnexus` did before this tool
+    /// started generating it automatically.
     #[serde(default)]
     pub no_composable: bool,
     /// Per-file rows to return per page (1–500, default 25).
@@ -509,10 +509,10 @@ pub struct InspectCodeInput {
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Skip GitNexus generation; score whatever `.gitnexus` is already
-    /// there, or SIMPLE/SECURE only when there is none.
+    /// there, or SIMPLE/SECURE/NAVIGABLE only when there is none.
     #[serde(default)]
     pub no_composable: bool,
-    /// Strict total order on the three generators; see
+    /// Strict total order on the four generators; see
     /// `topos://docs/preferences`.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,

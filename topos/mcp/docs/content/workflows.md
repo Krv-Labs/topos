@@ -17,8 +17,8 @@ situational.
 | --- | --- |
 | `topos_evaluate_file` | Score a file on disk. `refactor_targets=N` adds ranked edit spans. |
 | `topos_evaluate_project` | Rollup + worst-N files for a directory. |
-| `topos_evaluate_code` | Score a source string (SIMPLE/SECURE only — no file, so no coupling). |
-| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. With `filepath` it resolves the dependency graph exactly as `topos_evaluate_file` does (`gitnexus_dir` / `no_composable`), so the two agree on the same file — including when COMPOSABLE is unavailable and `warnings` says why. With a `code` string, SIMPLE/SECURE only. |
+| `topos_evaluate_code` | Score a source string (SIMPLE/SECURE/NAVIGABLE — no file, so no coupling). |
+| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. With `filepath` it resolves the dependency graph exactly as `topos_evaluate_file` does (`gitnexus_dir` / `no_composable`), so the two agree on the same file — including when COMPOSABLE is unavailable and `warnings` says why. With a `code` string, SIMPLE/SECURE/NAVIGABLE only. |
 | `topos_assess_worktree_change` | Verify an in-place edit against a git ref. **Default verification.** |
 | `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |
@@ -72,7 +72,7 @@ Outside MCP, `topos-mcp --version` prints the same report.
   analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
   Pass `gitnexus_dir` to select a store under the MCP **file root** (the
   project root for freshness/`gitnexus analyze`), or `no_composable:
-  true` to skip detection/generation and score SIMPLE/SECURE only.
+  true` to skip detection/generation and score SIMPLE/SECURE/NAVIGABLE only.
   `gitnexus_dir` does not change the file root — point the server's file
   root at the repo that owns the graph. If GitNexus isn't installed or
   generation fails, `coupling_available` is `false` and any verdict
@@ -102,7 +102,7 @@ returns top-N functions by complexity, source line, entropy details, and the
 full metric table. The `filepath` form takes the same `gitnexus_dir` /
 `no_composable` knobs as `topos_evaluate_file` and resolves the dependency
 graph the same way, so its verdict matches; the `code` form has no module in
-the graph and reaches SIMPLE/SECURE only.
+the graph and reaches SIMPLE/SECURE/NAVIGABLE only.
 
 ### 3. Propose
 

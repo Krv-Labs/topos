@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - Unreleased
+## [0.5.0] - 2026-08-07
 
 ### Added
 
@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
-> **NAVIGABLE thresholds calibrated** on Topos's own Rust sources (176 files, 2026-08-06): `max_function_divergence = 6.0` (p95 `5.65`), `divergence_cap = 10.0` (between p99 `8.62` and max `12.19`).
+> **NAVIGABLE thresholds calibrated** on a 4,254-file multi-language corpus (2026-08-07): `max_function_divergence = 6.0` (p95 `5.98` across Rust, Go, TypeScript, Python, and C++; ~5.5% gate failure rate, matching the p95 target used for SIMPLE and SECURE), `divergence_cap = 12.0` (spans p99 across Rust `10.40`, Go `13.64`, and Python `12.31` so scores decay linearly without early flooring). Topos's 176 Rust sources remain the reference ECDF (`p95` `5.65`, `p99` `8.62`, max `12.19`).
 
 Docs figures under `docs/source/_static/figures/topos-lattice*.svg` still depict the three-generator sub-cube; captions now say so explicitly, but the artwork has not been redrawn for 16 elements.
 

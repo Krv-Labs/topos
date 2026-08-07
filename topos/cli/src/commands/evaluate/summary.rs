@@ -312,9 +312,12 @@ fn humanize_composable_notice(warning: &str) -> String {
         return "index may be stale".to_string();
     }
     // Keep invalid-override and other detail readable but strip trailing
-    // "evaluating SIMPLE/SECURE only" noise — the meta line already says so.
+    // "evaluating SIMPLE/SECURE/NAVIGABLE only" noise — the meta line already says so.
     trimmed
         .trim_end_matches('.')
+        .trim_end_matches(" — evaluating SIMPLE/SECURE/NAVIGABLE only")
+        .trim_end_matches("; evaluating SIMPLE/SECURE/NAVIGABLE only")
+        // Pre-v0.5.0 phrasing, still emitted by some notice paths.
         .trim_end_matches(" — evaluating SIMPLE/SECURE only")
         .trim_end_matches("; evaluating SIMPLE/SECURE only")
         .to_string()

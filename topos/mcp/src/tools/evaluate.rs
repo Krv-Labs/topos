@@ -54,13 +54,13 @@ fn err_eval(
 
 #[tool_router(router = evaluate_router, vis = "pub(crate)")]
 impl ToposServer {
-    /// Score a raw code string on the SIMPLE / COMPOSABLE / SECURE quality
+    /// Score a raw code string on the SIMPLE / SECURE / NAVIGABLE quality
     /// lattice (read-only; never writes or runs the code).
     ///
-    /// Use for a snippet not yet on disk. Only SIMPLE and SECURE are
-    /// reachable here (scored from the source's CFG/CPG); COMPOSABLE needs
-    /// a module dependency graph, so for it use `topos_evaluate_file` with
-    /// `gitnexus_dir`, or `topos_evaluate_project` for a whole tree.
+    /// Use for a snippet not yet on disk. SIMPLE, SECURE, and NAVIGABLE are
+    /// reachable here (CFG/CPG/UAST); COMPOSABLE needs a module dependency
+    /// graph, so for it use `topos_evaluate_file` with `gitnexus_dir`, or
+    /// `topos_evaluate_project` for a whole tree.
     /// Returns an EvaluationResult: the lattice verdict (SLOP…IDEAL),
     /// per-generator scores, and a next-step agent contract.
     #[tool(
@@ -105,16 +105,18 @@ impl ToposServer {
         to_tool_result(&model, md)
     }
 
-    /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE lattice —
-    /// the only evaluate tool that can reach COMPOSABLE (side-effecting).
+    /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE / NAVIGABLE
+    /// lattice — the only evaluate tool that can reach COMPOSABLE
+    /// (side-effecting).
     ///
     /// Unless `no_composable` is set, this generates/refreshes `.gitnexus`
     /// (given by `gitnexus_dir` or auto-detected at `<root>/.gitnexus`) when
     /// it's missing or stale, then attaches the resulting
     /// ModuleDependencyGraph — the same default behavior as the CLI's
-    /// `topos evaluate`. SIMPLE/SECURE always run. When GitNexus isn't
-    /// installed or generation fails, `coupling_available` is false and
-    /// `warnings` explains why; the rest of the evaluation still succeeds.
+    /// `topos evaluate`. SIMPLE/SECURE/NAVIGABLE always run. When GitNexus
+    /// isn't installed or generation fails, `coupling_available` is false
+    /// and `warnings` explains why; the rest of the evaluation still
+    /// succeeds.
     #[tool(
         name = "topos_evaluate_file",
         annotations(
@@ -144,8 +146,8 @@ impl ToposServer {
     }
 
     /// Recursively score every supported source file in a directory on the
-    /// SIMPLE / COMPOSABLE / SECURE lattice, with a project rollup
-    /// (side-effecting).
+    /// SIMPLE / COMPOSABLE / SECURE / NAVIGABLE lattice, with a project
+    /// rollup (side-effecting).
     ///
     /// Autodetects all supported languages (Python, Rust, JavaScript,
     /// TypeScript, C++, Go) in one walk — no language argument — and skips

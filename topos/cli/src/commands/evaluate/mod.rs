@@ -17,7 +17,7 @@
 //! evaluate tools via `topos_mcp::evaluation::ensure_gitnexus_dir`, so the
 //! CLI and MCP server standardize on one policy. Any failure here —
 //! GitNexus not installed, generation failing, a schema mismatch —
-//! degrades gracefully to SIMPLE/SECURE only with a one-line `stderr`
+//! degrades gracefully to SIMPLE/SECURE/NAVIGABLE only with a one-line `stderr`
 //! notice; it never fails the whole evaluate run, matching how the MCP
 //! tools treat COMPOSABLE as "not measured" rather than "failed" when
 //! coupling data is unavailable.
@@ -61,7 +61,7 @@ pub struct EvaluateArgs {
     /// inferred language (same multi-language default as MCP project evaluate).
     #[arg(long, value_name = "LANGUAGE")]
     pub language: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE only.
     #[arg(long)]
     pub no_composable: bool,
     /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
@@ -147,7 +147,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
                 spinner.finish_and_clear();
                 // Human card + JSON carry the notice; no separate stderr dump.
                 composable_warnings.push(format!(
-                    "could not resolve current directory ({e}); evaluating SIMPLE/SECURE only."
+                    "could not resolve current directory ({e}); evaluating SIMPLE/SECURE/NAVIGABLE only."
                 ));
                 None
             }

@@ -104,7 +104,15 @@ pub fn coupling_gate_input(
     abstractness: Option<f64>,
 ) -> HashMap<String, f64> {
     let has_coupling_signal = !(fan_in == Some(0.0) && fan_out == Some(0.0));
-    let use_distance = instability.is_some() && abstractness.is_some() && has_coupling_signal;
+    // `mdg.abstractness = 0.0` is both "genuinely concrete" and "nothing
+    // abstract was detected", and for languages where Topos finds no abstract
+    // types it is 0.0 across an entire repo. Pinning A at 0 collapses
+    // `|A + I − 1|` into `1 − I`, which rewards maximally-unstable modules
+    // and scores every stable one at 0 — the inverse of what the main
+    // sequence means. Require abstractness to carry signal, the same way
+    // `has_coupling_signal` requires it of fan.
+    let has_abstractness_signal = abstractness.is_some_and(|a| a > 0.0);
+    let use_distance = instability.is_some() && has_abstractness_signal && has_coupling_signal;
 
     let mut metrics = HashMap::new();
     if use_distance {
@@ -178,5 +186,19 @@ mod tests {
     #[test]
     fn no_metrics_vacuously_satisfies() {
         assert!(score_coupling(None, None, None, None, false, false).achieved);
+    }
+
+    /// Distance needs a real abstractness reading. With `A = 0.0`,
+    /// `|A + I − 1|` is just `1 − I`, so a maximally stable module (`I = 0`)
+    /// would land on the worst possible distance for being depended upon.
+    #[test]
+    fn zero_abstractness_keeps_gating_raw_instability() {
+        let metrics = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.0));
+        assert!(!metrics.contains_key("mdg.main_sequence_distance"));
+        assert_eq!(metrics.get("mdg.instability"), Some(&0.0));
+
+        let real = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.4));
+        assert_eq!(real.get("mdg.main_sequence_distance"), Some(&0.6));
+        assert!(!real.contains_key("mdg.instability"));
     }
 }

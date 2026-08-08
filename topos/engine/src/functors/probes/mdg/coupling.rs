@@ -30,7 +30,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::graphs::mdg::object::ModuleDependencyGraph;
+use crate::graphs::mdg::object::{ModuleDependencyGraph, CONTAINMENT_RELS};
 
 /// Coupling metrics for a single module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,21 +142,27 @@ pub fn calculate_dependency_depth(graph: &ModuleDependencyGraph, file_node_id: &
     max_depth
 }
 
-/// Walk up CONTAINS edges to find the File node that owns `node_id`.
+/// Walk up containment edges to find the File node that owns `node_id`.
+///
+/// Mirrors [`ModuleDependencyGraph::contained_symbols`]: the parent of a
+/// symbol is reached over any of `CONTAINMENT_RELS`, not `CONTAINS` alone
+/// (GitNexus files own their symbols via `DEFINES`, and class members hang
+/// off `HAS_METHOD` / `HAS_PROPERTY`).
 pub fn owning_file(graph: &ModuleDependencyGraph, node_id: &str) -> Option<String> {
     let mut visited: HashSet<String> = HashSet::new();
     let mut current = node_id.to_string();
     loop {
         if visited.contains(&current) {
-            return None; // cycle in CONTAINS chain
+            return None; // cycle in the containment chain
         }
         visited.insert(current.clone());
         let node = graph.get_node(&current)?;
         if node.label == "File" {
             return Some(current);
         }
-        let parents = graph.incoming(&current, Some("CONTAINS"));
-        let parent = parents.first()?;
+        let parent = CONTAINMENT_RELS
+            .iter()
+            .find_map(|rel_type| graph.incoming(&current, Some(rel_type)).first().cloned())?;
         current = parent.source_id.clone();
     }
 }

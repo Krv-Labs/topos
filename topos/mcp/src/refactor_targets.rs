@@ -455,11 +455,13 @@ mod tests {
     #[test]
     fn composable_targets_use_the_scorer_gate_inputs() {
         let mut result = ClassificationResult::default();
-        // A = 0.0, I = 0.9 => D = 0.1, inside main_sequence_distance_max,
+        // A = 0.2, I = 0.9 => D = 0.1, inside main_sequence_distance_max,
         // even though I = 0.9 is above the raw instability_high of 0.7.
+        // Abstractness must be nonzero or the scorer keeps gating raw
+        // instability instead (see `coupling_gate_input`).
         result.raw_metrics.extend([
             ("mdg.instability".to_string(), 0.9),
-            ("mdg.abstractness".to_string(), 0.0),
+            ("mdg.abstractness".to_string(), 0.2),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
@@ -480,11 +482,13 @@ mod tests {
     #[test]
     fn composable_target_names_the_metric_the_scorer_gated() {
         let mut result = ClassificationResult::default();
-        // A = 0.0, I = 0.3 => D = 0.7, past main_sequence_distance_max,
-        // while I = 0.3 is exactly on the raw instability low bound (in band).
+        // A = 1.0, I = 0.7 => D = 0.7, past main_sequence_distance_max,
+        // while I = 0.7 is exactly on the raw instability high bound (in
+        // band). A fully abstract module is a real reading — abstractness
+        // must be nonzero for the scorer to gate distance at all.
         result.raw_metrics.extend([
-            ("mdg.instability".to_string(), 0.3),
-            ("mdg.abstractness".to_string(), 0.0),
+            ("mdg.instability".to_string(), 0.7),
+            ("mdg.abstractness".to_string(), 1.0),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);

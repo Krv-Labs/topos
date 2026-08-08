@@ -345,11 +345,14 @@ mod tests {
 
     #[test]
     fn main_sequence_failure_gets_actionable_composable_suggestion() {
+        // Abstractness must be nonzero for the scorer to gate distance at all
+        // (see `coupling_gate_input`), so the fixture carries a real reading:
+        // distance = |0.2 + 0.1 − 1| = 0.7.
         let result = result(
             HashMap::from([("composable".to_string(), EvaluationValue::Slop)]),
             HashMap::from([
-                ("mdg.instability".to_string(), 0.3),
-                ("mdg.abstractness".to_string(), 0.0),
+                ("mdg.instability".to_string(), 0.1),
+                ("mdg.abstractness".to_string(), 0.2),
                 ("mdg.fan_in".to_string(), 1.0),
                 ("mdg.fan_out".to_string(), 5.0),
             ]),

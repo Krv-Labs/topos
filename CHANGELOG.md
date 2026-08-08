@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CFG switch and try/catch/finally semantics** route switch `break` to the match join, model handlers as exception targets, and ensure normal, return, and throw paths traverse nested `finally` blocks correctly.
 - **C++ declaration and GitNexus fingerprint parity** maps header prototypes and pure-virtual declarations as functions and writes fingerprints beside the resolved branch-scoped graph store.
 - **CLI four-pillar ranking compatibility** uses `RANKING_LEN` throughout the info browser so NAVIGABLE rankings compile and display consistently.
+- **Martin instability is no longer gated below its resolution limit.** `I = Ce / (Ca + Ce)` is a ratio whose resolution is `1 / (Ca + Ce)`; with a single coupling edge the only attainable readings are `0.0` and `1.0`, decided entirely by that edge's direction, so the balanced band `[0.3, 0.7]` was unreachable by construction. Single-edge modules now read the `0.5` no-signal midpoint that zero-coupling modules already reported, instead of automatically failing COMPOSABLE. Modules with two or more coupling edges are gated exactly as before.
 
 ### Changed
 

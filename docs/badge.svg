@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="119" height="20" role="img" aria-label="topos: GOLD · 79.8">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="119" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="41" height="20" fill="#ffffff"/>
+    <rect x="41" width="78" height="20" fill="#b45309"/>
+    <rect x="41" width="78" height="20" fill="url(#s)"/>
+  </g>
+  <rect x=".5" y=".5" width="118" height="19" rx="2.5" fill="none" stroke="#b45309" stroke-width="1"/>
+  <g text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+    <text x="20.5" y="14" fill="#141414">topos</text>
+    <text x="80" y="14" fill="#fff">GOLD · 79.8</text>
+  </g>
+</svg>

@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="#what-topos-checks"><img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/badge.svg" alt="Topos self-evaluation: core crate quality medal"></a>
   <a href="https://github.com/mcp/Krv-Labs/topos"><img src="https://img.shields.io/badge/VS_Code-Install_MCP-007ACC?logo=visualstudiocode&logoColor=white" alt="Install Topos MCP in VS Code"></a>
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp?color=3776AB&logo=python&logoColor=ffd43b" alt="PyPI"></a>
   <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>

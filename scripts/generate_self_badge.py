@@ -20,9 +20,11 @@ import os
 import shutil
 import statistics
 import subprocess
+from functools import lru_cache
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,6 +55,14 @@ LABEL_TEXT_COLOR = "#141414"
 BADGE_FONT = "Verdana,Geneva,DejaVu Sans,sans-serif"
 _CHAR_WIDTH = 6.2
 _PADDING = 10.0
+
+ICON_PATH = ROOT / "docs" / "topos-icon.svg"
+ICON_SIZE = 16
+ICON_X = 4
+ICON_Y = 2
+ICON_LABEL_GAP = 0
+LABEL_PAD_RIGHT = 4
+_SKIP_ICON_TAGS = {"metadata", "namedview", "title"}
 
 
 def resolve_topos_bin() -> str:
@@ -125,6 +135,47 @@ def aggregate(records: list[dict]) -> dict:
     }
 
 
+def _local_svg_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _strip_svg_namespace(el: ET.Element) -> None:
+    el.tag = _local_svg_name(el.tag)
+    el.attrib = {
+        key: val for key, val in el.attrib.items() if not key.startswith("{")
+    }
+    for child in list(el):
+        _strip_svg_namespace(child)
+
+
+@lru_cache(maxsize=1)
+def _render_icon_svg() -> str:
+    if not ICON_PATH.is_file():
+        return ""
+
+    root = ET.parse(ICON_PATH).getroot()
+    view_box = root.attrib.get("viewBox", "0 0 240 240")
+    _strip_svg_namespace(root)
+
+    children = []
+    for child in list(root):
+        if _local_svg_name(child.tag) in _SKIP_ICON_TAGS:
+            continue
+        children.append(
+            ET.tostring(child, encoding="unicode", short_empty_elements=True)
+        )
+    if not children:
+        return ""
+
+    return (
+        f'<svg x="{ICON_X}" y="{ICON_Y}" width="{ICON_SIZE}" height="{ICON_SIZE}" '
+        f'viewBox="{escape(view_box)}" aria-hidden="true" focusable="false" '
+        'preserveAspectRatio="xMidYMid meet">'
+        + "".join(children)
+        + "</svg>"
+    )
+
+
 def _segment_width(text: str) -> int:
     return round(_CHAR_WIDTH * len(text) + _PADDING)
 
@@ -133,10 +184,12 @@ def render_badge(message: str, *, tier: str) -> str:
     color = TIER_COLORS.get(tier, TIER_COLORS["slop"])
     label = escape(LABEL_TEXT)
     msg = escape(message)
-    left_w = _segment_width(LABEL_TEXT)
+    icon = _render_icon_svg()
+    icon_w = ICON_X + ICON_SIZE + ICON_LABEL_GAP if icon else 0
+    left_w = icon_w + _segment_width(LABEL_TEXT) + (LABEL_PAD_RIGHT if icon else 0)
     right_w = _segment_width(message)
     total = left_w + right_w
-    label_x = left_w / 2
+    label_x = icon_w + (left_w - icon_w) / 2
     return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total}" height="20" role="img" aria-label="{label}: {msg}">
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -149,6 +202,7 @@ def render_badge(message: str, *, tier: str) -> str:
     <rect x="{left_w}" width="{right_w}" height="20" fill="url(#s)"/>
   </g>
   <rect x=".5" y=".5" width="{total - 1}" height="19" rx="2.5" fill="none" stroke="{color}" stroke-width="1"/>
+  {icon}
   <g text-anchor="middle" font-family="{BADGE_FONT}" font-size="11">
     <text x="{label_x:g}" y="14" fill="{LABEL_TEXT_COLOR}">{label}</text>
     <text x="{left_w + right_w / 2:g}" y="14" fill="#fff">{msg}</text>

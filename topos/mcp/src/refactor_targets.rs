@@ -107,13 +107,16 @@ fn gate_pillar(metric: &str) -> &'static str {
 /// `"fix"` when failing this metric actually costs its pillar's
 /// `achieved`, `"improve"` when the gate is advisory.
 ///
-/// `cfg.cyclomatic` is the lone advisory spec (`gates_achieved: false`,
-/// issue #193): it is a whole-file merged-CFG sum that scales with
-/// function count, so it is still scored and surfaced but cannot fail
-/// SIMPLE — `ast.max_function_complexity` gates that concern directly.
-/// Labeling it `"fix"` sent agents to rewrite a metric no verdict depends
-/// on. Metrics with no registered spec default to gating, matching
-/// `gate_pillar`'s defensive fallback.
+/// Three specs are advisory (`gates_achieved: false`). `cfg.cyclomatic`
+/// (issue #193) is a whole-file merged-CFG sum that scales with function
+/// count, so it is still scored and surfaced but cannot fail SIMPLE —
+/// `ast.max_function_complexity` gates that concern directly.
+/// `mdg.instability` and `mdg.main_sequence_distance` are ratios whose
+/// resolution is `1 / (Ca + Ce)`, which at file granularity is too coarse
+/// for the calibrated band to be a fair test. Labeling any of them `"fix"`
+/// sends agents to rewrite a metric no verdict depends on. Metrics with no
+/// registered spec default to gating, matching `gate_pillar`'s defensive
+/// fallback.
 ///
 /// This is the single `gates_achieved` → severity mapping in this module;
 /// [`rank_key`] derives its gating tier from the severity string so the
@@ -200,6 +203,7 @@ fn module_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<R
         result.raw_metrics.get("mdg.fan_in").copied(),
         result.raw_metrics.get("mdg.fan_out").copied(),
         result.raw_metrics.get("mdg.abstractness").copied(),
+        result.raw_metrics.get("mdg.coupling").copied(),
     ));
     evaluate_gates(
         &gate_metrics,
@@ -462,6 +466,7 @@ mod tests {
         result.raw_metrics.extend([
             ("mdg.instability".to_string(), 0.9),
             ("mdg.abstractness".to_string(), 0.2),
+            ("mdg.coupling".to_string(), 6.0),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
@@ -489,6 +494,7 @@ mod tests {
         result.raw_metrics.extend([
             ("mdg.instability".to_string(), 0.7),
             ("mdg.abstractness".to_string(), 1.0),
+            ("mdg.coupling".to_string(), 6.0),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
@@ -501,7 +507,9 @@ mod tests {
              once coupling_gate_input derives it, so gating raw_metrics verbatim \
              could never surface this failure at all"
         );
-        assert_eq!(targets[0].severity, "fix");
+        // Distance is advisory (its resolution is `I`'s), so it is still
+        // named and still actionable, but it cannot fail COMPOSABLE alone.
+        assert_eq!(targets[0].severity, "improve");
         assert_eq!(targets[0].failing_generators, vec!["composable"]);
     }
 
@@ -513,14 +521,11 @@ mod tests {
     fn cross_pillar_fixture() -> (HashMap<String, Vec<FunctionEntry>>, ClassificationResult) {
         let locations = HashMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(118)])]);
         let mut result = ClassificationResult::default();
-        // Abstractness is deliberately absent so `coupling_gate_input`
-        // keeps raw instability rather than swapping in
-        // `mdg.main_sequence_distance`; 0.18 is below `instability_low`
-        // (0.3), so the gate fails low with an excess of just 0.12 against
-        // cyclomatic's 103.
-        result
-            .raw_metrics
-            .insert("mdg.instability".to_string(), 0.18);
+        // `mdg.fan_out` is the gating COMPOSABLE metric (an absolute count,
+        // so it has no resolution limit and still fails hard). At 16 against
+        // a cap of 15 its excess is 1 -- a hundredth of cyclomatic's 103 --
+        // which is the point: the gating tier must win on tier, not size.
+        result.raw_metrics.insert("mdg.fan_out".to_string(), 16.0);
         (locations, result)
     }
 
@@ -539,10 +544,10 @@ mod tests {
             targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
         );
         assert_eq!(
-            targets[0].metric, "mdg.instability",
+            targets[0].metric, "mdg.fan_out",
             "no ranking was supplied, so SIMPLE-before-COMPOSABLE is only \
              default_pillar_rank talking. A gating COMPOSABLE failure must beat an \
-             advisory SIMPLE metric with a far larger excess (103 vs 0.12), or the \
+             advisory SIMPLE metric with a far larger excess (103 vs 1), or the \
              agent routes off a metric no verdict depends on."
         );
         assert_eq!(targets[0].severity, "fix");
@@ -575,7 +580,7 @@ mod tests {
              even though the COMPOSABLE one gates — preferences.ranking is an \
              explicit instruction, unlike default_pillar_rank"
         );
-        assert_eq!(targets[1].metric, "mdg.instability");
+        assert_eq!(targets[1].metric, "mdg.fan_out");
     }
 
     #[test]

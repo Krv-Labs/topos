@@ -372,6 +372,7 @@ fn score_composable_dim(
         raw.get("mdg.fan_in").copied(),
         raw.get("mdg.fan_out").copied(),
         raw.get("mdg.abstractness").copied(),
+        raw.get("mdg.coupling").copied(),
         is_entrypoint_module,
         is_stable_leaf_module,
     ))

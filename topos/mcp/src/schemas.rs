@@ -1110,7 +1110,11 @@ pub struct ProjectEvaluationResult {
     /// `worst_files` for fix order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hard_fails: Vec<WorstFileEntry>,
-    /// Leaf modules at `mdg.instability = 0.0` with no coupling signal.
+    /// **Deprecated** — always empty, kept for one release for wire
+    /// compatibility. This bucket held leaf modules at `mdg.instability =
+    /// 0.0` so their COMPOSABLE failures stayed out of `hard_fails`.
+    /// `mdg.instability` is now advisory (`gates_achieved: false`) and
+    /// cannot produce a hard fail, so there is nothing left to suppress.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub leaf_composable_zeros: Vec<WorstFileEntry>,
     /// High advisory cyclomatic complexity with all gating gates passing.

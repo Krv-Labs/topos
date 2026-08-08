@@ -584,25 +584,9 @@ fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
         fan_in,
         fan_out,
         result.raw_metrics.get("mdg.abstractness").copied(),
+        result.raw_metrics.get("mdg.coupling").copied(),
     ));
     gate_metrics
-}
-
-fn has_coupling_signal(fan_in: Option<f64>, fan_out: Option<f64>) -> bool {
-    !(fan_in == Some(0.0) && fan_out == Some(0.0))
-}
-
-/// `mdg.instability = 0.0` with no measured coupling — a structural leaf.
-fn is_leaf_composable_zero(result: &ClassificationResult) -> bool {
-    if !result.is_parseable {
-        return false;
-    }
-    if result.raw_metrics.get("mdg.instability").copied() != Some(0.0) {
-        return false;
-    }
-    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
-    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
-    !has_coupling_signal(fan_in, fan_out)
 }
 
 fn gating_gate_failures(result: &ClassificationResult) -> Vec<GateResult> {
@@ -624,18 +608,11 @@ fn is_hard_fail(result: &ClassificationResult) -> bool {
     if !result.is_parseable {
         return true;
     }
-    let failures = gating_gate_failures(result);
-    if failures.is_empty() {
-        return false;
-    }
-    if is_leaf_composable_zero(result) {
-        return failures.iter().any(|r| r.spec.pillar != "composable");
-    }
-    true
+    !gating_gate_failures(result).is_empty()
 }
 
 fn is_maintainability_giant(result: &ClassificationResult) -> bool {
-    if !result.is_parseable || is_hard_fail(result) || is_leaf_composable_zero(result) {
+    if !result.is_parseable || is_hard_fail(result) {
         return false;
     }
     gate_metrics_for(result)
@@ -653,16 +630,10 @@ fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
 }
 
 fn hard_fail_sort_key(result: &ClassificationResult) -> (usize, f64) {
-    let failures = gating_gate_failures(result);
-    let count = if is_leaf_composable_zero(result) {
-        failures
-            .iter()
-            .filter(|r| r.spec.pillar != "composable")
-            .count()
-    } else {
-        failures.len()
-    };
-    (count, weakest_score_from_result(result))
+    (
+        gating_gate_failures(result).len(),
+        weakest_score_from_result(result),
+    )
 }
 
 fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
@@ -690,11 +661,11 @@ fn classify_project_rows(
             .then_with(|| sa.partial_cmp(&sb).unwrap_or(Ordering::Equal))
     });
 
-    let mut leaves: Vec<&ScoredProjectRow> = rows
-        .iter()
-        .filter(|row| is_leaf_composable_zero(&row.result))
-        .collect();
-    leaves.sort_by(|a, b| a.entry.filepath.cmp(&b.entry.filepath));
+    // `leaf_composable_zeros` is deprecated and always empty -- see the
+    // schema field. The structural-leaf carve-out existed to keep
+    // `mdg.instability` failures out of `hard_fails`; that metric is now
+    // advisory, so it cannot produce a hard fail to suppress.
+    let leaves: Vec<&ScoredProjectRow> = Vec::new();
 
     let mut giants: Vec<&ScoredProjectRow> = rows
         .iter()
@@ -735,8 +706,6 @@ fn project_file_sort_key(row: &ScoredProjectRow) -> (u8, f64, f64) {
             .copied()
             .unwrap_or(0.0);
         (1, -cyclomatic, 0.0)
-    } else if is_leaf_composable_zero(&row.result) {
-        (3, worst_key(&row.entry), 0.0)
     } else {
         (2, worst_key(&row.entry), 0.0)
     }
@@ -1429,13 +1398,17 @@ mod tests {
         result
     }
 
+    /// A structural leaf (`I = 0.0`, no symbol fan) used to need an explicit
+    /// carve-out to stay out of `hard_fails`. `mdg.instability` is advisory
+    /// now, so it produces no hard fail to suppress and the deprecated
+    /// `leaf_composable_zeros` bucket stays empty.
     #[test]
-    fn leaf_composable_zero_is_excluded_from_hard_fails() {
+    fn structural_leaf_does_not_hard_fail_without_a_carve_out() {
         let entry = entry("leaf.py", 95.0);
         let rows = vec![classified_row(composable_leaf_result(), entry)];
         let (hard, leaves, giants) = classify_project_rows(&rows);
         assert!(hard.is_empty(), "structural leaf must not hard-fail");
-        assert_eq!(leaves.len(), 1);
+        assert!(leaves.is_empty(), "leaf_composable_zeros is deprecated");
         assert!(giants.is_empty());
     }
 

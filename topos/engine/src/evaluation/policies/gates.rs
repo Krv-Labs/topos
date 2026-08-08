@@ -363,7 +363,20 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(instability_entrypoint_exempt),
         operations_low: &["rebalance_dependencies", "extract_boundary"],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
-        gates_achieved: true,
+        // Advisory only: `I = Ce / (Ca + Ce)` is a ratio whose resolution is
+        // `1 / (Ca + Ce)`, and at file granularity that denominator is a
+        // single digit. The attainable readings are the grid `{k/n}`, so
+        // whether the band is even *reachable* swings with `n` rather than
+        // with design quality -- 33% of the grid lands in band at `n = 2`,
+        // 50% at `n = 3`, 20% at `n = 4`. Measured over this repo's 176
+        // files, the pass rate tracked that grid density, not the code.
+        // Still scored, interpreted, and offered as a refactor target; it
+        // just cannot hard-fail a file for the arithmetic of its own
+        // denominator. `mdg.fan_in`/`mdg.fan_out` are absolute counts with
+        // no such resolution limit and keep gating COMPOSABLE. Gating this
+        // properly needs module-granularity coupling -- see
+        // docs/decisions/composable-at-module-granularity.md.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "mdg.main_sequence_distance",
@@ -375,7 +388,9 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(distance_stable_leaf_exempt),
         operations_low: &[],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
-        gates_achieved: true,
+        // Advisory for the same reason as `mdg.instability`: `|A + I - 1|`
+        // is built on `I` and inherits its resolution limit exactly.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "mdg.fan_in",

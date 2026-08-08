@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use super::base::ScoredDecision;
 use super::calibration::COMPOSABLE;
 use super::gates::evaluate_gates;
+use crate::functors::probes::mdg::coupling::MIN_RESOLVABLE_COUPLING;
 
 /// `Φ_COMPOSABLE` — score the COMPOSABLE generator using independent
 /// raw thresholds.
@@ -28,10 +29,11 @@ pub fn score_coupling(
     fan_in: Option<f64>,
     fan_out: Option<f64>,
     abstractness: Option<f64>,
+    coupling: Option<f64>,
     is_entrypoint_module: bool,
     is_stable_leaf_module: bool,
 ) -> ScoredDecision {
-    let metrics = coupling_gate_input(instability, fan_in, fan_out, abstractness);
+    let metrics = coupling_gate_input(instability, fan_in, fan_out, abstractness, coupling);
     // Distance mode is active iff the shared gate-input builder chose it
     // (abstractness + a real coupling signal present); see
     // `coupling_gate_input`.
@@ -90,20 +92,29 @@ pub fn score_coupling(
 ///
 /// Instability is replaced by `mdg.main_sequence_distance = |A + I − 1|`
 /// whenever abstractness *and* a real coupling signal are present. A file
-/// with zero measured coupling (`calculate_coupling`'s instability = 0.5
-/// "no signal" fallback) keeps gating raw instability, since combining
-/// that fallback with the common `abstractness = 0.0` case would otherwise
-/// land distance exactly on its max — passing the hard gate at the
-/// boundary while scoring 0.0 on the distance quality curve. Shared with
-/// the suggestion engine so a suggestion can never fire on a metric the
-/// scorer didn't gate.
+/// whose coupling cannot resolve an instability ratio (`calculate_coupling`'s
+/// 0.5 "no signal" fallback) keeps gating raw instability, since building a
+/// distance out of that fallback would land it at `|A − 0.5|` — for a fully
+/// abstract module, exactly on the max: passing the hard gate at the boundary
+/// while scoring 0.0 on the distance quality curve. Shared with the suggestion
+/// engine so a suggestion can never fire on a metric the scorer didn't gate.
+///
+/// `coupling` is module-level `Ca + Ce` (`mdg.coupling`), which is where the
+/// instability ratio comes from. This deliberately does *not* read
+/// `mdg.fan_in`/`mdg.fan_out`: those count symbol-level `CALLS` edges, a
+/// different graph. Testing them here failed every module whose members make
+/// no calls — a pure trait/interface module reads zero fan while carrying a
+/// dozen real `IMPORTS` edges, so `topos/engine/src/graphs/base.rs` sat exactly
+/// on the main sequence (`A = 1.0`, `I = 0.0`, `D = 0.0`) and still scored
+/// COMPOSABLE at 0.0.
 pub fn coupling_gate_input(
     instability: Option<f64>,
     fan_in: Option<f64>,
     fan_out: Option<f64>,
     abstractness: Option<f64>,
+    coupling: Option<f64>,
 ) -> HashMap<String, f64> {
-    let has_coupling_signal = !(fan_in == Some(0.0) && fan_out == Some(0.0));
+    let has_coupling_signal = coupling.is_some_and(|c| c >= MIN_RESOLVABLE_COUPLING as f64);
     // `mdg.abstractness = 0.0` is both "genuinely concrete" and "nothing
     // abstract was detected", and for languages where Topos finds no abstract
     // types it is 0.0 across an entire repo. Pinning A at 0 collapses
@@ -165,27 +176,106 @@ mod tests {
         // instability=0.5 is in-band -> quality 1.0; fan_in/fan_out=5.0
         // are nonzero -> quality 1 - 5/40 = 0.875 each, so the combined
         // (min) score is 0.875, not 1.0 — only all-zero fan would give 1.0.
-        let result = score_coupling(Some(0.5), Some(5.0), Some(5.0), None, false, false);
+        let result = score_coupling(
+            Some(0.5),
+            Some(5.0),
+            Some(5.0),
+            None,
+            Some(4.0),
+            false,
+            false,
+        );
         assert!(result.achieved);
         assert_eq!(result.score, 0.875);
     }
 
     #[test]
     fn zero_fan_and_ideal_instability_scores_one() {
-        let result = score_coupling(Some(0.5), Some(0.0), Some(0.0), None, false, false);
+        let result = score_coupling(
+            Some(0.5),
+            Some(0.0),
+            Some(0.0),
+            None,
+            Some(4.0),
+            false,
+            false,
+        );
         assert!(result.achieved);
         assert_eq!(result.score, 1.0);
     }
 
     #[test]
     fn excessive_fan_out_fails() {
-        let result = score_coupling(Some(0.5), Some(5.0), Some(30.0), None, false, false);
+        let result = score_coupling(
+            Some(0.5),
+            Some(5.0),
+            Some(30.0),
+            None,
+            Some(4.0),
+            false,
+            false,
+        );
         assert!(!result.achieved);
     }
 
     #[test]
     fn no_metrics_vacuously_satisfies() {
-        assert!(score_coupling(None, None, None, None, false, false).achieved);
+        assert!(score_coupling(None, None, None, None, None, false, false).achieved);
+    }
+
+    /// `mdg.instability` is advisory (`gates_achieved: false`): a reading
+    /// far outside the band still drags the reported score down, but it
+    /// cannot cost the file its COMPOSABLE verdict on its own.
+    #[test]
+    fn out_of_band_instability_scores_low_but_still_achieves() {
+        let result = score_coupling(
+            Some(1.0),
+            Some(2.0),
+            Some(3.0),
+            None,
+            Some(4.0),
+            false,
+            false,
+        );
+        assert!(
+            result.achieved,
+            "instability alone must not fail COMPOSABLE"
+        );
+        assert_eq!(result.score, 0.0, "but it still shows in the score");
+    }
+
+    /// The `graphs/base.rs` case: a pure trait module makes no calls, so
+    /// its symbol-level fan is legitimately zero while it carries a dozen
+    /// real `IMPORTS` edges. Reading fan as the coupling signal suppressed
+    /// distance mode and scored a module sitting exactly on the main
+    /// sequence (`A = 1.0`, `I = 0.0`) at 0.0.
+    #[test]
+    fn abstraction_module_with_no_calls_uses_distance() {
+        let metrics = coupling_gate_input(Some(0.0), Some(0.0), Some(0.0), Some(1.0), Some(12.0));
+        assert_eq!(metrics.get("mdg.main_sequence_distance"), Some(&0.0));
+        assert!(!metrics.contains_key("mdg.instability"));
+
+        let result = score_coupling(
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+            Some(1.0),
+            Some(12.0),
+            false,
+            false,
+        );
+        assert!(result.achieved);
+        assert_eq!(result.score, 1.0);
+    }
+
+    /// Coupling below the ratio's resolution limit cannot build a distance:
+    /// `I` is the 0.5 no-signal fallback there, so `|A + I − 1|` would be
+    /// `|A − 0.5|` — for a fully abstract module, exactly the max.
+    #[test]
+    fn unresolvable_coupling_keeps_gating_raw_instability() {
+        let metrics = coupling_gate_input(Some(0.5), Some(1.0), Some(1.0), Some(1.0), Some(1.0));
+        assert!(!metrics.contains_key("mdg.main_sequence_distance"));
+        assert_eq!(metrics.get("mdg.instability"), Some(&0.5));
     }
 
     /// Distance needs a real abstractness reading. With `A = 0.0`,
@@ -193,11 +283,11 @@ mod tests {
     /// would land on the worst possible distance for being depended upon.
     #[test]
     fn zero_abstractness_keeps_gating_raw_instability() {
-        let metrics = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.0));
+        let metrics = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.0), Some(6.0));
         assert!(!metrics.contains_key("mdg.main_sequence_distance"));
         assert_eq!(metrics.get("mdg.instability"), Some(&0.0));
 
-        let real = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.4));
+        let real = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.4), Some(6.0));
         assert_eq!(real.get("mdg.main_sequence_distance"), Some(&0.6));
         assert!(!real.contains_key("mdg.instability"));
     }

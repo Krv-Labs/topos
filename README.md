@@ -66,7 +66,7 @@ Topos computes that signal from program structure—not from an LLM review or a 
 
 **Tests check behavior. Topos checks whether the implementation is built to keep changing.**
 
-> Grounded in category theory, powered by a native-Rust engine.
+> Grounded in category theory, written in Rust.
 
 ## Install and Quick Start
 
@@ -139,26 +139,6 @@ Topos discovers Python, Rust, JavaScript, TypeScript, C++, and Go automatically.
 
 See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
-## Under the hood
-
-Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your source code is not sent to an external model or hosted analysis service.
-
-| Component | Role |
-| :--- | :--- |
-| [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Parses six languages and powers the native AST, CFG, CPG, PDG, and UAST representations. |
-| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). Requires `npm install -g gitnexus@1.6.8`. |
-| [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
-| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection via `topos graphify` / `topos_refactor(target="graphify")`; does not affect the medal. Requires `pip install graphifyy`. |
-
-The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
-
-
-## More ways to use Topos
-
-- **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)
-- **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
-- **MCP Registry name:** `io.github.Krv-Labs/topos`
-- **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
 
 ## What Topos checks
 
@@ -168,15 +148,6 @@ Every file gets four independent verdicts:
 - **COMPOSABLE** — limits a file's outward dependency burden; broader coupling and stability metrics remain available for diagnosis.
 - **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
 - **NAVIGABLE** — stays shallow enough for an agent to read and change in one pass, using depth-weighted nesting divergence over the AST scope tree.
-
-| Pillar | Passes when | Inspect/refactor detail |
-| :--- | :--- | :--- |
-| **SIMPLE** | Entropy `0.2–0.8` and max function complexity `≤ 10` | Cyclomatic complexity†, essential complexity, nesting, longest path |
-| **COMPOSABLE** | Fan-out `≤ 10` | Fan-in†, coupling, instability†, abstractness, main-sequence distance†, dependency depth |
-| **SECURE** | `0` dangerous calls and `0` taint flows | Callees, source/sink paths, lines, snippets |
-| **NAVIGABLE** | Max function divergence `≤ 10` | Offending functions and exact spans |
-
-† Scored advisory: affects the continuous score and guidance, but not pillar achievement; unmarked detail is diagnostic. Import/export-only entrypoints may be exempt from the entropy band. COMPOSABLE requires GitNexus; unavailable graph evidence abstains rather than fails. See the [full metrics reference](topos/mcp/docs/content/metrics.md) and [file-level COMPOSABLE decision](docs/decisions/file-level-composable.md).
 
 Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
 
@@ -188,9 +159,8 @@ Those verdicts roll up into one memorable quality medal without hiding which pil
 | 🥉 **BRONZE** | Passes 1 of 4 |
 | ❌ **SLOP** | Passes 0, or fails to parse |
 
-> **SIMPLE and NAVIGABLE are not the same check.** SIMPLE counts *branches*; NAVIGABLE measures *nesting*. Ten sequential `if`s are complex but perfectly flat, and score 0 divergence. Fold the same branches four levels deep and NAVIGABLE degrades while SIMPLE does not move — because nesting, not branch count, is what predicts an LLM losing track of the code.
 
-Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings.
+See the [full metrics reference](topos/mcp/docs/content/metrics.md). Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings.
 
 <details>
 <summary>How the medal system is derived</summary>
@@ -275,6 +245,31 @@ graph BT
 [Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)
 
 </details>
+
+
+
+
+## Under the hood
+
+Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your source code is not sent to an external model or hosted analysis service.
+
+| Component | Role |
+| :--- | :--- |
+| [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Parses six languages and powers the native AST, CFG, CPG, PDG, and UAST representations. |
+| [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). Requires `npm install -g gitnexus@1.6.8`. |
+| [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
+| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection via `topos graphify` / `topos_refactor(target="graphify")`; does not affect the medal. Requires `pip install graphifyy`. |
+
+The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
+
+
+## More ways to use Topos
+
+- **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)
+- **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+- **MCP Registry name:** `io.github.Krv-Labs/topos`
+- **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
+
 
 ## Distribution
 

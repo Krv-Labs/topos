@@ -183,12 +183,23 @@ pub fn ensure_gitnexus_dir_with_progress(
 
     progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
-    if !matches!(status.state, "missing" | "stale") {
+    if !matches!(
+        status.state,
+        "missing" | "stale" | "branch_not_indexed" | "load_error"
+    ) {
         // present, or a problem generating won't fix (invalid_dir for an
-        // outside-root override, schema_mismatch, branch_not_indexed,
-        // load_error) — let gitnexus_warnings explain it from the
-        // resolved state. In-root not-yet-created overrides are `missing`,
-        // not `invalid_dir` (#287).
+        // outside-root override, schema_mismatch) — let gitnexus_warnings
+        // explain it from the resolved state. In-root not-yet-created
+        // overrides are `missing`, not `invalid_dir` (#287).
+        //
+        // `branch_not_indexed` and `load_error` *are* fixable by generating:
+        // branch-scoped stores mean a freshly checked-out branch has no store
+        // until `gitnexus analyze` indexes it, and the common load failure is
+        // a half-written store left by an interrupted analyze. Treating both
+        // as terminal left COMPOSABLE silently dead until the user re-ran
+        // GitNexus by hand. One analyze is attempted per call, so a store
+        // that genuinely cannot be rebuilt still stops after
+        // `generation_note` explains why.
         return GitnexusEnsureOutcome {
             gitnexus_dir: resolve(),
             generation_note: None,
@@ -321,9 +332,18 @@ pub(crate) fn check_override_warning(
 }
 
 /// Whether a dep-graph load error is a storage/schema version mismatch.
+///
+/// Matched on the version wording only. A bare "ladybug" term used to match
+/// here, but every native open error names LadybugDB — a dirty WAL left by an
+/// interrupted `gitnexus analyze`, a locked store, or an `fts` extension whose
+/// binary is ABI-incompatible with this build's `lbug` crate. Those are
+/// transient and fixed by re-running `gitnexus analyze`, whereas a real schema
+/// mismatch is not; collapsing them reported the wrong cause *and* routed a
+/// recoverable store into the terminal branch of
+/// [`ensure_gitnexus_dir_with_progress`], leaving COMPOSABLE silently dead.
 pub(crate) fn is_schema_mismatch(message: &str) -> bool {
     let lower = message.to_lowercase();
-    ["storage version", "different version", "ladybug"]
+    ["storage version", "different version"]
         .iter()
         .any(|term| lower.contains(term))
 }
@@ -340,7 +360,16 @@ fn dep_graph_load_warning(load_error: Option<&str>) -> Vec<String> {
         Some(err) if is_schema_mismatch(err) => vec![format!(
             "COMPOSABLE not scored — LadybugDB storage version mismatch: {err}"
         )],
-        _ => vec![
+        // Keep the underlying error: the actionable part is usually in it
+        // (dirty WAL, locked store, unloadable `fts` extension), and dropping
+        // it left users with an unattributable "could not be loaded".
+        Some(err) => vec![format!(
+            "COMPOSABLE not scored — .gitnexus exists but the dependency graph could not \
+             be loaded ({}); re-run 'topos depgraph generate' and ensure GitNexus \
+             dependencies are installed.",
+            cap_generation_detail(err)
+        )],
+        None => vec![
             "COMPOSABLE not scored — .gitnexus exists but the dependency graph could not \
              be loaded; re-run 'topos depgraph generate' and ensure GitNexus dependencies \
              are installed."
@@ -737,5 +766,36 @@ mod tests {
         let warnings = dep_graph_load_warning(Some(&err));
         assert!(warnings[0].contains(&err));
         assert!(warnings[0].len() > GENERATION_DETAIL_CAP * 5);
+    }
+
+    /// Only a real version mismatch may claim `schema_mismatch` — that is the
+    /// one dep-graph state `ensure_gitnexus_dir` refuses to regenerate, so a
+    /// transient native-open failure landing there leaves COMPOSABLE dead
+    /// until the user re-runs GitNexus by hand.
+    #[test]
+    fn transient_ladybug_open_failures_are_not_schema_mismatches() {
+        let extension_abi = "read_only open failed (IO exception: Failed to load library: \
+             ~/.lbdb/extension/0.17.0/osx_arm64/fts/libfts.lbug_extension which is needed \
+             by extension: fts. Error: dlopen(...): symbol not found in flat namespace)";
+        assert!(!is_schema_mismatch(extension_abi));
+        assert!(!is_schema_mismatch(
+            "LadybugDB: could not acquire lock on the database"
+        ));
+
+        assert!(is_schema_mismatch(
+            "Database file was created with a different version of LadybugDB"
+        ));
+        assert!(is_schema_mismatch(
+            "storage version 42 is newer than this build supports"
+        ));
+    }
+
+    /// The load warning must carry the underlying error: "could not be
+    /// loaded" alone is unattributable, and the cause (dirty WAL, locked
+    /// store, unloadable extension) is what tells the user what to do.
+    #[test]
+    fn generic_load_warning_keeps_the_underlying_error() {
+        let warnings = dep_graph_load_warning(Some("dlopen failed for extension: fts"));
+        assert!(warnings[0].contains("dlopen failed for extension: fts"));
     }
 }

@@ -577,8 +577,9 @@ pub struct PreferenceWalkInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DepgraphStatusInput {
-    /// Absolute directory in the project whose dependency graph to inspect.
-    pub directory: String,
+    /// Repo root to inspect (default: MCP file root / process project root).
+    #[serde(default)]
+    pub directory: Option<String>,
     /// `.gitnexus` store under the project root (default:
     /// `<project root>/.gitnexus`).
     #[serde(default)]
@@ -589,8 +590,9 @@ pub struct DepgraphStatusInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateDepgraphInput {
-    /// Absolute directory in the project to analyze.
-    pub directory: String,
+    /// Repo root to analyze (default: MCP file root / process project root).
+    #[serde(default)]
+    pub directory: Option<String>,
     /// `.gitnexus` store under the project root.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
@@ -1440,13 +1442,15 @@ mod tests {
 
     #[test]
     fn generate_depgraph_accepts_and_advertises_gitnexus_dir() {
-        assert!(serde_json::from_str::<GenerateDepgraphInput>(r#"{}"#).is_err());
+        let default: GenerateDepgraphInput =
+            serde_json::from_str(r#"{}"#).expect("directory defaults to None");
+        assert!(default.directory.is_none());
 
         let explicit: GenerateDepgraphInput = serde_json::from_str(
             r#"{"directory": "nested", "gitnexus_dir": "nested/.gitnexus", "force": true}"#,
         )
         .expect("deserialize");
-        assert_eq!(explicit.directory, "nested");
+        assert_eq!(explicit.directory.as_deref(), Some("nested"));
         assert_eq!(explicit.gitnexus_dir.as_deref(), Some("nested/.gitnexus"));
         assert!(explicit.force);
 

@@ -19,7 +19,9 @@ use crate::schemas::{
     DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
     GenerateDepgraphResult,
 };
-use crate::security::{resolve_path_within, resolve_project_path};
+use crate::security::{
+    composable_default_root, resolve_file_root, resolve_path_within, resolve_project_path,
+};
 use crate::server::ToposServer;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +29,16 @@ use std::path::{Path, PathBuf};
 ///
 /// Explicit `directory` wins. When omitted, derive from `gitnexus_dir` the
 /// same way `topos_depgraph_status` does so status → generate stay aligned.
+fn resolve_depgraph_directory(directory: Option<&str>) -> Result<(PathBuf, PathBuf), String> {
+    match directory {
+        Some(dir) => resolve_project_path(dir),
+        None => {
+            let root = resolve_file_root()?;
+            Ok((root.clone(), root))
+        }
+    }
+}
+
 fn resolve_generate_project_root(
     directory: Option<&Path>,
     gitnexus_dir: Option<&str>,
@@ -311,20 +323,22 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> CallToolResult {
-        let (_directory, file_root) = match resolve_project_path(&params.directory) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = status_error(err);
-                let md = render_status_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
+        let (_directory, detected_project) =
+            match resolve_depgraph_directory(params.directory.as_deref()) {
+                Ok(context) => context,
+                Err(err) => {
+                    let model = status_error(err);
+                    let md = render_status_md(&model);
+                    return to_tool_result(&model, md);
+                }
+            };
+        let composable_root = composable_default_root(&detected_project);
         let project_root = crate::evaluation::resolve_mcp_composable_project_root(
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_path_within(dir, &file_root) {
+            if let Err(err) = resolve_path_within(dir, &composable_root) {
                 let model = status_error(err);
                 let md = render_status_md(&model);
                 return to_tool_result(&model, md);
@@ -336,7 +350,7 @@ impl ToposServer {
         // original relative string against it a second time would double
         // that subdirectory.
         let resolved_override =
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
         let status = depgraph_status(
             resolved_override.as_deref(),
             &project_root,
@@ -366,16 +380,18 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<GenerateDepgraphInput>,
     ) -> CallToolResult {
-        let (resolved_directory, file_root) = match resolve_project_path(&params.directory) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = generate_error(err);
-                let md = render_generate_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
+        let (resolved_directory, detected_project) =
+            match resolve_depgraph_directory(params.directory.as_deref()) {
+                Ok(context) => context,
+                Err(err) => {
+                    let model = generate_error(err);
+                    let md = render_generate_md(&model);
+                    return to_tool_result(&model, md);
+                }
+            };
+        let composable_root = composable_default_root(&detected_project);
         if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_path_within(dir, &file_root) {
+            if let Err(err) = resolve_path_within(dir, &composable_root) {
                 let model = generate_error(err);
                 let md = render_generate_md(&model);
                 return to_tool_result(&model, md);
@@ -390,12 +406,12 @@ impl ToposServer {
         let target_dir = resolve_generate_project_root(
             Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         let status_override = resolve_generate_status_override(
             Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
 
         let mut state_before = None;

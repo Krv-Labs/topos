@@ -123,6 +123,34 @@ pub fn resolve_file_root() -> Result<PathBuf, String> {
     compute_file_root()
 }
 
+/// Root that owns `.gitnexus`: the nearest ancestor holding `.git`.
+///
+/// [`resolve_project_path`] returns the *innermost* project marker, which is
+/// right for file access but wrong for COMPOSABLE: in a workspace, a file
+/// under `topos/mcp/` resolves to `topos/mcp` (its `Cargo.toml`), while the
+/// store lives at the repo root. Deriving `.gitnexus` from that sub-package
+/// makes every call report `missing` and shell out `gitnexus analyze` on a
+/// sub-crate — which is why COMPOSABLE worked for some files and not others
+/// (#293 follow-up).
+///
+/// A `.gitnexus` store is git-scoped anyway (branch-scoped stores, HEAD-sha
+/// fingerprints), so the git root is the only root it can mean. The walk
+/// stops at `TOPOS_MCP_FILE_ROOT` so an enclosing repo above the configured
+/// boundary is never analyzed.
+pub fn composable_default_root(detected_project: &Path) -> PathBuf {
+    let boundary = std::env::var("TOPOS_MCP_FILE_ROOT")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .and_then(|value| PathBuf::from(value).canonicalize().ok());
+    detected_project
+        .ancestors()
+        .take_while(|dir| boundary.as_ref().is_none_or(|b| dir.starts_with(b)))
+        .find(|dir| dir.join(".git").exists())
+        .map(Path::to_path_buf)
+        .or(boundary)
+        .unwrap_or_else(|| detected_project.to_path_buf())
+}
+
 /// Resolve symlinks incrementally, one path component at a time, matching
 /// Python `Path.resolve(strict=False)`.
 ///
@@ -244,6 +272,28 @@ mod tests {
         let (resolved, project_root) = resolve_project_path(&source.to_string_lossy()).unwrap();
         assert_eq!(resolved, source.canonicalize().unwrap());
         assert!(project_root.join("Cargo.toml").is_file());
+    }
+
+    /// The COMPOSABLE root must climb past a nested package marker to the
+    /// git root that actually owns `.gitnexus` — otherwise a workspace file
+    /// resolves to its sub-crate, reports `missing`, and re-runs
+    /// `gitnexus analyze` on a directory with no store.
+    #[test]
+    fn composable_root_climbs_to_the_git_root_not_the_nested_package() {
+        let dir =
+            std::env::temp_dir().join(format!("topos-composable-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let member = dir.join("crates/member");
+        std::fs::create_dir_all(&member).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::write(member.join("Cargo.toml"), "[package]\n").unwrap();
+
+        let detected = member.canonicalize().unwrap();
+        assert_eq!(
+            composable_default_root(&detected),
+            dir.canonicalize().unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

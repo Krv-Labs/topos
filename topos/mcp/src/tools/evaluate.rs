@@ -32,7 +32,7 @@ use crate::schemas::{
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
     SecurityFinding, WorstFileEntry,
 };
-use crate::security::{read_resolved_utf8, resolve_project_path};
+use crate::security::{composable_default_root, read_resolved_utf8, resolve_project_path};
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -195,7 +195,7 @@ impl ToposServer {
 
 fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-    let (resolved, file_root) = match resolve_project_path(&params.filepath) {
+    let (resolved, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             return err_eval(
@@ -215,14 +215,16 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         );
     }
 
+    let composable_root = composable_default_root(&detected_project);
     let project_root =
-        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
-    // Resolved to an absolute path against `file_root` — must be used below
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    // Resolved to an absolute path against `composable_root` — must be used below
     // instead of `params.gitnexus_dir`, since `project_root` above already
     // absorbed a relative override's subdirectory; rejoining the original
     // relative string against it a second time would double that
     // subdirectory.
-    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
         resolved_override.as_deref(),
         &project_root,
@@ -314,7 +316,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         }
     };
 
-    let (_requested_path, file_root) = match resolve_project_path(&params.path) {
+    let (_requested_path, detected_project) = match resolve_project_path(&params.path) {
         Ok(context) => context,
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
@@ -322,12 +324,14 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
             return to_tool_result(&model, md);
         }
     };
+    let composable_root = composable_default_root(&detected_project);
     let project_root =
-        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
     // See the matching comment in evaluate_file_sync: must use the resolved
     // override below, not `params.gitnexus_dir`, since a relative override's
     // subdirectory is already baked into `project_root` above.
-    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
         resolved_override.as_deref(),
         &project_root,

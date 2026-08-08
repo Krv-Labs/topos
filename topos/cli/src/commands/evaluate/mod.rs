@@ -144,9 +144,12 @@ fn resolve_evaluate_mdg(args: &EvaluateArgs) -> (Option<ModuleDependencyGraph>, 
     let spinner = spinner(args.json, "Checking dependency graph freshness");
     let outcome = match std::env::current_dir() {
         Ok(cwd) => {
+            // The store lives at the git root, not at whatever sub-crate the
+            // user happens to be standing in.
+            let default_root = topos_mcp::security::composable_default_root(&cwd);
             let project_root = topos_mcp::evaluation::resolve_composable_project_root(
                 args.gitnexus_dir.as_deref(),
-                &cwd,
+                &default_root,
             );
             let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
                 args.gitnexus_dir.as_deref(),

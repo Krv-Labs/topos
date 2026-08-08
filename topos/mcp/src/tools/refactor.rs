@@ -28,11 +28,14 @@ use topos_engine::graphs::process::object::ProcessGraph;
 
 use crate::evaluation::{
     detect_language, load_dep_graph, resolve_gitnexus_dir, resolve_graphify_dir,
+    resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::to_tool_result;
 use crate::refactor_hotspots::render_hotspots_md;
 use crate::schemas::{RefactorHotspot, RefactorInput, RefactorResult, RefactorTargetKind};
-use crate::security::{read_safe_utf8_file, resolve_project_path, resolve_within_root};
+use crate::security::{
+    composable_default_root, read_safe_utf8_file, resolve_project_path, resolve_within_root,
+};
 use crate::server::ToposServer;
 
 const DEFAULT_ORPHAN_DEGREE_THRESHOLD: usize = 1;
@@ -118,14 +121,19 @@ fn span(cycle: &topos_engine::functors::probes::cfg::homology::SourceCycle) -> u
 }
 
 fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
-    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Dependencies, &params.filepath, err);
             return (model, render_hotspots_md("Dependency hotspots", &[]));
         }
     };
-    let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+    let composable_root = composable_default_root(&detected_project);
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
     let Some(mdg) = mdg else {
         let model = RefactorResult {
@@ -190,14 +198,19 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
 }
 
 fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
-    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Process, &params.filepath, err);
             return (model, render_hotspots_md("Process choke points", &[]));
         }
     };
-    let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+    let composable_root = composable_default_root(&detected_project);
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
     let Some(mdg) = mdg else {
         let model = RefactorResult {
@@ -271,7 +284,7 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
 const FRAGILE_EDGE_SCORE: f64 = -1.0;
 
 fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
-    let (_path, project_root) = match resolve_project_path(&params.filepath) {
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Graphify, &params.filepath, err);
@@ -279,6 +292,7 @@ fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
         }
     };
 
+    let project_root = composable_default_root(&detected_project);
     let graph = resolve_graphify_dir(params.graphify_dir.as_deref(), &project_root)
         .and_then(|dir| GraphifyGraph::from_json_file(dir.join(GRAPHIFY_GRAPH_FILE)).ok());
     let Some(graph) = graph else {

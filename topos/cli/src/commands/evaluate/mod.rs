@@ -96,11 +96,8 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     validate_evaluate_args(&args)?;
     let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
-    let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
-    let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
-    let summary_language = language_label(&inputs);
 
-    let project_config = load_topos_config(&files[0]);
+    let project_config = load_topos_config(&inputs[0].path);
     let priority = resolve_priority(&args, &project_config)?;
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
@@ -113,10 +110,8 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
 
     emit_evaluate_output(
         &args,
-        &files,
+        &inputs,
         &results,
-        &languages,
-        &summary_language,
         failure_pillar,
         target_ranking.as_ref(),
         &composable_warnings,
@@ -226,21 +221,23 @@ fn ensure_pillar_measured(
 
 fn emit_evaluate_output(
     args: &EvaluateArgs,
-    files: &[PathBuf],
+    inputs: &[SourceInput],
     results: &[ClassificationResult],
-    languages: &[String],
-    summary_language: &str,
     failure_pillar: Option<Generator>,
     target_ranking: Option<&[Generator; RANKING_LEN]>,
     composable_warnings: &[String],
 ) -> Result<(), String> {
+    let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
+    let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
+    let summary_language = language_label(inputs);
+
     if args.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json_output(
-                files,
+                &files,
                 results,
-                languages,
+                &languages,
                 composable_warnings
             ))
             .map_err(|e| format!("serializing evaluation: {e}"))?
@@ -256,9 +253,9 @@ fn emit_evaluate_output(
         }
     }
     print_summary(
-        files,
+        &files,
         results,
-        summary_language,
+        &summary_language,
         !args.no_composable,
         !args.info && failure_pillar.is_none(),
         composable_warnings,
@@ -269,15 +266,15 @@ fn emit_evaluate_output(
     if let Some(pillar) = failure_pillar {
         let focused = focused_ranking(pillar, target_ranking);
         show_pillar_failures(
-            files,
+            &files,
             results,
-            languages,
+            &languages,
             pillar.as_str(),
             args.info,
             Some(&focused),
         )
     } else if args.info {
-        show_evaluation_info(files, results, languages, target_ranking)
+        show_evaluation_info(&files, results, &languages, target_ranking)
     } else {
         Ok(())
     }

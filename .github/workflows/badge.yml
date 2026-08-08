@@ -8,17 +8,27 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "scripts/generate_self_badge.py"
+      - ".github/workflows/badge.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "topos/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/generate_self_badge.py"
+      - ".github/workflows/badge.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: badge-${{ github.ref }}
+  group: badge-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   badge:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -57,9 +67,20 @@ jobs:
         run: gitnexus analyze --skip-agents-md
 
       - name: Generate self badge
-        run: python scripts/generate_self_badge.py
+        run: |
+          set -euo pipefail
+          python scripts/generate_self_badge.py --summary-json | tee badge-summary.json
+
+      - name: Print badge report
+        run: |
+          echo "=== Self badge summary ==="
+          cat badge-summary.json
+          echo ""
+          echo "=== Badge SVG ==="
+          cat docs/badge.svg
 
       - name: Commit badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -213,13 +213,16 @@ def main() -> None:
     args.out.write_text(svg, encoding="utf-8")
 
     version = payload.get("version", "?")
-    print(
+    status = (
         f"Wrote {args.out} — {summary['medal']} · {summary['composite_score']} "
         f"({summary['n_files']} files, topos {version})"
     )
     if args.summary_json:
+        print(status, file=sys.stderr)
         json.dump(summary, sys.stdout, indent=2)
         sys.stdout.write("\n")
+    else:
+        print(status)
 
 
 if __name__ == "__main__":

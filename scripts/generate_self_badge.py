@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Evaluate the Topos repo and write a shields-style README badge SVG.
+"""Evaluate the Topos repo and write README badge SVGs.
+
+Writes ``docs/source/_static/topos-lattice-badge.svg`` (four-pillar shields row) and
+``docs/source/_static/topos-verdict.svg`` (compact T-logo | medal footer tag).
 
 Scores ``topos/cli``, ``topos/engine``, and ``topos/mcp`` with the local
 ``topos`` binary (v0.5.0+ four-pillar medals). Requires ``gitnexus analyze``
@@ -29,7 +32,14 @@ from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PATHS = ("topos/cli", "topos/engine", "topos/mcp")
-DEFAULT_OUT = ROOT / "docs" / "badge.svg"
+DEFAULT_OUT = ROOT / "docs" / "source" / "_static" / "topos-lattice-badge.svg"
+DEFAULT_FOOTER_OUT = ROOT / "docs" / "source" / "_static" / "topos-verdict.svg"
+FOOTER_HEIGHT = 24
+FOOTER_ICON_SIZE = 14
+FOOTER_ICON_X = 6
+FOOTER_ICON_Y = 5
+FOOTER_MEDAL_PANEL_W = 28  # single medal emoji
+FOOTER_EMOJI_FONT = "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif"
 PILLARS = ("SIMPLE", "COMPOSABLE", "SECURE", "NAVIGABLE")
 SCORE_KEYS = ("simple", "secure", "composable", "navigable")
 MEDAL_BY_COUNT = {4: "PLATINUM", 3: "GOLD", 2: "SILVER", 1: "BRONZE", 0: "SLOP"}
@@ -41,6 +51,14 @@ MEDAL_TIER = {
     "SLOP": "slop",
 }
 MEDAL_RANK = {"PLATINUM": 5, "GOLD": 4, "SILVER": 3, "BRONZE": 2, "SLOP": 1}
+# Mirrored from topos/engine/src/core/omega.rs — medal count → lattice symbol.
+MEDAL_EMOJI = {
+    "PLATINUM": "🏆",
+    "GOLD": "🥇",
+    "SILVER": "🥈",
+    "BRONZE": "🥉",
+    "SLOP": "❌",
+}
 
 # Mirrored from topos-leaderboard/leaderboard/badges.py — keep medal colors in sync.
 TIER_COLORS = {
@@ -166,8 +184,7 @@ def _strip_svg_namespace(el: ET.Element) -> None:
         _strip_svg_namespace(child)
 
 
-@lru_cache(maxsize=1)
-def _render_icon_svg() -> str:
+def _icon_markup(*, size: int, x: int, y: int) -> str:
     if not ICON_PATH.is_file():
         return ""
 
@@ -186,11 +203,23 @@ def _render_icon_svg() -> str:
         return ""
 
     return (
-        f'<svg x="{ICON_X}" y="{ICON_Y}" width="{ICON_SIZE}" height="{ICON_SIZE}" '
+        f'<svg x="{x}" y="{y}" width="{size}" height="{size}" '
         f'viewBox="{escape(view_box)}" aria-hidden="true" focusable="false" '
         'preserveAspectRatio="xMidYMid meet">'
         + "".join(children)
         + "</svg>"
+    )
+
+
+@lru_cache(maxsize=1)
+def _render_icon_svg() -> str:
+    return _icon_markup(size=ICON_SIZE, x=ICON_X, y=ICON_Y)
+
+
+@lru_cache(maxsize=1)
+def _render_footer_icon_svg() -> str:
+    return _icon_markup(
+        size=FOOTER_ICON_SIZE, x=FOOTER_ICON_X, y=FOOTER_ICON_Y
     )
 
 
@@ -244,6 +273,35 @@ def render_badge(pillars: list[tuple[str, bool]], *, tier: str) -> str:
 """
 
 
+def render_footer_badge(medal: str, *, tier: str) -> str:
+    """Render `[icon][emoji]` — a compact 24px two-panel footer tag."""
+    color = TIER_COLORS.get(tier, TIER_COLORS["slop"])
+    emoji = MEDAL_EMOJI.get(medal, MEDAL_EMOJI["SLOP"])
+    icon = _render_footer_icon_svg()
+    plate_w = FOOTER_ICON_X + FOOTER_ICON_SIZE + FOOTER_ICON_X if icon else 0
+    total = round(plate_w + FOOTER_MEDAL_PANEL_W)
+    medal_x = plate_w + FOOTER_MEDAL_PANEL_W / 2
+    aria = f"Topos lattice verdict: {medal}"
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total}" height="{FOOTER_HEIGHT}" role="img" aria-label="{escape(aria)}">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="{total}" height="{FOOTER_HEIGHT}" rx="3.2" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="{plate_w:g}" height="{FOOTER_HEIGHT}" fill="{LABEL_COLOR}"/>
+    <rect x="{plate_w:g}" width="{FOOTER_MEDAL_PANEL_W:g}" height="{FOOTER_HEIGHT}" fill="{color}"/>
+    <rect x="{plate_w:g}" y="4" width="1" height="16" fill="#000" fill-opacity=".18"/>
+    <rect x="{plate_w:g}" width="{FOOTER_MEDAL_PANEL_W:g}" height="{FOOTER_HEIGHT}" fill="url(#s)"/>
+  </g>
+  <rect x=".5" y=".5" width="{total - 1}" height="{FOOTER_HEIGHT - 1}" rx="3.2" fill="none" stroke="{color}" stroke-width="1"/>
+  {icon}
+  <text x="{medal_x:g}" y="17" text-anchor="middle" font-family="{FOOTER_EMOJI_FONT}" font-size="14">{emoji}</text>
+</svg>
+"""
+
+
 def badge_pillars(summary: dict) -> list[tuple[str, bool]]:
     passed = summary.get("pillar_pass") or {}
     return [
@@ -268,12 +326,23 @@ def self_check() -> None:
         right = max(float(r.attrib.get("x", 0)) + float(r.attrib["width"]) for r in rects)
         assert abs(right - total) < 1, f"{tier}: segments {right} != width {total}"
     assert 'fill="#78716c"' in render_badge(pillars, tier="gold"), "failed chip not muted"
+    for medal, tier in (
+        ("PLATINUM", "gold"),
+        ("GOLD", "gold"),
+        ("SILVER", "silver"),
+        ("BRONZE", "bronze"),
+        ("SLOP", "slop"),
+    ):
+        footer = render_footer_badge(medal, tier=tier)
+        root = ET.fromstring(footer)
+        assert float(root.attrib["height"]) == FOOTER_HEIGHT
+        assert MEDAL_EMOJI[medal] in footer
     print("self-check ok")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Evaluate Topos core crates and write docs/badge.svg."
+        description="Evaluate Topos core crates and write README badge SVGs."
     )
     parser.add_argument(
         "--eval-json",
@@ -300,6 +369,15 @@ def main() -> None:
         help=f"Output SVG path (default: {DEFAULT_OUT.relative_to(ROOT)}).",
     )
     parser.add_argument(
+        "--footer-out",
+        type=Path,
+        default=DEFAULT_FOOTER_OUT,
+        help=(
+            "Compact footer badge SVG path "
+            f"(default: {DEFAULT_FOOTER_OUT.relative_to(ROOT)})."
+        ),
+    )
+    parser.add_argument(
         "--self-check",
         action="store_true",
         help="Render sample badges, assert geometry, and exit.",
@@ -324,14 +402,17 @@ def main() -> None:
     records = payload.get("results") or []
     summary = aggregate(records)
     svg = render_badge(badge_pillars(summary), tier=summary["medal_tier"])
+    footer_svg = render_footer_badge(summary["medal"], tier=summary["medal_tier"])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(svg, encoding="utf-8")
+    args.footer_out.parent.mkdir(parents=True, exist_ok=True)
+    args.footer_out.write_text(footer_svg, encoding="utf-8")
 
     version = payload.get("version", "?")
     status = (
-        f"Wrote {args.out} — {summary['medal']} · {summary['composite_score']} "
-        f"({summary['n_files']} files, topos {version})"
+        f"Wrote {args.out} and {args.footer_out} — {summary['medal']} · "
+        f"{summary['composite_score']} ({summary['n_files']} files, topos {version})"
     )
     if args.summary_json:
         print(status, file=sys.stderr)

@@ -77,14 +77,17 @@ jobs:
           cat badge-summary.json
           echo ""
           echo "=== Badge SVG ==="
-          cat docs/badge.svg
+          cat docs/source/_static/topos-lattice-badge.svg
+          echo ""
+          echo "=== Footer badge SVG ==="
+          cat docs/source/_static/topos-verdict.svg
 
       - name: Commit badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/badge.svg
+          git add docs/source/_static/topos-lattice-badge.svg docs/source/_static/topos-verdict.svg
           if git diff --staged --quiet; then
             echo "Badge unchanged"
           else

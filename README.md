@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#what-topos-checks"><img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/badge.svg" alt="Topos self-evaluation: SIMPLE, COMPOSABLE, SECURE, NAVIGABLE results for the core crates"></a>
+  <a href="#what-topos-checks"><img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/topos-lattice-badge.svg" alt="Topos self-evaluation: SIMPLE, COMPOSABLE, SECURE, NAVIGABLE results for the core crates"></a>
   <a href="https://github.com/mcp/Krv-Labs/topos"><img src="https://img.shields.io/badge/VS_Code-Install_MCP-007ACC?logo=visualstudiocode&logoColor=white" alt="Install Topos MCP in VS Code"></a>
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp?color=3776AB&logo=python&logoColor=ffd43b" alt="PyPI"></a>
   <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
@@ -297,5 +297,9 @@ Topos is used internally at [Krv Labs](https://krv.ai) to manage AI-agent code o
 <p align="left">
   <a href="https://krv.ai">
     <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/made-by-krv.svg" alt="Made by Krv Labs" height="24">
+  </a>
+  &nbsp;
+  <a href="#what-topos-checks">
+    <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/topos-verdict.svg" alt="Topos lattice verdict" height="24">
   </a>
 </p>

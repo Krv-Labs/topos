@@ -167,80 +167,13 @@ See the [full metrics reference](topos/mcp/docs/content/metrics.md). Refactor gu
 
 The four pillars are pairwise incomparable and form a sixteen-element evaluation lattice (a 4-cube); PLATINUM is their intersection. Labels below abbreviate the pillars as **S**imple, **C**omposable, **Sc** = Secure, **N**avigable.
 
-```mermaid
----
-config:
-  layout: dagre
-  theme: neutral
----
-graph BT
-    SLOP["❌ SLOP"]
-    S["🥉 S"]
-    C["🥉 C"]
-    Sc["🥉 Sc"]
-    N["🥉 N"]
-    SC["🥈 S∧C"]
-    SSc["🥈 S∧Sc"]
-    SN["🥈 S∧N"]
-    CSc["🥈 C∧Sc"]
-    CN["🥈 C∧N"]
-    ScN["🥈 Sc∧N"]
-    SCSc["🥇 S∧C∧Sc"]
-    SCN["🥇 S∧C∧N"]
-    SScN["🥇 S∧Sc∧N"]
-    CScN["🥇 C∧Sc∧N"]
-    IDEAL["🏆 PLATINUM<br/>Quality Code"]
-
-    SLOP --> S
-    SLOP --> C
-    SLOP --> Sc
-    SLOP --> N
-    S --> SC
-    S --> SSc
-    S --> SN
-    C --> SC
-    C --> CSc
-    C --> CN
-    Sc --> SSc
-    Sc --> CSc
-    Sc --> ScN
-    N --> SN
-    N --> CN
-    N --> ScN
-    SC --> SCSc
-    SC --> SCN
-    SSc --> SCSc
-    SSc --> SScN
-    SN --> SCN
-    SN --> SScN
-    CSc --> SCSc
-    CSc --> CScN
-    CN --> SCN
-    CN --> CScN
-    ScN --> SScN
-    ScN --> CScN
-    SCSc --> IDEAL
-    SCN --> IDEAL
-    SScN --> IDEAL
-    CScN --> IDEAL
-
-    style SLOP   fill:#f8d7da,stroke:#842029,color:#000
-    style S      fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style C      fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style Sc     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style N      fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SC     fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style CSc    fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style CN     fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style ScN    fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SCSc   fill:#ffd700,stroke:#856404,color:#000
-    style SCN    fill:#ffd700,stroke:#856404,color:#000
-    style SScN   fill:#ffd700,stroke:#856404,color:#000
-    style CScN   fill:#ffd700,stroke:#856404,color:#000
-    style IDEAL  fill:#e5e4e2,stroke:#4a4a4a,color:#000
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice.svg">
+    <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice.svg" alt="The full evaluation lattice — SLOP at the bottom, four single-pillar BRONZE states, six two-pillar SILVER states, four three-pillar GOLD states, and IDEAL (PLATINUM) at the top." width="900">
+  </picture>
+</p>
 
 [Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)
 

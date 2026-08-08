@@ -21,7 +21,7 @@ Topos grades each file on four independent pillars:
 | Pillar | What it checks |
 | :--- | :--- |
 | **SIMPLE** | Avoids unnecessary complexity (AST entropy + cyclomatic complexity). |
-| **COMPOSABLE** | Cleanly decoupled from other modules (dependency-graph instability, via GitNexus). |
+| **COMPOSABLE** | Bounded outward dependency burden (fan-out via GitNexus), with richer coupling diagnostics. |
 | **SECURE** | No dangerous-API reachability or taint paths (code-property-graph analysis). |
 | **NAVIGABLE** | Shallow enough to follow — depth-weighted nesting divergence per function. |
 

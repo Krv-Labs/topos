@@ -171,7 +171,7 @@ fn gate_message(r: &GateResult) -> String {
         ),
         // mdg.fan_in
         _ => format!(
-            "Split this module (fan-in {value:.0} > {threshold:.0}); too many modules depend on it."
+            "Review this file's responsibility (fan-in {value:.0} > {threshold:.0}); many external symbols call it."
         ),
     }
 }

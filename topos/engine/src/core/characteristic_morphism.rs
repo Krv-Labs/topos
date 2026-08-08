@@ -139,7 +139,7 @@ impl fmt::Display for ClassificationResult {
 /// Each generator `gᵢ` is fed by the representation theory says is the
 /// correct lens for that quality:
 /// - SIMPLE ← CFG cyclomatic complexity
-/// - COMPOSABLE ← ModuleDependencyGraph coupling / instability
+/// - COMPOSABLE ← ModuleDependencyGraph outward burden / coupling diagnostics
 /// - SECURE ← Code Property Graph taint / danger probes
 #[derive(Debug, Default)]
 pub struct CharacteristicMorphism;

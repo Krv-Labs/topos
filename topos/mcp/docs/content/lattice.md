@@ -49,7 +49,7 @@ logic — partial evidence across orthogonal axes.
 | Generator    | Translational functor (Representation) | Probes |
 |--------------|----------------------------------------|--------|
 | `SIMPLE`     | Control Flow Graph (CFG) + AST         | `cfg.cyclomatic`, `ast.entropy`, `ast.max_function_complexity` |
-| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `mdg.instability`, `mdg.main_sequence_distance`, `mdg.fan_in/out` |
+| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `mdg.fan_out` gate; `mdg.instability`, `mdg.main_sequence_distance`, `mdg.fan_in` diagnostics |
 | `SECURE`     | Code Property Graph (CPG)              | `cpg.dangerous_calls`, `cpg.taint_flows` |
 | `NAVIGABLE`  | AST scope tree                         | `nav.max_function_divergence` |
 

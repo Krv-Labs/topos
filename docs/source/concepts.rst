@@ -14,7 +14,7 @@ Topos classifies code against a sixteen-valued **Quality Medal** lattice (techni
 The four generators—**SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**—represent the four **Quality Pillars** of software quality in Topos. They are *pairwise incomparable*, meaning a program can excel in one while failing in another:
 
 *   **SIMPLE** (Code Complexity): Evaluates internal readability and logic flow.
-*   **COMPOSABLE** (Module Coupling): Evaluates how a module relates to the rest of the system.
+*   **COMPOSABLE** (Dependency Burden): Evaluates a file's outward interactions with the rest of the system.
 *   **SECURE** (Data Flow Safety): Evaluates the absence of dangerous operations and taint flows.
 *   **NAVIGABLE** (Agentic Cognitive Load): Evaluates how deeply nested the code is, and so how expensive it is for an LLM agent to read and safely change.
 

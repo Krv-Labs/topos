@@ -1,9 +1,10 @@
 //! `Φ_COMPOSABLE`: policy translator for the COMPOSABLE generator.
 //!
 //! Maps `ModuleDependencyGraph` metric observations (Martin instability,
-//! fan-in, fan-out) into a [`ScoredDecision`]. `achieved` is the AND of
-//! independent raw thresholds on each metric; `score` is
-//! `min(per-metric qualities)` for reporting only.
+//! fan-in, fan-out) into a [`ScoredDecision`]. At file scope, only the raw
+//! fan-out threshold gates `achieved`; the other readings remain scored and
+//! actionable diagnostics. `score` is `min(per-metric qualities)` for
+//! reporting only.
 //!
 //! Quality functions:
 //! - `instability_quality` — a flat-top tent over `[low, high]`: in-band
@@ -88,18 +89,16 @@ pub fn score_coupling(
     }
 }
 
-/// The exact metric map `Φ_COMPOSABLE` gates on.
+/// The exact metric map `Φ_COMPOSABLE` scores and evaluates.
 ///
 /// Instability is replaced by `mdg.main_sequence_distance = |A + I − 1|`
 /// whenever abstractness *and* a real coupling signal are present. A file
 /// whose coupling cannot resolve an instability ratio (`calculate_coupling`'s
-/// 0.5 "no signal" fallback) keeps gating raw instability, since building a
-/// distance out of that fallback would land it at `|A − 0.5|` — for a fully
-/// abstract module, exactly on the max: passing the hard gate at the boundary
-/// while scoring 0.0 on the distance quality curve. Shared with the suggestion
-/// engine so a suggestion can never fire on a metric the scorer didn't gate.
+/// 0.5 "no signal" fallback) keeps the raw instability diagnostic rather than
+/// fabricating a distance from that fallback. Shared with the suggestion engine
+/// so a suggestion can never fire on a metric the scorer did not use.
 ///
-/// `coupling` is module-level `Ca + Ce` (`mdg.coupling`), which is where the
+/// `coupling` is import-graph `Ca + Ce` (`mdg.coupling`), which is where the
 /// instability ratio comes from. This deliberately does *not* read
 /// `mdg.fan_in`/`mdg.fan_out`: those count symbol-level `CALLS` edges, a
 /// different graph. Testing them here failed every module whose members make
@@ -219,6 +218,21 @@ mod tests {
     }
 
     #[test]
+    fn excessive_fan_in_is_advisory_at_file_scope() {
+        let result = score_coupling(
+            Some(0.5),
+            Some(30.0),
+            Some(5.0),
+            None,
+            Some(4.0),
+            false,
+            false,
+        );
+        assert!(result.achieved);
+        assert_eq!(result.score, 0.25);
+    }
+
+    #[test]
     fn no_metrics_vacuously_satisfies() {
         assert!(score_coupling(None, None, None, None, None, false, false).achieved);
     }
@@ -272,7 +286,7 @@ mod tests {
     /// `I` is the 0.5 no-signal fallback there, so `|A + I − 1|` would be
     /// `|A − 0.5|` — for a fully abstract module, exactly the max.
     #[test]
-    fn unresolvable_coupling_keeps_gating_raw_instability() {
+    fn unresolvable_coupling_keeps_raw_instability_diagnostic() {
         let metrics = coupling_gate_input(Some(0.5), Some(1.0), Some(1.0), Some(1.0), Some(1.0));
         assert!(!metrics.contains_key("mdg.main_sequence_distance"));
         assert_eq!(metrics.get("mdg.instability"), Some(&0.5));
@@ -282,7 +296,7 @@ mod tests {
     /// `|A + I − 1|` is just `1 − I`, so a maximally stable module (`I = 0`)
     /// would land on the worst possible distance for being depended upon.
     #[test]
-    fn zero_abstractness_keeps_gating_raw_instability() {
+    fn zero_abstractness_keeps_raw_instability_diagnostic() {
         let metrics = coupling_gate_input(Some(0.0), Some(2.0), Some(8.0), Some(0.0), Some(6.0));
         assert!(!metrics.contains_key("mdg.main_sequence_distance"));
         assert_eq!(metrics.get("mdg.instability"), Some(&0.0));

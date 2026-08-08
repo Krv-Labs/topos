@@ -195,22 +195,25 @@ deserves suspicion.
 The practical fix is usually familiar: split the function, reduce branching,
 name the pieces better, and make the control flow boring.
 
-COMPOSABLE: module coupling
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+COMPOSABLE: outward dependency burden
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Question:** if this file changes, how much of the repo has to care?
+**Question:** how much external behavior must this file coordinate to do its job?
 
-COMPOSABLE zooms out from one function to the module dependency graph, built by
+COMPOSABLE zooms out from one function to the dependency graph, built by
 `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_. It looks at how
 files and modules depend on each other.
 
-Fan-out measures how many other modules a file relies on. If
+Fan-out measures how many distinct external symbols a file calls. If
 ``UserPayment.js`` needs twenty local modules just to run, it is carrying a lot
-of coupling. Martin instability describes the shape of those relationships. A
+of coordination burden. The v0.5 file-level verdict gates this count at 10.
+Martin instability and fan-in describe the shape and impact of those relationships. A
 module that depends on everyone else but is used by nobody is easy to edit, but
 fragile because upstream changes keep hitting it. A module that everyone uses
 is stable, but dangerous to change because one bad move can shake the whole
-system.
+system. Those readings remain available in inspect/refactor guidance, but do not
+hard-fail the file: high fan-in can be correct for an interface or shared utility,
+and Martin's stability model belongs at package scope.
 
 This is where the Jenga metaphor matters. Blocks near the top are easy to move.
 Blocks near the bottom are load-bearing. Topos helps an agent notice when it is

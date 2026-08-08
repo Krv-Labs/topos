@@ -142,9 +142,18 @@ Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. The CLI defaul
 Every file gets four independent verdicts:
 
 - **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
-- **COMPOSABLE** — stays decoupled from the repository using module-dependency structure and Martin instability.
+- **COMPOSABLE** — limits a file's outward dependency burden; broader coupling and stability metrics remain available for diagnosis.
 - **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
 - **NAVIGABLE** — stays shallow enough for an agent to read and change in one pass, using depth-weighted nesting divergence over the AST scope tree.
+
+| Pillar | Passes when | Inspect/refactor detail |
+| :--- | :--- | :--- |
+| **SIMPLE** | Entropy `0.2–0.8` and max function complexity `≤ 10` | Cyclomatic complexity†, essential complexity, nesting, longest path |
+| **COMPOSABLE** | Fan-out `≤ 10` | Fan-in†, coupling, instability†, abstractness, main-sequence distance†, dependency depth |
+| **SECURE** | `0` dangerous calls and `0` taint flows | Callees, source/sink paths, lines, snippets |
+| **NAVIGABLE** | Max function divergence `≤ 10` | Offending functions and exact spans |
+
+† Scored advisory: affects the continuous score and guidance, but not pillar achievement; unmarked detail is diagnostic. Import/export-only entrypoints may be exempt from the entropy band. COMPOSABLE requires GitNexus; unavailable graph evidence abstains rather than fails. See the [full metrics reference](topos/mcp/docs/content/metrics.md) and [file-level COMPOSABLE decision](docs/decisions/file-level-composable.md).
 
 Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
 
@@ -158,7 +167,7 @@ Those verdicts roll up into one memorable quality medal without hiding which pil
 
 > **SIMPLE and NAVIGABLE are not the same check.** SIMPLE counts *branches*; NAVIGABLE measures *nesting*. Ten sequential `if`s are complex but perfectly flat, and score 0 divergence. Fold the same branches four levels deep and NAVIGABLE degrades while SIMPLE does not move — because nesting, not branch count, is what predicts an LLM losing track of the code.
 
-Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings. Advisory findings never silently change the scored medal.
+Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings.
 
 <details>
 <summary>How the medal system is derived</summary>

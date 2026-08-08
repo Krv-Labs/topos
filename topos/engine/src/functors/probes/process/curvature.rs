@@ -8,7 +8,8 @@
 //! curvature while keeping the weighted shape for future data.
 //!
 //! Purely advisory — process-graph curvature never influences
-//! SIMPLE/COMPOSABLE/SECURE scoring; it only feeds `topos refactor process`.
+//! SIMPLE/COMPOSABLE/SECURE/NAVIGABLE scoring; it only feeds
+//! `topos refactor process`.
 
 use std::collections::HashMap;
 

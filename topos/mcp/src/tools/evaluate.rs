@@ -1,5 +1,6 @@
 //! Evaluation tools: code string, single file, and whole project.
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -7,8 +8,11 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
-use topos_engine::core::omega::{verdict_from_generators, EvaluationValue};
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::policies::calibration::SIMPLE;
+use topos_engine::evaluation::policies::composable::coupling_gate_input;
+use topos_engine::evaluation::policies::gates::{evaluate_gates, GateResult};
 use topos_engine::evaluation::weakest_score;
 
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
@@ -17,8 +21,8 @@ use crate::evaluation::{
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
-    build_pillars, composable_contract_signals, error_md, render_evaluation_md,
-    to_evaluation_result, to_tool_result, EvalResultOptions,
+    agent_contract_prelude, build_pillars, error_md, finish_agent_contract, render_evaluation_md,
+    to_evaluation_result, to_tool_result, AgentContractPreludeInput, EvalResultOptions,
 };
 use crate::metric_locations::build_metric_locations;
 use crate::refactor_targets::build_refactor_targets;
@@ -28,7 +32,7 @@ use crate::schemas::{
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
     SecurityFinding, WorstFileEntry,
 };
-use crate::security::{read_resolved_utf8, resolve_file_root, resolve_within_root};
+use crate::security::{composable_default_root, read_resolved_utf8, resolve_project_path};
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -50,13 +54,13 @@ fn err_eval(
 
 #[tool_router(router = evaluate_router, vis = "pub(crate)")]
 impl ToposServer {
-    /// Score a raw code string on the SIMPLE / COMPOSABLE / SECURE quality
+    /// Score a raw code string on the SIMPLE / SECURE / NAVIGABLE quality
     /// lattice (read-only; never writes or runs the code).
     ///
-    /// Use for a snippet not yet on disk. Only SIMPLE and SECURE are
-    /// reachable here (scored from the source's CFG/CPG); COMPOSABLE needs
-    /// a module dependency graph, so for it use `topos_evaluate_file` with
-    /// `gitnexus_dir`, or `topos_evaluate_project` for a whole tree.
+    /// Use for a snippet not yet on disk. SIMPLE, SECURE, and NAVIGABLE are
+    /// reachable here (CFG/CPG/UAST); COMPOSABLE needs a module dependency
+    /// graph, so for it use `topos_evaluate_file` with `gitnexus_dir`, or
+    /// `topos_evaluate_project` for a whole tree.
     /// Returns an EvaluationResult: the lattice verdict (SLOP…IDEAL),
     /// per-generator scores, and a next-step agent contract.
     #[tool(
@@ -101,16 +105,18 @@ impl ToposServer {
         to_tool_result(&model, md)
     }
 
-    /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE lattice —
-    /// the only evaluate tool that can reach COMPOSABLE (side-effecting).
+    /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE / NAVIGABLE
+    /// lattice — the only evaluate tool that can reach COMPOSABLE
+    /// (side-effecting).
     ///
     /// Unless `no_composable` is set, this generates/refreshes `.gitnexus`
     /// (given by `gitnexus_dir` or auto-detected at `<root>/.gitnexus`) when
     /// it's missing or stale, then attaches the resulting
     /// ModuleDependencyGraph — the same default behavior as the CLI's
-    /// `topos evaluate`. SIMPLE/SECURE always run. When GitNexus isn't
-    /// installed or generation fails, `coupling_available` is false and
-    /// `warnings` explains why; the rest of the evaluation still succeeds.
+    /// `topos evaluate`. SIMPLE/SECURE/NAVIGABLE always run. When GitNexus
+    /// isn't installed or generation fails, `coupling_available` is false
+    /// and `warnings` explains why; the rest of the evaluation still
+    /// succeeds.
     #[tool(
         name = "topos_evaluate_file",
         annotations(
@@ -140,15 +146,16 @@ impl ToposServer {
     }
 
     /// Recursively score every supported source file in a directory on the
-    /// SIMPLE / COMPOSABLE / SECURE lattice, with a project rollup
-    /// (side-effecting).
+    /// SIMPLE / COMPOSABLE / SECURE / NAVIGABLE lattice, with a project
+    /// rollup (side-effecting).
     ///
     /// Autodetects all supported languages (Python, Rust, JavaScript,
     /// TypeScript, C++, Go) in one walk — no language argument — and skips
     /// unsupported files. The rollup takes the project-wide minimum per
-    /// dimension (weakest file floors it). Returns a paginated per-file
-    /// table (worst first) plus per-language rollups; page with `limit` /
-    /// `offset`.
+    /// dimension (weakest file floors it). Returns page-global named lists
+    /// (`hard_fails`, `leaf_composable_zeros`, `maintainability_giants`)
+    /// plus a paginated per-file table (gate failures first); page with
+    /// `limit` / `offset`.
     ///
     /// Unless `no_composable` is set, generates/refreshes `.gitnexus` when
     /// missing or stale before scoring, same as `topos_evaluate_file` and
@@ -188,8 +195,8 @@ impl ToposServer {
 
 fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-    let resolved = match resolve_within_root(&params.filepath) {
-        Ok(path) => path,
+    let (resolved, detected_project) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             return err_eval(
                 "Access denied / path error",
@@ -208,25 +215,16 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         );
     }
 
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
-        Err(err) => {
-            return err_eval(
-                "Access denied / path error",
-                Priority::Simple,
-                priority_source,
-                err,
-            )
-        }
-    };
+    let composable_root = composable_default_root(&detected_project);
     let project_root =
-        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
-    // Resolved to an absolute path against `file_root` — must be used below
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    // Resolved to an absolute path against `composable_root` — must be used below
     // instead of `params.gitnexus_dir`, since `project_root` above already
     // absorbed a relative override's subdirectory; rejoining the original
     // relative string against it a second time would double that
     // subdirectory.
-    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
         resolved_override.as_deref(),
         &project_root,
@@ -318,20 +316,22 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         }
     };
 
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_requested_path, detected_project) = match resolve_project_path(&params.path) {
+        Ok(context) => context,
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
             let md = render_project_md(&model);
             return to_tool_result(&model, md);
         }
     };
+    let composable_root = composable_default_root(&detected_project);
     let project_root =
-        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
     // See the matching comment in evaluate_file_sync: must use the resolved
     // override below, not `params.gitnexus_dir`, since a relative override's
     // subdirectory is already baked into `project_root` above.
-    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_outcome = ensure_gitnexus_dir(
         resolved_override.as_deref(),
         &project_root,
@@ -528,7 +528,7 @@ fn evaluate_single_file(
 fn validate_and_collect_project(
     params: &EvaluateProjectInput,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let resolved_root = resolve_within_root(&params.path)?;
+    let (resolved_root, _) = resolve_project_path(&params.path)?;
     if !resolved_root.is_dir() {
         return Err(format!(
             "Path is not a directory: {}",
@@ -559,11 +559,156 @@ fn min_scores_by_dim(results: &[ClassificationResult]) -> HashMap<String, f64> {
 }
 
 fn aggregate_floor_verdict(rolled: &HashMap<String, EvaluationValue>) -> LatticeElement {
-    lattice_to_str(verdict_from_generators(
-        rolled.get("simple") == Some(&EvaluationValue::Simple),
-        rolled.get("composable") == Some(&EvaluationValue::Composable),
-        rolled.get("secure") == Some(&EvaluationValue::Secure),
-    ))
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|g| rolled.get(g.as_str()) == Some(&g.value()))
+        .collect();
+    lattice_to_str(verdict_from_generators(&satisfied))
+}
+
+#[derive(Clone)]
+struct ScoredProjectRow {
+    entry: ProjectFileEntry,
+    result: ClassificationResult,
+}
+
+/// Gate-input map for a file — mirrors the scorers and suggestion engine.
+fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
+    let instability = result.raw_metrics.get("mdg.instability").copied();
+    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
+    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
+    let mut gate_metrics = result.raw_metrics.clone();
+    gate_metrics.remove("mdg.instability");
+    gate_metrics.extend(coupling_gate_input(
+        instability,
+        fan_in,
+        fan_out,
+        result.raw_metrics.get("mdg.abstractness").copied(),
+        result.raw_metrics.get("mdg.coupling").copied(),
+    ));
+    gate_metrics
+}
+
+fn gating_gate_failures(result: &ClassificationResult) -> Vec<GateResult> {
+    let gate_metrics = gate_metrics_for(result);
+    let instability = result.raw_metrics.get("mdg.instability").copied();
+    evaluate_gates(
+        &gate_metrics,
+        None,
+        result.is_entrypoint_module,
+        result.is_stable_leaf_module,
+        instability,
+    )
+    .into_iter()
+    .filter(|r| r.spec.gates_achieved && !r.passed())
+    .collect()
+}
+
+fn is_hard_fail(result: &ClassificationResult) -> bool {
+    if !result.is_parseable {
+        return true;
+    }
+    !gating_gate_failures(result).is_empty()
+}
+
+fn is_maintainability_giant(result: &ClassificationResult) -> bool {
+    if !result.is_parseable || is_hard_fail(result) {
+        return false;
+    }
+    gate_metrics_for(result)
+        .get("cfg.cyclomatic")
+        .is_some_and(|v| *v > SIMPLE.max_cyclomatic)
+}
+
+fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
+    let scores_pct: HashMap<String, f64> = result
+        .scores
+        .iter()
+        .map(|(dim, s)| (dim.clone(), s * 100.0))
+        .collect();
+    weakest_score(&scores_pct)
+}
+
+fn hard_fail_sort_key(result: &ClassificationResult) -> (usize, f64) {
+    (
+        gating_gate_failures(result).len(),
+        weakest_score_from_result(result),
+    )
+}
+
+fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
+    WorstFileEntry {
+        filepath: entry.filepath.clone(),
+        lattice_element: entry.lattice_element,
+    }
+}
+
+fn classify_project_rows(
+    rows: &[ScoredProjectRow],
+) -> (
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+) {
+    let mut hard: Vec<&ScoredProjectRow> = rows
+        .iter()
+        .filter(|row| is_hard_fail(&row.result))
+        .collect();
+    hard.sort_by(|a, b| {
+        let (ca, sa) = hard_fail_sort_key(&a.result);
+        let (cb, sb) = hard_fail_sort_key(&b.result);
+        cb.cmp(&ca)
+            .then_with(|| sa.partial_cmp(&sb).unwrap_or(Ordering::Equal))
+    });
+
+    // `leaf_composable_zeros` is deprecated and always empty -- see the
+    // schema field. The structural-leaf carve-out existed to keep
+    // `mdg.instability` failures out of `hard_fails`; that metric is now
+    // advisory, so it cannot produce a hard fail to suppress.
+    let leaves: Vec<&ScoredProjectRow> = Vec::new();
+
+    let mut giants: Vec<&ScoredProjectRow> = rows
+        .iter()
+        .filter(|row| is_maintainability_giant(&row.result))
+        .collect();
+    giants.sort_by(|a, b| {
+        let ca = gate_metrics_for(&a.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        let cb = gate_metrics_for(&b.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        cb.partial_cmp(&ca).unwrap_or(Ordering::Equal)
+    });
+
+    (
+        hard.iter().map(|row| to_worst_entry(&row.entry)).collect(),
+        leaves
+            .iter()
+            .map(|row| to_worst_entry(&row.entry))
+            .collect(),
+        giants
+            .iter()
+            .map(|row| to_worst_entry(&row.entry))
+            .collect(),
+    )
+}
+
+fn project_file_sort_key(row: &ScoredProjectRow) -> (u8, f64, f64) {
+    if is_hard_fail(&row.result) {
+        let (count, score) = hard_fail_sort_key(&row.result);
+        (0, -(count as f64), score)
+    } else if is_maintainability_giant(&row.result) {
+        let cyclomatic = gate_metrics_for(&row.result)
+            .get("cfg.cyclomatic")
+            .copied()
+            .unwrap_or(0.0);
+        (1, -cyclomatic, 0.0)
+    } else {
+        (2, worst_key(&row.entry), 0.0)
+    }
 }
 
 fn worst_key(entry: &ProjectFileEntry) -> f64 {
@@ -584,19 +729,37 @@ fn build_language_rollups(
             let results = &per_language_results[language];
             let rolled = classifier.combine_dimensions(results);
             let rolled_scores = min_scores_by_dim(results);
-            let mut entries: Vec<&ProjectFileEntry> = per_language_entries
-                .get(language)
-                .map(|v| v.iter().collect())
-                .unwrap_or_default();
-            entries.sort_by(|a, b| {
-                worst_key(a)
-                    .partial_cmp(&worst_key(b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
+            let lang_entries = per_language_entries.get(language);
+            let lang_results = per_language_results.get(language);
+            let mut rows: Vec<ScoredProjectRow> = match (lang_entries, lang_results) {
+                (Some(entries), Some(results)) if entries.len() == results.len() => entries
+                    .iter()
+                    .cloned()
+                    .zip(results.iter().cloned())
+                    .map(|(entry, result)| ScoredProjectRow { entry, result })
+                    .collect(),
+                (Some(entries), _) => entries
+                    .iter()
+                    .cloned()
+                    .map(|entry| {
+                        let result = ClassificationResult {
+                            is_parseable: entry.is_parseable,
+                            ..Default::default()
+                        };
+                        ScoredProjectRow { entry, result }
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            rows.sort_by(|a, b| {
+                project_file_sort_key(a)
+                    .partial_cmp(&project_file_sort_key(b))
+                    .unwrap_or(Ordering::Equal)
             });
-            let worst = entries.first();
+            let worst = rows.first().map(|row| &row.entry);
             ProjectLanguageRollup {
                 language: language.clone(),
-                file_count: entries.len(),
+                file_count: rows.len(),
                 parse_failures: per_language_parse_failures
                     .get(language)
                     .copied()
@@ -650,18 +813,58 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     );
 
     let overall = aggregate_floor_verdict(&rolled);
-    let mut entries = args.entries;
-    entries.sort_by(|a, b| {
-        worst_key(a)
-            .partial_cmp(&worst_key(b))
-            .unwrap_or(std::cmp::Ordering::Equal)
+    let mut rows: Vec<ScoredProjectRow> = if args.entries.len() == args.per_file_results.len() {
+        args.entries
+            .into_iter()
+            .zip(args.per_file_results)
+            .map(|(entry, result)| ScoredProjectRow { entry, result })
+            .collect()
+    } else {
+        args.entries
+            .into_iter()
+            .map(|entry| {
+                let result = ClassificationResult {
+                    is_parseable: entry.is_parseable,
+                    ..Default::default()
+                };
+                ScoredProjectRow { entry, result }
+            })
+            .collect()
+    };
+
+    let mut score_sorted = rows.clone();
+    score_sorted.sort_by(|a, b| {
+        worst_key(&a.entry)
+            .partial_cmp(&worst_key(&b.entry))
+            .unwrap_or(Ordering::Equal)
     });
-    let aggregate_explanation = aggregate_explanation(&rolled, &rolled_scores, &entries);
-    // Guidance and the agent contract need the full rows (warnings, scores,
-    // grade_capped, secure_adjusted); only the wire field is slimmed.
-    let worst_rows: &[ProjectFileEntry] = &entries[..entries.len().min(3)];
-    let worst_file_verdict = worst_rows.first().map(|w| w.lattice_element);
-    let guidance = project_guidance(worst_rows);
+    let worst_files: Vec<WorstFileEntry> = score_sorted
+        .iter()
+        .take(3)
+        .map(|row| to_worst_entry(&row.entry))
+        .collect();
+
+    let (hard_fails, leaf_composable_zeros, maintainability_giants) = classify_project_rows(&rows);
+    let hard_fail_head_owned = rows
+        .iter()
+        .find(|row| is_hard_fail(&row.result))
+        .map(|row| row.entry.clone());
+    let hard_fail_head = hard_fail_head_owned.as_ref();
+
+    rows.sort_by(|a, b| {
+        project_file_sort_key(a)
+            .partial_cmp(&project_file_sort_key(b))
+            .unwrap_or(Ordering::Equal)
+    });
+    let entries: Vec<ProjectFileEntry> = rows.iter().map(|row| row.entry.clone()).collect();
+
+    let aggregate_explanation =
+        aggregate_explanation(&rolled, &rolled_scores, hard_fail_head, &entries);
+    let worst_file_verdict = hard_fails
+        .first()
+        .map(|w| w.lattice_element)
+        .or_else(|| worst_files.first().map(|w| w.lattice_element));
+    let guidance = project_guidance(hard_fail_head, &entries);
 
     let page: Vec<ProjectFileEntry> = entries
         .iter()
@@ -684,18 +887,12 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     }
     let contract = project_contract(
         overall,
-        worst_rows,
+        hard_fail_head,
+        &entries,
         args.coupling_available,
         &project_warnings,
         args.parse_failures,
     );
-    let worst_files: Vec<WorstFileEntry> = worst_rows
-        .iter()
-        .map(|entry| WorstFileEntry {
-            filepath: entry.filepath.clone(),
-            lattice_element: entry.lattice_element,
-        })
-        .collect();
 
     ProjectEvaluationResult {
         root: args.resolved_root.to_string_lossy().to_string(),
@@ -710,6 +907,9 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
         language_rollups,
         aggregate_explanation,
         worst_file_verdict,
+        hard_fails,
+        leaf_composable_zeros,
+        maintainability_giants,
         worst_files,
         guidance,
         priority: priority_str(args.priority).to_string(),
@@ -745,6 +945,9 @@ fn empty_project_result(
         aggregate_explanation: "No files were evaluated, so the aggregate floor is SLOP."
             .to_string(),
         worst_file_verdict: None,
+        hard_fails: Vec::new(),
+        leaf_composable_zeros: Vec::new(),
+        maintainability_giants: Vec::new(),
         worst_files: Vec::new(),
         guidance: error
             .clone()
@@ -782,6 +985,7 @@ fn empty_project_result(
 fn aggregate_explanation(
     rolled: &HashMap<String, EvaluationValue>,
     rolled_scores: &HashMap<String, f64>,
+    hard_fail_head: Option<&ProjectFileEntry>,
     entries: &[ProjectFileEntry],
 ) -> String {
     if entries.is_empty() {
@@ -793,12 +997,13 @@ fn aggregate_explanation(
         .map(|(dim, _)| dim)
         .collect();
     failed.sort();
-    let worst = entries
-        .iter()
-        .min_by(|a, b| {
-            worst_key(a)
-                .partial_cmp(&worst_key(b))
-                .unwrap_or(std::cmp::Ordering::Equal)
+    let worst = hard_fail_head
+        .or_else(|| {
+            entries.iter().min_by(|a, b| {
+                worst_key(a)
+                    .partial_cmp(&worst_key(b))
+                    .unwrap_or(Ordering::Equal)
+            })
         })
         .expect("entries is non-empty");
     if !failed.is_empty() {
@@ -828,8 +1033,16 @@ fn aggregate_explanation(
     )
 }
 
-fn project_guidance(worst_files: &[ProjectFileEntry]) -> String {
-    let Some(worst) = worst_files.first() else {
+fn project_guidance(
+    hard_fail_head: Option<&ProjectFileEntry>,
+    entries: &[ProjectFileEntry],
+) -> String {
+    let score_worst = entries.iter().min_by(|a, b| {
+        worst_key(a)
+            .partial_cmp(&worst_key(b))
+            .unwrap_or(Ordering::Equal)
+    });
+    let Some(worst) = hard_fail_head.or(score_worst) else {
         return "No files were evaluated.".to_string();
     };
     if let Some(warning) = worst.warnings.first() {
@@ -855,76 +1068,77 @@ fn project_guidance(worst_files: &[ProjectFileEntry]) -> String {
 
 fn project_contract(
     overall: LatticeElement,
-    worst_files: &[ProjectFileEntry],
+    hard_fail_head: Option<&ProjectFileEntry>,
+    entries: &[ProjectFileEntry],
     coupling_available: bool,
     warnings: &[String],
     parse_failures: usize,
 ) -> AgentContract {
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut risk_flags: Vec<String> = Vec::new();
-    let mut next_actions: Vec<String> = Vec::new();
-
-    let composable = composable_contract_signals(coupling_available, warnings, true);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if parse_failures > 0 {
-        blocked_by.push("parse_failures".into());
-        risk_flags.push("parse_failures".into());
-    }
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
-    if worst_files.iter().any(|f| f.grade_capped) {
-        risk_flags.push("grade_capped".into());
-    }
-    // Verdict-anchored, not payload-anchored: secure_adjusted is false
-    // exactly when active findings survive the allowlist, and it is
-    // unaffected by the include_security_findings payload gate.
-    if worst_files.iter().any(|f| f.secure_adjusted == Some(false)) {
-        risk_flags.push("active_security_findings".into());
-    }
+    let scan_rows: Vec<&ProjectFileEntry> =
+        hard_fail_head.into_iter().chain(entries.iter()).collect();
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available,
+        warnings,
+        parse_failures,
+        grade_capped: scan_rows.iter().any(|f| f.grade_capped),
+        active_security_findings: scan_rows.iter().any(|f| f.secure_adjusted == Some(false)),
+        ..Default::default()
+    });
 
     let verification_gates = vec![
         "topos_assess_worktree_change validates each accepted in-place refactor".to_string(),
         "project rollup does not regress after non-trivial changes".to_string(),
         "behavior tests or type/lint checks pass when available".to_string(),
     ];
-    if let Some(action) = composable.next_action {
-        return AgentContract {
-            next_tool: composable.next_tool,
-            next_actions: vec![action],
-            blocked_by,
+    if let Some(action) = prelude.composable.next_action {
+        return finish_agent_contract(
+            prelude.blocked_by,
+            prelude.risk_flags,
+            prelude.composable.next_tool,
+            vec![action],
             verification_gates,
-            risk_flags,
-        };
+        );
     }
-    let Some(worst) = worst_files.first() else {
-        return AgentContract {
-            next_tool: None,
-            next_actions,
-            blocked_by,
-            verification_gates: Vec::new(),
-            risk_flags,
+    let Some(head) = hard_fail_head else {
+        let mut next_actions = Vec::new();
+        let next_tool = if overall == LatticeElement::IDEAL {
+            next_actions.push("preserve behavior checks before accepting".into());
+            None
+        } else if let Some(fallback) = entries.first() {
+            next_actions.push(format!(
+                "start with {} using language {}",
+                fallback.filepath, fallback.language
+            ));
+            Some("topos_inspect_code".to_string())
+        } else {
+            None
         };
+        return finish_agent_contract(
+            prelude.blocked_by,
+            prelude.risk_flags,
+            next_tool,
+            next_actions,
+            verification_gates,
+        );
     };
+    let mut next_actions = vec![format!(
+        "evaluate `{}` with refactor_targets to surface gating targets",
+        head.filepath
+    )];
     let next_tool = if overall == LatticeElement::IDEAL {
         next_actions.push("preserve behavior checks before accepting".into());
         None
     } else {
-        next_actions.push(format!(
-            "start with worst file {} using language {}",
-            worst.filepath, worst.language
-        ));
-        Some("topos_inspect_code".to_string())
+        Some("topos_evaluate_file".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        prelude.blocked_by,
+        prelude.risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
         verification_gates,
-        risk_flags,
-    }
+    )
 }
 
 /// The "## Agent Contract" section of the project markdown report.
@@ -1114,8 +1328,8 @@ mod tests {
         })
     }
 
-    /// `worst_files` ranks the whole project, not the page: an agent that
-    /// pages forward must not see the "worst" list shift under it.
+    /// Named lists and deprecated `worst_files` are page-global: paging must
+    /// not shift them under the agent.
     #[test]
     fn worst_files_are_page_global_and_slim() {
         let first_page = project_result(&project_params(0));
@@ -1136,14 +1350,109 @@ mod tests {
                 .collect::<Vec<_>>(),
             "worst_files must not follow offset/limit"
         );
+        assert_eq!(
+            first_page.hard_fails, second_page.hard_fails,
+            "hard_fails must not follow offset/limit"
+        );
+        assert_eq!(
+            first_page.leaf_composable_zeros, second_page.leaf_composable_zeros,
+            "leaf_composable_zeros must not follow offset/limit"
+        );
+        assert_eq!(
+            first_page.maintainability_giants, second_page.maintainability_giants,
+            "maintainability_giants must not follow offset/limit"
+        );
         // Page 2 does not even contain the worst file, so the compact list
         // is the only place it is named.
         assert!(!second_page.files.iter().any(|f| f.filepath == "worst.py"));
 
         // Slim by construction: identity plus verdict, no row payload.
-        let json = serde_json::to_value(&first_page.worst_files[0]).expect("serialize");
-        let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
-        assert_eq!(keys, vec!["filepath", "lattice_element"]);
+        for list in [
+            &first_page.worst_files,
+            &first_page.hard_fails,
+            &first_page.leaf_composable_zeros,
+            &first_page.maintainability_giants,
+        ] {
+            if let Some(entry) = list.first() {
+                let json = serde_json::to_value(entry).expect("serialize");
+                let keys: Vec<&String> = json.as_object().expect("object").keys().collect();
+                assert_eq!(keys, vec!["filepath", "lattice_element"]);
+            }
+        }
+    }
+
+    fn classified_row(result: ClassificationResult, entry: ProjectFileEntry) -> ScoredProjectRow {
+        ScoredProjectRow { entry, result }
+    }
+
+    fn composable_leaf_result() -> ClassificationResult {
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("mdg.instability".to_string(), 0.0);
+        result.raw_metrics.insert("mdg.fan_in".to_string(), 0.0);
+        result.raw_metrics.insert("mdg.fan_out".to_string(), 0.0);
+        result
+    }
+
+    /// A structural leaf (`I = 0.0`, no symbol fan) used to need an explicit
+    /// carve-out to stay out of `hard_fails`. `mdg.instability` is advisory
+    /// now, so it produces no hard fail to suppress and the deprecated
+    /// `leaf_composable_zeros` bucket stays empty.
+    #[test]
+    fn structural_leaf_does_not_hard_fail_without_a_carve_out() {
+        let entry = entry("leaf.py", 95.0);
+        let rows = vec![classified_row(composable_leaf_result(), entry)];
+        let (hard, leaves, giants) = classify_project_rows(&rows);
+        assert!(hard.is_empty(), "structural leaf must not hard-fail");
+        assert!(leaves.is_empty(), "leaf_composable_zeros is deprecated");
+        assert!(giants.is_empty());
+    }
+
+    #[test]
+    fn hard_fails_surface_simple_gate_failures() {
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("ast.max_function_complexity".to_string(), 30.0);
+        let entry = entry("fail.py", 10.0);
+        let rows = vec![classified_row(result, entry.clone())];
+        let (hard, leaves, _) = classify_project_rows(&rows);
+        assert_eq!(hard.len(), 1);
+        assert_eq!(hard[0].filepath, "fail.py");
+        assert!(leaves.is_empty());
+        let contract = project_contract(
+            LatticeElement::SLOP,
+            Some(&entry),
+            std::slice::from_ref(&entry),
+            false,
+            &[],
+            0,
+        );
+        assert_eq!(contract.next_tool.as_deref(), Some("topos_evaluate_file"));
+    }
+
+    #[test]
+    fn maintainability_giants_rank_advisory_cyclomatic() {
+        let mut result = ClassificationResult {
+            is_parseable: true,
+            ..Default::default()
+        };
+        result
+            .raw_metrics
+            .insert("cfg.cyclomatic".to_string(), SIMPLE.max_cyclomatic + 5.0);
+        let entry = entry("big.py", 90.0);
+        let rows = vec![classified_row(result, entry)];
+        let (hard, _, giants) = classify_project_rows(&rows);
+        assert!(hard.is_empty());
+        assert_eq!(giants.len(), 1);
+        assert_eq!(giants[0].filepath, "big.py");
     }
 
     /// The guidance and contract still read the *full* worst rows, which

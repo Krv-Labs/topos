@@ -9,8 +9,8 @@ use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast};
 use super::mapper_javascript::map_node_kind as map_javascript_node_kind;
 use super::models::{AttributeValue, UASTNode};
 
-pub fn map_node_kind(kind: &str) -> &'static str {
-    match kind {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    match node.kind() {
         "interface_declaration"
         | "type_alias_declaration"
         | "enum_declaration"
@@ -22,7 +22,7 @@ pub fn map_node_kind(kind: &str) -> &'static str {
         // something at ambient scope" maps naturally to the variable-declaration
         // family for structural comparison purposes.
         "ambient_declaration" => "VarDecl",
-        other => map_javascript_node_kind(other),
+        _other => map_javascript_node_kind(node),
     }
 }
 

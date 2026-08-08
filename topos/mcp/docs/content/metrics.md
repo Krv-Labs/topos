@@ -1,7 +1,7 @@
 # Topos Metrics Reference
 
 Every metric key, the graph it lives on, and how it rolls into a generator
-of `H(G_qual) = { SIMPLE, COMPOSABLE, SECURE }`.
+of `H(G_qual) = { SIMPLE, COMPOSABLE, SECURE, NAVIGABLE }`.
 
 **Calibration source of truth:** `topos/engine/src/evaluation/policies/calibration.rs`.
 Edit that file when tuning gates or normalization from experimental data.
@@ -31,8 +31,7 @@ complexity reason. `ast.max_function_complexity` — a true per-function
 max — gates that concern directly, so cyclomatic keeps its `≤ 15`
 reference point for interpretation and scoring only. (Source of truth:
 `GateSpec::gates_achieved` in
-`topos/engine/src/evaluation/policies/gates.rs`; `cfg.cyclomatic` is the
-only spec with `gates_achieved: false`.)
+`topos/engine/src/evaluation/policies/gates.rs`.)
 
 `Φ_SIMPLE` maps metrics to `[0, 1]` quality scores (cyclomatic cap 40,
 max-function cap 20, entropy bell peak at 0.5), then takes `score =
@@ -44,17 +43,6 @@ all scored metrics including the advisory one, a file can legitimately
 report `achieved: true` with `score: 0.0`: e.g. a large
 dispatch/discovery-class module with `cfg.cyclomatic: 63` (past the cap
 of 40 → quality 0.0) whose individual functions all stay under 10.
-
-> **Known language skew (Go).** Go files carry a constant **+1** on
-> `cfg.cyclomatic` relative to the other languages, because the CFG gains an
-> empty module-level callable. This has **no** effect on SIMPLE `achieved`:
-> `cfg.cyclomatic` does not gate, and per-function
-> `ast.max_function_complexity` is unaffected by the extra empty callable.
-> The residual effect is on the SIMPLE *score* — the constant offset nudges
-> the cyclomatic quality curve, which moves `score` only when cyclomatic is
-> the binding minimum. Deferred deliberately — the v0.4.0 CFG rewrite locks
-> pre-rewrite edge shapes as golden contracts, so correcting the offset is a
-> behavior change tracked separately in issue #230.
 
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
@@ -72,29 +60,26 @@ has no abstract-type concept).
 | Key | What it measures | Gate / good range |
 |---|---|---|
 | `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | Diagnostic |
-| `mdg.instability` | `Ce / (Ca + Ce)`.                        | **[0.3, 0.7]** — only gated when `mdg.abstractness` is unavailable for the file's language (see below) |
-| `mdg.abstractness` | Fraction of the module's type declarations that are abstract (trait/interface/protocol/abstract class) vs. concrete (struct/class/enum). `0.0` for a functions-only module (no type declarations at all) — that is a real, meaningful "fully concrete" reading, not "unmeasured." | Diagnostic |
-| `mdg.main_sequence_distance` | Martin's Distance from the Main Sequence, `D = \|A + I − 1\|`. Replaces the raw `mdg.instability` gate whenever abstractness is available — a concrete, unstable orchestrator (I≈1, A≈0, e.g. `main.rs`) sits *on* the main sequence (D≈0) and is not penalized, unlike a fixed instability band. | **≤ 0.5** (achieved gate, when active) |
-| `mdg.fan_in`      | Incoming `CALLS` edges.                  | **≤ 15** (achieved gate) |
-| `mdg.fan_out`     | Outgoing `CALLS` edges.                  | **≤ 15** (achieved gate) |
+| `mdg.instability` | `Ce / (Ca + Ce)`; dependency role/direction. | **[0.3, 0.7]** — advisory |
+| `mdg.abstractness` | Fraction of type declarations that are abstract. | Diagnostic input to distance |
+| `mdg.main_sequence_distance` | Martin's package-oriented `D = \|A + I − 1\|`, projected onto the file for architectural context. | **≤ 0.5** — advisory |
+| `mdg.fan_in`      | Incoming `CALLS` edges; responsibility/change-impact radius. | **≤ 15** — advisory |
+| `mdg.fan_out`     | Distinct external symbols called by the file; outward interaction burden. | **≤ 10** (achieved gate) |
 | `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | Diagnostic |
 
-**Why two instability gates?** Gating raw `mdg.instability` against a
-fixed band flags both stable leaf modules (constants, error types) and
-unstable orchestrators (`main.rs`, bootstrap/wiring code) even when those
-extremes are architecturally intentional — see issue #124. Pairing
-instability with Abstractness and gating on distance from the main
-sequence fixes this for languages where Abstractness is measured; other
-languages (currently: JavaScript, C++) keep the original band gate
-unchanged until their UAST mappers gain type-declaration classification.
-A separate role-based exemption (`is_stable_leaf_module` — a
-declarations-only module with no branching control flow) tolerates
-maximal main-sequence distance for frozen, concrete foundation/utility
-code, mirroring Martin's own accepted "Zone of Pain" exception.
+**Why only fan-out gates at file scope?** Outward interaction is a direct local
+burden: it approximates how much external behavior a file must coordinate.
+High fan-in instead marks impact radius and can be correct for an interface or
+shared utility. Martin instability and main-sequence distance describe package
+roles; sparse file graphs also make their attainable values coarse. They remain
+scored, interpreted, and available as refactor targets, but do not hard-fail a
+file. See the cited rationale and calibration in
+`docs/decisions/file-level-composable.md`.
 
-`Φ_COMPOSABLE` uses fan caps of 40 for score normalization. **`achieved`**
-is the AND of whichever instability-family gate is active, plus fan-in and
-fan-out.
+`Φ_COMPOSABLE` uses fan caps of 40 for score normalization and takes the minimum
+over all scored readings, including advisory ones. **`achieved`** is determined
+only by `mdg.fan_out <= 10`. Consequently, an achieved file may still have a low
+COMPOSABLE score that invites deeper inspection.
 
 ## SECURE generator (← Code Property Graph)
 
@@ -113,6 +98,47 @@ File-level MCP tools also surface `security_findings` with `kind`, `callee`,
 `line`, and `snippet` when SECURE fails.  Project scans keep this off by default
 unless `include_security_findings=true`.
 
+## NAVIGABLE generator (← AST scope tree)
+
+Computed from the same UAST as SIMPLE, so it needs no external input and
+is always available.
+
+| Key | What it measures | Gate |
+|---|---|---|
+| `nav.max_function_divergence` | Worst function's Semantic Compositional Divergence — `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside it. | **≤ 10.0** (achieved gate) |
+
+**What this is for.** Once code length is controlled for, classical
+complexity metrics stop predicting LLM task accuracy but *nesting depth*
+keeps predicting it: each level is another hierarchical state a reader has
+to hold open. NAVIGABLE measures nesting and nothing else.
+
+Two consequences of the formula are load-bearing:
+
+- A leaf scope contributes `ln(1) = 0`, so a **perfectly flat function
+  scores `0.0`** regardless of how many branches it has. Flat *is*
+  maximally navigable; branch count is SIMPLE's concern. Deep code is
+  still fully counted — the weight lands on the ancestors doing the
+  nesting.
+- Ternaries and short-circuit boolean operators are **excluded**.
+  Expression-level branching opens no block, so it costs no reader state,
+  and counting it here would just re-measure SIMPLE.
+
+Like `ast.max_function_complexity`, the gate is the **per-function max**
+rather than a file-wide sum — a long file of short flat functions must not
+fail for its length. `Φ_NAVIGABLE` decays linearly to a cap of 12.0 for
+the reported score.
+
+When the gate fails, `metric_locations["nav.max_function_divergence"]`
+carries the offending functions worst-first with real spans, so the failure
+becomes a `refactor_target`. The fix is `extract_helper`: lift the deepest
+nested block into a top-level function.
+
+> **Calibration.** The `10.0` gate was selected from a balanced 6,390-file
+> leaderboard corpus (p95 `10.37`, ~5.2% gate failure rate). The
+> `12.0` score cap spans p99 across Rust (`10.40`), Go (`13.64`), and Python
+> (`12.31`) so scores decay linearly without early flooring. Topos's 176 Rust
+> sources remain the reference ECDF (p95 `5.65`, p99 `8.62`, max `12.19`).
+
 ## Score floors (alternate path)
 
 When callers already hold normalized scores without re-running a `Φᵢ`, the
@@ -124,6 +150,7 @@ When callers already hold normalized scores without re-running a `Φᵢ`, the
 | SIMPLE | 0.40 |
 | COMPOSABLE | 0.80 |
 | SECURE | 1.00 |
+| NAVIGABLE | 0.40 |
 
 The live `CharacteristicMorphism` path uses each `Φᵢ`'s `ScoredDecision.achieved`
 (the AND of that generator's *gating* raw metrics — advisory ones excluded),

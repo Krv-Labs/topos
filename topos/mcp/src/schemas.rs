@@ -9,13 +9,21 @@ use std::collections::HashMap;
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use topos_engine::core::omega::EvaluationValue;
+use topos_engine::core::omega::{EvaluationValue, OMEGA_SIZE};
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::preferences::{Generator, UserPreferences};
+use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
 
-/// The 8 elements of the free Heyting algebra H(G_qual) on the three
-/// generators SIMPLE, COMPOSABLE, SECURE, mirroring `EvaluationValue` on
-/// the MCP wire.
+/// The 16 elements of the free Heyting algebra H(G_qual) on the four
+/// generators SIMPLE, COMPOSABLE, SECURE, NAVIGABLE, mirroring
+/// `EvaluationValue` on the MCP wire.
+///
+/// Note for clients pinned to the pre-v0.5.0 shape: `IDEAL` now requires
+/// all four pillars. The verdict that used to be `IDEAL` — the top of the
+/// three-generator algebra — serializes as `SIMPLE_COMPOSABLE_SECURE`.
+/// Variants are declared in **bitmask order**, matching
+/// `EvaluationValue::ALL`, so the two enums convert by position. Serde
+/// keys on variant names, so this ordering is an implementation detail
+/// and not part of the wire contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, Default)]
 #[allow(non_camel_case_types)]
 pub enum LatticeElement {
@@ -23,52 +31,56 @@ pub enum LatticeElement {
     SLOP,
     SIMPLE,
     COMPOSABLE,
-    SECURE,
     SIMPLE_COMPOSABLE,
+    SECURE,
     SIMPLE_SECURE,
     COMPOSABLE_SECURE,
+    SIMPLE_COMPOSABLE_SECURE,
+    NAVIGABLE,
+    SIMPLE_NAVIGABLE,
+    COMPOSABLE_NAVIGABLE,
+    SIMPLE_COMPOSABLE_NAVIGABLE,
+    SECURE_NAVIGABLE,
+    SIMPLE_SECURE_NAVIGABLE,
+    COMPOSABLE_SECURE_NAVIGABLE,
     IDEAL,
 }
 
 impl LatticeElement {
+    const ALL: [LatticeElement; OMEGA_SIZE] = [
+        LatticeElement::SLOP,
+        LatticeElement::SIMPLE,
+        LatticeElement::COMPOSABLE,
+        LatticeElement::SIMPLE_COMPOSABLE,
+        LatticeElement::SECURE,
+        LatticeElement::SIMPLE_SECURE,
+        LatticeElement::COMPOSABLE_SECURE,
+        LatticeElement::SIMPLE_COMPOSABLE_SECURE,
+        LatticeElement::NAVIGABLE,
+        LatticeElement::SIMPLE_NAVIGABLE,
+        LatticeElement::COMPOSABLE_NAVIGABLE,
+        LatticeElement::SIMPLE_COMPOSABLE_NAVIGABLE,
+        LatticeElement::SECURE_NAVIGABLE,
+        LatticeElement::SIMPLE_SECURE_NAVIGABLE,
+        LatticeElement::COMPOSABLE_SECURE_NAVIGABLE,
+        LatticeElement::IDEAL,
+    ];
+
     pub fn as_str(self) -> &'static str {
-        match self {
-            LatticeElement::SLOP => "SLOP",
-            LatticeElement::SIMPLE => "SIMPLE",
-            LatticeElement::COMPOSABLE => "COMPOSABLE",
-            LatticeElement::SECURE => "SECURE",
-            LatticeElement::SIMPLE_COMPOSABLE => "SIMPLE_COMPOSABLE",
-            LatticeElement::SIMPLE_SECURE => "SIMPLE_SECURE",
-            LatticeElement::COMPOSABLE_SECURE => "COMPOSABLE_SECURE",
-            LatticeElement::IDEAL => "IDEAL",
-        }
+        str_to_lattice(self).name()
     }
 }
 
 pub fn lattice_to_str(value: EvaluationValue) -> LatticeElement {
-    match value {
-        EvaluationValue::Slop => LatticeElement::SLOP,
-        EvaluationValue::Simple => LatticeElement::SIMPLE,
-        EvaluationValue::Composable => LatticeElement::COMPOSABLE,
-        EvaluationValue::Secure => LatticeElement::SECURE,
-        EvaluationValue::SimpleComposable => LatticeElement::SIMPLE_COMPOSABLE,
-        EvaluationValue::SimpleSecure => LatticeElement::SIMPLE_SECURE,
-        EvaluationValue::ComposableSecure => LatticeElement::COMPOSABLE_SECURE,
-        EvaluationValue::Ideal => LatticeElement::IDEAL,
-    }
+    LatticeElement::ALL[value.bits() as usize]
 }
 
 pub fn str_to_lattice(value: LatticeElement) -> EvaluationValue {
-    match value {
-        LatticeElement::SLOP => EvaluationValue::Slop,
-        LatticeElement::SIMPLE => EvaluationValue::Simple,
-        LatticeElement::COMPOSABLE => EvaluationValue::Composable,
-        LatticeElement::SECURE => EvaluationValue::Secure,
-        LatticeElement::SIMPLE_COMPOSABLE => EvaluationValue::SimpleComposable,
-        LatticeElement::SIMPLE_SECURE => EvaluationValue::SimpleSecure,
-        LatticeElement::COMPOSABLE_SECURE => EvaluationValue::ComposableSecure,
-        LatticeElement::IDEAL => EvaluationValue::Ideal,
-    }
+    let index = LatticeElement::ALL
+        .iter()
+        .position(|candidate| *candidate == value)
+        .expect("ALL lists every variant");
+    EvaluationValue::ALL[index]
 }
 
 /// Outcome of comparing a proposed change to the baseline.
@@ -110,11 +122,7 @@ pub enum PrioritySource {
 
 /// Serialize `Priority` the way the Python wire did (lowercase value).
 pub fn priority_str(priority: Priority) -> &'static str {
-    match priority {
-        Priority::Simple => "simple",
-        Priority::Composable => "composable",
-        Priority::Secure => "secure",
-    }
+    priority.top_generator().as_str()
 }
 
 /// Wire form of a generator name.
@@ -124,23 +132,38 @@ pub enum GeneratorInput {
     Simple,
     Composable,
     Secure,
+    Navigable,
 }
 
 impl GeneratorInput {
+    pub const ALL: [GeneratorInput; RANKING_LEN] = [
+        GeneratorInput::Simple,
+        GeneratorInput::Composable,
+        GeneratorInput::Secure,
+        GeneratorInput::Navigable,
+    ];
+
     pub fn to_generator(self) -> Generator {
         match self {
             GeneratorInput::Simple => Generator::Simple,
             GeneratorInput::Composable => Generator::Composable,
             GeneratorInput::Secure => Generator::Secure,
+            GeneratorInput::Navigable => Generator::Navigable,
         }
     }
 
+    /// Inverse of [`GeneratorInput::to_generator`], so callers rendering a
+    /// domain ranking onto the wire don't each keep their own copy of the
+    /// mapping.
+    pub fn from_generator(g: Generator) -> GeneratorInput {
+        GeneratorInput::ALL
+            .into_iter()
+            .find(|candidate| candidate.to_generator() == g)
+            .expect("ALL covers every Generator")
+    }
+
     pub fn as_str(self) -> &'static str {
-        match self {
-            GeneratorInput::Simple => "simple",
-            GeneratorInput::Composable => "composable",
-            GeneratorInput::Secure => "secure",
-        }
+        self.to_generator().as_str()
     }
 }
 
@@ -148,11 +171,11 @@ impl GeneratorInput {
 // Input models
 // ---------------------------------------------------------------------------
 
-/// Strict ranking over simple, composable, and secure.
+/// Strict ranking over simple, composable, secure, and navigable.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UserPreferencesInput {
-    /// Permutation of simple/composable/secure, best first.
+    /// Permutation of simple/composable/secure/navigable, best first.
     pub ranking: Vec<GeneratorInput>,
     /// Optional explicit target verdict.
     #[serde(default)]
@@ -163,9 +186,9 @@ impl UserPreferencesInput {
     /// Convert into the domain-layer `UserPreferences`.
     pub fn to_preferences(&self) -> Result<UserPreferences, String> {
         let ranking: Vec<Generator> = self.ranking.iter().map(|g| g.to_generator()).collect();
-        let arr: [Generator; 3] = ranking
-            .try_into()
-            .map_err(|_| "ranking must contain exactly simple, composable, secure".to_string())?;
+        let arr: [Generator; RANKING_LEN] = ranking.try_into().map_err(|_| {
+            "ranking must contain exactly simple, composable, secure, navigable".to_string()
+        })?;
         let base = UserPreferences::new(arr).map_err(|e| e.to_string())?;
         match self.target {
             Some(t) => UserPreferences::with_target(arr, Some(str_to_lattice(t)))
@@ -177,9 +200,11 @@ impl UserPreferencesInput {
     /// Use the top-ranked generator as the scorer priority.
     pub fn to_priority(&self) -> Priority {
         match self.ranking.first() {
-            Some(GeneratorInput::Simple) | None => Priority::Simple,
+            None => Priority::Simple,
+            Some(GeneratorInput::Simple) => Priority::Simple,
             Some(GeneratorInput::Composable) => Priority::Composable,
             Some(GeneratorInput::Secure) => Priority::Secure,
+            Some(GeneratorInput::Navigable) => Priority::Navigable,
         }
     }
 }
@@ -237,9 +262,9 @@ pub struct EvaluateFileInput {
     /// (see `no_composable`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
-    /// exactly like a missing `.gitnexus` did before this tool started
-    /// generating it automatically.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
+    /// only, exactly like a missing `.gitnexus` did before this tool
+    /// started generating it automatically.
     #[serde(default)]
     pub no_composable: bool,
     /// Optional generator ranking.
@@ -293,9 +318,9 @@ pub struct EvaluateProjectInput {
     /// reported as unavailable rather than failing the whole evaluation.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE only,
-    /// exactly like a missing `.gitnexus` did before this tool started
-    /// generating it automatically.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
+    /// only, exactly like a missing `.gitnexus` did before this tool
+    /// started generating it automatically.
     #[serde(default)]
     pub no_composable: bool,
     /// Per-file rows to return per page (1–500, default 25).
@@ -484,10 +509,10 @@ pub struct InspectCodeInput {
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Skip GitNexus generation; score whatever `.gitnexus` is already
-    /// there, or SIMPLE/SECURE only when there is none.
+    /// there, or SIMPLE/SECURE/NAVIGABLE only when there is none.
     #[serde(default)]
     pub no_composable: bool,
-    /// Strict total order on the three generators; see
+    /// Strict total order on the four generators; see
     /// `topos://docs/preferences`.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
@@ -552,8 +577,11 @@ pub struct PreferenceWalkInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DepgraphStatusInput {
-    /// `.gitnexus` store under the MCP file root (default:
-    /// `<file root>/.gitnexus`). Does not change the file root.
+    /// Repo root to inspect (default: MCP file root / process project root).
+    #[serde(default)]
+    pub directory: Option<String>,
+    /// `.gitnexus` store under the project root (default:
+    /// `<project root>/.gitnexus`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
 }
@@ -562,13 +590,10 @@ pub struct DepgraphStatusInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateDepgraphInput {
-    /// Repo root to analyze (default: derived from `gitnexus_dir` when set,
-    /// otherwise the MCP file root). Explicit `directory` wins over derivation.
+    /// Repo root to analyze (default: MCP file root / process project root).
     #[serde(default)]
     pub directory: Option<String>,
-    /// `.gitnexus` store under the MCP file root. When `directory` is omitted,
-    /// the analyze root is the parent of this path — same derivation
-    /// `topos_depgraph_status` uses — so status → generate stay aligned.
+    /// `.gitnexus` store under the project root.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
     /// Regenerate even when current.
@@ -1048,7 +1073,7 @@ pub struct ProjectFileEntry {
 /// Deliberately just the identity and the verdict: the full row for any of
 /// these files is already in `files` (or one page away), so repeating the
 /// whole `ProjectFileEntry` here duplicated the page's largest rows.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct WorstFileEntry {
     pub filepath: String,
     pub lattice_element: LatticeElement,
@@ -1079,11 +1104,26 @@ pub struct ProjectEvaluationResult {
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
     pub worst_file_verdict: Option<LatticeElement>,
-    /// The three lowest-scoring rows in the *whole* project, by the same
-    /// order `files` is sorted in: ascending minimum score across the
-    /// measured dimensions. Page-global — unaffected by `offset`/`limit`,
-    /// so it is identical on every page. This ranks by score alone; it is
-    /// not an estimate of effort, payoff, or fix order.
+    /// Files failing at least one gating gate (`GATE_SPECS` with
+    /// `gates_achieved: true`), excluding structural leaf composable zeros.
+    /// Page-global — unaffected by `offset`/`limit`. Prefer this over
+    /// `worst_files` for fix order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hard_fails: Vec<WorstFileEntry>,
+    /// **Deprecated** — always empty, kept for one release for wire
+    /// compatibility. This bucket held leaf modules at `mdg.instability =
+    /// 0.0` so their COMPOSABLE failures stayed out of `hard_fails`.
+    /// `mdg.instability` is now advisory (`gates_achieved: false`) and
+    /// cannot produce a hard fail, so there is nothing left to suppress.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub leaf_composable_zeros: Vec<WorstFileEntry>,
+    /// High advisory cyclomatic complexity with all gating gates passing.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub maintainability_giants: Vec<WorstFileEntry>,
+    /// **Deprecated** — kept for one release; use `hard_fails` /
+    /// `maintainability_giants` instead. The three lowest-scoring rows by
+    /// ascending minimum score across dimensions. Page-global — unaffected
+    /// by `offset`/`limit`. Not an estimate of effort, payoff, or fix order.
     pub worst_files: Vec<WorstFileEntry>,
     pub guidance: String,
     pub priority: String,
@@ -1318,9 +1358,8 @@ pub struct RefactorResult {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateGraphifyInput {
-    /// Directory to analyze (default: MCP file root).
-    #[serde(default)]
-    pub directory: Option<String>,
+    /// Absolute directory in the project to analyze.
+    pub directory: String,
     /// Regenerate even when current.
     #[serde(default)]
     pub force: bool,
@@ -1340,6 +1379,20 @@ pub struct GenerateGraphifyResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lattice_wire_values_are_complete_unique_and_positionally_aligned() {
+        let mut seen = std::collections::HashSet::new();
+
+        assert_eq!(LatticeElement::ALL.len(), OMEGA_SIZE);
+        assert_eq!(EvaluationValue::ALL.len(), OMEGA_SIZE);
+        for (index, lattice) in LatticeElement::ALL.into_iter().enumerate() {
+            let value = EvaluationValue::ALL[index];
+            assert!(seen.insert(lattice), "duplicate wire value at {index}");
+            assert_eq!(str_to_lattice(lattice), value);
+            assert_eq!(lattice_to_str(value), lattice);
+        }
+    }
 
     /// Task-C wire default: an agent that asks for nothing still gets the
     /// ranked spans its next edit needs, and `0` still means off.
@@ -1393,10 +1446,9 @@ mod tests {
 
     #[test]
     fn generate_depgraph_accepts_and_advertises_gitnexus_dir() {
-        let defaulted: GenerateDepgraphInput = serde_json::from_str(r#"{}"#).expect("deserialize");
-        assert!(defaulted.gitnexus_dir.is_none());
-        assert!(defaulted.directory.is_none());
-        assert!(!defaulted.force);
+        let default: GenerateDepgraphInput =
+            serde_json::from_str(r#"{}"#).expect("directory defaults to None");
+        assert!(default.directory.is_none());
 
         let explicit: GenerateDepgraphInput = serde_json::from_str(
             r#"{"directory": "nested", "gitnexus_dir": "nested/.gitnexus", "force": true}"#,

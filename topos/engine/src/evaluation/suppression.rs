@@ -30,7 +30,7 @@ use std::path::Path;
 
 use crate::config::{AllowEntry, ToposConfig};
 use crate::core::characteristic_morphism::ClassificationResult;
-use crate::core::omega::EvaluationValue;
+use crate::core::omega::{EvaluationValue, Generator};
 use crate::evaluation::security_guidance::SecurityFinding;
 use crate::functors::probes::cpg::danger::{dangerous_api_reachable, matches_registry};
 use crate::functors::probes::cpg::taint::taint_flow_paths;
@@ -112,12 +112,15 @@ pub fn apply_allowlist(
 
     let mut adjusted_element = recompute_element(result, adjusted_secure_pass);
 
-    // Grade cap: acknowledged risk can never buy the top medal. IDEAL minus
-    // the SECURE bit is always SIMPLE_COMPOSABLE (see the Ω encoding in
+    // Grade cap: acknowledged risk can never buy the top medal. Clearing
+    // the SECURE bit is the general form of "IDEAL, minus the pillar that
+    // was only satisfied by acknowledgement" (see the Ω encoding in
     // `crate::core::omega`).
     let mut grade_capped = false;
     if !acknowledged.is_empty() && adjusted_element == EvaluationValue::Ideal {
-        adjusted_element = EvaluationValue::SimpleComposable;
+        adjusted_element =
+            EvaluationValue::from_bits(adjusted_element.bits() & !Generator::Secure.value().bits())
+                .expect("clearing a bit of a valid verdict yields a valid verdict");
         grade_capped = true;
     }
 
@@ -135,9 +138,14 @@ pub fn apply_allowlist(
 /// Rebuild the `Ω` element from `result`'s dimensions, overriding the
 /// SECURE bit with `secure_pass`.
 fn recompute_element(result: &ClassificationResult, secure_pass: bool) -> EvaluationValue {
-    let simple = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
-    let composable = result.dimensions.get("composable") == Some(&EvaluationValue::Composable);
-    crate::core::omega::verdict_from_generators(simple, composable, secure_pass)
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|generator| match generator {
+            Generator::Secure => secure_pass,
+            other => result.dimensions.get(other.as_str()) == Some(&other.value()),
+        })
+        .collect();
+    crate::core::omega::verdict_from_generators(&satisfied)
 }
 
 #[cfg(test)]
@@ -206,6 +214,7 @@ mod tests {
             dimensions: HashMap::from([
                 ("simple".to_string(), EvaluationValue::Simple),
                 ("composable".to_string(), EvaluationValue::Composable),
+                ("navigable".to_string(), EvaluationValue::Navigable),
                 ("secure".to_string(), EvaluationValue::Slop),
             ]),
             lattice_element: EvaluationValue::Slop,
@@ -219,8 +228,13 @@ mod tests {
         };
         let verdict = apply_allowlist(&result, &[eval_finding()], &config, None, Some(&cpg));
 
+        // Every other pillar passes, so acknowledgement would otherwise
+        // have bought PLATINUM. The cap drops the SECURE bit it bought.
         assert!(verdict.grade_capped);
-        assert_eq!(verdict.adjusted_element, EvaluationValue::SimpleComposable);
+        assert_eq!(
+            verdict.adjusted_element,
+            EvaluationValue::SimpleComposableNavigable
+        );
     }
 
     #[test]

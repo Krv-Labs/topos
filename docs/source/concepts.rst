@@ -9,15 +9,25 @@ This page provides the mathematical foundations of Topos. It explains how we use
 Topos Evaluations: The Quality Pillars
 --------------------------------------
 
-Topos classifies code against an eight-valued **Quality Medal** lattice (technically a free Heyting algebra on three generators). This captures *degrees of independent quality* rather than a single pass/fail score.
+Topos classifies code against a sixteen-valued **Quality Medal** lattice (technically a free Heyting algebra on four generators). This captures *degrees of independent quality* rather than a single pass/fail score.
 
-The three generators—**SIMPLE**, **COMPOSABLE**, and **SECURE**—represent the three **Quality Pillars** of software quality in Topos. They are *pairwise incomparable*, meaning a program can excel in one while failing in another:
+The four generators—**SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**—represent the four **Quality Pillars** of software quality in Topos. They are *pairwise incomparable*, meaning a program can excel in one while failing in another:
 
 *   **SIMPLE** (Code Complexity): Evaluates internal readability and logic flow.
-*   **COMPOSABLE** (Module Coupling): Evaluates how a module relates to the rest of the system.
+*   **COMPOSABLE** (Dependency Burden): Evaluates a file's outward interactions with the rest of the system.
 *   **SECURE** (Data Flow Safety): Evaluates the absence of dangerous operations and taint flows.
+*   **NAVIGABLE** (Agentic Cognitive Load): Evaluates how deeply nested the code is, and so how expensive it is for an LLM agent to read and safely change.
 
-A program can earn any combination of these pillars, unlocking different **Quality Medals** (e.g., a ``SILVER`` medal, or the ultimate ``GOLD`` medal). This preserves nuances: Topos never collapses a security failure into a complexity score.
+A program can earn any combination of these pillars, unlocking different **Quality Medals** (e.g., a ``SILVER`` medal, or the ultimate ``PLATINUM`` medal). This preserves nuances: Topos never collapses a security failure into a complexity score.
+
+.. note::
+   **NAVIGABLE is not a restatement of SIMPLE.** SIMPLE counts *branches*;
+   NAVIGABLE measures *nesting*. A function with ten sequential ``if``
+   statements is complex but perfectly flat, and scores ``0.0`` on
+   NAVIGABLE. Fold the same branches four levels deep and NAVIGABLE
+   degrades while SIMPLE does not move. Nesting is what predicts LLM
+   failure once code length is held constant, because each level is
+   another hierarchical state the reader must hold open.
 
 Code Quality as a Characteristic Morphism
 -----------------------------------------
@@ -28,7 +38,7 @@ In Topos, we treat programs as mathematical objects that can be classified based
    We model programs as graphs (or systems of graphs) within the **Category of Graphs**. A program isn't just a text file; it is a Control Flow Graph (CFG), a Code Property Graph (CPG), and a node in a Module Dependency Graph (MDG).
 
 **The Subobject Classifier ( :math:`\Omega` )**
-   In topos theory, a **topos** is a category that behaves like the category of sets, specifically one that possesses a **subobject classifier**. The subobject classifier, denoted :math:`\Omega`, is an object that represents "truth values." While a standard topos (like Set) has :math:`\Omega = \{True, False\}`, Topos introduces a custom :math:`\Omega`—the eight-valued Heyting algebra of our quality pillars.
+   In topos theory, a **topos** is a category that behaves like the category of sets, specifically one that possesses a **subobject classifier**. The subobject classifier, denoted :math:`\Omega`, is an object that represents "truth values." While a standard topos (like Set) has :math:`\Omega = \{True, False\}`, Topos introduces a custom :math:`\Omega`—the sixteen-valued Heyting algebra of our quality pillars.
 
 **The Characteristic Morphism ( :math:`\chi` )**
    The "quality" of a program is defined by its **characteristic morphism**. This is a mapping:
@@ -56,19 +66,19 @@ The characteristic morphism is computed through three levels of abstraction:
    - **AST Distance**: Measures the topological drift between two programs using UAST edit distance.
    - **Structural Coverage**: Estimates how much of a program's structure is "covered" by a test suite.
 
-Profunctors operate outside the main three-generator lattice but provide essential signals for agent workflows, such as detecting if a refactor was purely cosmetic or structurally significant.
+Profunctors operate outside the main four-generator lattice but provide essential signals for agent workflows, such as detecting if a refactor was purely cosmetic or structurally significant.
 
 User Preferences and the Relaxation Walk
 -----------------------------------------
 
-While the lattice :math:`\Omega` is only partially ordered, users often have specific quality goals. Topos uses **User Preferences** — a strict total order (permutation) of the three pillars — to linearize the lattice and guide agent iteration.
+While the lattice :math:`\Omega` is only partially ordered, users often have specific quality goals. Topos uses **User Preferences** — a strict total order (permutation) of the four pillars — to linearize the lattice and guide agent iteration.
 
 **The Induced Total Order**
-   A preference ranking like ``(SIMPLE, COMPOSABLE, SECURE)`` induces a total order on the 8 Quality Medals. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied.
+   A preference ranking like the default ``(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)`` induces a total order on the 16 Quality Medals. This allows the system to score every verdict :math:`v \in \Omega` lexicographically based on which pillars are satisfied, with weights ``8 / 4 / 2 / 1`` down the ranking.
 
 **Aspirational vs. Pragmatic Targets**
-   - **Aspirational Target**: Usually ``GOLD`` (🥇). The agent first attempts to satisfy all three quality pillars.
-   - **Pragmatic Target (The "Ideal Intersection")**: The meet (∧) of the top-two ranked pillars, representing a ``SILVER`` (🥈) medal. If the agent plateaus while aiming for ``GOLD``, it naturally diverts to this fallback.
+   - **Aspirational Target**: Usually ``PLATINUM`` (🏆). The agent first attempts to satisfy all four quality pillars.
+   - **Pragmatic Target (The "Ideal Intersection")**: The meet (∧) of the top-two ranked pillars, representing a ``SILVER`` (🥈) medal. If the agent plateaus while aiming for ``PLATINUM``, it diverts to this fallback.
 
 **The Relaxation Walk**
    Given a preference ranking and a current verdict, Topos calculates a **relaxation walk** — the descending sequence of Quality Medals from the target down to the current state. Agents use this walk to identify the "next step" improvement, ensuring that every refactor iteration moves the codebase closer to the user's intent.

@@ -15,7 +15,7 @@ use serde_json::Value;
 use topos_engine::adapters::discovery::find_git_root;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
-use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Omega};
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 
@@ -25,7 +25,8 @@ use crate::evaluation::{
     resolve_override_for_root,
 };
 use crate::formatting::{
-    composable_contract_signals, to_evaluation_result, to_tool_result, EvalResultOptions,
+    agent_contract_prelude, finish_agent_contract, to_evaluation_result, to_tool_result,
+    AgentContractPreludeInput, EvalResultOptions,
 };
 use crate::schemas::{
     lattice_to_str, priority_str, resolve_priority, AgentContract, AssessChangesetInput,
@@ -33,7 +34,9 @@ use crate::schemas::{
     AssessmentStatus, BeginRefactorInput, ChangesetFileEntry, ChangesetResult, EvaluationResult,
     GeneratorInput, LatticeElement, PrioritySource, SnapshotResult, UserPreferencesInput,
 };
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{
+    composable_default_root, read_safe_utf8_file, resolve_project_path, resolve_within_root,
+};
 use crate::server::ToposServer;
 use crate::snapshots::{now as snapshot_now, read_snapshot, sha256_hex, write_snapshot};
 
@@ -372,22 +375,17 @@ fn assessment_contract(
     warnings: &[String],
     proposed_eval: &EvaluationResult,
 ) -> AgentContract {
-    let mut risk_flags: Vec<String> = Vec::new();
-    let mut blocked_by: Vec<String> = Vec::new();
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available: proposed_eval.coupling_available,
+        warnings,
+        grade_capped: proposed_eval.grade_capped,
+        active_security_findings: proposed_eval.secure_adjusted == Some(false),
+        ..Default::default()
+    });
+    let mut blocked_by = prelude.blocked_by;
+    let mut risk_flags = prelude.risk_flags;
+    let composable = prelude.composable;
     let mut next_actions: Vec<String> = Vec::new();
-
-    let composable = composable_contract_signals(proposed_eval.coupling_available, warnings, false);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
-    if proposed_eval.grade_capped {
-        risk_flags.push("grade_capped".into());
-    }
-    if proposed_eval.secure_adjusted == Some(false) {
-        risk_flags.push("active_security_findings".into());
-    }
 
     let next_tool = if let Some(action) = composable.next_action {
         next_actions.push(action);
@@ -413,17 +411,17 @@ fn assessment_contract(
         Some("topos_inspect_code".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        blocked_by,
+        risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
-        verification_gates: vec![
+        vec![
             "assessment status is IMPROVEMENT or IMPROVEMENT_SCORE".into(),
             "assessment status is not SUSPICIOUS_NO_STRUCTURAL_CHANGE".into(),
             "behavior tests or type/lint checks pass when available".into(),
         ],
-        risk_flags,
-    }
+    )
 }
 
 fn err_assessment(
@@ -575,15 +573,15 @@ struct Baseline {
 
 fn load_baseline(params: &AssessImprovementInput) -> Result<Baseline, String> {
     if let Some(filepath) = &params.filepath {
-        let resolved = resolve_within_root(filepath)?;
+        let (resolved, detected_project) = resolve_project_path(filepath)?;
         if !resolved.is_file() {
             return Err(format!("Path is not a file: {}", resolved.display()));
         }
         let current_src = read_safe_utf8_file(filepath)?;
-        let file_root = resolve_file_root()?;
+        let composable_root = composable_default_root(&detected_project);
         let project_root = crate::evaluation::resolve_mcp_composable_project_root(
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         // Resolved to an absolute path against `file_root` — must be used
         // below instead of `params.gitnexus_dir`, since `project_root` above
@@ -591,7 +589,7 @@ fn load_baseline(params: &AssessImprovementInput) -> Result<Baseline, String> {
         // original relative string against it a second time would double
         // that subdirectory.
         let resolved_override =
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
         let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
         let (dep_graph, load_error) =
             load_dep_graph(gitnexus_dir.as_deref(), &resolved.to_string_lossy());
@@ -651,18 +649,22 @@ fn assess_edit_in_place(
         Ok(src) => src,
         Err(err) => return err_assessment(priority, priority_source, err, "file_not_found"),
     };
-    let file_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_resolved, detected_project) = match resolve_project_path(&resolved_path.to_string_lossy())
+    {
+        Ok(context) => context,
         Err(err) => return err_assessment(priority, priority_source, err, "assessment_error"),
     };
-    let project_root =
-        crate::evaluation::resolve_mcp_composable_project_root(gitnexus_dir_override, &file_root);
+    let composable_root = composable_default_root(&detected_project);
+    let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+        gitnexus_dir_override,
+        &composable_root,
+    );
     // Resolved to an absolute path against `file_root` — must be used below
     // instead of `gitnexus_dir_override`, since `project_root` above already
     // absorbed a relative override's subdirectory; rejoining the original
     // relative string against it a second time would double that
     // subdirectory.
-    let resolved_override = resolve_override_for_root(gitnexus_dir_override, &file_root);
+    let resolved_override = resolve_override_for_root(gitnexus_dir_override, &composable_root);
     let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (dep_graph, load_error) =
         load_dep_graph(gitnexus_dir.as_deref(), &resolved_path.to_string_lossy());
@@ -895,11 +897,11 @@ fn rollup(evals: &[EvaluationResult]) -> RollupOut {
 }
 
 fn aggregate(achieved: &HashMap<String, bool>) -> LatticeElement {
-    lattice_to_str(verdict_from_generators(
-        achieved.get("simple").copied().unwrap_or(false),
-        achieved.get("composable").copied().unwrap_or(false),
-        achieved.get("secure").copied().unwrap_or(false),
-    ))
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|g| achieved.get(g.as_str()).copied().unwrap_or(false))
+        .collect();
+    lattice_to_str(verdict_from_generators(&satisfied))
 }
 
 pub(crate) fn render_snapshot_md(r: &SnapshotResult) -> String {
@@ -1228,8 +1230,8 @@ impl ToposServer {
                 .unwrap_or(Value::Null),
         );
         let created_at = snapshot_now();
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+            Ok(context) => context,
             Err(err) => {
                 let model = err_snapshot(&params.filepath, err);
                 return to_tool_result(&model, render_snapshot_md(&model));
@@ -1297,8 +1299,8 @@ impl ToposServer {
                 return to_tool_result(&model, render_assessment_md(&model));
             }
         };
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+            Ok(context) => context,
             Err(err) => {
                 let model = err_assessment(
                     Priority::Simple,
@@ -1373,16 +1375,26 @@ impl ToposServer {
             .preferences
             .as_ref()
             .and_then(|p| p.to_preferences().ok());
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
+        let Some(first_path) = params.files.first() else {
+            let model = changeset_error(
+                priority,
+                priority_source,
+                &params.baseline_ref,
+                "Provide at least one file.".to_string(),
+            );
+            return to_tool_result(&model, render_changeset_md(&model));
+        };
+        let (_resolved_path, detected_project) = match resolve_project_path(first_path) {
+            Ok(context) => context,
             Err(err) => {
                 let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
                 return to_tool_result(&model, render_changeset_md(&model));
             }
         };
+        let composable_root = composable_default_root(&detected_project);
         let project_root = crate::evaluation::resolve_mcp_composable_project_root(
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         // Resolved to an absolute path against `file_root` — must be used
         // below instead of `params.gitnexus_dir`, since `project_root` above
@@ -1390,7 +1402,7 @@ impl ToposServer {
         // original relative string against it a second time would double
         // that subdirectory.
         let resolved_override =
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
         let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
 
         let mut entries: Vec<ChangesetFileEntry> = Vec::new();
@@ -1399,6 +1411,23 @@ impl ToposServer {
         let mut any_coupling = false;
 
         for filepath in &params.files {
+            match resolve_project_path(filepath) {
+                Ok((_path, root)) if root == detected_project => {}
+                Ok(_) => {
+                    let model = changeset_error(
+                        priority,
+                        priority_source,
+                        &params.baseline_ref,
+                        "All changeset files must belong to one project.".to_string(),
+                    );
+                    return to_tool_result(&model, render_changeset_md(&model));
+                }
+                Err(err) => {
+                    let model =
+                        changeset_error(priority, priority_source, &params.baseline_ref, err);
+                    return to_tool_result(&model, render_changeset_md(&model));
+                }
+            }
             match assess_one_changeset_file(
                 filepath,
                 &params,
@@ -1616,16 +1645,16 @@ fn changeset_contract(
     coupling_available: bool,
     warnings: &[String],
 ) -> AgentContract {
-    let mut blocked_by: Vec<String> = Vec::new();
-    let mut risk_flags: Vec<String> = Vec::new();
+    let prelude = agent_contract_prelude(AgentContractPreludeInput {
+        coupling_available,
+        warnings,
+        ..Default::default()
+    });
+    let mut blocked_by = prelude.blocked_by;
+    let mut risk_flags = prelude.risk_flags;
+    let composable = prelude.composable;
     let mut next_actions: Vec<String> = Vec::new();
 
-    let composable = composable_contract_signals(coupling_available, warnings, true);
-    blocked_by.extend(composable.blocked_by.clone());
-    risk_flags.extend(composable.risk_flags.clone());
-    if !warnings.is_empty() {
-        risk_flags.push("warnings".into());
-    }
     if !relocated_files.is_empty() {
         risk_flags.push("complexity_relocated_within_file".into());
         next_actions.push(
@@ -1645,17 +1674,17 @@ fn changeset_contract(
         Some("topos_evaluate_project".to_string())
     };
 
-    AgentContract {
+    finish_agent_contract(
+        blocked_by,
+        risk_flags,
         next_tool,
         next_actions,
-        blocked_by,
-        verification_gates: vec![
+        vec![
             "no project_regression in the rollup".into(),
             "no complexity_relocated_within_file flags remain".into(),
             "behavior tests or type/lint checks pass when available".into(),
         ],
-        risk_flags,
-    }
+    )
 }
 
 fn changeset_error(

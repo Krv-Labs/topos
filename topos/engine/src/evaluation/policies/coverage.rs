@@ -3,7 +3,7 @@
 //! The UAST profunctor emits a raw
 //! [`DeclarationCoverageReport`]; this module threshold-classifies it
 //! into a [`CoverageDecision`] (mean recall, F2, uncovered
-//! declarations). Independent of the three quality generators in `Ω`.
+//! declarations). Independent of the four quality generators in `Ω`.
 //! Defaults live in [`crate::evaluation::policies::calibration`].
 
 use crate::evaluation::policies::calibration::COVERAGE;

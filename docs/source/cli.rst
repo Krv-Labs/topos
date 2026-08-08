@@ -65,7 +65,7 @@ evaluate
 --------
 
 Evaluate code quality for one or more files or directories. This is the
-primary command for **Code Quality Medals** across the three pillars (see
+primary command for **Code Quality Medals** across the four pillars (see
 :doc:`measures`).
 
 .. code-block:: bash
@@ -100,10 +100,10 @@ primary command for **Code Quality Medals** across the three pillars (see
      - List every file whose policy gates fail the selected pillar, ordered by
        that pillar's diagnostic score. Cannot be combined with ``--json``.
    * - ``--priority PILLAR|RANKING``
-     - Either a single pillar (``simple``, ``composable``, ``secure``) as the
-       run's primary guidance pillar, or a full comma-separated ranking of
-       all three, most important first. This does not change fixed
-       pass/fail gates.
+     - Either a single pillar (``simple``, ``composable``, ``secure``,
+       ``navigable``) as the run's primary guidance pillar, or a full
+       comma-separated ranking of all four, most important first. This does
+       not change fixed pass/fail gates.
    * - ``--no-composable``
      - Skip GitNexus and score SIMPLE/SECURE only.
    * - ``--gitnexus-dir PATH``
@@ -399,7 +399,7 @@ graphify
 Generate and inspect a `Graphify <https://github.com/Graphify-Labs/graphify>`_
 knowledge graph — the ``graphify`` target of Topos's advisory refactor suite.
 **Purely advisory**: orphan/dead-code and fragile-edge hotspots here never
-affect the SIMPLE/COMPOSABLE/SECURE medal. See ``docs/decisions/refactor-suite.md`` in
+affect the SIMPLE/COMPOSABLE/SECURE/NAVIGABLE medal. See ``docs/decisions/refactor-suite.md`` in
 the repository for the full design, and :doc:`agents` for the equivalent MCP
 tools (``topos_generate_graphify_graph``, ``topos_refactor(target="graphify")``).
 

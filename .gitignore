@@ -256,7 +256,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Topos analysis artifacts — regenerated on demand, never committed.
+# `.gitnexus` is the COMPOSABLE dependency-graph store (`gitnexus analyze`);
+# `graphify-out` is the Graphify graph export (`topos graphify`), whose
+# graph.json/graph.html run to multiple MB and are large enough that
+# GitNexus skips them on every index.
 .gitnexus
+graphify-out/
 
 # MemPalace per-project files (issue #185)
 mempalace.yaml

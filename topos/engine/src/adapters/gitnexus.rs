@@ -422,7 +422,14 @@ fn finished_result(
     source_snapshot: &SourceFingerprint,
 ) -> DepgraphGenerationResult {
     let gitnexus_path = target_dir.join(".gitnexus");
-    write_fingerprint(target_dir, &gitnexus_path, start_time, source_snapshot);
+    let branch = current_git_branch(target_dir);
+    let resolved = resolve_lbug_store(&gitnexus_path, branch.as_deref());
+    let fingerprint_dir = resolved
+        .path
+        .as_deref()
+        .and_then(|p| p.parent())
+        .unwrap_or(&gitnexus_path);
+    write_fingerprint(target_dir, fingerprint_dir, start_time, source_snapshot);
     let detail = if capture { output.stdout.trim() } else { "" };
     DepgraphGenerationResult {
         ok: true,
@@ -590,7 +597,7 @@ mod tests {
                 .output()
                 .unwrap();
         };
-        run(&["init"]);
+        run(&["init", "-b", "main"]);
         run(&["config", "user.email", "t@t.t"]);
         run(&["config", "user.name", "t"]);
         std::fs::write(root.join("f.py"), "x = 1\n").unwrap();
@@ -672,6 +679,30 @@ mod tests {
             serde_json::json!(source_fingerprint(&tmp).content_hash)
         );
         assert_eq!(payload["source_file_count"], serde_json::json!(1));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn generate_writes_fingerprint_to_branch_scoped_store() {
+        let tmp = unique_tmp_dir("fingerprint_branch_scoped");
+        init_repo(&tmp);
+        let current_branch = current_git_branch(&tmp).expect("test repo has a named branch");
+        let branch_store = tmp.join(".gitnexus/branches/abc123");
+        std::fs::create_dir_all(branch_store.join("lbug")).unwrap();
+        std::fs::write(
+            branch_store.join(GITNEXUS_META_FILE),
+            format!(r#"{{"branch":"{current_branch}"}}"#),
+        )
+        .unwrap();
+
+        let result = run_analyze(&tmp, "true", &[], true, None);
+        assert!(result.ok);
+
+        let marker = branch_store.join(GITNEXUS_FINGERPRINT_FILE);
+        assert!(marker.exists(), "expected fingerprint beside branch store");
+        let payload: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&marker).unwrap()).unwrap();
+        assert!(payload["source_hash"].is_string());
         std::fs::remove_dir_all(&tmp).ok();
     }
 

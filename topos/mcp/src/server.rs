@@ -22,6 +22,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
 
+use topos_engine::core::omega::Generator;
+
 use crate::docs::{doc_content_for_slug, DOC_SLUGS};
 
 const SERVER_INSTRUCTIONS: &str = "Topos evaluates structural code quality on a diamond lattice. \
@@ -111,11 +113,13 @@ fn doc_description(slug: &str) -> &'static str {
              next-tool fields."
         }
         "lattice" => {
-            "The 8-element 3-cube H(G_qual) over {SIMPLE, COMPOSABLE, SECURE}; bottom = SLOP, \
-             top = IDEAL."
+            "The 16-element H(G_qual) over {SIMPLE, COMPOSABLE, SECURE, NAVIGABLE}; bottom = SLOP, \
+             top = IDEAL (all four)."
         }
         "metrics" => "Every metric key, good ranges, and how they roll up into dimension scores.",
-        "priority" => "Priority profiles (simple / composable / secure) and when to use each.",
+        "priority" => {
+            "Priority profiles (simple / composable / secure / navigable) and when to use each."
+        }
         "preferences" => {
             "User preferences over G_qual: induced total order on Ω and the targeted relaxation \
              walk toward the ideal intersection."
@@ -140,13 +144,14 @@ fn refactor_prompt_definition() -> Prompt {
                 .with_description("Target file to refactor.")
                 .with_required(true),
             PromptArgument::new("priority").with_description(
-                "Which generator to prioritize (simple, composable, or secure; default secure).",
+                "Which generator to prioritize (simple, composable, secure, or navigable; \
+                 default secure).",
             ),
             PromptArgument::new("max_iterations")
                 .with_description("Budget for iterations before stopping (default 5)."),
             PromptArgument::new("preferences").with_description(
-                "Optional strict total order on the three generators, comma-separated \
-                 (e.g. \"composable,secure,simple\").",
+                "Optional strict total order on the four generators, comma-separated \
+                 (e.g. \"simple,navigable,secure,composable\").",
             ),
         ]),
     )
@@ -166,7 +171,7 @@ fn build_refactor_prompt_text(
             .collect(),
         None => {
             let mut r = vec![priority.to_string()];
-            for g in ["simple", "composable", "secure"] {
+            for g in Generator::ALL.map(Generator::as_str) {
                 if g != priority {
                     r.push(g.to_string());
                 }

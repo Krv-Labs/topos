@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="138" height="20" role="img" aria-label="topos: Si pass, Co pass, Se pass, Na pass">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="138" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="26" height="20" fill="#ffffff"/>
+    <rect x="26" width="28" height="20" fill="#b45309"/><rect x="54" width="28" height="20" fill="#b45309"/><rect x="82" width="28" height="20" fill="#b45309"/><rect x="110" width="28" height="20" fill="#b45309"/>
+    <rect x="54" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/><rect x="82" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/><rect x="110" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/>
+    <rect x="26" width="112" height="20" fill="url(#s)"/>
+  </g>
+  <rect x=".5" y=".5" width="137" height="19" rx="2.5" fill="none" stroke="#b45309" stroke-width="1"/>
+  <svg x="5" y="2" width="16" height="16" viewBox="0 0 240 240" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><defs id="defs1">
+    <marker id="tw-head" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="3.2" markerHeight="3.2" orient="auto" markerUnits="strokeWidth">
+      <path d="M 1,1 11,6 1,11 Z" fill="#b65a22" id="path1" />
+    </marker>
+  </defs>
+  <g fill="none" stroke="#141414" stroke-width="5" stroke-linecap="round" id="g5" transform="matrix(1.2752267,0,0,1.2752267,-32.764175,-45.05882)">
+    <path d="m 48,64 36,32 36,34" id="path2" />
+    <path d="M 120,64 84,96" id="path3" />
+    <path d="m 192,64 -36,32 -36,34" id="path4" />
+    <path d="m 120,64 36,32" id="path5" />
+  </g>
+  <g fill="none" stroke="#141414" stroke-width="12" stroke-linecap="round" id="g7" transform="matrix(1.2752267,0,0,1.2752267,-32.764175,-45.05882)">
+    <path d="M 48,64 H 192" id="path6" />
+    <path d="M 120,64 V 196" id="path7" />
+  </g>
+  <path d="M 120.26303,204.88561 C 66.703507,153.87654 79.455774,94.716017 130.46484,84.514212 c 38.2568,-7.651354 49.31876,-19.12338 79.24408,-42.897607" fill="none" stroke="#b65a22" stroke-width="11.477" stroke-linecap="round" marker-end="url(#tw-head)" id="path8" />
+  <g fill="#bdb7aa" stroke="#141414" stroke-width="3" id="g9" transform="matrix(1.2752267,0,0,1.2752267,-32.764175,-45.05882)">
+    <circle cx="84" cy="96" r="7" id="circle8" />
+    <circle cx="156" cy="96" r="7" id="circle9" />
+  </g>
+  <g fill="#bdb7aa" stroke="#141414" stroke-width="4" id="g14" transform="matrix(1.2752267,0,0,1.2752267,-32.764175,-45.05882)">
+    <circle cx="48" cy="64" r="12" id="circle10" />
+    <circle cx="120" cy="64" r="12" id="circle11" />
+    <circle cx="192" cy="64" r="12" id="circle12" />
+    <circle cx="120" cy="130" r="12" id="circle13" />
+    <circle cx="120" cy="196" r="12" id="circle14" />
+  </g>
+  </svg>
+  <g text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11" font-weight="bold">
+    <text x="40" y="14" fill="#fff" fill-opacity="1">Si</text><text x="68" y="14" fill="#fff" fill-opacity="1">Co</text><text x="96" y="14" fill="#fff" fill-opacity="1">Se</text><text x="124" y="14" fill="#fff" fill-opacity="1">Na</text>
+  </g>
+</svg>

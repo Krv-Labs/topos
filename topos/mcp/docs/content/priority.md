@@ -1,12 +1,12 @@
 # Priority Profiles
 
-The `priority` parameter is a single scorer knob. It upweights one quality
-generator (`simple`, `composable`, or `secure`) inside the policy translators
-`Φᵢ`.
+The `priority` parameter is a single scorer knob. It names one quality
+generator (`simple`, `composable`, `secure`, or `navigable`) to emphasize,
+and steers the guidance the policy translators `Φᵢ` return.
 
 Priority does **not** define the target-relaxation walk and does **not**
 linearize the lattice. Use `preferences.ranking` when an agent needs a strict
-total order over `SIMPLE`, `COMPOSABLE`, and `SECURE`.
+total order over all four generators.
 
 ## When to use which
 
@@ -25,9 +25,17 @@ or how cautiously it handles inputs.
 
 ### `composable`
 
-Upweights the COMPOSABLE generator's metrics (Martin coupling / instability).
-Use when the file is a **library surface** — imported by many consumers.
-Clean fan-in/out and instability in the healthy band dominate.
+Upweights the COMPOSABLE generator's dependency metrics. Use when the file is
+an **orchestrator or integration boundary** whose outward interactions deserve
+special attention. Fan-out drives the file-level verdict; fan-in and Martin
+stability readings enrich the diagnosis without hard-failing the file.
+
+### `navigable`
+
+Upweights the NAVIGABLE generator (worst-function nesting divergence). Use
+when a file is one agents will keep having to read and edit — a hot path
+for automated maintenance. Note this is orthogonal to `simple`: a file can
+have low branch counts everywhere and still be deeply nested.
 
 ## Example
 

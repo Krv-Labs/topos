@@ -27,7 +27,9 @@ use crate::schemas::{
     resolve_priority, EvaluationResult, FunctionEntry, InspectCodeInput, InspectionResult,
     PrioritySource,
 };
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{
+    composable_default_root, read_safe_utf8_file, resolve_project_path, resolve_within_root,
+};
 use crate::server::ToposServer;
 use crate::tools::evaluate::overlay_opts;
 
@@ -123,15 +125,17 @@ fn classify_inspection(
             warnings: Vec::new(),
         });
     };
-    let file_root = resolve_file_root()?;
+    let (_resolved, detected_project) = resolve_project_path(&path.to_string_lossy())?;
+    let composable_root = composable_default_root(&detected_project);
     let project_root =
-        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &file_root);
-    // Resolved to an absolute path against `file_root` — must be used
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    // Resolved to an absolute path against `composable_root` — must be used
     // below instead of `params.gitnexus_dir`, since `project_root` above
     // already absorbed a relative override's subdirectory; rejoining the
     // original relative string against it a second time would double that
     // subdirectory.
-    let resolved_override = resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     classify_inspected_file(
         resolved_override.as_deref(),
         params.no_composable,
@@ -220,13 +224,13 @@ impl ToposServer {
     /// (`top_n_functions`, default 10), `total_functions`, and entropy
     /// details.
     ///
-    /// With `filepath`, the verdict is scored on all three generators and
+    /// With `filepath`, the verdict is scored on all four generators and
     /// agrees with `topos_evaluate_file`: unless `no_composable` is set,
     /// this generates/refreshes `.gitnexus` (given by `gitnexus_dir` or
     /// auto-detected at `<root>/.gitnexus`) when missing or stale, then
     /// attaches the ModuleDependencyGraph — so this tool is side-effecting.
     /// With inline `code` there is no module to place in the graph, so only
-    /// SIMPLE/SECURE are reachable, as in `topos_evaluate_code`.
+    /// SIMPLE/SECURE/NAVIGABLE are reachable, as in `topos_evaluate_code`.
     #[tool(
         name = "topos_inspect_code",
         annotations(

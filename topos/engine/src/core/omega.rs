@@ -6,23 +6,24 @@
 //! quality generators
 //!
 //! ```text
-//! G_qual = { SIMPLE, COMPOSABLE, SECURE }
+//! G_qual = { SIMPLE, COMPOSABLE, SECURE, NAVIGABLE }
 //! ```
 //!
 //! In a topos the subobject classifier object and the internal-logic
 //! Heyting algebra coincide — `Ω` carries both roles. The *characteristic
-//! morphism* `χ_S : P → Ω` that maps a program into `Ω` will live in
-//! `topos_engine::core::characteristic_morphism` once that module
-//! lands (tracked under issue #144); this file holds only the algebra
-//! itself (elements, ordering, lattice operations).
+//! morphism* `χ_S : P → Ω` that maps a program into `Ω` lives in
+//! [`crate::core::characteristic_morphism`]; this file holds only the
+//! algebra itself (elements, ordering, lattice operations).
 //!
-//! The carrier of `Ω` is the 8-element poset of all subsets of `G_qual`:
+//! The carrier of `Ω` is the 16-element poset of all subsets of `G_qual`
+//! — a 4-cube. The 3-generator sub-cube (everything with `NAVIGABLE`
+//! unsatisfied) keeps exactly the shape it had before the fourth
+//! generator landed:
 //!
 //! ```text
-//!                       IDEAL  (top, ⊤ = SIMPLE ∧ COMPOSABLE ∧ SECURE)
+//!         SIMPLE_COMPOSABLE_SECURE  (⊤ of the NAVIGABLE-free sub-cube)
 //!                      /  |  \
 //!                     /   |   \
-//!                    /    |    \
 //!     SIMPLE_COMPOSABLE  SIMPLE_SECURE  COMPOSABLE_SECURE
 //!           |  \  /             \  /  |
 //!           |   \/               \/   |
@@ -35,10 +36,13 @@
 //!                       SLOP  (bottom, ⊥)
 //! ```
 //!
-//! The three generators are pairwise incomparable: `leq(SIMPLE, COMPOSABLE)`
+//! and `IDEAL = ⊤` sits one level above `SIMPLE_COMPOSABLE_SECURE`, with
+//! a parallel copy of the whole diagram hanging off `NAVIGABLE`.
+//!
+//! The four generators are pairwise incomparable: `leq(SIMPLE, COMPOSABLE)`
 //! is `false` in both directions. Meets are intersections of the satisfied
 //! generator sets; `meet(SIMPLE, COMPOSABLE) == SIMPLE_COMPOSABLE` adds a
-//! generator; `meet(SIMPLE_COMPOSABLE, SECURE) == IDEAL`.
+//! generator; `meet(SIMPLE_COMPOSABLE_SECURE, NAVIGABLE) == IDEAL`.
 //!
 //! The ordering is the *partial* order of *satisfied-generator inclusion*:
 //! a verdict `a` is `≤ b` iff the set of generators `a` satisfies is a
@@ -47,12 +51,13 @@
 //! constraint moves the verdict *down* toward `IDEAL`.
 //!
 //! The implementation uses an explicit cover relation rather than an
-//! integer ordering — singletons (`SIMPLE`, `COMPOSABLE`, `SECURE`) are
-//! pairwise incomparable, so the Hasse diagram is a 3-cube, not a chain.
+//! integer ordering — the singleton generators are pairwise incomparable,
+//! so the Hasse diagram is a 4-cube, not a chain.
 //! [`Omega::meet`], [`Omega::join`], [`Omega::implies`], and
 //! [`Omega::negation`] are computed generically from the cover, so this
 //! engine works for arbitrary finite Heyting algebras — see
-//! [`Omega::from_cover_relation`].
+//! [`Omega::from_cover_relation`]. Extending `G_qual` from three
+//! generators to four required no change to any of them.
 //!
 //! Categorical / Rust names:
 //!
@@ -62,7 +67,7 @@
 //! | elements of `Ω`  | [`EvaluationValue`]                             |
 //! | `⊤`              | [`EvaluationValue::Ideal`] / [`Omega::TOP`]     |
 //! | `⊥`              | [`EvaluationValue::Slop`] / [`Omega::BOTTOM`]   |
-//! | `χ_S : P → Ω`    | `CharacteristicMorphism` (pending issue #144)   |
+//! | `χ_S : P → Ω`    | [`crate::core::characteristic_morphism`]        |
 //!
 //! The top is `IDEAL` — the joint satisfaction of all generators. The
 //! bottom is `SLOP`, the unconstrained universe.
@@ -70,8 +75,64 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// The eight elements of the free Heyting algebra `H(G_qual)` on three
-/// quality generators (`SIMPLE`, `COMPOSABLE`, `SECURE`).
+/// How many quality generators `G_qual` has. The carrier of `Ω` is its
+/// powerset, so `|Ω| = 2^GENERATOR_COUNT`.
+pub const GENERATOR_COUNT: u32 = 4;
+
+/// The number of elements of `Ω`.
+pub const OMEGA_SIZE: usize = 1 << GENERATOR_COUNT;
+
+/// The four quality generators of `G_qual`.
+///
+/// Re-exported from [`crate::evaluation::preferences`], which is where
+/// the *ordering* of generators (operator preference) lives; the
+/// generators themselves are part of the definition of `Ω`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Generator {
+    Simple,
+    Composable,
+    Secure,
+    Navigable,
+}
+
+impl Generator {
+    pub const ALL: [Generator; GENERATOR_COUNT as usize] = [
+        Generator::Simple,
+        Generator::Composable,
+        Generator::Secure,
+        Generator::Navigable,
+    ];
+
+    /// `const` so callers can build pillar tables at compile time from
+    /// `Generator::ALL` rather than repeating the strings.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Generator::Simple => "simple",
+            Generator::Composable => "composable",
+            Generator::Secure => "secure",
+            Generator::Navigable => "navigable",
+        }
+    }
+
+    /// This generator's bit in the [`EvaluationValue`] encoding — see
+    /// that type's doc comment for the canonical statement.
+    pub(crate) fn bit(self) -> u8 {
+        match self {
+            Generator::Simple => 0b0001,
+            Generator::Composable => 0b0010,
+            Generator::Secure => 0b0100,
+            Generator::Navigable => 0b1000,
+        }
+    }
+
+    /// The singleton verdict this generator produces on its own.
+    pub fn value(self) -> EvaluationValue {
+        EvaluationValue::from_bits(self.bit()).expect("a single generator bit is a valid verdict")
+    }
+}
+
+/// The sixteen elements of the free Heyting algebra `H(G_qual)` on four
+/// quality generators (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`).
 ///
 /// Each value corresponds to the subset of generators a program
 /// satisfies. Ordering (via [`Omega::leq`]) is by *superset of satisfied
@@ -79,40 +140,64 @@ use std::fmt;
 /// satisfied by `a`. Thus `IDEAL = ⊤` (everything satisfied) and
 /// `SLOP = ⊥` (nothing satisfied).
 ///
-/// Encoding (discriminant = bitmask `SIMPLE|COMPOSABLE|SECURE`):
+/// Encoding (discriminant = bitmask `SIMPLE|COMPOSABLE|SECURE|NAVIGABLE`):
 ///
 /// - bit 0 = `SIMPLE` satisfied
 /// - bit 1 = `COMPOSABLE` satisfied
 /// - bit 2 = `SECURE` satisfied
+/// - bit 3 = `NAVIGABLE` satisfied
 ///
 /// This bit ordering is just the encoding, *not* the lattice order — this
 /// type intentionally does not derive `Ord`; use [`Omega::leq`] for the
 /// real partial order.
+///
+/// `IDEAL` remains the top element: before NAVIGABLE it meant "all three
+/// generators", now it means "all four". The element at `0b0111` — what
+/// `IDEAL` used to name — is now `SIMPLE_COMPOSABLE_SECURE`. That rename
+/// is the intended breaking re-grade of v0.5.0.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum EvaluationValue {
     /// `⊥` — no generator satisfied. The unconstrained universe; total
     /// structural chaos.
-    Slop = 0b000,
+    Slop = 0b0000,
     /// Only the `SIMPLE` generator is satisfied.
-    Simple = 0b001,
+    Simple = 0b0001,
     /// Only the `COMPOSABLE` generator is satisfied.
-    Composable = 0b010,
+    Composable = 0b0010,
     /// Meet of `SIMPLE` and `COMPOSABLE`.
-    SimpleComposable = 0b011,
+    SimpleComposable = 0b0011,
     /// Only the `SECURE` generator is satisfied.
-    Secure = 0b100,
+    Secure = 0b0100,
     /// Meet of `SIMPLE` and `SECURE`.
-    SimpleSecure = 0b101,
+    SimpleSecure = 0b0101,
     /// Meet of `COMPOSABLE` and `SECURE`.
-    ComposableSecure = 0b110,
-    /// `⊤` — all three generators satisfied.
-    Ideal = 0b111,
+    ComposableSecure = 0b0110,
+    /// Meet of `SIMPLE`, `COMPOSABLE`, and `SECURE` — the top of the
+    /// pre-NAVIGABLE algebra, which this element used to be named
+    /// `IDEAL`.
+    SimpleComposableSecure = 0b0111,
+    /// Only the `NAVIGABLE` generator is satisfied.
+    Navigable = 0b1000,
+    /// Meet of `SIMPLE` and `NAVIGABLE`.
+    SimpleNavigable = 0b1001,
+    /// Meet of `COMPOSABLE` and `NAVIGABLE`.
+    ComposableNavigable = 0b1010,
+    /// Meet of `SIMPLE`, `COMPOSABLE`, and `NAVIGABLE`.
+    SimpleComposableNavigable = 0b1011,
+    /// Meet of `SECURE` and `NAVIGABLE`.
+    SecureNavigable = 0b1100,
+    /// Meet of `SIMPLE`, `SECURE`, and `NAVIGABLE`.
+    SimpleSecureNavigable = 0b1101,
+    /// Meet of `COMPOSABLE`, `SECURE`, and `NAVIGABLE`.
+    ComposableSecureNavigable = 0b1110,
+    /// `⊤` — all four generators satisfied.
+    Ideal = 0b1111,
 }
 
 impl EvaluationValue {
-    /// All eight elements, in ascending bitmask order.
-    pub const ALL: [EvaluationValue; 8] = [
+    /// All sixteen elements, in ascending bitmask order.
+    pub const ALL: [EvaluationValue; OMEGA_SIZE] = [
         EvaluationValue::Slop,
         EvaluationValue::Simple,
         EvaluationValue::Composable,
@@ -120,26 +205,39 @@ impl EvaluationValue {
         EvaluationValue::Secure,
         EvaluationValue::SimpleSecure,
         EvaluationValue::ComposableSecure,
+        EvaluationValue::SimpleComposableSecure,
+        EvaluationValue::Navigable,
+        EvaluationValue::SimpleNavigable,
+        EvaluationValue::ComposableNavigable,
+        EvaluationValue::SimpleComposableNavigable,
+        EvaluationValue::SecureNavigable,
+        EvaluationValue::SimpleSecureNavigable,
+        EvaluationValue::ComposableSecureNavigable,
         EvaluationValue::Ideal,
     ];
 
-    /// The bitmask discriminant (`SIMPLE=1, COMPOSABLE=2, SECURE=4`).
+    /// The bitmask discriminant
+    /// (`SIMPLE=1, COMPOSABLE=2, SECURE=4, NAVIGABLE=8`).
     pub fn bits(self) -> u8 {
         self as u8
+    }
+
+    /// How many generators this verdict satisfies. Drives the medal tier.
+    pub fn satisfied_count(self) -> u32 {
+        self.bits().count_ones()
     }
 
     /// The Python-enum-style name (`"SIMPLE_COMPOSABLE"`, etc.) — kept
     /// stable across the Rust/Python boundary for any JSON/CLI output
     /// that predates this migration.
     ///
-    /// `name`/`symbol`/`description` are const lookup tables rather than
-    /// three parallel 8-arm `match`es — dogfooding `topos evaluate` on
-    /// this file during the migration flagged the match-statement version
-    /// for cyclomatic complexity (33, exceeding the SIMPLE threshold of
-    /// 15); table lookup by [`EvaluationValue::bits`] carries the same
-    /// data with one branch total instead of twenty-four.
+    /// A const lookup table rather than a 16-arm `match`: dogfooding
+    /// `topos evaluate` on this file during the migration flagged the
+    /// match-statement version for cyclomatic complexity (33, exceeding
+    /// the SIMPLE threshold of 15); table lookup by
+    /// [`EvaluationValue::bits`] carries the same data with one branch.
     pub fn name(self) -> &'static str {
-        const NAMES: [&str; 8] = [
+        const NAMES: [&str; OMEGA_SIZE] = [
             "SLOP",
             "SIMPLE",
             "COMPOSABLE",
@@ -147,33 +245,68 @@ impl EvaluationValue {
             "SECURE",
             "SIMPLE_SECURE",
             "COMPOSABLE_SECURE",
+            "SIMPLE_COMPOSABLE_SECURE",
+            "NAVIGABLE",
+            "SIMPLE_NAVIGABLE",
+            "COMPOSABLE_NAVIGABLE",
+            "SIMPLE_COMPOSABLE_NAVIGABLE",
+            "SECURE_NAVIGABLE",
+            "SIMPLE_SECURE_NAVIGABLE",
+            "COMPOSABLE_SECURE_NAVIGABLE",
             "IDEAL",
         ];
         NAMES[self.bits() as usize]
     }
 
+    /// The medal tier name for this verdict (`"PLATINUM"`, `"GOLD"`, …).
+    ///
+    /// Derived from [`EvaluationValue::satisfied_count`] rather than a
+    /// parallel 16-entry table: the medal *is* the count, so computing it
+    /// keeps the two from drifting apart as `G_qual` grows. This is the
+    /// single source of the banding — renderers must call it rather than
+    /// re-deriving the popcount thresholds.
+    pub fn medal_tier(self) -> &'static str {
+        match self.satisfied_count() {
+            4 => "PLATINUM",
+            3 => "GOLD",
+            2 => "SILVER",
+            1 => "BRONZE",
+            _ => "SLOP",
+        }
+    }
+
     /// Unicode symbol (medal) for this verdict.
     pub fn symbol(self) -> &'static str {
-        const SYMBOLS: [&str; 8] = ["❌", "🥉", "🥉", "🥈", "🥉", "🥈", "🥈", "🥇"];
-        SYMBOLS[self.bits() as usize]
+        match self.satisfied_count() {
+            4 => "🏆",
+            3 => "🥇",
+            2 => "🥈",
+            1 => "🥉",
+            _ => "❌",
+        }
     }
 
-    /// Human-readable description of this evaluation value.
-    pub fn description(self) -> &'static str {
-        const DESCRIPTIONS: [&str; 8] = [
-            "❌ NO MEDAL - Fails every generator; unconstrained code",
-            "🥉 BRONZE - Low complexity; SIMPLE generator satisfied",
-            "🥉 BRONZE - Composes well; COMPOSABLE generator satisfied",
-            "🥈 SILVER - SIMPLE ∧ COMPOSABLE — clean structure and clean coupling",
-            "🥉 BRONZE - Safe data flow; SECURE generator satisfied",
-            "🥈 SILVER - SIMPLE ∧ SECURE — clean structure and safe patterns",
-            "🥈 SILVER - COMPOSABLE ∧ SECURE — well-coupled and safe patterns",
-            "🥇 GOLD - Joint satisfaction of all three quality pillars",
-        ];
-        DESCRIPTIONS[self.bits() as usize]
+    /// Human-readable description of this evaluation value: the medal
+    /// tier, then the generators it satisfies.
+    pub fn description(self) -> String {
+        let detail = match self.satisfied_count() {
+            4 => "Joint satisfaction of all four quality pillars",
+            3 => "Three of four quality pillars satisfied",
+            2 => "Two of four quality pillars satisfied",
+            1 => "One of four quality pillars satisfied",
+            _ => {
+                return "❌ NO MEDAL - Fails every generator; unconstrained code".to_string();
+            }
+        };
+        format!(
+            "{} {} - {detail} ({})",
+            self.symbol(),
+            self.medal_tier(),
+            self.name()
+        )
     }
 
-    /// Reconstruct a verdict from its bitmask. `None` if `bits > 0b111`.
+    /// Reconstruct a verdict from its bitmask. `None` if `bits > 0b1111`.
     pub fn from_bits(bits: u8) -> Option<EvaluationValue> {
         EvaluationValue::ALL.into_iter().find(|v| v.bits() == bits)
     }
@@ -185,33 +318,44 @@ impl fmt::Display for EvaluationValue {
     }
 }
 
-/// Map a satisfied-generator triple to its free-algebra verdict.
+/// Map a set of satisfied generators to its free-algebra verdict.
 ///
 /// This is the concrete encoding of the truth table from `README.md`:
-/// every subset of `G_qual` is a unique verdict.
-pub fn verdict_from_generators(simple: bool, composable: bool, secure: bool) -> EvaluationValue {
-    let bits = (simple as u8) | ((composable as u8) << 1) | ((secure as u8) << 2);
-    EvaluationValue::from_bits(bits).expect("a 3-bit mask is always a valid EvaluationValue")
+/// every subset of `G_qual` is a unique verdict. Duplicates in
+/// `satisfied` are harmless — the fold is over set bits.
+///
+/// Takes a slice rather than one `bool` per generator: positional
+/// booleans stop being readable at three and are a live miswiring hazard
+/// at four.
+pub fn verdict_from_generators(satisfied: &[Generator]) -> EvaluationValue {
+    let bits = satisfied.iter().fold(0u8, |acc, g| acc | g.bit());
+    EvaluationValue::from_bits(bits)
+        .expect("a GENERATOR_COUNT-bit mask is always a valid EvaluationValue")
 }
 
-/// Direct cover relation for the default 3-cube: `value -> immediate successors`.
+/// Direct cover relation for the default 4-cube: `value -> immediate successors`.
 ///
 /// Each successor *adds* one satisfied generator (turns one bit on),
 /// which in this order moves *down* toward `IDEAL`. `cover[a] = [b, ...]`
 /// means "`b` is an immediate successor of `a`" (`a` is covered by `b`,
 /// `a ≤ b`).
+///
+/// Generated by flipping each unset bit rather than written out as
+/// sixteen literal entries: the Hasse diagram of a powerset lattice *is*
+/// single-bit addition, so deriving it is both shorter than the table and
+/// correct by construction for any `GENERATOR_COUNT`.
 fn default_cover() -> HashMap<EvaluationValue, Vec<EvaluationValue>> {
-    use EvaluationValue::*;
-    HashMap::from([
-        (Slop, vec![Simple, Composable, Secure]),
-        (Simple, vec![SimpleComposable, SimpleSecure]),
-        (Composable, vec![SimpleComposable, ComposableSecure]),
-        (Secure, vec![SimpleSecure, ComposableSecure]),
-        (SimpleComposable, vec![Ideal]),
-        (SimpleSecure, vec![Ideal]),
-        (ComposableSecure, vec![Ideal]),
-        (Ideal, vec![]),
-    ])
+    EvaluationValue::ALL
+        .into_iter()
+        .map(|value| {
+            let successors = (0..GENERATOR_COUNT)
+                .map(|b| 1u8 << b)
+                .filter(|bit| value.bits() & bit == 0)
+                .filter_map(|bit| EvaluationValue::from_bits(value.bits() | bit))
+                .collect();
+            (value, successors)
+        })
+        .collect()
 }
 
 /// Raised when a lattice operation ([`Omega::meet`], [`Omega::join`], or
@@ -449,7 +593,8 @@ impl Omega {
 }
 
 impl Default for Omega {
-    /// The default 3-cube lattice on `{SIMPLE, COMPOSABLE, SECURE}`.
+    /// The default 4-cube lattice on
+    /// `{SIMPLE, COMPOSABLE, SECURE, NAVIGABLE}`.
     fn default() -> Self {
         Omega::from_cover_relation(default_cover())
     }
@@ -459,31 +604,42 @@ impl Default for Omega {
 mod tests {
     use super::*;
 
+    /// The singleton verdicts — the atoms of the 4-cube.
+    fn atoms() -> Vec<EvaluationValue> {
+        Generator::ALL.into_iter().map(|g| g.value()).collect()
+    }
+
     #[test]
     fn evaluation_value_order() {
         let lattice = Omega::default();
-        for gen in [
-            EvaluationValue::Simple,
-            EvaluationValue::Composable,
-            EvaluationValue::Secure,
-        ] {
-            assert!(lattice.leq(EvaluationValue::Slop, gen));
-            assert!(lattice.leq(gen, EvaluationValue::Ideal));
+        for atom in atoms() {
+            assert!(lattice.leq(EvaluationValue::Slop, atom));
+            assert!(lattice.leq(atom, EvaluationValue::Ideal));
         }
 
-        let pairs = [
-            (EvaluationValue::Simple, EvaluationValue::Composable),
-            (EvaluationValue::Simple, EvaluationValue::Secure),
-            (EvaluationValue::Composable, EvaluationValue::Secure),
-        ];
-        for (a, b) in pairs {
-            assert!(!lattice.leq(a, b));
-            assert!(!lattice.leq(b, a));
+        // Every pair of atoms is incomparable — that is what makes the
+        // order genuinely partial rather than a chain.
+        for a in atoms() {
+            for b in atoms() {
+                if a != b {
+                    assert!(!lattice.leq(a, b), "{a} and {b} must be incomparable");
+                }
+            }
         }
 
         assert!(lattice.leq(EvaluationValue::Simple, EvaluationValue::SimpleComposable));
         assert!(lattice.leq(EvaluationValue::SimpleComposable, EvaluationValue::Ideal));
         assert!(!lattice.leq(EvaluationValue::SimpleComposable, EvaluationValue::Secure));
+        // The NAVIGABLE axis is a real dimension, not a relabelling: the
+        // old top sits strictly below the new one.
+        assert!(lattice.leq(
+            EvaluationValue::SimpleComposableSecure,
+            EvaluationValue::Ideal
+        ));
+        assert!(!lattice.leq(
+            EvaluationValue::Ideal,
+            EvaluationValue::SimpleComposableSecure
+        ));
     }
 
     #[test]
@@ -511,6 +667,13 @@ mod tests {
         );
         assert_eq!(
             lattice.join(EvaluationValue::SimpleComposable, EvaluationValue::Secure),
+            Ok(EvaluationValue::SimpleComposableSecure)
+        );
+        assert_eq!(
+            lattice.join(
+                EvaluationValue::SimpleComposableSecure,
+                EvaluationValue::Navigable
+            ),
             Ok(EvaluationValue::Ideal)
         );
         assert_eq!(
@@ -519,54 +682,81 @@ mod tests {
         );
     }
 
+    /// Meet and join must agree with set intersection and union of the
+    /// satisfied generators, on every one of the 256 pairs — the property
+    /// that makes this a powerset lattice rather than an arbitrary poset.
+    #[test]
+    fn meet_and_join_are_set_operations_everywhere() {
+        let lattice = Omega::default();
+        for a in EvaluationValue::ALL {
+            for b in EvaluationValue::ALL {
+                assert_eq!(
+                    lattice.meet(a, b),
+                    Ok(EvaluationValue::from_bits(a.bits() & b.bits()).unwrap()),
+                    "meet({a}, {b})"
+                );
+                assert_eq!(
+                    lattice.join(a, b),
+                    Ok(EvaluationValue::from_bits(a.bits() | b.bits()).unwrap()),
+                    "join({a}, {b})"
+                );
+            }
+        }
+    }
+
+    /// The defining adjunction of a Heyting algebra: `a ≤ (b → c)` iff
+    /// `a ∧ b ≤ c`. Checked over all 4096 triples, so the 4-cube is
+    /// verified to still be a Heyting algebra rather than assumed to be.
+    #[test]
+    fn implication_is_right_adjoint_to_meet() {
+        let lattice = Omega::default();
+        for a in EvaluationValue::ALL {
+            for b in EvaluationValue::ALL {
+                let implication = lattice.implies(b, a).expect("implication exists");
+                for c in EvaluationValue::ALL {
+                    let meet = lattice.meet(c, b).expect("meet exists");
+                    assert_eq!(
+                        lattice.leq(c, implication),
+                        lattice.leq(meet, a),
+                        "adjunction failed at a={a}, b={b}, c={c}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn verdict_from_generators_truth_table() {
+        // Exhaustive over all 16 subsets of G_qual: each subset must map
+        // to the unique verdict whose bitmask it is.
+        for value in EvaluationValue::ALL {
+            let satisfied: Vec<Generator> = Generator::ALL
+                .into_iter()
+                .filter(|g| value.bits() & g.bit() != 0)
+                .collect();
+            assert_eq!(verdict_from_generators(&satisfied), value);
+        }
+        assert_eq!(verdict_from_generators(&[]), EvaluationValue::Slop);
         assert_eq!(
-            verdict_from_generators(false, false, false),
-            EvaluationValue::Slop
-        );
-        assert_eq!(
-            verdict_from_generators(true, false, false),
-            EvaluationValue::Simple
-        );
-        assert_eq!(
-            verdict_from_generators(false, true, false),
-            EvaluationValue::Composable
-        );
-        assert_eq!(
-            verdict_from_generators(false, false, true),
-            EvaluationValue::Secure
-        );
-        assert_eq!(
-            verdict_from_generators(true, true, false),
-            EvaluationValue::SimpleComposable
-        );
-        assert_eq!(
-            verdict_from_generators(true, false, true),
-            EvaluationValue::SimpleSecure
-        );
-        assert_eq!(
-            verdict_from_generators(false, true, true),
-            EvaluationValue::ComposableSecure
-        );
-        assert_eq!(
-            verdict_from_generators(true, true, true),
+            verdict_from_generators(&Generator::ALL),
             EvaluationValue::Ideal
         );
     }
 
     #[test]
     fn evaluation_value_properties() {
-        assert_eq!(EvaluationValue::Ideal.symbol(), "🥇");
+        assert_eq!(EvaluationValue::Ideal.symbol(), "🏆");
+        assert_eq!(EvaluationValue::SimpleComposableSecure.symbol(), "🥇");
+        assert_eq!(EvaluationValue::SimpleComposable.symbol(), "🥈");
         assert_eq!(EvaluationValue::Slop.symbol(), "❌");
-        for atom in [
-            EvaluationValue::Simple,
-            EvaluationValue::Composable,
-            EvaluationValue::Secure,
-        ] {
+        for atom in atoms() {
             assert_eq!(atom.symbol(), "🥉");
         }
         assert!(EvaluationValue::Ideal
+            .description()
+            .to_lowercase()
+            .contains("platinum"));
+        assert!(EvaluationValue::SimpleComposableSecure
             .description()
             .to_lowercase()
             .contains("gold"));
@@ -574,6 +764,43 @@ mod tests {
             .description()
             .to_lowercase()
             .contains("composable"));
+    }
+
+    /// The medal tier is the count of satisfied pillars, and nothing else.
+    #[test]
+    fn medal_tier_tracks_satisfied_count() {
+        for value in EvaluationValue::ALL {
+            let expected = match value.satisfied_count() {
+                4 => "🏆",
+                3 => "🥇",
+                2 => "🥈",
+                1 => "🥉",
+                _ => "❌",
+            };
+            assert_eq!(value.symbol(), expected, "{value}");
+        }
+    }
+
+    /// Names must be unique and must spell out the generators they
+    /// satisfy, so an agent reading a verdict string can act on it.
+    #[test]
+    fn names_are_unique_and_spell_out_their_generators() {
+        let names: HashSet<&str> = EvaluationValue::ALL.iter().map(|v| v.name()).collect();
+        assert_eq!(names.len(), OMEGA_SIZE);
+        for value in EvaluationValue::ALL {
+            if matches!(value, EvaluationValue::Slop | EvaluationValue::Ideal) {
+                continue;
+            }
+            for generator in Generator::ALL {
+                let mentioned = value.name().to_lowercase().contains(generator.as_str());
+                assert_eq!(
+                    mentioned,
+                    value.bits() & generator.bit() != 0,
+                    "{value} vs {}",
+                    generator.as_str()
+                );
+            }
+        }
     }
 
     #[test]

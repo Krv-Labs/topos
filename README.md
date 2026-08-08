@@ -9,10 +9,11 @@
 <h3 align="center">the agent harness for structural code quality</h3>
 
 <p align="center">
- Topos measures complexity, coupling, and risky data flows, then gives your agent a concrete target&mdash;from SLOP to GOLD.
+ Topos measures complexity, coupling, risky data flows, and agent cognitive load, then gives your agent a concrete target&mdash;from SLOP to PLATINUM.
 </p>
 
 <p align="center">
+  <a href="#what-topos-checks"><img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/topos-lattice-badge.svg" alt="Topos self-evaluation: SIMPLE, COMPOSABLE, SECURE, NAVIGABLE results for the core crates"></a>
   <a href="https://github.com/mcp/Krv-Labs/topos"><img src="https://img.shields.io/badge/VS_Code-Install_MCP-007ACC?logo=visualstudiocode&logoColor=white" alt="Install Topos MCP in VS Code"></a>
   <a href="https://pypi.org/project/topos-mcp/"><img src="https://img.shields.io/pypi/v/topos-mcp?color=3776AB&logo=python&logoColor=ffd43b" alt="PyPI"></a>
   <a href="https://github.com/Krv-Labs/topos/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Krv-Labs/topos" alt="License"></a>
@@ -65,7 +66,7 @@ Topos computes that signal from program structure—not from an LLM review or a 
 
 **Tests check behavior. Topos checks whether the implementation is built to keep changing.**
 
-> Grounded in category theory, powered by a native-Rust engine.
+> Grounded in category theory, written in Rust.
 
 ## Install and Quick Start
 
@@ -138,6 +139,49 @@ Topos discovers Python, Rust, JavaScript, TypeScript, C++, and Go automatically.
 
 See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
+
+## What Topos checks
+
+Every file gets four independent verdicts:
+
+- **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
+- **COMPOSABLE** — limits a file's outward dependency burden; broader coupling and stability metrics remain available for diagnosis.
+- **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
+- **NAVIGABLE** — stays shallow enough for an agent to read and change in one pass, using depth-weighted nesting divergence over the AST scope tree.
+
+Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
+
+| Medal | Criteria |
+| :--- | :--- |
+| 🏆 **PLATINUM** | Passes all 4 |
+| 🥇 **GOLD** | Passes 3 of 4 |
+| 🥈 **SILVER** | Passes 2 of 4 |
+| 🥉 **BRONZE** | Passes 1 of 4 |
+| ❌ **SLOP** | Passes 0, or fails to parse |
+
+
+See the [full metrics reference](topos/mcp/docs/content/metrics.md). Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings.
+
+<details>
+<summary>How the medal system is derived</summary>
+
+The four pillars are pairwise incomparable and form a sixteen-element evaluation lattice (a 4-cube); PLATINUM is their intersection. Labels below abbreviate the pillars as **S**imple, **C**omposable, **Sc** = Secure, **N**avigable.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice.svg">
+    <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/figures/topos-lattice.svg" alt="The full evaluation lattice — SLOP at the bottom, four single-pillar BRONZE states, six two-pillar SILVER states, four three-pillar GOLD states, and IDEAL (PLATINUM) at the top." width="900">
+  </picture>
+</p>
+
+[Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)
+
+</details>
+
+
+
+
 ## Under the hood
 
 Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your source code is not sent to an external model or hosted analysis service.
@@ -159,72 +203,6 @@ The result is one agent-facing contract over several structural lenses: one scor
 - **MCP Registry name:** `io.github.Krv-Labs/topos`
 - **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
 
-## What Topos checks
-
-Every file gets three independent verdicts:
-
-- **SIMPLE** — avoids unnecessary complexity using AST entropy and control-flow complexity.
-- **COMPOSABLE** — stays decoupled from the repository using module-dependency structure and Martin instability.
-- **SECURE** — avoids dangerous API reachability and taint paths in the code property graph.
-
-Those verdicts roll up into one memorable quality medal without hiding which pillar failed:
-
-| Medal | Criteria |
-| :--- | :--- |
-| 🥇 **GOLD** | Passes all 3 |
-| 🥈 **SILVER** | Passes 2 of 3 |
-| 🥉 **BRONZE** | Passes 1 of 3 |
-| ❌ **SLOP** | Passes 0, or fails to parse |
-
-Topos also returns ranked refactor guidance: failing metric locations, control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings. Advisory findings never silently change the scored medal.
-
-<details>
-<summary>How the medal system is derived</summary>
-
-The three pillars are pairwise incomparable and form an eight-element evaluation lattice; GOLD is their intersection.
-
-```mermaid
----
-config:
-  layout: dagre
-  theme: neutral
----
-graph BT
-    SLOP["❌ SLOP<br/>No Medal"]
-    SIMPLE["🥉 BRONZE<br/>Simple"]
-    COMPOSABLE["🥉 BRONZE<br/>Composable"]
-    SECURE["🥉 BRONZE<br/>Secure"]
-    SC["🥈 SILVER<br/>S ∧ C"]
-    SSc["🥈 SILVER<br/>S ∧ Sc"]
-    CSc["🥈 SILVER<br/>C ∧ Sc"]
-    IDEAL["🥇 GOLD<br/>Quality Code"]
-
-    SLOP --> SIMPLE
-    SLOP --> COMPOSABLE
-    SLOP --> SECURE
-    SIMPLE --> SC
-    SIMPLE --> SSc
-    COMPOSABLE --> SC
-    COMPOSABLE --> CSc
-    SECURE --> SSc
-    SECURE --> CSc
-    SC --> IDEAL
-    SSc --> IDEAL
-    CSc --> IDEAL
-
-    style SLOP       fill:#f8d7da,stroke:#842029,color:#000
-    style SIMPLE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style COMPOSABLE fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SECURE     fill:#cd7f32,stroke:#5c3a1e,color:#fff
-    style SC         fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style SSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style CSc        fill:#c0c0c0,stroke:#4a4a4a,color:#000
-    style IDEAL      fill:#ffd700,stroke:#856404,color:#000
-```
-
-[Measures](https://docs.krv.ai/topos/measures.html) · [Category-theory foundations](https://docs.krv.ai/topos/concepts.html)
-
-</details>
 
 ## Distribution
 
@@ -252,5 +230,9 @@ Topos is used internally at [Krv Labs](https://krv.ai) to manage AI-agent code o
 <p align="left">
   <a href="https://krv.ai">
     <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/made-by-krv.svg" alt="Made by Krv Labs" height="24">
+  </a>
+  &nbsp;
+  <a href="#what-topos-checks">
+    <img src="https://raw.githubusercontent.com/Krv-Labs/topos/main/docs/source/_static/topos-verdict.svg" alt="Topos lattice verdict" height="24">
   </a>
 </p>

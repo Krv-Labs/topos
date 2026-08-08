@@ -27,7 +27,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::evaluation::policies::base::Priority;
-use crate::evaluation::preferences::Generator;
+use crate::evaluation::preferences::{Generator, RANKING_LEN};
 
 const CONFIG_FILENAME: &str = ".topos.toml";
 const CLI_REASON: &str = "CLI --allow (ephemeral)";
@@ -69,8 +69,8 @@ pub struct ToposConfig {
     pub allow: Vec<AllowEntry>,
     /// Optional project-wide evaluation emphasis.
     pub priority: Option<Priority>,
-    /// Optional strict ordering of the three quality generators.
-    pub preferences: Option<[Generator; 3]>,
+    /// Optional strict ordering of the four quality generators.
+    pub preferences: Option<[Generator; RANKING_LEN]>,
     /// Directory the `.topos.toml` lives in (scope base for `entries_for`).
     pub root: Option<PathBuf>,
 }
@@ -178,27 +178,28 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
     }
 }
 
-fn parse_priority(value: &str) -> Option<Priority> {
-    match value {
-        "simple" => Some(Priority::Simple),
-        "composable" => Some(Priority::Composable),
-        "secure" => Some(Priority::Secure),
-        _ => None,
-    }
+/// A pillar name from `.topos.toml`. Matched against [`Generator::as_str`]
+/// rather than a literal table, so adding a generator cannot leave the
+/// config parser behind.
+fn parse_generator(value: &str) -> Option<Generator> {
+    Generator::ALL.into_iter().find(|g| g.as_str() == value)
 }
 
-fn parse_preferences(value: &toml::Value) -> Option<[Generator; 3]> {
+fn parse_priority(value: &str) -> Option<Priority> {
+    parse_generator(value).map(priority_for_generator)
+}
+
+fn parse_preferences(value: &toml::Value) -> Option<[Generator; RANKING_LEN]> {
     let values = value.as_array()?;
     let parsed: Vec<Generator> = values
         .iter()
-        .map(|value| match value.as_str()? {
-            "simple" => Some(Generator::Simple),
-            "composable" => Some(Generator::Composable),
-            "secure" => Some(Generator::Secure),
-            _ => None,
-        })
+        .map(|value| parse_generator(value.as_str()?))
         .collect::<Option<_>>()?;
-    let ranking: [Generator; 3] = parsed.try_into().ok()?;
+    // A ranking that predates a generator (three entries, no `navigable`)
+    // is not a permutation of `G_qual`, so it fails here and the caller
+    // falls back to `default_preferences()` — the same best-effort
+    // contract `load_topos_config` applies to every other malformed key.
+    let ranking: [Generator; RANKING_LEN] = parsed.try_into().ok()?;
     crate::evaluation::preferences::UserPreferences::new(ranking)
         .ok()
         .map(|prefs| prefs.ranking())
@@ -209,6 +210,7 @@ fn priority_for_generator(generator: Generator) -> Priority {
         Generator::Simple => Priority::Simple,
         Generator::Composable => Priority::Composable,
         Generator::Secure => Priority::Secure,
+        Generator::Navigable => Priority::Navigable,
     }
 }
 
@@ -350,7 +352,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npriority = [\"composable\", \"secure\", \"simple\"]\n",
+            "[evaluation]\npriority = [\"composable\", \"secure\", \"simple\", \"navigable\"]\n",
         )
         .unwrap();
 
@@ -358,7 +360,12 @@ mod tests {
         assert_eq!(config.priority, None);
         assert_eq!(
             config.preferences,
-            Some([Generator::Composable, Generator::Secure, Generator::Simple])
+            Some([
+                Generator::Composable,
+                Generator::Secure,
+                Generator::Simple,
+                Generator::Navigable,
+            ])
         );
         assert_eq!(config.effective_priority(), Priority::Composable);
 
@@ -395,11 +402,36 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npriority = [\"secure\", \"secure\", \"simple\"]\n",
+            "[evaluation]\npriority = [\"secure\", \"secure\", \"simple\", \"navigable\"]\n",
         )
         .unwrap();
 
         assert_eq!(load_topos_config(&dir).preferences, None);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A ranking written before NAVIGABLE existed lists three pillars, so
+    /// it is no longer a permutation of `G_qual`. It is dropped rather
+    /// than half-applied, and `effective_priority` falls back to the
+    /// default — the same best-effort contract every other malformed key
+    /// gets. Documented as a v0.5.0 breaking change.
+    #[test]
+    fn three_pillar_ranking_from_before_navigable_is_dropped() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos-cfg-legacy-three-pillar-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[evaluation]\npriority = [\"composable\", \"secure\", \"simple\"]\n",
+        )
+        .unwrap();
+
+        let config = load_topos_config(&dir);
+        assert_eq!(config.preferences, None);
+        assert_eq!(config.effective_priority(), Priority::default());
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -413,7 +445,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npriority = \"simple\"\npreferences = [\"composable\", \"secure\", \"simple\"]\n",
+            "[evaluation]\npriority = \"simple\"\npreferences = [\"composable\", \"secure\", \"simple\", \"navigable\"]\n",
         )
         .unwrap();
 
@@ -421,7 +453,12 @@ mod tests {
         assert_eq!(config.priority, Some(Priority::Simple));
         assert_eq!(
             config.preferences,
-            Some([Generator::Composable, Generator::Secure, Generator::Simple])
+            Some([
+                Generator::Composable,
+                Generator::Secure,
+                Generator::Simple,
+                Generator::Navigable,
+            ])
         );
         // Full ranking is the stronger statement of intent.
         assert_eq!(config.effective_priority(), Priority::Composable);
@@ -438,7 +475,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(CONFIG_FILENAME),
-            "[evaluation]\npreferences = [\"secure\", \"simple\", \"composable\"]\n",
+            "[evaluation]\npreferences = [\"secure\", \"simple\", \"composable\", \"navigable\"]\n",
         )
         .unwrap();
 
@@ -446,7 +483,12 @@ mod tests {
         assert_eq!(config.priority, None);
         assert_eq!(
             config.preferences,
-            Some([Generator::Secure, Generator::Simple, Generator::Composable])
+            Some([
+                Generator::Secure,
+                Generator::Simple,
+                Generator::Composable,
+                Generator::Navigable,
+            ])
         );
         assert_eq!(config.effective_priority(), Priority::Secure);
 

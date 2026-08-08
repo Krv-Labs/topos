@@ -87,24 +87,17 @@ const EXPRESSION_TYPES: &[(&str, &str)] = &[
     ("subscript_expression", "MemberExpr"),
 ];
 
-pub fn map_node_kind(kind: &str) -> &'static str {
+pub fn map_node_kind(node: &Node) -> &'static str {
+    let kind = node.kind();
     if let Some(mapped) = declaration_kind(kind) {
         return mapped;
     }
     if is_declaration_only_kind(kind) {
-        // ponytail: `map_tree_sitter_to_uast`'s `map_node_kind` callback
-        // only sees the kind string, not the `Node` itself, so this
-        // can't inspect children to distinguish a declaration-only
-        // function prototype (`void f(int);`) from a plain var/member
-        // declaration the way Python's `_has_function_declarator` check
-        // does -- always mapping to VarDecl undercounts FunctionDecl for
-        // header-only prototypes and pure-virtual method signatures.
-        // Upgrade path: widen `map_node_kind`'s signature to take
-        // `&Node` across every mapper if this undercounting turns out to
-        // matter for a real corpus (abstractness detection itself does
-        // not depend on this -- see `has_pure_virtual_method` below,
-        // which inspects the raw `Node` directly).
-        return "VarDecl";
+        return if has_function_declarator(node) {
+            "FunctionDecl"
+        } else {
+            "VarDecl"
+        };
     }
     if let Some((_, mapped)) = STATEMENT_TYPES.iter().find(|(k, _)| *k == kind) {
         return mapped;
@@ -196,4 +189,42 @@ pub fn map_cpp_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> UA
         None,
         Some(&extract_attributes),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphs::ast::dispatch::parse_source;
+
+    fn uast_kind_for_native(uast: &UASTNode, native_kind: &str) -> Option<String> {
+        if uast.native.node_kind == native_kind {
+            return Some(uast.kind.clone());
+        }
+        for child in &uast.children {
+            if let Some(k) = uast_kind_for_native(child, native_kind) {
+                return Some(k);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn declaration_only_signatures_map_to_function_decl() {
+        let header = parse_source("void f(int);\n", "cpp", None).unwrap();
+        assert_eq!(
+            uast_kind_for_native(&header.uast_root, "declaration"),
+            Some("FunctionDecl".to_string())
+        );
+
+        let iface = parse_source(
+            "class Shape { virtual double area() const = 0; };\n",
+            "cpp",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            uast_kind_for_native(&iface.uast_root, "field_declaration"),
+            Some("FunctionDecl".to_string())
+        );
+    }
 }

@@ -17,7 +17,7 @@ use topos_engine::adapters::graphify::{
 
 use crate::formatting::to_tool_result;
 use crate::schemas::{GenerateGraphifyInput, GenerateGraphifyResult};
-use crate::security::{resolve_file_root, resolve_within_root};
+use crate::security::resolve_project_path;
 use crate::server::ToposServer;
 
 fn generate_error(message: String) -> GenerateGraphifyResult {
@@ -57,7 +57,7 @@ impl ToposServer {
     /// Use before `topos_refactor(target="graphify")` when no graph exists.
     /// Skips regeneration when a graph is already present unless
     /// `force=true`. Wholly independent of `.gitnexus`/GitNexus — never
-    /// feeds SIMPLE/COMPOSABLE/SECURE. For GitNexus dep graphs use
+    /// feeds the scored pillars. For GitNexus dep graphs use
     /// `topos_generate_depgraph` instead.
     #[tool(
         name = "topos_generate_graphify_graph",
@@ -73,30 +73,19 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<GenerateGraphifyInput>,
     ) -> CallToolResult {
-        let project_root = match resolve_file_root() {
-            Ok(root) => root,
+        let (target_dir, _project_root) = match resolve_project_path(&params.directory) {
+            Ok(context) => context,
             Err(err) => {
                 let model = generate_error(err);
                 let md = render_generate_graphify_md(&model);
                 return to_tool_result(&model, md);
             }
         };
-        let target_dir = match &params.directory {
-            Some(dir) => match resolve_within_root(dir) {
-                Ok(resolved) if resolved.is_dir() => resolved,
-                Ok(resolved) => {
-                    let model = generate_error(format!("Not a directory: {}", resolved.display()));
-                    let md = render_generate_graphify_md(&model);
-                    return to_tool_result(&model, md);
-                }
-                Err(err) => {
-                    let model = generate_error(err);
-                    let md = render_generate_graphify_md(&model);
-                    return to_tool_result(&model, md);
-                }
-            },
-            None => project_root.clone(),
-        };
+        if !target_dir.is_dir() {
+            let model = generate_error(format!("Not a directory: {}", target_dir.display()));
+            let md = render_generate_graphify_md(&model);
+            return to_tool_result(&model, md);
+        }
 
         if !params.force {
             let graph_file = graphify_out_dir(&target_dir).join(GRAPHIFY_GRAPH_FILE);

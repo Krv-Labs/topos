@@ -23,10 +23,11 @@ impl ToposServer {
     /// equivalent resource URI for efficiency: `topos://docs/{topic}`.
     ///
     /// Topics: `agent-contract` (compact loop contract, read first for
-    /// refactors), `lattice` (the 8-element 3-cube H(G_qual)), `metrics`
-    /// (every metric key, thresholds, interpretation), `preferences`
-    /// (strict generator rankings and preference walks), `priority`
-    /// (priority profiles), `workflows` (the expanded refactor loop guide).
+    /// refactors), `lattice` (the 16-element H(G_qual) over four generators),
+    /// `metrics` (every metric key, thresholds, interpretation),
+    /// `preferences` (strict generator rankings and preference walks),
+    /// `priority` (priority profiles), `workflows` (the expanded refactor
+    /// loop guide).
     #[tool(
         name = "topos_get_doc",
         annotations(

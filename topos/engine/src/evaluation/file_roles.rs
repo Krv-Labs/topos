@@ -76,6 +76,31 @@ fn entrypoint_filename_hint(path: &Path, language: &str) -> bool {
     }
 }
 
+const COMMENT_PREFIXES: [&str; 3] = ["//", "/*", "*"];
+
+fn is_comment_line(line: &str) -> bool {
+    COMMENT_PREFIXES.iter().any(|p| line.starts_with(p)) || line.ends_with("*/")
+}
+
+const TS_JS_DECL_PREFIXES: [&str; 6] = [
+    "import ",
+    "export *",
+    "export {",
+    "export type ",
+    "export interface ",
+    "#!",
+];
+const RUST_DECL_PREFIXES: [&str; 7] = [
+    "use ",
+    "pub use ",
+    "pub mod ",
+    "mod ",
+    "extern crate ",
+    "#!",
+    "#[",
+];
+const CPP_DECL_PREFIXES: [&str; 2] = ["#include", "#pragma once"];
+
 fn is_entrypoint_source_only(source: &str, language: &str) -> bool {
     let lines: Vec<&str> = source
         .lines()
@@ -86,43 +111,17 @@ fn is_entrypoint_source_only(source: &str, language: &str) -> bool {
         return false;
     }
 
-    match language {
-        "python" => python_entrypoint_only(&lines),
-        "typescript" | "javascript" => lines.iter().all(|line| {
-            line.starts_with("import ")
-                || line.starts_with("export *")
-                || line.starts_with("export {")
-                || line.starts_with("export type ")
-                || line.starts_with("export interface ")
-                || line.starts_with("//")
-                || line.starts_with("#!")
-                || line.starts_with("/*")
-                || line.starts_with('*')
-                || line.ends_with("*/")
-        }),
-        "rust" => lines.iter().all(|line| {
-            line.starts_with("use ")
-                || line.starts_with("pub use ")
-                || line.starts_with("pub mod ")
-                || line.starts_with("mod ")
-                || line.starts_with("extern crate ")
-                || line.starts_with("#!")
-                || line.starts_with("#[")
-                || line.starts_with("//")
-                || line.starts_with("/*")
-                || line.starts_with('*')
-                || line.ends_with("*/")
-        }),
-        "cpp" => lines.iter().all(|line| {
-            line.starts_with("#include")
-                || line.starts_with("#pragma once")
-                || line.starts_with("//")
-                || line.starts_with("/*")
-                || line.starts_with('*')
-                || line.ends_with("*/")
-        }),
-        _ => false,
-    }
+    let decl_prefixes: &[&str] = match language {
+        "python" => return python_entrypoint_only(&lines),
+        "typescript" | "javascript" => &TS_JS_DECL_PREFIXES,
+        "rust" => &RUST_DECL_PREFIXES,
+        "cpp" => &CPP_DECL_PREFIXES,
+        _ => return false,
+    };
+
+    lines
+        .iter()
+        .all(|line| is_comment_line(line) || decl_prefixes.iter().any(|p| line.starts_with(p)))
 }
 
 /// Tracks open brackets so multiline `from x import (...)` and

@@ -5,7 +5,7 @@
 //! - [`policies`] — the `Φᵢ` translators and their calibration/gates.
 //! - [`file_roles`] — structural exemptions (entrypoint modules, etc.).
 //! - [`preferences`] — [`preferences::UserPreferences`], the strict total
-//!   order over the three generators and its `Ω` relaxation walk.
+//!   order over the four generators and its `Ω` relaxation walk.
 //! - [`security_guidance`] — remediation prose/operations for dangerous
 //!   APIs and taint flows.
 //! - [`suggestions`] — turns a

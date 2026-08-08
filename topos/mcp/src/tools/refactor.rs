@@ -12,7 +12,7 @@
 //!   external tool from GitNexus/the MDG (issue #150).
 //!
 //! All four are purely advisory — none of this feeds
-//! SIMPLE/COMPOSABLE/SECURE scoring.
+//! SIMPLE/COMPOSABLE/SECURE/NAVIGABLE scoring.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
@@ -28,11 +28,14 @@ use topos_engine::graphs::process::object::ProcessGraph;
 
 use crate::evaluation::{
     detect_language, load_dep_graph, resolve_gitnexus_dir, resolve_graphify_dir,
+    resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::to_tool_result;
 use crate::refactor_hotspots::render_hotspots_md;
 use crate::schemas::{RefactorHotspot, RefactorInput, RefactorResult, RefactorTargetKind};
-use crate::security::{read_safe_utf8_file, resolve_file_root, resolve_within_root};
+use crate::security::{
+    composable_default_root, read_safe_utf8_file, resolve_project_path, resolve_within_root,
+};
 use crate::server::ToposServer;
 
 const DEFAULT_ORPHAN_DEGREE_THRESHOLD: usize = 1;
@@ -118,14 +121,19 @@ fn span(cycle: &topos_engine::functors::probes::cfg::homology::SourceCycle) -> u
 }
 
 fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Dependencies, &params.filepath, err);
             return (model, render_hotspots_md("Dependency hotspots", &[]));
         }
     };
-    let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+    let composable_root = composable_default_root(&detected_project);
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
     let Some(mdg) = mdg else {
         let model = RefactorResult {
@@ -190,14 +198,19 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
 }
 
 fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Process, &params.filepath, err);
             return (model, render_hotspots_md("Process choke points", &[]));
         }
     };
-    let gitnexus_dir = resolve_gitnexus_dir(params.gitnexus_dir.as_deref(), &project_root);
+    let composable_root = composable_default_root(&detected_project);
+    let project_root =
+        resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
     let Some(mdg) = mdg else {
         let model = RefactorResult {
@@ -271,14 +284,15 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
 const FRAGILE_EDGE_SCORE: f64 = -1.0;
 
 fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
-    let project_root = match resolve_file_root() {
-        Ok(root) => root,
+    let (_path, detected_project) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Graphify, &params.filepath, err);
             return (model, render_hotspots_md("Graphify orphan hotspots", &[]));
         }
     };
 
+    let project_root = composable_default_root(&detected_project);
     let graph = resolve_graphify_dir(params.graphify_dir.as_deref(), &project_root)
         .and_then(|dir| GraphifyGraph::from_json_file(dir.join(GRAPHIFY_GRAPH_FILE)).ok());
     let Some(graph) = graph else {
@@ -369,7 +383,7 @@ fn refactor_graphify(params: &RefactorInput) -> (RefactorResult, String) {
 impl ToposServer {
     /// Rank structural refactor hotspots for one file (read-only, advisory).
     ///
-    /// Does not score SIMPLE/COMPOSABLE/SECURE — use `topos_evaluate_*` for
+    /// Does not score the four pillars — use `topos_evaluate_*` for
     /// medals and `topos_assess_*` to verify edits afterward. `target`
     /// selects the engine: `cycles` (CFG loop/branch bodies),
     /// `dependencies` (MDG Forman curvature on imports; needs `.gitnexus`),
@@ -422,7 +436,9 @@ mod graphify_dispatch_tests {
         // gracefully, mirroring refactor_dependencies/refactor_process's
         // no-op contract: no hotspots, no error, just tool_available: false.
         let (model, _) = refactor_graphify(&params(
-            "src/lib.rs",
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/lib.rs")
+                .to_string_lossy(),
             "topos-nonexistent-graphify-out-dir-for-tests",
         ));
         assert_eq!(model.tool_available, Some(false));
@@ -447,22 +463,27 @@ mod graphify_dispatch_tests {
                     .as_nanos()
             ));
         std::fs::create_dir_all(&dir).unwrap();
+        let filepath = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/lib.rs")
+            .to_string_lossy()
+            .to_string();
         std::fs::write(
             dir.join("graph.json"),
-            r#"{
+            format!(
+                r#"{{
                 "nodes": [
-                    {"id": "a", "label": "a()", "source_file": "src/a.rs"},
-                    {"id": "b", "label": "b()", "source_file": "src/b.rs"}
+                    {{"id": "a", "label": "a()", "source_file": "{filepath}"}},
+                    {{"id": "b", "label": "b()", "source_file": "src/b.rs"}}
                 ],
                 "links": [
-                    {"source": "a", "target": "b", "confidence": "INFERRED",
-                     "relation": "calls"}
+                    {{"source": "a", "target": "b", "confidence": "INFERRED",
+                     "relation": "calls"}}
                 ]
-            }"#,
+            }}"#
+            ),
         )
         .unwrap();
-
-        let (model, _) = refactor_graphify(&params("src/a.rs", &dir.to_string_lossy()));
+        let (model, _) = refactor_graphify(&params(&filepath, &dir.to_string_lossy()));
 
         assert_eq!(model.tool_available, Some(true));
         assert!(model.error.is_none());
@@ -470,7 +491,7 @@ mod graphify_dispatch_tests {
         // source_file matches; node "b" (also degree 1) belongs to a
         // different file and must not leak in. The fragile edge touches
         // "src/a.rs" as its source, so it's included too.
-        assert!(model.hotspots.iter().all(|h| h.filepath == "src/a.rs"));
+        assert!(model.hotspots.iter().all(|h| h.filepath == filepath));
         assert!(model.hotspots.iter().any(|h| h.kind == "graphify_orphan"));
         assert!(model
             .hotspots

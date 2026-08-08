@@ -1,0 +1,96 @@
+name: Self badge
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "topos/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/generate_self_badge.py"
+      - ".github/workflows/badge.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "topos/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/generate_self_badge.py"
+      - ".github/workflows/badge.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: badge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  badge:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build deps (lbug / OpenSSL)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake libssl-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache lbug prebuilt
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/lbug-prebuilt
+          key: lbug-prebuilt-0.17.1-static-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Setup lbug prebuilt
+        run: ./scripts/setup-lbug-prebuilt.sh
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install pinned GitNexus
+        run: npm install -g gitnexus@1.6.8
+
+      - name: Build topos CLI
+        run: cargo build --release -p topos
+
+      - name: Index repo for COMPOSABLE scoring
+        run: gitnexus analyze --skip-agents-md
+
+      - name: Generate self badge
+        run: |
+          set -euo pipefail
+          python scripts/generate_self_badge.py --summary-json | tee badge-summary.json
+
+      - name: Print badge report
+        run: |
+          echo "=== Self badge summary ==="
+          cat badge-summary.json
+          echo ""
+          echo "=== Badge SVG ==="
+          cat docs/source/_static/topos-lattice-badge.svg
+          echo ""
+          echo "=== Footer badge SVG ==="
+          cat docs/source/_static/topos-verdict.svg
+
+      - name: Commit badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/source/_static/topos-lattice-badge.svg docs/source/_static/topos-verdict.svg
+          if git diff --staged --quiet; then
+            echo "Badge unchanged"
+          else
+            git commit -m "chore: refresh README self-badge [skip ci]"
+            git push
+          fi

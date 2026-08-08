@@ -14,12 +14,14 @@ use crate::evaluation::{
     cap_generation_detail, depgraph_status, resolve_mcp_composable_project_root,
     resolve_override_for_root, DepgraphStatus,
 };
-use crate::formatting::to_tool_result;
+use crate::formatting::{depgraph_unavailable_risk_flags, finish_agent_contract, to_tool_result};
 use crate::schemas::{
-    AgentContract, DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
+    DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
     GenerateDepgraphResult,
 };
-use crate::security::{resolve_file_root, resolve_within_root};
+use crate::security::{
+    composable_default_root, resolve_file_root, resolve_path_within, resolve_project_path,
+};
 use crate::server::ToposServer;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +29,16 @@ use std::path::{Path, PathBuf};
 ///
 /// Explicit `directory` wins. When omitted, derive from `gitnexus_dir` the
 /// same way `topos_depgraph_status` does so status → generate stay aligned.
+fn resolve_depgraph_directory(directory: Option<&str>) -> Result<(PathBuf, PathBuf), String> {
+    match directory {
+        Some(dir) => resolve_project_path(dir),
+        None => {
+            let root = resolve_file_root()?;
+            Ok((root.clone(), root))
+        }
+    }
+}
+
 fn resolve_generate_project_root(
     directory: Option<&Path>,
     gitnexus_dir: Option<&str>,
@@ -122,12 +134,10 @@ fn status_to_result(status: &DepgraphStatus) -> DepgraphStatusResult {
     let state = parse_state(status.state);
     let (action, next_tool, blocked_code) = state_guidance(state);
     let blocked_by: Vec<String> = blocked_code.into_iter().map(str::to_string).collect();
-    let risk_flags: Vec<String> = if state != DepgraphState::Present {
-        let mut flags = vec!["composable_unavailable".to_string()];
-        flags.extend(blocked_code.map(str::to_string));
-        flags
-    } else {
+    let risk_flags = if state == DepgraphState::Present {
         Vec::new()
+    } else {
+        depgraph_unavailable_risk_flags(&blocked_by)
     };
     DepgraphStatusResult {
         state,
@@ -137,13 +147,13 @@ fn status_to_result(status: &DepgraphStatus) -> DepgraphStatusResult {
         coupling_available: state == DepgraphState::Present,
         detail: status.detail.clone(),
         recommended_next_action: action.to_string(),
-        agent_contract: Some(AgentContract {
-            next_tool: next_tool.map(str::to_string),
-            next_actions: vec![action.to_string()],
+        agent_contract: Some(finish_agent_contract(
             blocked_by,
-            verification_gates: Vec::new(),
             risk_flags,
-        }),
+            next_tool.map(str::to_string),
+            vec![action.to_string()],
+            Vec::new(),
+        )),
         error: None,
     }
 }
@@ -157,16 +167,13 @@ fn status_error(message: String) -> DepgraphStatusResult {
         coupling_available: false,
         detail: None,
         recommended_next_action: "Fix the gitnexus_dir path, then retry.".to_string(),
-        agent_contract: Some(AgentContract {
-            next_tool: None,
-            next_actions: Vec::new(),
-            blocked_by: vec!["invalid_gitnexus_dir".to_string()],
-            verification_gates: Vec::new(),
-            risk_flags: vec![
-                "invalid_gitnexus_dir".to_string(),
-                "composable_unavailable".to_string(),
-            ],
-        }),
+        agent_contract: Some(finish_agent_contract(
+            vec!["invalid_gitnexus_dir".to_string()],
+            depgraph_unavailable_risk_flags(&["invalid_gitnexus_dir".to_string()]),
+            None,
+            Vec::new(),
+            Vec::new(),
+        )),
         error: Some(message),
     }
 }
@@ -179,13 +186,13 @@ fn generate_error(message: String) -> GenerateDepgraphResult {
         generated: false,
         state_before: None,
         message: message.clone(),
-        agent_contract: Some(AgentContract {
-            next_tool: None,
-            next_actions: Vec::new(),
-            blocked_by: vec!["path_error".to_string()],
-            verification_gates: Vec::new(),
-            risk_flags: Vec::new(),
-        }),
+        agent_contract: Some(finish_agent_contract(
+            vec!["path_error".to_string()],
+            Vec::new(),
+            None,
+            Vec::new(),
+            Vec::new(),
+        )),
         error: Some(message),
     }
 }
@@ -215,13 +222,13 @@ fn generation_failed(
         generated: false,
         state_before,
         message: detail.clone(),
-        agent_contract: Some(AgentContract {
-            next_tool: None,
-            next_actions: vec!["install/repair GitNexus, then retry".to_string()],
-            blocked_by: vec!["gitnexus_generate_failed".to_string()],
-            verification_gates: Vec::new(),
-            risk_flags: vec!["composable_unavailable".to_string()],
-        }),
+        agent_contract: Some(finish_agent_contract(
+            vec!["gitnexus_generate_failed".to_string()],
+            vec!["composable_unavailable".to_string()],
+            None,
+            vec!["install/repair GitNexus, then retry".to_string()],
+            Vec::new(),
+        )),
         error: Some(detail),
     }
 }
@@ -247,13 +254,13 @@ fn generation_succeeded(
         generated: true,
         state_before,
         message: cap_generation_detail(message),
-        agent_contract: Some(AgentContract {
-            next_tool: Some("topos_evaluate_file".to_string()),
-            next_actions: vec!["re-evaluate; COMPOSABLE is now scorable".to_string()],
-            blocked_by: Vec::new(),
-            verification_gates: Vec::new(),
-            risk_flags: Vec::new(),
-        }),
+        agent_contract: Some(finish_agent_contract(
+            Vec::new(),
+            Vec::new(),
+            Some("topos_evaluate_file".to_string()),
+            vec!["re-evaluate; COMPOSABLE is now scorable".to_string()],
+            Vec::new(),
+        )),
         error: None,
     }
 }
@@ -316,20 +323,22 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> CallToolResult {
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
-            Err(err) => {
-                let model = status_error(err);
-                let md = render_status_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
+        let (_directory, detected_project) =
+            match resolve_depgraph_directory(params.directory.as_deref()) {
+                Ok(context) => context,
+                Err(err) => {
+                    let model = status_error(err);
+                    let md = render_status_md(&model);
+                    return to_tool_result(&model, md);
+                }
+            };
+        let composable_root = composable_default_root(&detected_project);
         let project_root = crate::evaluation::resolve_mcp_composable_project_root(
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_within_root(dir) {
+            if let Err(err) = resolve_path_within(dir, &composable_root) {
                 let model = status_error(err);
                 let md = render_status_md(&model);
                 return to_tool_result(&model, md);
@@ -341,7 +350,7 @@ impl ToposServer {
         // original relative string against it a second time would double
         // that subdirectory.
         let resolved_override =
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &file_root);
+            resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
         let status = depgraph_status(
             resolved_override.as_deref(),
             &project_root,
@@ -371,46 +380,38 @@ impl ToposServer {
         &self,
         Parameters(params): Parameters<GenerateDepgraphInput>,
     ) -> CallToolResult {
-        let file_root = match resolve_file_root() {
-            Ok(root) => root,
-            Err(err) => {
-                let model = generate_error(err);
-                let md = render_generate_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
-        if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_within_root(dir) {
-                let model = generate_error(err);
-                let md = render_generate_md(&model);
-                return to_tool_result(&model, md);
-            }
-        }
-        let resolved_directory = match &params.directory {
-            Some(dir) => match resolve_within_root(dir) {
-                Ok(resolved) if resolved.is_dir() => Some(resolved),
-                Ok(resolved) => {
-                    let model = generate_error(format!("Not a directory: {}", resolved.display()));
-                    let md = render_generate_md(&model);
-                    return to_tool_result(&model, md);
-                }
+        let (resolved_directory, detected_project) =
+            match resolve_depgraph_directory(params.directory.as_deref()) {
+                Ok(context) => context,
                 Err(err) => {
                     let model = generate_error(err);
                     let md = render_generate_md(&model);
                     return to_tool_result(&model, md);
                 }
-            },
-            None => None,
-        };
+            };
+        let composable_root = composable_default_root(&detected_project);
+        if let Some(dir) = &params.gitnexus_dir {
+            if let Err(err) = resolve_path_within(dir, &composable_root) {
+                let model = generate_error(err);
+                let md = render_generate_md(&model);
+                return to_tool_result(&model, md);
+            }
+        }
+        if !resolved_directory.is_dir() {
+            let model =
+                generate_error(format!("Not a directory: {}", resolved_directory.display()));
+            let md = render_generate_md(&model);
+            return to_tool_result(&model, md);
+        }
         let target_dir = resolve_generate_project_root(
-            resolved_directory.as_deref(),
+            Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
         let status_override = resolve_generate_status_override(
-            resolved_directory.as_deref(),
+            Some(&resolved_directory),
             params.gitnexus_dir.as_deref(),
-            &file_root,
+            &composable_root,
         );
 
         let mut state_before = None;
@@ -430,13 +431,13 @@ impl ToposServer {
                     generated: false,
                     state_before,
                     message: "Dependency graph already current.".to_string(),
-                    agent_contract: Some(AgentContract {
-                        next_tool: Some("topos_evaluate_file".to_string()),
-                        next_actions: vec!["re-evaluate; COMPOSABLE is scorable".to_string()],
-                        blocked_by: Vec::new(),
-                        verification_gates: Vec::new(),
-                        risk_flags: Vec::new(),
-                    }),
+                    agent_contract: Some(finish_agent_contract(
+                        Vec::new(),
+                        Vec::new(),
+                        Some("topos_evaluate_file".to_string()),
+                        vec!["re-evaluate; COMPOSABLE is scorable".to_string()],
+                        Vec::new(),
+                    )),
                     error: None,
                 };
                 let md = render_generate_md(&model);
@@ -452,15 +453,16 @@ impl ToposServer {
                     generated: false,
                     state_before,
                     message: message.clone(),
-                    agent_contract: Some(AgentContract {
-                        next_tool: None,
-                        next_actions: vec![action.to_string()],
-                        blocked_by: blocked_code.into_iter().map(str::to_string).collect(),
-                        verification_gates: Vec::new(),
-                        risk_flags: vec![
-                            "gitnexus_schema_mismatch".to_string(),
-                            "composable_unavailable".to_string(),
-                        ],
+                    agent_contract: Some({
+                        let blocked_by: Vec<String> =
+                            blocked_code.into_iter().map(str::to_string).collect();
+                        finish_agent_contract(
+                            blocked_by.clone(),
+                            depgraph_unavailable_risk_flags(&blocked_by),
+                            None,
+                            vec![action.to_string()],
+                            Vec::new(),
+                        )
                     }),
                     error: Some(message),
                 };

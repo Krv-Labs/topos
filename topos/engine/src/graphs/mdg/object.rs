@@ -90,6 +90,22 @@ pub struct ModuleDependencyGraph {
     incoming: HashMap<String, Vec<String>>,
 }
 
+/// Parent → child edges that mean "this symbol lives inside that one".
+///
+/// GitNexus does not express file membership with a single edge type:
+/// `DEFINES` carries File → symbol, `HAS_METHOD` / `HAS_PROPERTY` carry
+/// class-member nesting, and `CONTAINS` is Folder → File plus File →
+/// Section. Walking `CONTAINS` alone — as this did — reached no symbol from
+/// any File node, so every file measured `fan_in = fan_out = 0` and the
+/// COMPOSABLE fan gates could never fire. `CONTAINS` stays in the set for
+/// the legacy JSON-directory stores (GitNexus < 1.5), which used it for
+/// file membership.
+///
+/// `MEMBER_OF` is deliberately absent: it points a symbol at its *community*
+/// cluster, not its parent, so following it would pull in unrelated files'
+/// symbols.
+pub const CONTAINMENT_RELS: [&str; 4] = ["CONTAINS", "DEFINES", "HAS_METHOD", "HAS_PROPERTY"];
+
 impl ModuleDependencyGraph {
     pub fn new(target_file: impl Into<String>) -> Self {
         ModuleDependencyGraph {
@@ -170,16 +186,17 @@ impl ModuleDependencyGraph {
 
     /// IDs of all symbols directly contained in a file node.
     pub fn contained_symbols(&self, file_node_id: &str) -> Vec<String> {
-        self.outgoing(file_node_id, Some("CONTAINS"))
-            .into_iter()
+        CONTAINMENT_RELS
+            .iter()
+            .flat_map(|rel_type| self.outgoing(file_node_id, Some(rel_type)))
             .map(|r| r.target_id.clone())
             .collect()
     }
 
-    /// IDs of all symbols transitively reachable via CONTAINS edges.
+    /// IDs of all symbols transitively reachable via containment edges.
     ///
-    /// Performs a BFS down the CONTAINS tree starting from `node_id`.
-    /// Cycles are handled safely via a visited set.
+    /// Performs a BFS down the [`CONTAINMENT_RELS`] tree starting from
+    /// `node_id`. Cycles are handled safely via a visited set.
     pub fn all_contained_symbols(&self, node_id: &str) -> Vec<String> {
         let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut result = Vec::new();
@@ -301,10 +318,15 @@ mod tests {
         let mut g = ModuleDependencyGraph::new("a.py");
         g.add_node(node("File:a.py", "File", Some("a.py")));
         g.add_node(node("File:b.py", "File", Some("b.py")));
+        g.add_node(node("File:c.py", "File", Some("c.py")));
+        // Two edges, not one: a single edge leaves `I` unresolvable (see
+        // `probes::mdg::coupling::MIN_RESOLVABLE_COUPLING`), so "pure
+        // efferent" only becomes a readable verdict from two imports up.
         g.add_relationship(rel("i1", "File:a.py", "File:b.py", "IMPORTS"));
+        g.add_relationship(rel("i2", "File:a.py", "File:c.py", "IMPORTS"));
 
         let metrics = g.metrics();
-        assert_eq!(metrics["mdg.coupling"], 1.0);
+        assert_eq!(metrics["mdg.coupling"], 2.0);
         assert_eq!(metrics["mdg.instability"], 1.0); // pure efferent
         assert_eq!(metrics["mdg.fan_in"], 0.0);
         assert_eq!(metrics["mdg.fan_out"], 0.0);
@@ -312,6 +334,43 @@ mod tests {
         // Graphify is advisory-only (issue #150) and must never leak into a
         // scored Representation's metrics.
         assert!(metrics.keys().all(|k| !k.starts_with("graphify")));
+    }
+
+    /// The shape GitNexus actually emits: a file owns its symbols over
+    /// `DEFINES`, class members hang off `HAS_METHOD`, and the cross-file
+    /// `CALLS` edges that fan-in/fan-out count leave the *symbols*, not the
+    /// File node. Walking `CONTAINS` alone reached none of them, so every
+    /// file measured `fan_in = fan_out = 0`.
+    #[test]
+    fn fan_counts_symbols_reached_over_defines_not_only_contains() {
+        let mut g = ModuleDependencyGraph::new("a.rs");
+        g.add_node(node("File:a.rs", "File", Some("a.rs")));
+        g.add_node(node("Struct:a.rs:S", "Struct", None));
+        g.add_node(node("Method:a.rs:S.run", "Method", None));
+        g.add_relationship(rel("d1", "File:a.rs", "Struct:a.rs:S", "DEFINES"));
+        g.add_relationship(rel(
+            "m1",
+            "Struct:a.rs:S",
+            "Method:a.rs:S.run",
+            "HAS_METHOD",
+        ));
+        // One external caller of the nested method, one external callee.
+        g.add_relationship(rel(
+            "c1",
+            "Function:b.rs:caller",
+            "Method:a.rs:S.run",
+            "CALLS",
+        ));
+        g.add_relationship(rel(
+            "c2",
+            "Method:a.rs:S.run",
+            "Function:c.rs:callee",
+            "CALLS",
+        ));
+
+        let metrics = g.metrics();
+        assert_eq!(metrics["mdg.fan_in"], 1.0);
+        assert_eq!(metrics["mdg.fan_out"], 1.0);
     }
 
     #[test]

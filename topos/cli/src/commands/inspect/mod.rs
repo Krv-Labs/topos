@@ -30,7 +30,7 @@ pub struct InspectArgs {
     /// and security findings are not included.
     #[arg(long)]
     pub json: bool,
-    /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE only.
+    /// Skip GitNexus detection/generation; inspect SIMPLE/SECURE/NAVIGABLE only.
     #[arg(long)]
     pub no_composable: bool,
     /// `.gitnexus` store path (default: `<cwd>/.gitnexus`). When set, COMPOSABLE
@@ -56,9 +56,12 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         let progress = spinner(args.json, "Checking dependency graph freshness");
         match std::env::current_dir() {
             Ok(cwd) => {
+                // The store lives at the git root, not at whatever sub-crate
+                // the user happens to be standing in.
+                let default_root = topos_mcp::security::composable_default_root(&cwd);
                 let project_root = topos_mcp::evaluation::resolve_composable_project_root(
                     args.gitnexus_dir.as_deref(),
-                    &cwd,
+                    &default_root,
                 );
                 // See the matching comment in evaluate/mod.rs: must use the
                 // resolved override, not `args.gitnexus_dir`, since a
@@ -84,7 +87,7 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
             Err(e) => {
                 progress.finish_and_clear();
                 composable_warnings.push(format!(
-                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE only."
+                    "could not resolve current directory ({e}); inspecting SIMPLE/SECURE/NAVIGABLE only."
                 ));
                 None
             }

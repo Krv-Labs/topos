@@ -4,8 +4,9 @@
 //! structure, driven by tree-sitter ASTs. Topos models a codebase as a
 //! topos `E = Set^(C × H^op)` — its objects are program ASTs/graphs, its
 //! morphisms are structure-preserving transformations (refactors), and its
-//! subobject classifier `Ω` is the free Heyting algebra on three quality
-//! generators (`SIMPLE`, `COMPOSABLE`, `SECURE`; see [`core::omega`]).
+//! subobject classifier `Ω` is the free Heyting algebra on four quality
+//! generators (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`; see
+//! [`core::omega`]).
 //!
 //! This crate carries no MCP or CLI concerns and no Python bindings — it is
 //! the shared compute engine both consumers link against: [`crate`] is

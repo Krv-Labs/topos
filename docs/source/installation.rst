@@ -13,7 +13,7 @@ is an all-Rust `Cargo workspace <https://github.com/Krv-Labs/topos/tree/main/top
 of three crates — ``topos-engine`` (the compute engine), ``topos`` (the
 CLI binary), and ``topos-mcp`` (the MCP server binary). There is no
 Python runtime anywhere in the stack. Install the CLI, register it with your
-agents, and you have all three pillars.
+agents, and you have all four pillars.
 
 .. list-table::
    :header-rows: 1

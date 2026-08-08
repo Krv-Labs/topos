@@ -8,7 +8,7 @@
 //!
 //! - **Raw-metric gates** drive `ScoredDecision.achieved` (AND
 //!   semantics). Each `Φᵢ` compares probe values against these fields;
-//!   they are the decisive pass/fail criteria for the three quality
+//!   they are the decisive pass/fail criteria for the four quality
 //!   generators in `Ω`.
 //! - **Normalization caps/scales** map raw metrics to `[0, 1]` quality
 //!   scores for reporting and multi-file aggregation. They do **not**
@@ -47,13 +47,14 @@ pub struct SimplePolicyThresholds {
     pub entropy_size_floor_bytes: f64,
 }
 
-/// `Φ_COMPOSABLE` gates and normalization.
+/// `Φ_COMPOSABLE` reference thresholds, gate, and normalization.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ComposablePolicyThresholds {
-    // Gates (achieved)
+    // Advisory score/reference bands
     pub instability_low: f64,
     pub instability_high: f64,
     pub max_fan_in: f64,
+    // File-level achieved gate
     pub max_fan_out: f64,
     /// Entrypoint carve-out: import/export-only entrypoint modules with
     /// zero fan-in may sit at or above this instability without
@@ -105,7 +106,12 @@ pub const COMPOSABLE: ComposablePolicyThresholds = ComposablePolicyThresholds {
     instability_low: 0.3,
     instability_high: 0.7,
     max_fan_in: 15.0,
-    max_fan_out: 15.0,
+    // Fresh v0.5 file-level calibration (2026-08-07): 2,979 production files
+    // from Python, Rust, TypeScript, and the polyglot MCP cohort, after
+    // excluding test/example paths. A cap of 10 failed 1.2% / 3.0% / 6.3% /
+    // 6.8% respectively, or 4.3% with equal ecosystem weight. This is an
+    // empirical Topos policy, not a universal constant from the literature.
+    max_fan_out: 10.0,
     entrypoint_instability_min: 0.95,
     main_sequence_distance_max: 0.5,
     stable_leaf_instability_max: 0.05,
@@ -118,6 +124,27 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
     max_taint_flows: 0.0,
     danger_scale: 3.0,
     taint_scale: 3.0,
+};
+
+/// `Φ_NAVIGABLE` gates and normalization.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NavigablePolicyThresholds {
+    /// Worst-function Semantic Compositional Divergence a file may carry.
+    ///
+    /// Calibrated 2026-08-07 on a balanced 6,390-file leaderboard corpus
+    /// (equal strata per ecosystem: PyPI, Cargo, npm, C++, Go, MCP): p50 `0.0`,
+    /// p95 `10.37`. Gate `10.0` yields ~5.2% failure (MCP ~5.8%, Python ~6.0%),
+    /// matching the ~5.5% calibration target used for SIMPLE and SECURE.
+    pub max_function_divergence: f64,
+    /// Normalization (score only): divergence at which the score floors at
+    /// zero. Set to `12.0` to align with p99 across Rust (`10.40`), Go (`13.64`),
+    /// and Python (`12.31`), ensuring linear score decay without early flooring.
+    pub divergence_cap: f64,
+}
+
+pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
+    max_function_divergence: 10.0,
+    divergence_cap: 12.0,
 };
 
 /// Structural test-coverage policy (outside `Ω`).
@@ -153,5 +180,8 @@ pub fn score_floor(generator: Generator) -> f64 {
         Generator::Simple => 0.40,
         Generator::Composable => 0.80,
         Generator::Secure => 1.00,
+        // Matches `Generator::Simple` — both are AST-local pillars with
+        // similar score distributions on the calibration corpus.
+        Generator::Navigable => 0.40,
     }
 }

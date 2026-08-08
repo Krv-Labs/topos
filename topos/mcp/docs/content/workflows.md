@@ -17,8 +17,8 @@ situational.
 | --- | --- |
 | `topos_evaluate_file` | Score a file on disk. `refactor_targets=N` adds ranked edit spans. |
 | `topos_evaluate_project` | Rollup + worst-N files for a directory. |
-| `topos_evaluate_code` | Score a source string (SIMPLE/SECURE only — no file, so no coupling). |
-| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. With `filepath` it resolves the dependency graph exactly as `topos_evaluate_file` does (`gitnexus_dir` / `no_composable`), so the two agree on the same file — including when COMPOSABLE is unavailable and `warnings` says why. With a `code` string, SIMPLE/SECURE only. |
+| `topos_evaluate_code` | Score a source string (SIMPLE/SECURE/NAVIGABLE — no file, so no coupling). |
+| `topos_inspect_code` | Per-function complexity, entropy detail, full metric table. With `filepath` it resolves the dependency graph exactly as `topos_evaluate_file` does (`gitnexus_dir` / `no_composable`), so the two agree on the same file — including when COMPOSABLE is unavailable and `warnings` says why. With a `code` string, SIMPLE/SECURE/NAVIGABLE only. |
 | `topos_assess_worktree_change` | Verify an in-place edit against a git ref. **Default verification.** |
 | `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |
@@ -72,17 +72,19 @@ Outside MCP, `topos-mcp --version` prints the same report.
   analyze`) before scoring, so COMPOSABLE is reachable with no extra call.
   Pass `gitnexus_dir` to select a store under the MCP **file root** (the
   project root for freshness/`gitnexus analyze`), or `no_composable:
-  true` to skip detection/generation and score SIMPLE/SECURE only.
+  true` to skip detection/generation and score SIMPLE/SECURE/NAVIGABLE only.
   `gitnexus_dir` does not change the file root — point the server's file
   root at the repo that owns the graph. If GitNexus isn't installed or
   generation fails, `coupling_available` is `false` and any verdict
-  containing COMPOSABLE (including 🥇 **GOLD**) is unreachable — the
+  containing COMPOSABLE (including 🏆 **PLATINUM**) is unreachable — the
   result includes both top-level `warnings` and a COMPOSABLE-pillar
   `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
-  a rollup + worst-N file list.  Treat `aggregate_floor_verdict` as the
-  codebase floor; use `worst_files` and `guidance` to pick the next action.
+  a rollup plus page-global lists (`hard_fails`, `leaf_composable_zeros`,
+  `maintainability_giants`; `worst_files` is deprecated). Treat
+  `aggregate_floor_verdict` as the codebase floor; start from `hard_fails[0]`
+  or `guidance`.
 
 ### 2. Plan
 
@@ -100,7 +102,7 @@ returns top-N functions by complexity, source line, entropy details, and the
 full metric table. The `filepath` form takes the same `gitnexus_dir` /
 `no_composable` knobs as `topos_evaluate_file` and resolves the dependency
 graph the same way, so its verdict matches; the `code` form has no module in
-the graph and reaches SIMPLE/SECURE only.
+the graph and reaches SIMPLE/SECURE/NAVIGABLE only.
 
 ### 3. Propose
 
@@ -146,14 +148,15 @@ If a project `.topos.toml` or an `allow` input acknowledges a finding, the raw
 SECURE verdict remains visible as `secure_raw`, the adjusted result is visible
 as `secure_adjusted` / `adjusted_lattice_element`, and acknowledged entries are
 listed in `acknowledged_risks`. Only active findings drive SECURE suggestions.
-Acknowledged risk can never buy an undisclosed IDEAL grade.
+Acknowledged risk can never buy an undisclosed top-tier grade.
 
 ### 5. Decide
 
 Stop when:
-- Verdict = 🥇 **GOLD** (all three generators satisfied), OR
+- Verdict = 🏆 **PLATINUM** (all four generators satisfied), OR
 - Priority-specific generator satisfied (`simple` → SIMPLE bit set,
-  `composable` → COMPOSABLE bit set, `secure` → SECURE bit set), OR
+  `composable` → COMPOSABLE bit set, `secure` → SECURE bit set,
+  `navigable` → NAVIGABLE bit set), OR
 - `max_iterations` exhausted — report partial progress honestly rather than
   gaming one more iteration.
 
@@ -188,6 +191,7 @@ Consider if the abstraction is actually an improvement or just a shuffle.
 - Leaf module (few callers) → `simple`
 - Library surface (many importers) → `composable`
 - File handling untrusted input → `secure`
+- File agents keep having to read and edit → `navigable`
 - Unknown / general cleanup → `secure` (default scorer emphasis)
 
 See `topos://docs/priority` for more.
@@ -197,27 +201,30 @@ See `topos://docs/priority` for more.
 For agent loops that need a concrete *next-best* verdict to aim for —
 not just an upweighted generator — pass `preferences` alongside
 `priority`. A `preferences.ranking` like `["composable", "secure",
-"simple"]` induces a total order on Ω and produces a **two-stage**
-target:
+"simple", "navigable"]` (a permutation of all four) induces a total order
+on Ω and produces a **two-stage** target:
 
-1. **`target`** — aspirational, default 🥇 **GOLD**. Try to beat the
-   thresholds for all three generators first.
+1. **`target`** — aspirational, default 🏆 **PLATINUM**. Try to beat the
+   thresholds for all four generators first.
 2. **`fallback_target`** — the **"ideal intersection"**, i.e. the meet
-   of the top-two ranked generators (🥈 **SILVER**). When 🥇 **GOLD** plateaus, divert here.
+   of the top-two ranked generators (🥈 **SILVER**). When PLATINUM
+   plateaus, divert here.
 
-The result also returns a **`walk`** (descending verdicts from GOLD
+The result also returns a **`walk`** (descending verdicts from PLATINUM
 down) and a **`next_step`** (the smallest improvement above the
-current verdict).
+current verdict). Note the walk's second element concedes only the
+lowest-ranked generator; `fallback_target` sits further down, conceding
+the bottom two.
 
-Concretely: aim for 🥇 **GOLD** for the first few iterations; if the lattice
-verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and try to satisfy
-only the top-two generators. See `topos://docs/preferences`.
+Concretely: aim for 🏆 **PLATINUM** for the first few iterations; if the
+lattice verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and
+try to satisfy only the top-two generators. See `topos://docs/preferences`.
 
 ## Advisory refactoring (`topos_refactor`)
 
 Separate from gate-failure `refactor_targets` on evaluate results.
 `topos_refactor` is read-only advisory analysis and **does not** feed
-SIMPLE / COMPOSABLE / SECURE scoring.
+SIMPLE / COMPOSABLE / SECURE / NAVIGABLE scoring.
 
 Call with `{"target": "...", "filepath": "...", "limit": 5}`
 (optional `gitnexus_dir`; ignored for `target="cycles"`):

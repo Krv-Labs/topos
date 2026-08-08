@@ -51,17 +51,21 @@ TIER_COLORS = {
 }
 LABEL_TEXT = "topos"
 LABEL_COLOR = "#ffffff"
-LABEL_TEXT_COLOR = "#141414"
 BADGE_FONT = "Verdana,Geneva,DejaVu Sans,sans-serif"
-_CHAR_WIDTH = 6.2
-_PADDING = 10.0
+
+PILLAR_ABBR = {
+    "simple": "Si",
+    "composable": "Co",
+    "secure": "Se",
+    "navigable": "Na",
+}
+FAIL_COLOR = "#78716c"  # warm stone gray — a failed pillar drops out of the medal color
+CHIP_WIDTH = 28.0
 
 ICON_PATH = ROOT / "docs" / "topos-icon.svg"
 ICON_SIZE = 16
-ICON_X = 4
+ICON_X = 5
 ICON_Y = 2
-ICON_LABEL_GAP = 0
-LABEL_PAD_RIGHT = 4
 _SKIP_ICON_TAGS = {"metadata", "namedview", "title"}
 
 
@@ -125,11 +129,25 @@ def aggregate(records: list[dict]) -> dict:
         sys.exit("evaluate returned no pillar scores")
     composite = round(sum(mean_scores.values()) / len(mean_scores), 1)
 
+    # A pillar passes for the package when most files pass it — the same
+    # majority rule behind the package medal.
+    pillar_pass = {
+        pillar.lower(): sum(
+            1
+            for r in records
+            if (r.get("dimensions") or {}).get(pillar.lower()) == pillar
+        )
+        * 2
+        > len(records)
+        for pillar in PILLARS
+    }
+
     return {
         "medal": package_medal,
         "medal_tier": MEDAL_TIER[package_medal],
         "composite_score": composite,
         "mean_scores": mean_scores,
+        "pillar_pass": pillar_pass,
         "n_files": len(records),
         "file_medals": dict(file_medals),
     }
@@ -176,45 +194,81 @@ def _render_icon_svg() -> str:
     )
 
 
-def _segment_width(text: str) -> int:
-    return round(_CHAR_WIDTH * len(text) + _PADDING)
+def render_badge(pillars: list[tuple[str, bool]], *, tier: str) -> str:
+    """Render `[icon][Si][Co][Se][Na]` — one 20px shields-style row.
 
-
-def render_badge(message: str, *, tier: str) -> str:
+    Each pillar chip carries the medal color when that pillar passes for the
+    package and a muted gray when it does not, so the chip count reads as the
+    medal: four colored chips is PLATINUM, three is GOLD, and so on.
+    """
     color = TIER_COLORS.get(tier, TIER_COLORS["slop"])
-    label = escape(LABEL_TEXT)
-    msg = escape(message)
     icon = _render_icon_svg()
-    icon_w = ICON_X + ICON_SIZE + ICON_LABEL_GAP if icon else 0
-    left_w = icon_w + _segment_width(LABEL_TEXT) + (LABEL_PAD_RIGHT if icon else 0)
-    right_w = _segment_width(message)
-    total = left_w + right_w
-    label_x = icon_w + (left_w - icon_w) / 2
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total}" height="20" role="img" aria-label="{label}: {msg}">
+    plate_w = ICON_X + ICON_SIZE + ICON_X if icon else 0
+    total = round(plate_w + CHIP_WIDTH * len(pillars))
+
+    chips, labels, seps = [], [], []
+    for i, (abbr, passed) in enumerate(pillars):
+        x = plate_w + CHIP_WIDTH * i
+        chips.append(
+            f'<rect x="{x:g}" width="{CHIP_WIDTH:g}" height="20" '
+            f'fill="{color if passed else FAIL_COLOR}"/>'
+        )
+        labels.append(
+            f'<text x="{x + CHIP_WIDTH / 2:g}" y="14" fill="#fff" '
+            f'fill-opacity="{1 if passed else 0.85}">{escape(abbr)}</text>'
+        )
+        if i:
+            seps.append(
+                f'<rect x="{x:g}" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/>'
+            )
+    aria = ", ".join(f"{abbr} {'pass' if ok else 'fail'}" for abbr, ok in pillars)
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total}" height="20" role="img" aria-label="{LABEL_TEXT}: {escape(aria)}">
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
   <clipPath id="r"><rect width="{total}" height="20" rx="3" fill="#fff"/></clipPath>
   <g clip-path="url(#r)">
-    <rect width="{left_w}" height="20" fill="{LABEL_COLOR}"/>
-    <rect x="{left_w}" width="{right_w}" height="20" fill="{color}"/>
-    <rect x="{left_w}" width="{right_w}" height="20" fill="url(#s)"/>
+    <rect width="{plate_w:g}" height="20" fill="{LABEL_COLOR}"/>
+    {"".join(chips)}
+    {"".join(seps)}
+    <rect x="{plate_w:g}" width="{total - plate_w:g}" height="20" fill="url(#s)"/>
   </g>
   <rect x=".5" y=".5" width="{total - 1}" height="19" rx="2.5" fill="none" stroke="{color}" stroke-width="1"/>
   {icon}
-  <g text-anchor="middle" font-family="{BADGE_FONT}" font-size="11">
-    <text x="{label_x:g}" y="14" fill="{LABEL_TEXT_COLOR}">{label}</text>
-    <text x="{left_w + right_w / 2:g}" y="14" fill="#fff">{msg}</text>
+  <g text-anchor="middle" font-family="{BADGE_FONT}" font-size="11" font-weight="bold">
+    {"".join(labels)}
   </g>
 </svg>
 """
 
 
-def badge_message(summary: dict) -> str:
-    label = str(summary["medal"])
-    score = summary["composite_score"]
-    return f"{label} · {score}"
+def badge_pillars(summary: dict) -> list[tuple[str, bool]]:
+    passed = summary.get("pillar_pass") or {}
+    return [
+        (PILLAR_ABBR[key], bool(passed.get(key)))
+        for key in (pillar.lower() for pillar in PILLARS)
+    ]
+
+
+def self_check() -> None:
+    """Assert the rendered badge is well-formed SVG with consistent geometry."""
+    pillars = [("Si", True), ("Co", False), ("Se", True), ("Na", True)]
+    for tier in TIER_COLORS:
+        svg = render_badge(pillars, tier=tier)
+        root = ET.fromstring(svg)
+        total = float(root.attrib["width"])
+        rects = [
+            r
+            for r in root.iter("{http://www.w3.org/2000/svg}rect")
+            if r.attrib.get("height") == "20"
+        ]
+        assert rects, "no segment rects"
+        right = max(float(r.attrib.get("x", 0)) + float(r.attrib["width"]) for r in rects)
+        assert abs(right - total) < 1, f"{tier}: segments {right} != width {total}"
+    assert 'fill="#78716c"' in render_badge(pillars, tier="gold"), "failed chip not muted"
+    print("self-check ok")
 
 
 def main() -> None:
@@ -246,11 +300,19 @@ def main() -> None:
         help=f"Output SVG path (default: {DEFAULT_OUT.relative_to(ROOT)}).",
     )
     parser.add_argument(
+        "--self-check",
+        action="store_true",
+        help="Render sample badges, assert geometry, and exit.",
+    )
+    parser.add_argument(
         "--summary-json",
         action="store_true",
         help="Print aggregation JSON to stdout after writing the badge.",
     )
     args = parser.parse_args()
+    if args.self_check:
+        self_check()
+        return
 
     paths = tuple(args.paths or DEFAULT_PATHS)
     if args.eval_json:
@@ -261,7 +323,7 @@ def main() -> None:
 
     records = payload.get("results") or []
     summary = aggregate(records)
-    svg = render_badge(badge_message(summary), tier=summary["medal_tier"])
+    svg = render_badge(badge_pillars(summary), tier=summary["medal_tier"])
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(svg, encoding="utf-8")

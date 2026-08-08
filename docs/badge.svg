@@ -1,16 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="143" height="20" role="img" aria-label="topos: GOLD · 79.8">
+<svg xmlns="http://www.w3.org/2000/svg" width="138" height="20" role="img" aria-label="topos: Si pass, Co fail, Se pass, Na pass">
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
-  <clipPath id="r"><rect width="143" height="20" rx="3" fill="#fff"/></clipPath>
+  <clipPath id="r"><rect width="138" height="20" rx="3" fill="#fff"/></clipPath>
   <g clip-path="url(#r)">
-    <rect width="65" height="20" fill="#ffffff"/>
-    <rect x="65" width="78" height="20" fill="#b45309"/>
-    <rect x="65" width="78" height="20" fill="url(#s)"/>
+    <rect width="26" height="20" fill="#ffffff"/>
+    <rect x="26" width="28" height="20" fill="#b45309"/><rect x="54" width="28" height="20" fill="#78716c"/><rect x="82" width="28" height="20" fill="#b45309"/><rect x="110" width="28" height="20" fill="#b45309"/>
+    <rect x="54" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/><rect x="82" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/><rect x="110" y="3" width="1" height="14" fill="#000" fill-opacity=".18"/>
+    <rect x="26" width="112" height="20" fill="url(#s)"/>
   </g>
-  <rect x=".5" y=".5" width="142" height="19" rx="2.5" fill="none" stroke="#b45309" stroke-width="1"/>
-  <svg x="4" y="2" width="16" height="16" viewBox="0 0 240 240" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><defs id="defs1">
+  <rect x=".5" y=".5" width="137" height="19" rx="2.5" fill="none" stroke="#b45309" stroke-width="1"/>
+  <svg x="5" y="2" width="16" height="16" viewBox="0 0 240 240" aria-hidden="true" focusable="false" preserveAspectRatio="xMidYMid meet"><defs id="defs1">
     <marker id="tw-head" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="3.2" markerHeight="3.2" orient="auto" markerUnits="strokeWidth">
       <path d="M 1,1 11,6 1,11 Z" fill="#b65a22" id="path1" />
     </marker>
@@ -38,8 +39,7 @@
     <circle cx="120" cy="196" r="12" id="circle14" />
   </g>
   </svg>
-  <g text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-    <text x="42.5" y="14" fill="#141414">topos</text>
-    <text x="104" y="14" fill="#fff">GOLD · 79.8</text>
+  <g text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11" font-weight="bold">
+    <text x="40" y="14" fill="#fff" fill-opacity="1">Si</text><text x="68" y="14" fill="#fff" fill-opacity="0.85">Co</text><text x="96" y="14" fill="#fff" fill-opacity="1">Se</text><text x="124" y="14" fill="#fff" fill-opacity="1">Na</text>
   </g>
 </svg>

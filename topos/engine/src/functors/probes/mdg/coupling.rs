@@ -102,7 +102,8 @@ pub fn calculate_coupling(
 
 /// Martin's Instability metric: `I = Ce / (Ca + Ce)`.
 ///
-/// Returns `0.5` when the module has zero coupling (no signal).
+/// Returns the `0.5` no-signal midpoint when the module's coupling is too
+/// sparse to resolve the ratio — see [`MIN_RESOLVABLE_COUPLING`].
 pub fn calculate_instability(graph: &ModuleDependencyGraph, file_node_id: &str) -> f64 {
     instability_from_coupling(&calculate_coupling(graph, file_node_id, None))
 }
@@ -167,8 +168,18 @@ pub fn owning_file(graph: &ModuleDependencyGraph, node_id: &str) -> Option<Strin
     }
 }
 
+/// Fewest coupling edges at which `I = Ce / (Ca + Ce)` can read anything
+/// other than "all out" or "all in".
+///
+/// `I` is a ratio whose resolution is `1 / (Ca + Ce)`. At a single edge the
+/// only attainable readings are `0.0` and `1.0`, so the value is decided
+/// entirely by that one edge's *direction* and carries no information about
+/// balance — the quantity `I` exists to express. Two edges is the first
+/// total that can also read `0.5`.
+const MIN_RESOLVABLE_COUPLING: usize = 2;
+
 fn instability_from_coupling(result: &CouplingResult) -> f64 {
-    if result.total() == 0 {
+    if result.total() < MIN_RESOLVABLE_COUPLING {
         0.5
     } else {
         result.efferent as f64 / result.total() as f64
@@ -236,9 +247,19 @@ mod tests {
         assert_eq!(r.total(), 10);
     }
 
+    /// A single import edge pins `I` to `1.0` (or `0.0`) purely by its
+    /// direction, so it reads as the no-signal midpoint instead.
+    #[test]
+    fn instability_single_edge_is_unresolvable() {
+        let g = linear_chain();
+        assert_eq!(calculate_instability(&g, "File:a.py"), 0.5);
+    }
+
     #[test]
     fn instability_all_efferent() {
-        let g = linear_chain();
+        let mut g = linear_chain();
+        g.add_node(file_node("File:e.py", "e.py"));
+        g.add_relationship(rel("i4", "File:a.py", "File:e.py", "IMPORTS"));
         assert_eq!(calculate_instability(&g, "File:a.py"), 1.0);
     }
 

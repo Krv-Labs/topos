@@ -318,10 +318,15 @@ mod tests {
         let mut g = ModuleDependencyGraph::new("a.py");
         g.add_node(node("File:a.py", "File", Some("a.py")));
         g.add_node(node("File:b.py", "File", Some("b.py")));
+        g.add_node(node("File:c.py", "File", Some("c.py")));
+        // Two edges, not one: a single edge leaves `I` unresolvable (see
+        // `probes::mdg::coupling::MIN_RESOLVABLE_COUPLING`), so "pure
+        // efferent" only becomes a readable verdict from two imports up.
         g.add_relationship(rel("i1", "File:a.py", "File:b.py", "IMPORTS"));
+        g.add_relationship(rel("i2", "File:a.py", "File:c.py", "IMPORTS"));
 
         let metrics = g.metrics();
-        assert_eq!(metrics["mdg.coupling"], 1.0);
+        assert_eq!(metrics["mdg.coupling"], 2.0);
         assert_eq!(metrics["mdg.instability"], 1.0); // pure efferent
         assert_eq!(metrics["mdg.fan_in"], 0.0);
         assert_eq!(metrics["mdg.fan_out"], 0.0);

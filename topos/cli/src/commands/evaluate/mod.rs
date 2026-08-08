@@ -43,6 +43,10 @@ use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
+use topos_engine::core::characteristic_morphism::ClassificationResult;
+use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
+
+use self::inputs::SourceInput;
 
 use self::info::{show_evaluation_info, show_pillar_failures};
 use self::inputs::{language_label, resolve_evaluate_inputs};
@@ -89,18 +93,8 @@ pub struct EvaluateArgs {
 }
 
 pub fn run(args: EvaluateArgs) -> Result<(), String> {
-    if args.info && args.json {
-        return Err("--info cannot be combined with --json".to_string());
-    }
-    if args.failures.is_some() && args.json {
-        return Err("--failures cannot be combined with --json".to_string());
-    }
-    let failure_pillar = args
-        .failures
-        .as_deref()
-        .map(parse_priority)
-        .transpose()?
-        .map(Priority::top_generator);
+    validate_evaluate_args(&args)?;
+    let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
     let files: Vec<PathBuf> = inputs.iter().map(|input| input.path.clone()).collect();
     let languages: Vec<String> = inputs.iter().map(|input| input.language.clone()).collect();
@@ -110,54 +104,91 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let priority = resolve_priority(&args, &project_config)?;
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
-    let mut composable_warnings = Vec::new();
-    let mut mdg = if args.no_composable {
-        None
-    } else {
-        let spinner = spinner(args.json, "Checking dependency graph freshness");
-        match std::env::current_dir() {
-            Ok(cwd) => {
-                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
-                    args.gitnexus_dir.as_deref(),
-                    &cwd,
-                );
-                // Resolved to an absolute path against `cwd` — must be used
-                // here instead of `args.gitnexus_dir`, since `project_root`
-                // above already absorbed a relative override's subdirectory;
-                // rejoining the original relative string against it a second
-                // time would double that subdirectory.
-                let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
-                    args.gitnexus_dir.as_deref(),
-                    &cwd,
-                );
-                let mut on_phase = |msg: &'static str| {
-                    spinner.set_message(msg);
-                };
-                let resolved = resolve_composable_mdg(
-                    &project_root,
-                    resolved_override.as_deref(),
-                    true,
-                    &mut on_phase,
-                );
-                spinner.finish_and_clear();
-                composable_warnings = resolved.warnings;
-                resolved.mdg
-            }
-            Err(e) => {
-                spinner.finish_and_clear();
-                // Human card + JSON carry the notice; no separate stderr dump.
-                composable_warnings.push(format!(
-                    "could not resolve current directory ({e}); evaluating SIMPLE/SECURE/NAVIGABLE only."
-                ));
-                None
-            }
-        }
-    };
+    let (mut mdg, composable_warnings) = resolve_evaluate_mdg(&args);
+    let results = classify_evaluate_inputs(&inputs, &mut mdg, priority, args.json)?;
 
+    if let Some(pillar) = failure_pillar {
+        ensure_pillar_measured(&results, pillar)?;
+    }
+
+    emit_evaluate_output(
+        &args,
+        &files,
+        &results,
+        &languages,
+        &summary_language,
+        failure_pillar,
+        target_ranking.as_ref(),
+        &composable_warnings,
+    )
+}
+
+fn validate_evaluate_args(args: &EvaluateArgs) -> Result<(), String> {
+    if args.info && args.json {
+        return Err("--info cannot be combined with --json".to_string());
+    }
+    if args.failures.is_some() && args.json {
+        return Err("--failures cannot be combined with --json".to_string());
+    }
+    Ok(())
+}
+
+fn parse_failure_pillar(args: &EvaluateArgs) -> Result<Option<Generator>, String> {
+    args.failures
+        .as_deref()
+        .map(parse_priority)
+        .transpose()
+        .map(|pillar| pillar.map(Priority::top_generator))
+}
+
+fn resolve_evaluate_mdg(args: &EvaluateArgs) -> (Option<ModuleDependencyGraph>, Vec<String>) {
+    if args.no_composable {
+        return (None, Vec::new());
+    }
+
+    let spinner = spinner(args.json, "Checking dependency graph freshness");
+    let outcome = match std::env::current_dir() {
+        Ok(cwd) => {
+            let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                args.gitnexus_dir.as_deref(),
+                &cwd,
+            );
+            let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
+                args.gitnexus_dir.as_deref(),
+                &cwd,
+            );
+            let mut on_phase = |msg: &'static str| {
+                spinner.set_message(msg);
+            };
+            let resolved = resolve_composable_mdg(
+                &project_root,
+                resolved_override.as_deref(),
+                true,
+                &mut on_phase,
+            );
+            (resolved.mdg, resolved.warnings)
+        }
+        Err(e) => (
+            None,
+            vec![format!(
+                "could not resolve current directory ({e}); evaluating SIMPLE/SECURE/NAVIGABLE only."
+            )],
+        ),
+    };
+    spinner.finish_and_clear();
+    outcome
+}
+
+fn classify_evaluate_inputs(
+    inputs: &[SourceInput],
+    mdg: &mut Option<ModuleDependencyGraph>,
+    priority: Priority,
+    json: bool,
+) -> Result<Vec<ClassificationResult>, String> {
     let classifier = CharacteristicMorphism;
     let mut results = Vec::with_capacity(inputs.len());
-    let progress = progress_bar(inputs.len(), args.json);
-    for input in &inputs {
+    let progress = progress_bar(inputs.len(), json);
+    for input in inputs {
         let file = &input.path;
         progress.set_message(file.file_name().map_or_else(
             || file.display().to_string(),
@@ -165,70 +196,88 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         ));
         let mut morphism = ProgramMorphism::from_file(file, input.language.clone())
             .map_err(|e| format!("reading {}: {e}", file.display()))?;
-        if let Some(g) = mdg.as_mut() {
-            g.target_file = file.to_string_lossy().into_owned();
+        if let Some(graph) = mdg.as_mut() {
+            graph.target_file = file.to_string_lossy().into_owned();
         }
-        let result =
-            classify_with_representations(&classifier, &mut morphism, mdg.as_ref(), priority);
-        results.push(result);
+        results.push(classify_with_representations(
+            &classifier,
+            &mut morphism,
+            mdg.as_ref(),
+            priority,
+        ));
         progress.inc(1);
     }
     progress.finish_and_clear();
+    Ok(results)
+}
 
-    if let Some(pillar) = failure_pillar {
-        if !pillar_measured(&results, pillar.as_str()) {
-            return Err(format!(
-                "{} was not measured; check the evaluation inputs and COMPOSABLE availability",
-                pillar.as_str().to_ascii_uppercase()
-            ));
-        }
+fn ensure_pillar_measured(results: &[ClassificationResult], pillar: Generator) -> Result<(), String> {
+    if pillar_measured(results, pillar.as_str()) {
+        return Ok(());
     }
+    Err(format!(
+        "{} was not measured; check the evaluation inputs and COMPOSABLE availability",
+        pillar.as_str().to_ascii_uppercase()
+    ))
+}
 
+fn emit_evaluate_output(
+    args: &EvaluateArgs,
+    files: &[PathBuf],
+    results: &[ClassificationResult],
+    languages: &[String],
+    summary_language: &str,
+    failure_pillar: Option<Generator>,
+    target_ranking: Option<&[Generator; RANKING_LEN]>,
+    composable_warnings: &[String],
+) -> Result<(), String> {
     if args.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json_output(
-                &files,
-                &results,
-                &languages,
-                &composable_warnings
+                files,
+                results,
+                languages,
+                composable_warnings
             ))
             .map_err(|e| format!("serializing evaluation: {e}"))?
         );
-    } else {
-        if args.verbose && results.len() > 1 {
-            for (file, result) in files.iter().zip(&results) {
-                println!("{}", file.display());
-                print_classification(result);
-                println!();
-            }
-        }
-        print_summary(
-            &files,
-            &results,
-            &summary_language,
-            !args.no_composable,
-            !args.info && failure_pillar.is_none(),
-            &composable_warnings,
-        );
-        if args.verbose && results.len() == 1 {
-            print_raw_metrics(&results[0]);
-        }
-        if let Some(pillar) = failure_pillar {
-            let focused = focused_ranking(pillar, target_ranking.as_ref());
-            show_pillar_failures(
-                &files,
-                &results,
-                &languages,
-                pillar.as_str(),
-                args.info,
-                Some(&focused),
-            )?;
-        } else if args.info {
-            show_evaluation_info(&files, &results, &languages, target_ranking.as_ref())?;
+        return Ok(());
+    }
+
+    if args.verbose && results.len() > 1 {
+        for (file, result) in files.iter().zip(results) {
+            println!("{}", file.display());
+            print_classification(result);
+            println!();
         }
     }
-    Ok(())
+    print_summary(
+        files,
+        results,
+        summary_language,
+        !args.no_composable,
+        !args.info && failure_pillar.is_none(),
+        composable_warnings,
+    );
+    if args.verbose && results.len() == 1 {
+        print_raw_metrics(&results[0]);
+    }
+    if let Some(pillar) = failure_pillar {
+        let focused = focused_ranking(pillar, target_ranking);
+        show_pillar_failures(
+            files,
+            results,
+            languages,
+            pillar.as_str(),
+            args.info,
+            Some(&focused),
+        )
+    } else if args.info {
+        show_evaluation_info(files, results, languages, target_ranking)
+    } else {
+        Ok(())
+    }
 }
 
 /// `focus` promoted to the front, the rest keeping their configured order.

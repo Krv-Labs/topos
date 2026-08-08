@@ -165,62 +165,104 @@ function getWorkspaceEnv(): Record<string, string | number | null> {
  */
 async function resolveToposExecutable(context: vscode.ExtensionContext, output: vscode.OutputChannel, token: vscode.CancellationToken): Promise<string | undefined> {
     const config = vscode.workspace.getConfiguration('topos');
-    const executablePathOverride = config.get<string>('executablePath');
-    const autoDiscover = config.get<boolean>('autoDiscover', true);
-    const autoDownload = config.get<boolean>('autoDownload', true);
-
-    // Step 1: User custom executable path override
-    if (executablePathOverride && executablePathOverride.trim() !== "") {
-        const expandedPath = resolveHomePath(executablePathOverride);
-        if (fs.existsSync(expandedPath)) {
-            if (await testToposExecutable(expandedPath)) {
-                output.appendLine(`Step 1: Using custom executable path override: ${expandedPath}`);
-                return expandedPath;
-            }
-            output.appendLine(`Step 1: Custom path exists but does not execute 'topos --version': ${expandedPath}`);
-        } else {
-            output.appendLine(`Step 1: Custom path configured but does not exist: ${expandedPath}`);
-        }
-    }
-
-    // Step 2: Bundled platform runtime shipped inside the target VSIX
-    output.appendLine("Step 2: Checking bundled Topos runtime...");
-    const bundledBinaryPath = context.asAbsolutePath(BUNDLED_BINARY_RELATIVE_PATH);
-    if (fs.existsSync(bundledBinaryPath)) {
-        await ensureExecutable(bundledBinaryPath, output);
-        if (await testToposExecutable(bundledBinaryPath)) {
-            output.appendLine(`Using bundled Topos runtime: ${bundledBinaryPath}`);
-            return bundledBinaryPath;
-        }
-        output.appendLine(`Bundled Topos runtime exists but failed its version check: ${bundledBinaryPath}`);
-    } else {
-        output.appendLine("No bundled Topos runtime found in this extension package.");
-    }
-
-    // Step 3: Standalone locally-cached binary check (via Global Storage)
-    output.appendLine("Step 3: Checking standalone cached binary folder...");
     const storagePath = context.globalStorageUri.fsPath;
     const cachedBinaryPath = path.join(storagePath, 'topos-cli');
 
-    // Check if we have cached metadata about a previously verified download
-    const cachedVersion = context.globalState.get<string>('cachedVersion');
-    const cachedSha256 = context.globalState.get<string>('cachedSha256');
+    const steps: Array<() => Promise<string | undefined>> = [
+        () => tryCustomExecutableOverride(output, config.get<string>('executablePath')),
+        () => tryBundledRuntime(context, output),
+        () => tryCachedStandaloneBinary(context, output, cachedBinaryPath),
+        () => tryGlobalPathExecutable(output),
+    ];
 
-    if (fs.existsSync(cachedBinaryPath)) {
-        if (cachedVersion && cachedSha256 && await cachedBinaryMatches(cachedBinaryPath, cachedSha256, output)) {
-            await ensureExecutable(cachedBinaryPath, output);
-            if (await testToposExecutable(cachedBinaryPath)) {
-                output.appendLine(`Found cached standalone binary of version ${cachedVersion} with validated SHA-256.`);
-                return cachedBinaryPath;
-            }
-            output.appendLine("Cached binary hash is valid but executable check failed. Removing cached binary.");
-            await fs.promises.unlink(cachedBinaryPath).catch(() => {});
-        } else {
-            output.appendLine("Cached binary exists, but metadata is missing or invalid. Will continue fallback resolution.");
+    if (config.get<boolean>('autoDiscover', true)) {
+        steps.push(() => tryPythonVenvExecutable(output, token));
+    }
+    if (config.get<boolean>('autoDownload', true)) {
+        steps.push(() => tryManifestDownload(context, output, token, cachedBinaryPath, storagePath));
+    }
+
+    for (const step of steps) {
+        const resolved = await step();
+        if (resolved) {
+            return resolved;
         }
     }
 
-    // Step 4: Global PATH check
+    return undefined;
+}
+
+/** Step 1: User custom executable path override. */
+async function tryCustomExecutableOverride(output: vscode.OutputChannel, executablePathOverride: string | undefined): Promise<string | undefined> {
+    if (!executablePathOverride || executablePathOverride.trim() === "") {
+        return undefined;
+    }
+
+    const expandedPath = resolveHomePath(executablePathOverride);
+    if (!fs.existsSync(expandedPath)) {
+        output.appendLine(`Step 1: Custom path configured but does not exist: ${expandedPath}`);
+        return undefined;
+    }
+
+    if (await testToposExecutable(expandedPath)) {
+        output.appendLine(`Step 1: Using custom executable path override: ${expandedPath}`);
+        return expandedPath;
+    }
+
+    output.appendLine(`Step 1: Custom path exists but does not execute 'topos --version': ${expandedPath}`);
+    return undefined;
+}
+
+/** Step 2: Bundled platform runtime shipped inside the target VSIX. */
+async function tryBundledRuntime(context: vscode.ExtensionContext, output: vscode.OutputChannel): Promise<string | undefined> {
+    output.appendLine("Step 2: Checking bundled Topos runtime...");
+    const bundledBinaryPath = context.asAbsolutePath(BUNDLED_BINARY_RELATIVE_PATH);
+    if (!fs.existsSync(bundledBinaryPath)) {
+        output.appendLine("No bundled Topos runtime found in this extension package.");
+        return undefined;
+    }
+
+    await ensureExecutable(bundledBinaryPath, output);
+    if (await testToposExecutable(bundledBinaryPath)) {
+        output.appendLine(`Using bundled Topos runtime: ${bundledBinaryPath}`);
+        return bundledBinaryPath;
+    }
+
+    output.appendLine(`Bundled Topos runtime exists but failed its version check: ${bundledBinaryPath}`);
+    return undefined;
+}
+
+/** Step 3: Standalone locally-cached binary check (via Global Storage). */
+async function tryCachedStandaloneBinary(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    cachedBinaryPath: string
+): Promise<string | undefined> {
+    output.appendLine("Step 3: Checking standalone cached binary folder...");
+    if (!fs.existsSync(cachedBinaryPath)) {
+        return undefined;
+    }
+
+    const cachedVersion = context.globalState.get<string>('cachedVersion');
+    const cachedSha256 = context.globalState.get<string>('cachedSha256');
+    if (!cachedVersion || !cachedSha256 || !await cachedBinaryMatches(cachedBinaryPath, cachedSha256, output)) {
+        output.appendLine("Cached binary exists, but metadata is missing or invalid. Will continue fallback resolution.");
+        return undefined;
+    }
+
+    await ensureExecutable(cachedBinaryPath, output);
+    if (await testToposExecutable(cachedBinaryPath)) {
+        output.appendLine(`Found cached standalone binary of version ${cachedVersion} with validated SHA-256.`);
+        return cachedBinaryPath;
+    }
+
+    output.appendLine("Cached binary hash is valid but executable check failed. Removing cached binary.");
+    await fs.promises.unlink(cachedBinaryPath).catch(() => {});
+    return undefined;
+}
+
+/** Step 4: Global PATH check. */
+async function tryGlobalPathExecutable(output: vscode.OutputChannel): Promise<string | undefined> {
     output.appendLine("Step 4: Checking system PATH for 'topos' CLI...");
     try {
         await execFileAsync('topos', ['--version']);
@@ -228,126 +270,160 @@ async function resolveToposExecutable(context: vscode.ExtensionContext, output: 
         return 'topos';
     } catch {
         output.appendLine("'topos' executable is not available globally on system PATH.");
+        return undefined;
+    }
+}
+
+/** Step 5: Auto-discover Topos inside active Python virtual environment. */
+async function tryPythonVenvExecutable(output: vscode.OutputChannel, token: vscode.CancellationToken): Promise<string | undefined> {
+    output.appendLine("Step 5: Checking active Python virtual environment...");
+    const pythonInterpreter = await getPythonInterpreterPath();
+    if (token.isCancellationRequested) {
+        return undefined;
+    }
+    if (!pythonInterpreter) {
+        output.appendLine("No active virtual environment detected via Python Extension API.");
+        return undefined;
     }
 
-    // Step 5: Auto-discover Topos inside active Python virtual environment
-    if (autoDiscover) {
-        output.appendLine("Step 5: Checking active Python virtual environment...");
-        const pythonInterpreter = await getPythonInterpreterPath();
-        if (token.isCancellationRequested) return undefined;
-        if (pythonInterpreter) {
-            output.appendLine(`Found active Python interpreter: ${pythonInterpreter}`);
-            const runsTopos = await testPythonTopos(pythonInterpreter);
-            if (runsTopos) {
-                output.appendLine("Active virtual environment successfully executes 'topos' CLI. Using venv interpreter.");
-                return pythonInterpreter;
-            } else {
-                output.appendLine("Topos is not installed in the active virtual environment.");
-            }
-        } else {
-            output.appendLine("No active virtual environment detected via Python Extension API.");
-        }
+    output.appendLine(`Found active Python interpreter: ${pythonInterpreter}`);
+    if (await testPythonTopos(pythonInterpreter)) {
+        output.appendLine("Active virtual environment successfully executes 'topos' CLI. Using venv interpreter.");
+        return pythonInterpreter;
     }
 
-    // Step 6: Remote manifest fetch & background standalone download
-    if (autoDownload) {
-        output.appendLine("Step 6: Fetching remote manifest to resolve and download the latest compatible binary...");
-        try {
-            await fs.promises.mkdir(storagePath, { recursive: true });
-            const manifest = await fetchJson(MANIFEST_URL);
-            if (token.isCancellationRequested) return undefined;
-
-            const platformKey = getPlatformKey();
-            if (!platformKey) {
-                output.appendLine(`Unrecognized execution platform: ${process.platform}-${process.arch}. Standalone binaries unavailable.`);
-                return undefined;
-            }
-
-            const binaryInfo = selectBinaryFromManifest(manifest, platformKey);
-            if (!binaryInfo) {
-                output.appendLine(`No standalone binary listed in manifest for platform: ${platformKey}`);
-                return undefined;
-            }
-
-            const latestVersion = manifest.latest_cli_version;
-            const downloadUrl = binaryInfo.url;
-            const expectedSha256 = binaryInfo.sha256;
-
-            output.appendLine(`Latest compatible Topos CLI version resolved: ${latestVersion}`);
-            output.appendLine(`Download URL: ${downloadUrl}`);
-            output.appendLine(`Expected SHA-256: ${expectedSha256}`);
-
-            // Double check if the existing local binary matches the manifest checksum (ignoring cached state metadata)
-            if (fs.existsSync(cachedBinaryPath)) {
-                output.appendLine("Calculating SHA-256 of local cached binary...");
-                const localHash = await computeFileSha256(cachedBinaryPath);
-                if (localHash === expectedSha256) {
-                    output.appendLine("Local cached binary SHA-256 matches expected checksum exactly. Updating cached state metadata.");
-                    await ensureExecutable(cachedBinaryPath, output);
-                    if (!await testToposExecutable(cachedBinaryPath)) {
-                        output.appendLine("Local cached binary hash matched manifest but executable check failed. Removing cached binary.");
-                        await fs.promises.unlink(cachedBinaryPath).catch(() => {});
-                    } else {
-                        await context.globalState.update('cachedVersion', latestVersion);
-                        await context.globalState.update('cachedSha256', expectedSha256);
-                        return cachedBinaryPath;
-                    }
-                } else {
-                    output.appendLine("Local file exists but SHA-256 does not match. Proceeding to fresh download.");
-                    await fs.promises.unlink(cachedBinaryPath).catch(() => {});
-                }
-            }
-
-            // Fresh download under a progress notification bar
-            const success = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Downloading Topos CLI (v${latestVersion})...`,
-                cancellable: false
-            }, async (progress) => {
-                let lastPercent = 0;
-                await downloadFile(downloadUrl, cachedBinaryPath, (fraction) => {
-                    const percent = Math.round(fraction * 100);
-                    if (percent > lastPercent) {
-                        progress.report({ increment: percent - lastPercent, message: `${percent}%` });
-                        lastPercent = percent;
-                    }
-                });
-                return true;
-            });
-
-            if (success) {
-                output.appendLine("Download complete. Calculating SHA-256 hash...");
-                const downloadedHash = await computeFileSha256(cachedBinaryPath);
-
-                if (downloadedHash !== expectedSha256) {
-                    output.appendLine(`ERROR: Cryptographic hash verification failed!`);
-                    output.appendLine(`Calculated: ${downloadedHash}`);
-                    output.appendLine(`Expected:   ${expectedSha256}`);
-                    await fs.promises.unlink(cachedBinaryPath).catch(() => {});
-                    return undefined;
-                }
-
-                output.appendLine("SHA-256 validation succeeded. Applying executable permissions via async chmod...");
-                await fs.promises.chmod(cachedBinaryPath, 0o755);
-
-                if (!await testToposExecutable(cachedBinaryPath)) {
-                    output.appendLine("Downloaded binary passed SHA-256 validation but failed executable check. Removing cached binary.");
-                    await fs.promises.unlink(cachedBinaryPath).catch(() => {});
-                    return undefined;
-                }
-
-                output.appendLine("Updating extension cache metadata.");
-                await context.globalState.update('cachedVersion', latestVersion);
-                await context.globalState.update('cachedSha256', expectedSha256);
-
-                return cachedBinaryPath;
-            }
-        } catch (err: any) {
-            output.appendLine(`ERROR: Remote resolution / download failed: ${err?.message || err}`);
-        }
-    }
-
+    output.appendLine("Topos is not installed in the active virtual environment.");
     return undefined;
+}
+
+/** Step 6: Remote manifest fetch and standalone download. */
+async function tryManifestDownload(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    token: vscode.CancellationToken,
+    cachedBinaryPath: string,
+    storagePath: string
+): Promise<string | undefined> {
+    output.appendLine("Step 6: Fetching remote manifest to resolve and download the latest compatible binary...");
+    try {
+        await fs.promises.mkdir(storagePath, { recursive: true });
+        const manifest = await fetchJson(MANIFEST_URL);
+        if (token.isCancellationRequested) {
+            return undefined;
+        }
+
+        const platformKey = getPlatformKey();
+        if (!platformKey) {
+            output.appendLine(`Unrecognized execution platform: ${process.platform}-${process.arch}. Standalone binaries unavailable.`);
+            return undefined;
+        }
+
+        const binaryInfo = selectBinaryFromManifest(manifest, platformKey);
+        if (!binaryInfo) {
+            output.appendLine(`No standalone binary listed in manifest for platform: ${platformKey}`);
+            return undefined;
+        }
+
+        const latestVersion = manifest.latest_cli_version;
+        const { url: downloadUrl, sha256: expectedSha256 } = binaryInfo;
+        output.appendLine(`Latest compatible Topos CLI version resolved: ${latestVersion}`);
+        output.appendLine(`Download URL: ${downloadUrl}`);
+        output.appendLine(`Expected SHA-256: ${expectedSha256}`);
+
+        const fromCache = await reconcileCachedBinaryWithManifest(
+            context, output, cachedBinaryPath, latestVersion, expectedSha256
+        );
+        if (fromCache) {
+            return fromCache;
+        }
+
+        return await downloadVerifiedBinary(
+            context, output, cachedBinaryPath, downloadUrl, latestVersion, expectedSha256
+        );
+    } catch (err: any) {
+        output.appendLine(`ERROR: Remote resolution / download failed: ${err?.message || err}`);
+        return undefined;
+    }
+}
+
+async function reconcileCachedBinaryWithManifest(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    cachedBinaryPath: string,
+    latestVersion: string,
+    expectedSha256: string
+): Promise<string | undefined> {
+    if (!fs.existsSync(cachedBinaryPath)) {
+        return undefined;
+    }
+
+    output.appendLine("Calculating SHA-256 of local cached binary...");
+    const localHash = await computeFileSha256(cachedBinaryPath);
+    if (localHash !== expectedSha256) {
+        output.appendLine("Local file exists but SHA-256 does not match. Proceeding to fresh download.");
+        await fs.promises.unlink(cachedBinaryPath).catch(() => {});
+        return undefined;
+    }
+
+    output.appendLine("Local cached binary SHA-256 matches expected checksum exactly. Updating cached state metadata.");
+    await ensureExecutable(cachedBinaryPath, output);
+    if (!await testToposExecutable(cachedBinaryPath)) {
+        output.appendLine("Local cached binary hash matched manifest but executable check failed. Removing cached binary.");
+        await fs.promises.unlink(cachedBinaryPath).catch(() => {});
+        return undefined;
+    }
+
+    await context.globalState.update('cachedVersion', latestVersion);
+    await context.globalState.update('cachedSha256', expectedSha256);
+    return cachedBinaryPath;
+}
+
+async function downloadVerifiedBinary(
+    context: vscode.ExtensionContext,
+    output: vscode.OutputChannel,
+    cachedBinaryPath: string,
+    downloadUrl: string,
+    latestVersion: string,
+    expectedSha256: string
+): Promise<string | undefined> {
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Downloading Topos CLI (v${latestVersion})...`,
+        cancellable: false
+    }, async (progress) => {
+        let lastPercent = 0;
+        await downloadFile(downloadUrl, cachedBinaryPath, (fraction) => {
+            const percent = Math.round(fraction * 100);
+            if (percent > lastPercent) {
+                progress.report({ increment: percent - lastPercent, message: `${percent}%` });
+                lastPercent = percent;
+            }
+        });
+    });
+
+    output.appendLine("Download complete. Calculating SHA-256 hash...");
+    const downloadedHash = await computeFileSha256(cachedBinaryPath);
+    if (downloadedHash !== expectedSha256) {
+        output.appendLine(`ERROR: Cryptographic hash verification failed!`);
+        output.appendLine(`Calculated: ${downloadedHash}`);
+        output.appendLine(`Expected:   ${expectedSha256}`);
+        await fs.promises.unlink(cachedBinaryPath).catch(() => {});
+        return undefined;
+    }
+
+    output.appendLine("SHA-256 validation succeeded. Applying executable permissions via async chmod...");
+    await fs.promises.chmod(cachedBinaryPath, 0o755);
+
+    if (!await testToposExecutable(cachedBinaryPath)) {
+        output.appendLine("Downloaded binary passed SHA-256 validation but failed executable check. Removing cached binary.");
+        await fs.promises.unlink(cachedBinaryPath).catch(() => {});
+        return undefined;
+    }
+
+    output.appendLine("Updating extension cache metadata.");
+    await context.globalState.update('cachedVersion', latestVersion);
+    await context.globalState.update('cachedSha256', expectedSha256);
+    return cachedBinaryPath;
 }
 
 async function ensureExecutable(filePath: string, output: vscode.OutputChannel): Promise<void> {

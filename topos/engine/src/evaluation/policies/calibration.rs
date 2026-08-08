@@ -47,13 +47,14 @@ pub struct SimplePolicyThresholds {
     pub entropy_size_floor_bytes: f64,
 }
 
-/// `Φ_COMPOSABLE` gates and normalization.
+/// `Φ_COMPOSABLE` reference thresholds, gate, and normalization.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ComposablePolicyThresholds {
-    // Gates (achieved)
+    // Advisory score/reference bands
     pub instability_low: f64,
     pub instability_high: f64,
     pub max_fan_in: f64,
+    // File-level achieved gate
     pub max_fan_out: f64,
     /// Entrypoint carve-out: import/export-only entrypoint modules with
     /// zero fan-in may sit at or above this instability without
@@ -105,7 +106,12 @@ pub const COMPOSABLE: ComposablePolicyThresholds = ComposablePolicyThresholds {
     instability_low: 0.3,
     instability_high: 0.7,
     max_fan_in: 15.0,
-    max_fan_out: 15.0,
+    // Fresh v0.5 file-level calibration (2026-08-07): 2,979 production files
+    // from Python, Rust, TypeScript, and the polyglot MCP cohort, after
+    // excluding test/example paths. A cap of 10 failed 1.2% / 3.0% / 6.3% /
+    // 6.8% respectively, or 4.3% with equal ecosystem weight. This is an
+    // empirical Topos policy, not a universal constant from the literature.
+    max_fan_out: 10.0,
     entrypoint_instability_min: 0.95,
     main_sequence_distance_max: 0.5,
     stable_leaf_instability_max: 0.05,

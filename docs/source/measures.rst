@@ -27,10 +27,10 @@ Evaluates the internal quality of the code by analyzing the Control Flow Graph (
 * **Entropy** (``ast.entropy``)
   A Kolmogorov-complexity proxy using compression ratios. It measures how predictable the code is. Very low entropy suggests excessive boilerplate; very high entropy signals chaotic or highly unusual structure (often seen in hallucinated code). The healthy range sits around 0.5.
 
-2. The COMPOSABLE Pillar (Module Coupling)
-----------------------------------------------
+2. The COMPOSABLE Pillar (Outward Dependency Burden)
+-----------------------------------------------------
 
-Evaluates how a file fits into the broader repository by analyzing the module dependency graph. *(Requires GitNexus)* The COMPOSABLE pillar maps to the ``COMPOSABLE`` badge outcome.
+Evaluates how much external behavior a file coordinates by analyzing the dependency graph. *(Requires GitNexus)* The COMPOSABLE pillar maps to the ``COMPOSABLE`` badge outcome.
 
 * **Coupling** (``mdg.coupling``)
   The total number of afferent (incoming) and efferent (outgoing) dependencies. High total coupling negatively impacts the COMPOSABLE score.
@@ -42,8 +42,11 @@ Evaluates how a file fits into the broader repository by analyzing the module de
   - Near 1: The module is highly unstable because it depends on many other parts of the system.
   - A balanced range (0.3 – 0.7) helps achieve a higher COMPOSABLE score.
 
-* **Fan-in / Fan-out** (``mdg.fan_in``, ``mdg.fan_out``)
-  Diagnostic metrics tracking explicit call edges. These are visible in detailed inspections but don't strictly set the final verdict.
+* **Fan-out** (``mdg.fan_out``)
+  Counts distinct external symbols called by the file. This is the v0.5 file-level gate: ``fan_out <= 10``.
+
+* **Fan-in** (``mdg.fan_in``)
+  Counts incoming call edges. It remains scored and actionable as a responsibility/change-impact signal, but is advisory because a stable interface or shared utility can legitimately have many callers.
 
 * **Dependency Depth** (``mdg.dep_depth``)
   The longest dependency chain from this module. Shallow chains are easier to understand and refactor.
@@ -111,20 +114,20 @@ failure becomes an actionable refactor target: extract the deepest nested
 block into a top-level helper.
 
 .. note::
-   The NAVIGABLE threshold is calibrated from a 4,254-file multi-language
-   benchmark corpus (Rust, Go, TypeScript, Python, C++, JavaScript). The
-   achieved gate is ``6.0`` (p95 ``5.98``, ~5.5% failure rate). The score cap
-   is ``12.0`` (spans p99 across Rust ``10.40``, Go ``13.64``, and Python
-   ``12.31``). Topos's 176 Rust sources remain the reference ECDF (p95
+   The NAVIGABLE threshold is calibrated from a balanced 6,390-file
+   multi-ecosystem leaderboard corpus. The achieved gate is ``10.0`` (p95
+   ``10.37``, ~5.2% failure rate). The score cap is ``12.0`` (spans p99 across
+   Rust ``10.40``, Go ``13.64``, and Python ``12.31``). Topos's 176 Rust
+   sources remain a reference ECDF (p95
    ``5.65``, p99 ``8.62``, max ``12.19``).
 
 Scoring and Manager Priorities
 ------------------------------
 
 Topos produces a continuous normalized score ``[0.0, 1.0]`` for each pillar.
-A pillar is **achieved** if its score meets or exceeds its **calibrated threshold**.
-These thresholds are tuned against real-world corpora (Experiment 4) to ensure
-the "Quality Medals" reflect empirical software engineering standards.
+A pillar is **achieved** when its independent raw gate or gates pass. Score
+floors are used by aggregate morphism paths and continuous scores preserve
+advisory detail; they are not the live file-level verdict rule.
 
 .. list-table::
    :widths: 20 20 60
@@ -135,16 +138,16 @@ the "Quality Medals" reflect empirical software engineering standards.
      - Raw Requirement (Policy Φᵢ)
    * - **SIMPLE**
      - ``0.40``
-     - ``cyclomatic <= 15`` AND ``max_func <= 10`` AND ``entropy in [0.2, 0.8]``
+     - ``max_func <= 10`` AND ``entropy in [0.2, 0.8]``; cyclomatic is advisory
    * - **COMPOSABLE**
      - ``0.80``
-     - ``instability in [0.3, 0.7]`` AND ``fan_in <= 15`` AND ``fan_out <= 15``
+     - ``fan_out <= 10``; fan-in and stability readings remain advisory
    * - **SECURE**
      - ``1.00``
      - Zero ``dangerous_calls`` AND zero ``taint_flows``
    * - **NAVIGABLE**
      - ``0.40``
-     - ``max_function_divergence <= 6.0``
+     - ``max_function_divergence <= 10.0``
 
 Scores are reported as percentages (0–100%) in all CLI and MCP output.
 Note that while the thresholds are used for score-floor aggregation, the

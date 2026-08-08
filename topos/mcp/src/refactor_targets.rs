@@ -59,7 +59,7 @@ pub fn build_refactor_targets(
             candidates.push(location_target(filepath, metric, entry));
         }
     }
-    candidates.extend(module_metric_targets(filepath, result));
+    candidates.extend(structural_metric_targets(filepath, result));
     candidates.extend(security_targets(filepath, security_findings));
 
     let pillar_rank: HashMap<&str, usize> = match ranking {
@@ -107,13 +107,19 @@ fn gate_pillar(metric: &str) -> &'static str {
 /// `"fix"` when failing this metric actually costs its pillar's
 /// `achieved`, `"improve"` when the gate is advisory.
 ///
-/// `cfg.cyclomatic` is the lone advisory spec (`gates_achieved: false`,
-/// issue #193): it is a whole-file merged-CFG sum that scales with
-/// function count, so it is still scored and surfaced but cannot fail
-/// SIMPLE — `ast.max_function_complexity` gates that concern directly.
-/// Labeling it `"fix"` sent agents to rewrite a metric no verdict depends
-/// on. Metrics with no registered spec default to gating, matching
-/// `gate_pillar`'s defensive fallback.
+/// Four specs are advisory (`gates_achieved: false`). `cfg.cyclomatic`
+/// (issue #193) is a whole-file merged-CFG sum that scales with function
+/// count, so it is still scored and surfaced but cannot fail SIMPLE —
+/// `ast.max_function_complexity` gates that concern directly.
+/// `mdg.instability` and `mdg.main_sequence_distance` are ratios whose
+/// resolution is `1 / (Ca + Ce)`, which at file granularity is too coarse
+/// for the calibrated band to be a fair test. Labeling any of them `"fix"`
+/// sends agents to rewrite a metric no verdict depends on. Metrics with no
+/// registered spec default to gating, matching `gate_pillar`'s defensive
+/// fallback. `mdg.fan_in` measures responsibility/change-impact radius at
+/// file scope: a widely reused interface is important, not automatically
+/// non-composable, so it remains an `improve` target while `mdg.fan_out`
+/// alone gates outward dependency burden.
 ///
 /// This is the single `gates_achieved` → severity mapping in this module;
 /// [`rank_key`] derives its gating tier from the severity string so the
@@ -178,16 +184,16 @@ fn location_target(filepath: &str, metric: &str, entry: &FunctionEntry) -> Refac
     }
 }
 
-/// Targets for failing module-granularity gates (entropy, coupling).
-fn module_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<RefactorTarget> {
+/// Targets for failing whole-file or module-context structural gates.
+fn structural_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<RefactorTarget> {
     // Reproduce the exact gate inputs the scorers used, or a target would
     // contradict the score this module claims to be derived from:
-    // `Φ_COMPOSABLE` drops raw `mdg.instability` in favor of
+    // `Φ_COMPOSABLE` replaces raw `mdg.instability` with
     // `mdg.main_sequence_distance` whenever abstractness and a real
     // coupling signal are present, and `distance_stable_leaf_exempt` reads
     // the stable-leaf flag plus raw instability from the gate context.
-    // Gating `result.raw_metrics` verbatim re-fired the superseded
-    // instability gate and left the stable-leaf carve-out unreachable.
+    // Evaluating `result.raw_metrics` verbatim would duplicate the superseded
+    // instability reading and leave the stable-leaf carve-out unreachable.
     // `coupling_gate_input` is the shared source of that swap (it also
     // computes `mdg.main_sequence_distance`, which is never in
     // `raw_metrics`); keep this block in sync with its sibling caller
@@ -200,6 +206,7 @@ fn module_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<R
         result.raw_metrics.get("mdg.fan_in").copied(),
         result.raw_metrics.get("mdg.fan_out").copied(),
         result.raw_metrics.get("mdg.abstractness").copied(),
+        result.raw_metrics.get("mdg.coupling").copied(),
     ));
     evaluate_gates(
         &gate_metrics,
@@ -209,33 +216,42 @@ fn module_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<R
         instability,
     )
     .into_iter()
-    .filter(|r| !r.passed() && r.spec.granularity == "module" && r.spec.pillar != "secure")
-    .map(|r| RefactorTarget {
-        target_id: target_id(filepath, r.spec.metric, Some("<module>"), Some(1)),
-        kind: "module".to_string(),
-        filepath: filepath.to_string(),
-        symbol: Some("<module>".to_string()),
-        line_start: Some(1),
-        line_end: None,
-        failing_generators: vec![r.spec.pillar.to_string()],
-        metric: r.spec.metric.to_string(),
-        current_value: Some(r.value),
-        threshold: r.threshold(),
-        severity: gate_severity(r.spec.metric).to_string(),
-        recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
-        constraints: MODULE_METRIC_CONSTRAINTS
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
-        evidence: HashMap::from([(
-            "interpretation".to_string(),
-            result
-                .interpretation
-                .get(r.spec.metric)
-                .cloned()
-                .map(Value::from)
-                .unwrap_or(Value::Null),
-        )]),
+    .filter(|r| {
+        !r.passed() && matches!(r.spec.granularity, "file" | "module") && r.spec.pillar != "secure"
+    })
+    .map(|r| {
+        let scope = if r.spec.granularity == "file" {
+            "<file>"
+        } else {
+            "<module>"
+        };
+        RefactorTarget {
+            target_id: target_id(filepath, r.spec.metric, Some(scope), Some(1)),
+            kind: r.spec.granularity.to_string(),
+            filepath: filepath.to_string(),
+            symbol: Some(scope.to_string()),
+            line_start: Some(1),
+            line_end: None,
+            failing_generators: vec![r.spec.pillar.to_string()],
+            metric: r.spec.metric.to_string(),
+            current_value: Some(r.value),
+            threshold: r.threshold(),
+            severity: gate_severity(r.spec.metric).to_string(),
+            recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
+            constraints: MODULE_METRIC_CONSTRAINTS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            evidence: HashMap::from([(
+                "interpretation".to_string(),
+                result
+                    .interpretation
+                    .get(r.spec.metric)
+                    .cloned()
+                    .map(Value::from)
+                    .unwrap_or(Value::Null),
+            )]),
+        }
     })
     .collect()
 }
@@ -449,7 +465,22 @@ mod tests {
         assert_eq!(targets[0].failing_generators, vec!["simple"]);
     }
 
-    /// Distance mode: `Φ_COMPOSABLE` gates `mdg.main_sequence_distance` in
+    #[test]
+    fn fan_in_remains_an_actionable_file_level_advisory() {
+        let mut result = ClassificationResult::default();
+        result.raw_metrics.insert("mdg.fan_in".to_string(), 30.0);
+        result.raw_metrics.insert("mdg.fan_out".to_string(), 5.0);
+
+        let targets = build_refactor_targets("a.py", &result, &[], &HashMap::new(), None, 5);
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].metric, "mdg.fan_in");
+        assert_eq!(targets[0].kind, "file");
+        assert_eq!(targets[0].severity, "improve");
+        assert_eq!(targets[0].threshold, Some(15.0));
+    }
+
+    /// Distance mode: `Φ_COMPOSABLE` scores `mdg.main_sequence_distance` in
     /// place of raw instability, so no target may fire on the instability
     /// the scorer superseded.
     #[test]
@@ -457,11 +488,12 @@ mod tests {
         let mut result = ClassificationResult::default();
         // A = 0.2, I = 0.9 => D = 0.1, inside main_sequence_distance_max,
         // even though I = 0.9 is above the raw instability_high of 0.7.
-        // Abstractness must be nonzero or the scorer keeps gating raw
+        // Abstractness must be nonzero or the scorer keeps raw
         // instability instead (see `coupling_gate_input`).
         result.raw_metrics.extend([
             ("mdg.instability".to_string(), 0.9),
             ("mdg.abstractness".to_string(), 0.2),
+            ("mdg.coupling".to_string(), 6.0),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
@@ -469,7 +501,7 @@ mod tests {
 
         assert!(
             targets.is_empty(),
-            "gating raw_metrics verbatim re-fires mdg.instability, which \
+            "evaluating raw_metrics verbatim duplicates mdg.instability, which \
              Φ_COMPOSABLE replaced with mdg.main_sequence_distance = 0.1 (passing); \
              got {:?}",
             targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
@@ -478,17 +510,18 @@ mod tests {
 
     /// The other direction of the same swap: distance fails while raw
     /// instability sits in band, so the target must name the metric the
-    /// scorer actually gated.
+    /// scorer actually evaluated.
     #[test]
-    fn composable_target_names_the_metric_the_scorer_gated() {
+    fn composable_target_names_the_metric_the_scorer_evaluated() {
         let mut result = ClassificationResult::default();
         // A = 1.0, I = 0.7 => D = 0.7, past main_sequence_distance_max,
         // while I = 0.7 is exactly on the raw instability high bound (in
         // band). A fully abstract module is a real reading — abstractness
-        // must be nonzero for the scorer to gate distance at all.
+        // must be nonzero for the scorer to evaluate distance at all.
         result.raw_metrics.extend([
             ("mdg.instability".to_string(), 0.7),
             ("mdg.abstractness".to_string(), 1.0),
+            ("mdg.coupling".to_string(), 6.0),
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
@@ -498,10 +531,12 @@ mod tests {
         assert_eq!(
             targets[0].metric, "mdg.main_sequence_distance",
             "mdg.main_sequence_distance is never in raw_metrics — it only exists \
-             once coupling_gate_input derives it, so gating raw_metrics verbatim \
+             once coupling_gate_input derives it, so evaluating raw_metrics verbatim \
              could never surface this failure at all"
         );
-        assert_eq!(targets[0].severity, "fix");
+        // Distance is advisory (its resolution is `I`'s), so it is still
+        // named and still actionable, but it cannot fail COMPOSABLE alone.
+        assert_eq!(targets[0].severity, "improve");
         assert_eq!(targets[0].failing_generators, vec!["composable"]);
     }
 
@@ -513,14 +548,11 @@ mod tests {
     fn cross_pillar_fixture() -> (HashMap<String, Vec<FunctionEntry>>, ClassificationResult) {
         let locations = HashMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(118)])]);
         let mut result = ClassificationResult::default();
-        // Abstractness is deliberately absent so `coupling_gate_input`
-        // keeps raw instability rather than swapping in
-        // `mdg.main_sequence_distance`; 0.18 is below `instability_low`
-        // (0.3), so the gate fails low with an excess of just 0.12 against
-        // cyclomatic's 103.
-        result
-            .raw_metrics
-            .insert("mdg.instability".to_string(), 0.18);
+        // `mdg.fan_out` is the gating COMPOSABLE metric (an absolute count,
+        // so it has no resolution limit and still fails hard). At 11 against
+        // a cap of 10 its excess is 1 -- a hundredth of cyclomatic's 103 --
+        // which is the point: the gating tier must win on tier, not size.
+        result.raw_metrics.insert("mdg.fan_out".to_string(), 11.0);
         (locations, result)
     }
 
@@ -539,10 +571,10 @@ mod tests {
             targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
         );
         assert_eq!(
-            targets[0].metric, "mdg.instability",
+            targets[0].metric, "mdg.fan_out",
             "no ranking was supplied, so SIMPLE-before-COMPOSABLE is only \
              default_pillar_rank talking. A gating COMPOSABLE failure must beat an \
-             advisory SIMPLE metric with a far larger excess (103 vs 0.12), or the \
+             advisory SIMPLE metric with a far larger excess (103 vs 1), or the \
              agent routes off a metric no verdict depends on."
         );
         assert_eq!(targets[0].severity, "fix");
@@ -575,7 +607,7 @@ mod tests {
              even though the COMPOSABLE one gates — preferences.ranking is an \
              explicit instruction, unlike default_pillar_rank"
         );
-        assert_eq!(targets[1].metric, "mdg.instability");
+        assert_eq!(targets[1].metric, "mdg.fan_out");
     }
 
     #[test]

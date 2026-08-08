@@ -25,9 +25,10 @@ or how cautiously it handles inputs.
 
 ### `composable`
 
-Upweights the COMPOSABLE generator's metrics (Martin coupling / instability).
-Use when the file is a **library surface** — imported by many consumers.
-Clean fan-in/out and instability in the healthy band dominate.
+Upweights the COMPOSABLE generator's dependency metrics. Use when the file is
+an **orchestrator or integration boundary** whose outward interactions deserve
+special attention. Fan-out drives the file-level verdict; fan-in and Martin
+stability readings enrich the diagnosis without hard-failing the file.
 
 ### `navigable`
 

@@ -80,6 +80,7 @@ pub fn suggest_refactors(
         result.raw_metrics.get("mdg.fan_in").copied(),
         result.raw_metrics.get("mdg.fan_out").copied(),
         result.raw_metrics.get("mdg.abstractness").copied(),
+        result.raw_metrics.get("mdg.coupling").copied(),
     ));
     let gate_results = evaluate_gates(
         &gate_metrics,
@@ -103,7 +104,9 @@ pub fn suggest_refactors(
                 // Severity tracks what the gate can actually cost you:
                 // only a `gates_achieved` gate can drag its pillar's
                 // `achieved` down, so only it warrants "fix". Advisory
-                // gates (today just `cfg.cyclomatic` -- issue #193) are
+                // gates (`cfg.cyclomatic` -- issue #193 -- plus
+                // `mdg.instability` and `mdg.main_sequence_distance`,
+                // whose file-level resolution is too coarse to gate) are
                 // still worth acting on but cannot fail a pillar, so
                 // telling an agent to "fix" them misdirects the loop.
                 severity: if r.spec.gates_achieved {
@@ -168,7 +171,7 @@ fn gate_message(r: &GateResult) -> String {
         ),
         // mdg.fan_in
         _ => format!(
-            "Split this module (fan-in {value:.0} > {threshold:.0}); too many modules depend on it."
+            "Review this file's responsibility (fan-in {value:.0} > {threshold:.0}); many external symbols call it."
         ),
     }
 }
@@ -345,14 +348,15 @@ mod tests {
 
     #[test]
     fn main_sequence_failure_gets_actionable_composable_suggestion() {
-        // Abstractness must be nonzero for the scorer to gate distance at all
-        // (see `coupling_gate_input`), so the fixture carries a real reading:
-        // distance = |0.2 + 0.1 − 1| = 0.7.
+        // Distance mode needs a nonzero abstractness reading *and* coupling
+        // at or above the ratio's resolution limit (see `coupling_gate_input`),
+        // so the fixture carries both: distance = |0.2 + 0.1 − 1| = 0.7.
         let result = result(
             HashMap::from([("composable".to_string(), EvaluationValue::Slop)]),
             HashMap::from([
                 ("mdg.instability".to_string(), 0.1),
                 ("mdg.abstractness".to_string(), 0.2),
+                ("mdg.coupling".to_string(), 6.0),
                 ("mdg.fan_in".to_string(), 1.0),
                 ("mdg.fan_out".to_string(), 5.0),
             ]),
@@ -361,7 +365,9 @@ mod tests {
 
         let suggestions = suggest_refactors(&result, &[]);
         let suggestion = by_metric(&suggestions, "mdg.main_sequence_distance");
-        assert_eq!(suggestion.severity, "fix");
+        // Advisory: still surfaced and still actionable, but it cannot fail
+        // COMPOSABLE on its own, so "improve" rather than "fix".
+        assert_eq!(suggestion.severity, "improve");
         assert!(suggestion.message.contains("Rebalance abstraction"));
         assert!(suggestion.message.contains("0.70 > 0.50"));
     }

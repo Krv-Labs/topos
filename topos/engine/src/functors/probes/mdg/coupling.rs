@@ -176,7 +176,13 @@ pub fn owning_file(graph: &ModuleDependencyGraph, node_id: &str) -> Option<Strin
 /// entirely by that one edge's *direction* and carries no information about
 /// balance — the quantity `I` exists to express. Two edges is the first
 /// total that can also read `0.5`.
-const MIN_RESOLVABLE_COUPLING: usize = 2;
+///
+/// Public because `Φ_COMPOSABLE` needs the same limit to decide whether an
+/// instability reading is real enough to build `mdg.main_sequence_distance`
+/// out of — see `evaluation::policies::composable::coupling_gate_input`. One
+/// constant, so the probe and the policy cannot disagree about what is
+/// measurable.
+pub const MIN_RESOLVABLE_COUPLING: usize = 2;
 
 fn instability_from_coupling(result: &CouplingResult) -> f64 {
     if result.total() < MIN_RESOLVABLE_COUPLING {

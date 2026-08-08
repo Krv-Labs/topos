@@ -9,9 +9,12 @@
 //! - **Fan-out**: how many external symbols this file's symbols call.
 //!   High fan-out means the module has many dependencies.
 //!
-//! The product `fan_in * fan_out^2` (the Henry-Kafura complexity) is
-//! sometimes used as a structural-risk proxy, but we expose the raw
-//! counts so the evaluation section can apply its own thresholds.
+//! Henry and Kafura's original information-flow complexity was
+//! `length * (fan_in * fan_out)^2`, not a direction-neutral composability
+//! verdict. Later measurement work also questioned the multiplication and
+//! unexplained exponent while finding the separate fan counts better behaved
+//! (Briand, Morasca & Basili, 1996). We therefore expose raw counts and let
+//! policy interpret their directions separately.
 
 use std::collections::HashSet;
 

@@ -139,7 +139,7 @@ impl fmt::Display for ClassificationResult {
 /// Each generator `gᵢ` is fed by the representation theory says is the
 /// correct lens for that quality:
 /// - SIMPLE ← CFG cyclomatic complexity
-/// - COMPOSABLE ← ModuleDependencyGraph coupling / instability
+/// - COMPOSABLE ← ModuleDependencyGraph outward burden / coupling diagnostics
 /// - SECURE ← Code Property Graph taint / danger probes
 #[derive(Debug, Default)]
 pub struct CharacteristicMorphism;
@@ -372,6 +372,7 @@ fn score_composable_dim(
         raw.get("mdg.fan_in").copied(),
         raw.get("mdg.fan_out").copied(),
         raw.get("mdg.abstractness").copied(),
+        raw.get("mdg.coupling").copied(),
         is_entrypoint_module,
         is_stable_leaf_module,
     ))

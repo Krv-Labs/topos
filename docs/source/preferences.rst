@@ -10,7 +10,7 @@ cannot reach ``IDEAL`` within the available iteration budget.
 Topos measures four independent quality generators:
 
 * ``SIMPLE`` — low internal complexity.
-* ``COMPOSABLE`` — healthy module coupling.
+* ``COMPOSABLE`` — bounded outward dependency burden.
 * ``SECURE`` — no known dangerous calls or taint paths.
 * ``NAVIGABLE`` — shallow nesting, cheap for an agent to read.
 

@@ -51,10 +51,10 @@ pub struct GateContext<'a> {
     pub is_entrypoint_module: bool,
     pub is_stable_leaf_module: bool,
     /// Raw Martin instability, threaded separately from `metrics` because
-    /// `mdg.instability` is deliberately absent from the gated metrics map
+    /// `mdg.instability` is deliberately absent from the evaluated metrics map
     /// whenever `mdg.main_sequence_distance` is active (see
     /// `evaluation::policies::composable::score_coupling`) -- re-adding it
-    /// under its own key would re-trigger the (now-superseded)
+    /// under its own key would duplicate the (now-advisory)
     /// `mdg.instability` GateSpec for the same file.
     pub instability: Option<f64>,
 }
@@ -241,12 +241,12 @@ fn interpret_main_sequence_distance(value: f64, outcome: GateOutcome) -> String 
 fn interpret_fan_in(value: f64, outcome: GateOutcome) -> String {
     if outcome == GateOutcome::Pass {
         format!(
-            "fan-in ({value:.0}) within threshold (<= {})",
+            "fan-in ({value:.0}) within advisory reference (<= {})",
             COMPOSABLE.max_fan_in
         )
     } else {
         format!(
-            "fan-in ({value:.0}) exceeds threshold (> {})",
+            "fan-in ({value:.0}) exceeds advisory reference (> {})",
             COMPOSABLE.max_fan_in
         )
     }
@@ -363,7 +363,21 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(instability_entrypoint_exempt),
         operations_low: &["rebalance_dependencies", "extract_boundary"],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
-        gates_achieved: true,
+        // Advisory only: `I = Ce / (Ca + Ce)` is a ratio whose resolution is
+        // `1 / (Ca + Ce)`, and at file granularity that denominator is a
+        // single digit. The attainable readings are the grid `{k/n}`, so
+        // whether the band is even *reachable* swings with `n` rather than
+        // with design quality -- 33% of the grid lands in band at `n = 2`,
+        // 50% at `n = 3`, 20% at `n = 4`. Measured over this repo's 176
+        // files, the pass rate tracked that grid density, not the code.
+        // Still scored, interpreted, and offered as a refactor target; it
+        // just cannot hard-fail a file for the arithmetic of its own
+        // denominator. Absolute fan counts have no such resolution limit,
+        // but at file scope only outward burden (`mdg.fan_out`) gates;
+        // incoming impact radius (`mdg.fan_in`) remains advisory. Gating
+        // package stability properly needs package-granularity coupling -- see
+        // docs/decisions/composable-at-module-granularity.md.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "mdg.main_sequence_distance",
@@ -375,30 +389,46 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(distance_stable_leaf_exempt),
         operations_low: &[],
         operations_high: &["rebalance_dependencies", "extract_boundary"],
-        gates_achieved: true,
+        // Advisory for the same reason as `mdg.instability`: `|A + I - 1|`
+        // is built on `I` and inherits its resolution limit exactly.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "mdg.fan_in",
         pillar: "composable",
         low: None,
         high: Some(COMPOSABLE.max_fan_in),
-        granularity: "module",
+        granularity: "file",
         interpret: interpret_fan_in,
         exempt: None,
         operations_low: &[],
         operations_high: &["split_module"],
-        gates_achieved: true,
+        // Advisory at file scope. Incoming calls measure responsibility and
+        // change-impact radius, not dependency burden: a stable interface or
+        // shared utility can legitimately have many callers. Class/component
+        // coupling studies use incoming degree to identify high-risk or
+        // central units, but do not justify treating popularity alone as a
+        // composability failure (Basili, Briand & Melo 1996; Zimmermann &
+        // Nagappan 2008). Keep it in inspect/refactor and in the continuous
+        // score; only outward interaction burden gates the file verdict.
+        gates_achieved: false,
     },
     GateSpec {
         metric: "mdg.fan_out",
         pillar: "composable",
         low: None,
         high: Some(COMPOSABLE.max_fan_out),
-        granularity: "module",
+        granularity: "file",
         interpret: interpret_fan_out,
         exempt: None,
         operations_low: &[],
         operations_high: &["reduce_fanout", "invert_dependency"],
+        // File-level COMPOSABLE is deliberately narrower than Martin's
+        // package metrics: it asks how much external behavior this file must
+        // coordinate. Distinct external callees are a local response/outward
+        // coupling measure with class/module-level precedent (Chidamber &
+        // Kemerer 1994; Henry & Kafura 1981). The numeric cap is calibrated
+        // empirically by Topos, not claimed as a literature constant.
         gates_achieved: true,
     },
     GateSpec {

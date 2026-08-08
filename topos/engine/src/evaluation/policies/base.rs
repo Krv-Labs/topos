@@ -15,7 +15,7 @@
 //! # Decisive semantics: AND-of-raw-metric thresholds
 //!
 //! Each `Φᵢ` owns **per-metric raw thresholds** (cyclomatic ≤ 15, zero
-//! taint flows, fan-in ≤ 15, …). `achieved` is the independent AND of
+//! taint flows, fan-out ≤ 10, …). `achieved` is the independent AND of
 //! those checks — *not* `score ≥ score_floor(g)`. The normalized
 //! `score` on [`ScoredDecision`] is `min(per-metric qualities)` for
 //! reporting and multi-file meets; it does not gate `achieved`.

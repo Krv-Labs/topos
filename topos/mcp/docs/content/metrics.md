@@ -31,8 +31,7 @@ complexity reason. `ast.max_function_complexity` — a true per-function
 max — gates that concern directly, so cyclomatic keeps its `≤ 15`
 reference point for interpretation and scoring only. (Source of truth:
 `GateSpec::gates_achieved` in
-`topos/engine/src/evaluation/policies/gates.rs`; `cfg.cyclomatic` is the
-only spec with `gates_achieved: false`.)
+`topos/engine/src/evaluation/policies/gates.rs`.)
 
 `Φ_SIMPLE` maps metrics to `[0, 1]` quality scores (cyclomatic cap 40,
 max-function cap 20, entropy bell peak at 0.5), then takes `score =
@@ -61,29 +60,26 @@ has no abstract-type concept).
 | Key | What it measures | Gate / good range |
 |---|---|---|
 | `mdg.coupling`    | Ca + Ce (afferent + efferent coupling).  | Diagnostic |
-| `mdg.instability` | `Ce / (Ca + Ce)`.                        | **[0.3, 0.7]** — only gated when `mdg.abstractness` is unavailable for the file's language (see below) |
-| `mdg.abstractness` | Fraction of the module's type declarations that are abstract (trait/interface/protocol/abstract class) vs. concrete (struct/class/enum). `0.0` for a functions-only module (no type declarations at all) — that is a real, meaningful "fully concrete" reading, not "unmeasured." | Diagnostic |
-| `mdg.main_sequence_distance` | Martin's Distance from the Main Sequence, `D = \|A + I − 1\|`. Replaces the raw `mdg.instability` gate whenever abstractness is available — a concrete, unstable orchestrator (I≈1, A≈0, e.g. `main.rs`) sits *on* the main sequence (D≈0) and is not penalized, unlike a fixed instability band. | **≤ 0.5** (achieved gate, when active) |
-| `mdg.fan_in`      | Incoming `CALLS` edges.                  | **≤ 15** (achieved gate) |
-| `mdg.fan_out`     | Outgoing `CALLS` edges.                  | **≤ 15** (achieved gate) |
+| `mdg.instability` | `Ce / (Ca + Ce)`; dependency role/direction. | **[0.3, 0.7]** — advisory |
+| `mdg.abstractness` | Fraction of type declarations that are abstract. | Diagnostic input to distance |
+| `mdg.main_sequence_distance` | Martin's package-oriented `D = \|A + I − 1\|`, projected onto the file for architectural context. | **≤ 0.5** — advisory |
+| `mdg.fan_in`      | Incoming `CALLS` edges; responsibility/change-impact radius. | **≤ 15** — advisory |
+| `mdg.fan_out`     | Distinct external symbols called by the file; outward interaction burden. | **≤ 10** (achieved gate) |
 | `mdg.dep_depth`   | Longest `IMPORTS` chain.                 | Diagnostic |
 
-**Why two instability gates?** Gating raw `mdg.instability` against a
-fixed band flags both stable leaf modules (constants, error types) and
-unstable orchestrators (`main.rs`, bootstrap/wiring code) even when those
-extremes are architecturally intentional — see issue #124. Pairing
-instability with Abstractness and gating on distance from the main
-sequence fixes this for languages where Abstractness is measured; other
-languages (currently: JavaScript, C++) keep the original band gate
-unchanged until their UAST mappers gain type-declaration classification.
-A separate role-based exemption (`is_stable_leaf_module` — a
-declarations-only module with no branching control flow) tolerates
-maximal main-sequence distance for frozen, concrete foundation/utility
-code, mirroring Martin's own accepted "Zone of Pain" exception.
+**Why only fan-out gates at file scope?** Outward interaction is a direct local
+burden: it approximates how much external behavior a file must coordinate.
+High fan-in instead marks impact radius and can be correct for an interface or
+shared utility. Martin instability and main-sequence distance describe package
+roles; sparse file graphs also make their attainable values coarse. They remain
+scored, interpreted, and available as refactor targets, but do not hard-fail a
+file. See the cited rationale and calibration in
+`docs/decisions/file-level-composable.md`.
 
-`Φ_COMPOSABLE` uses fan caps of 40 for score normalization. **`achieved`**
-is the AND of whichever instability-family gate is active, plus fan-in and
-fan-out.
+`Φ_COMPOSABLE` uses fan caps of 40 for score normalization and takes the minimum
+over all scored readings, including advisory ones. **`achieved`** is determined
+only by `mdg.fan_out <= 10`. Consequently, an achieved file may still have a low
+COMPOSABLE score that invites deeper inspection.
 
 ## SECURE generator (← Code Property Graph)
 
@@ -109,7 +105,7 @@ is always available.
 
 | Key | What it measures | Gate |
 |---|---|---|
-| `nav.max_function_divergence` | Worst function's Semantic Compositional Divergence — `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside it. | **≤ 6.0** (achieved gate) |
+| `nav.max_function_divergence` | Worst function's Semantic Compositional Divergence — `Σ depth(u)·ln(1 + fanout(u))` over the scope-forming nodes inside it. | **≤ 10.0** (achieved gate) |
 
 **What this is for.** Once code length is controlled for, classical
 complexity metrics stop predicting LLM task accuracy but *nesting depth*
@@ -137,8 +133,8 @@ carries the offending functions worst-first with real spans, so the failure
 becomes a `refactor_target`. The fix is `extract_helper`: lift the deepest
 nested block into a top-level function.
 
-> **Calibration.** The `6.0` gate is the p95 boundary from a 4,254-file
-> multi-language benchmark corpus (p95 `5.98`, ~5.5% gate failure rate). The
+> **Calibration.** The `10.0` gate was selected from a balanced 6,390-file
+> leaderboard corpus (p95 `10.37`, ~5.2% gate failure rate). The
 > `12.0` score cap spans p99 across Rust (`10.40`), Go (`13.64`), and Python
 > (`12.31`) so scores decay linearly without early flooring. Topos's 176 Rust
 > sources remain the reference ECDF (p95 `5.65`, p99 `8.62`, max `12.19`).

@@ -78,10 +78,10 @@ Topos fills this gap by measuring structural quality, ensuring that your code is
 The Medal Podium
 ----------------
 
-Topos measures each file along three independent quality pillars. Each pillar is pass or fail on its own:
+Topos measures each file along four independent quality pillars. Each pillar is pass or fail on its own:
 
 - **SIMPLE** — The code avoids unnecessary complexity.
-- **COMPOSABLE** — The module is cleanly decoupled from other modules.
+- **COMPOSABLE** — The file keeps its outward dependency burden bounded.
 - **SECURE** — The code is free of operations that are known to expose security vulnerabilities.
 
 - **NAVIGABLE** — The code is shallow enough for an AI agent to read and change in one pass, rather than deeply nested.
@@ -139,7 +139,7 @@ How it works
 Topos measures code along the four independent quality generators and maps them to a 16-element evaluation lattice:
 
 - **SIMPLE** — Built from the `abstract syntax tree <https://en.wikipedia.org/wiki/Abstract_syntax_tree>`_ (AST) and `control-flow graph <https://en.wikipedia.org/wiki/Control-flow_graph>`_ (CFG). We calculate cyclomatic complexity of the CFG and entropy of the AST to assess complexity.
-- **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_, to capture inter-module dependencies. This is slightly different than the usual `program dependence graph <https://en.wikipedia.org/wiki/Program_dependence_graph>`_ (PDG) which is used to capture intra-function dependencies. We calculate Martin Instability and Fanning metrics for the MDG to assess coupling.
+- **COMPOSABLE** — Built from the `module dependency graph <https://en.wikipedia.org/wiki/Module_dependency_graph>`_ (MDG) using `GitNexus <https://github.com/abhigyanpatwari/GitNexus>`_. File-level achievement gates the number of distinct external callees (fan-out); Martin instability, fan-in, and other graph metrics remain available for richer architectural diagnosis.
 - **SECURE** — Built from the `code property graph <https://en.wikipedia.org/wiki/Code_property_graph>`_ (CPG). We calculate dangerous-API reachability and taint paths from the CPG to assess security.
 - **NAVIGABLE** — Built from the AST scope tree. We calculate depth-weighted nesting divergence (``Σ depth · ln(1 + fanout)``) per function to assess how much cognitive load the code imposes on an AI agent reading it. Orthogonal to SIMPLE: that one counts branches, this one measures nesting.
 

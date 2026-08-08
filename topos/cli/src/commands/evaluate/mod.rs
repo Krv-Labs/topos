@@ -40,10 +40,10 @@ use clap::Args;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
+use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
-use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 
 use self::inputs::SourceInput;
@@ -211,7 +211,10 @@ fn classify_evaluate_inputs(
     Ok(results)
 }
 
-fn ensure_pillar_measured(results: &[ClassificationResult], pillar: Generator) -> Result<(), String> {
+fn ensure_pillar_measured(
+    results: &[ClassificationResult],
+    pillar: Generator,
+) -> Result<(), String> {
     if pillar_measured(results, pillar.as_str()) {
         return Ok(());
     }

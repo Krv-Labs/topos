@@ -10,13 +10,13 @@ openwiki:
   source_paths: [topos/engine/src/adapters/gitnexus.rs, topos/mcp/src/security.rs, Dockerfile, .mcp/server.json]
   symbols: [ModuleDependencyGraph, resolve_within_root, resolve_existing_prefix]
   test_paths: [topos/mcp/src/security.rs]
-  invariants: [MCP file paths must resolve within the canonical file root even when a leaf is missing under a symlinked prefix.]
+  invariants: [MCP paths must remain inside a configured canonical maximum boundary, and missing paths must not hide symlink-prefix escapes.]
   validation_commands: [cargo test -p topos-mcp]
 ---
 
 # Analysis integrations and distribution surfaces
 
-Topos unifies structural signals into one three-pillar verdict. GitNexus supplies inter-module topology, while the Rust MCP package embeds Sighthound for supplementary security findings. These integrations feed the [quality model](../domain/quality-model.md) through the [architecture pipeline](../architecture/overview.md). The CLI can register that MCP package in user agents through the separate [harness-registration workflow](../workflows/harness-registration.md).
+Topos combines four structural pillars into one lattice verdict. GitNexus supplies the inter-module topology used by COMPOSABLE, while the Rust MCP package embeds Sighthound for supplementary SECURE finding handling. These integrations feed the [quality model](../domain/quality-model.md) through the [architecture pipeline](../architecture/overview.md). The CLI can register that MCP package in user agents through the separate [harness-registration workflow](../workflows/harness-registration.md).
 
 ## GitNexus for COMPOSABLE
 
@@ -30,17 +30,17 @@ topos depgraph generate
 
 An explicit `--gitnexus-dir` or MCP `gitnexus_dir` identifies the store and makes the store’s parent the COMPOSABLE project root. Resolve the override once, including symlink-aware resolution of existing prefixes, before status, freshness, loading, or generation uses it. This prevents both indexing the wrong ancestor and double-appending a relative override after root derivation.
 
-Missing in-root stores can be generated. Missing GitNexus, generation failure, and unreadable stores leave SIMPLE and SECURE available but COMPOSABLE unmeasured. Outside-root, branch-mismatched, stale, invalid-path, or schema-mismatched stores are status conditions rather than crashes; a schema mismatch is not silently regenerated. The CLI/MCP flow and its freshness contract are described in [agent workflow guidance](../workflows/agent-and-cli.md#baseline-evaluation-loop).
+Missing in-root stores can be generated. Missing GitNexus, generation failure, and unreadable stores leave SIMPLE, SECURE, and NAVIGABLE available but COMPOSABLE unmeasured. Outside-root, branch-mismatched, stale, invalid-path, or schema-mismatched stores are status conditions rather than crashes; a schema mismatch is not silently regenerated. The CLI/MCP flow and its freshness contract are described in [agent workflow guidance](../workflows/agent-and-cli.md#baseline-evaluation-and-composable).
 
 ## Embedded Sighthound for SECURE
 
-`topos-mcp` depends on a pinned Sighthound crate, so the server/container compile it into the Rust distribution rather than invoking a user-installed `sighthound` executable. Native CPG probes remain Topos’s local structural SECURE mechanism; Sighthound contributes supplementary finding handling. Changes to that boundary belong in `topos/mcp/src/{security,security_findings,sighthound}.rs` and CPG/SECURE tests together.
+`topos-mcp` depends on a pinned Sighthound crate, so the server/container compile it into the Rust distribution rather than invoking a user-installed `sighthound` executable. Native CPG probes remain Topos’s local structural SECURE mechanism; Sighthound contributes supplementary finding handling. This integration is supplementary to the four-pillar lattice rather than a new generator. Changes to that boundary belong in `topos/mcp/src/{security,security_findings,sighthound}.rs` and CPG/SECURE tests together.
 
 ## MCP file-access boundary
 
-MCP file tools are confined to a canonical root. `resolve_file_root` uses `TOPOS_MCP_FILE_ROOT` when nonempty; otherwise it walks ancestors of the current directory for `.git`, `pyproject.toml`, or `Cargo.toml`. If neither route succeeds, it fails closed. The selected root is cached for the single-project stdio process.
+New MCP filesystem tools use `resolve_project_path` for each requested path. With `TOPOS_MCP_FILE_ROOT` set, it is a canonical maximum boundary; without it, the requested path must be absolute and its containing project is discovered by walking ancestors for `.git`, `pyproject.toml`, or `Cargo.toml`. The call fails closed when the path is unreadable, outside a configured boundary, or no project marker exists. This permits a user-level stdio server to work against the host-provided workspace instead of being pinned to its startup directory.
 
-`resolve_within_root` calls `resolve_existing_prefix` before testing containment. It canonicalizes every existing path component, then applies a missing tail lexically only after no further symlink can exist. It must resume symlink resolution if `..` removes missing components. This prevents an absent requested leaf or an intermediate `..` from hiding an existing symlink that escapes the configured root.
+`resolve_within_root` calls `resolve_existing_prefix` before testing containment for operations that may address missing paths. It canonicalizes every existing path component, then applies a missing tail lexically only after no further symlink can exist. It must resume symlink resolution if `..` removes missing components. This prevents an absent requested leaf or an intermediate `..` from hiding an existing symlink that escapes the configured root.
 
 ```mermaid
 flowchart TD

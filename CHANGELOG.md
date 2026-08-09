@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`cfg.cyclomatic` remediation no longer advises an action that worsens the metric it cites** ([#286](https://github.com/Krv-Labs/topos/issues/286), [#318](https://github.com/Krv-Labs/topos/pull/318)) — because `cfg.cyclomatic` is a whole-file sum, extracting a helper preserves the decisions and adds a function. The guidance now recommends collapsing redundant decisions or splitting the file, and makes the trade-off with `ast.max_function_complexity` explicit.
+
 ## [0.5.0] - 2026-08-07
 
 ### Added

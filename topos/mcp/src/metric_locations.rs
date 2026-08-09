@@ -69,11 +69,30 @@ pub fn build_metric_locations(
 ) -> HashMap<String, Vec<FunctionEntry>> {
     let mut locations = HashMap::new();
 
-    if let Some(&max_func) = result.raw_metrics.get("ast.max_function_complexity") {
-        if max_func > SIMPLE.max_function_complexity {
-            let offending = offending_functions(source, language);
+    let complexity_gate_failed = result
+        .raw_metrics
+        .get("ast.max_function_complexity")
+        .is_some_and(|&max_func| max_func > SIMPLE.max_function_complexity);
+    let divergence_gate_failed = result
+        .raw_metrics
+        .get("nav.max_function_divergence")
+        .is_some_and(|&divergence| divergence > NAVIGABLE.max_function_divergence);
+
+    // One parse per request: both per-function collectors read this same
+    // UAST. Built only when a per-function gate actually failed, so a
+    // passing file still parses zero times here.
+    if complexity_gate_failed || divergence_gate_failed {
+        let morphism = parse(source, language);
+        if complexity_gate_failed {
+            let offending = offending_functions(&morphism, source);
             if !offending.is_empty() {
                 locations.insert("ast.max_function_complexity".to_string(), offending);
+            }
+        }
+        if divergence_gate_failed {
+            let offending = diverging_functions(&morphism, source);
+            if !offending.is_empty() {
+                locations.insert("nav.max_function_divergence".to_string(), offending);
             }
         }
     }
@@ -87,16 +106,22 @@ pub fn build_metric_locations(
         }
     }
 
-    if let Some(&divergence) = result.raw_metrics.get("nav.max_function_divergence") {
-        if divergence > NAVIGABLE.max_function_divergence {
-            let offending = diverging_functions(source, language);
-            if !offending.is_empty() {
-                locations.insert("nav.max_function_divergence".to_string(), offending);
-            }
-        }
-    }
-
     locations
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Parses on this thread, so the regression test can assert one
+    /// morphism per request rather than one per collector. Thread-local
+    /// because the test harness runs these tests in parallel.
+    static PARSE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Sole construction point for the metric-location morphism.
+fn parse(source: &str, language: &str) -> ProgramMorphism {
+    #[cfg(test)]
+    PARSE_COUNT.with(|count| count.set(count.get() + 1));
+    ProgramMorphism::new(source, language)
 }
 
 /// Functions whose nesting divergence is over the NAVIGABLE gate,
@@ -106,8 +131,7 @@ pub fn build_metric_locations(
 /// — the field is the wire's generic "how bad is this" number, and a
 /// fractional log-weighted score has no better home in the existing shape.
 /// The exact value stays available in `raw_metrics`.
-fn diverging_functions(source: &str, language: &str) -> Vec<FunctionEntry> {
-    let morphism = ProgramMorphism::new(source, language);
+fn diverging_functions(morphism: &ProgramMorphism, source: &str) -> Vec<FunctionEntry> {
     let Some(ast) = morphism.ast.as_ref() else {
         return Vec::new();
     };
@@ -136,8 +160,7 @@ fn diverging_functions(source: &str, language: &str) -> Vec<FunctionEntry> {
         .collect()
 }
 
-fn offending_functions(source: &str, language: &str) -> Vec<FunctionEntry> {
-    let morphism = ProgramMorphism::new(source, language);
+fn offending_functions(morphism: &ProgramMorphism, source: &str) -> Vec<FunctionEntry> {
     let Some(ast) = morphism.ast.as_ref() else {
         return Vec::new();
     };
@@ -193,6 +216,24 @@ mod tests {
         assert_eq!(entries[0].name, "deep");
         assert_eq!(entries[0].start_line, Some(1));
         assert_eq!(entries[0].metric_source.as_deref(), Some("nav"));
+    }
+
+    /// One morphism per request, not one per collector: with both
+    /// per-function gates failing, the two collectors must share a single
+    /// parse.
+    #[test]
+    fn both_collectors_share_one_parse() {
+        let mut source = deeply_nested();
+        // Extra shallow branches push the same function past SIMPLE's
+        // per-function complexity gate as well.
+        for extra in 0..12 {
+            source.push_str(&format!("    if xs[{extra}]:\n        return 0\n"));
+        }
+        PARSE_COUNT.with(|count| count.set(0));
+        let locations = locations_for(&source);
+        assert!(locations.contains_key("ast.max_function_complexity"));
+        assert!(locations.contains_key("nav.max_function_divergence"));
+        assert_eq!(PARSE_COUNT.with(|count| count.get()), 1);
     }
 
     #[test]

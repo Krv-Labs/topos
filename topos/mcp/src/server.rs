@@ -9,6 +9,7 @@
 //! the `topos_refactor_until_ideal` prompt are implemented directly in the
 //! [`ServerHandler`] methods, since they are small and static.
 
+use std::borrow::Cow;
 use std::future::Future;
 
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -36,6 +37,13 @@ to enable COMPOSABLE/IDEAL; check graph state with topos_depgraph_status and bui
 with topos_generate_depgraph. topos_calculate_coverage reports test-suite coverage — structural \
 (UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice. \
 Read `topos://build` to confirm which binary and file root are serving you.";
+
+/// MCP revisions Topos claims. `2025-11-25` is the initialize-era lifecycle
+/// every current host speaks; `2026-07-28` is the stateless revision with
+/// `server/discover` and per-request `_meta`. Both are covered by the stdio
+/// lifecycle tests.
+const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
+    &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28];
 
 const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 
@@ -238,6 +246,15 @@ impl ServerHandler for ToposServer {
             crate::build_info::version_with_build(),
         ))
         .with_instructions(SERVER_INSTRUCTIONS)
+    }
+
+    /// Narrow rmcp's default (every revision the SDK knows) to the two Topos is
+    /// actually exercised against. This list is what `server/discover`
+    /// advertises and what bounds `initialize` negotiation, so leaving the
+    /// default in place would claim support for three pre-`2025-11-25`
+    /// revisions no test covers.
+    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
+        Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
     }
 
     fn list_resources(

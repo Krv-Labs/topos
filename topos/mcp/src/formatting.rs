@@ -708,7 +708,8 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
     // emitted *only* when the binary on disk has outrun this process, so a
     // healthy call pays nothing — the structured channel is untouched either
     // way. Staleness cannot be advertised in `instructions` instead: those
-    // are built at `initialize`, when a just-started process is never stale.
+    // are built during the handshake (`initialize` or `server/discover`),
+    // when a just-started process is never stale.
     let markdown = match crate::build_info::stale_banner() {
         Some(banner) => format!("{banner}\n\n{markdown}"),
         None => markdown,

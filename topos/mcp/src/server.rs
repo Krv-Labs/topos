@@ -14,10 +14,10 @@ use std::future::Future;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    GetPromptRequestParams, GetPromptResult, Implementation, ListPromptsResult,
+    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
     ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument, PromptMessage,
-    ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-    Role, ServerCapabilities, ServerInfo,
+    ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, Role, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -252,7 +252,7 @@ impl ServerHandler for ToposServer {
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<ReadResourceResponse, McpError>> + Send + '_ {
         let result = if request.uri == BUILD_URI {
             Some(ReadResourceResult::new(vec![ResourceContents::text(
                 crate::build_info::render(),
@@ -269,7 +269,7 @@ impl ServerHandler for ToposServer {
                 None => None,
             }
         };
-        std::future::ready(result.ok_or_else(|| {
+        std::future::ready(result.map(Into::into).ok_or_else(|| {
             McpError::resource_not_found(format!("Unknown resource: {}", request.uri), None)
         }))
     }
@@ -288,7 +288,7 @@ impl ServerHandler for ToposServer {
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<GetPromptResponse, McpError>> + Send + '_ {
         let result = if request.name == REFACTOR_PROMPT_NAME {
             let args = request.arguments.unwrap_or_default();
             let filepath = args
@@ -320,10 +320,7 @@ impl ServerHandler for ToposServer {
                 max_iterations,
                 preferences.as_deref(),
             );
-            Ok(GetPromptResult::new(vec![PromptMessage::new_text(
-                Role::User,
-                text,
-            )]))
+            Ok(GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)]).into())
         } else {
             Err(McpError::invalid_params(
                 format!("Unknown prompt: {}", request.name),

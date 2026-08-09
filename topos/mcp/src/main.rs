@@ -8,8 +8,9 @@
 //! CLI — but `--version` is honored because it is the first thing anyone
 //! reaches for when working out which of several installed Topos servers a
 //! host is actually running. Without it the binary answers a version query by
-//! waiting for an `initialize` frame that never comes and then reporting a
-//! closed connection, which reads like a broken install.
+//! waiting for a handshake frame that never comes (`initialize`, or
+//! `server/discover` under MCP 2026-07-28) and then reporting a closed
+//! connection, which reads like a broken install.
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

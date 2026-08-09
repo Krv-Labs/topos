@@ -85,12 +85,27 @@ Exposes tools, resources, and prompts for agent workflows:
 
 `main`'s history is a series of squash-merged PRs. Keep it that way.
 
-1. **One PR, one squash-merge into `main`.** No merge commits, no rebase-and-merge, no direct pushes to `main`. A PR is the unit of history — if two changes want separate lines in the log, they want separate PRs.
+1. **One PR, one squash-merge into `main`.** No merge commits, no rebase-and-merge, no direct pushes to `main`. A PR addresses **a single issue, or a cluster of tightly related issues** that share a root cause or a fix site — if two changes want separate lines in the log, they want separate PRs.
 2. **Every user-visible PR adds its entry to `## [Unreleased]` in [`CHANGELOG.md`](../CHANGELOG.md)** as part of the PR itself, under the usual Keep a Changelog headings (`Added` / `Fixed` / `Changed` / `Breaking` / `Removed` / `Notes`). Do not defer changelog writing to release time — the person with the context is the one writing the PR. Internal-only churn (refactors with no behavior change, test-only edits, CI plumbing) needs no entry.
 3. **Scope the release second.** Once `Unreleased` reflects what actually landed, decide what the release *is* and pick its version. Scope follows the work; the work does not wait on a scope decision.
 4. **The release PR comes last** — it renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, bumps versions, and is itself squash-merged. Base the release branch on `main`, never on a previous release branch.
 
 Corollary: do **not** open a long-lived release branch to accumulate feature PRs. Independent fixes go straight to `main` as they pass review. A release branch that exists before its scope is decided just collects drift.
+
+### Stacked PRs
+
+Stacking is for **work that review surfaced** — a required fix to a PR under review, or a new issue found while reviewing it. Stack onto the PR branch, not onto a release branch.
+
+Before stacking, check the cheaper option: **if the parent has not merged and the fix belongs to its issue, just push another commit to the parent.** It squashes away anyway. Stack only when the follow-up is a *distinct* issue, or when the parent must land now and the follow-up would hold it up.
+
+When the parent squash-merges, its individual commits cease to exist on `main`, so every child must be replanted:
+
+```sh
+git rebase --onto main <parent-tip-before-merge> <child-branch>
+git push --force-with-lease
+```
+
+GitHub retargets the child's base automatically, but it does **not** rebase — skip this and the child's PR shows the parent's changes as its own. Replant children immediately after the parent merges, deepest last. This is the stacked-squash divergence that made the v0.4.x release branches painful; it is manageable for a short chain of review follow-ups and not manageable for a whole release's worth of features, which is why the two cases are governed differently.
 
 ## Closed-Loop Agent Workflow
 Read `topos://docs/agent-contract` first. Use Topos as the structural verifier:

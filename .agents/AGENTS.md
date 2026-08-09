@@ -81,6 +81,17 @@ Exposes tools, resources, and prompts for agent workflows:
 - **Resources**: `topos://docs/agent-contract`, `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
 - **Prompts**: `topos_refactor_until_ideal`.
 
+## Git History & Release Convention
+
+`main`'s history is a series of squash-merged PRs. Keep it that way.
+
+1. **One PR, one squash-merge into `main`.** No merge commits, no rebase-and-merge, no direct pushes to `main`. A PR is the unit of history — if two changes want separate lines in the log, they want separate PRs.
+2. **Every user-visible PR adds its entry to `## [Unreleased]` in [`CHANGELOG.md`](../CHANGELOG.md)** as part of the PR itself, under the usual Keep a Changelog headings (`Added` / `Fixed` / `Changed` / `Breaking` / `Removed` / `Notes`). Do not defer changelog writing to release time — the person with the context is the one writing the PR. Internal-only churn (refactors with no behavior change, test-only edits, CI plumbing) needs no entry.
+3. **Scope the release second.** Once `Unreleased` reflects what actually landed, decide what the release *is* and pick its version. Scope follows the work; the work does not wait on a scope decision.
+4. **The release PR comes last** — it renames `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD`, bumps versions, and is itself squash-merged. Base the release branch on `main`, never on a previous release branch.
+
+Corollary: do **not** open a long-lived release branch to accumulate feature PRs. Independent fixes go straight to `main` as they pass review. A release branch that exists before its scope is decided just collects drift.
+
 ## Closed-Loop Agent Workflow
 Read `topos://docs/agent-contract` first. Use Topos as the structural verifier:
 measure, make one focused structural change, verify with

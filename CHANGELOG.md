@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Merged PRs add their entries to `[Unreleased]` as they land; the release PR renames
+that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](.agents/AGENTS.md).
+
+## [Unreleased]
+
+### Fixed
+
+- **`cfg.cyclomatic` remediation no longer advises an action that worsens the metric it cites** ([#286](https://github.com/Krv-Labs/topos/issues/286), [#318](https://github.com/Krv-Labs/topos/pull/318)) — `cfg.cyclomatic` is a whole-file sum, so extracting a helper preserves the decisions and adds a function, moving the number up. The guidance now names the actual levers for a whole-file sum (collapse redundant decisions, or split the file) and surfaces the trade-off against `ast.max_function_complexity` rather than implying the two align.
+
+### Changed
+
+- **Ranking-list sorts evaluate each row's gates once** ([#305](https://github.com/Krv-Labs/topos/issues/305), [#320](https://github.com/Krv-Labs/topos/pull/320)) — project ranking comparators called `gate_metrics_for` per comparison, cloning each row's full `raw_metrics` map and reclassifying, for O(n log n) gate evaluations. Rows are now decorated with precomputed keys once, sorted, and projected back. Ordering and list membership are unchanged (verified by comparing `topos_evaluate_project` payloads across both binaries).
+- **Metric-location generation parses once per request** ([#306](https://github.com/Krv-Labs/topos/issues/306), [#319](https://github.com/Krv-Labs/topos/pull/319)) — SIMPLE and NAVIGABLE location collectors each built their own `ProgramMorphism` for the same single-file request. One morphism is now built and shared. Response shape and span ordering unchanged.
+- **CFG builder tracks continue targets directly** ([#307](https://github.com/Krv-Labs/topos/issues/307), [#317](https://github.com/Krv-Labs/topos/pull/317)) — after switch `break` handling moved to `break_stack`, `LoopContext` held a single field. Replaced with `continue_stack: Vec<usize>`. No edge-contract change.
+
 ## [0.5.0] - 2026-08-07
 
 ### Added

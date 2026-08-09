@@ -119,7 +119,7 @@ Each target carries a `severity` that mirrors whether its metric gates:
 `"fix"` targets when you must pick one.
 
 These are metric-driven edit targets from the scoring pipeline. They are
-not the same as advisory `topos_refactor(target="cycles"|"dependencies"|"process"|"graphify")`,
+not the same as advisory `topos_refactor(target="cycles"|"dependencies"|"process")`,
 which never affects medals. See `topos://docs/workflows` § Advisory refactoring.
 
 ## Boundaries

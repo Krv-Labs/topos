@@ -53,6 +53,14 @@ If GitNexus is unavailable, generation fails, or the store cannot load, evaluati
 
 `topos mcp` launches the in-process `topos-mcp` RMCP server; clients can also launch the `topos-mcp` binary directly. `ToposServer::new` sums routers for evaluate, assess, compare, coverage, depgraph, docs, graphify, inspect, preferences, and refactor. It also serves `topos://docs/*`, `topos://build`, and `topos_refactor_until_ideal`.
 
+### Project evaluation ranking
+
+`topos_evaluate_project` walks supported files, then `build_project_result` produces the aggregate floor, language rollups, page-global named lists (`hard_fails`, `leaf_composable_zeros`, and `maintainability_giants`), and the paginated `files` table. The four-pillar gate meaning remains owned by the [quality model](../domain/quality-model.md); this layer decides how already-classified rows are ordered and presented.
+
+`RowKeys::new` in `topos/mcp/src/tools/evaluate.rs` builds gate inputs and calls `evaluate_gates` exactly once for each `ScoredProjectRow`. `decorate_rows` shares those cached keys with `classify_keyed_rows` and `sort_keyed`; the latter retains Rust's stable `sort_by` and the previous tie ordering. As a result, the named-list membership and row ordering do not change, while gate-derived ranking work is linear in the number of rows rather than repeated by sorting comparators.
+
+When changing project ranking, keep the distinction between decisive hard failures, advisory cyclomatic `maintainability_giants`, and the deprecated always-empty `leaf_composable_zeros` bucket. Update `RowKeys`, its consumers, and the comparator key together; do not recompute gate inputs inside a comparator. `ranking_lists_evaluate_gates_once_per_row` is the narrow regression: run `cargo test -p topos-mcp ranking_lists_evaluate_gates_once_per_row`. Run `cargo test -p topos-mcp` when result construction or adjacent MCP behavior changes. A stdio `tools/list` smoke test is conditional on a schema, tool annotation, or router-registration change—ranking-only changes do not alter that shipped surface.
+
 ```mermaid
 sequenceDiagram
     participant Agent

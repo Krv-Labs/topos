@@ -61,19 +61,30 @@ fn acknowledged_to_models(verdict: &AdjustedVerdict) -> Vec<AcknowledgedRisk> {
         .collect()
 }
 
+/// Whether an overlay can exist at all — decidable from the classification
+/// alone, without touching the source.
+///
+/// Both public entry points check this *before* building a `ProgramMorphism`,
+/// so a SECURE-passing file never pays for a parse whose only consumer is the
+/// `build_cpg` below. That matters most in the project loop
+/// (`tools::evaluate::evaluate_single_file`), which calls `overlay_for_file`
+/// once per file: on a clean codebase every one of those parses — and, via
+/// `from_file`, a second read of a file `classify_file` already read — was
+/// discarded unused. Keep the guard ahead of the parse.
+fn overlay_applies(result: &ClassificationResult) -> bool {
+    result.is_parseable && secure_failed(result)
+}
+
 fn overlay(
     morphism: &mut ProgramMorphism,
     result: &ClassificationResult,
     file_path: Option<&Path>,
     allows: &[String],
 ) -> Option<SecurityOverlay> {
-    if !result.is_parseable {
+    if !overlay_applies(result) {
         return None;
     }
     let config = config_for(file_path, allows);
-    if !secure_failed(result) {
-        return None;
-    }
 
     let cpg = morphism.build_cpg().cloned();
     // Pass the *raw* findings (full registry — `allow: None`) so that
@@ -107,6 +118,9 @@ pub fn overlay_for_file(
     result: &ClassificationResult,
     allows: &[String],
 ) -> Option<SecurityOverlay> {
+    if !overlay_applies(result) {
+        return None;
+    }
     let language = crate::evaluation::detect_language(path);
     let mut morphism = ProgramMorphism::from_file(path, language).ok()?;
     overlay(&mut morphism, result, Some(path), allows)
@@ -120,6 +134,9 @@ pub fn overlay_for_source(
     file_path: Option<&Path>,
     allows: &[String],
 ) -> Option<SecurityOverlay> {
+    if !overlay_applies(result) {
+        return None;
+    }
     let mut morphism = ProgramMorphism::new(source, language);
     overlay(&mut morphism, result, file_path, allows)
 }
@@ -132,6 +149,38 @@ mod tests {
 
     // `eval(...)` is a dangerous call, so SECURE fails and the overlay engages.
     const EVAL_SRC: &str = "def f(expr):\n    return eval(expr)\n";
+
+    /// The guards now run ahead of the parse, so the passing path returns
+    /// `None` having never built a morphism. Pins the half of the contract
+    /// that hoist could have broken: no overlay for SECURE-clean source, and
+    /// none for unparseable source either — the early `None` must still
+    /// distinguish "nothing to report" from "could not look".
+    #[test]
+    fn secure_clean_and_unparseable_sources_produce_no_overlay() {
+        let clean = "def f(x):\n    return x + 1\n";
+        let result =
+            classify_code_string(clean, "python", Priority::Simple).expect("classification runs");
+        assert!(result.is_parseable);
+        assert!(
+            overlay_for_source(clean, "python", &result, None, &[]).is_none(),
+            "a SECURE-passing file has no overlay to report"
+        );
+
+        // An allow list must not conjure an overlay where SECURE passed.
+        assert!(
+            overlay_for_source(clean, "python", &result, None, &["eval".to_string()]).is_none(),
+            "an unused --allow does not manufacture an overlay"
+        );
+
+        let broken = "def f(:\n";
+        let broken_result = classify_code_string(broken, "python", Priority::Simple)
+            .expect("classification runs on unparseable source");
+        assert!(!broken_result.is_parseable);
+        assert!(
+            overlay_for_source(broken, "python", &broken_result, None, &[]).is_none(),
+            "unparseable source yields no overlay"
+        );
+    }
 
     #[test]
     fn one_off_allow_acknowledges_risk_rather_than_stripping_it() {

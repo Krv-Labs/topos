@@ -433,4 +433,65 @@ mod tests {
 
         std::fs::remove_dir_all(&project_root).ok();
     }
+
+    /// Evidence for issue #322: what fraction of `topos_inspect_code` latency
+    /// is actually tree-sitter parsing?
+    ///
+    /// #322 proposes threading one `ProgramMorphism` across four module
+    /// boundaries to kill the duplicate parses, but gates that refactor on a
+    /// measurement first — "4x a cheap operation is still cheap." This is that
+    /// measurement, not a regression test: it asserts nothing about timing
+    /// (wall clock is not a CI invariant) and stays `#[ignore]`d so it costs
+    /// nothing until someone asks the question again.
+    ///
+    ///     cargo test --release -p topos-mcp -- --ignored --nocapture
+    ///
+    /// Release matters — a debug-build tree-sitter number is meaningless.
+    /// Two subjects, an outlier-large file and an ordinary one, so the ratio
+    /// can be told apart from an artifact of file size.
+    #[test]
+    #[ignore = "measurement for #322, not an assertion; run with --release --nocapture"]
+    fn parse_share_of_inspect_latency() {
+        const ITERS: u32 = 20;
+        let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let subjects = [
+            ("largest in crate", "src/tools/assess.rs"),
+            ("ordinary module", "src/diagnostics.rs"),
+        ];
+
+        for (label, rel) in subjects {
+            let subject = crate_root.join(rel);
+            let source = std::fs::read_to_string(&subject).expect("read subject file");
+
+            // Warm up so neither number pays first-touch grammar loading.
+            let _ = ProgramMorphism::new(&source, "rust");
+
+            let t0 = std::time::Instant::now();
+            for _ in 0..ITERS {
+                std::hint::black_box(ProgramMorphism::new(&source, "rust"));
+            }
+            let parse_total = t0.elapsed();
+
+            let params = params_from(serde_json::json!({
+                "code": source,
+                "language": "rust",
+            }));
+            let t1 = std::time::Instant::now();
+            for _ in 0..ITERS {
+                std::hint::black_box(inspect_code_sync(params.clone()));
+            }
+            let inspect_total = t1.elapsed();
+
+            let share = parse_total.as_secs_f64() / inspect_total.as_secs_f64() * 100.0;
+            println!(
+                "#322 {label}: {rel} ({} lines), {ITERS} iters\n\
+                 \x20 one parse:     {:>9.3?}\n\
+                 \x20 one inspect:   {:>9.3?}\n\
+                 \x20 parse share:   {share:.1}% of inspect latency (per redundant parse)",
+                source.lines().count(),
+                parse_total / ITERS,
+                inspect_total / ITERS,
+            );
+        }
+    }
 }

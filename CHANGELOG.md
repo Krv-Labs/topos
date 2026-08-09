@@ -10,6 +10,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-08
+
 ### Fixed
 
 - **`cfg.cyclomatic` remediation no longer advises an action that worsens the metric it cites** ([#286](https://github.com/Krv-Labs/topos/issues/286), [#318](https://github.com/Krv-Labs/topos/pull/318)) — `cfg.cyclomatic` is a whole-file sum, so extracting a helper preserves the decisions and adds a function, moving the number up. The guidance now names the actual levers for a whole-file sum (collapse redundant decisions, or split the file) and surfaces the trade-off against `ast.max_function_complexity` rather than implying the two align.

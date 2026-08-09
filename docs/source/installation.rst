@@ -67,8 +67,8 @@ which wins if you install both.
 
       If GitNexus is already installed, the installer detects it and skips the
       prompt. If npm/pnpm is missing or you decline the prompt, Topos still
-      works for SIMPLE, SECURE, AST comparison, structural coverage, Graphify
-      refactor hotspots, and MCP tools.
+      works for SIMPLE, SECURE, AST comparison, structural coverage,
+      advisory refactor hotspots, and MCP tools.
 
       Verify the binary:
 
@@ -147,7 +147,7 @@ without the CLI, or you are working on Topos itself.
    command) — a thin `maturin <https://www.maturin.rs/>`_ ``bin`` wheel
    that bundles the compiled Rust binary with zero Python runtime or
    import surface. This does **not** give you the ``topos`` CLI
-   (``evaluate``/``inspect``/``compare``/``coverage``/``graphify``) — use
+   (``evaluate``/``inspect``/``compare``/``coverage``) — use
    the binary installer or a source build for that.
 
    .. code-block:: bash
@@ -202,7 +202,7 @@ without the CLI, or you are working on Topos itself.
       uv pip install dist/topos_mcp-*.whl
 
    This path does not build the ``topos`` CLI (``evaluate``/``inspect``/
-   ``compare``/``coverage``/``graphify``) — use the Cargo build above, or
+   ``compare``/``coverage``) — use the Cargo build above, or
    the binary installer, for that.
 
    Source installs do not install GitNexus automatically. Add it separately
@@ -254,14 +254,6 @@ Without it, SIMPLE and SECURE still score and COMPOSABLE reports as unavailable
 rather than failing. ``topos depgraph generate`` forces a rebuild;
 ``--no-composable`` skips the pillar entirely.
 
-Graphify is different: it powers the **advisory** refactor suite
-(``topos graphify``, ``topos_refactor(target="graphify")``) and never affects
-the medal. Install it only if you want orphan and fragile-edge detection:
-
-.. code-block:: bash
-
-   pip install graphifyy   # or: uvx --from graphifyy graphify --version
-
 See :doc:`cli` and the repository's ``docs/decisions/refactor-suite.md``.
 
 First useful commands
@@ -284,8 +276,6 @@ First useful commands
      - ``topos config``
    * - Measure test structure
      - ``topos coverage src/logic.py --tests tests/test_logic.py``
-   * - Advisory refactor hotspots
-     - ``topos graphify orphans src/module.py``
    * - Start MCP
      - ``topos mcp``
 

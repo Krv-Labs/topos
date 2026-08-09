@@ -29,20 +29,20 @@ The three crates
        / PDG / UAST graph representations, the characteristic morphism
        :math:`\chi_S : \text{Program} \to \Omega`, the SIMPLE/COMPOSABLE/
        SECURE scoring policies, and all refactor-suite probes (cycle basis,
-       Forman/Forman-Ricci curvature, Graphify orphan detection). External
-       tools (GitNexus, Graphify) are reached only through ``adapters::``
+       Forman/Forman-Ricci curvature). External
+       tools (GitNexus) are reached only through ``adapters::``
        subprocess wrappers — never library imports — so ``topos-engine`` never
        depends on anything installed outside the Rust toolchain.
    * - ``topos``
      - The CLI binary: ``install`` / ``uninstall`` / ``status`` / ``config`` /
        ``evaluate`` / ``inspect`` / ``compare`` / ``coverage`` / ``depgraph`` /
-       ``graphify`` / ``mcp``. Calls straight into ``topos-engine``; no logic is
+       ``mcp``. Calls straight into ``topos-engine``; no logic is
        duplicated with ``topos-mcp``.
    * - ``topos-mcp``
      - The MCP server (the ``topos-mcp`` binary, and also what ``topos mcp``
        launches in-process). One ``#[tool_router]`` module per tool family
-       (evaluate, assess, compare, coverage, depgraph, docs, graphify,
-       inspect, preferences, refactor — eighteen tools total, see
+       (evaluate, assess, compare, coverage, depgraph, docs,
+       inspect, preferences, refactor — seventeen tools total, see
        :doc:`agents`). Embeds the `Sighthound <https://github.com/Corgea/Sighthound>`_
        SAST engine as a compiled-in library dependency (not a subprocess) for
        supplementary security findings.
@@ -67,13 +67,8 @@ pulled into the scoring path:
    scores. This is the one external tool whose output actually feeds the
    evaluation lattice.
 
-`Graphify <https://github.com/Graphify-Labs/graphify>`_
-   Builds a tree-sitter-based knowledge graph consumed only by the advisory
-   refactor suite's ``graphify`` target (orphan/dead-code detection, fragile
-   low-confidence edges). **Never** feeds SIMPLE/COMPOSABLE/SECURE/NAVIGABLE.
-
-`Sighthound <https://github.com/Corgea/Sighthound>`_ is different from
-these two: it's compiled directly into ``topos-mcp`` as a Rust library
+`Sighthound <https://github.com/Corgea/Sighthound>`_ is different: it's
+compiled directly into ``topos-mcp`` as a Rust library
 dependency (no subprocess, no ``$PATH`` discovery), and it only supplies
 supplementary ``security_findings`` detail — the SECURE score itself always
 comes from ``topos-engine``'s native CPG probes, never from Sighthound.
@@ -81,9 +76,9 @@ comes from ``topos-engine``'s native CPG probes, never from Sighthound.
 The advisory refactor suite
 -----------------------------
 
-Beyond the scored medal, ``topos_refactor`` (MCP) and, for Graphify, the
-``topos graphify`` CLI subcommand, surface ranked structural hotspots from
-four independent engines. **None of these feed the four scored pillars** —
+Beyond the scored medal, ``topos_refactor`` (MCP) surfaces ranked
+structural hotspots from three independent engines. **None of these feed
+the four scored pillars** —
 see :doc:`agents` for the tool contract and ``docs/decisions/refactor-suite.md`` in the
 repository for the full design rationale:
 
@@ -93,8 +88,6 @@ repository for the full design rationale:
   load-bearing import edges.
 - ``process`` — directed Forman-Ricci curvature over GitNexus process
   graphs, flagging execution-path choke points.
-- ``graphify`` — degree and confidence over a Graphify knowledge graph,
-  flagging likely dead code and fragile (``INFERRED``/``AMBIGUOUS``) edges.
 
 Rust API docs
 --------------

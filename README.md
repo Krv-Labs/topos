@@ -160,7 +160,7 @@ Those verdicts roll up into one memorable quality medal without hiding which pil
 | ❌ **SLOP** | Passes 0, or fails to parse |
 
 
-See the [full metrics reference](topos/mcp/docs/content/metrics.md). Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, process bottlenecks, and optional Graphify knowledge-graph findings.
+See the [full metrics reference](topos/mcp/docs/content/metrics.md). Refactor guidance also surfaces control-flow cycles, load-bearing dependency edges, and process bottlenecks.
 
 <details>
 <summary>How the medal system is derived</summary>
@@ -191,7 +191,6 @@ Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your s
 | [tree-sitter](https://tree-sitter.github.io/tree-sitter/) | Parses six languages and powers the native AST, CFG, CPG, PDG, and UAST representations. |
 | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). Requires `npm install -g gitnexus@1.6.8`. |
 | [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
-| [Graphify](https://github.com/Graphify-Labs/graphify) | Optional advisory orphan and fragile-edge detection via `topos graphify` / `topos_refactor(target="graphify")`; does not affect the medal. Requires `pip install graphifyy`. |
 
 The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
 

@@ -21,8 +21,8 @@ use topos_engine::functors::probes::process::curvature::calculate_process_curvat
 use topos_engine::graphs::process::object::ProcessGraph;
 
 use crate::evaluation::{
-    detect_language, load_dep_graph, resolve_gitnexus_dir,
-    resolve_mcp_composable_project_root, resolve_override_for_root,
+    detect_language, load_dep_graph, resolve_gitnexus_dir, resolve_mcp_composable_project_root,
+    resolve_override_for_root,
 };
 use crate::formatting::to_tool_result;
 use crate::refactor_hotspots::render_hotspots_md;

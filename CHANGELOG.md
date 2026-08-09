@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking
+
+- **Graphify integration removed** (~1,680 production lines). Every signal it provided was already available from the GitNexus/MDG graph Topos loads for COMPOSABLE, usually at better fidelity — full `startLine`/`endLine` spans instead of point anchors, a first-class `Community` node label with `MEMBER_OF` edges instead of a bare Louvain field, and a continuous `confidence: f64` + `reason` instead of a three-value enum. It had no production consumer, no CI coverage, and no agent-facing recommendation, and it wrapped a pre-1.0 external tool with a documented history of schema breaks. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) § Removed target and issue [#325](https://github.com/Krv-Labs/topos/issues/325).
+
+  Removed public surface — **clients calling any of these will break**:
+
+  - **MCP tool `topos_generate_graphify_graph`** is gone. There is no replacement; nothing else generated that graph.
+  - **`topos_refactor(target="graphify")`** is gone, along with the `graphify_dir` parameter on `RefactorInput` and the `graphify_orphan` / `graphify_fragile_edge` hotspot kinds. `topos_refactor` now accepts `cycles`, `dependencies`, and `process` only; a `graphify` target is rejected as an invalid enum value.
+  - **CLI `topos graphify generate` and `topos graphify orphans`** are gone. `topos graphify` now errors as an unknown subcommand.
+  - The `TOPOS_GRAPHIFY_TIMEOUT` and `GRAPHIFY_OUT` environment variables are no longer read.
+
+- **MCP tool count drops from 18 to 17**, and the tool-definition **context budget shrinks accordingly**: the wire surface every agent session pays for on every request went from 39,584 to 38,668 characters (~9,896 → ~9,667 approximate tokens). The ratchet in `topos/mcp/src/context_budget.rs` was moved **down** from 40,500 to 39,500. Resource count (7) and prompt count (1) are unchanged.
+
 ## [0.5.0] - 2026-08-07
 
 ### Added

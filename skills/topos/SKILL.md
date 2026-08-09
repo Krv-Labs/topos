@@ -124,7 +124,6 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos compare <a> <b>` | AST edit distance between two versions |
 | `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |
 | `topos depgraph generate` | Build GitNexus graph for COMPOSABLE scoring |
-| `topos graphify generate\|orphans` | Advisory orphan / fragile-edge hints (does not affect evaluate) |
 | `topos install [--all]` | Register the MCP server in agent harnesses (Claude, Cursor, Codex, …) |
 | `topos uninstall [--all]` | Remove Topos-owned MCP entries from harness configs |
 | `topos status` | Show which harnesses are configured |
@@ -149,8 +148,7 @@ Without `--gitnexus-dir`, COMPOSABLE uses process **cwd** (CLI) or the project d
 | `topos_evaluate_code` | Score a source string when there is no file on disk |
 | `topos_inspect_code` / `topos_compare_code` / `topos_compare_files` | Deep metrics; AST edit distance between two versions |
 | `topos_preference_walk` | Resolve target / fallback / next-step verdicts for a ranking |
-| `topos_refactor` | Advisory hotspots (`cycles`, `dependencies`, `process`, `graphify`) — never affects the medal |
-| `topos_generate_graphify_graph` | Build the Graphify knowledge graph for `topos_refactor(target="graphify")` |
+| `topos_refactor` | Advisory hotspots (`cycles`, `dependencies`, `process`) — never affects the medal |
 
 MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params": {...}}`.
 

@@ -306,7 +306,7 @@ Default Ranking: ``(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)``
 MCP Tools
 ---------
 
-Topos registers eighteen MCP tools, all implemented directly in ``topos-mcp``
+Topos registers seventeen MCP tools, all implemented directly in ``topos-mcp``
 (a compiled Rust binary — see :doc:`installation`). Every tool takes a **flat
 arguments object** — the named inputs sit at the top level, with no ``params``
 wrapper. Sending ``{"params": {...}}`` is rejected as an unknown field.
@@ -433,14 +433,14 @@ Structure & Coverage
 Refactor Suite (advisory, not scored)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ranked, actionable structural hotspots from four independent engines.
+Ranked, actionable structural hotspots from three independent engines.
 **None of these feed SIMPLE/COMPOSABLE/SECURE/NAVIGABLE** — this is refactoring
 guidance layered on top of the scored medal, distinct from the
 gate-failure ``refactor_targets`` surfaced *inside* ``topos_evaluate_file``.
 See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
 
-``topos_refactor({"target": "cycles"|"dependencies"|"process"|"graphify", "filepath": ..., "gitnexus_dir": ..., "graphify_dir": ..., "limit": ...})``
-   One tool, four targets, each surfacing a different structural-analysis
+``topos_refactor({"target": "cycles"|"dependencies"|"process", "filepath": ..., "gitnexus_dir": ..., "limit": ...})``
+   One tool, three targets, each surfacing a different structural-analysis
    engine and returning a ranked list of hotspots:
 
    .. list-table::
@@ -463,22 +463,11 @@ See the repository's ``docs/decisions/refactor-suite.md`` for the full design.
         - Directed Forman-Ricci curvature on process graphs
         - GitNexus
         - Execution choke-point transitions
-      * - ``graphify``
-        - Degree + confidence over a `Graphify <https://github.com/Graphify-Labs/graphify>`_ knowledge graph
-        - Graphify
-        - Orphan/dead-code nodes and low-confidence (``INFERRED``/``AMBIGUOUS``) edges
 
-   ``gitnexus_dir``/``graphify_dir`` are ignored for targets that don't need
-   them. ``gitnexus_available``/``tool_available`` report ``false`` (no
-   error) when the backing tool/graph isn't present — the same graceful
+   ``gitnexus_dir`` is ignored for targets that don't need it.
+   ``gitnexus_available``/``tool_available`` report ``false`` (no error)
+   when the backing tool/graph isn't present — the same graceful
    degradation ``topos_evaluate_file`` uses for COMPOSABLE.
-
-``topos_generate_graphify_graph({"directory": ..., "force": ...})``
-   Generates the Graphify knowledge graph (``graphify-out/graph.json``) via
-   the external ``graphify`` CLI (``pip install graphifyy``). Side-effecting;
-   skips running ``graphify`` when a graph is already current unless
-   ``force=true``. Feeds only ``topos_refactor(target="graphify")`` — never
-   SIMPLE/COMPOSABLE/SECURE/NAVIGABLE.
 
 Agent Knowledge
 ~~~~~~~~~~~~~~~

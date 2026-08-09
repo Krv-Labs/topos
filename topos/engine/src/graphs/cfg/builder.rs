@@ -29,12 +29,6 @@
 use super::models::{BasicBlock, Blocks, CFGEdge, EdgeKind};
 use crate::graphs::uast::models::{node_key, UASTNode};
 
-/// Stack frame for `continue` resolution within a loop.
-struct LoopContext {
-    /// Block id to jump to on `continue`.
-    continue_target: usize,
-}
-
 /// Pending control-flow destinations after a `finally` block completes.
 struct FinallyExit {
     fall_through_target: usize,
@@ -47,7 +41,8 @@ struct CFGBuildState {
     blocks: Blocks,
     edges: Vec<CFGEdge>,
     next_id: usize,
-    loop_stack: Vec<LoopContext>,
+    /// Innermost `continue` target — the loop header.
+    continue_stack: Vec<usize>,
     /// Innermost `break` target — loop `after` or switch/match join.
     break_stack: Vec<usize>,
     /// Active `finally` blocks and where each resumes afterward.
@@ -61,7 +56,7 @@ impl CFGBuildState {
             blocks: Blocks::new(),
             edges: Vec::new(),
             next_id: 0,
-            loop_stack: Vec::new(),
+            continue_stack: Vec::new(),
             break_stack: Vec::new(),
             finally_stack: Vec::new(),
             exit_id: 0,
@@ -166,7 +161,7 @@ fn handle_terminal_stmt(state: &mut CFGBuildState, stmt: &UASTNode, current_id: 
             }
         }
         "ContinueStmt" => {
-            if let Some(target) = state.loop_stack.last().map(|ctx| ctx.continue_target) {
+            if let Some(target) = state.continue_stack.last().copied() {
                 state.add_edge(current_id, target, EdgeKind::Continue);
             }
         }
@@ -421,9 +416,7 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
         let after = self.state.new_block("loop_after");
         self.state.add_edge(header, body_entry, EdgeKind::True);
         self.state.add_edge(header, after, EdgeKind::False);
-        self.state.loop_stack.push(LoopContext {
-            continue_target: header,
-        });
+        self.state.continue_stack.push(header);
         self.state.break_stack.push(after);
         let body_output = self.new_output();
         self.tasks
@@ -605,7 +598,7 @@ impl<'state, 'a> BuildMachine<'state, 'a> {
     }
 
     fn finish_loop(&mut self, body_output: usize, header: usize, after: usize, output: usize) {
-        self.state.loop_stack.pop();
+        self.state.continue_stack.pop();
         self.state.break_stack.pop();
         if let Some(body_tail) = self.outputs[body_output] {
             self.state.add_edge(body_tail, header, EdgeKind::Loopback);

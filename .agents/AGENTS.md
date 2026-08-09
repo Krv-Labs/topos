@@ -81,6 +81,49 @@ Exposes tools, resources, and prompts for agent workflows:
 - **Resources**: `topos://docs/agent-contract`, `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
 - **Prompts**: `topos_refactor_until_ideal`.
 
+## Git History & Release Convention
+
+From adoption onward, `main` is a linear series of squash-merged PRs. Do not rewrite published history to retrofit this convention.
+
+1. **One coherent outcome per PR; one squash commit on `main`.** No merge commits, no rebase-and-merge, and no direct pushes to `main`. Treat the PR as the unit of review, release notes, and revert: if changes would be reviewed, reverted, or explained independently, separate them. A PR may close several issues only when they share one root cause and one coherent fix.
+2. **Use the PR title as the permanent commit subject.** Write it in Conventional Commit style and keep the PR description current with rationale, behavioral proof, and verification. Intermediate topic-branch commits may be iterative; optimize the permanent history at squash time.
+3. **Every notable user-visible PR updates `## [Unreleased]` in [`CHANGELOG.md`](../CHANGELOG.md).** Use the Keep a Changelog headings (`Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`), with project-specific `Breaking` or `Notes` sections when useful. Write the entry in the PR while its context is fresh. Internal-only churn (behavior-preserving refactors, test-only edits, CI plumbing) needs no entry.
+4. **Scope the release second.** Once `Unreleased` reflects what actually landed, decide what the release *is* and pick its version. Scope follows the work; the work does not wait on a scope decision.
+5. **The release PR comes last.** Move the contents of `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`, retain an empty `## [Unreleased]` at the top, bump versions, and squash-merge the release PR. Base its branch on current `main`, never on a previous release branch, and tag the resulting squash commit.
+
+Corollary: do **not** open a long-lived release branch to accumulate feature PRs. Independent fixes go straight to `main` as they pass review. A release branch that exists before its scope is decided just collects drift.
+
+Repository settings must enforce the convention rather than relying on memory:
+
+- Allow squash merge only; require a linear history and a pull request for `main`.
+- Require the canonical CI checks and resolved review threads before merge.
+- Automatically delete merged head branches; keep any administrative bypass narrow and auditable.
+
+### Stacked PRs
+
+Stack only when a child change **structurally depends on an unmerged parent**. Discovery during review is not itself a reason to stack: an independent issue gets a branch and PR from `main`. Never use a stack as a release train.
+
+Before stacking, check the cheaper option: **if the parent has not merged and the fix belongs to its outcome, push another commit to the parent.** It squashes away anyway. A child should represent a distinct, reviewable outcome that cannot yet be based on `main`.
+
+Keep stacks short, preferably two or three PRs. Base each child PR on its immediate parent branch, list the complete ordered stack in every PR description, review bottom-up, and never merge a child before its parent.
+
+Squash merging replaces the parent's commits with one new commit on `main`. Before merging the parent, record its old tip. After the merge, replant a direct child onto current `origin/main`:
+
+```sh
+git fetch origin
+git rebase --onto origin/main <old-parent-tip> <child-branch>
+git push --force-with-lease origin <child-branch>
+```
+
+For a deeper stack such as `A <- B <- C`, record `B`'s old tip before rebasing it. Rebase shallowest to deepest so each descendant moves onto its newly rebased parent:
+
+```sh
+git rebase --onto <rebased-B-branch> <old-B-tip> <C-branch>
+git push --force-with-lease origin <C-branch>
+```
+
+GitHub retargets a child PR to the merged parent's base **after the merged parent branch is deleted**. Automatic head-branch deletion should do this; otherwise retarget the PR manually. Retargeting does not rewrite the child commits, so always perform the rebase, inspect the resulting diff, and rerun CI after every replant. Use `--force-with-lease` only on topic branches.
+
 ## Closed-Loop Agent Workflow
 Read `topos://docs/agent-contract` first. Use Topos as the structural verifier:
 measure, make one focused structural change, verify with

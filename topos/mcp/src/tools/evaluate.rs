@@ -12,7 +12,7 @@ use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Genera
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::SIMPLE;
 use topos_engine::evaluation::policies::composable::coupling_gate_input;
-use topos_engine::evaluation::policies::gates::{evaluate_gates, GateResult};
+use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::weakest_score;
 
 use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
@@ -572,8 +572,18 @@ struct ScoredProjectRow {
     result: ClassificationResult,
 }
 
+// Counts `gate_metrics_for` calls on the current test thread, so the
+// decorate-sort-undecorate refactor can assert one gate evaluation per row.
+// Thread-local because libtest runs each test on its own thread.
+#[cfg(test)]
+thread_local! {
+    static GATE_EVAL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Gate-input map for a file — mirrors the scorers and suggestion engine.
 fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
+    #[cfg(test)]
+    GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
     let instability = result.raw_metrics.get("mdg.instability").copied();
     let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
     let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
@@ -589,35 +599,79 @@ fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
     gate_metrics
 }
 
-fn gating_gate_failures(result: &ClassificationResult) -> Vec<GateResult> {
-    let gate_metrics = gate_metrics_for(result);
-    let instability = result.raw_metrics.get("mdg.instability").copied();
-    evaluate_gates(
-        &gate_metrics,
-        None,
-        result.is_entrypoint_module,
-        result.is_stable_leaf_module,
-        instability,
-    )
-    .into_iter()
-    .filter(|r| r.spec.gates_achieved && !r.passed())
-    .collect()
+/// Every gate-derived sort input for one row, evaluated exactly once.
+///
+/// The ranking lists decorate rows with this, sort the decorated vector and
+/// project back to rows, so gate classification stays O(n) instead of being
+/// recomputed inside every comparator call.
+#[derive(Clone, Copy)]
+struct RowKeys {
+    hard_fail: bool,
+    gate_failures: usize,
+    /// Only read for hard fails -- `0.0` otherwise, as the old comparator
+    /// never looked at it for the other buckets.
+    weakest: f64,
+    giant: bool,
+    cyclomatic: f64,
+    file_key: (u8, f64, f64),
 }
 
-fn is_hard_fail(result: &ClassificationResult) -> bool {
-    if !result.is_parseable {
-        return true;
+impl RowKeys {
+    fn new(row: &ScoredProjectRow) -> Self {
+        let result = &row.result;
+        let gate_metrics = gate_metrics_for(result);
+        let instability = result.raw_metrics.get("mdg.instability").copied();
+        let gate_failures = evaluate_gates(
+            &gate_metrics,
+            None,
+            result.is_entrypoint_module,
+            result.is_stable_leaf_module,
+            instability,
+        )
+        .into_iter()
+        .filter(|r| r.spec.gates_achieved && !r.passed())
+        .count();
+        let hard_fail = !result.is_parseable || gate_failures > 0;
+        let cyclomatic = gate_metrics.get("cfg.cyclomatic").copied();
+        let giant = !hard_fail && cyclomatic.is_some_and(|v| v > SIMPLE.max_cyclomatic);
+        let weakest = if hard_fail {
+            weakest_score_from_result(result)
+        } else {
+            0.0
+        };
+        let cyclomatic = cyclomatic.unwrap_or(0.0);
+        let file_key = if hard_fail {
+            (0, -(gate_failures as f64), weakest)
+        } else if giant {
+            (1, -cyclomatic, 0.0)
+        } else {
+            (2, worst_key(&row.entry), 0.0)
+        };
+        RowKeys {
+            hard_fail,
+            gate_failures,
+            weakest,
+            giant,
+            cyclomatic,
+            file_key,
+        }
     }
-    !gating_gate_failures(result).is_empty()
 }
 
-fn is_maintainability_giant(result: &ClassificationResult) -> bool {
-    if !result.is_parseable || is_hard_fail(result) {
-        return false;
-    }
-    gate_metrics_for(result)
-        .get("cfg.cyclomatic")
-        .is_some_and(|v| *v > SIMPLE.max_cyclomatic)
+type KeyedRow<'a> = (RowKeys, &'a ScoredProjectRow);
+
+/// Decorate: one gate evaluation per row, input order preserved.
+fn decorate_rows(rows: &[ScoredProjectRow]) -> Vec<KeyedRow<'_>> {
+    rows.iter().map(|row| (RowKeys::new(row), row)).collect()
+}
+
+/// Stable sort on the precomputed file key -- same comparator, same ties.
+fn sort_keyed(keyed: &mut [KeyedRow<'_>]) {
+    keyed.sort_by(|(a, _), (b, _)| {
+        a.file_key
+            .partial_cmp(&b.file_key)
+            .unwrap_or(Ordering::Equal)
+    });
 }
 
 fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
@@ -629,13 +683,6 @@ fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
     weakest_score(&scores_pct)
 }
 
-fn hard_fail_sort_key(result: &ClassificationResult) -> (usize, f64) {
-    (
-        gating_gate_failures(result).len(),
-        weakest_score_from_result(result),
-    )
-}
-
 fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
     WorstFileEntry {
         filepath: entry.filepath.clone(),
@@ -643,6 +690,47 @@ fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
     }
 }
 
+fn classify_keyed_rows<'a>(
+    keyed: &[KeyedRow<'a>],
+) -> (
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+    Vec<WorstFileEntry>,
+) {
+    let mut hard: Vec<KeyedRow<'a>> = keyed.iter().filter(|(k, _)| k.hard_fail).copied().collect();
+    hard.sort_by(|(a, _), (b, _)| {
+        b.gate_failures
+            .cmp(&a.gate_failures)
+            .then_with(|| a.weakest.partial_cmp(&b.weakest).unwrap_or(Ordering::Equal))
+    });
+
+    // `leaf_composable_zeros` is deprecated and always empty -- see the
+    // schema field. The structural-leaf carve-out existed to keep
+    // `mdg.instability` failures out of `hard_fails`; that metric is now
+    // advisory, so it cannot produce a hard fail to suppress.
+    let leaves: Vec<WorstFileEntry> = Vec::new();
+
+    let mut giants: Vec<KeyedRow<'a>> = keyed.iter().filter(|(k, _)| k.giant).copied().collect();
+    giants.sort_by(|(a, _), (b, _)| {
+        b.cyclomatic
+            .partial_cmp(&a.cyclomatic)
+            .unwrap_or(Ordering::Equal)
+    });
+
+    (
+        hard.iter()
+            .map(|(_, row)| to_worst_entry(&row.entry))
+            .collect(),
+        leaves,
+        giants
+            .iter()
+            .map(|(_, row)| to_worst_entry(&row.entry))
+            .collect(),
+    )
+}
+
+/// Undecorated entry point kept for the ranking-list tests.
+#[cfg(test)]
 fn classify_project_rows(
     rows: &[ScoredProjectRow],
 ) -> (
@@ -650,65 +738,7 @@ fn classify_project_rows(
     Vec<WorstFileEntry>,
     Vec<WorstFileEntry>,
 ) {
-    let mut hard: Vec<&ScoredProjectRow> = rows
-        .iter()
-        .filter(|row| is_hard_fail(&row.result))
-        .collect();
-    hard.sort_by(|a, b| {
-        let (ca, sa) = hard_fail_sort_key(&a.result);
-        let (cb, sb) = hard_fail_sort_key(&b.result);
-        cb.cmp(&ca)
-            .then_with(|| sa.partial_cmp(&sb).unwrap_or(Ordering::Equal))
-    });
-
-    // `leaf_composable_zeros` is deprecated and always empty -- see the
-    // schema field. The structural-leaf carve-out existed to keep
-    // `mdg.instability` failures out of `hard_fails`; that metric is now
-    // advisory, so it cannot produce a hard fail to suppress.
-    let leaves: Vec<&ScoredProjectRow> = Vec::new();
-
-    let mut giants: Vec<&ScoredProjectRow> = rows
-        .iter()
-        .filter(|row| is_maintainability_giant(&row.result))
-        .collect();
-    giants.sort_by(|a, b| {
-        let ca = gate_metrics_for(&a.result)
-            .get("cfg.cyclomatic")
-            .copied()
-            .unwrap_or(0.0);
-        let cb = gate_metrics_for(&b.result)
-            .get("cfg.cyclomatic")
-            .copied()
-            .unwrap_or(0.0);
-        cb.partial_cmp(&ca).unwrap_or(Ordering::Equal)
-    });
-
-    (
-        hard.iter().map(|row| to_worst_entry(&row.entry)).collect(),
-        leaves
-            .iter()
-            .map(|row| to_worst_entry(&row.entry))
-            .collect(),
-        giants
-            .iter()
-            .map(|row| to_worst_entry(&row.entry))
-            .collect(),
-    )
-}
-
-fn project_file_sort_key(row: &ScoredProjectRow) -> (u8, f64, f64) {
-    if is_hard_fail(&row.result) {
-        let (count, score) = hard_fail_sort_key(&row.result);
-        (0, -(count as f64), score)
-    } else if is_maintainability_giant(&row.result) {
-        let cyclomatic = gate_metrics_for(&row.result)
-            .get("cfg.cyclomatic")
-            .copied()
-            .unwrap_or(0.0);
-        (1, -cyclomatic, 0.0)
-    } else {
-        (2, worst_key(&row.entry), 0.0)
-    }
+    classify_keyed_rows(&decorate_rows(rows))
 }
 
 fn worst_key(entry: &ProjectFileEntry) -> f64 {
@@ -731,7 +761,7 @@ fn build_language_rollups(
             let rolled_scores = min_scores_by_dim(results);
             let lang_entries = per_language_entries.get(language);
             let lang_results = per_language_results.get(language);
-            let mut rows: Vec<ScoredProjectRow> = match (lang_entries, lang_results) {
+            let rows: Vec<ScoredProjectRow> = match (lang_entries, lang_results) {
                 (Some(entries), Some(results)) if entries.len() == results.len() => entries
                     .iter()
                     .cloned()
@@ -751,12 +781,9 @@ fn build_language_rollups(
                     .collect(),
                 _ => Vec::new(),
             };
-            rows.sort_by(|a, b| {
-                project_file_sort_key(a)
-                    .partial_cmp(&project_file_sort_key(b))
-                    .unwrap_or(Ordering::Equal)
-            });
-            let worst = rows.first().map(|row| &row.entry);
+            let mut keyed = decorate_rows(&rows);
+            sort_keyed(&mut keyed);
+            let worst = keyed.first().map(|(_, row)| &row.entry);
             ProjectLanguageRollup {
                 language: language.clone(),
                 file_count: rows.len(),
@@ -813,7 +840,7 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     );
 
     let overall = aggregate_floor_verdict(&rolled);
-    let mut rows: Vec<ScoredProjectRow> = if args.entries.len() == args.per_file_results.len() {
+    let rows: Vec<ScoredProjectRow> = if args.entries.len() == args.per_file_results.len() {
         args.entries
             .into_iter()
             .zip(args.per_file_results)
@@ -844,19 +871,16 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
         .map(|row| to_worst_entry(&row.entry))
         .collect();
 
-    let (hard_fails, leaf_composable_zeros, maintainability_giants) = classify_project_rows(&rows);
-    let hard_fail_head_owned = rows
+    let mut keyed = decorate_rows(&rows);
+    let (hard_fails, leaf_composable_zeros, maintainability_giants) = classify_keyed_rows(&keyed);
+    let hard_fail_head_owned = keyed
         .iter()
-        .find(|row| is_hard_fail(&row.result))
-        .map(|row| row.entry.clone());
+        .find(|(k, _)| k.hard_fail)
+        .map(|(_, row)| row.entry.clone());
     let hard_fail_head = hard_fail_head_owned.as_ref();
 
-    rows.sort_by(|a, b| {
-        project_file_sort_key(a)
-            .partial_cmp(&project_file_sort_key(b))
-            .unwrap_or(Ordering::Equal)
-    });
-    let entries: Vec<ProjectFileEntry> = rows.iter().map(|row| row.entry.clone()).collect();
+    sort_keyed(&mut keyed);
+    let entries: Vec<ProjectFileEntry> = keyed.iter().map(|(_, row)| row.entry.clone()).collect();
 
     let aggregate_explanation =
         aggregate_explanation(&rolled, &rolled_scores, hard_fail_head, &entries);
@@ -1436,6 +1460,35 @@ mod tests {
             0,
         );
         assert_eq!(contract.next_tool.as_deref(), Some("topos_evaluate_file"));
+    }
+
+    /// Ranking lists decorate once per row: gate classification must run
+    /// exactly `n` times, not once per comparison (which a sort of 8 rows
+    /// would balloon well past 8).
+    #[test]
+    fn ranking_lists_evaluate_gates_once_per_row() {
+        let rows: Vec<ScoredProjectRow> = (0..8)
+            .map(|i| {
+                let mut result = ClassificationResult {
+                    is_parseable: true,
+                    ..Default::default()
+                };
+                result.raw_metrics.insert(
+                    "cfg.cyclomatic".to_string(),
+                    SIMPLE.max_cyclomatic + f64::from(i) + 1.0,
+                );
+                classified_row(result, entry(&format!("f{i}.py"), 90.0 - f64::from(i)))
+            })
+            .collect();
+
+        GATE_EVAL_COUNT.with(|c| c.set(0));
+        let (_, _, giants) = classify_project_rows(&rows);
+        assert_eq!(
+            GATE_EVAL_COUNT.with(std::cell::Cell::get),
+            rows.len(),
+            "gate classification must run once per row, not once per comparison"
+        );
+        assert_eq!(giants.len(), rows.len());
     }
 
     #[test]

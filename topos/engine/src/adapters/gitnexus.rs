@@ -14,7 +14,7 @@
 //!   equivalent; the actual process spawn/wait/kill lives in
 //!   [`super::process::run_with_timeout`] — see that module's doc comment.
 //! - `shutil.which` is replaced by a small manual `$PATH` scan
-//!   ([`super::process::command_on_path`], shared with the `graphify`
+//!   ([`super::process::command_on_path`], shared with the other external tool
 //!   adapter) rather than a `which` crate dependency: the full semantics
 //!   (Windows `PATHEXT`, symlink resolution, ...) aren't needed for finding
 //!   one specific binary.

@@ -647,6 +647,7 @@ impl RowKeys {
         } else {
             (2, worst_key(&row.entry), 0.0)
         };
+        assert_total_order(file_key, &row.entry.filepath);
         RowKeys {
             hard_fail,
             gate_failures,
@@ -741,6 +742,46 @@ fn classify_project_rows(
     classify_keyed_rows(&decorate_rows(rows))
 }
 
+/// Ranking key for one file. **Total order: never `NaN`.**
+///
+/// The ranking comparators sort with `partial_cmp(..).unwrap_or(Equal)`,
+/// which would silently degrade a `NaN` key to "equal" and make the result
+/// depend on comparison order rather than on the data. That cannot happen,
+/// on three independent grounds:
+///
+/// 1. **No gate metric can be `NaN` at the source.** Every entry in
+///    `GATE_SPECS` is either an integer count widened to `f64`
+///    (`cfg.cyclomatic` = `usize as f64` in `graphs/cfg/object.rs`,
+///    `ast.max_function_complexity`, `mdg.fan_in`/`fan_out`,
+///    `cpg.dangerous_calls`/`taint_flows`) or a division whose zero
+///    denominator is guarded before the divide (`ast.entropy` returns `0.0`
+///    for empty source, `mdg.instability` returns `0.5` below
+///    `MIN_RESOLVABLE_COUPLING`, `mdg.abstractness` returns `0.0` at
+///    `total == 0`). `nav.max_function_divergence` is
+///    `Σ depth·ln(1 + fanout)` with `fanout >= 0`, so every term is a
+///    finite `ln` of `>= 1`.
+/// 2. **The quality curves absorb `NaN` anyway.** Every per-metric quality
+///    in `evaluation::policies::{simple,composable,secure,navigable}` ends
+///    in `.min(1.0)` or `.max(0.0)`, and Rust's `f64::min`/`f64::max`
+///    return the *non*-`NaN` operand — so a hypothetical `NaN` metric
+///    yields a finite quality, and `ScoredDecision::score` stays in
+///    `[0, 1]`. `weakest_score`'s `reduce(f64::min)` inherits the same
+///    property.
+/// 3. **The cyclomatic branch is unreachable with `NaN`.** It runs only
+///    behind `is_maintainability_giant`, whose `*v > SIMPLE.max_cyclomatic`
+///    test is `false` for `NaN`.
+///
+/// Note this invariant does *not* rest on the v0.4.0 "gates fail closed on
+/// `NaN`" guard (`policies::gates::classify`): that one hardens `achieved`
+/// at the *comparison*, and deliberately leaves `raw_metrics` unsanitized.
+fn assert_total_order(key: (u8, f64, f64), filepath: &str) {
+    debug_assert!(
+        !key.1.is_nan() && !key.2.is_nan(),
+        "ranking sort key must be totally ordered, got {key:?} for {}",
+        filepath
+    );
+}
+
 fn worst_key(entry: &ProjectFileEntry) -> f64 {
     weakest_score(&entry.scores)
 }
@@ -781,9 +822,17 @@ fn build_language_rollups(
                     .collect(),
                 _ => Vec::new(),
             };
-            let mut keyed = decorate_rows(&rows);
-            sort_keyed(&mut keyed);
-            let worst = keyed.first().map(|(_, row)| &row.entry);
+            let keyed = decorate_rows(&rows);
+            // Only the single worst row is used; the cached file key gives
+            // the same first-wins tie behavior as the previous stable sort.
+            let worst = keyed
+                .iter()
+                .min_by(|(a, _), (b, _)| {
+                    a.file_key
+                        .partial_cmp(&b.file_key)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .map(|(_, row)| &row.entry);
             ProjectLanguageRollup {
                 language: language.clone(),
                 file_count: rows.len(),
@@ -1350,6 +1399,37 @@ mod tests {
             gitnexus_dir: None,
             generation_note: None,
         })
+    }
+
+    /// `build_language_rollups` picks the worst row with `min_by` instead of
+    /// sorting. Pins both halves of that equivalence: the minimum by
+    /// `RowKeys::file_key`, and first-wins on a tie (what `first()`
+    /// after a stable `sort_by` gave).
+    #[test]
+    fn language_rollup_worst_file_is_the_minimum_and_ties_keep_the_first() {
+        let rollup = |entries: Vec<ProjectFileEntry>| {
+            build_language_rollups(
+                &HashMap::from([("python".to_string(), Vec::new())]),
+                &HashMap::from([("python".to_string(), entries)]),
+                &HashMap::new(),
+            )
+            .remove(0)
+        };
+
+        let ranked = rollup(vec![
+            entry("mid.py", 50.0),
+            entry("worst.py", 10.0),
+            entry("best.py", 90.0),
+        ]);
+        assert_eq!(ranked.file_count, 3);
+        assert_eq!(ranked.worst_file_path.as_deref(), Some("worst.py"));
+
+        let tied = rollup(vec![
+            entry("first.py", 10.0),
+            entry("second.py", 10.0),
+            entry("best.py", 90.0),
+        ]);
+        assert_eq!(tied.worst_file_path.as_deref(), Some("first.py"));
     }
 
     /// Named lists and deprecated `worst_files` are page-global: paging must

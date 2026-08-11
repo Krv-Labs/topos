@@ -26,7 +26,6 @@ The Clap CLI and RMCP stdio server are interfaces over the shared [analysis engi
 | `topos config` | View or edit project priority settings. |
 | `topos compare SOURCE TARGET` | Compare structural AST distance. |
 | `topos coverage` | Compare source structure with tests without running them; outside the lattice. |
-| `topos graphify …` | Generate Graphify knowledge graphs or find orphans; outside the lattice. |
 | `topos depgraph generate [PATH]` | Prepare or refresh GitNexus topology. |
 | `topos install [HARNESS…]`, `topos uninstall [HARNESS…]`, `topos status` | Register, remove, or inspect Topos-owned MCP entries; see [registration lifecycle](harness-registration.md). |
 | `topos mcp` | Start the Rust stdio MCP server. |
@@ -51,7 +50,7 @@ If GitNexus is unavailable, generation fails, or the store cannot load, evaluati
 
 ## MCP agent loop
 
-`topos mcp` launches the in-process `topos-mcp` RMCP server; clients can also launch the `topos-mcp` binary directly. `ToposServer::new` sums routers for evaluate, assess, compare, coverage, depgraph, docs, graphify, inspect, preferences, and refactor. It also serves `topos://docs/*`, `topos://build`, and `topos_refactor_until_ideal`.
+`topos mcp` launches the in-process `topos-mcp` RMCP server; clients can also launch the `topos-mcp` binary directly. `ToposServer::new` sums nine routers for evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, and refactor. It also serves `topos://docs/*`, `topos://build`, and `topos_refactor_until_ideal`.
 
 ### Project evaluation ranking
 
@@ -94,7 +93,7 @@ Tool schema text consumes agent context. When adding a tool, create its `#[tool_
 
 ## Advisory and non-lattice analysis
 
-Coverage structurally compares declarations and k-gram recall without executing tests. Graphify/refactor findings identify structural hotspots or orphans. Compare measures structural distance. None changes SIMPLE, COMPOSABLE, SECURE, NAVIGABLE, or the lattice verdict; preserve that boundary when adding commands or tools.
+Coverage structurally compares declarations and k-gram recall without executing tests. Compare measures structural distance. MCP `topos_refactor` ranks advisory cycle hotspots from a CFG, or dependency and process hotspots from GitNexus-derived graphs; it is not a CLI command. None changes SIMPLE, COMPOSABLE, SECURE, NAVIGABLE, or the lattice verdict; preserve that boundary when adding commands or tools.
 
 ## Change navigation
 

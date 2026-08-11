@@ -31,9 +31,15 @@ import re
 import sys
 from pathlib import Path
 
-# Must mirror `on.pull_request.branches` as it stood before the filter was
-# removed, plus `on.push.branches`. Keep the two in sync: this list is now the
-# only thing restricting which non-stacked PRs get CI.
+# Mirrors the `on.pull_request.branches` allowlist as it stood before that
+# filter was removed. This list is now the only thing restricting which
+# non-stacked PRs get CI, and nothing enforces the correspondence, so keep it in
+# sync by hand.
+#
+# Note this is *not* a union with `on.push.branches`, which is deliberately
+# narrower (no `release/**`). Pushes never consult this list: the trigger has
+# already filtered them by the time the gate runs, so `decide()` admits any
+# non-PR event outright.
 TRUNK_PATTERNS = ("main", "worktree-rust-migration-v0.4.0", "release/**")
 
 

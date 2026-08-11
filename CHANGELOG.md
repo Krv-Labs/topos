@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Merged PRs add their entries to `[Unreleased]` as they land; the release PR renames
+that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](.agents/AGENTS.md).
 
 ## [Unreleased]
 
@@ -19,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `TOPOS_GRAPHIFY_TIMEOUT` and `GRAPHIFY_OUT` environment variables are no longer read.
 
 - **MCP tool count drops from 18 to 17**, and the tool-definition **context budget shrinks accordingly**: the wire surface every agent session pays for on every request went from 39,584 to 38,668 characters (~9,896 → ~9,667 approximate tokens). The ratchet in `topos/mcp/src/context_budget.rs` was moved **down** from 40,500 to 39,500. Resource count (7) and prompt count (1) are unchanged.
+
+### Changed
+
+- **The security overlay decides before it parses** ([#322](https://github.com/Krv-Labs/topos/issues/322), [#331](https://github.com/Krv-Labs/topos/pull/331)) — `overlay_for_file` / `overlay_for_source` built a `ProgramMorphism` before checking the two conditions that make an overlay possible at all (parseable, and SECURE actually failing). Every SECURE-passing file therefore paid a full tree-sitter parse whose only consumer was an early `return None`, and `overlay_for_file` re-read from disk a file `classify_file` had just read. The guards now run first. Most visible in the project loop, which calls `overlay_for_file` once per file: on a clean codebase that was one wasted read + parse per file. `topos_inspect_code` on a SECURE-clean 1820-line Rust file drops from 118.5 ms to 99.8 ms (~16%). Verdicts, findings, and acknowledged risks are unchanged — verified by diffing `topos evaluate --json` across both binaries on corpora exercising both the firing and passing paths.
+
+## [0.5.1] - 2026-08-08
+
+### Fixed
+
+- **`cfg.cyclomatic` remediation no longer advises an action that worsens the metric it cites** ([#286](https://github.com/Krv-Labs/topos/issues/286), [#318](https://github.com/Krv-Labs/topos/pull/318)) — `cfg.cyclomatic` is a whole-file sum, so extracting a helper preserves the decisions and adds a function, moving the number up. The guidance now names the actual levers for a whole-file sum (collapse redundant decisions, or split the file) and surfaces the trade-off against `ast.max_function_complexity` rather than implying the two align.
+
+### Changed
+
+- **Ranking-list sorts evaluate each row's gates once** ([#305](https://github.com/Krv-Labs/topos/issues/305), [#320](https://github.com/Krv-Labs/topos/pull/320)) — project ranking comparators called `gate_metrics_for` per comparison, cloning each row's full `raw_metrics` map and reclassifying, for O(n log n) gate evaluations. Rows are now decorated with precomputed keys once, sorted, and projected back. Ordering and list membership are unchanged (verified by comparing `topos_evaluate_project` payloads across both binaries).
+- **Metric-location generation parses once per request** ([#306](https://github.com/Krv-Labs/topos/issues/306), [#319](https://github.com/Krv-Labs/topos/pull/319)) — SIMPLE and NAVIGABLE location collectors each built their own `ProgramMorphism` for the same single-file request. One morphism is now built and shared. Response shape and span ordering unchanged.
+- **CFG builder tracks continue targets directly** ([#307](https://github.com/Krv-Labs/topos/issues/307), [#317](https://github.com/Krv-Labs/topos/pull/317)) — after switch `break` handling moved to `break_stack`, `LoopContext` held a single field. Replaced with `continue_stack: Vec<usize>`. No edge-contract change.
 
 ## [0.5.0] - 2026-08-07
 

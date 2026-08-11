@@ -7,9 +7,9 @@ tags: [workflows, cli, mcp, agents, refactoring, rust]
 openwiki:
   roles: [workflow, integration]
   change_kinds: [cli, mcp, evaluation, gitnexus]
-  source_paths: [topos/cli/src/main.rs, topos/cli/src/commands, topos/mcp/src/server.rs, topos/mcp/src/tools]
-  symbols: [Command, ToposServer, ToolRouter, resolve_project_path]
-  test_paths: [topos/mcp/src/docs.rs, topos/mcp/src/context_budget.rs]
+  source_paths: [topos/cli/src/main.rs, topos/cli/src/commands, topos/mcp/src/server.rs, topos/mcp/src/tools, topos/mcp/src/diagnostics.rs]
+  symbols: [Command, ToposServer, ToolRouter, resolve_project_path, overlay_for_file, overlay_for_source]
+  test_paths: [topos/mcp/src/diagnostics.rs, topos/mcp/src/tools/inspect.rs]
   validation_commands: [cargo test -p topos, cargo test -p topos-mcp]
 ---
 
@@ -52,6 +52,22 @@ If GitNexus is unavailable, generation fails, or the store cannot load, evaluati
 ## MCP agent loop
 
 `topos mcp` launches the in-process `topos-mcp` RMCP server; clients can also launch the `topos-mcp` binary directly. `ToposServer::new` sums routers for evaluate, assess, compare, coverage, depgraph, docs, graphify, inspect, preferences, and refactor. It also serves `topos://docs/*`, `topos://build`, and `topos_refactor_until_ideal`.
+
+### Project evaluation ranking
+
+`topos_evaluate_project` walks supported files, then `build_project_result` produces the aggregate floor, language rollups, page-global named lists (`hard_fails`, `leaf_composable_zeros`, and `maintainability_giants`), and the paginated `files` table. The four-pillar gate meaning remains owned by the [quality model](../domain/quality-model.md); this layer decides how already-classified rows are ordered and presented.
+
+`RowKeys::new` in `topos/mcp/src/tools/evaluate.rs` builds gate inputs and calls `evaluate_gates` exactly once for each `ScoredProjectRow`. `decorate_rows` shares those cached keys with `classify_keyed_rows` and `sort_keyed`; the latter retains Rust's stable `sort_by` and the previous tie ordering. As a result, the named-list membership and row ordering do not change, while gate-derived ranking work is linear in the number of rows rather than repeated by sorting comparators.
+
+When changing project ranking, keep the distinction between decisive hard failures, advisory cyclomatic `maintainability_giants`, and the deprecated always-empty `leaf_composable_zeros` bucket. Update `RowKeys`, its consumers, and the comparator key together; do not recompute gate inputs inside a comparator. `ranking_lists_evaluate_gates_once_per_row` is the narrow regression: run `cargo test -p topos-mcp ranking_lists_evaluate_gates_once_per_row`. Run `cargo test -p topos-mcp` when result construction or adjacent MCP behavior changes. A stdio `tools/list` smoke test is conditional on a schema, tool annotation, or router-registration change—ranking-only changes do not alter that shipped surface.
+
+### Security diagnostic overlay
+
+After a classification, MCP evaluation may add allowlist-aware active findings, acknowledged risks, and an adjusted verdict through `SecurityOverlay`. `overlay_for_file` serves file evaluation, including `evaluate_single_file` in the project loop; `overlay_for_source` serves inline evaluation and `inspect_code_sync`. The overlay consumes the classification result from the [analysis engine](../architecture/overview.md) and delegates its Sighthound/local-CPG findings to the [analysis integrations](../integrations/distribution.md#embedded-sighthound-for-secure).
+
+`overlay_applies` in `topos/mcp/src/diagnostics.rs` is the lifecycle gate: only parseable results with a failed SECURE metric (`cpg.dangerous_calls` or `cpg.taint_flows`) can require an overlay. Both entry points must check that predicate **before** constructing `ProgramMorphism` or loading configuration. A SECURE-clean project row therefore avoids a second file read and CPG parse after `classify_file`; an unparseable result also has no overlay. Do not move configuration loading or `security_findings` ahead of this gate, and do not use output payload preferences to suppress the internal active findings used by routing/refactor targets.
+
+The behavioral regression is `secure_clean_and_unparseable_sources_produce_no_overlay` in `topos/mcp/src/diagnostics.rs`; run `cargo test -p topos-mcp secure_clean_and_unparseable_sources_produce_no_overlay` for a guard-only change, and add `one_off_allow_acknowledges_risk_rather_than_stripping_it` when touching allowlist partitioning. Run `cargo test -p topos-mcp` for changes shared by evaluation and inspection. `parse_share_of_inspect_latency` in `topos/mcp/src/tools/inspect.rs` is deliberately ignored and asserts no timing: run `cargo test --release -p topos-mcp -- --ignored --nocapture` only when reconsidering cross-module parse sharing or measuring a performance claim; it is not routine CI validation.
 
 ```mermaid
 sequenceDiagram

@@ -61,7 +61,7 @@ Mappers assign deterministic UAST IDs. For hand-built nodes without an ID, `grap
 
 UAST clone, drop, and equality are iterative, and CFG construction uses an iterative continuation machine. These stack-safety properties protect deeply nested source, but derived `Debug` formatting remains recursive and is unsuitable for extremely deep trees.
 
-`graphs/cfg/edge_contracts.rs` locks branch/loop, match/switch-return, and supported try-return layouts across every registered language. `cfg.nesting_depth` must use the forward CFG DAG calculation rather than repeatedly traversing loopback/continue cycles. Preserve the loop and untagged-cycle regressions when changing `graphs/cfg/` or its probes.
+`graphs/cfg/edge_contracts.rs` locks branch/loop, match/switch-return, and supported try-return layouts across every registered language. In `graphs/cfg/builder.rs`, `CFGBuildState` keeps a `continue_stack` of loop-header block IDs and a separate `break_stack` of loop-after or match-join IDs: `start_loop` pushes both targets, `handle_terminal_stmt` routes `ContinueStmt` or `BreakStmt` to the innermost target, and `finish_loop` pops them. This symmetric stack representation replaced the former one-field loop wrapper without changing CFG behavior or edge contracts. `cfg.nesting_depth` must use the forward CFG DAG calculation rather than repeatedly traversing loopback/continue cycles. Preserve the loop and untagged-cycle regressions when changing `graphs/cfg/` or its probes.
 
 ## Two distinct AST-local gates
 

@@ -146,7 +146,7 @@ fn gate_message(r: &GateResult) -> String {
     let threshold = r.threshold().unwrap_or(value);
     match r.spec.metric {
         "cfg.cyclomatic" => format!(
-            "Extract helper functions to cut branching (cyclomatic {value:.0} > {threshold:.0})."
+            "Collapse redundant decisions or split this file (cyclomatic {value:.0} > {threshold:.0}) — extracting helpers lowers `ast.max_function_complexity` but raises this whole-file sum."
         ),
         "ast.max_function_complexity" => format!(
             "Split the most complex function (complexity {value:.0} > {threshold:.0})."

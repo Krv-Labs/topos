@@ -10,6 +10,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Changed
+
+- **The security overlay decides before it parses** ([#322](https://github.com/Krv-Labs/topos/issues/322), [#331](https://github.com/Krv-Labs/topos/pull/331)) — `overlay_for_file` / `overlay_for_source` built a `ProgramMorphism` before checking the two conditions that make an overlay possible at all (parseable, and SECURE actually failing). Every SECURE-passing file therefore paid a full tree-sitter parse whose only consumer was an early `return None`, and `overlay_for_file` re-read from disk a file `classify_file` had just read. The guards now run first. Most visible in the project loop, which calls `overlay_for_file` once per file: on a clean codebase that was one wasted read + parse per file. `topos_inspect_code` on a SECURE-clean 1820-line Rust file drops from 118.5 ms to 99.8 ms (~16%). Verdicts, findings, and acknowledged risks are unchanged — verified by diffing `topos evaluate --json` across both binaries on corpora exercising both the firing and passing paths.
+
 ## [0.5.1] - 2026-08-08
 
 ### Fixed

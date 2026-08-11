@@ -12,16 +12,15 @@ use std::io::IsTerminal;
 use clap::{Parser, Subcommand};
 use console::Style;
 
-use commands::{compare, config, coverage, depgraph, evaluate, graphify, inspect, install, mcp};
+use commands::{compare, config, coverage, depgraph, evaluate, inspect, install, mcp};
 
-const ROOT_COMMANDS: [(&str, &str); 11] = [
+const ROOT_COMMANDS: [(&str, &str); 10] = [
     ("evaluate", "Score a file or directory"),
     ("inspect", "Explain one file"),
     ("config", "Set project priorities"),
     ("compare", "Compare two files"),
     ("coverage", "Compare source structure with tests"),
     ("depgraph", "Build the COMPOSABLE graph"),
-    ("graphify", "Inspect graph health"),
     ("install", "Configure agent harnesses to use Topos"),
     ("uninstall", "Remove Topos from agent harnesses"),
     ("status", "Show which harnesses are configured"),
@@ -56,8 +55,6 @@ enum Command {
         after_help = "Examples:\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
     )]
     Coverage(coverage::CoverageArgs),
-    /// Generate or inspect a Graphify knowledge graph.
-    Graphify(graphify::GraphifyArgs),
     /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
     /// Configure agent harnesses (Claude Code, Codex, Gemini, ...) to use Topos.
@@ -93,7 +90,6 @@ fn main() {
         Command::Inspect(args) => inspect::run(args),
         Command::Compare(args) => compare::run(args),
         Command::Coverage(args) => coverage::run(args),
-        Command::Graphify(args) => graphify::run(args),
         Command::Depgraph(args) => depgraph::run(args),
         Command::Install(args) => install::run_install(args),
         Command::Uninstall(args) => install::run_uninstall(args),
@@ -174,7 +170,6 @@ mod tests {
             "inspect",
             "compare",
             "coverage",
-            "graphify",
             "depgraph",
             "install",
             "uninstall",
@@ -193,7 +188,7 @@ mod tests {
         let styled = root_help(true);
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
-        assert_eq!(ROOT_COMMANDS.len(), 11);
+        assert_eq!(ROOT_COMMANDS.len(), 10);
     }
 
     #[test]

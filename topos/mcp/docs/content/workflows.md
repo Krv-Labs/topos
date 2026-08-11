@@ -27,7 +27,6 @@ situational.
 | `topos_preference_walk` | Resolve `target` / `fallback_target` / `next_step` for a ranking, standalone. |
 | `topos_depgraph_status` | Read-only GitNexus diagnosis; never triggers generation. |
 | `topos_generate_depgraph` | Force a GitNexus rebuild/refresh. |
-| `topos_generate_graphify_graph` | Build the Graphify graph that `topos_refactor(target="graphify")` reads. |
 | `topos_refactor` | Advisory hotspots. Never affects the medal. |
 | `topos_calculate_coverage` | Structural test coverage. Outside the lattice. |
 | `topos_get_doc` | Fetch one of the six embedded topics. |
@@ -229,17 +228,14 @@ SIMPLE / COMPOSABLE / SECURE / NAVIGABLE scoring.
 Call with `{"target": "...", "filepath": "...", "limit": 5}`
 (optional `gitnexus_dir`; ignored for `target="cycles"`):
 
-| `target` | Engine | Needs GitNexus/Graphify | What you get |
+| `target` | Engine | Needs GitNexus | What you get |
 | --- | --- | --- | --- |
 | `cycles` | CFG cycle basis (homology) | No | Source ranges for real loops/branches behind cyclomatic complexity |
 | `dependencies` | Balanced Forman curvature on the MDG | Yes (GitNexus) | Dependency edges worth strengthening |
 | `process` | Directed Forman-Ricci on process graphs | Yes (GitNexus) | Execution choke-point transitions |
-| `graphify` | Degree + confidence over a Graphify knowledge graph | Yes (Graphify) | Orphan/dead-code nodes and low-confidence (`INFERRED`/`AMBIGUOUS`) edges |
 
 Hotspot fields (intentionally terse for wire size): `kind`, `label`,
-`filepath`, `line_start` / `line_end`, `score`, `suggestion`. Note:
-`graphify` inverts the score convention — ascending degree is worse, not
-descending curvature.
+`filepath`, `line_start` / `line_end`, `score`, `suggestion`.
 
 Do **not** treat advisory hotspots as medal policy. Use evaluate/assess for
 lattice movement; use `topos_refactor` when you want structural hotspot

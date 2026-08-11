@@ -5,8 +5,8 @@ CLI Reference
 =============
 
 .. meta::
-   :description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, Graphify refactor hotspots, and MCP.
-   :twitter:description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, Graphify refactor hotspots, and MCP.
+   :description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, and MCP.
+   :twitter:description: Topos command-line reference — evaluate, inspect, compare, structural test coverage, and MCP.
 
 The Topos CLI is for **manual inspections** and **terminal workflows** when
 you want structural quality verdicts without an editor integration. Most
@@ -36,7 +36,6 @@ Quick reference
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
    topos depgraph generate
-   topos graphify generate && topos graphify orphans src/logic.py
    topos mcp
 
 Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
@@ -54,9 +53,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
 
-      Agent registration, project settings, advisory refactor hotspots, and the MCP server.
+      Agent registration, project settings, and the MCP server.
       ^^^
-      ``install`` · ``status`` · ``uninstall`` · ``config`` · ``depgraph`` · ``graphify`` · ``mcp``
+      ``install`` · ``status`` · ``uninstall`` · ``config`` · ``depgraph`` · ``mcp``
 
 Quality commands
 ================
@@ -392,63 +391,6 @@ the same store automatically; this command is useful for explicit refreshes
 after dependency changes. If a graph reported as current appears stale, rerun
 with ``--force``. When ``evaluate`` cannot measure COMPOSABLE, its terminal
 summary points back to this command.
-
-graphify
---------
-
-Generate and inspect a `Graphify <https://github.com/Graphify-Labs/graphify>`_
-knowledge graph — the ``graphify`` target of Topos's advisory refactor suite.
-**Purely advisory**: orphan/dead-code and fragile-edge hotspots here never
-affect the SIMPLE/COMPOSABLE/SECURE/NAVIGABLE medal. See ``docs/decisions/refactor-suite.md`` in
-the repository for the full design, and :doc:`agents` for the equivalent MCP
-tools (``topos_generate_graphify_graph``, ``topos_refactor(target="graphify")``).
-
-.. code-block:: bash
-
-   topos graphify generate [PATH] [OPTIONS]
-   topos graphify orphans FILEPATH [OPTIONS]
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 20 50
-   :class: topos-command-table
-
-   * - Subcommand
-     - Option
-     - Description
-   * - ``generate``
-     - ``PATH``
-     - Directory to analyze (default: current directory). Invokes the external ``graphify`` CLI as a subprocess.
-   * - ``generate``
-     - ``--force``
-     - Regenerate even when a graph is already present.
-   * - ``generate``
-     - ``--json``
-     - Output the result as a single JSON object.
-   * - ``orphans``
-     - ``FILEPATH``
-     - The file to scope orphan nodes / fragile edges to (matched against each node/edge's ``source_file``).
-   * - ``orphans``
-     - ``--graphify-dir PATH``
-     - Directory containing ``graph.json`` (default: ``./graphify-out``).
-   * - ``orphans``
-     - ``--limit N``
-     - Maximum rows to print (default: ``5``).
-   * - ``orphans``
-     - ``--json``
-     - Output the result as a single JSON object.
-
-Requires `Graphify <https://github.com/Graphify-Labs/graphify>`_ on ``PATH``
-(``pip install graphifyy``) for ``generate``; ``orphans`` only reads an
-already-generated ``graphify-out/graph.json``.
-
-**Example**
-
-.. code-block:: bash
-
-   cd /path/to/your/repo
-   topos graphify generate
-   topos graphify orphans src/module.py --limit 10
 
 mcp
 ---

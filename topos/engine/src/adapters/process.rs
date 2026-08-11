@@ -33,8 +33,8 @@ fn is_executable_file(path: &Path) -> bool {
 /// Whether `name` resolves to an executable file on `$PATH` — a small
 /// stand-in for `shutil.which`, shared by every adapter that needs to check
 /// an external tool's availability before shelling out to it (`gitnexus`,
-/// `graphify`, ...) rather than pulling in a `which` crate dependency for
-/// semantics (Windows `PATHEXT`, symlink resolution, ...) none of them need.
+/// ...) rather than pulling in a `which` crate dependency for semantics
+/// (Windows `PATHEXT`, symlink resolution, ...) none of them need.
 pub(crate) fn command_on_path(name: &str) -> bool {
     let Some(path_var) = std::env::var_os("PATH") else {
         return false;

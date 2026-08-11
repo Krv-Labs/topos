@@ -13,17 +13,18 @@
 mod tests {
     use crate::server::ToposServer;
 
-    /// Re-baselined for the NAVIGABLE pillar (v0.5.0): `LatticeElement`
-    /// went from 8 variants to 16 and `GeneratorInput` from 3 to 4, and
-    /// both are enumerated in every input schema that accepts a verdict or
-    /// a preference ranking. Measured 39_584 after that change (was 33_736
-    /// under the three-generator algebra); ceilings keep the same ~2%
-    /// headroom convention as the Python baseline they inherit from.
+    /// Ratcheted **down** when Graphify was removed (issue #325): dropping
+    /// `topos_generate_graphify_graph` and the `graphify` refactor target
+    /// took the surface from 18 tools / 39_584 chars to 17 tools / 38_668.
+    /// Ceilings keep the same ~2% headroom convention as the Python
+    /// baseline they inherit from.
     ///
-    /// This growth is the price of a genuinely larger `Ω`, not schema
-    /// bloat — but it is a one-time payment. Treat any further increase as
-    /// a regression to investigate rather than a number to raise again.
-    const TOTAL_CEILING_CHARS: usize = 40_500;
+    /// The previous re-baseline was the NAVIGABLE pillar (v0.5.0), where
+    /// `LatticeElement` went from 8 variants to 16 and `GeneratorInput`
+    /// from 3 to 4 — a one-time payment for a genuinely larger `Ω`. Treat
+    /// any increase as a regression to investigate rather than a number to
+    /// raise again; every removal ratchets this down.
+    const TOTAL_CEILING_CHARS: usize = 39_500;
     const PER_TOOL_CEILING_CHARS: usize = 5_000;
 
     fn approx_tokens(chars: usize) -> usize {

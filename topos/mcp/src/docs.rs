@@ -110,8 +110,7 @@ mod tests {
 
     /// Every registered tool must be reachable from the embedded docs, so an
     /// agent that reads them learns the whole surface. Catches tools added to
-    /// the router without a corresponding doc mention (how
-    /// `topos_generate_graphify_graph` went undocumented).
+    /// the router without a corresponding doc mention.
     #[test]
     fn every_registered_tool_is_documented() {
         let corpus: String = all_docs()

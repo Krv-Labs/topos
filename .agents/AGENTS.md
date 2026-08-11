@@ -17,7 +17,7 @@
 - **`topos/engine/src/graphs/`**: Representations implementing the `Representation` trait (`name`, `dimension`, `metrics() -> HashMap<String, f64>`).
 - **`topos/engine/src/evaluation/policies/`**: gate specs (`gates.rs`), calibration thresholds (`calibration.rs`), and one score function per pillar (`simple.rs`, `composable.rs`, `secure.rs`, `navigable.rs`).
 - **`topos/engine/src/functors/`**: probes (heavy metrics) and profunctors (pairwise comparisons). NAVIGABLE's probe is `probes/ast/divergence.rs`, with scope-walking shared in `probes/ast/scopes.rs`.
-- **`topos/engine/src/adapters/`**: external tools and integrations (`gitnexus.rs`, `graphify.rs`, `process.rs`).
+- **`topos/engine/src/adapters/`**: external tools and integrations (`gitnexus.rs`, `process.rs`).
 - **`topos/engine/src/config.rs`**: `.topos.toml` configuration parsing and allowlist rules.
 
 **To Add a Representation**:
@@ -41,7 +41,6 @@ topos config [set ...]                               # View or edit .topos.toml 
 topos inspect <path>                                 # Detailed metrics
 topos compare <path1> <path2>                         # Structural distance
 topos coverage --put <path1> --test <path2>           # UAST test coverage
-topos graphify generate|orphans                      # Graphify integration
 topos depgraph generate [--force]                     # GitNexus generation
 topos mcp                                             # Launch MCP server over stdio
 ```
@@ -77,7 +76,7 @@ The order is always carried by **`UserPreferences`**, never by `Priority` itself
 
 ## MCP Server (`topos-mcp`)
 Exposes tools, resources, and prompts for agent workflows:
-- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_assess_worktree_change` (edit-in-place vs a git ref), `topos_begin_refactor` + `topos_assess_snapshot` (edit-in-place vs a captured baseline), `topos_assess_changeset`, `topos_inspect_code`, `topos_preference_walk`, `topos_calculate_coverage`, `topos_depgraph_status`, `topos_generate_depgraph`, `topos_generate_graphify_graph`, `topos_refactor`, `topos_get_doc`.
+- **Tools**: `topos_evaluate_code`, `topos_evaluate_file`, `topos_evaluate_project`, `topos_compare_code`, `topos_compare_files`, `topos_assess_improvement` (anti-gaming), `topos_assess_worktree_change` (edit-in-place vs a git ref), `topos_begin_refactor` + `topos_assess_snapshot` (edit-in-place vs a captured baseline), `topos_assess_changeset`, `topos_inspect_code`, `topos_preference_walk`, `topos_calculate_coverage`, `topos_depgraph_status`, `topos_generate_depgraph`, `topos_refactor`, `topos_get_doc`.
 - **Resources**: `topos://docs/agent-contract`, `topos://docs/lattice`, `topos://docs/metrics`, `topos://docs/priority`, `topos://docs/preferences`, `topos://docs/workflows`.
 - **Prompts**: `topos_refactor_until_ideal`.
 

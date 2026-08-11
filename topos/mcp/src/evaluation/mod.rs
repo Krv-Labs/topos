@@ -275,30 +275,6 @@ pub(crate) fn cap_generation_detail(detail: &str) -> String {
     )
 }
 
-/// Return the graphify output dir to use, or None if not available.
-///
-/// Preference: explicit override > Graphify's own default resolution
-/// (`topos_engine::adapters::graphify::graphify_out_dir`, which itself honors
-/// `GRAPHIFY_OUT`) — so the read side (this function) and the generate side
-/// never disagree about where to look.
-pub fn resolve_graphify_dir(override_dir: Option<&str>, project_root: &Path) -> Option<PathBuf> {
-    if let Some(raw) = override_dir {
-        let path = PathBuf::from(raw);
-        let path = if path.is_absolute() {
-            path
-        } else {
-            project_root.join(path)
-        };
-        let path = path.canonicalize().ok()?;
-        if !path.starts_with(project_root) {
-            return None;
-        }
-        return path.exists().then_some(path);
-    }
-    let default = topos_engine::adapters::graphify::graphify_out_dir(project_root);
-    default.exists().then_some(default)
-}
-
 /// Classify a `gitnexus_dir` override that cannot be used.
 ///
 /// Only **escapes** are invalid: an override whose resolved path lies outside

@@ -7,7 +7,6 @@ pub mod config;
 pub mod coverage;
 pub mod depgraph;
 pub mod evaluate;
-pub mod graphify;
 pub mod inspect;
 pub mod install;
 mod lang;

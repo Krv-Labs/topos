@@ -609,17 +609,14 @@ fn default_refactor_limit() -> usize {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RefactorInput {
-    /// Which analysis engine to run: `cycles` (CFG), `dependencies` /
-    /// `process` (need `.gitnexus`), or `graphify` (need Graphify graph).
+    /// Which analysis engine to run: `cycles` (CFG), or `dependencies` /
+    /// `process` (need `.gitnexus`).
     pub target: RefactorTargetKind,
     /// Source file path relative to the MCP file root.
     pub filepath: String,
     /// Override `.gitnexus` directory (`dependencies` / `process` targets).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Override Graphify output directory (`target=graphify` only).
-    #[serde(default)]
-    pub graphify_dir: Option<String>,
     /// Maximum hotspots to return (default 5).
     #[serde(default = "default_refactor_limit")]
     pub limit: usize,
@@ -635,8 +632,6 @@ pub enum RefactorTargetKind {
     Dependencies,
     /// Process-graph choke points (needs `.gitnexus`).
     Process,
-    /// Graphify orphan nodes / fragile inferred edges.
-    Graphify,
 }
 
 impl RefactorTargetKind {
@@ -645,7 +640,6 @@ impl RefactorTargetKind {
             RefactorTargetKind::Cycles => "cycles",
             RefactorTargetKind::Dependencies => "dependencies",
             RefactorTargetKind::Process => "process",
-            RefactorTargetKind::Graphify => "graphify",
         }
     }
 }
@@ -1321,18 +1315,17 @@ pub struct ChangesetResult {
     pub error: Option<String>,
 }
 
-/// One ranked refactor hotspot row (cycles / dependencies / process / graphify).
+/// One ranked refactor hotspot row (cycles / dependencies / process).
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RefactorHotspot {
-    /// cycle | dependency_edge | process_transition | graphify_orphan | graphify_fragile_edge
+    /// cycle | dependency_edge | process_transition
     pub kind: String,
     pub label: String,
     pub filepath: String,
     pub line_start: Option<usize>,
     pub line_end: Option<usize>,
     /// Betti contribution (cycles) or curvature value (dependencies/process,
-    /// descending = worse) or degree (graphify orphans, **ascending** = worse
-    /// — inverted from curvature's sign convention; see `docs/decisions/refactor-suite.md`.
+    /// descending = worse); see `docs/decisions/refactor-suite.md`.
     pub score: f64,
     pub suggestion: String,
 }
@@ -1346,33 +1339,10 @@ pub struct RefactorResult {
     pub gitnexus_available: Option<bool>,
     /// Generic external-tool availability, set for every target going
     /// forward (`dependencies`/`process` mirror `gitnexus_available` here
-    /// too, for back-compat; `graphify` sets only this field; `cycles`
-    /// leaves both `None`, matching the existing `betti_1`-only-for-cycles
-    /// precedent).
+    /// too, for back-compat; `cycles` leaves both `None`, matching the
+    /// existing `betti_1`-only-for-cycles precedent).
     pub tool_available: Option<bool>,
     pub hotspots: Vec<RefactorHotspot>,
-    pub error: Option<String>,
-}
-
-/// Arguments for `topos_generate_graphify_graph` (side-effecting).
-#[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct GenerateGraphifyInput {
-    /// Absolute directory in the project to analyze.
-    pub directory: String,
-    /// Regenerate even when current.
-    #[serde(default)]
-    pub force: bool,
-}
-
-/// Result of `topos_generate_graphify_graph`.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct GenerateGraphifyResult {
-    pub ok: bool,
-    pub returncode: i32,
-    pub graphify_out_dir: Option<String>,
-    pub generated: bool,
-    pub message: String,
     pub error: Option<String>,
 }
 

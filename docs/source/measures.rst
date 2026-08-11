@@ -285,10 +285,9 @@ Topos supports several relational metrics across its different graph representat
 Refactor Suite (also not scored)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Beyond profunctor comparisons, the ``topos_refactor`` MCP tool (and, for
-Graphify, the ``topos graphify`` CLI subcommand) surfaces ranked structural
-hotspots from four more engines — CFG cycle basis, MDG/process-graph
-curvature, and Graphify knowledge-graph degree/confidence. Like the
+Beyond profunctor comparisons, the ``topos_refactor`` MCP tool surfaces
+ranked structural hotspots from three more engines — CFG cycle basis and
+MDG/process-graph curvature. Like the
 profunctors above, **none of these feed the evaluation lattice**; they're
 refactoring guidance layered on top. See :doc:`agents` and the repository's
 ``docs/decisions/refactor-suite.md`` for the full design.

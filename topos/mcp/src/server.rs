@@ -61,7 +61,6 @@ impl ToposServer {
             + Self::coverage_router()
             + Self::depgraph_router()
             + Self::docs_router()
-            + Self::graphify_router()
             + Self::inspect_router()
             + Self::preferences_router()
             + Self::refactor_router();

@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
+
 ### Breaking
 
 - **Graphify integration removed** (~1,680 production lines). Every signal it provided was already available from the GitNexus/MDG graph Topos loads for COMPOSABLE, usually at better fidelity — full `startLine`/`endLine` spans instead of point anchors, a first-class `Community` node label with `MEMBER_OF` edges instead of a bare Louvain field, and a continuous `confidence: f64` + `reason` instead of a three-value enum. It had no production consumer, no CI coverage, and no agent-facing recommendation, and it wrapped a pre-1.0 external tool with a documented history of schema breaks. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) § Removed target and issue [#325](https://github.com/Krv-Labs/topos/issues/325).
@@ -91,12 +95,6 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 > **NAVIGABLE thresholds calibrated** on a balanced 6,390-file leaderboard corpus (2026-08-07): `max_function_divergence = 10.0` (p95 `10.37`; ~5.2% gate failure rate) and `divergence_cap = 12.0` (spans p99 across Rust `10.40`, Go `13.64`, and Python `12.31` so scores decay linearly without early flooring). Topos's 176 Rust sources remain a reference ECDF (`p95` `5.65`, p99 `8.62`, max `12.19`).
 
 Docs figures under `docs/source/_static/figures/topos-lattice*.svg` have been redrawn for the full sixteen-element 4-cube (PLATINUM down to SLOP). The benchmark figures (`topos-medal-mix*`, `topos-typical-profiles*`, `topos-library-profiles*`, `topos-bronze-ready*`) still plot the three-pillar corpus run and will be regenerated when the benchmark is re-run under NAVIGABLE.
-
-## [Unreleased]
-
-### Added
-
-- **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
 
 ## [0.4.4] - 2026-08-04
 

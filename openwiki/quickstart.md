@@ -21,10 +21,10 @@ This wiki is an engineering map, not a replacement for product documentation in 
 ## What Topos delivers
 
 - `topos evaluate` scores files or directories, discovers supported languages by default, and can emit JSON; `--language` narrows discovery.
-- `topos mcp` launches the Rust MCP server over stdio. It combines ten tool routers, static `topos://docs/*` and `topos://build` resources, and the `topos_refactor_until_ideal` prompt.
+- `topos mcp` launches the Rust MCP server over stdio. It combines nine tool routers, static `topos://docs/*` and `topos://build` resources, and the `topos_refactor_until_ideal` prompt.
 - `topos install`, `topos uninstall`, and `topos status` manage only Topos-owned MCP registrations in eight agent harnesses; see [agent-harness registration](workflows/harness-registration.md).
 - `topos depgraph generate` prepares GitNexus state for cross-module COMPOSABLE evaluation.
-- `topos coverage`, `topos compare`, and `topos graphify` are structural analysis surfaces outside the quality lattice.
+- `topos coverage` and `topos compare` are structural analysis surfaces outside the quality lattice; the MCP-only `topos_refactor` tool provides advisory hotspots.
 
 ## Practical starting points
 

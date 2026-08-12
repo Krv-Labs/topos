@@ -57,7 +57,7 @@ When changing this seam, update `functors/probes/ast/divergence.rs`, scope class
 
 ## Scoring versus advice
 
-Gate-failure targets belong to scoring output. `topos coverage`, Graphify, compare, and refactor analysis supply useful structural evidence but deliberately do not add generators or change lattice membership. The [workflow page](../workflows/agent-and-cli.md#advisory-and-non-lattice-analysis) owns that public boundary.
+Gate-failure targets belong to scoring output. `topos coverage`, `topos compare`, and MCP `topos_refactor` supply useful structural evidence but deliberately do not add generators or change lattice membership. The [workflow page](../workflows/agent-and-cli.md#advisory-and-non-lattice-analysis) owns that public boundary.
 
 ## Policy change recipe
 

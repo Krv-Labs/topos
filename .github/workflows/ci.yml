@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, worktree-rust-migration-v0.4.0]
+    branches: [main]
   # Deliberately unfiltered. `branches:` filters on a PR's *base*, and a stacked
   # PR targets its parent topic branch — so the old allowlist
   # ([main, worktree-rust-migration-v0.4.0, 'release/**']) excluded every

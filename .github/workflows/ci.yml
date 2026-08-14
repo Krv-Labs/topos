@@ -2,12 +2,76 @@ name: CI
 
 on:
   push:
-    branches: [main, worktree-rust-migration-v0.4.0]
+    branches: [main]
+  # Deliberately unfiltered. `branches:` filters on a PR's *base*, and a stacked
+  # PR targets its parent topic branch — so the old allowlist
+  # ([main, worktree-rust-migration-v0.4.0, 'release/**']) excluded every
+  # stacked PR from CI entirely, leaving stacked changes reviewed with no
+  # verification behind them. The policy moved into the `gate` job below, which
+  # mirrors that allowlist and additionally admits PRs that belong to a GitHub
+  # stack. `scripts/ci_gate.py` owns the decision; its TRUNK_PATTERNS mirrors
+  # the removed allowlist and must be kept in sync by hand. `on.push.branches`
+  # above stays narrower on purpose — pushes are filtered by the trigger and
+  # never reach that list.
   pull_request:
-    branches: [main, worktree-rust-migration-v0.4.0, 'release/**']
 
 jobs:
+  # Decides whether the rest of the workflow runs. Trunk-targeted PRs are
+  # admitted without consulting the stack API at all, so the critical path to
+  # `main` gains no new dependency; only topic-branch PRs are asked whether
+  # they are stacked.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the gate's own decision table
+        run: python3 scripts/ci_gate.py --selftest
+
+      # `PullRequestStack` is a new API and whether an Actions installation
+      # token can read it is exactly what this step establishes. The raw
+      # response is printed — `errors` array included — so a single run answers
+      # that, and the step never fails: an unreadable response has to fail open
+      # in `ci_gate.py`, not block CI here.
+      - name: Query stack membership
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          NAME: ${{ github.event.repository.name }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL
+          # variables and must reach the API unexpanded; the shell must not
+          # touch them. Real values are bound by the -F flags below.
+          gh api graphql \
+            -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number baseRefName stack{number size}}}}' \
+            -F owner="$OWNER" -F name="$NAME" -F number="$NUMBER" \
+            > stack.json 2> stack.err || true
+          echo "--- raw GraphQL response ---"
+          cat stack.json || true
+          echo "--- stderr ---"
+          cat stack.err || true
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          python3 scripts/ci_gate.py \
+            --event-name "$EVENT_NAME" \
+            --base-ref "$BASE_REF" \
+            --stack-response stack.json
+
   rust:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,6 +139,8 @@ jobs:
           | grep -q '"topos_evaluate_code"'
 
   composable:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -142,6 +208,8 @@ jobs:
           fi
 
   wheel:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -174,6 +242,8 @@ jobs:
           args: --release --bindings bin --manifest-path topos/mcp/Cargo.toml --out dist
 
   extension:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

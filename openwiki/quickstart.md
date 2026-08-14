@@ -60,7 +60,7 @@ Topos supports Python, Rust, JavaScript, TypeScript, C++, and Go. For commands, 
 | Change MCP security-overlay invocation, parse ordering, or allowlist-adjusted findings | [Security diagnostic overlay](workflows/agent-and-cli.md#security-diagnostic-overlay) | `topos/mcp/src/diagnostics.rs`, `topos/mcp/src/tools/{evaluate.rs,inspect.rs}` | `overlay_applies`, `overlay_for_file`, `overlay_for_source`, `SecurityOverlay` | `secure_clean_and_unparseable_sources_produce_no_overlay`; allowlist partition regression | `cargo test -p topos-mcp secure_clean_and_unparseable_sources_produce_no_overlay` |
 | Add or change agent-harness registration | [Agent-harness registration](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `HARNESSES`, `HarnessSpec`, `Artifact`, `State` | `topos/cli/tests/install_e2e.rs` | `cargo test -p topos --test install_e2e` |
 | Change GitNexus, Sighthound, Docker, VS Code, or MCP filesystem boundary | [Integrations and distribution](integrations/distribution.md) | `topos/engine/src/{adapters/gitnexus.rs,graphs/mdg/}`, `topos/mcp/src/security.rs` | `resolve_project_path`, `resolve_within_root`, `ModuleDependencyGraph` | integration-specific crate tests | `cargo test -p topos-mcp` or matching focused engine test |
-| Change CI, version metadata, installer, wheel, or release automation | [Testing and release operations](operations/testing-and-release.md) | `.github/workflows/`, `scripts/check_versions.py`, `install.sh` | `check_versions.py --tag` | `tests/packaging/test_install_sh_preflight.py` | `python3 scripts/check_versions.py` |
+| Change CI admission policy, version metadata, installer, wheel, or release automation | [Testing and release operations](operations/testing-and-release.md) | `.github/workflows/ci.yml`, `scripts/ci_gate.py`, `scripts/check_versions.py`, `install.sh` | `decide`, `TRUNK_PATTERNS`, `check_versions.py --tag` | `scripts/ci_gate.py --selftest`; `tests/packaging/test_install_sh_preflight.py` | `python3 scripts/ci_gate.py --selftest` for gate changes; otherwise `python3 scripts/check_versions.py` |
 | Find ownership not listed above | [Source map](source-map.md) | `topos/`, `extensions/vscode/`, `.github/workflows/` | package boundaries | linked page | use the linked page’s focused command |
 
 ## Runtime constraints to retain
@@ -74,7 +74,7 @@ SIMPLE’s per-function complexity and NAVIGABLE’s worst-function Semantic Com
 - Source and tests are authoritative. Product documentation is in `docs/source/`; this wiki supplies engineering rationale and maintenance routes.
 - `Cargo.toml` owns the workspace version. `scripts/check_versions.py` checks distribution metadata alignment and `--tag` checks release tag alignment.
 - `openwiki/INSTRUCTIONS.md` is a user-authored scope brief; routine wiki maintenance does not rewrite it.
-- This checkout has a shallow, grafted `HEAD`; the prior `gitHead` in update metadata is unavailable locally. This update is grounded in current source and the release snapshot rather than an unavailable revision range.
+- This checkout has a shallow, grafted `HEAD`; the prior `gitHead` in update metadata is unavailable locally. Updates use current source and the inspectable grafted `HEAD` commit rather than an unavailable revision-range diff.
 
 ## Backlog
 

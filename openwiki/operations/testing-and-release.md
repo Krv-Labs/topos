@@ -7,11 +7,11 @@ tags: [operations, testing, ci, release, packaging, rust]
 openwiki:
   roles: [operations, testing, delivery]
   change_kinds: [ci, release, packaging, metadata]
-  source_paths: [.github/workflows/ci.yml, .github/workflows/release.yml, scripts/check_versions.py]
-  symbols: [check_versions.py]
-  test_paths: [tests/packaging/test_install_sh_preflight.py]
-  invariants: [Release tags and published metadata must match the Cargo workspace version.]
-  validation_commands: [python3 scripts/check_versions.py]
+  source_paths: [.github/workflows/ci.yml, .github/workflows/release.yml, scripts/ci_gate.py, scripts/check_versions.py]
+  symbols: [decide, TRUNK_PATTERNS, check_versions.py]
+  test_paths: [scripts/ci_gate.py, tests/packaging/test_install_sh_preflight.py]
+  invariants: [Release tags and published metadata must match the Cargo workspace version., CI must not silently skip verification when stack membership is unreadable.]
+  validation_commands: [python3 scripts/ci_gate.py --selftest, python3 scripts/check_versions.py]
 ---
 
 # Testing, packaging, CI, and release operations
@@ -42,14 +42,48 @@ For CFG changes, keep `graphs/cfg/edge_contracts.rs` and deep-nesting tests pass
 
 ## CI expectations
 
-`.github/workflows/ci.yml` has four independent jobs:
+`.github/workflows/ci.yml` starts every triggered run with `gate`; its `run` output controls the four downstream jobs. The `pull_request` trigger is deliberately unfiltered because a stacked PR targets its parent topic branch, not necessarily `main`. The policy itself belongs to `scripts/ci_gate.py`, not the YAML trigger.
+
+```mermaid
+flowchart TD
+  Event["Push or pull request event"] --> Gate["gate job"]
+  Gate --> Selftest["Run ci_gate.py selftest"]
+  Selftest --> Pull{"Is pull request"}
+  Pull -->|"no"| Run["run true"]
+  Pull -->|"yes"| Trunk{"Targets trunk"}
+  Trunk -->|"yes"| Run
+  Trunk -->|"no"| Query["Query PullRequestStack"]
+  Query --> Stack{"Stack membership readable"}
+  Stack -->|"stacked"| Run
+  Stack -->|"not stacked"| Skip["run false"]
+  Stack -->|"missing or invalid"| Run
+  Run --> Jobs["rust composable wheel extension"]
+```
+
+This is the admission path from the workflow trigger through the gate output to the downstream validation jobs.
+
+### CI admission gate
+
+`decide(event_name, base_ref, response)` admits every non-PR event after the workflow trigger has filtered it. For PRs, it admits base branches matching `TRUNK_PATTERNS` (`main`, `worktree-rust-migration-v0.4.0`, and `release/**`) before any GraphQL request, then admits a non-trunk PR only when the raw `PullRequestStack` response contains a stack. A non-stacked topic-branch PR is the only normal skip case.
+
+The `matches_branch` implementation intentionally follows GitHub Actions semantics: `*` does not cross `/`, while `**` does. Keep `TRUNK_PATTERNS` synchronized manually with the intended PR-base policy; it is not a union with the narrower `on.push.branches` filter. Do not replace the matcher with Python `fnmatch`.
+
+The `Query stack membership` workflow step never fails by itself and logs the raw GraphQL response and stderr. Missing, malformed, or GraphQL-error responses make `decide` **fail open** with a warning and `run=true`; unknown API access must cause extra validation, not silently remove it. Locally, validate every decision-table case and the slash-boundary regression with:
+
+```bash
+python3 scripts/ci_gate.py --selftest
+```
+
+Test Actions token/API availability only with a conditional GitHub Actions run; it cannot be established by the local self-test. Changes to this gate must keep `gate.outputs.run` wired to every downstream job and should be checked with `actionlint` when available.
+
+### Downstream validation jobs
 
 - **rust:** version and skill checks, workspace format/Clippy/tests, plus an MCP stdio `tools/list` smoke test. It provisions the LadybugDB static library before restoring the Cargo cache and keys that cache on the provisioned environment, so stale build-script output cannot omit the required native search path.
 - **composable:** installs pinned GitNexus, creates a committed fixture repository, runs GitNexus, and asserts that CLI evaluation includes COMPOSABLE rather than falling back to a missing-store message.
 - **wheel:** builds the `topos-mcp` Maturin `bin` wheel on manylinux 2.34 with CMake/pkg-config; Ladybug statically links mbedtls and does not require OpenSSL at link time. Release CI extracts the Linux wheel binary and checks its `readelf` `DT_NEEDED` entries so unexpected dynamic linkage fails explicitly.
 - **extension:** type-checks, lints, and unit-tests the VS Code package.
 
-Run the job matching the contract you change; engine-only success does not validate packaging or editor behavior.
+Run the job matching the contract you change; engine-only success does not validate packaging or editor behavior. The [integrations guide](../integrations/distribution.md) explains the consumer surfaces protected by the wheel and extension jobs.
 
 ## Build and release contract
 

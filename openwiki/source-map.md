@@ -31,7 +31,7 @@ Use this map to start implementation work, then follow the linked concept page f
 | MCP file-root containment | `topos/mcp/src/security.rs` | symlink and missing-path regression tests in the module | [Integrations and distribution](integrations/distribution.md#mcp-file-access-boundary) |
 | Container / MCP registry | `Dockerfile`, `.mcp/server.json`, `scripts/check_versions.py` | wheel and release workflow; metadata/tag guard | [Integrations and distribution](integrations/distribution.md) |
 | VS Code extension | `extensions/vscode/` | package scripts and release workflow | [Integrations and distribution](integrations/distribution.md) |
-| CI, docs, releases | `.github/workflows/`, `install.sh`, `docs/source/` | workflow jobs | [Testing and release operations](operations/testing-and-release.md) |
+| CI admission, docs, releases | `.github/workflows/ci.yml`, `scripts/ci_gate.py`, `.github/workflows/`, `install.sh`, `docs/source/` | `ci_gate.py --selftest`; workflow jobs | [Testing and release operations](operations/testing-and-release.md) |
 
 ## Fast triage routes
 

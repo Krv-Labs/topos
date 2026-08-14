@@ -89,11 +89,20 @@ fn discover_lifecycle_needs_no_initialize() {
 
     let discover = result_for_id(&responses, 1);
     assert_eq!(discover["resultType"], "complete");
-    // Exactly the revisions `SUPPORTED_PROTOCOL_VERSIONS` narrows to — not
-    // rmcp's default of every version the SDK happens to know.
+    // The pinned `SUPPORTED_PROTOCOL_VERSIONS`, reaching the wire intact. This
+    // list also bounds `initialize` negotiation, so dropping a revision here
+    // stops Topos speaking it — see `initialize_negotiates_every_supported_revision`.
+    // Asserted exactly (not by presence) so that an rmcp upgrade which adds a
+    // revision fails here and forces a deliberate choice.
     assert_eq!(
         discover["supportedVersions"],
-        serde_json::json!(["2025-11-25", "2026-07-28"])
+        serde_json::json!([
+            "2024-11-05",
+            "2025-03-26",
+            "2025-06-18",
+            "2025-11-25",
+            "2026-07-28"
+        ])
     );
     assert_eq!(
         discover["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
@@ -119,6 +128,49 @@ fn discover_lifecycle_needs_no_initialize() {
         .as_str()
         .expect("text content")
         .contains("Topos Agent Contract"));
+}
+
+/// Every revision in `SUPPORTED_PROTOCOL_VERSIONS` negotiates as itself.
+///
+/// rmcp 3.1.0 rewired `initialize` negotiation to check the handler's supported
+/// list where rmcp 2.2 checked the SDK's `KNOWN_VERSIONS`, so narrowing that
+/// list silently stops the server agreeing to the revisions it drops: the
+/// handshake does not fail, it answers with a *different* version, and per the
+/// MCP lifecycle spec a client that does not support the reply should
+/// disconnect. This pins the echo for each revision so that regression cannot
+/// land again unnoticed.
+#[test]
+fn initialize_negotiates_every_supported_revision() {
+    // Hoisted: the reference surface is the same for every revision, so spawning
+    // it once per iteration would double the child processes for nothing.
+    let reference_tools = tool_names(&initialize_era_tools_list());
+    for version in [
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+        "2026-07-28",
+    ] {
+        let responses = exchange(&[
+            &format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{version}","capabilities":{{}},"clientInfo":{{"name":"lifecycle-test","version":"0.0.1"}}}}}}"#
+            ),
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+        ]);
+
+        let init = result_for_id(&responses, 1);
+        assert_eq!(
+            init["protocolVersion"], version,
+            "server answered initialize with a version the client did not request: {init:#?}"
+        );
+        // A revision is only genuinely supported if the session then works.
+        assert_eq!(
+            tool_names(result_for_id(&responses, 2)),
+            reference_tools,
+            "tool surface differs under negotiated {version}"
+        );
+    }
 }
 
 fn tool_names(list_result: &serde_json::Value) -> Vec<String> {

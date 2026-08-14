@@ -38,12 +38,28 @@ with topos_generate_depgraph. topos_calculate_coverage reports test-suite covera
 (UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice. \
 Read `topos://build` to confirm which binary and file root are serving you.";
 
-/// MCP revisions Topos claims. `2025-11-25` is the initialize-era lifecycle
-/// every current host speaks; `2026-07-28` is the stateless revision with
-/// `server/discover` and per-request `_meta`. Both are covered by the stdio
-/// lifecycle tests.
-const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
-    &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28];
+/// MCP revisions Topos serves. Under rmcp 3 this list is not advertisement
+/// only: it bounds what `initialize` may negotiate and is what per-request
+/// `_meta` versions are validated against, so a revision omitted here is a
+/// revision Topos refuses to speak, not merely one it stays quiet about.
+///
+/// Every revision below `2026-07-28` takes the same session-model path through
+/// rmcp — the only version-conditional behavior in the SDK sits at that one
+/// boundary (SEP-2243 headers, the inline lifecycle, per-request `_meta`) — and
+/// Topos returns byte-identical payloads across all of them. So the full set
+/// the SDK knows is listed. `2025-11-25` (the initialize-era lifecycle) and
+/// `2026-07-28` (stateless `server/discover`) are the two the stdio lifecycle
+/// tests exercise end to end.
+///
+/// Spelled out rather than deferring to rmcp's default so that an SDK upgrade
+/// which adds a revision is an explicit decision here, not a silent one.
+const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] = &[
+    ProtocolVersion::V_2024_11_05,
+    ProtocolVersion::V_2025_03_26,
+    ProtocolVersion::V_2025_06_18,
+    ProtocolVersion::V_2025_11_25,
+    ProtocolVersion::V_2026_07_28,
+];
 
 const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 
@@ -248,11 +264,8 @@ impl ServerHandler for ToposServer {
         .with_instructions(SERVER_INSTRUCTIONS)
     }
 
-    /// Narrow rmcp's default (every revision the SDK knows) to the two Topos is
-    /// actually exercised against. This list is what `server/discover`
-    /// advertises and what bounds `initialize` negotiation, so leaving the
-    /// default in place would claim support for three pre-`2025-11-25`
-    /// revisions no test covers.
+    /// Pin the advertised-and-negotiated set to [`SUPPORTED_PROTOCOL_VERSIONS`]
+    /// rather than tracking rmcp's default, which moves with the SDK.
     fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
         Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
     }

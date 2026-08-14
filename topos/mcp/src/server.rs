@@ -9,15 +9,16 @@
 //! the `topos_refactor_until_ideal` prompt are implemented directly in the
 //! [`ServerHandler`] methods, since they are small and static.
 
+use std::borrow::Cow;
 use std::future::Future;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    GetPromptRequestParams, GetPromptResult, Implementation, ListPromptsResult,
+    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
     ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument, PromptMessage,
-    ProtocolVersion, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-    Role, ServerCapabilities, ServerInfo,
+    ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, Role, ServerCapabilities, ServerInfo,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer};
@@ -36,6 +37,13 @@ to enable COMPOSABLE/IDEAL; check graph state with topos_depgraph_status and bui
 with topos_generate_depgraph. topos_calculate_coverage reports test-suite coverage — structural \
 (UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice. \
 Read `topos://build` to confirm which binary and file root are serving you.";
+
+/// MCP revisions Topos claims. `2025-11-25` is the initialize-era lifecycle
+/// every current host speaks; `2026-07-28` is the stateless revision with
+/// `server/discover` and per-request `_meta`. Both are covered by the stdio
+/// lifecycle tests.
+const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] =
+    &[ProtocolVersion::V_2025_11_25, ProtocolVersion::V_2026_07_28];
 
 const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 
@@ -240,6 +248,15 @@ impl ServerHandler for ToposServer {
         .with_instructions(SERVER_INSTRUCTIONS)
     }
 
+    /// Narrow rmcp's default (every revision the SDK knows) to the two Topos is
+    /// actually exercised against. This list is what `server/discover`
+    /// advertises and what bounds `initialize` negotiation, so leaving the
+    /// default in place would claim support for three pre-`2025-11-25`
+    /// revisions no test covers.
+    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
+        Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
+    }
+
     fn list_resources(
         &self,
         _request: Option<PaginatedRequestParams>,
@@ -252,7 +269,7 @@ impl ServerHandler for ToposServer {
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<ReadResourceResponse, McpError>> + Send + '_ {
         let result = if request.uri == BUILD_URI {
             Some(ReadResourceResult::new(vec![ResourceContents::text(
                 crate::build_info::render(),
@@ -269,7 +286,7 @@ impl ServerHandler for ToposServer {
                 None => None,
             }
         };
-        std::future::ready(result.ok_or_else(|| {
+        std::future::ready(result.map(Into::into).ok_or_else(|| {
             McpError::resource_not_found(format!("Unknown resource: {}", request.uri), None)
         }))
     }
@@ -288,7 +305,7 @@ impl ServerHandler for ToposServer {
         &self,
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<GetPromptResult, McpError>> + Send + '_ {
+    ) -> impl Future<Output = Result<GetPromptResponse, McpError>> + Send + '_ {
         let result = if request.name == REFACTOR_PROMPT_NAME {
             let args = request.arguments.unwrap_or_default();
             let filepath = args
@@ -320,10 +337,7 @@ impl ServerHandler for ToposServer {
                 max_iterations,
                 preferences.as_deref(),
             );
-            Ok(GetPromptResult::new(vec![PromptMessage::new_text(
-                Role::User,
-                text,
-            )]))
+            Ok(GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)]).into())
         } else {
             Err(McpError::invalid_params(
                 format!("Unknown prompt: {}", request.name),

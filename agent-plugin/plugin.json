@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "topos",
+  "version": "0.5.1",
+  "description": "Structural code quality metrics, lattice verification, and refactor loops for agent-written code.",
+  "author": {
+    "name": "Krv Labs",
+    "url": "https://krv.ai"
+  },
+  "homepage": "https://docs.krv.ai/topos/",
+  "repository": "https://github.com/Krv-Labs/topos",
+  "license": "BSD-3-Clause",
+  "keywords": [
+    "code-quality",
+    "refactoring",
+    "mcp",
+    "metrics",
+    "security",
+    "agents"
+  ]
+}

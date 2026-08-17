@@ -199,6 +199,7 @@ The result is one agent-facing contract over several structural lenses: one scor
 
 - **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)
 - **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+- **Agent Plugins:** point a [compatible client](https://agent-plugins.org/compatible-clients) at [`agent-plugin/`](agent-plugin/) ([spec](https://agent-plugins.org/))
 - **MCP Registry name:** `io.github.Krv-Labs/topos`
 - **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
 

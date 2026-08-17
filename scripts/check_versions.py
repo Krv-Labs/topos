@@ -54,6 +54,15 @@ def main(argv: list[str] | None = None) -> int:
             f"has {package_json['version']!r}, expected {expected!r}"
         )
 
+    plugin_manifest = json.loads(
+        (ROOT / "agent-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    if plugin_manifest.get("version") != expected:
+        errors.append(
+            "agent-plugin/plugin.json "
+            f"has {plugin_manifest.get('version')!r}, expected {expected!r}"
+        )
+
     mcp_manifest = json.loads((ROOT / ".mcp/server.json").read_text(encoding="utf-8"))
     if mcp_manifest["version"] != expected:
         errors.append(

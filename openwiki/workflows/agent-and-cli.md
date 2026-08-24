@@ -30,7 +30,7 @@ The Clap CLI and RMCP stdio server are interfaces over the shared [analysis engi
 | `topos install [HARNESS…]`, `topos uninstall [HARNESS…]`, `topos status` | Register, remove, or inspect Topos-owned MCP entries; see [registration lifecycle](harness-registration.md). |
 | `topos mcp` | Start the Rust stdio MCP server. |
 
-`Command` in `topos/cli/src/main.rs` is the public root dispatch. `evaluate` accepts recursive discovery, JSON, `--language`, `--no-composable`, GitNexus selection, failure/info views, and a single pillar or full four-pillar priority ranking. Priority changes remediation order and output metadata, not gates.
+`Command` in `topos/cli/src/main.rs` is the public root dispatch. `ROOT_COMMANDS` is the single ordered command inventory used by `root_help`; keep it synchronized with `Command`. Invoking the binary with no arguments writes that same root help to stderr and exits with code 2, while `-h`/`--help` writes it to stdout and succeeds. `root_help_uses_the_terminal_grammar_and_keeps_every_command` is the narrow regression for this consumer-visible contract. `evaluate` accepts recursive discovery, JSON, `--language`, `--no-composable`, GitNexus selection, failure/info views, and a single pillar or full four-pillar priority ranking. Priority changes remediation order and output metadata, not gates.
 
 ## Baseline evaluation and COMPOSABLE
 

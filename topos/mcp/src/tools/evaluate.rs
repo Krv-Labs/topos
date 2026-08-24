@@ -1,7 +1,7 @@
 //! Evaluation tools: code string, single file, and whole project.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use rmcp::handler::server::wrapper::Parameters;
@@ -495,7 +495,11 @@ fn evaluate_single_file(
             .collect(),
         pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
         raw_metrics: if verbose {
-            result.raw_metrics.clone()
+            result
+                .raw_metrics
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect()
         } else {
             HashMap::new()
         },
@@ -558,7 +562,7 @@ fn min_scores_by_dim(results: &[ClassificationResult]) -> HashMap<String, f64> {
         .collect()
 }
 
-fn aggregate_floor_verdict(rolled: &HashMap<String, EvaluationValue>) -> LatticeElement {
+fn aggregate_floor_verdict(rolled: &BTreeMap<String, EvaluationValue>) -> LatticeElement {
     let satisfied: Vec<Generator> = Generator::ALL
         .into_iter()
         .filter(|g| rolled.get(g.as_str()) == Some(&g.value()))
@@ -587,7 +591,11 @@ fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
     let instability = result.raw_metrics.get("mdg.instability").copied();
     let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
     let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
+    let mut gate_metrics: HashMap<String, f64> = result
+        .raw_metrics
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
     gate_metrics.remove("mdg.instability");
     gate_metrics.extend(coupling_gate_input(
         instability,
@@ -1056,7 +1064,7 @@ fn empty_project_result(
 }
 
 fn aggregate_explanation(
-    rolled: &HashMap<String, EvaluationValue>,
+    rolled: &BTreeMap<String, EvaluationValue>,
     rolled_scores: &HashMap<String, f64>,
     hard_fail_head: Option<&ProjectFileEntry>,
     entries: &[ProjectFileEntry],

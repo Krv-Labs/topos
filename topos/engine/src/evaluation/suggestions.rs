@@ -73,7 +73,11 @@ pub fn suggest_refactors(
     // with Φ_COMPOSABLE via `coupling_gate_input`), and the stable-leaf and
     // instability exemptions are threaded through rather than hard-coded.
     let instability = result.raw_metrics.get("mdg.instability").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
+    let mut gate_metrics: HashMap<String, f64> = result
+        .raw_metrics
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
     gate_metrics.remove("mdg.instability");
     gate_metrics.extend(coupling_gate_input(
         instability,
@@ -178,23 +182,25 @@ fn gate_message(r: &GateResult) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::core::omega::EvaluationValue;
     use crate::evaluation::policies::base::Priority;
 
     fn result(
-        dimensions: HashMap<String, EvaluationValue>,
-        raw_metrics: HashMap<String, f64>,
+        dimensions: BTreeMap<String, EvaluationValue>,
+        raw_metrics: BTreeMap<String, f64>,
         lattice_element: EvaluationValue,
     ) -> ClassificationResult {
         ClassificationResult {
             is_parseable: true,
             dimensions,
-            scores: HashMap::new(),
+            scores: BTreeMap::new(),
             lattice_element,
             priority: Priority::Secure,
             raw_metrics,
-            interpretation: HashMap::new(),
+            interpretation: BTreeMap::new(),
             is_entrypoint_module: false,
             is_stable_leaf_module: false,
         }
@@ -203,8 +209,8 @@ mod tests {
     #[test]
     fn eval_finding_yields_secure_fix_naming_callee() {
         let result = result(
-            HashMap::from([("secure".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("secure".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("cpg.dangerous_calls".to_string(), 1.0),
                 ("cpg.taint_flows".to_string(), 0.0),
             ]),
@@ -250,8 +256,8 @@ mod tests {
         // (`gates_achieved: false`, issue #193) it cannot fail SIMPLE, so
         // the suggestion must say "improve" rather than "fix".
         let result = result(
-            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("cfg.cyclomatic".to_string(), 25.0),
                 ("ast.entropy".to_string(), 0.5),
             ]),
@@ -272,8 +278,8 @@ mod tests {
         // `is_entrypoint_module: false` keeps the entropy exemption from
         // swallowing the entropy failure.
         let result = result(
-            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("cfg.cyclomatic".to_string(), 25.0),
                 ("ast.max_function_complexity".to_string(), 20.0),
                 ("ast.entropy".to_string(), 0.95),
@@ -303,8 +309,8 @@ mod tests {
         // label was corrected. Same fixture as the severity test: all three
         // SIMPLE gates fail, and cyclomatic has by far the largest excess.
         let result = result(
-            HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("cfg.cyclomatic".to_string(), 25.0),
                 ("ast.max_function_complexity".to_string(), 20.0),
                 ("ast.entropy".to_string(), 0.95),
@@ -332,8 +338,8 @@ mod tests {
     #[test]
     fn high_fan_out_yields_composable_suggestion() {
         let result = result(
-            HashMap::from([("composable".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("composable".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("mdg.fan_out".to_string(), 30.0),
                 ("mdg.instability".to_string(), 0.5),
             ]),
@@ -352,8 +358,8 @@ mod tests {
         // at or above the ratio's resolution limit (see `coupling_gate_input`),
         // so the fixture carries both: distance = |0.2 + 0.1 − 1| = 0.7.
         let result = result(
-            HashMap::from([("composable".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("composable".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("mdg.instability".to_string(), 0.1),
                 ("mdg.abstractness".to_string(), 0.2),
                 ("mdg.coupling".to_string(), 6.0),
@@ -375,11 +381,11 @@ mod tests {
     #[test]
     fn clean_file_yields_no_suggestions() {
         let result = result(
-            HashMap::from([
+            BTreeMap::from([
                 ("simple".to_string(), EvaluationValue::Simple),
                 ("secure".to_string(), EvaluationValue::Secure),
             ]),
-            HashMap::from([
+            BTreeMap::from([
                 ("cfg.cyclomatic".to_string(), 2.0),
                 ("ast.entropy".to_string(), 0.5),
                 ("cpg.dangerous_calls".to_string(), 0.0),
@@ -395,8 +401,8 @@ mod tests {
     fn allowlisted_finding_produces_no_secure_suggestion() {
         // The CLI passes only NON-allowlisted findings as active_findings.
         let result = result(
-            HashMap::from([("secure".to_string(), EvaluationValue::Slop)]),
-            HashMap::from([
+            BTreeMap::from([("secure".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([
                 ("cpg.dangerous_calls".to_string(), 1.0),
                 ("cpg.taint_flows".to_string(), 0.0),
             ]),

@@ -96,6 +96,25 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     validate_evaluate_args(&args)?;
     let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
+    if inputs.is_empty() {
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json_output(&[], &[], &[], &[]))
+                    .map_err(|e| format!("serializing evaluation: {e}"))?
+            );
+        } else {
+            let suffixes = inputs::discovery_suffixes(args.language.as_deref())?;
+            let msg = inputs::empty_discovery_message(
+                args.language.as_deref(),
+                &suffixes,
+                &args.paths,
+                args.recursive,
+            );
+            println!("info: {msg}");
+        }
+        return Ok(());
+    }
 
     let project_config = load_topos_config(&inputs[0].path);
     let priority = resolve_priority(&args, &project_config)?;
@@ -445,5 +464,49 @@ mod tests {
                 Generator::Composable
             ])
         );
+    }
+
+    #[test]
+    fn evaluate_empty_directory_succeeds_without_error() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_eval_empty_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
+
+        let args = EvaluateArgs {
+            paths: vec![dir.clone()],
+            recursive: false,
+            language: None,
+            no_composable: true,
+            gitnexus_dir: None,
+            verbose: false,
+            json: false,
+            info: false,
+            failures: None,
+            priority: None,
+        };
+        assert!(run(args).is_ok());
+
+        let json_args = EvaluateArgs {
+            paths: vec![dir.clone()],
+            recursive: false,
+            language: None,
+            no_composable: true,
+            gitnexus_dir: None,
+            verbose: false,
+            json: true,
+            info: false,
+            failures: None,
+            priority: None,
+        };
+        assert!(run(json_args).is_ok());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

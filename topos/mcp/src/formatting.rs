@@ -3,7 +3,7 @@
 //! Converts `ClassificationResult` and distance results into the wire
 //! models defined in [`crate::schemas`], and renders the markdown channel.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
@@ -489,7 +489,7 @@ fn dim_for_metric_key(key: &str) -> Option<&'static str> {
 /// plus notes with no pillar mapping (e.g. `mdg.unavailable`).
 fn failing_interpretation(
     result: &ClassificationResult,
-    interpretation: &HashMap<String, String>,
+    interpretation: &BTreeMap<String, String>,
 ) -> HashMap<String, String> {
     let mut achieved: HashMap<&str, bool> = HashMap::new();
     for (dim, _) in PILLAR_METRIC_PREFIXES {
@@ -573,11 +573,17 @@ pub fn to_evaluation_result(
             .or_insert_with(|| mdg_unavailable_message(&opts.warnings));
     }
 
-    let raw_metrics;
+    let raw_metrics: HashMap<String, f64>;
+    let interpretation_out: HashMap<String, String>;
     if opts.verbose {
-        raw_metrics = result.raw_metrics.clone();
+        raw_metrics = result
+            .raw_metrics
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        interpretation_out = interpretation.into_iter().collect();
     } else {
-        interpretation = failing_interpretation(result, &interpretation);
+        interpretation_out = failing_interpretation(result, &interpretation);
         raw_metrics = HashMap::new();
     }
 
@@ -671,7 +677,7 @@ pub fn to_evaluation_result(
         guidance: build_guidance(&display_result),
         coupling_available,
         raw_metrics,
-        interpretation,
+        interpretation: interpretation_out,
         metric_locations: opts.metric_locations,
         warnings: opts.warnings.clone(),
         agent_contract,

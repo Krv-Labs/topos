@@ -1,5 +1,6 @@
 //! Compact cumulative rendering for `topos evaluate`.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use console::Style;
@@ -164,7 +165,7 @@ fn render_summary(
         let passing = overall
             .get(pillar)
             .is_some_and(|value| *value != EvaluationValue::Slop);
-        let status = status_text(passing, options);
+        let status = status_text(passing, average, options);
         let mut row = if single_file {
             format!(
                 "{}  {:<12}  {status}  {:>4.0}%",
@@ -634,11 +635,13 @@ pub(crate) fn failure_file_indices(
     indices
 }
 
-fn status_text(passing: bool, options: RenderOptions) -> String {
-    let (symbol, label, style) = if passing {
-        ("✓", "PASS", Style::new().green().bold())
-    } else {
+fn status_text(passing: bool, score: f64, options: RenderOptions) -> String {
+    let (symbol, label, style) = if !passing {
         ("X", "FAIL", Style::new().red().bold())
+    } else if score < 0.25 {
+        ("!", "WARN", Style::new().yellow().bold())
+    } else {
+        ("✓", "PASS", Style::new().green().bold())
     };
     format!("{} {label}", paint(symbol, style, options))
 }
@@ -705,7 +708,7 @@ fn score_rail(score: f64, width: usize) -> String {
         .collect()
 }
 
-fn floor_verdict(overall: &std::collections::HashMap<String, EvaluationValue>) -> EvaluationValue {
+fn floor_verdict(overall: &BTreeMap<String, EvaluationValue>) -> EvaluationValue {
     let bits = PILLARS.iter().fold(0, |bits, pillar| {
         bits | overall
             .get(*pillar)
@@ -730,7 +733,7 @@ fn common_parent(files: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use topos_engine::evaluation::policies::base::Priority;
 
@@ -739,7 +742,7 @@ mod tests {
     fn result(simple_passes: bool) -> ClassificationResult {
         ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([(
+            dimensions: BTreeMap::from([(
                 "simple".to_string(),
                 if simple_passes {
                     EvaluationValue::Simple
@@ -747,7 +750,7 @@ mod tests {
                     EvaluationValue::Slop
                 },
             )]),
-            scores: HashMap::from([("simple".to_string(), 0.6)]),
+            scores: BTreeMap::from([("simple".to_string(), 0.6)]),
             lattice_element: if simple_passes {
                 EvaluationValue::Simple
             } else {
@@ -1077,6 +1080,7 @@ mod tests {
     fn styled_summary_colors_failure_and_pass_symbols() {
         let failure = status_text(
             false,
+            0.5,
             RenderOptions {
                 styled: true,
                 width: 120,
@@ -1084,6 +1088,15 @@ mod tests {
         );
         let pass = status_text(
             true,
+            0.5,
+            RenderOptions {
+                styled: true,
+                width: 120,
+            },
+        );
+        let warn = status_text(
+            true,
+            0.2,
             RenderOptions {
                 styled: true,
                 width: 120,
@@ -1091,6 +1104,32 @@ mod tests {
         );
         assert!(failure.contains("\u{1b}[31m"));
         assert!(pass.contains("\u{1b}[32m"));
+        assert!(warn.contains("\u{1b}[33m"));
+        assert!(warn.contains("WARN"));
+    }
+
+    #[test]
+    fn low_score_passing_renders_warn_status() {
+        let mut low = result(true);
+        low.scores.insert("simple".to_string(), 0.1);
+        let output = render_summary(
+            &[PathBuf::from("low.rs")],
+            &[low],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: false,
+                composable_notices: &[],
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+        assert!(output.contains("! WARN"));
+        assert!(!output.contains("✓ PASS"));
     }
 
     #[test]
@@ -1124,9 +1163,10 @@ mod tests {
     fn weak_spots_rank_by_displayed_average() {
         let files = vec![PathBuf::from("balanced.rs"), PathBuf::from("weak.rs")];
         let mut balanced = result(true);
-        balanced.scores = HashMap::from([("simple".to_string(), 0.5), ("secure".to_string(), 0.5)]);
+        balanced.scores =
+            BTreeMap::from([("simple".to_string(), 0.5), ("secure".to_string(), 0.5)]);
         let mut weak = result(true);
-        weak.scores = HashMap::from([("simple".to_string(), 0.2), ("secure".to_string(), 0.1)]);
+        weak.scores = BTreeMap::from([("simple".to_string(), 0.2), ("secure".to_string(), 0.1)]);
         assert_eq!(
             ranked_file_indices(&files, &[balanced, weak], 5),
             vec![1, 0]
@@ -1136,7 +1176,7 @@ mod tests {
     #[test]
     fn weak_spots_show_average_before_the_verdict() {
         let mut scored = result(true);
-        scored.scores = HashMap::from([
+        scored.scores = BTreeMap::from([
             ("simple".to_string(), 0.5),
             ("composable".to_string(), 0.0),
             ("secure".to_string(), 1.0),

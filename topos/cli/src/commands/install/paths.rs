@@ -57,6 +57,10 @@ pub(crate) fn antigravity_config(home: &Path) -> PathBuf {
     home.join(".gemini/config/mcp_config.json")
 }
 
+pub(crate) fn pi_config(home: &Path) -> PathBuf {
+    home.join(".pi/agent/settings.json")
+}
+
 pub(crate) fn claude_desktop_config(home: &Path) -> PathBuf {
     if cfg!(windows) {
         app_data(home).join("Claude/claude_desktop_config.json")
@@ -93,6 +97,7 @@ mod tests {
             copilot_config(home),
             cursor_config(home),
             antigravity_config(home),
+            pi_config(home),
         ] {
             assert!(
                 path.starts_with(home),

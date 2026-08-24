@@ -33,7 +33,7 @@ pub(crate) struct HarnessSpec {
     pub(crate) note: fn(&Path) -> Option<String>,
 }
 
-pub(crate) const HARNESSES: [HarnessSpec; 8] = [
+pub(crate) const HARNESSES: [HarnessSpec; 9] = [
     HarnessSpec {
         id: "claude",
         name: "Claude Code",
@@ -114,6 +114,16 @@ pub(crate) const HARNESSES: [HarnessSpec; 8] = [
         detect: detect_antigravity,
         note: antigravity_note,
     },
+    HarnessSpec {
+        id: "pi",
+        name: "pi",
+        artifact: Artifact::McpJson,
+        config_path: paths::pi_config,
+        active_msg: "MCP server registered in ~/.pi/agent/settings.json",
+        absent_msg: "no MCP server entry in ~/.pi/agent/settings.json",
+        detect: detect_pi,
+        note: no_note,
+    },
 ];
 
 /// Every harness id, in table order — the `--all` set and the `--help` list.
@@ -151,6 +161,10 @@ fn detect_copilot(home: &Path) -> bool {
 
 fn detect_cursor(home: &Path) -> bool {
     home.join(".cursor").is_dir()
+}
+
+fn detect_pi(home: &Path) -> bool {
+    home.join(".pi").is_dir()
 }
 
 fn detect_claude_desktop(home: &Path) -> bool {
@@ -239,6 +253,15 @@ mod tests {
             assert_ne!(spec.active_msg, "configured", "{} is not specific", spec.id);
             assert!(!spec.absent_msg.is_empty());
         }
+    }
+
+    #[test]
+    fn a_bare_pi_directory_detects_pi() {
+        let home = tmp_dir("pi-detect");
+        fs::create_dir_all(home.join(".pi")).unwrap();
+        let pi = spec("pi").unwrap();
+        assert!((pi.detect)(&home));
+        fs::remove_dir_all(home).ok();
     }
 
     #[test]

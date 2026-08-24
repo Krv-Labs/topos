@@ -239,7 +239,7 @@ fn weakest_dimension(result: &ClassificationResult) -> (&'static str, f64) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     use topos_engine::core::omega::EvaluationValue;
 
@@ -247,7 +247,7 @@ mod tests {
 
     fn result(simple: f64, secure: f64) -> ClassificationResult {
         ClassificationResult {
-            scores: HashMap::from([
+            scores: BTreeMap::from([
                 ("simple".to_string(), simple),
                 ("secure".to_string(), secure),
             ]),

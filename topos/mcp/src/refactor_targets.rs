@@ -199,7 +199,11 @@ fn structural_metric_targets(filepath: &str, result: &ClassificationResult) -> V
     // `raw_metrics`); keep this block in sync with its sibling caller
     // `topos_engine::evaluation::suggestions::suggest_refactors`.
     let instability = result.raw_metrics.get("mdg.instability").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
+    let mut gate_metrics: HashMap<String, f64> = result
+        .raw_metrics
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
     gate_metrics.remove("mdg.instability");
     gate_metrics.extend(coupling_gate_input(
         instability,

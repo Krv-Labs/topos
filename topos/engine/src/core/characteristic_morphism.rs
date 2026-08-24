@@ -45,7 +45,7 @@
 //! and SECURE needs a CPG, so both are reported as "not measured" when
 //! the caller supplies no such representation.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use crate::core::morphism::ProgramMorphism;
@@ -66,17 +66,17 @@ pub struct ClassificationResult {
     pub is_parseable: bool,
     /// Per-generator value in `Ω`: the singleton generator
     /// (SIMPLE/COMPOSABLE/SECURE/NAVIGABLE) when satisfied, SLOP otherwise.
-    pub dimensions: HashMap<String, EvaluationValue>,
+    pub dimensions: BTreeMap<String, EvaluationValue>,
     /// Per-generator normalized quality score in `[0.0, 1.0]`.
-    pub scores: HashMap<String, f64>,
+    pub scores: BTreeMap<String, f64>,
     /// Overall `Ω` element — the join of the satisfied generators.
     pub lattice_element: EvaluationValue,
     /// Generator emphasis label (metadata / guidance).
     pub priority: Priority,
     /// All raw metric floats, namespaced by representation.
-    pub raw_metrics: HashMap<String, f64>,
+    pub raw_metrics: BTreeMap<String, f64>,
     /// Per-metric interpretation strings.
-    pub interpretation: HashMap<String, String>,
+    pub interpretation: BTreeMap<String, String>,
     /// Whether the source is an import/export-only entrypoint module
     /// (drives gate exemptions; see [`crate::evaluation::policies::gates`]).
     pub is_entrypoint_module: bool,
@@ -90,12 +90,12 @@ impl Default for ClassificationResult {
     fn default() -> Self {
         ClassificationResult {
             is_parseable: false,
-            dimensions: HashMap::new(),
-            scores: HashMap::new(),
+            dimensions: BTreeMap::new(),
+            scores: BTreeMap::new(),
             lattice_element: EvaluationValue::Slop,
             priority: Priority::default(),
-            raw_metrics: HashMap::new(),
-            interpretation: HashMap::new(),
+            raw_metrics: BTreeMap::new(),
+            interpretation: BTreeMap::new(),
             is_entrypoint_module: false,
             is_stable_leaf_module: false,
         }
@@ -197,15 +197,15 @@ impl CharacteristicMorphism {
             }
         }
 
-        let mut raw_metrics = HashMap::new();
+        let mut raw_metrics = BTreeMap::new();
         raw_metrics.extend(simple_raw.clone());
         raw_metrics.extend(composable_raw.clone());
         raw_metrics.extend(secure_raw.clone());
         raw_metrics.extend(navigable_raw.clone());
 
-        let mut dimensions = HashMap::new();
-        let mut scores = HashMap::new();
-        let mut interpretation = HashMap::new();
+        let mut dimensions = BTreeMap::new();
+        let mut scores = BTreeMap::new();
+        let mut interpretation = BTreeMap::new();
 
         if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint, source_size_bytes) {
             record(
@@ -287,7 +287,7 @@ impl CharacteristicMorphism {
     pub fn combine_dimensions(
         &self,
         results: &[ClassificationResult],
-    ) -> HashMap<String, EvaluationValue> {
+    ) -> BTreeMap<String, EvaluationValue> {
         Generator::ALL
             .into_iter()
             .map(|g| g.as_str())
@@ -317,9 +317,9 @@ impl CharacteristicMorphism {
 }
 
 fn record(
-    dimensions: &mut HashMap<String, EvaluationValue>,
-    scores: &mut HashMap<String, f64>,
-    interpretation: &mut HashMap<String, String>,
+    dimensions: &mut BTreeMap<String, EvaluationValue>,
+    scores: &mut BTreeMap<String, f64>,
+    interpretation: &mut BTreeMap<String, String>,
     dim: &str,
     generator: EvaluationValue,
     decision: ScoredDecision,
@@ -486,15 +486,15 @@ mod tests {
         let classifier = CharacteristicMorphism;
         let r1 = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([("simple".to_string(), EvaluationValue::Simple)]),
-            scores: HashMap::from([("simple".to_string(), 0.8)]),
+            dimensions: BTreeMap::from([("simple".to_string(), EvaluationValue::Simple)]),
+            scores: BTreeMap::from([("simple".to_string(), 0.8)]),
             lattice_element: EvaluationValue::Simple,
             ..Default::default()
         };
         let r2 = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([("simple".to_string(), EvaluationValue::Slop)]),
-            scores: HashMap::from([("simple".to_string(), 0.3)]),
+            dimensions: BTreeMap::from([("simple".to_string(), EvaluationValue::Slop)]),
+            scores: BTreeMap::from([("simple".to_string(), 0.3)]),
             lattice_element: EvaluationValue::Slop,
             ..Default::default()
         };
@@ -508,8 +508,8 @@ mod tests {
         let classifier = CharacteristicMorphism;
         let good = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([("simple".to_string(), EvaluationValue::Simple)]),
-            scores: HashMap::from([("simple".to_string(), 0.9)]),
+            dimensions: BTreeMap::from([("simple".to_string(), EvaluationValue::Simple)]),
+            scores: BTreeMap::from([("simple".to_string(), 0.9)]),
             lattice_element: EvaluationValue::Simple,
             ..Default::default()
         };
@@ -526,8 +526,8 @@ mod tests {
         let classifier = CharacteristicMorphism;
         let has_repr = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([("composable".to_string(), EvaluationValue::Composable)]),
-            scores: HashMap::from([("composable".to_string(), 0.9)]),
+            dimensions: BTreeMap::from([("composable".to_string(), EvaluationValue::Composable)]),
+            scores: BTreeMap::from([("composable".to_string(), 0.9)]),
             lattice_element: EvaluationValue::Composable,
             ..Default::default()
         };
@@ -535,8 +535,8 @@ mod tests {
         // absent, not present-and-failing.
         let missing_repr = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::new(),
-            scores: HashMap::new(),
+            dimensions: BTreeMap::new(),
+            scores: BTreeMap::new(),
             lattice_element: EvaluationValue::Slop,
             ..Default::default()
         };

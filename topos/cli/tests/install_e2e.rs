@@ -213,7 +213,7 @@ fn config_of(status: &Value, id: &str) -> PathBuf {
 
 /// Every harness id in table order, so tests can iterate the whole set without
 /// duplicating the table.
-const IDS: [&str; 8] = [
+const IDS: [&str; 9] = [
     "claude",
     "claude-desktop",
     "codex",
@@ -222,6 +222,7 @@ const IDS: [&str; 8] = [
     "cursor",
     "vscode",
     "antigravity",
+    "pi",
 ];
 
 // ---------------------------------------------------------------------------
@@ -561,7 +562,7 @@ fn a_second_install_reports_everything_active_and_writes_nothing() {
         after_first == snapshot(&home),
         "a second install rewrote files that were already correct"
     );
-    assert_eq!(status_json(&home)["active"], 8);
+    assert_eq!(status_json(&home)["active"], 9);
 
     fs::remove_dir_all(&home).ok();
 }
@@ -675,7 +676,7 @@ fn a_headless_uninstall_applies_without_a_prompt() {
     let home = scratch_home("headless");
     seed(&home, ".claude.json", SEED_CLAUDE_JSON);
     topos(&home, &["install", "--all"]).expect_code(0);
-    assert_eq!(status_json(&home)["active"], 8);
+    assert_eq!(status_json(&home)["active"], 9);
 
     // No `--yes`, no `--dry-run`, and no stream is a tty (see `topos`), so this
     // is the `Headless` arm: CI parity, apply. The `Ambiguous` arm — stderr

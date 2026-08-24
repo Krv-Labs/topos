@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Fixed
+
+- **TypeScript generic type imports and dynamic subscript accesses** ([#347](https://github.com/Krv-Labs/topos/issues/347), [#348](https://github.com/Krv-Labs/topos/issues/348)) — inline dynamic type imports in TypeScript generic arguments (`load<typeof import("...")>()`, `load<import("...")>()`) are sanitized during AST dispatch so tree-sitter parses the call expression cleanly without misidentifying `<` as a binary comparison operator and failing parse validation. In addition, `subscript_expression` is mapped to `MemberExpr` in the JavaScript/TypeScript UAST mapper, preventing defensive bracket lookups (`obj[key]`) from dropping to `Unknown` or being misclassified as dangerous execution call sinks.
+
 ### Breaking
 
 - **Graphify integration removed** (~1,680 production lines). Every signal it provided was already available from the GitNexus/MDG graph Topos loads for COMPOSABLE, usually at better fidelity — full `startLine`/`endLine` spans instead of point anchors, a first-class `Community` node label with `MEMBER_OF` edges instead of a bare Louvain field, and a continuous `confidence: f64` + `reason` instead of a three-value enum. It had no production consumer, no CI coverage, and no agent-facing recommendation, and it wrapped a pre-1.0 external tool with a documented history of schema breaks. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) § Removed target and issue [#325](https://github.com/Krv-Labs/topos/issues/325).

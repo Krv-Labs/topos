@@ -64,3 +64,50 @@ pub fn map_typescript_tree_to_uast(root: Node, source: &[u8], file: Option<&str>
         Some(&extract_attributes),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::Parser;
+
+    fn parse(source: &str) -> tree_sitter::Tree {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .unwrap();
+        parser.parse(source, None).unwrap()
+    }
+
+    #[test]
+    fn maps_typescript_subscript_expression_to_member_expr() {
+        let source = "function requiredFunction(obj: any, key: string) { return obj[key]; }\n";
+        let tree = parse(source);
+        let uast = map_typescript_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        fn find_member_expr(node: &UASTNode) -> bool {
+            if node.kind == "MemberExpr" && node.native.node_kind == "subscript_expression" {
+                return true;
+            }
+            node.children.iter().any(find_member_expr)
+        }
+        assert!(
+            find_member_expr(&uast),
+            "typescript subscript_expression was not mapped to MemberExpr"
+        );
+    }
+
+    #[test]
+    fn maps_type_declarations_and_attributes() {
+        let source = "interface Foo {}\ntype Bar = number;\nenum Baz { A }\n";
+        let tree = parse(source);
+        let uast = map_typescript_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        let mut type_kinds = Vec::new();
+        for child in &uast.children {
+            if child.kind == "TypeDecl" {
+                if let Some(AttributeValue::Str(k)) = child.attributes.get("typeKind") {
+                    type_kinds.push(k.clone());
+                }
+            }
+        }
+        assert_eq!(type_kinds, vec!["interface", "typeAlias", "enum"]);
+    }
+}

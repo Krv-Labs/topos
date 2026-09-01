@@ -130,11 +130,11 @@ def validate_stdio_server(name: str, server: dict[str, Any]) -> list[str]:
             f"agent-plugin/mcp.json: mcpServers.{name}: unknown field {key!r}"
         )
     command = server.get("command")
-    if not isinstance(command, str) or not command:
+    if not isinstance(command, str) or not command.strip():
         errors.append(
             f"agent-plugin/mcp.json: mcpServers.{name}: command is required"
         )
-    elif " " in command.strip():
+    elif command != command.strip() or re.search(r"\s", command):
         errors.append(
             f"agent-plugin/mcp.json: mcpServers.{name}: command must be one token"
         )
@@ -247,6 +247,11 @@ def main() -> int:
     mcp = load_json(PLUGIN_ROOT / "mcp.json", errors)
     if mcp is not None:
         errors.extend(validate_mcp(mcp))
+
+    for path in PLUGIN_ROOT.rglob("*"):
+        if path.is_symlink():
+            errors.append(f"{path.relative_to(ROOT)}: must not be a symlink")
+            break
 
     errors.extend(validate_skill_sync())
 

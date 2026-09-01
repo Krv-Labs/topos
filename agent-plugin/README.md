@@ -33,11 +33,9 @@ agent-plugin/
 ```
 
 `skills/topos/SKILL.md` must stay byte-identical to the ClawHub skill at
-`../skills/topos/SKILL.md`. Validate with:
+`../skills/topos/SKILL.md` (in this repository). Validate from the repo root with:
 
-```bash
-python scripts/check_agent_plugin.py
-```
+    python scripts/check_agent_plugin.py
 
 ## References
 

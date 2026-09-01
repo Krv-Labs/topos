@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:a3cd80183de282a908c773f5a81e2f6982b8e6e8710ca4f0c29c29b0c03abbd0",
+  "claims": [
+    {
+      "id": "claim_cd9f76f376044be39aaf30a4f8bc6b6c",
+      "statement": "The Rust workspace consists of `topos-engine`, `topos`, and `topos-mcp`; the engine is a shared compute crate without CLI or MCP concerns, while the CLI depends on both the engine and the MCP crate to provide `topos mcp`.",
+      "evidence": [
+        {
+          "resource": "repo://Cargo.toml#L1-L8",
+          "version": "repo-lines-v1:sha256:cc99f87db94c176dc07520a110193f568fb128ec7d9e2c993b1770f2cf509aa7:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODU1MmNkZjk2NTVmMTE2YWJlOWRlYWJlZTY0MWM5ZjZjMTU2YWMyMjgxNDRkZjlhMGY1M2JjNDJmMTUyNjY1ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCJ9"
+        },
+        {
+          "resource": "repo://topos/cli/Cargo.toml#L13-L19",
+          "version": "repo-lines-v1:sha256:6ac5ec5477f6d549f64cc2007110fe2d5c69c49ad23185e364af4377168cd4ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDJkZjZjNzE0Yzk5NGQwOGRjODVhYWZmZTYxZWM2NGUwMjU1YmUyYjhiZjZjY2FjNzU2ZjE3OTBhYzk5NDBjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQ3MGQ3MDk0NDBkZDZkOWY1ZTAzOGI3ZGQxMWUzMDUwNDU2YjJkMWM4NjljOTRjZjc1MzVmYTBhOWNlZTg0NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmViMTFkMGNmNTJlZGU4YjFkMzYzMzc1MDUxMTAxODA0ZmY4YWU3YWU2ZDAwM2IzMGFjNzQ5ZjQ0ZGQ3MTBkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTNmZTg5NmIyZTMyNGNiNzAwNWNiZTY2OTIxM2VjMDgzMmE2ZmY5MTYyM2YzY2Q0MGM3MGRlZDUxYmYwNDA3NCJ9"
+        },
+        {
+          "resource": "repo://topos/engine/src/lib.rs#L11-L29",
+          "version": "repo-lines-v1:sha256:bdde4b5e58b0fc8d287ddb6eb95300c128785c4d674db8c5344f9b2360b6efb4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhMTU2MWJmYTIyMzZlMTJiNzk2Y2Q2YjNiZmU5Yjc1N2IxMjJhNDA3YjczMWJiZTk3ZDkyNDI3M2VmZTAzOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YmNiOTY4ZmIwNzYzY2ZmMDRjYWNjNGRiNGVjM2Y4OTFmMmRiNDlkZTMzY2E3MTliZjMxYmRjYjAyZGZlNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4NjZmNTQwNDhhZWJjNDE1NmU2MGY5ZmIwZmRhODQyZWFkMzI5ZDgzM2YwMzg1ZTU5ODFjZDYyYmM5M2FmMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViODlhYWFkNWYwMDFkZjYwMDU3M2QwYzQ1YzZkODJlY2ExYzVkMDE5OTRhNTgyODEwODgzOTQzNmJiNmY4MzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8741b206445b46a68909ef646da5d736",
+      "statement": "`ProgramMorphism` immediately attempts parsing on construction and owns the source, language, optional path, parsed AST, and lazily cached CFG, PDG, and CPG; an unsupported language has no AST and an invalid tree-sitter parse is not valid source.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/core/morphism.rs#L125-L157",
+          "version": "repo-lines-v1:sha256:1d73c2dd1665082e8a74902de2ad91ca8cd5cb472662ccf2a2e4898e82fda64a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlNDNjMmQwOWJiZTc3ZGQyNzk3NmQzNzQwYjk2N2JjNzRkNjBiNmM4ODU2Nzc0OTI0NTRjZDAwYTMwNWQxZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViOWEwOGJjMjlmNmViZWJlOWE1ZjAxOTAzZDk4NDVkYmNiNTg0MmE0NTVmMDdkNWY0MDAyZGFjMzJhNWM2MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4ZDM4YzJkMGMzNjc0ODYzMWU1NGQzOTE0MmE2NTk1ZGExMmE1Y2ZkMTkzYzE5ZWYyY2RmY2M2ZDNjYmNmYmYifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/core/morphism.rs#L47-L100",
+          "version": "repo-lines-v1:sha256:c2e06c30daf63825bc1e653817e4cf14767e1d891709c7d5084ecde3c317c125:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNTQ0MzQ1OWQzZTAzOWIwZTY1MmFjNDU0ZjZhOWMwZjI1NjdiMjZlNzBjODEzZDcxNjNmZGM3NTg0YjM0M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4YjhkNGVlY2FmNGQ2NzA3NWRlZDRiMzZhNjA1ZDhiZTU4OTBjNWVlZjQ3M2MzNGMxOWI1NWQxNmMyM2UyYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiYTI4YTkzNDU0MzA2NDI2NGRhYjllNWZkZmRkOGU4OGNkMTg4Njg3ZDMwY2RjMDkxZDdiYTA4YWE0NjhkMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2MWNhOTc1NGQ2MDIxNGEwYWY3Mzk5YThlYmY2ODNhMmM5OGI4OWNmM2YxNmNkZDUyMGQyMTQ1MDQ4NzI4OTcifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L57-L99",
+          "version": "repo-lines-v1:sha256:6acba3ee149b82eec4dd4952d203570070616d1209e6bafc53eeaebaa98d13c1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkODQxMzFiMjk3ZGEwZjNkYTBlOTU4NGIzOTgzNTk1Y2NmNThkY2UxMzllODExYzc4MWNlNDc2NDhhNDI3OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d2197b362025422aa36f15447426b22d",
+      "statement": "Tree-sitter is the sole parser path and dispatches Python, Rust, JavaScript, TypeScript, C++, and Go, selecting the TSX grammar for a TypeScript file path ending in `.tsx`; each parse also maps the concrete tree into a UAST.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L1-L11",
+          "version": "repo-lines-v1:sha256:d67ea4f68939b9250db6fbaa137db35508b58968482f70de1b479901182c475a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiYjAyZDRlY2FkZmVhZmZlY2NhMzg1YjBlNTM5ODhmYWM1OWU2MDdjMzc2Y2E4MjYxZDcwOTkzMTc2MmI5OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1ZDIyZWFmZWU2YWY2MzRlY2VkZWViNzU0NDRmZTUxYzdlNDIwOWIxNjdlM2U5Mzk1ODQ4YjFkYjBhYzMxNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkODM5OWE5MGNhMjdlMWYxYmUwY2Q5M2IzMzQ0YjZkYmRlYzk0YTk2ZGYwZjU5MThiYzNmMDAzZWFhY2M2ZGMifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L37-L54",
+          "version": "repo-lines-v1:sha256:af6e6044662334c5f63aa1ca76cb4b1ebbca5ed0cae3c4d5a460f53213db79b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNGZmZjBlMmM0M2NjMjM5YTE1MTVjYjJmYjk5OTAyN2QzNTVkM2VjNTlkOTk0ZWFhM2RiOTVkNTRhODg3ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2ODE0NGNhYzA2YjZkNjcxYzQyMDZmNGRiZTdmY2FmMWVjNDg2MDA2OThhMDZhMWRhZDcyY2JlNmU1YThhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5ZjljYzRmYjBmNzlhZDczNzM0MjFlZmEyZGQxNzQ0M2NmMzk0NzBiOGI2MTc5M2QxYzYwYTQ0ZTEzZWJiZWUifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L57-L99",
+          "version": "repo-lines-v1:sha256:6acba3ee149b82eec4dd4952d203570070616d1209e6bafc53eeaebaa98d13c1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkODQxMzFiMjk3ZGEwZjNkYTBlOTU4NGIzOTgzNTk1Y2NmNThkY2UxMzllODExYzc4MWNlNDc2NDhhNDI3OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_653ffaece1b442fdb48a6b77f0422251",
+      "statement": "The normal CLI and MCP classification assembly builds CFG, PDG, CPG, and an abstractness representation, optionally adds an MDG, and delegates the shared verdict to `CharacteristicMorphism::classify_detailed`.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/classify.rs#L15-L48",
+          "version": "repo-lines-v1:sha256:8e04705e583874fc7d9e3e3428fea4a38780e7622f1485739c56aa8c0a9e2d0e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMWZhODJiM2FiOWY4NzQzOTMwMmZmNWIwM2IzMTJmMTQ0NDZkMGQ4NWQyNTc0M2Q5YTdkNGUyMjI0ZTM1NTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0M2VmMjMxYzc2OWQ2ZDM2MmI1ZjI2YWZmN2E2NWUyYzMwNTc0ZjcxZmQxZDY2YzVlZDE3OGRiYjM3MWRmMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNmNlMWFlMjFkODMwMThlZmQxMTBjMzA1MDNhMDczN2M5MTFhNjc1NDVmMGUzNTE1Mjk0OTkyMzNiYzI0MmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/classify.rs#L15-L46",
+          "version": "repo-lines-v1:sha256:e89956b9fcfdb043ec5e85e997241f37b6506b83547781e7a05daf01c262f654:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NTA1MTU1NzhkMTBhNjU0OTJhMGQwYmU3NzA1ZmI5ZmE0N2ZmZWI1NDUzODRkNDhiMmYxOGVhNjdiYTg1MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MTdkMmI4MGZjZmQxY2JmOGVlYzkzY2FjOGFhYjUwN2FjYTliMTQ4OTY5ZmVkZWJlN2ZiNzE3MzBlM2ViYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MGMxM2I3NThjYjNmYmQxYzI2NjM3N2RkMGJmMjUyMzQ1OTNmMjAzYTFkMTNlNDNjN2VmZjBkNTZiNGQ0YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYTVjNGY1NjJlMTY4Nzg3MDM3NTQ5MWE5MzYxNTNhNTEwN2QxMDA0YTFkNzNiZDlmNjkxNjAzMGRmMzYwN2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e2ba679f8635410ba6ccf5a78e9cebc0",
+      "statement": "For parseable source, the characteristic morphism always evaluates SIMPLE from AST metrics and NAVIGABLE from the same UAST; SECURE requires CPG metrics and COMPOSABLE requires an attached MDG, so unavailable representations yield an unmeasured dimension rather than a failed one, while parse failure returns the default SLOP result.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L161-L204",
+          "version": "repo-lines-v1:sha256:065f00b48e11dfe4807b062f47b247eac1ee28c95da57bf8afefb98016bed24c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlMWRiZDA3ZGVmNDEzOTZkYjNhNzY1YTBmZTliMTVkYTU2N2M2MzdlZTAyYjEzMzhiYzg1YWE1ZGJlMzBiNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwNDEyYjQ5ZTg0ZjgzODY4OWIwMjlmNzRjMDM4MmM4MDE3NWE4NGM5OWZkZjE2M2QzNjMzZWUyNzY3MmY2NzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyYTRjMThjMTVkMDRhOWU0MDRjMzYwNjYxMWMxODZjNTZlNWJiY2JjNTc4Y2ExN2UxMjc2MTA0YTUyYjNlOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3OTA0NzJlYWJkMzhjMTJjZTI3MDhmOWYxY2ViZGIyZWE5NjM1ODViNjBmOTZhY2U0ZjhiNjRmYzkxYmFhYzcifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L210-L268",
+          "version": "repo-lines-v1:sha256:b45cdb02d08c8b94d6da5314255b8f84db3a42612d0f1d6276fe48688dbc1c1f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OWQzOGMyZGExYzViOTA1OWYwNWEzYjRhYjBjN2IzOTA1ZGU5NmRiNWZmNGYwOGI2MDYyNWM3ZDNlOGQ4OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0NmNhZjY4ODhiNTFjNjVjOWQzMWQzMGJmYjRmNTMxNDZlNjgzNzRlOWJjNzNmNTI5YzNmYmNmM2JiY2E2NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjZjg4MmVmMTMyYzJmNzQ0OWNlZjcxMDU2MDgwMzM3MGY4ODA2ZTc4MmI2YTkxMzI0ZDJhZmYxNzBkNjNjZTgifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L42-L46",
+          "version": "repo-lines-v1:sha256:50523cf559f860b16d46625b69f06db15ab706ae91a3d6e706ce410f6902660d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGU2NGEyY2FmNWUyOWJlMTc5YzNlZTljNDIzZDk2ODk5Y2ZlOTNmM2U3Yzc3MzNkYmRhMGVmNzZkMjU4N2VkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjA4MzBjMDNkNjE4NTFiMDQ0ZWU0YzEwMjM4YzQ2ZjczMWMwYWQ3MzlmMDQ4MWRhZTIxMjA4NmQzMGVmYjEzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTZiM2NjOTA4NzRiYTg4MTE0ODY5MTMxNDlmMTU5YjRmNjgwMmZiZTBkYzRjMDc1YmNkMDBhYzNkMWEwMDgzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmM2OTU4NzE3ZTEwODUxZDFjMzE5YWE1OWNhMDQwYTg3ODFhMTNlZjBjMzFiNzUyZjc4YWJkOThlODUwYzdhYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_047605a4e4cd49ee9d5a22cf89b396ef",
+      "statement": "Classification routes dimension metrics to four policy scorers and derives the final verdict from their `achieved` Booleans; raw gate comparisons use AND semantics, normalized scores are reporting-only, and `Priority` does not alter per-metric pass/fail thresholds.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L210-L256",
+          "version": "repo-lines-v1:sha256:c94738d0530d6331707bca92d82c4ea93c8df15addd64cd19419334d5913fe4f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OWQzOGMyZGExYzViOTA1OWYwNWEzYjRhYjBjN2IzOTA1ZGU5NmRiNWZmNGYwOGI2MDYyNWM3ZDNlOGQ4OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxMzk5MTE1NmFiM2QzZWQ2MjI3NjcxMmMwYzUwYzUzNTQ5MTcxOGJkZWUzNWUxYzZjNTI1YTZmZGIzMzljMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0NmNhZjY4ODhiNTFjNjVjOWQzMWQzMGJmYjRmNTMxNDZlNjgzNzRlOWJjNzNmNTI5YzNmYmNmM2JiY2E2NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5ODgzMTYyMzhkODVjMDNkMjNmNTZkOTk4ZjE0MDEzNDg4Yjg2YjQwNDkxYjM4ZjNmOWY4NmFkNWJhNTY5MGUifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/policies/base.rs#L15-L26",
+          "version": "repo-lines-v1:sha256:eb46e09ca4bf40845d2709dd11ec361086c029dd6c5b6277002f7a64ca58f239:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlYTc3MWUwYTg0OTVlZTE2NzQwZDY3YjRmNmRiMDgxYzAwNGE4MTk0NDViNDJmNTRjYzQyMTE2N2Y5ZTc3NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNTIyYjc1MDI5YmU5NGQ1YTUxOWExMmE0YzVkMTdkZDBiNTU2ZmViNzdhZTc1NTJhN2I5YzY5M2VjM2ExYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNDkyN2ZkZTZjNzc4OWU1MTJjMTBiZmI0YjM3YzkxMzQ4OGRkNjI3YjdhZDNmYmQ3OTIzODYwODkxNzc1ZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ZDgyMWQ5MGViMjIzNGE4ZDVmMmY3NTBmYmZlZjBlNWYxNDlhNmI3NTEwZDQ0YWEzZjEzYjI3ZTU0MGFhNmQifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/policies/base.rs#L57-L100",
+          "version": "repo-lines-v1:sha256:69878c1754779919c12b094177cb9111aa0783e228e709cd305a8bd12cbae70f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMzU2ZTRmZTE1N2YzYjdkODhiMGExMWNkYzBiZTZhYmZjNzJhY2RiMDRiMDk3NmYxN2ExYWM0NzJjODc1MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNmU5ZDNhNDFkYmZkNzMyZjQ4OThhMjEzYTU4NmNhNGU4YzVkZjc2MmJiMDM2NjlmZTkzMzUwYmRjNTc1NmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODU5MjEwZWJjYjEyY2Y2OGM2MTYyMjJmYzU2MGMxZjY4ZTJmYTMxZjYzMDQ5M2RmODA5NTg4ODdkNTdhZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/policies/gates.rs#L1-L14",
+          "version": "repo-lines-v1:sha256:71049ce2243ac8dd08b4e21b893ecc0509fe787c51378982d77170a049dd31bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMjEwYjIzNDRhZTJlNjQwYmEwYWQ4MThjNWY0NGM5OWYyZTYyYzc0MzVmODc0ODQ0NDJmYWNmNjQyZmNjY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMTQ2YjRlMWMyZDdhYzkyYTM0Yzc4OGI0MDY1MDVlMTYwYzI2NWY5ODc2ZTY5OGU5OWZjOWFhZWQ0N2VmODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ZDgyMWQ5MGViMjIzNGE4ZDVmMmY3NTBmYmZlZjBlNWYxNDlhNmI3NTEwZDQ0YWEzZjEzYjI3ZTU0MGFhNmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a5cc3dfb13c348bbba318ab01229be01",
+      "statement": "The verdict carrier contains all 16 subsets of SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE; `IDEAL` represents satisfaction of all four, and multi-file aggregation requires every parseable file that measured a pillar to satisfy it without treating an absent dimension as a failure.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L271-L315",
+          "version": "repo-lines-v1:sha256:d24a939884c3404e9e1006f2517525b1d2a8b6b279affe1327943c1a5ead176b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MzYzYWI5ZWZkZDM5MGMzZTljNjM3ZDQxZDQxZTNhNmY5ZjM0YmQ4ZTcyZDQ2MTZjNDQ1YjRjZjU5ZmFlNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5NDlmMjRkZGQ3NzY1ODYyZDcyMDg5ZDc1OWYyOGM5MWNhNDg1ZTY0OGFkM2MwNjg0OTc1MWRiMzRlNDkxNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/core/omega.rs#L134-L195",
+          "version": "repo-lines-v1:sha256:ee13c04294ecf62c30c842df2fe44c5c62f116c4f5df6fee62a5c5a2b6d3e32a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0NTljYmJhZDRkNzY5YWQ5MTVlODc4MWEyYTRlNDc3NjcxNTQ0ZWU2MDBhMDg0ODcwNzAzMGI3NjUyNzZiZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ZTU5ZWFlNzQ2Y2Q4OTYwNTIwYmZlNmU2M2Y4OTk2NWNmYWE3MGU0MTIwM2I5MDY3MjIzYTQ5NTk0YTFkNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhMDFiOWYxMmYzMzg2OWUxNzVlZTZmZmVmZWFlZDEwODg4Y2NjMjMxOGEyNDFlZjY4NWNkYWExMTAxZmM4MzIifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/core/omega.rs#L78-L104",
+          "version": "repo-lines-v1:sha256:bb989cbed217ebcd42e7f97439afaaa60c345996ce65ae723ee04d61a7f6a1a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYmY4NGNiNmFhN2ViYWFjMzdkMDA2YTgwYTNiNDAzNDcyZjUzMWFkNDI0YWYxY2JkMTRkYzdjNjkwZjEyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NTkyODBmNjE1NmMxZjY1MWI1MjJiMWIxODYxNjNiNjZkYjQ1YWRiZmE5YmM2NzFiZWQwNzM1MjllZWMxZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyZGNmZDRmODdkZjYyYTk4NTA1Y2RiMzFkYjlkMDQ5YjBlZTIzNmE4ZmVjZDNiYWM5ZjA5ZGJmY2RiNGViMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmZmI3YWM5ZGU5ZDM4MmYyNmM5NmQ2ZDFmYmVmOGFhNDQxNGVjNDY2MTVjZmZiMmJkODA1ZWM3YzgwMTFkZWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_84c58bfe35bc4eb7bfbade41c8ec62a9",
+      "statement": "The CPG combines UAST AST edges, CFG edges projected onto statements, and PDG data/control-dependence edges; PDG reaching definitions are a deliberately coarse textual-order approximation without alias analysis, SSA, or flow sensitivity.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L1-L34",
+          "version": "repo-lines-v1:sha256:cb5421e358704dba867303ee1c87fa5a39ba10d8fcdf3640e1dfc42463862590:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMjgzZDA3YWZiNDc2YTRjM2FiZWUwZjFkZWM2ODg0YzVkNTQyYjg4YjM2MGI5MTAzOGE0Yjg2NTIzMjY0ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4OGFhN2MzNDcyMjFkZmQ4YWE1YzlhMjAwMzI5N2NiZjhiNTMxMTE3NGY1NTMzNWQ1YWE2MTc0YjUwZmQyODAifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L93-L137",
+          "version": "repo-lines-v1:sha256:0a0e27b2cbae0cb404c6c44b12c5ff4b71eb9fabb995f4255a4c2fef755c9059:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyZTFiNGY1ZWY1MDNiMzI5YmI2NTgyYjk5OWMwZDZkMDE5MjIwMWU3MjhkYzMwYjE3MzUyNTUyYjg5NTIxOTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYTAxZGEzYjY3NzFiMjQwNDU2MTNhMmVmNjM5MTQzYjA4NjIwNjlmNzNjZmVlNWYzNGY4OTZhZTg0MjVjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlYjQxYjY3YWI4MjA0YjIxMWE2NzFjM2I1NDdlZWFkNWFlYTc5NWY1NDIzMWVmMDQ3MmNmMjYyMGVjNmNmMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/pdg/object.rs#L137-L171",
+          "version": "repo-lines-v1:sha256:b0ec952e4376370a41b329ef3813948d008c621656842ac6f27f92ce9fd41693:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NjEyZGVmNTczNWI5Njg1ZGIzOGI5Y2I0MGFkMGI2ZWY3ZDE2YTc1YTk1ZmEyZDdkMmQzMTZkMjAxNWQ4MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYjUzM2E2Njc3MWRiNmQyMjU1MjhjMGE2NzBmNGYwODQwZTUyOWY4YWUyMGMzZjZjZjAxNDA2NGUwMTAxNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2NjIxN2UyN2RkYmY3MzRlYWFmY2Y0OTQwZjA3YWUxMGRkZWQ2YjQ1NjJiMjhlMzI1OGEyYmIwYTM4MGVjZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzZjliNDJiYjBhNzBiNTUxYWE5NTJiZDAxNmUwOWUzODdhNDc5YTQyNmVjYmU3MWIwMWIzMGY0MWYwNzM4YTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c31447b6200849eca4ac92580ad203b6",
+      "statement": "UAST mapper nodes carry deterministic IDs derived from language, native kind, span, and parent ID; all derived graph cross-references must use `node_key`, whose anonymous address fallback is valid only for the lifetime of one live tree.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/graphs/uast/models.rs#L147-L169",
+          "version": "repo-lines-v1:sha256:63ff3e8ea6d07b25db834cd8a69de542f464f32d29466569ae772f415cbf2337:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiZWVkMTc3NDY0YzdiMTA2OGMyMzY1MzI0Nzk2NTU0YzAzZTU1NDM1MjQ5ZmRhMTU5NDQ5MDRjYTZmODM4NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/uast/models.rs#L44-L75",
+          "version": "repo-lines-v1:sha256:47ac5c773350de0f6bd911f5ffe35205b61f9b8f280484b9ee6561b93e53f4dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZGVlZWE0YWVlOGZmNDZhNDVlYmU2OGI4ZDUxZGJkMzllNmJhZTUwYTVhNGRiOWM0MzdkMGRiYzVlNWZjODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZTMzMDA5Zjg0MTAzNTE3ZTRmZmY5MjVhMjA1YzBmZDkxZjc3MWQwNWI1MDQzNzk4OWVhM2EwMmMzNzFiMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2OWFlYzhmZWZkZTQzMWNkN2VlOTRmYTc5NGNkMTI3Nzk4YmFhZDUzMWY3NTI1ZDhhMWVlMmY0MDM1OGQzMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZThlZTc5YWViZWZmOTM0NzU5NTdhZDUxNTJkZDQzNDIxNzZlM2NhODM0ODkxNTI4MWY5MzhlYjM5ZjYyZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2668606808fe4e9f9dbf462d9fedc2f6",
+      "statement": "SIMPLE's whole-file `cfg.cyclomatic` is advisory rather than a decisive gate, NAVIGABLE gates worst-function nesting divergence, and SECURE's raw CPG verdict strictly requires zero dangerous calls and zero taint flows.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/evaluation/policies/secure.rs#L1-L14",
+          "version": "repo-lines-v1:sha256:719e35866406b2f587e86a19b6eaf1cbccd301f3dff0979f6c07afd5b9c231fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZGQzN2QzNzI0YjEyYmIzYWIzOGEzZjhmMmJjNDc4YTFmM2M2NGVjZWE5NzdmZTRkNTc3ZDAxOWNmNTdhNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliM2Y1ZThlYzQ1YzQ3NGFjZmFiZjEwY2EwODA4YjA5ZDhhMzU4ZDAyMDM0OTE3YjMzYTMyZjgxZmJlYzkyZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ZDgyMWQ5MGViMjIzNGE4ZDVmMmY3NTBmYmZlZjBlNWYxNDlhNmI3NTEwZDQ0YWEzZjEzYjI3ZTU0MGFhNmQifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/policies/simple.rs#L1-L17",
+          "version": "repo-lines-v1:sha256:44800e94bed9165a9ecd9568b9c0ee387f33474f67b9fd092447bde46eb50a7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmYTExZGI5MDI1OGExODgxNTA0NDJiNTBiNTgxYmRiNjQwOTI1MTZlOGY1ZDRmNmI5ZGU1MTA3N2U4ZWYxNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjZDkwYjk4YTIzYThkOTRhNGFjMWI1OTI0YjBmN2I3ZDVlOTlhMTJjY2VmZmJlODJjNmE2YjM4NTMyNzdhZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczYzkwOTZlNzdmZjhkY2YwZWZjOGZmMTFjMGM0OTIwM2VmZjYzODUxNjIwYmRhYWQ5YjJiODE3NzFiYmMyYjMifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/functors/probes/ast/divergence.rs#L13-L42",
+          "version": "repo-lines-v1:sha256:03e3206869415cd88c78b42af1c84132cbe60153ba15dc00c86659474d8f60d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1Y2E4MjExMGM1ZjQ2MDRkNGM2NzViMTdlYmE4MDE3YmM0ZTI2NGIxYmRlZWQ2NTJmNWVlMDg4MjQ1M2JmZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyZWYxYmQ1YjUwZDg0MjQ5Yjk2YmE3NzA0NGZjOTliNjRlNWJmMzAwMWFiZWIzM2EyNDk5MjAzODkwNDk3OGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2YzhiNjUyMmViOGU3ZTIxOGU0YTVlMTJlNWE1Y2JlZDY4ZjE1MDc1MTgzNDY2Mzk3ODBkMjM3NTJhNWE1NjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwN2Q3ODE0M2I2ZjFhN2YyYzhhYzljY2EwMjVhYjE4OTY5MTUwZWM3MjRkNDJhZGJlZjJhMjZkZDI4MTI4MjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_480af248f8b7463cbc24bbb367ddf75d",
+      "statement": "CLI evaluation and inspection can resolve or generate GitNexus state unless `--no-composable` is used, degrading to the other three pillars with warnings on failure; MCP inline code cannot attach an MDG, and its dep-graph cache is branch- and store-mtime-aware with a 32-entry cap.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L8-L23",
+          "version": "repo-lines-v1:sha256:82a138fdf3b07c5ebf71ec1ab9ed4192d88af623aeeaa66f61629dbacf9f6d5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkOTdlNGIyODBlNzBjYjEwZjc4ZDA4MDJhODIzOGNlMmY1N2IxM2QwNTQzYjM0YTQ1N2M4ZjU4MDJlMTg1MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNjNhOTZhZTBkMDkzZmRkOWUxYWNmYTBlYWU2YTgyMzYzNWJkMjY3YTc1MTdhMTFlYjcwNzc4MTkxYzZiZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5Yjk2MWYyMzE0ZTAxNGM0MTQ2YWY4NTcyZDMzNGEyNTM0MWVmMWIyMDMzYmY3ZWRkYmEyNDAzZWY0Y2EyNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkOTEyMzU5OTM0ODUwOTFjMTYwMzE4NzFiYmNmMmJkOTBkMzRmZmNjZmZlZTIzNzY0Yzg4ZDBjYWQwY2FlOTgifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/depgraph.rs#L53-L98",
+          "version": "repo-lines-v1:sha256:52d989c43efe42f8c87879bdfa57a15608c6a270660b054f6f3f3165bb38120b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZWNlZWU3MDliODA4NDFiOTUzMjk0MDcxNDFjMmRlNWQ1MjE3YmQ0MzZhYjc3ZjI3ZDBlZjgxOTA3ZmU0NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1Yzc5ZDUzMmM1MWJlMDE4ZmI5NmI1ZWRjM2MyNzIwZDhkODE3MGQ2NmVjNzFlZWY4MzYxMGY4Nzg5MmViZGIifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/inspect.rs#L109-L145",
+          "version": "repo-lines-v1:sha256:6b05c713ffc84e6012eb9fc759e1367d9584a2a072c8ff8eedb233428572679d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwYjRlZGQ5OWUxZTE5NGQxZjBmMDgxZjk1NjMzOWMzMjk2NDNhMTA0NjcxY2FkMjQ3MDg5NDExYjY0OGQ1ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5ZmRmNjhjYzQ5OTI5ZWU4YTlmYmJiMzVhYmEwMTQxNzdmOGM1ZWIyZDIwMDNjMjNiMjQ5N2IxNzIxZjEwMmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef0b080b62eb48298c0ea0a211ff0e5e",
+      "statement": "Allowlist processing is an explicit overlay over the canonical raw SECURE classification: it recomputes an adjusted secure result, exposes raw and adjusted verdicts, and prevents acknowledged risk from producing `IDEAL`.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/evaluation/suppression.rs#L1-L13",
+          "version": "repo-lines-v1:sha256:fcea536067eb2729ef83f7f3e6b586d5ace18b07a2578370f6ae214fa560f228:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5NGY5N2FiMGZlYTEwYTQ4NmVhZmJkZDljNDg5ODYwMzkzODViMDhlYjBjNDU5ZTFiMDI2YTI1NmY4MWQyZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzNjFkMWYxZmNmMGZiMDE3MWY2YWM3ZWFhNzlkYzE1MjNkZDZlY2E2ZDdhNmQzMjU1ZmM1OWMwMzQ1YTNmOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmY2U2YzBiYjAwMWJhOGJjMDA2NmJjOGUyMzkwNmQwNWRjMDg4OTliODViYmViMjJjN2Q0YmUwOTUzNjAyOTEifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/suppression.rs#L75-L135",
+          "version": "repo-lines-v1:sha256:15996e4619818984ab816ebfb1c3f1ecaa891d35f74d53e668138e0e3cf0cd7c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxN2IyNzA4ZjhkNzY4OGU2Nzk5YTU4ZTQ2NDBlZDE0YmFmZDU1YTM4NWExMmEyYmE3ZWU2NmNkNGVmZjAwYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMTMwZWIxZDUzMzU5ODkwYjIyYWRjNmQ4MzU0ZmNhYzQwM2U2MDNjODZmZTE0ZGM5NjVhNGNmOTQ1Y2YxYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkY2I5NjJlZjgwZjQ1MjRhYzk5OTM3MGQxZWZmMmIwZWVkNThmZjQ5ZTQ3OGRkYTY3MTBhYmMzZWYyMDZjMjMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-01T16:34:02.929Z"
+  }
+}

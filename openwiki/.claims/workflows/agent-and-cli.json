@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:7b619a85a5b0949fe521228b5c972cd15124f4f2a279a16e9c0e3ef89d3a733d",
+  "claims": [
+    {
+      "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
+      "statement": "The `topos` root CLI dispatches ten public routes: config, evaluate, inspect, compare, coverage, depgraph, install, uninstall, status, and mcp; each routes to its corresponding command handler and command errors terminate with exit status 1.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/main.rs#L17-L28",
+          "version": "repo-lines-v1:sha256:f9f59449296162e68261e22ff4e327be01a7f0526b59e8c0a26b1ac8497db88e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1Y2YwMWY4YTE3OGQzYzE5Zjk1NWQ4ZWQxOTE0YTk5NmUwZWUyMDY2NWQ0Yzg3MzZjZTAwMzE0OTA5NDA3NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjNzU1Y2VhNDcxNzA4YWIwYTU4ZTI0ZTUzYWU5ZWZmMWU2OTA0NDY2NTAxZWRhZDkzZjJlOTVmNWE3ZTNkZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1MGIyNzc0MDg4M2RkMjU3Y2U4OWQ2MTRhMzQ0OGNhYjhmYTBkZTc2MTMxNzUxMTE5YmY1Y2U0NWFiNjQ2YmQifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/main.rs#L42-L102",
+          "version": "repo-lines-v1:sha256:cf5832619b8711ad94b4faaa82ee07168a5fb2a0e131ae1cd57e57bd0f2f8596:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwOGI1NTMxM2ZkMzBkNWY2NmQxYzMyYWU3YTQwZGJkNmUzNDhjYzQ5YWYyYWJkYjg1NGFmOTM1MWNhN2U2NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlYWM5NGU4ZjE1MWZmNDY5ZTlmMTg3ODUxYmI3MGE0MTA2MjhlY2ViZjQzOTgzOWU1YThhNGYwN2RhYTA2MmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxNzUxYmM2ODI1YjdmYjg4NTAzNDM4OWM3ZGY1MWVmZWYyOWIzMWE3NTgwMTQ3ZDEyNjdkMjZkNDIzYmI0MjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e52b143ba3e48e7a49b43f519cf7e2c",
+      "statement": "CLI evaluation can recurse and filter discovered languages, has JSON, verbose, info, failures, and priority controls, rejects `--json` combined with `--info` or `--failures`, and uses priority to select classification/remediation ordering.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L305-L331",
+          "version": "repo-lines-v1:sha256:1f6f0ec0b409052347e9a04adf90c75ac7a2c5a3f360c890f1113dcbce50b886:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YjI1Y2I2MjE5MjA1ZTgwNzYzNTg3YTIxMmQ1NTYxYzlhMDc1OWFmOTQ5YTI5NzI4MzM2YzY1YzEzODI0M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlOTZiMTk0MDA3MDQwZWI0MzQ5N2M3Yjg0ZTFhYTU5YTRhZjgwMzc3Yzk4YTg4YjZiODhlMTE3YTVmZGEzZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYjk0MTIxZTMwMjAyZmExZDJhNzc1ZjQ0MjkzMzI1YmRjNjNlNDZjNTgyMmM4ZmFhMjI3NjJhOTdhMDIzNjcifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L55-L93",
+          "version": "repo-lines-v1:sha256:e53ba3a8b5142ed9a3e13bc7d75d6925cf9da20df7d6a67a6a529f1c3b17e2d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiOTU1ZTg4MmQwN2VlYTU0ZmJlMDZlZThhOTg5ODk4YzE0M2ZjNmRkZmEyODVkMzc4MzYxNWJkZWFjNjlhZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2MGYxNTc1Yjk1ODU4NzRjYmY1NWJiZDUwMmE5Y2NkYmJiYTk1MTcyYzE2OGE0ZmE5N2NjM2UyZGM1ZDEwODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxY2YxYWRiMTVlM2QzZjZhMDViMjNiZmY2NWY4N2FhNTZjZjlhZGExM2JiMjk5YTQ1NDg4OTFiMWUzODg5M2MifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L95-L137",
+          "version": "repo-lines-v1:sha256:a02f546651820aa7f94d52e8a9fa680f44ae4715ee836f9291a286bbbae402cf:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOGY5ZWFkMjcwOTNjYzU5MGFiNmZiZGI1ZWI4NzQxZWI2YTQ2YjQyZDYxOGIwMWI0NmRiZmJiOGNmMmY2OTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNjU1MjY0MzQ0YzMwYmM1ZTVmYWUzZjg3NjFhMDkzYjUwMDQzZWQ2NDk0NWY2MTUwZjU3MWFlODNlYzMyZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhZDUwNzgxNDFkZWU4MjBkOGViM2Q0ZGE3NzlmNTQwZWNmMmExNGJmZTMxMjE3OGQ5MjI5ZjkwNzQyY2NkY2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ecdab87c246b4e7aa4a111e3ee631fcb",
+      "statement": "The CLI and MCP evaluation routes share an ensure policy for COMPOSABLE: unless skipped, they resolve GitNexus state and attempt generation for missing, stale, branch-not-indexed, or load-error stores; failures leave evaluation available without COMPOSABLE rather than failing the whole evaluation.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L8-L23",
+          "version": "repo-lines-v1:sha256:82a138fdf3b07c5ebf71ec1ab9ed4192d88af623aeeaa66f61629dbacf9f6d5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkOTdlNGIyODBlNzBjYjEwZjc4ZDA4MDJhODIzOGNlMmY1N2IxM2QwNTQzYjM0YTQ1N2M4ZjU4MDJlMTg1MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNjNhOTZhZTBkMDkzZmRkOWUxYWNmYTBlYWU2YTgyMzYzNWJkMjY3YTc1MTdhMTFlYjcwNzc4MTkxYzZiZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5Yjk2MWYyMzE0ZTAxNGM0MTQ2YWY4NTcyZDMzNGEyNTM0MWVmMWIyMDMzYmY3ZWRkYmEyNDAzZWY0Y2EyNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkOTEyMzU5OTM0ODUwOTFjMTYwMzE4NzFiYmNmMmJkOTBkMzRmZmNjZmZlZTIzNzY0Yzg4ZDBjYWQwY2FlOTgifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L141-L156",
+          "version": "repo-lines-v1:sha256:1d18e5536d9a6b439d8656b1e48d78aeeed5e22714bc32227818ea651b9f15fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMzNmJjNmFmZWY4OTFmNTY2NTk5ZWUxZjk0NjU0YjAxOWYwY2MzODJkMWU2MGEwOGVjODhlNTM1YTQ4YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzdmZmU1OGQzNGQwMDM0NjNmNzkwYTU1NjUxNTY1ZWRlOGJiZWU0NzQzYjc5NjgwODA1NDdjN2JjNzVlMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NTM3NjRhYTkwN2Q1OTJkOGVhN2NlZTQ3ZDhiNWMyZGE5MzU4ZjJhZWRlNjAyODNhZmI2YzlhYmJiMjJlMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjZjAzMzQ4NzgxNGI4YTVlZThmN2I2MjIyMTE2YmUxYmViN2I5M2Y4YTUyYzE0MTg4MTg4ZjY2MWU3ZDZiNzcifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L175-L226",
+          "version": "repo-lines-v1:sha256:80fd015889627a32c2cd1396847361fb3f4480df94547b058cccad6e4e3bca69:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1ZWI4MmEyNmYyMjA0NDY0MDZiMjU1MTEwMjQyNjFlNjlmM2JmODY2Nzc0YTYxYTVjMzNhY2JlM2UxNWM2ZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMzExZTVmZTIxZGVjOTdmZDkzZjM1OTBlNDk2NmZlZWExOTM4ZDA1YTk4ZTM5OWMxOWRmODg5MGE1MThlZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0Yzg2NWExYjM5NjA3YzhkNTE0MDhjZDUwOTFmZTc2NzBkYTg2ZDI5YzcwMmMxMWViMDcwYWE2YTAyN2U1YTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_61ffe9060576492d819570503cb71c5e",
+      "statement": "A GitNexus override derives the COMPOSABLE project root from the store parent and must be resolved before reuse to avoid relative-path double joins; the MCP-specific root resolver prevents an override outside the file root from being used.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L278-L307",
+          "version": "repo-lines-v1:sha256:a74ab84042ed96def047e0adc7a567bce1043eb3517ba7e424d0a6e3de17824c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMDA3MTdhOGU1OGI4MjRiYTc5ZTE5YWNjNTI5ZjY1YjliYzlkOGJmYjRiNDNmYTAwM2I0ZGJhNWQ2N2Y2NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjYzI1NGQ3ODhkOTVkYmQwMThhYTZhNWRlNzg2YWNhYTdmOTRkNmVkMWQyNmNlZmVkMmEyNWI2ZDI0ZjhjNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NmY4Y2IwODNmYTgwMGE0ZGNkMjk2OTcyMmQ3YjkyNjg2YWRkOWViZTM2NTU0OTJmYTY3MmIxYTdjZWQyNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiZDE3YzIxYzY2MDFlM2ZlM2IzNTQwYmQxN2U4ZjJlY2IwZTNjYzU3MTllNmY4M2Q5ODExNjE3M2NmZjYyYWIifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L41-L105",
+          "version": "repo-lines-v1:sha256:ca9887346cad1f0fcdeff4e0d8bfe1d902fd23ecbb6bb5428a61afb61528bd06:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0OGY2YTIwZTU5NjU0NjhiOTRiNTZhODg2ZWYyOTdjM2FmNDA4MjliMzBmNWIzOWY5YTNmNDJkMjY3NDFmN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlZWU1MzJjM2NjZDkzOGM2ZDA0YjQyMTNhMTA4ZTExM2Q2YmVkYzM1MmE4MmY1MWIwY2UyNzZhN2I5OGI0ZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2NTg4MWM1NDQ3M2MxYjIzYzQxYzU4MmFmZjIxYjRiNjU3OTc4MGNmZWYwMjk3NDM1NjBjYWZlMWY0ZmQzMmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_05be783b23e7478c949eb423a3e1ad38",
+      "statement": "`topos depgraph generate` is a CLI wrapper around dependency-graph generation that no-ops for a current graph unless forced and refuses a schema-mismatched store; the MCP status tool is read-only while generation is the side-effecting counterpart.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/depgraph.rs#L1-L29",
+          "version": "repo-lines-v1:sha256:0dee12034bbf9aa6830c7bf79bc3e102f08532217d2c8b5103ef6f339f3ec794:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyODYxZmZhYzkxMmFjYzQxN2Q1ZjQ5ZDdmNDU2YzI0YTBiZDBjMWNjZTY0NDM5YmQ3ZmRkNTg3YTIyYTYzZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTQwZWFmNGI4MWE1ZDUwNGQ5MWM3NGE1MWNjYjEyYzMzMzdkMTAyM2Q2MDJlN2MwMDkyNDQ4YTcyNmJkNTgifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/depgraph/generate.rs#L25-L107",
+          "version": "repo-lines-v1:sha256:6d7da6ae5455d4d8c81f24fcee4baef8516811969e4532dde094baab2516eb36:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMDk2YTIxNmIxMzMwZTAxOTA5M2E3ZGUxYWNiODk1YTQ1MDc5MjAxYTRkMGJkMWJiODI5MjI4MDFjYzg3OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNjI5MTgzMTIzMmM1YWMzMDljNjg3MmVkMmE4Njk3Zjc5ZTFhMGUxY2Q0NDYzZDc1ODY0ZWY3MjY0ZjJkODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/depgraph.rs#L304-L490",
+          "version": "repo-lines-v1:sha256:758afdee6d2dda334d408012bd3d8a06d4e5a652add50e2a6ffdf59935c0d4cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmNWZkZDMzNjhkMDcwMTkyZjlhMzIxZjg0Yjg0M2M5MDNiMDVjMDFlZWVkOTlkOTk0MzMxNjNiOTMyM2YxMzU0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNzk3ZWE0M2I3ODdlNjZmNTJkZjU4OTNkMGU1N2EwNTg5YmY4YTNkZjgyZTNhMGU5MzkyZWE4MzgxZWFmMzE4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNTIxNjA0YjM1ZmM0MGFmMDBjYmE0ZWVhMmZkNWUyYzNhZjE4NjNiMzkxMTg1ZDdiZjRiYjA5ZTcyZDBjOGIzIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e00814323eb340ad9b170c7f255e414e",
+      "statement": "The stdio server combines evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, and refactor routers, and advertises tool, resource, and prompt capabilities including documentation resources, a build resource, and the `topos_refactor_until_ideal` prompt.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L158-L180",
+          "version": "repo-lines-v1:sha256:2d11f572c5268dff382c2bbb00a1b90760c4e8d7cbccc2b7cf1c72c7e0f90f89:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhMGU5YzNhODIzZGIyNzE4ODZkNjc1Y2VkOGMyOTBkMjkxMDRlNzYyOTRhMGM5NWY4MTdkMWEwYTZjMTc1NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2OWEwNzNiYTRjYzI1M2E3MDczOTg0NjQ2NjNjYmQ5ZDJhMmYxYTY3YzdmMjBmYjg4OTk1NTk2ZmVlYWZhYTIifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L245-L265",
+          "version": "repo-lines-v1:sha256:34702654eb54002208405c1f6e379c85a33cb27fa2306c93498b3d69a355e014:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNDAyMzUyMzRkNjgxMDM3MTFkNzU4ODcyYTY5Y2I0YzUzNDJjMGVhOGJhNDI5MGJjZWVhNjI2MTRiNGJjM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NmEyMmUwYTBmY2FmNTM3YTAxNDlhMmRhODhjOWViNzE3YjgwOTVkYWI0ODA4OGI4ZDI0MjIxMWZmMTNkYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3ZDFhZjcyYjdjNjc3YjBkODkxZTA4NDBjMzJkMWQ0ZThhMjNlZTZkNDg2ZTFkY2IyYzYwYTExOTFhYmRiNWEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L6-L10",
+          "version": "repo-lines-v1:sha256:5e831a4a7e87c3c4a5c0aff30b62378ba10b1c684b8b24fc7ccb58ed83ddec69:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODM2MmE1MzdjM2RmMzc0NGMwMDAxMTVlZTZhNzdkZmZlOWFiNmJmNGMyNzIxYzAxYjk3Nzg2YzNhMzY4NjI1NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjY5YTg2ZjkyOGZkYjlmMzExNjQ3YjE2NjY3NTJiNzJlMDcyODFmZWZiMjUzMDIyM2RiNzdmYjc4NGE3Y2JjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDgwZDRhZTFiYzliYzI3ZTIzYWU1NTBhMTI0ZTY0MTQyZDMzNGI3ODNlZGY1M2I5MGEwZTc5NzY4MzBiNDgyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2RhYjE1YzM5ZDI1MzUxYjQ0YzgwMzFhODc1MTUzYTcxN2VjMzgzYjYzZjM2NGQ0Y2I4ZmZjNTkzN2RhNzU3MyJ9"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L80-L129",
+          "version": "repo-lines-v1:sha256:988b7e4e5825df8b52f0d1ed2601a1030c1461f0270d9dcb5118bd7a7dd434a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNWY2NTQ1ZTBiODkxYzQyNDlkMTJkNGZlZDY1NmFhNzYzMTFiNWYyN2M3ODk1M2ZkNWYwMDgxMmQ3YmM1NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MWQzZTcxN2ZmNTZhMDQzZTY3NGUwYWNlNmFhMzQ0YWY5YTVhOGY4NGQ4Yzk3OTZjOGQxOGIxNjFkZGM2ZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0NDAwNzM2ZTg4NmQxYjIwYTE4MTI1ZDMzY2FjZTEwNDYyZmU5OGNlZmZhODI5NmY2NmJlMjk5NTZjYjFjNjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_11f0a412b01b4e0494acfc0f48164e2b",
+      "statement": "Topos explicitly supports MCP revisions from 2024-11-05 through 2026-07-28; lifecycle tests exercise initialize/initialized and stateless `server/discover`, and show that the latter supplies protocol metadata per request while the tool surface stays the same.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L41-L62",
+          "version": "repo-lines-v1:sha256:81a7f8944a8b16d8d2860125752bbc5284d5c4d66df5a75636c0b2a44818bfbb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGRjZTk4MmZhMDI4ODBkZjE4ZWQyNmRiYjAzZmZiZjM4YWUxMWNlMDM3NmIxMzllM2M5OTc0OWIxODkzMjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMDJlZWQwMGU1MGQyNWQ5YzBlMmMxOTU3YjI5NDJhOTQxYjNiM2MxNGU4YjU1Zjg0ZjU2MTNlYzFmNGE3NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzYzFhY2U2MDA2ZjVkOWIwNjViNTYxNWY3NmU1ZmI2NWUwMGE5NDY1MjhkZmM4ZDMzNmFjYjdjNGJmNGM4NzgifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/tests/lifecycle.rs#L133-L173",
+          "version": "repo-lines-v1:sha256:f7152f6b700ab0e111463475d45875ecab77a4e8c317d5a8ef53690817689981:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYWVmYmY4YWU5ZmZkODNhYzJiOTdhY2Q2YzBkZjkwNjllZWVlMTA0NDZiYTliMWM3NjNjNTU5NTNlOTJhMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZjhlMGExZDk1Y2RkNDc2NmU2OGIxY2Y2ZmJlNGRiNjU5NzRjMjY4MDIyODY5NWI0NDI4MDNiMjAwNzBiZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1NmRhODdlMjU5MWNjMzEwOTFjODBkNGMzMzI5Y2QwNTNmODlkNWVkMzFmZDgyNjYyOTY2MGQ3ODNkN2U0ZjcifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/tests/lifecycle.rs#L46-L130",
+          "version": "repo-lines-v1:sha256:cd9fd8820be5d0502554bda49861194f4f9e054e267080597dfe8a01d39936b0:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMzAzOTE3ODRhY2FjMGZmNGRjOTIzMjZhN2FkMWU2MTRlNDY2NDYxNjM2ZGM3MzkzNDIxNWQzOTQ0ZjQ5ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZDA5NjA2M2I5ZjI3MWM2MDNjMDFjY2RiOGU4ZWJkMjcxNzcyNDE0ODc4ZDZkNjdmNzM0MDIyNDEzNGJiYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwMmIxNzljZTU1MjZhMmFjMzhkZDhkOTRkNDlhOTlkMWZlYTA3M2RmMGRmMGE0NzEyOTJmNDE2YmQ0NjkxNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhYTNjNWRiMDFhNmUyMzc3YmE3ZTFkMDBkZjMwODIxNGUyNjc5MTc1OGNkMTc4YThlZDY3NjE3NTI2ZDVlZDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0ac782b5a5f94710a67b1e7290ccd425",
+      "statement": "MCP file access resolves a project using `.git`, `pyproject.toml`, or `Cargo.toml`; `TOPOS_MCP_FILE_ROOT`, when set, is a maximum boundary, and calls reject paths outside it or requests with no detectable project marker.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L1-L9",
+          "version": "repo-lines-v1:sha256:fbdecce8fcbd5c6bae11e5a4ea493a3c3569b2b7c1d994841a44ce39f3125724:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM2YmJjZGIzY2IxZTg1MTNmYjNhYjcxMGM4NDk1ODZhZTc3ZmUzNTg0NDA2ZGUxM2MzODY0M2U4NDAyOWYyZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjA4NjUwODZkMjUyYzllOGQ0NGVmNDc4NjAyZDA5OTAwYWQwOGY4NGY4ODU4Y2YxYjJmODJiYTE1OWZlM2IyNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjUxOTNhY2YxNGViZDgxZDJkYWY2ZDFkYzUwOWQyNWEyN2Q5ZDM2NzI0MGZjY2RhYTJiZmI3MmNkY2Y1ZWFkZCJ9"
+        },
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L13-L96",
+          "version": "repo-lines-v1:sha256:14f5dbd7eef1811f1563c0d8146573bd952f502f58021e9aa16a726c89616c78:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MmUyYTM4Mjg4MTM2YWU5MmM5MjBkMmMxN2M4NTRkODVlN2EzMGZlNWIwNDliYzhhZjVhY2I1NTM3NjEyZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NjQxODhlMzA1NTU0YmNhMDM2M2RmM2Q1YTUxMWZhYjAyOGM1NDMyYzhiZjdmZjQ4MzUzMzMyMzIyMGE0NGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1MTkzYWNmMTRlYmQ4MWQyZGFmNmQxZGM1MDlkMjVhMjdkOWQzNjcyNDBmY2NkYWEyYmZiNzJjZGNmNWVhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwY2M5MzQzYzM4M2YyNWFjY2Q0NTNlMmM5ZDM4NTExNWQ1ODA2Y2QxYjkzMWE0OWY4MWI5OGNhZmI5NmE5NGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f4cae6a5e63b4b3e97fafaa765e83c1e",
+      "statement": "The assessment family distinguishes explicit side-by-side variants, Git-ref worktree comparisons, pre-edit snapshots, snapshot assessment, and multi-file changesets; worktree assessment reads the baseline from Git, while snapshots are required for uncommitted or untracked baselines.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L1003-L1011",
+          "version": "repo-lines-v1:sha256:f32254ce6581a9dba7634c64c39715ea4fd681982c99daf7149148fbf21ba6d5:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdlYjdmOTU2ZWU3NGI5MjJhYzZmNGNlNDA2YzFiMmYwMTgwYThkOGYyODYwNmU5YjlmMTJkNWNkOGE1NTFkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWYyYjc3YzlmYjUzNzA1OWI5Njk0ZTYwNDc3MmQ1NWJjNDdmMWU5MTQyNDRkYjY1NmFmZjM0OTY5M2E0NmExMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2M1M2RiMzQ1YjUwNGY1ZDdkN2EwZTRlZWQxNjAwN2ZkZjc2MDNiOWI2MWNjZGNhODNjMTE1YWEwNDI2MDgxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWRmYmQwOTk2MDA0YmMzMGFmNWIxNDdiMTQ5NjUyNWMxNzQ2ODQzYzMxYWJkNDIzNjZhNWQwNTUxZWM4ZTFjMiJ9"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L1075-L1150",
+          "version": "repo-lines-v1:sha256:824d1b5b0187478bbbc711ce0386a545781c7f94f8c15dfb0a7980724589c07a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYWJjYTQxNmJlNmFkYzFlMWM1MjkwNDc1ZGE1NjY4MmMyMmMxMjJhNDFkMmRhZTBjM2Q1ZjExZThiMjEyMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiODM2OWNjYmNjNjRmYzUwZTk2OTNmMWRmNmMzNTNjNTA1MDYwMTc0OTQ5YzM2MTYyYjdjMDkzYWMyYzEyYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljMTgwYzJjYzQ0YTRiMmI5MjBlNzgxNjE1MTBmZTJhNzI3NWQ2YjE2NmM1ZjkwY2JiZmEyOGVhNjMzNTZkNzEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L1152-L1350",
+          "version": "repo-lines-v1:sha256:f441ec10efc4f83af3540ef344a2785bd79f941a8178ab82acbee2f4615ff446:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiODMyMDRjNDE1ZDFhNzJiNjgyNzNiMWM1YzdhMDhhYzUwMjA0OTAwYTZmODJmMTViODFlYjkzYWFmNmY4MDE0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YjgzNjljY2JjYzY0ZmM1MGU5NjkzZjFkZjZjMzUzYzUwNTA2MDE3NDk0OWMzNjE2MmI3YzA5M2FjMmMxMmFhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmZGUyZWY1YzFlNzgzYTgxZTM0ZGU3MzJlNmFlMTA0ZGExMTUxMDY3MmJhYmI5YTFlMTQ2ZjEwOWFjMjVhMTE4In0"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L1352-L1429",
+          "version": "repo-lines-v1:sha256:7ac634dd92b30ad6af5e5556364a6f965277532a975b274f6919920fea24d569:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmYmVkMjZhOWJlYzhlNjdkOTMzMWZiZjRlNGUwM2Y2Y2ZhMGNlZTMwMjAxNjhjYTM1ZmEyZDM0Yjg3NDM4ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjNjQ3OWNjMjMwNDQwZmQ0MWU4MjI0MjE4Njc5Njk4NTU5ZDI4OTNiZDY3YjQzODBhZmFiODExYjM4YTU1YWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiODM2OWNjYmNjNjRmYzUwZTk2OTNmMWRmNmMzNTNjNTA1MDYwMTc0OTQ5YzM2MTYyYjdjMDkzYWMyYzEyYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZGJkOGMxZTEwNjYyYmMzNzU0ODhiNmJiNGMzZjNmMzFkMTNjYjc1OGJlMGY2OWNmY2RhZTk3YmU4ODA5NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2509395c143941c68ce18dff19b86bc0",
+      "statement": "Assessments compare lattice status and score deltas and compute normalized AST distance when both sources parse; an otherwise improving result becomes `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when distance is below 0.02 and a score delta has magnitude at least 3.0.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L285-L370",
+          "version": "repo-lines-v1:sha256:3249702956f3d1626a3ad2444359a70daf618f5ded778050904aa95fdfed810e:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0OWIwOTQwYjFhZjFhMjIxMmMzYmJjNDlhNmU5OTIyZjNhY2FlZmQ4MWJlNWU2MzhlOWU0YTRhNmJkZTQyZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0MDU5YTM1YTVjY2E4NmZlMzc3YzFiMTMxMTg1M2I5ZDgyMzFiNDQ4NjM0ODBkMmVkZTQ3ZjUzY2EzNTllOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhNTczMDk0OTZlY2E0OTBjNzRlNjQ3NWEwMjg2NzRkN2FhOTE3ODIwMjIwODU5YzZjZTU1ODcwYjg2MjE3ZTcifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L43-L137",
+          "version": "repo-lines-v1:sha256:45e62a459422b8dfb6111249573f0133ffbbb80bc9c2f5c61ab3e4437442c4d4:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NWE1MjNiOTAzMjQ5ZDViOTcyMTcxZGQwYmU2ODI1YTM5MDVkZDc3MDUxNmJhMzdkNDQ4MzE2ZGI3NWI5OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExOWRhMGVlMGM0YTU2ZDE5N2Q3OGM1NTUxNGFmMjRiZmJhYTBjODkwYTYzZjY4ZTU0YjM4OGM1MThkNDdkYjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhY2Y4OGJiMmMwOGE5MzQ4ZDVkMTBmNTAwMjE0NzhiYThlMjBjMDZkMTE1OTJjOTAzMzEzYzM4YTQxN2E3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyMWJkN2UzN2FjMzU0MGQzNzZmMDc0ZDJhZDZjNGJjYzlkYTJkOGZmYTk4N2M3MGY0NWY0ODU0MGNiOWI2MjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0112897c775f46f489b7b79e210d18b7",
+      "statement": "Refactor snapshots are on-disk, content-addressed records outside the working tree, survive a server restart, can be relocated with `TOPOS_SNAPSHOT_DIR`, and expire after 24 hours; malformed, missing, or expired identifiers are returned as blocked snapshot outcomes.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/snapshots.rs#L1-L17",
+          "version": "repo-lines-v1:sha256:c7acb16c8710444b2973de322b8f8840ecd54a8c6b7f10a96a0fadc0b3c655ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhOTI5MWIzMGQ5YTUxZGE0ZWViZmE4Y2Y2ZGIzNDEyZjBlN2Y5YzViOWQ2YjZkODM1ZGJjMTdlNDQyMzdiNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NjY5MDUyZTZkMzEwZGZhMzgyODdiMzg1ODQ3NmYyMjViYzhiMzgyM2RkZjI2N2QzNDdkNzlmM2JmY2NmZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxYzgwMWIzNzgyOWFmZDQwZmQyOTI2YWViM2MxMGVlMjZkY2Y4YWZkYWQ2ZDMxMzRhNWRkMzk4NzUwZDI5ZTMifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/snapshots.rs#L26-L66",
+          "version": "repo-lines-v1:sha256:2324215bcb8d206f754f76416907c7fcd40319342dc524f6e09d52cabc19c65e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZTQ5ZjgxODNmNjVjZTdkMWU4NGJlYTU2YjI5MWIxYmNkN2MxMTJlMTI5NDk3YTY1MTA1ZDVhOWJmNGE5MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwNTg2MWExNjZkMWNmNGJiYjRlOTk0ODgxN2Q0ODg3NTU1MTBlYzZiOGRjZGUxNWVkMTBmNjJkMzczM2U4NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljMmJlYzJlZTVjMmYwMjJmYjc2YjRjZmE0NTIyZGNlNDFhYWU1MmQ3YjQ0M2Y4NDA5YjY2NWEwZWU2Mjk4M2UifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/snapshots.rs#L97-L176",
+          "version": "repo-lines-v1:sha256:af36bcc09e8b751f2e61d965ab71099ed76e86270dbae29b2d6587c994adf0dd:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjY2M2ZTVhNTQzYTk5MWNmOWNmMzRhYjBiYzlhMWM5Y2Y5MGQ1ZmMzNTc2MTRiNjE0YmJlYTExYTMzMTZmMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0MTFkZWU0ZDc1NjllZmRiODhmYTU1YTBjZTQzNTIxMzY4ZjhkNzAwZTYyMTU3ZGYwZGE1Mzc3ZjIxY2QxMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_658297ba24834ef7acfe577bb2c8115e",
+      "statement": "Security diagnostic overlays are only constructed for parseable classifications that fail dangerous-call or taint-flow metrics; allowlist handling partitions raw findings into active and acknowledged risks rather than removing allowed findings before disclosure and verdict adjustment.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L115-L142",
+          "version": "repo-lines-v1:sha256:7a20e6d065b7e6548bab58a7f826f634e546483d5622fa50fb23d7affe811136:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYzEwNDExMzg0YjMxYzRmYzkyYjIyODU1OTkxMjZjN2VlN2Q0YjFiNWYwZTc4NWYyNjk5ZGQ5NGIwYjcwZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L13-L23",
+          "version": "repo-lines-v1:sha256:8d93f598beeb31bc89f9aec6abcd927fc66c57f2adb05cf2f96e3ded63b5fae6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNDA5Mjg5YzVmNzQxNmFlNzcyMjA5NzcxYjdiNDI2NDQ1OTFhMGUxMDdjZjQwOTU3Yzg0Njg2ZjVlMzlhMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhOTE5OTBjYWFiYWIzZWNiZjY5YzIxNTAxNWIwZGY1N2NjNzVkY2NiNzZjMmE5NTA2NTBjZTliNjJjMWQ3MTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOTg2ODhkMWY2ZDdiYjMzNGYyMzJlMjZlMDYzMzA0MzZlNzJkZTZjNGU1MDJlMGIxNzM4YWVjNTA4YTY4OWEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L64-L112",
+          "version": "repo-lines-v1:sha256:0086fa28560ec063503eb330253c9ff97b5bd57930e7d84ae971b54242b7cfe9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YzhlMzNiMGVhMzg1YTcyNzRhNzdhMDY0NmE0MGYyYWVmYjljMWE2NGIyNjUxYmNiOTcwODI0MGI5OTQ3NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODU5MjEwZWJjYjEyY2Y2OGM2MTYyMjJmYzU2MGMxZjY4ZTJmYTMxZjYzMDQ5M2RmODA5NTg4ODdkNTdhZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YzJhZDFjMDZmZjJlMzY1MzIzOGJmODk4OTlmZmExODFlNDI1YjYyNzhiNzc3YWE2NGU1NTFmMmE2MTBiZGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6da535031f284eb99ae0f00c15312ce5",
+      "statement": "Structural coverage and advisory refactor analysis are explicitly separate from the four-pillar quality lattice: coverage uses UAST declaration matching and k-gram recall without running tests, while refactor ranks hotspots without scoring pillars.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/tools/coverage.rs#L125-L200",
+          "version": "repo-lines-v1:sha256:4b02b6e506d1e34d33aed66f35d834fb514392ebd94199e4767d7ae174790bc6:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMGUzZmFiNGRkYzk1YTdmMjZjODc1ZmI3YjU1MmU4ZGU1NzE2NWYwYWZkNGY5ZTA1OWJjNGQ0ZjI3YzExNTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MDUyOWE4ZDE3MzMxZjlkNGU4OTAxNDJmNWJkOWY2MTMyMmQyYTA4YTkyYWMyZDMyYjRkOTlmYjM5MDliZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTdlYTQzYjc4N2U2NmY1MmRmNTg5M2QwZTU3YTA1ODliZjhhM2RmODJlM2EwZTkzOTJlYTgzODFlYWYzMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiZWRjN2FlOTE0Y2YxZDE5N2I1NTI3MGE1MTQ0ZmZmOWFlOTRkNWJiOGFkMWVmNzg3NTEyNzc2NjQyZTQ0Y2UifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/refactor.rs#L273-L301",
+          "version": "repo-lines-v1:sha256:bfe92307f3a9c096066bec2214c9bd0ae410dd1bdc7b7cf9c6df978b2d62f209:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxM2M1MjM1ZGU5MGU0MTA0YTU0NGU5OTMxZDZjMTdhNmJkOTdiNjgyZjMyYWFiYzRmMTUzMjg3NzRjOGQzYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmODE4M2FkMmEwZDYwNDRmNWVlYWZmYTM4ZDAxMjIzMDA3MWU1NmI2NzE1NjZmNmM0YmZkMjJmNjM4ZDAyMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-01T16:34:02.929Z"
+  }
+}

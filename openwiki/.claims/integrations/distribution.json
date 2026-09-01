@@ -1,0 +1,324 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2908f973316a8f3fb31c2237a3b16668dbef73ca4e829501efc0a79e1acfe1f4",
+  "claims": [
+    {
+      "id": "claim_e718d9f2f5ca453d94a51d2b47f9f4d2",
+      "statement": "GitNexus is Topos's optional COMPOSABLE dependency-graph integration: shared CLI/MCP generation runs `gitnexus analyze --skip-agents-md`, recognizes 1.5.0 as the minimum supported version, and uses 1.6.8 as the tested pinned version.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L1-L10",
+          "version": "repo-lines-v1:sha256:ef37968820dcc47f82d1d32465215eb22f9423676933af4400dc228cdfb77565:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxM2M5OTU4ODllOGIzY2JkNmYyNjE1ZGMwMWIyNDRhZjI3ZjAwZmZjMzcwZDkyNGYzMDFkNjZkNTMwNWJlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0OThhZDViZmM5MGM1MzQwZjAxNTRkN2FjMmI3ZGI4OGFmOGE5MmIwNDdiNWY2YWM1MDA4YzQ5ZTExMWRhOGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzNzc1NjM0YjczYzcwNjJiZjQ4MDExYTc3ZGJkNzNlYTdmMmU4MzdkODZjNGE1MWJmYTQzNmFkODQ3MmQxZDQifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L145-L199",
+          "version": "repo-lines-v1:sha256:88654f6cd00b8dd19db58115001b39f8f0efdd99a0e9d4dde39c734814b872a8:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZWQ0NWIzNWRmOGQ3YzY5MmQ3MGExZjc1M2VjMDExMWNhYzgzZGI4YjJlN2Y2NzI2MzgxYTVkNTQxNWZiNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YmEwYWE0MWUxNjAzZDc0MWMzNjFlOGE5ODVjODVhOTU5Yzg1MGIyZmM3YTIzMGI0MDFlMTllN2JjMmE2ZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5YTEyM2I5NTgxNzc0ODMwNDQ4NzU2NzA1NzA0ZjRjY2QwMWQ2NzIwNWM4NmFhM2UxNzY2NDBjMzllOThmZjMifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L305-L330",
+          "version": "repo-lines-v1:sha256:985a01c45f4b1e31b2f213c6b6e2f833ca8a00183dc8a1b6ef9f174b59d598d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OTAxNDFhM2I3ODgzNzZkZTNhZmFkNjc1MzJmOGQ1ZjQxM2MyYzFlN2FjNzE0MGI4NjQ0MTc2Nzg3NzNhMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzZWI4YzgxNDNhMzhjMWFkN2E1ZDIxNjE1MTIwOGUwNDAxOWNjYjRmNTAyZDQ0Mjc4MGY5ZWViMzBiOGJhZGQifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L41-L60",
+          "version": "repo-lines-v1:sha256:74e5d546cdfb3ab7a0cae319a8d0eacbfe44c0ceb8f23c0073ea08bc3b9d7269:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZDcyNWRlNzM5N2JiYjk5MDBiMDVmZWY2ZjQzNTFjMDEyMWZhZWIyMWYwYzc3ZmE1OGFiZmFmNDQ3OGZhMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NmU0NDcxNzljNTY4MTExZmEwMzJlMmVmZGZmM2Q4NGI1YzQzZjQzZGQ1OTg4OThmNzhjMjgzYTE3NDY2ODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMGM0ZTU1ZjFmMDE1YzAxMWQ0MTI3M2RlZTgyMzE3M2YzNzY3YzgyYTY5NjFkYTY0NjRlNmI3NTdkZTA2YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjYjc2NThmYWQxNDRlYTQyZDBjYWFiMWMzMmFhYmIyZmQ1ZTZkNzk0MjE0N2E4ODA3YWNkZjM3MmYxY2UwZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b4e425a9503471e8a44b7aee8d7f1ad",
+      "statement": "The engine loads GitNexus `.gitnexus` output into an inter-module MDG and computes COMPOSABLE coupling, instability, fan-in/out, and dependency-depth metrics; symbol containment traversal includes `CONTAINS`, `DEFINES`, `HAS_METHOD`, and `HAS_PROPERTY` so call edges on symbols are counted.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/graphs/mdg/ladybug.rs#L16-L40",
+          "version": "repo-lines-v1:sha256:6a408baee2ccceb1619d4564299025e06d71e1df8a0f5d4a4e85e8b9b0249238:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwN2UwODA4MDQxMjZlM2FkYzY1YTUwMmIxMGRlZjY1MTA1NzcxMGI0MmM2Y2NjMDdkM2Y0NjM1YWEwODU2NTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzNDRkY2JhYTlhZWI0OGI0YWU3ZmFlYjg5ZmRmNzI0OTc4YTk1MzJmNDdhZDNiN2M4YjA3ODRjYjVmMjNjZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjZWMyOTNkNzBjNGVhNjY1ZDIxNDExZDcwZTM4MzY0ZTMxMzJmYjJiYzBiMzlkMTljYmNjMGJhNTQ5ODllYmEifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/mdg/object.rs#L1-L32",
+          "version": "repo-lines-v1:sha256:12b172677b51844446132f47b0fe75c3521e21e1c060f002cf97d802776edf20:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2IwYzg5MjYyNzkyNWNhZjM2MWI4NjA0MGY3NTFmYjQyNzY0ZGQ2OGIwYjE1MGQ1ZmRkMWE1OTUzZmFiMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyNTRiMjlmMmQ3NWJhNTU4OWQwMTU4NGNhZjNkNzRhOGUyYmI4M2U1NzVkZjNhODNkOWZhZGNmYTQ4NGVhMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlOGI4Yjg5MDBiYzkyM2JhMmY3ZDllZGZhNjA4Nzg5NTRiMGRhZjlkMTJiYjM3ZWJhN2JhMWNlMzkwNGQ1MjIifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/mdg/object.rs#L225-L256",
+          "version": "repo-lines-v1:sha256:ade3879ab297d9134ab8a0359114c54bb130e10af6b18ef4b55d8b391bc54cc0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0OGVlNjQ1ZGJkM2RmNmIyYTdlNWNmM2MxYTZkNzJhNzA3NmQ2MjBhMzY0ZTFlYjdkMDY3YTRkNGJiMTJiYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNzZjMWQxZjk3ODVlNTU2MGQwYmI1Zjc5YzJlOTc5OTk3YjcwY2RlZDFmM2I2OGVlYjBjZDE5MTBhZTIyN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MmIzYjUwOTQzN2E2MzNmOGRlYjU4MTAyYzJiMTI1MTQzZDM5NzE2OTVkMTdlYmU0ZjBiZjU3MDkyYjlhMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/graphs/mdg/object.rs#L92-L107",
+          "version": "repo-lines-v1:sha256:0bff102ce04bbaa237371717f44def64bfe85cef6b5fbe44135994408c62ff72:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2YWMwMWJiN2FhMDdhNjBmNWRjNGNlNzM0YzA5NDcxY2Y2ZGI4ZjllODYzNjIwMjI2NmI4NDIwMzY4ZmU4YjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MjNmMTk2ZDk3ZTE0NzAwMDdlMWVjZjZiZTVhOGU0YmE2M2I1N2ZmZGNlMTU5ZmQ0NTA1NjQxNmU1N2QwYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkZWE5MDgzNzY3MDAxMmMxYmJiMWRhZDE2NjY3YWZjNGY5MDE0MmI4ODA0ZDE0YzlhNzZlNWQwMjFkNzA1ZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6030bc40de3e46129322060583262de9",
+      "statement": "Topos selects a flat or branch-scoped GitNexus store based on current branch metadata, writes a source/HEAD fingerprint beside the selected store after generation, and evaluates freshness in priority order from source hash through HEAD, timestamp walk, and legacy mtime comparison.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L281-L303",
+          "version": "repo-lines-v1:sha256:72caf1e7f0d70264663aca4ec0bbc4fc6a076e6be234bceb2fd526b73e527935:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYjU0ODI4ZTU2ZmIyODM0ODczZDI2MWRkMmI0ZDkwNzE4YTkxNzZkMzgwZDgzMWM1ZTMxNDIwNmRhZjk2YjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiOWI5M2NkMWY4Nzc5OGMwZWI1NmM0NjFkNzM3NzlkZTQzYzVlZTZjNjUyYjE4OWFhNjA2OGU1MGFhOWE0ZmEifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L501-L572",
+          "version": "repo-lines-v1:sha256:9e0f54b69b88ea52a0490d1ee96f303934281bb0de15479e821e047ac60dd7f3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkZWVlZDI4NzEzMzRlYWZhNzU2NzAyNTZkNTYxYTZhMGM5OWRiYjBmN2NkOThjZmE2M2FlNDY5MmI3NTlmMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/freshness.rs#L184-L236",
+          "version": "repo-lines-v1:sha256:01682511f8f5405ac5fc823a6439d579ca6e7381646639774ad3b1577e3dd628:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwOGU3YzUyNDg3OTZjMGJiMWIyNDY3NzY1YTllZGU5OTQ3ZDNjYTgxZjBhNGM3NmFiNDg5YWI2OWMxZTI2M2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZWEzYmI0M2FhNTMwMWUyZWI0ZWJiZjE0ODJiNzcxNWM3ZTg1YjFhZTJjOGI5MDFlYzUzOWY2ZjVmNWY2NjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bee8265999114481beea05875ea6839e",
+      "statement": "Default evaluation attempts to generate or refresh missing, stale, branch-not-indexed, and load-error GitNexus graphs, while non-positive `TOPOS_DEPGRAPH_TIMEOUT` disables the otherwise 300-second subprocess timeout; GitNexus absence and subprocess failures are structured failures instead of crashes.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L305-L314",
+          "version": "repo-lines-v1:sha256:29f8f11dabbbcc4318bde83063279793bd0f3c24a8360eed4d499f5ebbb6394b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OTAxNDFhM2I3ODgzNzZkZTNhZmFkNjc1MzJmOGQ1ZjQxM2MyYzFlN2FjNzE0MGI4NjQ0MTc2Nzg3NzNhMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMzk5OWIyYzhhOWViM2M3YjBmZGNhMzJhYzI0N2E2OGI3Yjc5Yzc1Mzc3MmRiMzM4ZmZhNmY2YzQ4NjE3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiYzZkMDYzYjQ1OGRhYzM4NTEyMmJkOGQ1NDUxZjZjYjA3MWM0NTFkMDQ1YmZlNTAzMmFhYWJjNDBlZWQ0ZmYifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L320-L342",
+          "version": "repo-lines-v1:sha256:4a910009990e437062bd17ee1fad5e250023a1d3601e4aeff71f33ed2d8c47df:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxY2M1NTBhNzU3NGZlYzA3NThmMTUxYzA3ZDlhMjQwZjVmMGUxNDNjNmU2NmYwNjZmNjllZDM5YjY0ZDMzYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjMGNiODU2NjVjZTk2NzUyNmU1ODA1NzcxOGYzYjlhM2I2MzNjNzEzMDczZTMyM2Y4YmI1MjU3OTQ3ZmU2MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyZGVlNzYzMTI2YmM3MTVmZTljYWUwYWI0ZGFkMTdhY2QzYjQ5NjQ2YTY1MmU1NDBhMDYyNjcyNWM0NGFlNmEifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L56-L83",
+          "version": "repo-lines-v1:sha256:df53d5fa77cfd6eede24849257792a76360b27c3790eb65ceb9b6d8e26bf5300:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NjIyNWJlNTBhNzU1ZWMwODQwMjg1NjkzMGYzM2ZmNmU4NDQ1ZGVmYTg4NmJjNzFlNjg4Mjc1MWJlYmZkZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxNThlN2ViMWQ4YjA3ODFiOTY2MGIwYjcwNjNiYmM4ZDcwYmYzNDQ2ZTZlNmZmYWI0MjAzMGNlODgwMjU0OWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjMDVjYTFkMGU0ZDFhYTc0NzczMTljYWVlZDNjNTY0Mzg0MTZkODNjZTBjZTY1NmNiNDdlZWMzMTk2MWVmYjEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L141-L226",
+          "version": "repo-lines-v1:sha256:47b78210563948d8d30949c42504af288ddd020d2233611e3ab7ef035d641bf8:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMzNmJjNmFmZWY4OTFmNTY2NTk5ZWUxZjk0NjU0YjAxOWYwY2MzODJkMWU2MGEwOGVjODhlNTM1YTQ4YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NTM3NjRhYTkwN2Q1OTJkOGVhN2NlZTQ3ZDhiNWMyZGE5MzU4ZjJhZWRlNjAyODNhZmI2YzlhYmJiMjJlMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0Yzg2NWExYjM5NjA3YzhkNTE0MDhjZDUwOTFmZTc2NzBkYTg2ZDI5YzcwMmMxMWViMDcwYWE2YTAyN2U1YTEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/depgraph.rs#L85-L130",
+          "version": "repo-lines-v1:sha256:cf752f8338e2f799b56f036153055527924ebf4c612bac6b147739c1d40b79e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMTAwZGUxMTE5MTU0NGJhMTMwMDk0ZDZlNThhMThlNzk0ZTM3ZWY3NDRjMjAzNjMzMTk5YjNkOTAzMzE2ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkYTg5NDdkZjhkY2I4MzcxYTA5YzY3MDU5ZDcyYjJiYTI4NzAxM2ZjYzdjZTJhNzdmY2RlNmNjN2Q0ZWViNGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3bbb35668dde4989888ff5fe5d9ee51a",
+      "statement": "`topos-mcp` embeds Sighthound from a pinned Git revision and runs its explicit and taint scans in-process for Python, JavaScript, TypeScript, and Go; unsupported languages or `TOPOS_DISABLE_SIGHTHOUND` return control to local CPG probes.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/Cargo.toml#L25-L27",
+          "version": "repo-lines-v1:sha256:f00bb75db8ffe267fc558837d6b97c0645fe06247bc11311c001b609e163866c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjIzYWU4MTFlNzUyZmY4YTkxODIwZDViOGY2NmM5M2FlMjU5MGRjYTNmZmYxMWUwODliODI1OGUyNjBlZDM2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzkzMTdmNGMyMTQ5OTYzMmFiZWY4YmVkMmZkYmMyMGU4YmU5Y2EzNjQ4N2NiNTZiMWUyNGNmMGE5ZjVmYmIxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODJjYzlmZjkwZWNmYTliMWVkNGJmNGI0MTNiNWZhM2U1YTZlYjQzZmUwNGI4OGM1NTM2YjE0ZThmNmVmMmE1MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYThiMmRmOWJkZGI2MTYzZWJiODdjYTU3ZGRhNWYyM2Q3YjYzMzMzZDAwOWU3OGQ0YTVhYjg5YTA1YzVlNDBjYSJ9"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L1-L14",
+          "version": "repo-lines-v1:sha256:61e7fa27004162235c29846a21276a0fd5a4ef3e3fa3ac2f4bab14fedc68315d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZTQzNDBiYjFlZDQxYjVkNzlhZGY5YTgyOTNkMDI2YTc1YTg2OTVkZjBhMTg1ZjkyYWM1MTExOTU0NTY0N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1YmI5ZDg4YjU1NDk4MjBmNzdlM2I2ODFjYzEwZTM5N2Y5ZWM0ZjU1YTkzMmJkMDU3MzdmNGM0NWIwNzllNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYWU2NmU5YjAxMDEyMGViOTgxNWRjNTM4MDlhYTZmNmZlMzJjZWU0ODE5MTYxNDg5OTY0ZjFmNDFmMjEyNWUifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L264-L289",
+          "version": "repo-lines-v1:sha256:938fc9eb0c2a8a0f287a0503ee7f8d71e0e42a1dd79043320ed199aa9b68c0e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZWM4OWJlMjQ4YmY2ZGZmOTU3MDVjYTAwNWU4MTdkNWY0ZjRmM2ZkM2VjMDE0MzA1ZWFlYTA0Zjk3MjY5M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZTU4ZjVjNmE3YzdjMzQ3NDgzZjQ4NGVlNThiN2M0NzQzZjhhYWNiMjZiN2M2MTY4MjBmMWRhMDYzMmQ3NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L45-L54",
+          "version": "repo-lines-v1:sha256:a56ca1c9ddfbd2e148fdb5acbd9da824eebc2c08327d09d422cf3522f8179f92:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4OTJiOTE3YWM0NzA5MTBiMTE5ZmY4NWI2NTkwODllMzEwYzQyNDg1YzgzOTRjZmI2NDBmYTI3MGU2ZTIyZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2ZWFiYzU5NTk2ZDhhOTFkMGY5ZmMyYmZlNzZkODA3MThlZDYwZjQ3MDJkMjQzMjE2NzRlOGM2NjQ1MTVmOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMGI2ZDQwMDFlMmFjZTlmZTQwZjJlN2QxOWRiNzU3MjExOTU3OWU1M2M5YmIxNGMwOWE1OTk1MzlhMjc2N2MifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L91-L122",
+          "version": "repo-lines-v1:sha256:72656f5171901aa6e17fac025853105282b39c02a7df439b8ef9778126720b43:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1NzYwYWJmZTM1YTVlZTU1YTcyOWJmNDc5ZGViZTQ4MDBiODA3ZTMzODU4MjZjNDhjZjI2ZDJiNzQ4ODlhYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YzU1YjViOWIyYjQ5MmU5NWIwMjQ2YzE0YzM0NWVkMzc0MjdmZWRhZmY3ZDdhZWY0Y2Y2YzkxNGFhNjMwOTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_877b82ecd6304be1bd1c633774c6a5f2",
+      "statement": "Sighthound results are supplementary `SecurityFinding` detail: taint findings preferentially identify their sink operation as the actionable callee, and allowlist matching uses that resolved callee per finding.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L148-L173",
+          "version": "repo-lines-v1:sha256:e7c56e468e9a0dd04d623356e7bc4bb13ca795b37ea355b7a53c80d7b997d816:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMjE4OGEzNThlMTk0NmMzMTkwMzc1OTBjNWVkMDBmMTgzZWZkY2Y0ODI3NGU2NjM5NmY4M2NhZDJmNjhhZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzM2ZTkyZDU1ZmE3MTY0MTUzMDkxN2M2Yzk5MmQ2MDY1NWRkNDk5ZjNjMzIyMGQzNzMzMGRlNGJmYTgyZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0ZmE5ZGE1NDIxZWRhMjZjNGE1YWIyMzU1Y2M1ZDY3YjRkMTFkYjI4ZWQxZDlhODZiY2M3ZTE1MzhiNzI5N2YifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L219-L261",
+          "version": "repo-lines-v1:sha256:763a1612480ab8a10de172202a4c58577a64a25eae22706d13b7a6bdbf33a9e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZWVjODVhNTQxNjAxZmE0MTYwZDEyMmFiNjc3ZjgzNDcyNjJkNzMwYjdjMWNiYmI2YzQzZjk1ZjdhMjU1OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhOTBkYzJhNjA5ZmQwZjMyOTEwMzQ2YzFkZjg0MTUzNWUxMThhMjI4OWM2MTNkMzg0ZTFjOTY4NzJjZTBhZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZmYyMzQyODUzMjhlZDUzYmUzNmQwOTQwNTE4NDZiOThjMWFhZmE1MmMwMWM4MzQyZmJmZTM1ZWViNDg2MDkifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L346-L375",
+          "version": "repo-lines-v1:sha256:82197d1828c3c272c5e5094e8154f86441d345ff819f985f3fb45502b4488a5a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyYjVlZGY1OTQ5Y2ZlYTY3ODIyY2Y2OTExMzIzNjNkNjhkNmYxZTE2OWY1ZTBkNGY3YzE0ZTVmYTFlNmQ0ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNWQ2YTFlMDc2ZTAzN2IyYzFlMDY3M2MxOWJkZjM5ZjAxYTliMjc2NmY4YThlMzlhYzdlYjA5MGNmZTE4ZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwMGRiMDQwZjI5MDliZjk3OGZmMGE5NTZhNTVlODNjNjUzNDE4ZGU2YmI2OGY4MDQxZGE5NzZmOGQzZDIyNzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9823ded487949f090c92ff8f4db6ecd",
+      "statement": "The MCP server runs over stdio and explicitly supports protocol revisions 2024-11-05 through 2026-07-28; integration tests verify both initialize-era traffic and stateless `server/discover` expose the same tools.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/main.rs#L1-L37",
+          "version": "repo-lines-v1:sha256:e415f52b615be7b34a1cef0b570b02b7333655e2f4c5380501d7b74ce1b3002b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZTM2OTMzZjZjYTNlOWU4YTc5OGM4NDM5ZGQzMjNkMmY4YTFmOWVhNWY4YTBiZWJlZjNmMjE2YWVhODhhNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L364-L374",
+          "version": "repo-lines-v1:sha256:0f5f4d9fe6e82652432eab8d9728e761d67bbc125e1a887a4134ea1af5672124:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZThkMGJkZTYwMzYzZmIwMzNiYzhiY2I2MjlmOWIwMThkOGQzZmVmMmUzY2ViMzYyN2FlZTgzNGVjZDIwZDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4OTc3MWZlMWI2NjI4ODc1YWEyM2U3ZGJlNGFhNzE0NjFkMDBjZGZiNjZkZGYxMWI5ZDgyMGFjNTg5N2ZkZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L41-L62",
+          "version": "repo-lines-v1:sha256:81a7f8944a8b16d8d2860125752bbc5284d5c4d66df5a75636c0b2a44818bfbb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGRjZTk4MmZhMDI4ODBkZjE4ZWQyNmRiYjAzZmZiZjM4YWUxMWNlMDM3NmIxMzllM2M5OTc0OWIxODkzMjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMDJlZWQwMGU1MGQyNWQ5YzBlMmMxOTU3YjI5NDJhOTQxYjNiM2MxNGU4YjU1Zjg0ZjU2MTNlYzFmNGE3NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzYzFhY2U2MDA2ZjVkOWIwNjViNTYxNWY3NmU1ZmI2NWUwMGE5NDY1MjhkZmM4ZDMzNmFjYjdjNGJmNGM4NzgifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/tests/lifecycle.rs#L46-L131",
+          "version": "repo-lines-v1:sha256:25df38f48b188e3ddbb59ebab3cba45990dfd3bda4f2b1b8949cb22fcefa088a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMzAzOTE3ODRhY2FjMGZmNGRjOTIzMjZhN2FkMWU2MTRlNDY2NDYxNjM2ZGM3MzkzNDIxNWQzOTQ0ZjQ5ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwMmIxNzljZTU1MjZhMmFjMzhkZDhkOTRkNDlhOTlkMWZlYTA3M2RmMGRmMGE0NzEyOTJmNDE2YmQ0NjkxNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiMWFiNzgxMDVmMjkyNGU5ZTM1ZmFjMzRjMDAwNjdkZTBmNjAyZDgxZGM4ZTFhZjA1YjJhYTdlOTE2YTVjZDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7de9f06ee4804b27afa76563fd9df1c9",
+      "statement": "For MCP filesystem tools, `TOPOS_MCP_FILE_ROOT` is a canonical maximum boundary; without it requests must be absolute, and Topos canonicalizes the request then discovers an ancestor project marker, rejecting unreadable paths, escapes, and projects outside the boundary.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L1-L97",
+          "version": "repo-lines-v1:sha256:cc3958892b4bd018f625ca3ae890cad119b6442e6a6d631a934f1652634011c6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzNmJiY2RiM2NiMWU4NTEzZmIzYWI3MTBjODQ5NTg2YWU3N2ZlMzU4NDQwNmRlMTNjMzg2NDNlODQwMjlmMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyM2Y4OGZjOGExNGFjZjE3ZjJiMTk0MzkzZTQ2YTNmYjczYzBlNzkzNDRkNjQ4YTk2MjBiMWRhYTJiMjljZjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1aa3fa432d0b4e6d85ae6d3c6c20b548",
+      "statement": "For may-not-yet-exist paths such as GitNexus overrides, `resolve_existing_prefix` resolves existing components and resumes resolution after `..`; the containment check therefore rejects symlink escapes hidden by a missing path tail.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L41-L105",
+          "version": "repo-lines-v1:sha256:ca9887346cad1f0fcdeff4e0d8bfe1d902fd23ecbb6bb5428a61afb61528bd06:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0OGY2YTIwZTU5NjU0NjhiOTRiNTZhODg2ZWYyOTdjM2FmNDA4MjliMzBmNWIzOWY5YTNmNDJkMjY3NDFmN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlZWU1MzJjM2NjZDkzOGM2ZDA0YjQyMTNhMTA4ZTExM2Q2YmVkYzM1MmE4MmY1MWIwY2UyNzZhN2I5OGI0ZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2NTg4MWM1NDQ3M2MxYjIzYzQxYzU4MmFmZjIxYjRiNjU3OTc4MGNmZWYwMjk3NDM1NjBjYWZlMWY0ZmQzMmUifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L154-L222",
+          "version": "repo-lines-v1:sha256:7e45c2cd2532ebc50b8da578f6d3ee43a7a11054df86b22e3f17fd086b766e90:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNzc5YTJiMDM1NTVlYmUyYTNhNjIyMjliNWE1ZjY2YzczYzlhZTY1NDk4NWE0NDVlNWE5ZTVkYzhhMGVjNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYjZjNjlmZWM5ZDYyYTFkZDQ2NjYxMmQxMzMwMTJjOGFiMWRjMTA3Y2EwMjVmNTljMzVhNmRhZjE3ZjMxNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0MDEyNDE1ZTlkZTAwNDE5Njk4NzY5OTAyN2RhMzg0MmVkM2VjMWEyZWFkOGJjNThiMmVlZTdjNjIzNTBhMmMifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L299-L384",
+          "version": "repo-lines-v1:sha256:ba902b74343ec5f3cc7a0fa32f84f102983f8023f638071f59f9ed68d4803da5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyYjVlZGY1OTQ5Y2ZlYTY3ODIyY2Y2OTExMzIzNjNkNjhkNmYxZTE2OWY1ZTBkNGY3YzE0ZTVmYTFlNmQ0ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5OWZmOGRlZjNkYWU3NzA0YjU4MzlhYTk2YTVmMWVhYWM1NzgwYWQxOGY4YjU2MDYwMzJmMTY1M2E5ZWUzMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_21551ff43d0d4e5d99f43e4e14f88d82",
+      "statement": "The MCP Registry publishes `io.github.Krv-Labs/topos` version 0.5.1 as the stdio `topos-mcp` PyPI/uvx package, and its Maturin bin-wheel metadata states that installation exposes a compiled server without Python runtime dependencies.",
+      "evidence": [
+        {
+          "resource": "repo://.mcp/server.json#L2-L29",
+          "version": "repo-lines-v1:sha256:a410b6475bccdf582076ec3e2a8fd4514900f4cda3866d203340248463574ce1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MWMwYjVhYTlkYWU2ZDU1NzM2YjYwNGZiMzk5ZDQ2Y2M5MGExODI4OWFmZGIzNmQ4NGQzNTJkNGFiNjcyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://pyproject.toml#L1-L25",
+          "version": "repo-lines-v1:sha256:234e32b3bdf1f894addaa81f9dafc08d7233b109e87780d594f4033b5f347a82:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMmE4MWMzODM2ZWRlZjJkMGJhMTFkMjM1M2ZiNmRhYmM3NzcxNTBhN2NhODNlYTBkOWU5YTcwMzEzZmVhYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiZmVhMTdlNmIyZDc4ODNjZjE0YTJhMzNkMjU1MzIyODFiMDFjMDg2NThmMjM0OTE3OWRiYWU3ZWM5YTViN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MGM0Mjc5ZjU2YmJiMDVmNzFiOTcwOWZjZDA5NDI4ODNmYzNlNzQ5ZTFmNjgzMTgxZTA1YzM0ZjczYzBkN2QifQ"
+        },
+        {
+          "resource": "repo://pyproject.toml#L39-L48",
+          "version": "repo-lines-v1:sha256:8bc5c7ffcb53267234b603b3a659a02e85caf3a08aeaeeaf19839815ae00303b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0NTY5OTQ2YWM5YmJlN2NiMmNkZWMzZjhiZWNmMzQzNzUwYzU4YjliMzIxZWMyMTk1YmZiYWFiMmFhOGM0YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlZjY5MmU5NDZkNzM0ZDlmM2FlYzRkOGY1ZmQ1NDBhODlmOTdiMzk4MmY3YWIwMWI1MTc4MmM5ODhlMTg2MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwOWFhZDYyM2VhZWY4MWUxNDZjODlmOGJlY2ViZjE3N2ExZDliZWE0YWY3MjQ4MGQ2OGVjMTI2ZjcyNDdlYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_888b8f649ef9433ebb20c954e7b7682f",
+      "statement": "Version checking treats the Cargo workspace version as authoritative across the registry manifest, VS Code extension, and agent plugin, and forbids PyPI `registryBaseUrl` or `--index-url` metadata because VS Code would duplicate the index option for uv.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/release.yml#L23-L43",
+          "version": "repo-lines-v1:sha256:841b5ad11d3a00831a1ef9b5043d31ac73bb162c112a01a69f1bf47cf99d2ddb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkY2JkZmQ2ZDg1YTAzYjFmNDNlZDUyYzNlYjgyMjIwYzEwZWJiZjYxZGE5NTAxNTI4OTk4YTA2OGZkNmU5MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhODQ5NWE2MDRhMzhlNmJmMGY1NmQxMTQyMjhjMjUyZWEyODFhMTY3ZmRhNjUwMjExZjUwZTRmZWY3MWRjZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3NGFmOTZiMjdmZjhiZGM2ZDQ3NTQ0ZTFlYzZkZWZkZmI2MzM2YjRiOTFhYTY0NDcwNmQ4ZmYwZjRmN2FhZTcifQ"
+        },
+        {
+          "resource": "repo://Cargo.toml#L1-L9",
+          "version": "repo-lines-v1:sha256:1b59a73166a177772f7855b2ccb405a3c81db5a723dd14ef4bedf375874735a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://scripts/check_versions.py#L15-L17",
+          "version": "repo-lines-v1:sha256:462be477116cb49c45dd661bb4545aedb51914e10719f6c5932ea82519e2dc22:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTJiNzIxM2UzZmNkM2UyYzMyNWY5NmFjNGUwNmQ2MmYwYjhlNTUzODRmODk5OGY2N2FhY2Q5Zjk1M2RlZGM3OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y3ZjUwOTQ3NTY5YzM3M2IxZjUyNTYwZmQ1NzhjMTQ4MWRiNDA0NGRhMGY2NGEzOTU4MjI1NGNmM2E1YzA5OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE3ZmJiNDdmOTcxNmE2YzllZmIxZDk5ZDhiMDY3ZjM0OTQwZDY4NTk5YjZlZmJmMmM5ZGVmOGI2YmU5YTVjYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGEyMzJkYzNmMGEyYjlmZDUxNjUwOTBlYjA3ZGU2MTE5Njc2YjdjODRiYzJlMTY2Yzk5YzNjM2M4NDQzMDU0NCJ9"
+        },
+        {
+          "resource": "repo://scripts/check_versions.py#L48-L94",
+          "version": "repo-lines-v1:sha256:edf336ec0dbad8ea3cb467643b4cae55df7f99b0421694bfda7eeaceb3cec94b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0OGY1NGQxYTllNGMyMDJkNzI2ZWI5MWRjNWVhMDFjOGNkMDBlYmQ5ODcyNTdmZWFhZjU3ZmQ2NzczOWY4ZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmOTE5MGFkZTk1Y2IyNjBlNjE1ZGE1ZWIzZmEwOTUwNmMwNzNhZWE0NTA1NTA0YjNhNjJiMjEzMTU4OGFjZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxY2YyNGFlNTgxODEzOWQyYTkwZGVhMjJkY2NmZDEwNjBkNTRkMTNlMzlhMWNjMWM4MTlmNDFjMjQ1MjNjMmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6cc144125214b91b66b450dba9fee83",
+      "statement": "The Agent Plugins package describes a local `topos mcp` stdio server, and repository validation requires the packaged skill to be a regular byte-identical copy of the canonical skill while rejecting symlinks and unsafe upward path traversal.",
+      "evidence": [
+        {
+          "resource": "repo://agent-plugin/README.md#L3-L22",
+          "version": "repo-lines-v1:sha256:c5c3c8a45e7ddf237c0d6cb6e2e10694ac216cc9d1e5f12bd212d1075a50b3ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxOWUwMzgwZmM2Y2YyNTlhZmM5YmMzYWM0OTE0YzMzZTc4YTc2OWY3N2ZhNWRlZmJjMmYxNjYxOGMyNjBkNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyODJkNzYxOWVjYTM2OGExNGRhNTZlNWRkNjAzYmJiZTJlYTFkZDYyNTdiNzdiMGEyMGQ0ZWQzOTg5YThhZmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYzJhYTJjMmY4M2FkNmRiMmE4MjQ4ODM3YjZkYTJmYTBlMjY0Mjk4ODdjMzAyMmFiNGMwMzBiZjgxZjU2M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlYzkwNjg1NjgxYjQxYzI2ZjQ3Yzg1M2RmYzljM2EzMjFhMGI0NDg2MWRmNTE3ZjZkMzQwNDdkZjcyNjVlNTQifQ"
+        },
+        {
+          "resource": "repo://agent-plugin/mcp.json#L1-L10",
+          "version": "repo-lines-v1:sha256:948774c61a2527be231c14c5e70a507cbd257cfef2f49f581c950af8446fe6e2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L282-L329",
+          "version": "repo-lines-v1:sha256:19e0dab95455597bd71dfabca9b3c080ece941adefd1abe224ea41bf0838eaef:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZTg4N2JiNDBlZWFmZDkyNmYxMDJlZWE5NzAyMTBmMzA0NTQ3YTk3MDI1NjMzZjJlODg0Y2M2ZjE5YTgxNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNzFmZWU5ODE4Y2E0NmNlZGRkOTk2ZDA2MTJlMmFjOGI0MzU1ZjE4YTcyZDgwN2ZiMzYwYzFjZTY5ZDk1OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNmNjZDliYjliZjMxOTJkNjNiYzM0NDQyYWY1NTI0NmNhY2UwMjEzZmRlOTZhNTQ4NDIzNmU2ZTBlOTBiM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxY2YyNGFlNTgxODEzOWQyYTkwZGVhMjJkY2NmZDEwNjBkNTRkMTNlMzlhMWNjMWM4MTlmNDFjMjQ1MjNjMmEifQ"
+        },
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L41-L48",
+          "version": "repo-lines-v1:sha256:ef84caf960cd406892a2382f9ef68f6e23eb13eb0c24b76d1d5a371de68f9799:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGUzZDA0MzZjY2FhMTQ2N2Y3MjhkZTgyNWM0ODY5MTEzMjE0OWY2MDMxNTRjYTMxYjRmNjUwZWVhMjRlMTI1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2EyNzFmOGNiZTNjZWJkODU1MzkwYzEwYWM3NzNlMmVkNjBmMDRiYWI0MTE3MTk1ZTExZmJlNzAyMDRiMmU2OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTBiZmQ0NTMyMjM3NjA1NDQ0NTZkYmQ2NjM3NjE2OTU2YjkyMDc0NmRjYTc1NzBlMTM0YWMzZDBhZjlkNzVlYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWMyODEwOGNhZTg5YTg5MGJiZmVjZWVlMDlhZGI0OGU4MTBlODliYjVlNzllM2I3NGRlZDA5Yzg4Y2JjOTdjYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_66f8bad5a9d046a5a6b8c37cb3f84d0a",
+      "statement": "The Glama Docker image builds a Maturin `topos-mcp` wheel, installs Node.js, Git, and GitNexus 1.6.8 at runtime, sets `/workspace` as `TOPOS_MCP_FILE_ROOT`, and uses `topos-mcp` as its stdio entrypoint.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L3-L12",
+          "version": "repo-lines-v1:sha256:ad615b9d1f38e76a2aca02a6ad0f10e93b6129e5fceecad314cad417dd5571d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiZGMyZGIzNGY5ZmMwOTI3YTZiMzc5ZTQ1NTYyMzE5ZTI5OTg0ZGNhN2Y0ZGNkNWMxMGQyYjBkZGFjOTE2ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxZTg3MGJiZTk5NWUxMTkzNTc4ZGYxNjc1NzIyNjg1YWYwM2NlZjRkNDU5YzlkNTM2OTBlYTM5ZWZlOWMxNzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliN2QyY2NjNGJjNWI0NGM0ODRkNTcyYTRmODk4MTkxMmY0ODI0OTE5OWM2ZTBiNjFjN2ZkZWQzZmJmNDFhZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwOGM0YThlNDliNWE5NzNmYTkyZWVkM2JhNDFlYzM0NWI3ZTVkOGJiOTRkN2FiYjI1NWEyZWI4ZDc2NDkzOGUifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L34-L37",
+          "version": "repo-lines-v1:sha256:245b51698a5106d636cbfbd82aabb12204bcc9866998a6c70590cd3caa86f195:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ0ODMyMDI3N2NiNmY4YTFjN2EwMTJkMzEzNzBkMWNjMjA1NzBhOTg1N2NmMjg2ZjViN2Y1YzNiYmY1MzZjMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2ZjNDgzN2JlZDhjZDAyNzFkOWViNGQ3YjM3OGRjMTk3MzhjZTY0NWZkY2Y3NzUwYTgwNDY5MDg3ZGYwNDc3MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTUxMzMxNTFmMzI5MjZiM2RiYWY5NGFmYjZjZDIwYjQ2MzU3ZGQ2YTY1YTg2YjRjNmE1ZDk5MzU4Zjk4YWRkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGY5MmVhYjhlNzNlOWI5YzNkZmQ0MTgwMWNhN2VmMjZlMTQ3YTBmZDFiNzZmOTZiN2Y5MzZjN2RmYjQwM2Q0YiJ9"
+        },
+        {
+          "resource": "repo://Dockerfile#L39-L63",
+          "version": "repo-lines-v1:sha256:999482f9eea7131ff082cb9925d4b6c942877a4223b99368e590407ee6919384:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlNjVlNGM5ZTgxOWIyYmUzOWM2YzhiYmExZjNkYzZkNTdlYzBkNjdiMjViNWU4MWU5OTRkMjc4MWM5YjFiMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0YmJjOTlkYTA3MzI2MDhjOTAzMmQyNDdjNzAwOTk2ZGQ2MTdmZTU5YWY4YTlhN2U5MGFlY2VhNTY1MTVmYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwNjc0YzQwNjQ3ODI0NDI1M2U4ZGI4NWUwOTYwMGFkNDBhODA4MTM1MWVmNTE2ZDRiZWVhNmFmM2U4ZTEwZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_325b7a363f1744caaad58b806f81fc31",
+      "statement": "The VS Code workspace extension provides an MCP stdio server definition and sets the first workspace folder as its file root; it resolves the executable through configured, bundled, cached, PATH, Python-environment, and optionally downloaded candidates, verifying cached/downloaded artifacts by SHA-256 and `--version`.",
+      "evidence": [
+        {
+          "resource": "repo://extensions/vscode/package.json#L19-L24",
+          "version": "repo-lines-v1:sha256:aa1c6189a20c40a362a2f43fa0e9705abddfd22715da69eeacacd3b5cbc8940b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY2MDE1NTQxMjJlZmU4NTVkNTZlMTBjYzliYWYyMDMxY2EzZjRhYjExY2RiYTIyZjFlYmM1ZDM5YTc1NTgyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY0ZDhjMDczNDI5ODkzMTAxNTc2ZDg4ZDk5MTI3ZTg5ZDY4OTFkM2IxN2U4OWRmMDJlYzlhZTcwNzA1ZDhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTBkM2EyOWQ1YzM5ZWJkMTg0ZjY0ZTFiNzQ0ZTgxYjAyZjgyMTgxYzcwMDAwNzU2MDdlMjRiYzMxYzgwYjQ2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhiOTAyMDBiMjBhYzY4NTBiMTNhMDg3NjdmMzJiOGRjZGVhYTRlZDJmNDA3ZjNjODM0OWJiNWI4NTc5MTA1MCJ9"
+        },
+        {
+          "resource": "repo://extensions/vscode/package.json#L42-L105",
+          "version": "repo-lines-v1:sha256:205fc4b0f5728ce51e9c085936c61918a875ca1cc1ebe4c3515ececeb5ffbccf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMTMyOTEwMjMwNjM4NTQ1YzA1NjA1M2E0OTRiNTIyZTIxNWRlNWU0NjlhZWI5ZWNjNzkxMWM2YTFlYTBjZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZGJhNGNjMjQ0YjZlNjA3OTlkODY4MzMxNjUzNzI4ZjllYjk2NWMwZjgyMTkyMzNmYWRkYWUxMGIyNjdhMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmZTkzMGEyMjliOWM0Mzk3ZWI2YjRmOTMyOGE4YTNkMjE0ZTRhNGY3M2ZhZDZmNDcwYjdjNjc4YzU4ZTQzMWMifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L158-L192",
+          "version": "repo-lines-v1:sha256:972d4cec00b84b314c861e10daa1a1885507d703fbd5cfcc518ff6fa80605e2b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZGUzZWRmM2M2NWYzZGE2YjgwYTAyYmFjZTM2MWI0OTk5YTVjODVhOWNmM2VhYjM0NWMwOGYzN2VjNTBiZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2OGNiYWNjMzk4ZmExNGJiYmZkMjM0MmQyMGYxZWUzNWRmZTUyZDQ5NjZlYzc3MTMwZDhkZjBhNWYxZjU4MmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MDYyODNjMDI1ZWYyMDc1ZDcxNDM5YzU1YjEyYmIyODI1NGQ1OTdmNzJhMzNlZDIxNmE1ZTEyZDhhMTczNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ZWRjMGI3ZTA0MDNiODI3MWJlZDY5NjE5YjExZjQ5Zjc0NzY5MjJjNGU4NzFmODI4ZGFiNDQ1NTgzZThiNmYifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L235-L261",
+          "version": "repo-lines-v1:sha256:c9086cdd16bd7ed5e781a1af4f362e57a37e22a5828a409be23fe0a5634992cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZDkwZmE5MmU1ZDZjNzEwZjc5NmY4YWNkZGYyZDJhNDE3NDg4YmU4NzNjNTJlMTBmYmRkMjM3OWM1YmVlY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2OGNiYWNjMzk4ZmExNGJiYmZkMjM0MmQyMGYxZWUzNWRmZTUyZDQ5NjZlYzc3MTMwZDhkZjBhNWYxZjU4MmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDEzOGZmZmZjZmI1NTBmYmE3MWY2ZDBmMTc5NzdlMGEyZDYyNTYwMTBiOGE3ODg2NTc4ZTk1YzMzOThhNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1ZGY2ODMxMTQ1ZDIzNjQ5NjUzOTk0NjY3YjFlMTY4ZDRhYzBmOGM1NjMwMGQ2YjllYzY5NGZjYmUwYjQ3ODUifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L299-L426",
+          "version": "repo-lines-v1:sha256:a95675958859d8d55e0c90dad13672bac5509fbe8b32838e0c936c975a10150e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZGE2YTRlMTFkN2QxZDcxZDcxNGNmZGYyMDE1NGQ4YmYzNmViZDAwNTQ2MWMyNzhlN2YwYjcyMTIzZjY3Njg1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3ZmJjZWZmODZiOGRiZTc2NDdiMWUxNzNjM2U2ODk5ZmNmNjQ4MGMzOTk4NWMyNGFjNjc0YTdiYjJlOTU2ODliIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzMjQxMzhmZmZmY2ZiNTUwZmJhNzFmNmQwZjE3OTc3ZTBhMmQ2MjU2MDEwYjhhNzg4NjU3OGU5NWMzMzk4YTcwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMWIwYTUwM2FjNjEzOTViZmNhN2E4ZmQ3MWRhZDE0NDlmMzRjNTMwYzZjMTFkYzJhNTRmZGFlNTQxYWJhZDA4In0"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L96-L143",
+          "version": "repo-lines-v1:sha256:75ea324552308dc06d09281c9f7d0c9adc9003dbe402898d504b62678971cee4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZGQzYWRhYjE2MWYxZmQ1OGE3MjBkYThlOWM1OGVkYWEwNWIwNzFiZTQ5MDllMTBjMThkYmM5ZmViNmZjMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMjMyZjMzOTFlNjY2OWY4NDllOTgzYzRiMmM0YmVmNzNiZjE0NDVjYTFlYmNkNTQwYWI3NzVlNzQwM2UyODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0NzM1ZjFmNjRlYzE5ZWMzM2ZmMjVlZTNiZDI3NGIxMzM0Mjc0MTYxNWJjODUzYmNiMmY4ZTU5MmQ4Y2EwOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0Mjg4NjM1MGIxNzA2MGUxNWEyZmMyMzE5ZmZhMzZkNjZjYjk0ZDhjNjk0ZTJlMmFlMTkwY2JhN2IwZTA4NDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2211cda7f0e141b99aaf8c1d6d399e33",
+      "statement": "The extension declines native Windows and safely declines hosts without the MCP definition API; its runtime download client permits up to five redirects, accepts only HTTP 200, and times out requests after 15 seconds.",
+      "evidence": [
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L62-L94",
+          "version": "repo-lines-v1:sha256:c8bea067fbe654d43c6266ef8b4131c694627bf70a8402d197c0d5fc8ddd5f60:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZWNmMmY2OTA2OWJjODNmODc1MDEwODkyY2JlODIxYTUyNDgyZWVhZDkwODAyMzNmZjEzZjE1OGYyYjcwYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxMWQwYjZiZjVjNjBkMTk0NzgwNWFlY2FjODU0OTU4ZGQ0MmRmMTNiOWZhZGFiMWZmZmUyNjZlOGMxZWY3YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MTU5YzlmYmIxYzYzZGViNzU2MGI1MThjN2I3MzQxMmE3YzU1MDE1YmUwNjVlY2I5MGFhNmVlMTQ3ZjMyMDAifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/runtime.ts#L108-L149",
+          "version": "repo-lines-v1:sha256:25e75ae974bf50826cd7880f60ecb1ae5ac897c23b951b9cb2d743eeeb63fede:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmYWI3MTBkZGY3ODU5ZTU3NTc2NGE5MTNhMDAyYzc0NTg1ZmZhNzAwMTUxMGNiODgxMWRhODNkMmNmNzRiMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/runtime.ts#L152-L227",
+          "version": "repo-lines-v1:sha256:9347b71c438b7a5e960144415c1b20353ea39044ba2c3ee9c5eccd1fdd9749da:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmYWI3MTBkZGY3ODU5ZTU3NTc2NGE5MTNhMDAyYzc0NTg1ZmZhNzAwMTUxMGNiODgxMWRhODNkMmNmNzRiMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiYjk1Njc4YTgyZDkzZTE4NjdlZGNlMjk3N2U0MDBkMWZiZDhhZjc3N2QwYjViN2M0YmQwZTNkOTIwYTVjOWQifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/runtime.ts#L8-L9",
+          "version": "repo-lines-v1:sha256:5532f22d337151320234dbb3eb48ff147bdd08f6debd1e89c296eeb50481e493:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxYTI1ZDY1MmRiNzQ1M2VhOWJkZmIzNzJkODdmMjdmOTE0NmI0NjJkMGQ1ZDVhNTk3OWE2YTI0ODdkYjdlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODJkYjMyYTc5MmU3NzdlNmU3ZDRkMjIyNzA4MDNiZTk5NTFhYzM0MDM4MjQ4MTUxY2FhMmQ4MDViOGQxNDQ3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjNlZmI3N2IzY2E5MjU2ZDAzZWI5MDk3NWExNDRmYzA1ZTc2ZjJlMWZiZjRkYmZkNjE0ZmJhMGU1NTFkNmRmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIxNDU2ZjRhY2I0OGZmYWQ1MTFlZGM4OGI3MWZlMGJhYWJlOTJiYzhkNWIxZjk4ZWE3NDE4ZWZkYmZhYmVkNSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.0",
+    "at": "2026-09-01T16:34:02.929Z"
+  }
+}

@@ -1,3 +1,3 @@
 # Files
 
-- [Rust analysis and evaluation architecture](overview.md) - Explains how the Rust workspace turns supported-language source into normalized program graphs, four-pillar policy decisions, and 16-element lattice verdicts.
+- [Rust analysis and evaluation architecture](overview.md) - The shared Rust engine parses supported source into a normalized UAST, derives structural representations, and classifies four quality pillars. CLI and MCP are consumer layers that assemble inputs and render or transport the engine result.

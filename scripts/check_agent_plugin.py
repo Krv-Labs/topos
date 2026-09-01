@@ -30,6 +30,22 @@ PLUGIN_TOP_LEVEL = {
 MCP_TOP_LEVEL = {"$schema", "mcpServers"}
 STDIO_KEYS = {"type", "command", "args", "env", "cwd"}
 HTTP_KEYS = {"type", "url", "headers"}
+# Copied verbatim from the published 1.0.0 mcp.schema.json `cwd` pattern:
+# a plugin-relative "./" path, or a ${PLUGIN_ROOT}/${PLUGIN_DATA}-rooted one.
+CWD_RE = re.compile(r"^(?:\./|\$\{PLUGIN_ROOT\}(?:/|$)|\$\{PLUGIN_DATA\}(?:/|$))")
+# Spec 9.3: clients supply these themselves; an env entry naming either one
+# makes the server entry invalid.
+RESERVED_ENV = {"PLUGIN_ROOT", "PLUGIN_DATA"}
+
+
+def has_parent_segment(value: str) -> bool:
+    """True if any path segment is ``..``.
+
+    The schema anchors its `cwd` pattern at the start only, so "./../escape"
+    matches it. Spec 4.1(4) and 7.2.1 both demand post-resolution containment,
+    which a prefix test cannot provide — reject upward traversal outright.
+    """
+    return ".." in re.split(r"[/\\]", value)
 
 
 def cargo_version() -> str:
@@ -116,8 +132,17 @@ def validate_plugin_manifest(data: dict[str, Any], expected_version: str) -> lis
                     f"agent-plugin/plugin.json: unknown author field {key!r}"
                 )
 
-    if "extensions" in data and not isinstance(data["extensions"], dict):
-        errors.append("agent-plugin/plugin.json: extensions must be an object")
+    if "extensions" in data:
+        extensions = data["extensions"]
+        if not isinstance(extensions, dict):
+            errors.append("agent-plugin/plugin.json: extensions must be an object")
+        else:
+            for namespace, value in extensions.items():
+                if not isinstance(value, dict):
+                    errors.append(
+                        f"agent-plugin/plugin.json: extensions.{namespace} must be "
+                        f"an object"
+                    )
 
     return errors
 
@@ -138,20 +163,57 @@ def validate_stdio_server(name: str, server: dict[str, Any]) -> list[str]:
         errors.append(
             f"agent-plugin/mcp.json: mcpServers.{name}: command must be one token"
         )
+    elif not command.startswith("./") and re.search(r"[/\\]", command):
+        errors.append(
+            f"agent-plugin/mcp.json: mcpServers.{name}: command must be a bare "
+            f"executable name or a './'-prefixed plugin-relative path, "
+            f"got {command!r}"
+        )
+    elif has_parent_segment(command):
+        errors.append(
+            f"agent-plugin/mcp.json: mcpServers.{name}: command must not "
+            f"contain a '..' segment"
+        )
     if "args" in server:
         args = server["args"]
         if not isinstance(args, list) or not all(isinstance(item, str) for item in args):
             errors.append(
                 f"agent-plugin/mcp.json: mcpServers.{name}: args must be string array"
             )
-    if "env" in server and not isinstance(server["env"], dict):
-        errors.append(
-            f"agent-plugin/mcp.json: mcpServers.{name}: env must be an object"
-        )
-    if "cwd" in server and not isinstance(server["cwd"], str):
-        errors.append(
-            f"agent-plugin/mcp.json: mcpServers.{name}: cwd must be a string"
-        )
+    if "env" in server:
+        env = server["env"]
+        if not isinstance(env, dict):
+            errors.append(
+                f"agent-plugin/mcp.json: mcpServers.{name}: env must be an object"
+            )
+        else:
+            for key, value in env.items():
+                if key in RESERVED_ENV:
+                    errors.append(
+                        f"agent-plugin/mcp.json: mcpServers.{name}: env must not "
+                        f"set {key!r}; the client supplies it"
+                    )
+                if not isinstance(value, str):
+                    errors.append(
+                        f"agent-plugin/mcp.json: mcpServers.{name}: "
+                        f"env.{key} must be a string"
+                    )
+    if "cwd" in server:
+        cwd = server["cwd"]
+        if not isinstance(cwd, str):
+            errors.append(
+                f"agent-plugin/mcp.json: mcpServers.{name}: cwd must be a string"
+            )
+        elif not CWD_RE.match(cwd):
+            errors.append(
+                f"agent-plugin/mcp.json: mcpServers.{name}: cwd must start with "
+                f"'./', '${{PLUGIN_ROOT}}', or '${{PLUGIN_DATA}}'; got {cwd!r}"
+            )
+        elif has_parent_segment(cwd):
+            errors.append(
+                f"agent-plugin/mcp.json: mcpServers.{name}: cwd must not "
+                f"contain a '..' segment"
+            )
     return errors
 
 
@@ -165,10 +227,19 @@ def validate_http_server(name: str, server: dict[str, Any]) -> list[str]:
     url = server.get("url")
     if not isinstance(url, str) or not url:
         errors.append(f"agent-plugin/mcp.json: mcpServers.{name}: url is required")
-    if "headers" in server and not isinstance(server["headers"], dict):
-        errors.append(
-            f"agent-plugin/mcp.json: mcpServers.{name}: headers must be an object"
-        )
+    if "headers" in server:
+        headers = server["headers"]
+        if not isinstance(headers, dict):
+            errors.append(
+                f"agent-plugin/mcp.json: mcpServers.{name}: headers must be an object"
+            )
+        else:
+            for key, value in headers.items():
+                if not isinstance(value, str):
+                    errors.append(
+                        f"agent-plugin/mcp.json: mcpServers.{name}: "
+                        f"headers.{key} must be a string"
+                    )
     return errors
 
 
@@ -248,10 +319,12 @@ def main() -> int:
     if mcp is not None:
         errors.extend(validate_mcp(mcp))
 
-    for path in PLUGIN_ROOT.rglob("*"):
+    # Spec 4.1(3) permits symlinks that resolve inside the plugin root; this
+    # repo is stricter on purpose, because symlinks in a git-distributed
+    # package do not survive checkout on Windows without symlink support.
+    for path in sorted(PLUGIN_ROOT.rglob("*")):
         if path.is_symlink():
             errors.append(f"{path.relative_to(ROOT)}: must not be a symlink")
-            break
 
     errors.extend(validate_skill_sync())
 

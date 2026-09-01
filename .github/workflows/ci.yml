@@ -55,6 +55,9 @@ jobs:
       - name: Check agent skills
         run: python3 scripts/check_skill.py
 
+      - name: Check Agent Plugins package
+        run: python3 scripts/check_agent_plugin.py
+
       - name: Format check
         run: cargo fmt --all --check
 

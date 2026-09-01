@@ -86,6 +86,8 @@ Or install with Homebrew:
 brew install krv-labs/tap/topos
 ```
 
+On Homebrew 6+, that fully qualified one-liner auto-taps and trusts only this formula. If you `brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos` before `brew install topos`.
+
 > [!TIP]
 > **Prefer an editor-managed install?** In VS Code or Cursor, search `@mcp topos` in the Extensions view or choose [Install MCP server](https://github.com/mcp/Krv-Labs/topos). This is an alternative to `topos install`: your editor installs and manages the Topos MCP server for you.
 

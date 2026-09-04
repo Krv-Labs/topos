@@ -194,7 +194,7 @@ fn render_summary(
     let floor = floor_verdict(&overall);
     lines.push(guide_char('│', options));
     lines.push(guide_line(
-        "Status reflects policy gates; scores are diagnostic — use them to guide refactoring.",
+        "Pass/fail is the policy gates; ! WARN is a passing gate with a weak score.",
         Style::new().dim(),
         options,
     ));
@@ -635,10 +635,21 @@ pub(crate) fn failure_file_indices(
     indices
 }
 
+/// Below this, a passing pillar renders `! WARN` instead of `✓ PASS`.
+///
+/// Not a policy threshold — no gate, verdict, or exit code reads it. It
+/// exists because `✓ PASS 0%` reads as a contradiction (issue #350): the
+/// gates really did pass, but the diagnostic score says the pillar is one
+/// edit away from failing. A quarter of the range is the round number that
+/// covers the reported cases; the gates in
+/// `topos_engine::evaluation::policies::gates` remain the only thing that
+/// decides pass/fail.
+const WEAK_SCORE: f64 = 0.25;
+
 fn status_text(passing: bool, score: f64, options: RenderOptions) -> String {
     let (symbol, label, style) = if !passing {
         ("X", "FAIL", Style::new().red().bold())
-    } else if score < 0.25 {
+    } else if score < WEAK_SCORE {
         ("!", "WARN", Style::new().yellow().bold())
     } else {
         ("✓", "PASS", Style::new().green().bold())

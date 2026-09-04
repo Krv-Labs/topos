@@ -57,8 +57,16 @@ pub(crate) fn antigravity_config(home: &Path) -> PathBuf {
     home.join(".gemini/config/mcp_config.json")
 }
 
+/// The pi-scoped MCP override, **not** `~/.pi/agent/settings.json`.
+///
+/// `settings.json` is pi's own settings file — theme, provider, transport —
+/// with a fixed documented key set that has no `mcpServers` in it; an entry
+/// written there is read by nothing. MCP servers are resolved by pi's adapter
+/// extension, and of the six locations it searches this is the only one that
+/// is pi's alone (`~/.config/mcp/mcp.json` and `~/.agents/mcp.json` are shared
+/// across tools, and `topos install pi` has no business owning those).
 pub(crate) fn pi_config(home: &Path) -> PathBuf {
-    home.join(".pi/agent/settings.json")
+    home.join(".pi/agent/mcp.json")
 }
 
 pub(crate) fn claude_desktop_config(home: &Path) -> PathBuf {

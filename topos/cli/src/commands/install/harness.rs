@@ -119,10 +119,10 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         name: "pi",
         artifact: Artifact::McpJson,
         config_path: paths::pi_config,
-        active_msg: "MCP server registered in ~/.pi/agent/settings.json",
-        absent_msg: "no MCP server entry in ~/.pi/agent/settings.json",
+        active_msg: "MCP server registered in ~/.pi/agent/mcp.json",
+        absent_msg: "no MCP server entry in ~/.pi/agent/mcp.json",
         detect: detect_pi,
-        note: no_note,
+        note: pi_note,
     },
 ];
 
@@ -213,6 +213,19 @@ fn antigravity_note(home: &Path) -> Option<String> {
          `topos install antigravity`, or this entry will be discarded."
             .to_string()
     })
+}
+
+/// pi is the one harness with no MCP client of its own — its README says
+/// "No MCP. […] build an extension that adds MCP support." The registration
+/// is read by the `pi-mcp-adapter` extension, so the entry alone does nothing
+/// until that extension is installed. Unconditional, because nothing on disk
+/// distinguishes "adapter installed" from "not".
+fn pi_note(_home: &Path) -> Option<String> {
+    Some(
+        "pi reads MCP servers only through its adapter extension — run \
+         `pi install npm:pi-mcp-adapter` if you have not already, or this entry is inert."
+            .to_string(),
+    )
 }
 
 /// A real file rather than one of the back-compat symlinks Antigravity's
@@ -324,12 +337,21 @@ mod tests {
         fs::remove_dir_all(home).ok();
     }
 
+    /// Antigravity's note is conditional on an unmigrated config; pi's is
+    /// unconditional, because its adapter extension leaves no marker on disk.
+    /// Every other harness stays quiet.
     #[test]
-    fn only_antigravity_carries_a_note() {
+    fn only_antigravity_and_pi_carry_a_note() {
         let home = tmp_dir("notes");
-        for spec in HARNESSES.iter().filter(|spec| spec.id != "antigravity") {
+        for spec in HARNESSES
+            .iter()
+            .filter(|spec| !matches!(spec.id, "antigravity" | "pi"))
+        {
             assert_eq!((spec.note)(&home), None, "{} added a note", spec.id);
         }
+        assert!(
+            (spec("pi").unwrap().note)(&home).is_some_and(|note| note.contains("pi-mcp-adapter"))
+        );
         fs::remove_dir_all(home).ok();
     }
 }

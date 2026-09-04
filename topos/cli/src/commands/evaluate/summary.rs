@@ -165,7 +165,10 @@ fn render_summary(
         let passing = overall
             .get(pillar)
             .is_some_and(|value| *value != EvaluationValue::Slop);
-        let status = status_text(passing, average, options);
+        // `minimum`, not `average`: the multi-file row prints both, so
+        // `✓ PASS  72%  0%` is the same contradiction #350 is about, just
+        // one column over. With a single file the two are equal.
+        let status = status_text(passing, minimum, options);
         let mut row = if single_file {
             format!(
                 "{}  {:<12}  {status}  {:>4.0}%",
@@ -646,10 +649,10 @@ pub(crate) fn failure_file_indices(
 /// decides pass/fail.
 const WEAK_SCORE: f64 = 0.25;
 
-fn status_text(passing: bool, score: f64, options: RenderOptions) -> String {
+fn status_text(passing: bool, weakest: f64, options: RenderOptions) -> String {
     let (symbol, label, style) = if !passing {
         ("X", "FAIL", Style::new().red().bold())
-    } else if score < WEAK_SCORE {
+    } else if weakest < WEAK_SCORE {
         ("!", "WARN", Style::new().yellow().bold())
     } else {
         ("✓", "PASS", Style::new().green().bold())
@@ -1175,6 +1178,36 @@ mod tests {
             },
         )
         .join("\n");
+        assert!(output.contains("! WARN"));
+        assert!(!output.contains("✓ PASS"));
+    }
+
+    /// A healthy average hides a file at 2%, and the row prints that 2% in
+    /// its own MIN column — so `✓ PASS` next to it is the same
+    /// contradiction as the single-file case.
+    #[test]
+    fn a_weak_minimum_warns_even_when_the_average_is_healthy() {
+        let mut healthy = result(true);
+        healthy.scores.insert("simple".to_string(), 0.9);
+        let mut weak = result(true);
+        weak.scores.insert("simple".to_string(), 0.02);
+        let output = render_summary(
+            &[PathBuf::from("healthy.rs"), PathBuf::from("weak.rs")],
+            &[healthy, weak],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: false,
+                composable_notices: &[],
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+        assert!(output.contains("46%"), "average should still read healthy");
         assert!(output.contains("! WARN"));
         assert!(!output.contains("✓ PASS"));
     }

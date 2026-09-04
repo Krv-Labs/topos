@@ -65,7 +65,7 @@ which of the three standard streams are terminals
 
 ## Harness matrix
 
-Eight harnesses, one artifact each: the single MCP server registration in that
+Nine harnesses, one artifact each: the single MCP server registration in that
 harness's user-scope config. Nothing else is written.
 
 | id | Name | Config file | Format | Detected by |
@@ -78,6 +78,7 @@ harness's user-scope config. Nothing else is written.
 | `cursor` | Cursor | `~/.cursor/mcp.json` | `mcpServers.topos` | `~/.cursor` is a dir |
 | `vscode` | VS Code | `~/Library/Application Support/Code/User/mcp.json` | `servers.topos` (JSONC) | parent dir exists |
 | `antigravity` | Google Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers.topos` | see below |
+| `pi` | pi | `~/.pi/agent/mcp.json` | `mcpServers.topos` | `~/.pi` is a dir |
 
 Claude Desktop and VS Code use `~/.config/...` on Linux and `%APPDATA%\...` on
 Windows ([`paths.rs`](../../topos/cli/src/commands/install/paths.rs)). Claude
@@ -89,16 +90,32 @@ the end-to-end suite can drive the real binary against a scratch `$HOME`.
 `detect` pre-checks the interactive menu and never gates writing — asking for a
 harness by id always writes it.
 
-Two rows carry judgment calls worth recording:
+Three rows carry judgment calls worth recording:
 
 **Claude Code** writes user-scope MCP servers to `~/.claude.json`, *not*
 `~/.claude/settings.json`. That file is hooks, permissions and statusLine only.
 `~/.claude.json` is what `claude mcp add` itself writes.
 
+**pi** writes to `~/.pi/agent/mcp.json`, *not* `~/.pi/agent/settings.json`. That
+file is pi's own settings — theme, provider, transport — with a documented key
+set that has no `mcpServers` in it; an entry written there is read by nothing.
+pi is also the only harness with no MCP client of its own ("No MCP. […] build an
+extension that adds MCP support",
+[`packages/coding-agent/README.md`](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md)).
+MCP is resolved by the
+[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) extension,
+which searches six locations; `~/.pi/agent/mcp.json` is the only one that is
+pi's alone. `~/.config/mcp/mcp.json` and `~/.agents/mcp.json` rank higher in its
+precedence order but are shared across tools, and a per-harness installer has no
+business owning a file every other agent also reads. So pi carries the second
+`note`: unconditional, because nothing on disk says whether the adapter is
+installed, and a bare `✓` on an entry no client will read is the same silent
+failure the Antigravity note exists to prevent.
+
 **Antigravity** is not detected by "`~/.gemini` exists" — Gemini CLI creates that
 directory, so keying off it would pre-check Antigravity for every Gemini user.
 Detection is `~/.gemini/config/.migrated`, or any of `~/.gemini/antigravity`,
-`-cli`, `-ide` being a directory. Antigravity is also the only harness with a
+`-cli`, `-ide` being a directory. Antigravity also carries the other
 `note`: when the migration marker is absent and a real (non-symlink)
 `mcp_config.json` still sits in one of those data directories, Antigravity's
 next launch whole-file-replaces `~/.gemini/config/mcp_config.json` from its app

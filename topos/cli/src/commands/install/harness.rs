@@ -6,8 +6,18 @@
 //! modified, because they are shared with other tools or owned by a separate
 //! distribution channel (ClawHub / Hermes / openclaw own skills).
 //!
-//! One artifact per harness is why there is no state-folding function here: a
-//! harness's state simply *is* its artifact's state.
+//! pi is the single exception, marked by `skill_ref`, and only because it is
+//! the single harness with no MCP client: its registration configures nothing
+//! that runs until the user installs an adapter extension, so it also gets a
+//! reference to an already-installed skill directory in its own settings file
+//! ([`super::skills_entry`]). That reference is a path in an array, not skill
+//! content — the rule above is intact.
+//!
+//! One artifact per harness is still why there is no state-folding function
+//! here: a harness's state simply *is* its MCP artifact's state, and pi's skill
+//! reference is reported on its own line rather than folded into that verdict.
+//! Folding it in would let a missing skill mask a working MCP entry, or the
+//! reverse.
 
 use std::path::{Path, PathBuf};
 
@@ -31,6 +41,12 @@ pub(crate) struct HarnessSpec {
     /// A caveat shown in install output **and** in `topos status`, even when the
     /// entry is already active.
     pub(crate) note: fn(&Path) -> Option<String>,
+    /// Whether this harness also gets a skill-directory reference in its own
+    /// settings file — see [`super::skills_entry`]. A plain `bool` rather than
+    /// a second artifact slot because there is exactly one implementation and
+    /// exactly one harness that needs it: pi, which has no MCP client, so its
+    /// MCP entry alone configures nothing that runs today.
+    pub(crate) skill_ref: bool,
 }
 
 pub(crate) const HARNESSES: [HarnessSpec; 9] = [
@@ -43,6 +59,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.claude.json",
         detect: detect_claude,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "claude-desktop",
@@ -53,6 +70,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in the Claude Desktop config",
         detect: detect_claude_desktop,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "codex",
@@ -63,6 +81,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no [mcp_servers.topos] in ~/.codex/config.toml",
         detect: detect_codex,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "gemini",
@@ -73,6 +92,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.gemini/settings.json",
         detect: detect_gemini,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "copilot",
@@ -83,6 +103,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.copilot/mcp-config.json",
         detect: detect_copilot,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "cursor",
@@ -93,6 +114,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.cursor/mcp.json",
         detect: detect_cursor,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "vscode",
@@ -103,6 +125,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no servers.topos in the VS Code user mcp.json",
         detect: detect_vscode,
         note: no_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "antigravity",
@@ -113,6 +136,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.gemini/config/mcp_config.json",
         detect: detect_antigravity,
         note: antigravity_note,
+        skill_ref: false,
     },
     HarnessSpec {
         id: "pi",
@@ -123,6 +147,7 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         absent_msg: "no MCP server entry in ~/.pi/agent/mcp.json",
         detect: detect_pi,
         note: pi_note,
+        skill_ref: true,
     },
 ];
 

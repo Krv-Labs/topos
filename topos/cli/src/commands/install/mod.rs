@@ -8,7 +8,12 @@
 //! distribution channel, so [`residue`] reports them and nothing here touches
 //! them.
 //!
-//! Layout: [`harness`] is the 8-row table every command iterates; [`artifact`]
+//! pi is the one exception to "one artifact per harness", and only because it
+//! is the one harness with no MCP client: it also gets a *reference* to an
+//! already-installed skill directory in its `settings.json` ([`skills_entry`]).
+//! That is still not a skill file — it is one path appended to an array.
+//!
+//! Layout: [`harness`] is the 9-row table every command iterates; [`artifact`]
 //! knows the three config shapes; [`binary`] decides which absolute path to
 //! record; [`fsops`] does atomic writes and directory pruning; [`state`] tracks
 //! what install created so uninstall removes exactly that much.
@@ -23,6 +28,7 @@ mod menu;
 mod paths;
 mod report;
 mod residue;
+mod skills_entry;
 mod state;
 mod status;
 #[cfg(test)]

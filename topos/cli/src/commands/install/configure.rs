@@ -10,6 +10,7 @@ use std::path::Path;
 use super::artifact::State;
 use super::harness::{spec, HarnessSpec};
 use super::report;
+use super::skills_entry;
 use super::state;
 use crate::commands::render::RenderOptions;
 
@@ -38,12 +39,68 @@ fn configure_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: Rend
         return false;
     };
     report::harness_line(harness.name, opts);
-    let success = configure_spec(harness, home, binary, dry_run, opts);
+    let mut success = configure_spec(harness, home, binary, dry_run, opts);
+    if harness.skill_ref {
+        success &= configure_skill_ref(harness.id, home, dry_run, opts);
+    }
     if let Some(message) = (harness.note)(home) {
         report::note(&message, opts);
     }
     println!("│");
     success
+}
+
+/// pi's second line: the skill-directory reference.
+///
+/// A missing skill is reported, not failed — there is nothing for topos to
+/// install, and the MCP entry on the line above still applied.
+fn configure_skill_ref(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    let Some(inspection) = skills_entry::inspect(home) else {
+        // Nothing to write, for one of two very different reasons — pi already
+        // found the skill, or there is none. Saying "install the skill" to
+        // someone who has it is worse than saying nothing.
+        match skills_entry::skill_source(home) {
+            skills_entry::SkillSource::Discovered => {
+                report::detail(&report::ok(opts), skills_entry::DISCOVERED_MSG);
+            }
+            _ => report::detail(&report::absent(opts), skills_entry::NO_SKILL_MSG),
+        }
+        return true;
+    };
+    match inspection.state {
+        State::Active => {
+            report::detail(&report::ok(opts), skills_entry::ACTIVE_MSG);
+            true
+        }
+        State::Conflict => {
+            report::detail(
+                &report::conflict(opts),
+                &conflict_message(&inspection, &skills_entry::config_path(home)),
+            );
+            false
+        }
+        _ if dry_run => {
+            report::detail(
+                &report::pending(opts),
+                &format!(
+                    "[dry run] would reference the topos skill directory in {}",
+                    skills_entry::config_path(home).display()
+                ),
+            );
+            true
+        }
+        _ => match skills_entry::apply(home) {
+            Ok(outcome) => {
+                record(id, home, &skills_entry::config_path(home), outcome);
+                report::detail(&report::ok(opts), skills_entry::ACTIVE_MSG);
+                true
+            }
+            Err(message) => {
+                report::detail(&report::failed(opts), &message);
+                false
+            }
+        },
+    }
 }
 
 fn configure_spec(

@@ -16,6 +16,7 @@ use super::binary::resolve_binary_path;
 use super::harness::{HarnessSpec, HARNESSES};
 use super::report;
 use super::residue::{self, Residue};
+use super::skills_entry;
 use crate::commands::render::{paint, RenderOptions};
 
 pub(crate) fn run(home: &Path, json_output: bool) -> Result<(), String> {
@@ -50,6 +51,12 @@ fn print_human(home: &Path, binary: &Path, rows: &[(&HarnessSpec, Inspection)], 
             &report::glyph(inspection.state, opts),
             &describe(harness, inspection),
         );
+        // Its own line, never folded into the verdict above: a missing skill
+        // must not mask a working MCP entry, nor the reverse.
+        if harness.skill_ref {
+            let (glyph, message) = skill_ref_line(home, opts);
+            report::detail(&glyph, &message);
+        }
         if let Some(message) = (harness.note)(home) {
             report::note(&message, opts);
         }
@@ -93,6 +100,32 @@ fn describe(harness: &HarnessSpec, inspection: &Inspection) -> String {
         (State::Incomplete, None) => format!("needs repair — run `topos install {}`", harness.id),
         (State::Conflict, Some(reason)) => reason.clone(),
         (State::Conflict, None) => "needs manual attention".to_string(),
+    }
+}
+
+/// The skill-reference line for a harness that has one. `None` from
+/// [`skills_entry::inspect`] means there is no skill to point at, which reads
+/// as absent with the install instruction rather than as a fault.
+fn skill_ref_line(home: &Path, opts: RenderOptions) -> (String, String) {
+    match skills_entry::inspect(home) {
+        None => match skills_entry::skill_source(home) {
+            // pi finds it unaided — that is the working end state, so it reads
+            // as a tick rather than as a missing artifact.
+            skills_entry::SkillSource::Discovered => (
+                report::glyph(State::Active, opts),
+                skills_entry::DISCOVERED_MSG.to_string(),
+            ),
+            _ => (report::absent(opts), skills_entry::NO_SKILL_MSG.to_string()),
+        },
+        Some(inspection) => {
+            let message = match (inspection.state, inspection.detail) {
+                (State::Active, _) => skills_entry::ACTIVE_MSG.to_string(),
+                (State::Conflict, Some(reason)) => reason,
+                (State::Conflict, None) => "needs manual attention".to_string(),
+                _ => format!("{} — run `topos install pi`", skills_entry::ABSENT_MSG),
+            };
+            (report::glyph(inspection.state, opts), message)
+        }
     }
 }
 
@@ -159,5 +192,25 @@ fn harness_json(home: &Path, harness: &HarnessSpec, inspection: &Inspection) -> 
         "config": (harness.config_path)(home).display().to_string(),
         "detail": inspection.detail,
         "note": (harness.note)(home),
+        "skillRef": harness.skill_ref.then(|| skill_ref_json(home)),
+    })
+}
+
+/// `state` carries two values the [`State`] enum deliberately does not have,
+/// because they describe someone else's artifact rather than ours:
+/// `"discovered"` (pi finds the skill unaided, nothing to write) and
+/// `"unavailable"` (no skill installed to point at).
+fn skill_ref_json(home: &Path) -> Value {
+    let state = match skills_entry::inspect(home) {
+        Some(inspection) => report::label(inspection.state),
+        None => match skills_entry::skill_source(home) {
+            skills_entry::SkillSource::Discovered => "discovered",
+            _ => "unavailable",
+        },
+    };
+    json!({
+        "state": state,
+        "config": skills_entry::config_path(home).display().to_string(),
+        "skillDir": skills_entry::skill_dir(home).map(|dir| dir.display().to_string()),
     })
 }

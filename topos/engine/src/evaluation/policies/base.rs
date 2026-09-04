@@ -25,7 +25,7 @@
 //! scores. The live `CharacteristicMorphism` path does **not** use it —
 //! it trusts `ScoredDecision.achieved` from each `Φᵢ`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::evaluation::policies::calibration::score_floor;
 use crate::evaluation::preferences::Generator;
@@ -97,7 +97,7 @@ pub struct ScoredDecision {
     pub achieved: bool,
     /// Per-metric human-readable strings keyed by metric name (e.g.
     /// `"cfg.cyclomatic"`).
-    pub interpretation: HashMap<String, String>,
+    pub interpretation: BTreeMap<String, String>,
 }
 
 #[cfg(test)]

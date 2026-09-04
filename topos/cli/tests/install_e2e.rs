@@ -213,7 +213,7 @@ fn config_of(status: &Value, id: &str) -> PathBuf {
 
 /// Every harness id in table order, so tests can iterate the whole set without
 /// duplicating the table.
-const IDS: [&str; 8] = [
+const IDS: [&str; 9] = [
     "claude",
     "claude-desktop",
     "codex",
@@ -222,6 +222,7 @@ const IDS: [&str; 8] = [
     "cursor",
     "vscode",
     "antigravity",
+    "pi",
 ];
 
 // ---------------------------------------------------------------------------
@@ -561,7 +562,7 @@ fn a_second_install_reports_everything_active_and_writes_nothing() {
         after_first == snapshot(&home),
         "a second install rewrote files that were already correct"
     );
-    assert_eq!(status_json(&home)["active"], 8);
+    assert_eq!(status_json(&home)["active"], 9);
 
     fs::remove_dir_all(&home).ok();
 }
@@ -675,7 +676,7 @@ fn a_headless_uninstall_applies_without_a_prompt() {
     let home = scratch_home("headless");
     seed(&home, ".claude.json", SEED_CLAUDE_JSON);
     topos(&home, &["install", "--all"]).expect_code(0);
-    assert_eq!(status_json(&home)["active"], 8);
+    assert_eq!(status_json(&home)["active"], 9);
 
     // No `--yes`, no `--dry-run`, and no stream is a tty (see `topos`), so this
     // is the `Headless` arm: CI parity, apply. The `Ambiguous` arm — stderr
@@ -806,6 +807,165 @@ fn a_commented_vscode_config_is_refused_and_left_byte_identical() {
     // Rewriting this file through `serde_json` would silently delete the user's
     // comments and their trailing comma. Refusing is the whole point.
     assert_eq!(fs::read(&vscode).unwrap(), SEED_VSCODE_JSONC.as_bytes());
+
+    fs::remove_dir_all(&home).ok();
+}
+
+// ---------------------------------------------------------------------------
+// 10. pi's second artifact — the skill directory reference.
+// ---------------------------------------------------------------------------
+
+/// A `SKILL.md` where openclaw puts it. Only its existence matters: topos reads
+/// the path, never the contents.
+fn seed_topos_skill(home: &Path) -> PathBuf {
+    seed(
+        home,
+        ".agents/skills/topos/SKILL.md",
+        "---\nname: topos\ndescription: seeded by the e2e suite\n---\n",
+    );
+    home.join(".agents/skills")
+}
+
+/// pi is the one harness with no MCP client, so its `mcp.json` entry alone
+/// configures nothing that runs. The skill reference is the half that works
+/// today, and it has to survive the same round trip as everything else.
+#[test]
+fn the_pi_skill_reference_is_written_reported_and_fully_removed() {
+    let home = scratch_home("pi-skill");
+    // `~/.local/state` is a `never_prune` member holding the install ledger, so
+    // it has to predate topos for the leak assertions below to be exact — same
+    // reason as in `install_then_uninstall_leaves_no_file_and_no_directory_behind`.
+    mkdirs(&home, &[".pi", ".local/state"]);
+    let skills = seed_topos_skill(&home);
+    let settings = home.join(".pi/agent/settings.json");
+
+    let before = snapshot(&home);
+    topos(&home, &["install", "pi"]).expect_code(0);
+
+    // The reference is the absolute directory, appended to `skills`.
+    assert_eq!(
+        json(&settings)["skills"],
+        serde_json::json!([skills.display().to_string()]),
+    );
+    // Both halves are reported, and separately: a working MCP entry must not
+    // be able to hide a missing skill reference, or the reverse.
+    let status = status_json(&home);
+    assert_eq!(state_of(&status, "pi"), "active");
+    assert_eq!(harness(&status, "pi")["skillRef"]["state"], "active");
+    assert_eq!(
+        harness(&status, "pi")["skillRef"]["skillDir"],
+        Value::String(skills.display().to_string()),
+    );
+
+    // Re-running must not append a second copy of the same path.
+    topos(&home, &["install", "pi"]).expect_code(0);
+    assert_eq!(json(&settings)["skills"].as_array().unwrap().len(), 1);
+
+    topos(&home, &["uninstall", "pi", "--yes"]).expect_code(0);
+    // `settings.json` was created by install and holds nothing else, so it goes
+    // — along with the `~/.pi/agent` directory install had to create for it.
+    let after = snapshot(&home);
+    let leaked_files = added(before.files.keys(), after.files.keys());
+    assert!(
+        leaked_files.is_empty(),
+        "uninstall left files behind: {leaked_files:?}"
+    );
+    let leaked_dirs = added(before.dirs.iter(), after.dirs.iter());
+    assert!(
+        leaked_dirs.is_empty(),
+        "uninstall left directories behind: {leaked_dirs:?}"
+    );
+    // The skill itself is openclaw's, not ours to take down with the reference.
+    assert!(skills.join("topos/SKILL.md").is_file(), "deleted the skill");
+
+    fs::remove_dir_all(&home).ok();
+}
+
+/// With no skill installed there is nothing to reference. That is reported, not
+/// failed, and above all it does not bring `settings.json` into existence.
+#[test]
+fn pi_without_a_skill_installed_writes_no_settings_file() {
+    let home = scratch_home("pi-no-skill");
+    mkdirs(&home, &[".pi"]);
+
+    let run = topos(&home, &["install", "pi"]).expect_code(0);
+    assert!(
+        run.stdout.contains("openclaw skills install"),
+        "the missing skill was not explained:\n{}",
+        run.stdout
+    );
+    assert!(
+        !home.join(".pi/agent/settings.json").exists(),
+        "wrote a settings file with nothing to put in it"
+    );
+
+    // The MCP half still applied, and status distinguishes "no skill to point
+    // at" from "skill present but not referenced".
+    let status = status_json(&home);
+    assert_eq!(state_of(&status, "pi"), "active");
+    assert_eq!(harness(&status, "pi")["skillRef"]["state"], "unavailable");
+
+    fs::remove_dir_all(&home).ok();
+}
+
+/// The shape on a machine that installed the skill with openclaw:
+/// `~/.pi/agent/skills` is a symlink farm into `~/.agents/skills`, so pi finds
+/// the skill unaided. Writing a reference anyway would point a second path at
+/// the same file, and telling the user to install a skill they already have
+/// would be plainly wrong.
+#[cfg(unix)]
+#[test]
+fn a_skill_pi_already_discovers_is_reported_and_not_referenced() {
+    let home = scratch_home("pi-discovered");
+    mkdirs(&home, &[".pi/agent/skills"]);
+    let skills = seed_topos_skill(&home);
+    std::os::unix::fs::symlink(skills.join("topos"), home.join(".pi/agent/skills/topos")).unwrap();
+
+    let run = topos(&home, &["install", "pi"]).expect_code(0);
+    assert!(
+        run.stdout.contains("already discovered"),
+        "the discovered skill was not reported:\n{}",
+        run.stdout
+    );
+    assert!(
+        !run.stdout.contains("openclaw skills install"),
+        "told the user to install a skill they already have:\n{}",
+        run.stdout
+    );
+    assert!(
+        !home.join(".pi/agent/settings.json").exists(),
+        "referenced a skill pi already finds"
+    );
+    assert_eq!(
+        harness(&status_json(&home), "pi")["skillRef"]["state"],
+        "discovered"
+    );
+
+    fs::remove_dir_all(&home).ok();
+}
+
+/// The `skills` array is the user's list of skill sources. topos appends one
+/// path to it and takes exactly that one back out.
+#[test]
+fn foreign_skill_paths_survive_the_pi_round_trip() {
+    let home = scratch_home("pi-foreign-skills");
+    mkdirs(&home, &[".pi"]);
+    seed_topos_skill(&home);
+    let settings = seed(
+        &home,
+        ".pi/agent/settings.json",
+        "{\n  \"theme\": \"dark\",\n  \"skills\": [\"~/.codex/skills\"]\n}\n",
+    );
+
+    topos(&home, &["install", "pi"]).expect_code(0);
+    assert_eq!(json(&settings)["skills"].as_array().unwrap().len(), 2);
+
+    topos(&home, &["uninstall", "pi", "--yes"]).expect_code(0);
+    let after = json(&settings);
+    assert_eq!(after["theme"], "dark");
+    assert_eq!(after["skills"], serde_json::json!(["~/.codex/skills"]));
+    // A file topos did not create is never deleted, however empty it looks.
+    assert!(settings.is_file(), "deleted a pre-existing settings file");
 
     fs::remove_dir_all(&home).ok();
 }

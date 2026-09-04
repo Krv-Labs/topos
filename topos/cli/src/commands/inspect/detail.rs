@@ -165,7 +165,7 @@ fn plural(count: usize) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use topos_engine::core::omega::EvaluationValue;
 
@@ -174,11 +174,11 @@ mod tests {
     #[test]
     fn inspection_keeps_all_metrics_without_duplicate_entropy_section() {
         let result = ClassificationResult {
-            raw_metrics: HashMap::from([
+            raw_metrics: BTreeMap::from([
                 ("ast.entropy".to_string(), 0.33),
                 ("cfg.longest_path".to_string(), 8.0),
             ]),
-            interpretation: HashMap::from([(
+            interpretation: BTreeMap::from([(
                 "ast.entropy".to_string(),
                 "entropy within structured range".to_string(),
             )]),

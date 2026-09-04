@@ -17,7 +17,7 @@ use topos_engine::functors::probes::ast::divergence::{
 };
 
 use crate::schemas::FunctionEntry;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// Lift the probe struct into the MCP wire model.
 pub fn function_entry_from_complexity(
@@ -66,8 +66,8 @@ pub fn build_metric_locations(
     source: &str,
     language: &str,
     result: &ClassificationResult,
-) -> HashMap<String, Vec<FunctionEntry>> {
-    let mut locations = HashMap::new();
+) -> BTreeMap<String, Vec<FunctionEntry>> {
+    let mut locations = BTreeMap::new();
 
     let complexity_gate_failed = result
         .raw_metrics
@@ -198,7 +198,7 @@ mod tests {
         source
     }
 
-    fn locations_for(source: &str) -> HashMap<String, Vec<FunctionEntry>> {
+    fn locations_for(source: &str) -> BTreeMap<String, Vec<FunctionEntry>> {
         let morphism = ProgramMorphism::new(source, "python");
         let result = CharacteristicMorphism.classify_detailed(&morphism, &[], Priority::default());
         build_metric_locations(source, "python", &result)

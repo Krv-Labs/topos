@@ -65,8 +65,10 @@ which of the three standard streams are terminals
 
 ## Harness matrix
 
-Eight harnesses, one artifact each: the single MCP server registration in that
-harness's user-scope config. Nothing else is written.
+Nine harnesses, one artifact each: the single MCP server registration in that
+harness's user-scope config. Nothing else is written — except for pi, which gets
+a second one because it is the only harness with no MCP client at all (see
+below).
 
 | id | Name | Config file | Format | Detected by |
 | --- | --- | --- | --- | --- |
@@ -78,6 +80,8 @@ harness's user-scope config. Nothing else is written.
 | `cursor` | Cursor | `~/.cursor/mcp.json` | `mcpServers.topos` | `~/.cursor` is a dir |
 | `vscode` | VS Code | `~/Library/Application Support/Code/User/mcp.json` | `servers.topos` (JSONC) | parent dir exists |
 | `antigravity` | Google Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers.topos` | see below |
+| `pi` | pi | `~/.pi/agent/mcp.json` | `mcpServers.topos` | `~/.pi` is a dir |
+| `pi` | pi (second artifact) | `~/.pi/agent/settings.json` | `skills[]` path | see below |
 
 Claude Desktop and VS Code use `~/.config/...` on Linux and `%APPDATA%\...` on
 Windows ([`paths.rs`](../../topos/cli/src/commands/install/paths.rs)). Claude
@@ -89,16 +93,65 @@ the end-to-end suite can drive the real binary against a scratch `$HOME`.
 `detect` pre-checks the interactive menu and never gates writing — asking for a
 harness by id always writes it.
 
-Two rows carry judgment calls worth recording:
+Three rows carry judgment calls worth recording:
 
 **Claude Code** writes user-scope MCP servers to `~/.claude.json`, *not*
 `~/.claude/settings.json`. That file is hooks, permissions and statusLine only.
 `~/.claude.json` is what `claude mcp add` itself writes.
 
+**pi** writes to `~/.pi/agent/mcp.json`, *not* `~/.pi/agent/settings.json`. That
+file is pi's own settings — theme, provider, transport — with a documented key
+set that has no `mcpServers` in it; an entry written there is read by nothing.
+pi is also the only harness with no MCP client of its own ("No MCP. […] build an
+extension that adds MCP support",
+[`packages/coding-agent/README.md`](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/README.md)).
+MCP is resolved by the
+[`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) extension,
+which searches six locations; `~/.pi/agent/mcp.json` is the only one that is
+pi's alone. `~/.config/mcp/mcp.json` and `~/.agents/mcp.json` rank higher in its
+precedence order but are shared across tools, and a per-harness installer has no
+business owning a file every other agent also reads. So pi carries the second
+`note`: unconditional, because nothing on disk says whether the adapter is
+installed, and a bare `✓` on an entry no client will read is the same silent
+failure the Antigravity note exists to prevent.
+
+pi is also **the one harness with two artifacts**, and for the same reason. An
+MCP entry that configures nothing until the user installs a third-party npm
+extension is not an integration, so `topos install pi` also writes the route
+that works today: pi's own skills mechanism. `settings.json` has no `mcpServers`
+key, but it does have `skills` — a documented array of paths, whose example in
+pi's docs is literally other agents' skill directories
+(`"skills": ["~/.claude/skills", "~/.codex/skills"]`). Verified against pi's
+source rather than its docs: `settings-manager.ts` declares `packages`,
+`extensions` and `skills`, and contains no occurrence of `mcp`.
+
+**This is still not topos writing a skill.** It appends one directory path to an
+array; skills themselves stay ClawHub / Hermes / openclaw's, exactly as the
+module header and [`residue.rs`](../../topos/cli/src/commands/install/residue.rs)
+require. Three outcomes, because collapsing them produces wrong advice:
+
+| Skill found | What install does |
+| --- | --- |
+| in `~/.pi/agent/skills` (pi's default scan, including openclaw's symlinks into `~/.agents/skills`) | nothing — pi already finds it, and a reference would be a second path to the same file |
+| in `~/.agents/skills` or `~/.claude/skills` | append that directory to `skills` |
+| nowhere | nothing, and say `openclaw skills install @Krv-Labs/topos` |
+
+The middle row is the only one that writes. Telling someone with a working
+symlink farm to go install a skill they already have would be worse than
+silence, which is why "discovered" is a distinct state in `status --json`
+(`skillRef.state`) rather than folded into "absent".
+
+The skill reference is reported on its own status line and never folded into
+pi's verdict: a missing skill must not mask a working MCP entry, nor the
+reverse. Uninstall removes the path it added — matching any candidate directory,
+so a skill deleted since install does not strand the entry — and drops the
+`skills` key entirely when that empties it, which is what lets a `settings.json`
+topos created be deleted.
+
 **Antigravity** is not detected by "`~/.gemini` exists" — Gemini CLI creates that
 directory, so keying off it would pre-check Antigravity for every Gemini user.
 Detection is `~/.gemini/config/.migrated`, or any of `~/.gemini/antigravity`,
-`-cli`, `-ide` being a directory. Antigravity is also the only harness with a
+`-cli`, `-ide` being a directory. Antigravity also carries the other
 `note`: when the migration marker is absent and a real (non-symlink)
 `mcp_config.json` still sits in one of those data directories, Antigravity's
 next launch whole-file-replaces `~/.gemini/config/mcp_config.json` from its app

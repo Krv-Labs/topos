@@ -19,7 +19,7 @@
 //! thresholds and normalization caps in [`super::calibration`]. Only the
 //! score-shaping quality curve remains local.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use super::base::ScoredDecision;
 use super::calibration::NAVIGABLE;
@@ -28,7 +28,7 @@ use super::gates::{evaluate_gates, interpret_metric};
 /// `Φ_NAVIGABLE` — score the NAVIGABLE generator from the worst
 /// function's Semantic Compositional Divergence.
 pub fn score_navigable(max_function_divergence: Option<f64>) -> ScoredDecision {
-    let mut metrics = HashMap::new();
+    let mut metrics = BTreeMap::new();
     if let Some(v) = max_function_divergence {
         metrics.insert("nav.max_function_divergence".to_string(), v);
     }
@@ -40,7 +40,7 @@ pub fn score_navigable(max_function_divergence: Option<f64>) -> ScoredDecision {
         return ScoredDecision {
             score: 1.0,
             achieved: true,
-            interpretation: HashMap::new(),
+            interpretation: BTreeMap::new(),
         };
     }
 

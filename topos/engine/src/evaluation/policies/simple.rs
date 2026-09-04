@@ -21,7 +21,7 @@
 //! [`super::calibration`]. Only the score-shaping quality curves remain
 //! local.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use super::base::ScoredDecision;
 use super::calibration::SIMPLE;
@@ -39,7 +39,7 @@ pub fn score_simple(
     is_entrypoint_module: bool,
     source_size_bytes: Option<f64>,
 ) -> ScoredDecision {
-    let mut metrics = HashMap::new();
+    let mut metrics = BTreeMap::new();
     if let Some(v) = cyclomatic {
         metrics.insert("cfg.cyclomatic".to_string(), v);
     }
@@ -56,7 +56,7 @@ pub fn score_simple(
         return ScoredDecision {
             score: 1.0,
             achieved: true,
-            interpretation: HashMap::new(),
+            interpretation: BTreeMap::new(),
         };
     }
 

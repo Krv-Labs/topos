@@ -1,7 +1,7 @@
 //! Detailed inspection of a code unit — every metric exposed, function
 //! table, entropy breakdown.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use rmcp::handler::server::wrapper::Parameters;
@@ -161,7 +161,7 @@ fn err_inspection(
         EvaluationResult::error_result("evaluation failed", priority, priority_source, msg.clone());
     let model = InspectionResult {
         evaluation: empty,
-        functions: HashMap::new(),
+        functions: BTreeMap::new(),
         function_entries: Vec::new(),
         total_functions: 0,
         entropy_compression_ratio: None,
@@ -314,7 +314,7 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     let mut top_entries = all_funcs.clone();
     top_entries.sort_by_key(|e| std::cmp::Reverse(e.complexity));
     top_entries.truncate(params.top_n_functions);
-    let top_funcs: HashMap<String, i64> = top_entries
+    let top_funcs: BTreeMap<String, i64> = top_entries
         .iter()
         .map(|e| (e.name.clone(), e.complexity))
         .collect();

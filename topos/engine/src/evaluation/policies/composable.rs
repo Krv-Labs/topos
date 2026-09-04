@@ -13,7 +13,7 @@
 //! - `fan_quality = 1 - min(fan / cap, 1.0)` — linear fall from `1.0` to
 //!   `0.0` at the cap.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use super::base::ScoredDecision;
 use super::calibration::COMPOSABLE;
@@ -52,7 +52,7 @@ pub fn score_coupling(
         return ScoredDecision {
             score: 1.0,
             achieved: true,
-            interpretation: HashMap::new(),
+            interpretation: BTreeMap::new(),
         };
     }
 
@@ -61,7 +61,7 @@ pub fn score_coupling(
         .map(|r| quality(r.spec.metric, r.value))
         .collect();
 
-    let mut interpretation: HashMap<String, String> = results
+    let mut interpretation: BTreeMap<String, String> = results
         .iter()
         .map(|r| (r.spec.metric.to_string(), r.interpretation()))
         .collect();
@@ -112,7 +112,7 @@ pub fn coupling_gate_input(
     fan_out: Option<f64>,
     abstractness: Option<f64>,
     coupling: Option<f64>,
-) -> HashMap<String, f64> {
+) -> BTreeMap<String, f64> {
     let has_coupling_signal = coupling.is_some_and(|c| c >= MIN_RESOLVABLE_COUPLING as f64);
     // `mdg.abstractness = 0.0` is both "genuinely concrete" and "nothing
     // abstract was detected", and for languages where Topos finds no abstract
@@ -124,7 +124,7 @@ pub fn coupling_gate_input(
     let has_abstractness_signal = abstractness.is_some_and(|a| a > 0.0);
     let use_distance = instability.is_some() && has_abstractness_signal && has_coupling_signal;
 
-    let mut metrics = HashMap::new();
+    let mut metrics = BTreeMap::new();
     if use_distance {
         let distance = (abstractness.unwrap() + instability.unwrap() - 1.0).abs();
         metrics.insert("mdg.main_sequence_distance".to_string(), distance);

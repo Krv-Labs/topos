@@ -1,79 +1,153 @@
 ---
-type: Integration Guide
+type: integration boundary guide
 title: Analysis integrations and distribution surfaces
-description: Documents Topos dependencies on GitNexus plus embedded Sighthound, MCP file-access containment, Docker, VS Code, package metadata, and runtime trust boundaries.
+description: Maps Topos analysis dependencies and its MCP, container, package, editor, skill, and agent-plugin delivery surfaces. Explains compatibility contracts and the filesystem and artifact trust boundaries that operators must preserve.
 resource: /Dockerfile
-tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, rust]
+tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution]
 openwiki:
   roles: [integration, operations, security]
   change_kinds: [gitnexus, mcp, packaging, filesystem]
   source_paths: [topos/engine/src/adapters/gitnexus.rs, topos/mcp/src/security.rs, Dockerfile, .mcp/server.json]
-  symbols: [ModuleDependencyGraph, resolve_within_root, resolve_existing_prefix]
+  symbols: [ModuleDependencyGraph, resolve_project_path, resolve_existing_prefix]
   test_paths: [topos/mcp/src/security.rs]
   invariants: [MCP paths must remain inside a configured canonical maximum boundary, and missing paths must not hide symlink-prefix escapes.]
   validation_commands: [cargo test -p topos-mcp]
+verified:
+  - by: openwiki/0.5.0
+    at: 2026-09-01T16:34:02.929Z
+sources:
+  - id: openwiki-source-4d1d392666be6dfdd7a91a2e
+    resource: repo://.github/workflows/release.yml
+  - id: openwiki-source-6b1d82c5b3e8f760360a25c5
+    resource: repo://.mcp/server.json
+  - id: openwiki-source-bb16d813f354a55340c5cd8c
+    resource: repo://agent-plugin/mcp.json
+  - id: openwiki-source-e0866f8e980ee35f2a46e9ec
+    resource: repo://agent-plugin/README.md
+  - id: openwiki-source-651d1fb6c9e49916a916ab51
+    resource: repo://Cargo.toml
+  - id: openwiki-source-bb1ebe868e35e9e500714501
+    resource: repo://Dockerfile
+  - id: openwiki-source-a08c3147da3563400d745390
+    resource: repo://extensions/vscode/package.json
+  - id: openwiki-source-1ff55ce1c8213af5491772db
+    resource: repo://extensions/vscode/src/extension.ts
+  - id: openwiki-source-22f23eea30b1216d0f33ee43
+    resource: repo://extensions/vscode/src/runtime.ts
+  - id: openwiki-source-05ccef8d4cf1698187f20464
+    resource: repo://pyproject.toml
+  - id: openwiki-source-cde23208842b0b3ea8e3c334
+    resource: repo://scripts/check_agent_plugin.py
+  - id: openwiki-source-9a974e970952438ad509f71c
+    resource: repo://scripts/check_versions.py
+  - id: openwiki-source-643b3a33030a101565ff273a
+    resource: repo://topos/engine/src/adapters/gitnexus.rs
+  - id: openwiki-source-0b48cb3666a38219ba6ca8c8
+    resource: repo://topos/engine/src/graphs/mdg/ladybug.rs
+  - id: openwiki-source-f63f3d3e2a3fdd7798d9a367
+    resource: repo://topos/engine/src/graphs/mdg/object.rs
+  - id: openwiki-source-96e811321a2876ec965585cd
+    resource: repo://topos/mcp/Cargo.toml
+  - id: openwiki-source-a61e967f6e50552f558cc216
+    resource: repo://topos/mcp/src/evaluation/freshness.rs
+  - id: openwiki-source-ca5302a9c887c6fd31583237
+    resource: repo://topos/mcp/src/evaluation/mod.rs
+  - id: openwiki-source-9bf1d8e64277056e6ccedf90
+    resource: repo://topos/mcp/src/main.rs
+  - id: openwiki-source-416dcb63c9e3e0c0c2cb0eed
+    resource: repo://topos/mcp/src/security.rs
+  - id: openwiki-source-3812b1def9fbad0607404761
+    resource: repo://topos/mcp/src/server.rs
+  - id: openwiki-source-78f534963f0f88e675012076
+    resource: repo://topos/mcp/src/sighthound.rs
+  - id: openwiki-source-a9e2b99472d2a9efbdb51629
+    resource: repo://topos/mcp/src/tools/depgraph.rs
+  - id: openwiki-source-8680de586193e5fad2de692f
+    resource: repo://topos/mcp/tests/lifecycle.rs
+generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
 ---
 
 # Analysis integrations and distribution surfaces
 
-Topos combines four structural pillars into one lattice verdict. GitNexus supplies the inter-module topology used by COMPOSABLE, while the Rust MCP package embeds Sighthound for supplementary SECURE finding handling. These integrations feed the [quality model](../domain/quality-model.md) through the [architecture pipeline](../architecture/overview.md). The CLI can register that MCP package in user agents through the separate [harness-registration workflow](../workflows/harness-registration.md).
+Topos is a Rust workspace whose CLI and MCP wire layer use `topos-engine` for analysis. Its distribution surfaces package the same local analyzer in different host contracts: an MCP Registry PyPI wheel, native release binaries, a Glama-oriented container, a VS Code extension, an Agent Plugins package, and a ClawHub skill. The related [architecture overview](../architecture/overview.md) explains the pipeline; the [agent and CLI workflow](../workflows/agent-and-cli.md) explains how an agent uses the resulting tools.
 
-## GitNexus for COMPOSABLE
+## GitNexus: optional COMPOSABLE topology
 
-GitNexus generates `.gitnexus/`, containing a LadybugDB-backed knowledge graph. `ModuleDependencyGraph` parses nodes and typed relationships such as `IMPORTS`, `CALLS`, and `INHERITS`, then derives coupling, instability, fan-in/out, and dependency-depth metrics.
+GitNexus is the only external executable required for the COMPOSABLE dependency-graph path. `topos depgraph generate` and MCP `topos_generate_depgraph` share the adapter and run `gitnexus analyze --skip-agents-md`; it writes `.gitnexus/`. The adapter recognizes GitNexus 1.5.0 as the minimum supported version and pins the tested installation command to `gitnexus@1.6.8`. A newer version is reported as untested rather than rejected, because its store format may drift.
 
-```bash
-npm install -g gitnexus@1.6.8
-topos depgraph generate
-# Underlying generation: gitnexus analyze --skip-agents-md
-```
+The engine consumes GitNexus output as an inter-module `ModuleDependencyGraph`, not as an AST replacement. It loads either legacy JSON or the LadybugDB `lbug` store, indexes typed nodes and relationships, and derives coupling, instability, call fan-in/out, and import dependency depth for COMPOSABLE. To count calls attached to symbols, it traverses `CONTAINS`, `DEFINES`, `HAS_METHOD`, and `HAS_PROPERTY` containment relationships rather than treating file nodes as the only call-edge endpoints.
 
-An explicit `--gitnexus-dir` or MCP `gitnexus_dir` identifies the store and makes the store’s parent the COMPOSABLE project root. Resolve the override once, including symlink-aware resolution of existing prefixes, before status, freshness, loading, or generation uses it. This prevents both indexing the wrong ancestor and double-appending a relative override after root derivation.
+GitNexus stores can be flat or branch-scoped. Store selection matches the current branch from `meta.json`; a detached/non-Git project may use the flat store. A successful generation writes a Topos-owned `.topos-fingerprint.json` beside the selected store, recording the source fingerprint and, when available, Git HEAD. Freshness prefers source-content hash, then HEAD, then generated-time/mtime checks, so a graph that no longer represents the working tree is regenerated before COMPOSABLE is trusted.
 
-Missing in-root stores can be generated. Missing GitNexus, generation failure, and unreadable stores leave SIMPLE, SECURE, and NAVIGABLE available but COMPOSABLE unmeasured. Outside-root, branch-mismatched, stale, invalid-path, or schema-mismatched stores are status conditions rather than crashes; a schema mismatch is not silently regenerated. The CLI/MCP flow and its freshness contract are described in [agent workflow guidance](../workflows/agent-and-cli.md#baseline-evaluation-and-composable).
+Evaluation normally tries to make COMPOSABLE available: missing, stale, branch-not-indexed, or load-error graph states cause one generation attempt unless `--no-composable` / `no_composable` is set. Missing GitNexus or a failed/timed-out generation produces a structured result and leaves the other pillars usable; the default subprocess ceiling is 300 seconds and `TOPOS_DEPGRAPH_TIMEOUT` can override it or disable it with a non-positive value. Schema mismatch and an outside-root override are terminal states because rerunning the same generation cannot safely fix them.
 
-## Embedded Sighthound for SECURE
+### Root and store invariant
 
-`topos-mcp` depends on a pinned Sighthound crate, so the server/container compile it into the Rust distribution rather than invoking a user-installed `sighthound` executable. Native CPG probes remain Topos’s local structural SECURE mechanism; Sighthound contributes supplementary finding handling. This integration is supplementary to the four-pillar lattice rather than a new generator. Changes to that boundary belong in `topos/mcp/src/{security,security_findings,sighthound}.rs` and CPG/SECURE tests together.
+For CLI evaluation, the default COMPOSABLE root is the current directory; for MCP file tools it climbs from the detected project to the nearest `.git`, stopping at the configured file boundary. An explicit `--gitnexus-dir` / `gitnexus_dir` is resolved once, including symlinks on an existing prefix; its parent becomes the analysis and freshness root. The resolved absolute override is then reused so a relative path is not appended twice. MCP rejects an override that resolves outside this root, while an in-root store that does not yet exist remains a valid first-run target.
 
-## MCP file-access boundary
+## Sighthound: embedded supplementary findings
 
-New MCP filesystem tools use `resolve_project_path` for each requested path. With `TOPOS_MCP_FILE_ROOT` set, it is a canonical maximum boundary; without it, the requested path must be absolute and its containing project is discovered by walking ancestors for `.git`, `pyproject.toml`, or `Cargo.toml`. The call fails closed when the path is unreadable, outside a configured boundary, or no project marker exists. This permits a user-level stdio server to work against the host-provided workspace instead of being pinned to its startup directory.
+`topos-mcp` compiles Sighthound into the server from a pinned Git revision; it does not discover or invoke a user-installed `sighthound` executable. For Python, JavaScript, TypeScript, and Go it executes Sighthound's embedded rules in-process with both explicit and taint passes, maps findings to Topos `SecurityFinding` values, and caps returned findings. Rust and C++ have no Sighthound rule pack and fall back to Topos's local CPG probes; `TOPOS_DISABLE_SIGHTHOUND=1` forces that fallback for every language.
 
-`resolve_within_root` calls `resolve_existing_prefix` before testing containment for operations that may address missing paths. It canonicalizes every existing path component, then applies a missing tail lexically only after no further symlink can exist. It must resume symlink resolution if `..` removes missing components. This prevents an absent requested leaf or an intermediate `..` from hiding an existing symlink that escapes the configured root.
+This is a detail and compatibility boundary, not a replacement SECURE scorer: SECURE remains CPG-native and the Sighthound-derived `security_findings` are advisory supplementary detail. Taint findings are classified from Sighthound tags (with legacy type fallback); their actionable callee and allowlist key preferentially use the sink operation, not the containing function. Thus an allowlist must match the actual sink to suppress such a finding.
+
+## MCP runtime and filesystem trust boundary
+
+`topos-mcp` with no arguments serves MCP on standard input/output until the client disconnects. The Rust server aggregates its tool routers and provides tools, resources, and a refactor prompt. It deliberately bounds supported protocol negotiation to `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`; both initialize-era sessions and the stateless `server/discover` path expose the same tool surface.
+
+Filesystem tools use `resolve_project_path`. The requested file or directory must already be readable because it is canonicalized. If `TOPOS_MCP_FILE_ROOT` is set, its readable canonical directory is a maximum boundary: both the resolved request and detected project must be beneath it. If it is unset, the request must be absolute and Topos walks ancestors of the resolved path for `.git`, `pyproject.toml`, or `Cargo.toml`. A failure to canonicalize, escape the boundary, or find a marker fails the tool request rather than silently using the server working directory.
 
 ```mermaid
 flowchart TD
-    Request["MCP filepath"] --> Join["Join with canonical file root"]
-    Join --> Prefix["Resolve existing prefix by component"]
-    Prefix --> Inside{"Resolved path is under root"}
-    Inside -->|yes| Accept["Allow file operation"]
-    Inside -->|no| Deny["Return access denied"]
+    Request["MCP requested path"] --> Boundary{"TOPOS_MCP_FILE_ROOT set"}
+    Boundary -->|yes| CanonRoot["Canonicalize configured root"]
+    CanonRoot --> CanonBoundPath["Canonicalize requested path"]
+    CanonBoundPath --> Inside{"Path under configured root"}
+    Inside -->|no| DenyBoundary["Reject request"]
+    Inside -->|yes| DetectBound["Walk ancestors for project marker"]
+    Boundary -->|no| Absolute{"Request is absolute"}
+    Absolute -->|no| DenyAbsolute["Reject request"]
+    Absolute -->|yes| CanonFreePath["Canonicalize requested path"]
+    CanonFreePath --> DetectFree["Walk ancestors for project marker"]
+    DetectBound --> ProjectBound{"Project remains under root"}
+    ProjectBound -->|yes| Allow["Use resolved path and project root"]
+    ProjectBound -->|no| DenyProject["Reject request"]
+    DetectFree --> ProjectFree{"Project marker found"}
+    ProjectFree -->|yes| Allow
+    ProjectFree -->|no| DenyProject
 ```
 
-The containment check resolves existing symlink prefixes before deciding whether a file operation is permitted.
+This is the `resolve_project_path` containment and project-discovery flow; canonicalization makes existing symlink escapes visible before Topos reads a requested file.
 
-When changing this code, cover ordinary relative paths, missing in-root leaves, direct symlink escapes, and symlink escapes involving a missing intermediate component plus `..`. Those regression tests live beside `resolve_path_within` in `topos/mcp/src/security.rs`; run `cargo test -p topos-mcp security` or the focused test filter. Do not weaken the check to lexical normalization.
+A separate internal resolver is used for paths that may not exist yet, principally a `gitnexus_dir` override. `resolve_existing_prefix` canonicalizes each existing component, applies only a genuinely missing tail lexically, and resumes symlink resolution when `..` removes that tail. `resolve_path_within` then tests the result against the canonical root. This prevents a missing leaf or `link/missing/..` from concealing an existing symlink escape. Do not replace this with lexical normalization.
 
-## MCP package and registry
+## Registry package and agent plugin
 
-`topos mcp` launches the in-process Rust server; the `topos-mcp` binary starts that same server directly for MCP clients. `.mcp/server.json` declares the canonical MCP Registry name `io.github.Krv-Labs/topos`, PyPI package (`topos-mcp`), version, and stdio transport. The public GitHub MCP Registry listing and VS Code’s `@mcp topos` discovery flow surface the server used by the [agent-facing MCP workflow](../workflows/agent-and-cli.md#mcp-agent-loop); ClawHub distributes a separate agent skill.
+`.mcp/server.json` is the MCP Registry manifest for `io.github.Krv-Labs/topos`, version `0.5.1`. It declares `topos-mcp` as a PyPI package using `uvx` and stdio transport. `pyproject.toml` defines that package as a Maturin `bin` wheel: installing it puts the compiled `topos-mcp` server on `PATH`, with no Python runtime dependency or Python import surface.
 
-For a PyPI registry package, omit both `registryBaseUrl` and a `--index-url` runtime argument. VS Code otherwise injects or duplicates the index option, and `uv` rejects duplicate values. `scripts/check_versions.py` enforces that invariant in addition to version parity.
+The registry manifest intentionally omits `registryBaseUrl` and `--index-url`: VS Code adds its own index option for PyPI packages and duplicate options make `uv` reject the invocation. `scripts/check_versions.py` makes the Cargo workspace version authoritative and checks it against the registry manifest, package entry, VS Code extension, and agent-plugin manifest; release CI also checks a release tag after normalizing its optional `v` prefix.
 
-## Container and editor surfaces
+The portable Agent Plugins 1.0 package has its own trust boundary. `plugin.json` supplies identity and metadata, while `mcp.json` asks a compatible client to launch the local `topos mcp` stdio command. The client, not Topos, owns plugin discovery, enablement, permissions, and process environment. The packaged skill is a regular copy of `skills/topos/SKILL.md`, not a symlink, and `scripts/check_agent_plugin.py` requires byte equality to the canonical skill and rejects escaping path forms in plugin commands and working directories.
 
-### Docker / Glama
+The skill itself is a local instruction surface that requires a `topos` binary and advertises macOS/Linux support; it contains CLI/MCP refactor guidance, not an authentication credential. CI validates the canonical skill's required metadata, sections, and version parity. ClawHub publishing is triggered by skill changes or version tags, uses a pinned external workflow, and passes only the named repository secret through the workflow interface.
 
-The Dockerfile builds a Maturin `bin` wheel for the compiled `topos-mcp` server, then installs it in a runtime image with Node.js, Git, and pinned GitNexus. It sets `TOPOS_MCP_FILE_ROOT=/workspace` and uses `topos-mcp` as its stdio entrypoint. Mount source below that trusted root or deliberately configure another root.
+## Docker / Glama surface
 
-### VS Code extension
+The Dockerfile is a two-stage Glama-oriented build. The builder compiles `topos-mcp` into a Maturin release `bin` wheel. The runtime image installs that wheel plus Git, Node.js 20, and `gitnexus@1.6.8`, then starts `topos-mcp` as its stdio entrypoint. Sighthound is already inside the Rust artifact, so the image does not add a Python runtime for it.
 
-`extensions/vscode/` contributes an MCP server provider plus project-evaluation and dependency-graph commands. It launches `topos mcp` with the workspace as `TOPOS_MCP_FILE_ROOT`, resolves an executable from configured/bundled/cached/PATH sources, and packages platform-specific VSIX artifacts in release CI. This editor-managed route is distinct from the CLI’s user-scope `topos install vscode` registration.
+The image sets `TOPOS_MCP_FILE_ROOT=/workspace` and uses `/workspace` as its working directory. This confines MCP filesystem access to a mounted repository below that directory unless the operator deliberately overrides the variable. Container mounting is therefore part of the trust configuration, not merely a convenience for locating source.
 
-## Change checklist
+## VS Code extension: host-mediated execution
 
-- GitNexus loader/root/metric changes: `topos/engine/src/{adapters/gitnexus.rs,graphs/mdg/}` and CLI/MCP evaluation callers; test available, missing, and rejected/stale state.
-- Security path changes: exercise native CPG behavior separately from Sighthound handling, and retain symlink-aware root containment regressions.
-- MCP/container/editor changes: verify trusted-root behavior, stdio entry points, metadata parity, and focused extension or wheel checks.
-- Do not expose credentials or document secret values; workflow secret identifiers are sufficient for operations.
+The `topos-vscode` extension is a workspace extension whose manifest declares VS Code `^1.105.0`, while activation feature-detects the MCP definition APIs and reports that an MCP-capable host needs VS Code 1.120 or compatible support. It registers an `McpStdioServerDefinitionProvider` named `topos-mcp`, invokes `topos mcp`, and passes the first workspace folder as `TOPOS_MCP_FILE_ROOT`. It also offers **Evaluate Project** and **Generate Dependency Graph** commands; GitNexus absence prompts non-blockingly so the other pillars stay available.
+
+Before starting either MCP or command-palette work, the extension resolves a runnable Topos executable in a fixed order: user `topos.executablePath`, bundled platform binary, verified cached binary, `PATH`, optional active Python environment, then optional manifest download. Cached and downloaded binaries are SHA-256 checked and must also pass `--version`; a failed check removes the cached artifact or abandons the candidate. The download client follows at most five redirects, requires HTTP 200, and has a 15-second request timeout. This protects artifact integrity but makes the GitHub-hosted release manifest a deliberate distribution trust boundary.
+
+Native Windows activation stops with guidance to use WSL or install the CLI separately. Release CI builds and smoke-tests Linux amd64/arm64 and macOS arm64 binaries, verifies unexpected dynamic linkage before publication, packages matching target-specific VSIX files, and publishes them with duplicate-safe VSCE handling.
+
+## Focused change checks
+
+- **GitNexus/MDG:** run `cargo test -p topos-engine gitnexus` and MDG tests; test compatible version classification, branch-store selection, fingerprint placement/freshness, and missing/timeout/failed subprocess results. The CI COMPOSABLE job analyzes a fixture with pinned GitNexus and asserts that a COMPOSABLE score is emitted.
+- **MCP containment and protocol:** run `cargo test -p topos-mcp security` and lifecycle tests. Preserve regression coverage for missing in-root paths and direct or `..`-mediated symlink escapes; exercise both MCP lifecycle eras when changing `rmcp` or version support.
+- **Sighthound:** test supported-language mapping, disable behavior, taint sink selection, and allowlist behavior alongside CPG SECURE tests.
+- **Metadata and delivery:** run `python3 scripts/check_versions.py`, `python3 scripts/check_skill.py`, and `python3 scripts/check_agent_plugin.py`; for the editor, run `pnpm run test` in `extensions/vscode`. Do not place credentials or token values in manifests, documentation, output, or tests.

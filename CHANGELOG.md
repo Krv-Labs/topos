@@ -9,6 +9,18 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- **`topos install pi`** ([#345](https://github.com/Krv-Labs/topos/issues/345)) — ninth supported harness, registering `mcpServers.topos` in `~/.pi/agent/mcp.json` and detected by `~/.pi`. pi has no MCP client of its own, so the entry is read by the [`pi-mcp-adapter`](https://github.com/nicobailon/pi-mcp-adapter) extension; install output and `topos status` both carry a note saying so, because a `✓` on an entry no client reads is a silent failure. See [`docs/decisions/cli-harness-install.md`](docs/decisions/cli-harness-install.md) § Harness matrix.
+
+### Fixed
+
+- **`topos evaluate --json` and every MCP structured payload are byte-deterministic** ([#332](https://github.com/Krv-Labs/topos/issues/332)) — map keys now come out in sorted order instead of `RandomState` order, so two runs over unchanged code produce identical bytes. The CLI builds `serde_json` with `preserve_order` and links the MCP crate, so every `HashMap` reaching the wire serialized in a different order on every process, defeating diffs and caches downstream. Every serialized map — `scores`, `dimensions`, `pillars`, `raw_metrics`, `interpretation`, `metric_locations`, `score_deltas`, `metric_deltas`, and the project rollups — is a `BTreeMap`. No shape change: JSON objects carry no ordering contract and the emitted JSON Schema is identical.
+
+### Changed
+
+- **Passing pillars with a near-zero score render `! WARN`, not `✓ PASS`** ([#350](https://github.com/Krv-Labs/topos/issues/350)) — `✓ PASS 0%` read as a contradiction. In the multi-file card the status keys off the weakest file, since that row prints both AVG and MIN and either one at near-zero next to a `✓` is the same contradiction. Policy is untouched: gates alone decide pass/fail, the threshold feeds no verdict or exit code, and `--json` is unchanged.
+
 ### Breaking
 
 - **Graphify integration removed** (~1,680 production lines). Every signal it provided was already available from the GitNexus/MDG graph Topos loads for COMPOSABLE, usually at better fidelity — full `startLine`/`endLine` spans instead of point anchors, a first-class `Community` node label with `MEMBER_OF` edges instead of a bare Louvain field, and a continuous `confidence: f64` + `reason` instead of a three-value enum. It had no production consumer, no CI coverage, and no agent-facing recommendation, and it wrapped a pre-1.0 external tool with a documented history of schema breaks. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) § Removed target and issue [#325](https://github.com/Krv-Labs/topos/issues/325).

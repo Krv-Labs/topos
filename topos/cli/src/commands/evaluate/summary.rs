@@ -760,6 +760,42 @@ mod tests {
         }
     }
 
+    /// Issue #332: `--json` must be byte-identical across runs. The CLI
+    /// builds `serde_json` with `preserve_order`, so these objects come out
+    /// in the source map's iteration order — sorted only while every map
+    /// behind them is a `BTreeMap`.
+    #[test]
+    fn json_output_emits_sorted_map_keys() {
+        let mut scored = result(true);
+        scored.scores = BTreeMap::from([
+            ("simple".to_string(), 0.5),
+            ("composable".to_string(), 0.4),
+            ("secure".to_string(), 0.9),
+            ("navigable".to_string(), 0.7),
+        ]);
+        scored.raw_metrics = BTreeMap::from([
+            ("mdg.fan_out".to_string(), 3.0),
+            ("ast.entropy".to_string(), 0.5),
+            ("cfg.cyclomatic".to_string(), 4.0),
+        ]);
+        let json = json_output(
+            &[PathBuf::from("a.rs")],
+            &[scored],
+            &["rust".to_string()],
+            &[],
+        );
+        for field in ["dimensions", "scores", "raw_metrics"] {
+            let keys: Vec<&String> = json["results"][0][field]
+                .as_object()
+                .unwrap_or_else(|| panic!("`{field}` must be an object"))
+                .keys()
+                .collect();
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(keys, sorted, "`{field}` keys are not in sorted order");
+        }
+    }
+
     #[test]
     fn score_rail_has_one_marker_and_no_blocks() {
         assert_eq!(score_rail(0.6, 10), "━━━━━◆────");

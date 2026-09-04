@@ -1000,6 +1000,52 @@ mod tests {
         assert!(wire.structured_content.is_some());
     }
 
+    /// Issue #332: a wire map declared as `HashMap` serializes in
+    /// `RandomState` order, so two runs of the same evaluation emit
+    /// different bytes and nothing downstream can diff or cache them. A
+    /// `BTreeMap` cannot.
+    ///
+    /// Only load-bearing while `serde_json/preserve_order` is on — which
+    /// it is for the shipped `topos` binary, because the CLI enables that
+    /// feature and links this crate (see `schemas.rs`). Structs are
+    /// exempt: serde emits their fields in declaration order by design.
+    #[test]
+    fn every_wire_map_serializes_in_sorted_key_order() {
+        let source =
+            "import os\n\n\ndef f(x):\n    if x:\n        return os.system(x)\n    return 1\n";
+        let result = classify_code_string(source, "python", Priority::Simple).unwrap();
+        let mut opts = EvalResultOptions::new();
+        opts.verbose = true;
+        opts.metric_locations =
+            crate::metric_locations::build_metric_locations(source, "python", &result);
+        let model = to_evaluation_result(&result, false, opts);
+        let json = serde_json::to_value(&model).expect("serialize");
+
+        let mut checked = 0;
+        for field in [
+            "dimensions",
+            "scores",
+            "pillars",
+            "raw_metrics",
+            "interpretation",
+            "metric_locations",
+        ] {
+            let keys: Vec<&String> = match json.get(field).and_then(|v| v.as_object()) {
+                Some(map) => map.keys().collect(),
+                // Omitted by `skip_serializing_if`; nothing to order.
+                None => continue,
+            };
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(keys, sorted, "`{field}` keys are not in sorted order");
+            checked += keys.len();
+        }
+        assert!(
+            checked > 1,
+            "fixture produced no multi-key wire map, so the test proves nothing"
+        );
+    }
+
     /// The default shape is the cheap one: a caller that never mentions
     /// `verbose` must not pay for the raw-metric floats.
     #[test]

@@ -4,7 +4,13 @@
 //! schemas); output models are the `structured_content` channel mirrored
 //! from `topos/mcp/schemas.py`.
 
-use std::collections::HashMap;
+// Every serialized map is a `BTreeMap`, not a `HashMap`: the CLI turns on
+// `serde_json/preserve_order` (see `topos/cli/Cargo.toml`) and the `topos`
+// binary links this crate, so feature unification makes `serde_json::Map` an
+// insertion-ordered `IndexMap` for the whole build. A `HashMap` field would
+// then serialize in `RandomState` order — a different byte sequence on every
+// process. Sorted keys keep MCP payloads diffable and cacheable (issue #332).
+use std::collections::BTreeMap;
 
 use rmcp::schemars::{self, JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -880,8 +886,8 @@ pub struct RefactorTarget {
     pub recommended_operations: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<String>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub evidence: HashMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub evidence: BTreeMap<String, Value>,
 }
 
 /// The one out-of-band metric currently costing a pillar its `achieved`.
@@ -919,14 +925,14 @@ pub struct EvaluationResult {
     pub lattice_element: LatticeElement,
     pub lattice_symbol: String,
     pub lattice_description: String,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub dimensions: HashMap<String, LatticeElement>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub dimensions: BTreeMap<String, LatticeElement>,
     /// Per-dimension normalized score in [0, 100].
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub scores: HashMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub scores: BTreeMap<String, f64>,
     /// Per-pillar breakdown (simple, composable, secure).
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub pillars: HashMap<String, PillarResult>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub pillars: BTreeMap<String, PillarResult>,
     pub priority: String,
     /// Whether priority was defaulted, inferred from preferences, or explicit.
     pub priority_source: PrioritySource,
@@ -936,13 +942,13 @@ pub struct EvaluationResult {
     /// verdict containing COMPOSABLE (including IDEAL) is unreachable.
     pub coupling_available: bool,
     /// Raw probe values; present only under `verbose`.
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub raw_metrics: HashMap<String, f64>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub interpretation: HashMap<String, String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub raw_metrics: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub interpretation: BTreeMap<String, String>,
     /// Source locations for failing complexity gates, keyed by metric.
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub metric_locations: HashMap<String, Vec<FunctionEntry>>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub metric_locations: BTreeMap<String, Vec<FunctionEntry>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1003,16 +1009,16 @@ impl EvaluationResult {
             lattice_element: LatticeElement::SLOP,
             lattice_symbol: "⊥".to_string(),
             lattice_description: description.to_string(),
-            dimensions: HashMap::new(),
-            scores: HashMap::new(),
-            pillars: HashMap::new(),
+            dimensions: BTreeMap::new(),
+            scores: BTreeMap::new(),
+            pillars: BTreeMap::new(),
             priority: priority_str(priority).to_string(),
             priority_source,
             guidance: String::new(),
             coupling_available: false,
-            raw_metrics: HashMap::new(),
-            interpretation: HashMap::new(),
-            metric_locations: HashMap::new(),
+            raw_metrics: BTreeMap::new(),
+            interpretation: BTreeMap::new(),
+            metric_locations: BTreeMap::new(),
             warnings: Vec::new(),
             agent_contract: None,
             security_findings: Vec::new(),
@@ -1037,13 +1043,13 @@ pub struct ProjectFileEntry {
     /// Detected language used to evaluate this file.
     pub language: String,
     pub lattice_element: LatticeElement,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub scores: HashMap<String, f64>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub pillars: HashMap<String, PillarResult>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub scores: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub pillars: BTreeMap<String, PillarResult>,
     /// Raw probe values; present only under `verbose`.
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub raw_metrics: HashMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub raw_metrics: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1079,8 +1085,8 @@ pub struct ProjectLanguageRollup {
     pub language: String,
     pub file_count: usize,
     pub parse_failures: usize,
-    pub rolled_up_dimensions: HashMap<String, LatticeElement>,
-    pub rolled_up_scores: HashMap<String, f64>,
+    pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,
+    pub rolled_up_scores: BTreeMap<String, f64>,
     pub aggregate_floor_verdict: LatticeElement,
     pub worst_file_path: Option<String>,
     pub worst_file_verdict: Option<LatticeElement>,
@@ -1092,8 +1098,8 @@ pub struct ProjectEvaluationResult {
     pub root: String,
     pub file_count: usize,
     pub parse_failures: usize,
-    pub rolled_up_dimensions: HashMap<String, LatticeElement>,
-    pub rolled_up_scores: HashMap<String, f64>,
+    pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,
+    pub rolled_up_scores: BTreeMap<String, f64>,
     pub aggregate_floor_verdict: LatticeElement,
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
@@ -1142,7 +1148,7 @@ pub struct ComparisonResult {
     pub raw_distance: f64,
     pub normalized_distance: f64,
     pub similarity: f64,
-    pub operations: HashMap<String, i64>,
+    pub operations: BTreeMap<String, i64>,
     pub source_valid: bool,
     pub target_valid: bool,
     pub warnings: Vec<String>,
@@ -1174,9 +1180,9 @@ pub struct AssessmentResult {
     pub current: EvaluationResult,
     pub proposed: EvaluationResult,
     /// Change in pillar scores (proposed - current).
-    pub score_deltas: HashMap<String, f64>,
+    pub score_deltas: BTreeMap<String, f64>,
     /// Change in raw metrics (proposed - current).
-    pub metric_deltas: HashMap<String, f64>,
+    pub metric_deltas: BTreeMap<String, f64>,
     pub structural_distance: Option<f64>,
     pub similarity: Option<f64>,
     pub coupling_available_for_proposed: bool,
@@ -1198,7 +1204,7 @@ pub struct AssessmentResult {
 pub struct InspectionResult {
     pub evaluation: EvaluationResult,
     /// Deprecated: function_name -> cyclomatic_complexity (top N only).
-    pub functions: HashMap<String, i64>,
+    pub functions: BTreeMap<String, i64>,
     /// Top-N functions with line numbers and cyclomatic complexity.
     pub function_entries: Vec<FunctionEntry>,
     pub total_functions: usize,
@@ -1284,8 +1290,8 @@ pub struct ChangesetFileEntry {
     pub is_new: bool,
     pub baseline_verdict: Option<LatticeElement>,
     pub current_verdict: Option<LatticeElement>,
-    pub score_deltas: HashMap<String, f64>,
-    pub metric_deltas: HashMap<String, f64>,
+    pub score_deltas: BTreeMap<String, f64>,
+    pub metric_deltas: BTreeMap<String, f64>,
     /// True when max function complexity improved but file cyclomatic
     /// complexity worsened — extraction stayed inside one module.
     pub complexity_relocated_within_file: bool,
@@ -1299,10 +1305,10 @@ pub struct ChangesetFileEntry {
 pub struct ChangesetResult {
     pub baseline_ref: String,
     pub files: Vec<ChangesetFileEntry>,
-    pub project_before: HashMap<String, LatticeElement>,
-    pub project_after: HashMap<String, LatticeElement>,
-    pub project_scores_before: HashMap<String, f64>,
-    pub project_scores_after: HashMap<String, f64>,
+    pub project_before: BTreeMap<String, LatticeElement>,
+    pub project_after: BTreeMap<String, LatticeElement>,
+    pub project_scores_before: BTreeMap<String, f64>,
+    pub project_scores_after: BTreeMap<String, f64>,
     pub aggregate_before: LatticeElement,
     pub aggregate_after: LatticeElement,
     pub project_regression: bool,
@@ -1441,7 +1447,7 @@ mod tests {
     }
 
     /// The empty-field policy, asserted as a property rather than per
-    /// field, so a newly added `Option`/`Vec`/`HashMap` cannot quietly
+    /// field, so a newly added `Option`/`Vec`/`BTreeMap` cannot quietly
     /// reintroduce a null on the error path (where nearly everything is
     /// empty by construction).
     #[test]

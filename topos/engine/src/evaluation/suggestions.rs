@@ -73,11 +73,7 @@ pub fn suggest_refactors(
     // with Φ_COMPOSABLE via `coupling_gate_input`), and the stable-leaf and
     // instability exemptions are threaded through rather than hard-coded.
     let instability = result.raw_metrics.get("mdg.instability").copied();
-    let mut gate_metrics: HashMap<String, f64> = result
-        .raw_metrics
-        .iter()
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
+    let mut gate_metrics = result.raw_metrics.clone();
     gate_metrics.remove("mdg.instability");
     gate_metrics.extend(coupling_gate_input(
         instability,

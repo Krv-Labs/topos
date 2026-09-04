@@ -239,7 +239,7 @@ fn weakest_dimension(result: &ClassificationResult) -> (&'static str, f64) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
 
     use topos_engine::core::omega::EvaluationValue;
 
@@ -272,7 +272,7 @@ mod tests {
             severity: "fix".to_string(),
             recommended_operations: vec!["extract_helper".to_string()],
             constraints: Vec::new(),
-            evidence: HashMap::new(),
+            evidence: BTreeMap::new(),
         };
         assert_eq!(location_text(&target), "f · lines 10-24");
     }
@@ -293,7 +293,7 @@ mod tests {
             severity: "fix".to_string(),
             recommended_operations: vec!["rebalance_dependencies".to_string()],
             constraints: vec!["preserve module API".to_string()],
-            evidence: HashMap::from([(
+            evidence: BTreeMap::from([(
                 "interpretation".to_string(),
                 serde_json::Value::String(
                     "instability (0.18) is too low (module is too stable)".to_string(),
@@ -346,7 +346,7 @@ mod tests {
                 severity: "fix".to_string(),
                 recommended_operations: vec!["extract_helper".to_string()],
                 constraints: vec!["preserve public behavior across every caller".to_string()],
-                evidence: HashMap::new(),
+                evidence: BTreeMap::new(),
             }],
             suggestions: Vec::new(),
         };

@@ -4,7 +4,7 @@
 //! guardrail: if scores moved meaningfully while AST edit distance is near
 //! zero, status becomes `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -70,7 +70,7 @@ fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<
 fn is_suspicious(
     status: AssessmentStatus,
     distance: Option<f64>,
-    score_deltas: &HashMap<String, f64>,
+    score_deltas: &BTreeMap<String, f64>,
 ) -> bool {
     let Some(distance) = distance else {
         return false;
@@ -92,7 +92,7 @@ fn is_suspicious(
 fn determine_lattice_status(
     cur_summary: EvaluationValue,
     prop_summary: EvaluationValue,
-    score_deltas: &HashMap<String, f64>,
+    score_deltas: &BTreeMap<String, f64>,
 ) -> AssessmentStatus {
     let lattice = Omega::default();
     if cur_summary == prop_summary {
@@ -118,7 +118,7 @@ fn determine_lattice_status(
 fn determine_assessment_status(
     current_res: &ClassificationResult,
     proposed_res: &ClassificationResult,
-    score_deltas: &HashMap<String, f64>,
+    score_deltas: &BTreeMap<String, f64>,
     distance: Option<f64>,
 ) -> (AssessmentStatus, Option<String>) {
     let mut status =
@@ -142,7 +142,7 @@ fn calculate_deltas(
     proposed_eval: &EvaluationResult,
     current_res: &ClassificationResult,
     proposed_res: &ClassificationResult,
-) -> (HashMap<String, f64>, HashMap<String, f64>) {
+) -> (BTreeMap<String, f64>, BTreeMap<String, f64>) {
     let mut all_dims: Vec<&String> = current_eval.scores.keys().collect();
     for dim in proposed_eval.scores.keys() {
         if !all_dims.contains(&dim) {
@@ -440,8 +440,8 @@ fn err_assessment(
         priority_source,
         current: empty_no_err.clone(),
         proposed: empty_no_err,
-        score_deltas: HashMap::new(),
-        metric_deltas: HashMap::new(),
+        score_deltas: BTreeMap::new(),
+        metric_deltas: BTreeMap::new(),
         structural_distance: None,
         similarity: None,
         coupling_available_for_proposed: false,
@@ -826,7 +826,7 @@ fn priority_from_meta(
     }
 }
 
-fn is_complexity_relocated(metric_deltas: &HashMap<String, f64>) -> bool {
+fn is_complexity_relocated(metric_deltas: &BTreeMap<String, f64>) -> bool {
     let func_delta = metric_deltas
         .get("ast.max_function_complexity")
         .copied()
@@ -836,8 +836,8 @@ fn is_complexity_relocated(metric_deltas: &HashMap<String, f64>) -> bool {
 }
 
 struct RollupOut {
-    dims: HashMap<String, LatticeElement>,
-    scores: HashMap<String, f64>,
+    dims: BTreeMap<String, LatticeElement>,
+    scores: BTreeMap<String, f64>,
     achieved: HashMap<String, bool>,
 }
 
@@ -871,7 +871,7 @@ fn rollup(evals: &[EvaluationResult]) -> RollupOut {
         }
     }
 
-    let mut dims = HashMap::new();
+    let mut dims = BTreeMap::new();
     let mut achieved = HashMap::new();
     for (dim, &present) in &present_count {
         let ok = present == n && ok_count.get(dim).copied().unwrap_or(0) == n;
@@ -1492,8 +1492,8 @@ fn file_error(filepath: &str, message: String, code: &str) -> ChangesetFileOutco
             is_new: false,
             baseline_verdict: None,
             current_verdict: None,
-            score_deltas: HashMap::new(),
-            metric_deltas: HashMap::new(),
+            score_deltas: BTreeMap::new(),
+            metric_deltas: BTreeMap::new(),
             complexity_relocated_within_file: false,
             warnings: Vec::new(),
             blocked_by: Some(code.to_string()),
@@ -1696,10 +1696,10 @@ fn changeset_error(
     ChangesetResult {
         baseline_ref: baseline_ref.to_string(),
         files: Vec::new(),
-        project_before: HashMap::new(),
-        project_after: HashMap::new(),
-        project_scores_before: HashMap::new(),
-        project_scores_after: HashMap::new(),
+        project_before: BTreeMap::new(),
+        project_after: BTreeMap::new(),
+        project_scores_before: BTreeMap::new(),
+        project_scores_after: BTreeMap::new(),
         aggregate_before: LatticeElement::SLOP,
         aggregate_after: LatticeElement::SLOP,
         project_regression: false,

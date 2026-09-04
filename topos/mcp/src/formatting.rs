@@ -454,8 +454,8 @@ fn generator_for_dim(dim: &str) -> EvaluationValue {
 pub fn build_pillars(
     result: &ClassificationResult,
     coupling_available: bool,
-) -> HashMap<String, PillarResult> {
-    let mut pillars = HashMap::new();
+) -> BTreeMap<String, PillarResult> {
+    let mut pillars = BTreeMap::new();
     for (dim, prefixes) in PILLAR_METRIC_PREFIXES {
         let has_metrics = result
             .raw_metrics
@@ -490,7 +490,7 @@ fn dim_for_metric_key(key: &str) -> Option<&'static str> {
 fn failing_interpretation(
     result: &ClassificationResult,
     interpretation: &BTreeMap<String, String>,
-) -> HashMap<String, String> {
+) -> BTreeMap<String, String> {
     let mut achieved: HashMap<&str, bool> = HashMap::new();
     for (dim, _) in PILLAR_METRIC_PREFIXES {
         achieved.insert(
@@ -524,7 +524,7 @@ pub struct EvalResultOptions<'a> {
     /// metrics are the single largest block in the structured channel and
     /// every caller that wants them has a `verbose` parameter to forward.
     pub verbose: bool,
-    pub metric_locations: HashMap<String, Vec<FunctionEntry>>,
+    pub metric_locations: BTreeMap<String, Vec<FunctionEntry>>,
     pub refactor_targets: Option<Vec<RefactorTarget>>,
     pub offer_refactor_targets: bool,
     pub include_security_findings: bool,
@@ -573,18 +573,12 @@ pub fn to_evaluation_result(
             .or_insert_with(|| mdg_unavailable_message(&opts.warnings));
     }
 
-    let raw_metrics: HashMap<String, f64>;
-    let interpretation_out: HashMap<String, String>;
+    let raw_metrics;
     if opts.verbose {
-        raw_metrics = result
-            .raw_metrics
-            .iter()
-            .map(|(k, v)| (k.clone(), *v))
-            .collect();
-        interpretation_out = interpretation.into_iter().collect();
+        raw_metrics = result.raw_metrics.clone();
     } else {
-        interpretation_out = failing_interpretation(result, &interpretation);
-        raw_metrics = HashMap::new();
+        interpretation = failing_interpretation(result, &interpretation);
+        raw_metrics = BTreeMap::new();
     }
 
     let mut dimensions = result.dimensions.clone();
@@ -677,7 +671,7 @@ pub fn to_evaluation_result(
         guidance: build_guidance(&display_result),
         coupling_available,
         raw_metrics,
-        interpretation: interpretation_out,
+        interpretation,
         metric_locations: opts.metric_locations,
         warnings: opts.warnings.clone(),
         agent_contract,
@@ -728,12 +722,6 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
 // ---------------------------------------------------------------------------
 // Markdown renderers
 // ---------------------------------------------------------------------------
-
-fn sorted_pairs<V>(map: &HashMap<String, V>) -> Vec<(&String, &V)> {
-    let mut pairs: Vec<_> = map.iter().collect();
-    pairs.sort_by(|a, b| a.0.cmp(b.0));
-    pairs
-}
 
 /// Compact markdown for an error/early-return EvaluationResult.
 pub fn error_md(model: &EvaluationResult) -> String {
@@ -796,7 +784,7 @@ pub fn render_evaluation_md(e: &EvaluationResult, title: Option<&str>, verbose: 
 fn push_generators_section(lines: &mut Vec<String>, e: &EvaluationResult) {
     lines.push(String::new());
     lines.push("## Generators".into());
-    for (dim, val) in sorted_pairs(&e.dimensions) {
+    for (dim, val) in e.dimensions.iter() {
         let score = e.scores.get(dim).copied().unwrap_or(0.0);
         lines.push(format!("- **{dim}**: {} ({score:.1}%)", val.as_str()));
     }
@@ -907,7 +895,7 @@ fn push_metric_locations_section(lines: &mut Vec<String>, e: &EvaluationResult) 
     }
     lines.push(String::new());
     lines.push("## Metric Locations".into());
-    for (metric, entries) in sorted_pairs(&e.metric_locations) {
+    for (metric, entries) in e.metric_locations.iter() {
         lines.push(format!("- `{metric}`:"));
         for func in entries.iter() {
             let where_str = if func.kind.as_deref() == Some("module") {
@@ -981,7 +969,7 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
     }
     lines.push(String::new());
     lines.push("## Raw Metrics".into());
-    for (k, v) in sorted_pairs(&e.raw_metrics) {
+    for (k, v) in e.raw_metrics.iter() {
         lines.push(format!("- `{k}`: {v:.3}"));
     }
 }
@@ -1067,7 +1055,7 @@ mod tests {
             severity: severity.to_string(),
             recommended_operations: vec!["extract_helper".to_string()],
             constraints: Vec::new(),
-            evidence: HashMap::new(),
+            evidence: BTreeMap::new(),
         }
     }
 

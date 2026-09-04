@@ -261,7 +261,7 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
     let locations = match read_resolved_utf8(&resolved) {
         Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
-        Err(_) => HashMap::new(),
+        Err(_) => BTreeMap::new(),
     };
 
     // Targets are computed before the result model so the agent contract
@@ -495,13 +495,9 @@ fn evaluate_single_file(
             .collect(),
         pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
         raw_metrics: if verbose {
-            result
-                .raw_metrics
-                .iter()
-                .map(|(k, v)| (k.clone(), *v))
-                .collect()
+            result.raw_metrics.clone()
         } else {
-            HashMap::new()
+            BTreeMap::new()
         },
         warnings: Vec::new(),
         security_findings: if include_security_findings {
@@ -548,8 +544,8 @@ fn validate_and_collect_project(
     Ok((resolved_root, source_files))
 }
 
-fn min_scores_by_dim(results: &[ClassificationResult]) -> HashMap<String, f64> {
-    let mut min_scores: HashMap<String, f64> = HashMap::new();
+fn min_scores_by_dim(results: &[ClassificationResult]) -> BTreeMap<String, f64> {
+    let mut min_scores: BTreeMap<String, f64> = BTreeMap::new();
     for r in results {
         for (dim, &s) in &r.scores {
             let entry = min_scores.entry(dim.clone()).or_insert(f64::INFINITY);
@@ -585,17 +581,13 @@ thread_local! {
 }
 
 /// Gate-input map for a file — mirrors the scorers and suggestion engine.
-fn gate_metrics_for(result: &ClassificationResult) -> HashMap<String, f64> {
+fn gate_metrics_for(result: &ClassificationResult) -> BTreeMap<String, f64> {
     #[cfg(test)]
     GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
     let instability = result.raw_metrics.get("mdg.instability").copied();
     let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
     let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
-    let mut gate_metrics: HashMap<String, f64> = result
-        .raw_metrics
-        .iter()
-        .map(|(k, v)| (k.clone(), *v))
-        .collect();
+    let mut gate_metrics = result.raw_metrics.clone();
     gate_metrics.remove("mdg.instability");
     gate_metrics.extend(coupling_gate_input(
         instability,
@@ -684,7 +676,7 @@ fn sort_keyed(keyed: &mut [KeyedRow<'_>]) {
 }
 
 fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
-    let scores_pct: HashMap<String, f64> = result
+    let scores_pct: BTreeMap<String, f64> = result
         .scores
         .iter()
         .map(|(dim, s)| (dim.clone(), s * 100.0))
@@ -1019,8 +1011,8 @@ fn empty_project_result(
         root: params.path.clone(),
         file_count: 0,
         parse_failures: 0,
-        rolled_up_dimensions: HashMap::new(),
-        rolled_up_scores: HashMap::new(),
+        rolled_up_dimensions: BTreeMap::new(),
+        rolled_up_scores: BTreeMap::new(),
         aggregate_floor_verdict: LatticeElement::SLOP,
         language_rollups: Vec::new(),
         aggregate_explanation: "No files were evaluated, so the aggregate floor is SLOP."
@@ -1065,7 +1057,7 @@ fn empty_project_result(
 
 fn aggregate_explanation(
     rolled: &BTreeMap<String, EvaluationValue>,
-    rolled_scores: &HashMap<String, f64>,
+    rolled_scores: &BTreeMap<String, f64>,
     hard_fail_head: Option<&ProjectFileEntry>,
     entries: &[ProjectFileEntry],
 ) -> String {
@@ -1343,15 +1335,15 @@ mod tests {
             filepath: filepath.to_string(),
             language: "python".to_string(),
             lattice_element: LatticeElement::SIMPLE,
-            scores: HashMap::from([("simple".to_string(), simple_score)]),
-            pillars: HashMap::from([(
+            scores: BTreeMap::from([("simple".to_string(), simple_score)]),
+            pillars: BTreeMap::from([(
                 "simple".to_string(),
                 PillarResult {
                     achieved: true,
                     score: simple_score,
                 },
             )]),
-            raw_metrics: HashMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
+            raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
             warnings: Vec::new(),
             security_findings: Vec::new(),
             acknowledged_risks: Vec::new(),

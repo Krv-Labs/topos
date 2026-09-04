@@ -16,7 +16,7 @@
 //!
 //! Issue #144 (`topos/evaluation`) is now fully landed.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub mod file_roles;
 pub mod policies;
@@ -26,7 +26,7 @@ pub mod suggestions;
 pub mod suppression;
 
 /// Rank a file by its weakest measured pillar. Missing measurements sort first.
-pub fn weakest_score(scores: &HashMap<String, f64>) -> f64 {
+pub fn weakest_score(scores: &BTreeMap<String, f64>) -> f64 {
     scores.values().copied().reduce(f64::min).unwrap_or(0.0)
 }
 
@@ -36,12 +36,12 @@ mod ranking_tests {
 
     #[test]
     fn weakest_dimension_controls_rank() {
-        let scores = HashMap::from([
+        let scores = BTreeMap::from([
             ("simple".to_string(), 0.8),
             ("composable".to_string(), 0.2),
             ("secure".to_string(), 1.0),
         ]);
         assert_eq!(weakest_score(&scores), 0.2);
-        assert_eq!(weakest_score(&HashMap::new()), 0.0);
+        assert_eq!(weakest_score(&BTreeMap::new()), 0.0);
     }
 }

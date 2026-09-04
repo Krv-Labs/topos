@@ -124,14 +124,6 @@ pass the matching --language or omit --language to evaluate all supported langua
     }
 
     let files = collect_source_files(paths, &suffixes, recursive);
-    if files.is_empty() {
-        return Err(empty_discovery_message(
-            language_filter,
-            &suffixes,
-            paths,
-            recursive,
-        ));
-    }
 
     Ok(files
         .into_iter()
@@ -145,7 +137,7 @@ pass the matching --language or omit --language to evaluate all supported langua
         .collect())
 }
 
-fn empty_discovery_message(
+pub(crate) fn empty_discovery_message(
     language_filter: Option<&str>,
     suffixes: &[&str],
     paths: &[PathBuf],
@@ -319,5 +311,17 @@ mod tests {
     fn discovery_suffixes_rejects_unknown_language() {
         let err = discovery_suffixes(Some("cobol")).unwrap_err();
         assert!(err.contains("unsupported language"), "{err}");
+    }
+
+    #[test]
+    fn empty_directory_returns_empty_inputs_without_error() {
+        let dir = tmp_dir("empty_dir");
+        fs::write(dir.join("config.json"), "{}").unwrap();
+        fs::write(dir.join("README.md"), "# docs").unwrap();
+
+        let inputs = resolve_evaluate_inputs(std::slice::from_ref(&dir), None, false).unwrap();
+        assert!(inputs.is_empty());
+
+        fs::remove_dir_all(&dir).ok();
     }
 }

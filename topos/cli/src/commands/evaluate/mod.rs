@@ -97,6 +97,9 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
     if inputs.is_empty() {
+        if let Some(pillar) = failure_pillar {
+            ensure_pillar_measured(&[], pillar)?;
+        }
         if args.json {
             println!(
                 "{}",
@@ -506,6 +509,40 @@ mod tests {
             priority: None,
         };
         assert!(run(json_args).is_ok());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn evaluate_empty_directory_with_failures_errors() {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_eval_empty_failures_test_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("tsconfig.json"), "{}").unwrap();
+
+        let args = EvaluateArgs {
+            paths: vec![dir.clone()],
+            recursive: false,
+            language: None,
+            no_composable: true,
+            gitnexus_dir: None,
+            verbose: false,
+            json: false,
+            info: false,
+            failures: Some("simple".to_string()),
+            priority: None,
+        };
+        let err = run(args).unwrap_err();
+        assert!(
+            err.contains("SIMPLE was not measured"),
+            "unexpected error: {err}"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }

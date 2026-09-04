@@ -86,6 +86,8 @@ Or install with Homebrew:
 brew install krv-labs/tap/topos
 ```
 
+On Homebrew 6+, that fully qualified one-liner auto-taps and trusts only this formula. If you `brew tap krv-labs/tap` first, run `brew trust --formula krv-labs/tap/topos` before `brew install topos`.
+
 > [!TIP]
 > **Prefer an editor-managed install?** In VS Code or Cursor, search `@mcp topos` in the Extensions view or choose [Install MCP server](https://github.com/mcp/Krv-Labs/topos). This is an alternative to `topos install`: your editor installs and manages the Topos MCP server for you.
 
@@ -200,6 +202,7 @@ The result is one agent-facing contract over several structural lenses: one scor
 
 - **OpenClaw / ClawHub:** [`openclaw skills install @Krv-Labs/topos`](https://clawhub.ai/krv-labs/skills/topos)
 - **Hermes:** `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos`
+- **Agent Plugins:** point a [compatible client](https://agent-plugins.org/compatible-clients) at [`agent-plugin/`](agent-plugin/) ([spec](https://agent-plugins.org/))
 - **MCP Registry name:** `io.github.Krv-Labs/topos`
 - **CLI reference:** [docs.krv.ai/topos/cli](https://docs.krv.ai/topos/cli.html)
 

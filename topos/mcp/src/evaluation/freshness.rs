@@ -77,11 +77,14 @@ fn newer_source_file(
             }
         }
     }
+    // Same evaluation set as `topos evaluate`: ignored files (fixtures,
+    // `*.min.*`, topos/git-ignored) must not mark COMPOSABLE stale.
+    let checker = topos_engine::adapters::discovery::build_path_skip_checker(project_root);
     let paths = topos_engine::adapters::discovery::iter_source_files(
         project_root,
         &suffixes,
         true,
-        None,
+        Some(&checker),
         true, // include_dirs: deletions bump the parent dir's mtime
     );
     let mut seen = 0usize;

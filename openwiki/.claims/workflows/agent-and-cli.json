@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:731f587c5318ff5d359c1a82d6c7e24bc2ae6a62e201dd834df7620c8fcd411c",
+  "pageVersion": "sha256:8839e0a86ab003077034753a33b20149c7f588e7376a872793e82e0289143f60",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -165,12 +165,8 @@
       "statement": "Assessments compare lattice status and score deltas and compute normalized AST distance when both sources parse; an otherwise improving result becomes `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when distance is below 0.02 and a score delta has magnitude at least 3.0.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/tools/assess.rs#L285-L370",
-          "version": "repo-lines-v1:sha256:3249702956f3d1626a3ad2444359a70daf618f5ded778050904aa95fdfed810e:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0OWIwOTQwYjFhZjFhMjIxMmMzYmJjNDlhNmU5OTIyZjNhY2FlZmQ4MWJlNWU2MzhlOWU0YTRhNmJkZTQyZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY0MDU5YTM1YTVjY2E4NmZlMzc3YzFiMTMxMTg1M2I5ZDgyMzFiNDQ4NjM0ODBkMmVkZTQ3ZjUzY2EzNTllOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhNTczMDk0OTZlY2E0OTBjNzRlNjQ3NWEwMjg2NzRkN2FhOTE3ODIwMjIwODU5YzZjZTU1ODcwYjg2MjE3ZTcifQ"
-        },
-        {
-          "resource": "repo://topos/mcp/src/tools/assess.rs#L43-L137",
-          "version": "repo-lines-v1:sha256:45e62a459422b8dfb6111249573f0133ffbbb80bc9c2f5c61ab3e4437442c4d4:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NWE1MjNiOTAzMjQ5ZDViOTcyMTcxZGQwYmU2ODI1YTM5MDVkZDc3MDUxNmJhMzdkNDQ4MzE2ZGI3NWI5OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExOWRhMGVlMGM0YTU2ZDE5N2Q3OGM1NTUxNGFmMjRiZmJhYTBjODkwYTYzZjY4ZTU0YjM4OGM1MThkNDdkYjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhY2Y4OGJiMmMwOGE5MzQ4ZDVkMTBmNTAwMjE0NzhiYThlMjBjMDZkMTE1OTJjOTAzMzEzYzM4YTQxN2E3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyMWJkN2UzN2FjMzU0MGQzNzZmMDc0ZDJhZDZjNGJjYzlkYTJkOGZmYTk4N2M3MGY0NWY0ODU0MGNiOWI2MjgifQ"
+          "resource": "repo://topos/mcp/src/tools/assess.rs",
+          "version": "repo-file-v1:sha256:d45622f186350a9a3ad07ac22568e5c1a4b5de74f57859ded68461b641c4c72e"
         }
       ]
     },
@@ -273,16 +269,8 @@
       "statement": "MCP evaluation tool annotations distinguish pure snippet evaluation from file/project evaluation that may prepare `.gitnexus`: `topos_evaluate_code` is read-only, while `topos_evaluate_file` and `topos_evaluate_project` are non-read-only and may generate or refresh COMPOSABLE state without editing source.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L148-L193",
-          "version": "repo-lines-v1:sha256:5ad791e17360340eee8282aae24f75ba5e7a3cc80b39b25874c0f55ca9906cbb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5YjJhYmMxY2Q5MzliMmUyMzU2YjFlOTg0ZTkzNzE2MTk5YWY3YzdkYTRhZjZmMmEzMTJjMmVmNGY2ZDI5OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzMmU0OGMzN2E1YjFhZWYyN2FjN2JmN2E5ZDM3NGY2ZjFmN2E2ZDNlZDM0MTg5YmE4ZWI5NGUyNTBiMGYxYzgifQ"
-        },
-        {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L196-L304",
-          "version": "repo-lines-v1:sha256:44dcce51274d7642ff95168413ab9595efd6bc15cadb7042cd71818134151d91:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZWVhMDFjOTI4NzAxYmM2MzM1YTViMzY3YmRiMTQ1MjliZTVhNDU1NTZkOGNjZTI4ZjdlMTlmOGNjMTMzNzllIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwNzg4YjA0MjEwZDE0YjZhYjlmYWNlYWY5MDdmOGNmMDhhZWI4Yzk1ZTAzY2VkNGE0ZTg5ZTljYjk2MzIzOTg0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxOWU3NjM1NWNmMTE5OTQ4MGMzZjk5ODM2YjE0ODZjODQxZDg5MWZhYWQ5MDRjNjA4ZTA5MzAyMmQzNzU3YWVlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0OGFkNmFmZGU4Y2I5YmE4NTk2MmZlNjY2ZjRhNWVkMDUxMTUxNDIxYWU2NzVjMTg0MjQxYTJjYTZiMTdjMzJlIn0"
-        },
-        {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L55-L145",
-          "version": "repo-lines-v1:sha256:ca9c127c9dc13f893ffc56231fd0c3f4430345eb003213aac8572853881aa434:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlY2VkMGUzODlkNTQxOTZkNTRhYzRmMDFiZjI4MDRmY2Y5MjQ2YjBlY2FlYzc3YjJiODJlMjliMDk2MGZlYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MTY5ZDM4MWRlMTA4ZmRjNDQxNDhmMzI5NzFhOTAxZTUyMWFkMjJiNmFjZTViMWJkZTAyZjRkMjQzYzczNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkOTIwMjJhOTdjNjFmNjY0NWMyOGIyNWIzNzkwNTU1NWMwZmE1NjNhMTNmOGU1MjgzMDlmMjNlYjBjY2UyYWQifQ"
+          "resource": "repo://topos/mcp/src/tools/evaluate.rs",
+          "version": "repo-file-v1:sha256:f8851625dced43830a3e547a254dcb06ecb1382e980cc7b32f9daa83be36e50d"
         }
       ]
     },
@@ -347,10 +335,30 @@
           "version": "repo-lines-v1:sha256:cd9fd8820be5d0502554bda49861194f4f9e054e267080597dfe8a01d39936b0:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMzAzOTE3ODRhY2FjMGZmNGRjOTIzMjZhN2FkMWU2MTRlNDY2NDYxNjM2ZGM3MzkzNDIxNWQzOTQ0ZjQ5ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZDA5NjA2M2I5ZjI3MWM2MDNjMDFjY2RiOGU4ZWJkMjcxNzcyNDE0ODc4ZDZkNjdmNzM0MDIyNDEzNGJiYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwMmIxNzljZTU1MjZhMmFjMzhkZDhkOTRkNDlhOTlkMWZlYTA3M2RmMGRmMGE0NzEyOTJmNDE2YmQ0NjkxNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhYTNjNWRiMDFhNmUyMzc3YmE3ZTFkMDBkZjMwODIxNGUyNjc5MTc1OGNkMTc4YThlZDY3NjE3NTI2ZDVlZDgifQ"
         }
       ]
+    },
+    {
+      "id": "claim_7d7752f52211458bb2bffe72aff0988c",
+      "statement": "Baseline snapshots are persisted outside the working tree in a per-project temporary-store namespace by default (overridable with `TOPOS_SNAPSHOT_DIR`), use a content-addressed ID derived from filepath and source hash, survive MCP server restarts, and expire after 24 hours.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/snapshots.rs",
+          "version": "repo-file-v1:sha256:213f589b0537516f7039c75c677ec74414ef8b5a7845aefba50815011207e592"
+        }
+      ]
+    },
+    {
+      "id": "claim_1948b993b4d84dfabb6cc97a5288ac2d",
+      "statement": "`topos inspect` applies the same optional GitNexus preparation policy as CLI evaluation; in text mode an unparseable input prints a parse-failure summary and exits nonzero, while JSON mode emits the inspection payload.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/inspect/mod.rs",
+          "version": "repo-file-v1:sha256:19812c417e5561a8f7309bf8cbedda14f716339d61335cc9af63c527b05ebd99"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-16T11:18:01.300Z"
+    "at": "2026-09-16T12:21:33.983Z"
   }
 }

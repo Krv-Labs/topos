@@ -14,7 +14,7 @@ openwiki:
   validation_commands: [cargo test -p topos-engine]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-16T11:18:01.300Z
+    at: 2026-09-16T12:21:33.983Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -54,13 +54,17 @@ sources:
     resource: repo://topos/engine/src/graphs/uast/models.rs
   - id: openwiki-source-a82b053b744f5ffc408af82c
     resource: repo://topos/engine/src/lib.rs
+  - id: openwiki-source-d2e755265f68157a7939a2d3
+    resource: repo://topos/mcp/src/diagnostics.rs
   - id: openwiki-source-54edb19a32653077b555aaa8
     resource: repo://topos/mcp/src/evaluation/classify.rs
   - id: openwiki-source-8251f5ae729f7b4335ab0f61
     resource: repo://topos/mcp/src/evaluation/depgraph.rs
+  - id: openwiki-source-8fbbb75a275b68f395ee82f0
+    resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T11:18:01.300Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
 ---
 
 # Rust analysis and evaluation architecture
@@ -101,10 +105,12 @@ flowchart TD
         Classifier --> Result["ClassificationResult and Ω verdict"]
     end
     Result --> CLI["CLI rendering and JSON"]
-    Result --> MCP["MCP result model and guidance"]
+    Result --> MCP["MCP raw result plus optional SECURE overlay"]
 ```
 
-The flow shows the one parsing route and representation ownership: TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
+*Caption: the shared engine turns source and available representations into a raw classification; CLI renders it, while MCP may add a disclosed SECURE overlay.*
+
+TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
 
 ### Representation assembly
 
@@ -125,7 +131,7 @@ For valid input, the classifier always creates `AstRepresentation` and `Navigabl
 
 Metrics are grouped by their declared dimension and sent to the corresponding policy translator: `score_simple`, `score_coupling`, `score_secure`, and `score_navigable`. Each produces a normalized `[0, 1]` score, per-metric interpretation, and an `achieved` Boolean. The decisive Boolean is an AND of applicable raw-metric gates evaluated through `evaluate_gates`; the normalized score is reporting information, not the live classifier's threshold. `Priority` is retained as result metadata and guides consumers, but does not relax individual policy thresholds.
 
-The classifier records each achieved pillar as its singleton `EvaluationValue`, otherwise `SLOP`, then joins the satisfied generators into the final `EvaluationValue`. The resulting `Ω` contains all 16 subsets of SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE; `IDEAL` means all four were satisfied and `SLOP` means none. For a multi-file result, `combine_dimensions` uses a per-pillar meet: each measured pillar holds only if every parseable file that measured it achieved that pillar. A missing dimension on a file does not itself make that pillar fail.
+The classifier records each achieved pillar as its singleton `EvaluationValue`, otherwise `SLOP`, then joins the satisfied generators into the final `EvaluationValue`. The resulting `Ω` contains all 16 subsets of SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE; `IDEAL` means all four were satisfied and `SLOP` means none. For a multi-file result, `combine_dimensions` reports only a pillar measured by at least one file, requires every result to be parseable, and requires every file that measured that pillar to achieve it. Thus absent optional evidence does not fail a pillar, but an unparseable file fails every reported pillar.
 
 ### What the pillar inputs mean
 
@@ -146,7 +152,13 @@ The UAST's clone, equality, and destruction paths are iterative, and CPG node co
 
 The CLI's `evaluate` and `inspect` commands share `classify_with_representations`, which builds CFG, PDG, CPG, an abstractness reading, and an optional MDG before calling the engine classifier. They recursively discover supported source suffixes when no language filter is supplied. Unless `--no-composable` is set, CLI evaluation and inspection resolve or generate fresh GitNexus state; failures degrade to SIMPLE/SECURE/NAVIGABLE with a warning rather than aborting the whole evaluation.
 
-MCP has equivalent classification helpers. `classify_code_string` rejects an explicitly unsupported language before creating a morphism, while `classify_file` detects a language from its suffix, reads the file, and attempts to load an MDG. Its dep-graph cache is keyed by graph directory, target file, branch, and store modification time; it caps at 32 entries and invalidates naturally when the branch or GitNexus store changes. Inline MCP code has no target file, so it cannot attach an MDG and cannot measure COMPOSABLE. MCP can also layer configured security acknowledgements over the raw result: it recomputes an adjusted SECURE view and exposes both results, and active acknowledgement prevents an `IDEAL` grade.
+MCP has equivalent classification helpers. `classify_code_string` rejects an explicitly unsupported language before creating a morphism, while `classify_file` detects a language from its suffix, reads the file, and attempts to load an MDG. Its dep-graph cache is keyed by graph directory, target file, branch, and store modification time; it caps at 32 entries and invalidates naturally when the branch or GitNexus store changes. Inline MCP code has no target file, so it cannot attach an MDG and cannot measure COMPOSABLE.
+
+### Raw evidence versus consumer overlays
+
+`ClassificationResult` is the engine's canonical raw evidence: parseability, per-pillar gate result, normalized display score, raw metrics, and metric interpretations. It is computed against the full dangerous-API registry, so neither a CLI nor an MCP allowlist changes that engine result. CLI presentation selects terminal or JSON views of that result; for a multi-file terminal summary it additionally displays average/minimum scores, but uses `combine_dimensions` rather than those scores to determine pillar status.
+
+MCP is the explicit exception at the presentation boundary. Only after a parseable raw result fails SECURE does it construct a CPG/finding list and apply configured or one-off acknowledgements. The overlay partitions findings into active and acknowledged, recomputes the SECURE bit using allowlisted counts, and returns the raw and adjusted lattice/SECURE fields together. An acknowledgement is therefore disclosure, not deletion: if it would otherwise yield `IDEAL`, the adjusted view clears SECURE and marks the grade capped. Clean or unparseable input produces no overlay.
 
 See [agent and CLI workflows](../workflows/agent-and-cli.md) for interface contracts, [distribution](../integrations/distribution.md) for GitNexus context, and [testing and release operations](../operations/testing-and-release.md) for the broader validation workflow.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7b619a85a5b0949fe521228b5c972cd15124f4f2a279a16e9c0e3ef89d3a733d",
+  "pageVersion": "sha256:a8777ab9224d411127e281857b87c932c751fe3a7abd96229b373af5595fb61d",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -18,19 +18,31 @@
     },
     {
       "id": "claim_5e52b143ba3e48e7a49b43f519cf7e2c",
-      "statement": "CLI evaluation can recurse and filter discovered languages, has JSON, verbose, info, failures, and priority controls, rejects `--json` combined with `--info` or `--failures`, and uses priority to select classification/remediation ordering.",
+      "statement": "CLI evaluation can recurse and filter discovered languages, exposes JSON, verbose, info, failures, and priority controls, and rejects `--json` combined with `--info` or `--failures`. A single priority or the first member of a supplied ranking selects the classifier priority, while the full ranking orders remediation targets and focused guidance.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L305-L331",
-          "version": "repo-lines-v1:sha256:1f6f0ec0b409052347e9a04adf90c75ac7a2c5a3f360c890f1113dcbce50b886:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YjI1Y2I2MjE5MjA1ZTgwNzYzNTg3YTIxMmQ1NTYxYzlhMDc1OWFmOTQ5YTI5NzI4MzM2YzY1YzEzODI0M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlOTZiMTk0MDA3MDQwZWI0MzQ5N2M3Yjg0ZTFhYTU5YTRhZjgwMzc3Yzk4YTg4YjZiODhlMTE3YTVmZGEzZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYjk0MTIxZTMwMjAyZmExZDJhNzc1ZjQ0MjkzMzI1YmRjNjNlNDZjNTgyMmM4ZmFhMjI3NjJhOTdhMDIzNjcifQ"
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L143-L159",
+          "version": "repo-lines-v1:sha256:e5dcdd31038f38028efbe071a0133ed7c58ea7795a2b1904cf0eed2d1aa9d923:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0Njg4YWEwNThjYmY4MzJjMDFkZGQ4ZWEzZDcyN2VlNGIwMjMyNzdmNTdkNzUxYTM2MjI0ODczNzVhZmZmNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NmY4Y2IwODNmYTgwMGE0ZGNkMjk2OTcyMmQ3YjkyNjg2YWRkOWViZTM2NTU0OTJmYTY3MmIxYTdjZWQyNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhZDUwNzgxNDFkZWU4MjBkOGViM2Q0ZGE3NzlmNTQwZWNmMmExNGJmZTMxMjE3OGQ5MjI5ZjkwNzQyY2NkY2UifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L291-L343",
+          "version": "repo-lines-v1:sha256:6006eedab794958140c23fecbb7ca9b6115eb6a92aff2db82cc5bfd6e5adb5f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZjQ5NzU3MWFlYTIxNDUwYTBlNTk3NzY0OTc3ODg5NjI5NjViZmI3Y2MyMTUyNmMzNDI1YzgwZjA3OTIwMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2NmMDdlODU4ODFlM2VjODBhOGFiNzc0ODQ4YzBmODc4NmViZmVhYzIxY2UxNDllMWI0NWUzODQxYzAxZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzYmViZDlkMDZmYzhlYzhhZjZiMDBiZjlmMGYzYzkxOGU0ZDE3MjZkMzA5NGZiMGFjNTRjYjI0NzZlMWVkMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1YzkzMGU1YmZhOTg1OTc3ZTczZTU3YWQwNGQ0NDQ2OTY4YmMzNjk4MmY3Zjk3OTZkZjU4ZjY1NGZhY2JmZWIifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L346-L353",
+          "version": "repo-lines-v1:sha256:23f12d3bb69ff75fcc3bed91f9d77bf49696b32d32cc0ab8e66d03466733a6d4:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U1ZGMxNjYxMzRiNjI0NmUwMTk3NGE1YjIwMjk4MTMzNGNiM2E4MTA3ZjNmMjI0ZmFjMDYyMGI1YzllZjQxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ3NWU5NGE5MDRhYzQ5YjMxNTRkNDY3MmE2NmU4NjI5Yjg2ZGFjNzRlM2UyOTM3YmU2OTI3YWUzZGExMWM1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzQ4ZDlhZmRmN2U2OGY4MTI5ZGE4MTcxNGYwMjRhZWM2NjAyOGEzYTg3M2M3MDRmMTU4ZDZkYzY3Zjk1ZjBkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2RiOTQxMjFlMzAyMDJmYTFkMmE3NzVmNDQyOTMzMjViZGM2M2U0NmM1ODIyYzhmYWEyMjc2MmE5N2EwMjM2NyJ9"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L410-L450",
+          "version": "repo-lines-v1:sha256:f56b42bf8585f13d76722a5c17f07a21873e9bd9c34cb6129c0f158041f4f571:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyYjVlZGY1OTQ5Y2ZlYTY3ODIyY2Y2OTExMzIzNjNkNjhkNmYxZTE2OWY1ZTBkNGY3YzE0ZTVmYTFlNmQ0ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2YWE5M2RmNDcxMWM4ZjBmMWJlYzk1ZWNmNDkyYzg0YzM0OWEyMDRkZGI0YzgzZmMwYjFjMjk0NmRmYzE5ZmUifQ"
         },
         {
           "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L55-L93",
           "version": "repo-lines-v1:sha256:e53ba3a8b5142ed9a3e13bc7d75d6925cf9da20df7d6a67a6a529f1c3b17e2d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiOTU1ZTg4MmQwN2VlYTU0ZmJlMDZlZThhOTg5ODk4YzE0M2ZjNmRkZmEyODVkMzc4MzYxNWJkZWFjNjlhZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2MGYxNTc1Yjk1ODU4NzRjYmY1NWJiZDUwMmE5Y2NkYmJiYTk1MTcyYzE2OGE0ZmE5N2NjM2UyZGM1ZDEwODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxY2YxYWRiMTVlM2QzZjZhMDViMjNiZmY2NWY4N2FhNTZjZjlhZGExM2JiMjk5YTQ1NDg4OTFiMWUzODg5M2MifQ"
         },
         {
-          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L95-L137",
-          "version": "repo-lines-v1:sha256:a02f546651820aa7f94d52e8a9fa680f44ae4715ee836f9291a286bbbae402cf:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOGY5ZWFkMjcwOTNjYzU5MGFiNmZiZGI1ZWI4NzQxZWI2YTQ2YjQyZDYxOGIwMWI0NmRiZmJiOGNmMmY2OTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNjU1MjY0MzQ0YzMwYmM1ZTVmYWUzZjg3NjFhMDkzYjUwMDQzZWQ2NDk0NWY2MTUwZjU3MWFlODNlYzMyZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhZDUwNzgxNDFkZWU4MjBkOGViM2Q0ZGE3NzlmNTQwZWNmMmExNGJmZTMxMjE3OGQ5MjI5ZjkwNzQyY2NkY2UifQ"
+          "resource": "repo://topos/cli/src/commands/evaluate/mod.rs#L95-L140",
+          "version": "repo-lines-v1:sha256:384e0866c01c8e389c09b5620ecd05ab060dbe627074d4aa9765439ef4ccd87c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOGY5ZWFkMjcwOTNjYzU5MGFiNmZiZGI1ZWI4NzQxZWI2YTQ2YjQyZDYxOGIwMWI0NmRiZmJiOGNmMmY2OTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNjU1MjY0MzQ0YzMwYmM1ZTVmYWUzZjg3NjFhMDkzYjUwMDQzZWQ2NDk0NWY2MTUwZjU3MWFlODNlYzMyZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5Mjc5NWI1ZDc2MzNlNjNhYjc4MzEyZDljNzBkZGM5ZTViMDUwYmM5OWM1NmM2ZmUzNDllNmQyMWUyZGI1OWUifQ"
         }
       ]
     },
@@ -226,7 +238,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.5.0",
-    "at": "2026-09-01T16:34:02.929Z"
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-16T11:04:01.882Z"
   }
 }

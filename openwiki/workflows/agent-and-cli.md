@@ -12,8 +12,8 @@ openwiki:
   test_paths: [topos/mcp/src/diagnostics.rs, topos/mcp/src/tools/inspect.rs]
   validation_commands: [cargo test -p topos, cargo test -p topos-mcp]
 verified:
-  - by: openwiki/0.5.0
-    at: 2026-09-01T16:34:02.929Z
+  - by: openwiki/0.5.2
+    at: 2026-09-16T11:04:01.882Z
 sources:
   - id: openwiki-source-26901a586b4be50e6a6e0158
     resource: repo://topos/cli/src/commands/depgraph.rs
@@ -43,7 +43,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T11:04:01.882Z" }
 ---
 
 # CLI, MCP, and agent improvement workflows
@@ -65,7 +65,7 @@ Topos has two deliberately different interfaces over the shared [analysis engine
 | `topos install [HARNESS...]`, `topos uninstall [HARNESS...]`, `topos status` | Manage Topos-owned agent-harness configuration; see [harness registration](harness-registration.md). |
 | `topos mcp` | Run the MCP server over stdio. |
 
-CLI output options are presentation controls rather than different analysis semantics. `evaluate` rejects `--json` combined with either `--info` or `--failures`; `--verbose` exposes per-file/raw detail, while `--info` and `--failures PILLAR` select focused human guidance. A `--priority` value may name one pillar or give a full ranking; it selects remediation ordering and output targets rather than turning a failed quality gate into a pass.
+CLI output options do not create a different set of quality gates. `evaluate` rejects `--json` combined with either `--info` or `--failures`; `--verbose` exposes per-file/raw detail, while `--info` and `--failures PILLAR` select focused human guidance. A `--priority` value may name one pillar or give a full ranking: its first pillar becomes the classifier priority, and the complete ranking orders remediation targets and focused guidance. It does not turn a failed quality gate into a pass.
 
 `topos mcp` creates a Tokio runtime and delegates to the same `topos_mcp::server::serve` function used by the standalone `topos-mcp` binary. The standalone binary is protocol-only with no interactive mode: without `--help` or `--version`, it waits for MCP frames on stdio.
 
@@ -158,4 +158,4 @@ The SECURE overlay is intentionally independent of response-size preferences. It
 
 `topos_calculate_coverage` structurally matches declarations and k-gram paths between program-under-test and tests; it does not run the tests. `topos_compare_*` reports AST distance. `topos_refactor` ranks CFG cycle/branch, dependency, or process hotspots. These are useful evidence for choosing or reviewing an edit, but they do not alter SIMPLE, COMPOSABLE, SECURE, NAVIGABLE, or the lattice verdict.
 
-For focused changes, run `cargo test -p topos` for CLI work and `cargo test -p topos-mcp` for server work. The stdio lifecycle test (`cargo test -p topos-mcp --test lifecycle`) is especially relevant when protocol negotiation, `tools/list`, resources, prompts, or router registration changes: it drives real JSON-RPC frames through both initialize and stateless discovery paths. Run the relevant diagnostics or snapshot tests when modifying overlays or baseline persistence, and use the broader [testing and release guidance](../operations/testing-and-release.md) for shared-engine or shipped-surface changes.
+For focused changes, run `cargo test -p topos` for CLI work and `cargo test -p topos-mcp` for server work. The stdio lifecycle test (`cargo test -p topos-mcp --test lifecycle`) is the focused regression test for supported-version negotiation, initialize/`notifications/initialized`, stateless `server/discover`, request `_meta`, and equivalence of the `tools/list` surface across those paths: it drives real JSON-RPC frames through the built server. Router changes also need a schema-and-annotation check of `ToposServer::list_tool_defs`; resource or prompt changes need checks of their list/read or list/get handlers and the embedded-documentation consistency tests. Run the relevant diagnostics or snapshot tests when modifying overlays or baseline persistence, and use the broader [testing and release guidance](../operations/testing-and-release.md) for shared-engine or shipped-surface changes.

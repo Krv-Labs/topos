@@ -35,7 +35,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 
-use super::discovery::iter_source_files;
+use super::discovery::{build_path_skip_checker, iter_source_files};
 use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
 
 pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
@@ -216,11 +216,15 @@ pub struct SourceFingerprint {
 }
 
 /// Hash source-file paths and bytes under `root` using existing discovery.
+/// Uses the same skip checker as evaluation (builtin ignores, git-ignore,
+/// `.toposignore`) so editing an ignored file (fixtures, `*.min.*`, …)
+/// neither changes the fingerprint nor marks COMPOSABLE stale.
 pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let suffixes = crate::graphs::ast::languages::all_source_suffixes();
+    let checker = build_path_skip_checker(&root);
 
-    let mut files = iter_source_files(&root, &suffixes, true, None, false);
+    let mut files = iter_source_files(&root, &suffixes, true, Some(&checker), false);
     files.sort_by(|a, b| {
         a.strip_prefix(&root)
             .unwrap_or(a)

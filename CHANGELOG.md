@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-16
+
 ### Added
 
 - **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.

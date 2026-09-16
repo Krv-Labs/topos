@@ -56,17 +56,23 @@ pub(crate) fn plan(home: &Path, selected: &[String], purge_backups: bool) -> Vec
             ),
         };
         actions.push(PlannedAction { summary });
-        if harness.skill_ref
-            && state::was_skill_ref_added_by_install(home, harness.id)
-            && skills_entry::remove(home, true).unwrap_or(false)
-        {
-            actions.push(PlannedAction {
-                summary: format!(
-                    "{} — remove the skill directory reference from {}",
-                    harness.name,
-                    display_path(home, &skills_entry::config_path(home))
-                ),
-            });
+        if harness.skill_ref && state::was_skill_ref_added_by_install(home, harness.id) {
+            match skills_entry::remove(home, true) {
+                Ok(true) => actions.push(PlannedAction {
+                    summary: format!(
+                        "{} — remove the skill directory reference from {}",
+                        harness.name,
+                        display_path(home, &skills_entry::config_path(home))
+                    ),
+                }),
+                Ok(false) => {}
+                Err(message) => actions.push(PlannedAction {
+                    summary: format!(
+                        "{} — skill directory reference left untouched ({message})",
+                        harness.name
+                    ),
+                }),
+            }
         }
         if purge_backups {
             let backup = backup_path(&resolve_symlink(&path));
@@ -378,6 +384,24 @@ mod tests {
             "{}",
             actions[0].summary
         );
+    }
+
+    #[test]
+    fn plan_surfaces_a_skill_reference_error_instead_of_hiding_it() {
+        let home = tmp_dir("uninstall-plan-pi-skill-error");
+        let settings = home.join(".pi/agent/settings.json");
+        fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        fs::write(&settings, "not json").unwrap();
+        state::record_added_skill_ref(&home, "pi").unwrap();
+
+        let actions = plan(&home, &["pi".into()], false);
+        assert_eq!(actions.len(), 2, "{actions:?}");
+        assert!(
+            actions[1].summary.contains("skill directory reference left untouched"),
+            "{}",
+            actions[1].summary
+        );
+        fs::remove_dir_all(home).ok();
     }
 
     #[cfg(unix)]

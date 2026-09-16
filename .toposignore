@@ -1,0 +1,6 @@
+# Topos ignore rules
+# Exclude test fixtures, benchmarks, and scratch directories from evaluation
+
+tests/fixtures/
+benchmarks/
+scratch/

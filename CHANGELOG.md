@@ -13,6 +13,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 - **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
 
+### Fixed
+
+- **Discovery and path filtering robustness** ([#352](https://github.com/Krv-Labs/topos/issues/352), [#334](https://github.com/Krv-Labs/topos/issues/334), [#335](https://github.com/Krv-Labs/topos/issues/335), [#358](https://github.com/Krv-Labs/topos/pull/358)) — evaluating directories with 0 supported source files exits cleanly with an info notice (while respecting `--failures`), ambiguous root-only skip directory names (`coverage`, `build`, `out`, `dist`, `env`) are scoped to the repository/scan top level so nested submodules are scanned, built-in ignore defaults skip minified files (`*.min.*`), fixtures, vendor paths, testdata, `__snapshots__`, and `@generated`/`auto-generated` header variants, `.toposignore` is loaded from both scan and git roots, and fingerprinting and MCP freshness share the unified path skip checker.
+
 ### Breaking
 
 - **Graphify integration removed** (~1,680 production lines). Every signal it provided was already available from the GitNexus/MDG graph Topos loads for COMPOSABLE, usually at better fidelity — full `startLine`/`endLine` spans instead of point anchors, a first-class `Community` node label with `MEMBER_OF` edges instead of a bare Louvain field, and a continuous `confidence: f64` + `reason` instead of a three-value enum. It had no production consumer, no CI coverage, and no agent-facing recommendation, and it wrapped a pre-1.0 external tool with a documented history of schema breaks. See [`docs/decisions/refactor-suite.md`](docs/decisions/refactor-suite.md) § Removed target and issue [#325](https://github.com/Krv-Labs/topos/issues/325).

@@ -13,8 +13,8 @@ openwiki:
   invariants: [Derived graph endpoints use the same UAST node key, SIMPLE and NAVIGABLE are always measured for parseable source, CFG edge contracts span every registered language.]
   validation_commands: [cargo test -p topos-engine]
 verified:
-  - by: openwiki/0.5.0
-    at: 2026-09-01T16:34:02.929Z
+  - by: openwiki/0.5.2
+    at: 2026-09-16T11:18:01.300Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -48,6 +48,8 @@ sources:
     resource: repo://topos/engine/src/graphs/cpg/builder.rs
   - id: openwiki-source-77bfb7f3ec2e610005542404
     resource: repo://topos/engine/src/graphs/pdg/object.rs
+  - id: openwiki-source-d2b5646269cde505b63fcdbc
+    resource: repo://topos/engine/src/graphs/uast/mapper_common.rs
   - id: openwiki-source-b1fce798cb9cab2aa94c375a
     resource: repo://topos/engine/src/graphs/uast/models.rs
   - id: openwiki-source-a82b053b744f5ffc408af82c
@@ -58,7 +60,7 @@ sources:
     resource: repo://topos/mcp/src/evaluation/depgraph.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T11:18:01.300Z" }
 ---
 
 # Rust analysis and evaluation architecture
@@ -67,7 +69,9 @@ The workspace has three Rust crates: `topos-engine` is the shared, transport-fre
 
 ## From source to verdict
 
-`ProgramMorphism` owns the source text, language, optional file path, parsed program object, and lazily cached CFG, PDG, and CPG. Construction immediately attempts parsing. The only parser route is tree-sitter: it selects grammars for Python, Rust, JavaScript, TypeScript (TSX for a `.tsx` file path), C++, and Go, then maps the concrete tree into a language-neutral UAST in the same parse operation. A tree-sitter error node makes the morphism invalid even though an AST object was produced; unsupported languages have no AST.
+`ProgramMorphism` owns the original source text, language, optional file path, parsed program object, and lazily cached CFG, PDG, and CPG. Construction immediately attempts parsing. The only parser route is tree-sitter: it selects grammars for Python, Rust, JavaScript, TypeScript (TSX for a `.tsx` file path), C++, and Go, then maps the concrete tree into a language-neutral UAST in the same parse operation. A tree-sitter error node makes the morphism invalid even though an AST object was produced; unsupported languages have no AST.
+
+Before parsing TypeScript, dispatch recognizes dynamic `import` expressions at the start of generic type arguments, such as `load<typeof import("...")>()`. It substitutes that type-argument content with `any` and spaces **without changing its byte length**, avoiding the grammar's less-than interpretation while retaining offsets. The parser therefore sees the sanitized buffer, but UAST mapping receives the original source bytes and stores the original source in `ParseResult`; UAST spans and source-derived readings remain coordinates in the caller's text.
 
 ```mermaid
 flowchart TD
@@ -75,11 +79,15 @@ flowchart TD
     subgraph Consumer["CLI or MCP consumer layer"]
         Input["Validate input and infer language"]
         GraphState["Optionally resolve GitNexus graph"]
-        Input --> Morphism
+        Input --> ParseInput
         GraphState --> Attach
     end
     subgraph Engine["topos-engine shared compute boundary"]
-        Morphism["ProgramMorphism parses with tree-sitter"] --> UAST["UAST with spans provenance and IDs"]
+        ParseInput{"TypeScript dynamic type import"}
+        ParseInput -->|yes| Sanitize["Equal-length type-argument sanitization"]
+        ParseInput -->|no| Morphism
+        Sanitize --> Morphism["ProgramMorphism parses with tree-sitter"]
+        Morphism --> UAST["UAST with original-source spans and IDs"]
         UAST --> AstReadings["AST metrics for SIMPLE and NAVIGABLE"]
         UAST --> CFG["CFG for SIMPLE"]
         UAST --> PDG["PDG diagnostics and dependence edges"]
@@ -96,7 +104,7 @@ flowchart TD
     Result --> MCP["MCP result model and guidance"]
 ```
 
-This flow shows ownership rather than a separate scoring implementation: CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`.
+The flow shows the one parsing route and representation ownership: TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
 
 ### Representation assembly
 
@@ -144,8 +152,8 @@ See [agent and CLI workflows](../workflows/agent-and-cli.md) for interface contr
 
 ## Safe extension and focused checks
 
-- Add a source language in parser dispatch, suffix discovery, and its UAST mapper; preserve the cross-language CFG and divergence contracts.
+- Add a source language in parser dispatch, suffix discovery, and its UAST mapper; preserve the cross-language CFG and divergence contracts. For TypeScript parser work, preserve the dynamic-import sanitizer's exact byte length and the mapper's use of original bytes, or diagnostic spans and source slicing will drift.
 - Add a graph-derived metric through `Representation::metrics()` with a namespaced key, then explicitly route its dimension in `CharacteristicMorphism`. Adding a fifth quality generator additionally requires extending `Generator`, the `EvaluationValue` carrier, the policy translator, and consumer presentation.
 - Keep raw gate comparisons and shared remediation metadata in `evaluation/policies/gates.rs`; keep only normalization curves in pillar scorers. This prevents classifications, suggestions, and MCP refactor targets from drifting.
 - Preserve the distinction between unavailable COMPOSABLE evidence and a failed COMPOSABLE gate, and between the canonical raw SECURE verdict and an explicitly disclosed allowlist-adjusted view.
-- Run `cargo test -p topos-engine` for parser/UAST/graph/policy regressions. When changing consumer assembly or MCP behavior, also run the relevant CLI and MCP crate tests; high-value regressions include CFG edge contracts, CPG endpoint resolution for anonymous nodes, NAVIGABLE's nested-versus-sequential branching test, parse failure collapse, and optional-MDG classification.
+- Run `cargo test -p topos-engine` for parser/UAST/graph/policy regressions. When changing parser dispatch, cover TSX grammar selection and dynamic `import` generic cases as well as ordinary supported-language parsing. When changing consumer assembly or MCP behavior, also run the relevant CLI and MCP crate tests; high-value regressions include CFG edge contracts, CPG endpoint resolution for anonymous nodes, NAVIGABLE's nested-versus-sequential branching test, parse failure collapse, and optional-MDG classification.

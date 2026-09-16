@@ -411,6 +411,16 @@ fn install_then_uninstall_leaves_no_file_and_no_directory_behind() {
             "{id} was not configured"
         );
     }
+    for id in IDS.iter().filter(|id| **id != "pi") {
+        assert!(
+            harness(&after_install, id).get("skillRef").is_none(),
+            "{id} should not have skillRef key"
+        );
+    }
+    assert!(
+        harness(&after_install, "pi").get("skillRef").is_some(),
+        "pi must have skillRef key"
+    );
     assert_eq!(state_of(&after_install, "vscode"), "conflict");
     for dir in &must_be_pruned {
         assert!(dir.is_dir(), "install never created {}", dir.display());
@@ -966,6 +976,35 @@ fn foreign_skill_paths_survive_the_pi_round_trip() {
     assert_eq!(after["skills"], serde_json::json!(["~/.codex/skills"]));
     // A file topos did not create is never deleted, however empty it looks.
     assert!(settings.is_file(), "deleted a pre-existing settings file");
+
+    fs::remove_dir_all(&home).ok();
+}
+
+/// If the user hand-added a skill directory reference before topos ever ran,
+/// install is a no-op on the reference and uninstall must not remove it.
+#[test]
+fn a_hand_added_pi_skill_reference_is_not_removed_by_uninstall() {
+    let home = scratch_home("pi-hand-added-skill");
+    mkdirs(&home, &[".pi"]);
+    seed_topos_skill(&home);
+    let settings = seed(
+        &home,
+        ".pi/agent/settings.json",
+        "{\n  \"skills\": [\"~/.agents/skills\"]\n}\n",
+    );
+
+    topos(&home, &["install", "pi"]).expect_code(0);
+    // Already referenced: install leaves the single hand-added entry in place.
+    assert_eq!(
+        json(&settings)["skills"],
+        serde_json::json!(["~/.agents/skills"])
+    );
+
+    topos(&home, &["uninstall", "pi", "--yes"]).expect_code(0);
+    // Uninstall must not delete what it didn't add.
+    let after = json(&settings);
+    assert_eq!(after["skills"], serde_json::json!(["~/.agents/skills"]));
+    assert!(settings.is_file(), "deleted pre-existing settings file");
 
     fs::remove_dir_all(&home).ok();
 }

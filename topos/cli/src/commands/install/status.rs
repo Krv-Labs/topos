@@ -185,15 +185,20 @@ fn print_json(
 }
 
 fn harness_json(home: &Path, harness: &HarnessSpec, inspection: &Inspection) -> Value {
-    json!({
+    let mut row = json!({
         "id": harness.id,
         "name": harness.name,
         "state": report::label(inspection.state),
         "config": (harness.config_path)(home).display().to_string(),
         "detail": inspection.detail,
         "note": (harness.note)(home),
-        "skillRef": harness.skill_ref.then(|| skill_ref_json(home)),
-    })
+    });
+    if harness.skill_ref {
+        if let Value::Object(ref mut map) = row {
+            map.insert("skillRef".to_string(), skill_ref_json(home));
+        }
+    }
+    row
 }
 
 /// `state` carries two values the [`State`] enum deliberately does not have,

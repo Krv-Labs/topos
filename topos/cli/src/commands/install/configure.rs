@@ -91,7 +91,11 @@ fn configure_skill_ref(id: &str, home: &Path, dry_run: bool, opts: RenderOptions
         }
         _ => match skills_entry::apply(home) {
             Ok(outcome) => {
+                let wrote = outcome.is_some();
                 record(id, home, &skills_entry::config_path(home), outcome);
+                if wrote {
+                    state::record_added_skill_ref(home, id).ok();
+                }
                 report::detail(&report::ok(opts), skills_entry::ACTIVE_MSG);
                 true
             }

@@ -56,7 +56,10 @@ pub(crate) fn plan(home: &Path, selected: &[String], purge_backups: bool) -> Vec
             ),
         };
         actions.push(PlannedAction { summary });
-        if harness.skill_ref && skills_entry::remove(home, true).unwrap_or(false) {
+        if harness.skill_ref
+            && state::was_skill_ref_added_by_install(home, harness.id)
+            && skills_entry::remove(home, true).unwrap_or(false)
+        {
             actions.push(PlannedAction {
                 summary: format!(
                     "{} — remove the skill directory reference from {}",
@@ -120,9 +123,13 @@ fn remove_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderO
     success
 }
 
-/// Take pi's skill-directory reference back out. Silent when there was none:
-/// most machines never had one, and a line per absent artifact is noise.
+/// Take pi's skill-directory reference back out if install added it. Silent
+/// when there was none: most machines never had one, and a line per absent
+/// artifact is noise.
 fn remove_skill_ref(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    if !state::was_skill_ref_added_by_install(home, id) {
+        return true;
+    }
     let path = skills_entry::config_path(home);
     match skills_entry::remove(home, dry_run) {
         Ok(false) => true,
@@ -281,10 +288,11 @@ fn uninstalled_everything(home: &Path) -> bool {
                 .state,
             State::Absent | State::Conflict
         );
-        // A surviving skill reference counts as "still installed": pruning the
-        // directories out from under it would leave a live entry pointing at
-        // paths topos just deleted.
+        // A surviving skill reference counts as "still installed" only if topos
+        // added it: pruning the directories out from under it would leave a live
+        // entry pointing at paths topos just deleted.
         let skill_gone = !harness.skill_ref
+            || !state::was_skill_ref_added_by_install(home, harness.id)
             || !matches!(
                 skills_entry::inspect(home).map(|found| found.state),
                 Some(State::Active)

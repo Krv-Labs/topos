@@ -1,11 +1,11 @@
 ---
-okf_version: "0.1"
+okf_version: "0.2"
 ---
 
 # Files
 
-- [Topos code wiki quickstart](quickstart.md) - Entry point for maintaining Topos, a Rust structural code-quality evaluator and MCP agent harness with four-pillar analysis, registration, integration, and release routes.
-- [Topos maintenance source map](source-map.md) - Maps Topos maintenance tasks to current Rust workspace source, tests, documentation, and automation locations without duplicating domain behavior.
+- [Topos code wiki quickstart](quickstart.md) - Task-oriented entry point for maintaining the Topos Rust analysis engine, CLI, MCP server, integrations, and release surfaces. Use the linked behavior guides and focused checks before making a change.
+- [Topos maintenance source map](source-map.md) - Ownership-oriented starting points for changing Topos analysis, command-line and MCP delivery, integrations, and release controls. Each route identifies the behavior page, implementation boundary, and focused regression coverage to consult before editing.
 
 # Directories
 

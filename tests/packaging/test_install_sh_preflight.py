@@ -288,6 +288,10 @@ DOC_INSTALL_SITES = (
     "README.md",
     "docs/source/installation.rst",
     "skills/topos/SKILL.md",
+    # The Agent Plugins package ships its own copy of the skill plus a README
+    # that advertises the installer independently of the canonical docs.
+    "agent-plugin/README.md",
+    "agent-plugin/skills/topos/SKILL.md",
 )
 
 

@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- **Agent Plugins package** ([#310](https://github.com/Krv-Labs/topos/issues/310)) — portable `agent-plugin/` tree (`plugin.json`, `mcp.json`, synced skill) for [Agent Plugins](https://agent-plugins.org/) 1.0 clients, with `scripts/check_agent_plugin.py`.
+
 ### Fixed
 
 - **TypeScript generic type imports and dynamic subscript accesses** ([#347](https://github.com/Krv-Labs/topos/issues/347), [#348](https://github.com/Krv-Labs/topos/issues/348)) — inline dynamic type imports in TypeScript generic arguments (`load<typeof import("...")>()`, `load<import("...")>()`) are sanitized during AST dispatch so tree-sitter parses the call expression cleanly without misidentifying `<` as a binary comparison operator and failing parse validation. In addition, `subscript_expression` is mapped to `MemberExpr` in the JavaScript/TypeScript UAST mapper, preventing defensive bracket lookups (`obj[key]`) from dropping to `Unknown` or being misclassified as dangerous execution call sinks.

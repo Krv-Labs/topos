@@ -16,13 +16,16 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
 
 Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — published to ClawHub and installable via Hermes taps.
 
+Portable [Agent Plugins](https://agent-plugins.org/) 1.0 package: [`agent-plugin/`](agent-plugin/) (`plugin.json` + skill + `mcp.json`).
+
 | Runtime | Install |
 | --- | --- |
 | OpenClaw / ClawHub | `openclaw skills install @Krv-Labs/topos` |
 | Hermes | `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos` |
+| Agent Plugins client | Point the client at `./agent-plugin` (requires `topos` on `PATH`) |
 | Local (dev) | `openclaw skills install ./skills/topos` |
 
-Validate with `python scripts/check_skill.py` (requires each skill's `version:` to match `Cargo.toml`).
+Validate with `python scripts/check_skill.py` and `python scripts/check_agent_plugin.py` (skill / plugin versions must match `Cargo.toml`; packaged skill must match `skills/topos/SKILL.md`).
 
 **ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`) and `v*` tags. Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
 <!-- SKILLS:END -->

@@ -397,7 +397,9 @@ mod tests {
         let actions = plan(&home, &["pi".into()], false);
         assert_eq!(actions.len(), 2, "{actions:?}");
         assert!(
-            actions[1].summary.contains("skill directory reference left untouched"),
+            actions[1]
+                .summary
+                .contains("skill directory reference left untouched"),
             "{}",
             actions[1].summary
         );

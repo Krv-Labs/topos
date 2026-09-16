@@ -16,6 +16,7 @@ use super::artifact::State;
 use super::fsops::{backup_path, prune_dirs, read_json_object, resolve_symlink};
 use super::harness::{spec, HarnessSpec, HARNESSES};
 use super::report;
+use super::skills_entry;
 use super::state;
 use crate::commands::render::RenderOptions;
 
@@ -55,6 +56,15 @@ pub(crate) fn plan(home: &Path, selected: &[String], purge_backups: bool) -> Vec
             ),
         };
         actions.push(PlannedAction { summary });
+        if harness.skill_ref && skills_entry::remove(home, true).unwrap_or(false) {
+            actions.push(PlannedAction {
+                summary: format!(
+                    "{} — remove the skill directory reference from {}",
+                    harness.name,
+                    display_path(home, &skills_entry::config_path(home))
+                ),
+            });
+        }
         if purge_backups {
             let backup = backup_path(&resolve_symlink(&path));
             if backup.is_file() {
@@ -102,9 +112,39 @@ fn remove_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderO
         return false;
     };
     report::harness_line(harness.name, opts);
-    let success = remove_spec(harness, home, binary, dry_run, opts);
+    let mut success = remove_spec(harness, home, binary, dry_run, opts);
+    if harness.skill_ref {
+        success &= remove_skill_ref(harness.id, home, dry_run, opts);
+    }
     println!("│");
     success
+}
+
+/// Take pi's skill-directory reference back out. Silent when there was none:
+/// most machines never had one, and a line per absent artifact is noise.
+fn remove_skill_ref(id: &str, home: &Path, dry_run: bool, opts: RenderOptions) -> bool {
+    let path = skills_entry::config_path(home);
+    match skills_entry::remove(home, dry_run) {
+        Ok(false) => true,
+        Ok(true) => {
+            if !dry_run {
+                delete_if_emptied_and_ours(home, id, &path);
+            }
+            let verb = if dry_run { "would remove" } else { "removed" };
+            report::detail(
+                &report::removed(opts),
+                &format!(
+                    "{verb} the skill directory reference from {}",
+                    display_path(home, &path)
+                ),
+            );
+            true
+        }
+        Err(message) => {
+            report::detail(&report::failed(opts), &message);
+            false
+        }
+    }
 }
 
 fn remove_spec(
@@ -234,13 +274,22 @@ fn clean_up(
 fn uninstalled_everything(home: &Path) -> bool {
     let binary = super::binary::resolve_binary_path().unwrap_or_else(|_| PathBuf::from("topos"));
     HARNESSES.iter().all(|harness| {
-        matches!(
+        let mcp_gone = matches!(
             harness
                 .artifact
                 .inspect(&(harness.config_path)(home), &binary)
                 .state,
             State::Absent | State::Conflict
-        )
+        );
+        // A surviving skill reference counts as "still installed": pruning the
+        // directories out from under it would leave a live entry pointing at
+        // paths topos just deleted.
+        let skill_gone = !harness.skill_ref
+            || !matches!(
+                skills_entry::inspect(home).map(|found| found.state),
+                Some(State::Active)
+            );
+        mcp_gone && skill_gone
     })
 }
 

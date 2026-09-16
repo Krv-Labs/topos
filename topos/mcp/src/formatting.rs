@@ -3,7 +3,7 @@
 //! Converts `ClassificationResult` and distance results into the wire
 //! models defined in [`crate::schemas`], and renders the markdown channel.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
@@ -454,8 +454,8 @@ fn generator_for_dim(dim: &str) -> EvaluationValue {
 pub fn build_pillars(
     result: &ClassificationResult,
     coupling_available: bool,
-) -> HashMap<String, PillarResult> {
-    let mut pillars = HashMap::new();
+) -> BTreeMap<String, PillarResult> {
+    let mut pillars = BTreeMap::new();
     for (dim, prefixes) in PILLAR_METRIC_PREFIXES {
         let has_metrics = result
             .raw_metrics
@@ -489,8 +489,8 @@ fn dim_for_metric_key(key: &str) -> Option<&'static str> {
 /// plus notes with no pillar mapping (e.g. `mdg.unavailable`).
 fn failing_interpretation(
     result: &ClassificationResult,
-    interpretation: &HashMap<String, String>,
-) -> HashMap<String, String> {
+    interpretation: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
     let mut achieved: HashMap<&str, bool> = HashMap::new();
     for (dim, _) in PILLAR_METRIC_PREFIXES {
         achieved.insert(
@@ -524,7 +524,7 @@ pub struct EvalResultOptions<'a> {
     /// metrics are the single largest block in the structured channel and
     /// every caller that wants them has a `verbose` parameter to forward.
     pub verbose: bool,
-    pub metric_locations: HashMap<String, Vec<FunctionEntry>>,
+    pub metric_locations: BTreeMap<String, Vec<FunctionEntry>>,
     pub refactor_targets: Option<Vec<RefactorTarget>>,
     pub offer_refactor_targets: bool,
     pub include_security_findings: bool,
@@ -578,7 +578,7 @@ pub fn to_evaluation_result(
         raw_metrics = result.raw_metrics.clone();
     } else {
         interpretation = failing_interpretation(result, &interpretation);
-        raw_metrics = HashMap::new();
+        raw_metrics = BTreeMap::new();
     }
 
     let mut dimensions = result.dimensions.clone();
@@ -723,12 +723,6 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
 // Markdown renderers
 // ---------------------------------------------------------------------------
 
-fn sorted_pairs<V>(map: &HashMap<String, V>) -> Vec<(&String, &V)> {
-    let mut pairs: Vec<_> = map.iter().collect();
-    pairs.sort_by(|a, b| a.0.cmp(b.0));
-    pairs
-}
-
 /// Compact markdown for an error/early-return EvaluationResult.
 pub fn error_md(model: &EvaluationResult) -> String {
     format!(
@@ -790,7 +784,7 @@ pub fn render_evaluation_md(e: &EvaluationResult, title: Option<&str>, verbose: 
 fn push_generators_section(lines: &mut Vec<String>, e: &EvaluationResult) {
     lines.push(String::new());
     lines.push("## Generators".into());
-    for (dim, val) in sorted_pairs(&e.dimensions) {
+    for (dim, val) in e.dimensions.iter() {
         let score = e.scores.get(dim).copied().unwrap_or(0.0);
         lines.push(format!("- **{dim}**: {} ({score:.1}%)", val.as_str()));
     }
@@ -901,7 +895,7 @@ fn push_metric_locations_section(lines: &mut Vec<String>, e: &EvaluationResult) 
     }
     lines.push(String::new());
     lines.push("## Metric Locations".into());
-    for (metric, entries) in sorted_pairs(&e.metric_locations) {
+    for (metric, entries) in e.metric_locations.iter() {
         lines.push(format!("- `{metric}`:"));
         for func in entries.iter() {
             let where_str = if func.kind.as_deref() == Some("module") {
@@ -975,7 +969,7 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
     }
     lines.push(String::new());
     lines.push("## Raw Metrics".into());
-    for (k, v) in sorted_pairs(&e.raw_metrics) {
+    for (k, v) in e.raw_metrics.iter() {
         lines.push(format!("- `{k}`: {v:.3}"));
     }
 }
@@ -1004,6 +998,52 @@ mod tests {
         // Structured channel carries the full model.
         let wire = to_tool_result(&model, md);
         assert!(wire.structured_content.is_some());
+    }
+
+    /// Issue #332: a wire map declared as `HashMap` serializes in
+    /// `RandomState` order, so two runs of the same evaluation emit
+    /// different bytes and nothing downstream can diff or cache them. A
+    /// `BTreeMap` cannot.
+    ///
+    /// Only load-bearing while `serde_json/preserve_order` is on — which
+    /// it is for the shipped `topos` binary, because the CLI enables that
+    /// feature and links this crate (see `schemas.rs`). Structs are
+    /// exempt: serde emits their fields in declaration order by design.
+    #[test]
+    fn every_wire_map_serializes_in_sorted_key_order() {
+        let source =
+            "import os\n\n\ndef f(x):\n    if x:\n        return os.system(x)\n    return 1\n";
+        let result = classify_code_string(source, "python", Priority::Simple).unwrap();
+        let mut opts = EvalResultOptions::new();
+        opts.verbose = true;
+        opts.metric_locations =
+            crate::metric_locations::build_metric_locations(source, "python", &result);
+        let model = to_evaluation_result(&result, false, opts);
+        let json = serde_json::to_value(&model).expect("serialize");
+
+        let mut checked = 0;
+        for field in [
+            "dimensions",
+            "scores",
+            "pillars",
+            "raw_metrics",
+            "interpretation",
+            "metric_locations",
+        ] {
+            let keys: Vec<&String> = match json.get(field).and_then(|v| v.as_object()) {
+                Some(map) => map.keys().collect(),
+                // Omitted by `skip_serializing_if`; nothing to order.
+                None => continue,
+            };
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(keys, sorted, "`{field}` keys are not in sorted order");
+            checked += keys.len();
+        }
+        assert!(
+            checked > 1,
+            "fixture produced no multi-key wire map, so the test proves nothing"
+        );
     }
 
     /// The default shape is the cheap one: a caller that never mentions
@@ -1061,7 +1101,7 @@ mod tests {
             severity: severity.to_string(),
             recommended_operations: vec!["extract_helper".to_string()],
             constraints: Vec::new(),
-            evidence: HashMap::new(),
+            evidence: BTreeMap::new(),
         }
     }
 

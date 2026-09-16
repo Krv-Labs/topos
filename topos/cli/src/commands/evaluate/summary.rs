@@ -1,5 +1,6 @@
 //! Compact cumulative rendering for `topos evaluate`.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use console::Style;
@@ -164,7 +165,10 @@ fn render_summary(
         let passing = overall
             .get(pillar)
             .is_some_and(|value| *value != EvaluationValue::Slop);
-        let status = status_text(passing, options);
+        // `minimum`, not `average`: the multi-file row prints both, so
+        // `✓ PASS  72%  0%` is the same contradiction #350 is about, just
+        // one column over. With a single file the two are equal.
+        let status = status_text(passing, minimum, options);
         let mut row = if single_file {
             format!(
                 "{}  {:<12}  {status}  {:>4.0}%",
@@ -193,7 +197,7 @@ fn render_summary(
     let floor = floor_verdict(&overall);
     lines.push(guide_char('│', options));
     lines.push(guide_line(
-        "Status reflects policy gates; scores are diagnostic — use them to guide refactoring.",
+        "Pass/fail is the policy gates; ! WARN is a passing gate with a weak score.",
         Style::new().dim(),
         options,
     ));
@@ -634,11 +638,24 @@ pub(crate) fn failure_file_indices(
     indices
 }
 
-fn status_text(passing: bool, options: RenderOptions) -> String {
-    let (symbol, label, style) = if passing {
-        ("✓", "PASS", Style::new().green().bold())
-    } else {
+/// Below this, a passing pillar renders `! WARN` instead of `✓ PASS`.
+///
+/// Not a policy threshold — no gate, verdict, or exit code reads it. It
+/// exists because `✓ PASS 0%` reads as a contradiction (issue #350): the
+/// gates really did pass, but the diagnostic score says the pillar is one
+/// edit away from failing. A quarter of the range is the round number that
+/// covers the reported cases; the gates in
+/// `topos_engine::evaluation::policies::gates` remain the only thing that
+/// decides pass/fail.
+const WEAK_SCORE: f64 = 0.25;
+
+fn status_text(passing: bool, weakest: f64, options: RenderOptions) -> String {
+    let (symbol, label, style) = if !passing {
         ("X", "FAIL", Style::new().red().bold())
+    } else if weakest < WEAK_SCORE {
+        ("!", "WARN", Style::new().yellow().bold())
+    } else {
+        ("✓", "PASS", Style::new().green().bold())
     };
     format!("{} {label}", paint(symbol, style, options))
 }
@@ -705,7 +722,7 @@ fn score_rail(score: f64, width: usize) -> String {
         .collect()
 }
 
-fn floor_verdict(overall: &std::collections::HashMap<String, EvaluationValue>) -> EvaluationValue {
+fn floor_verdict(overall: &BTreeMap<String, EvaluationValue>) -> EvaluationValue {
     let bits = PILLARS.iter().fold(0, |bits, pillar| {
         bits | overall
             .get(*pillar)
@@ -730,7 +747,7 @@ fn common_parent(files: &[PathBuf]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use topos_engine::evaluation::policies::base::Priority;
 
@@ -739,7 +756,7 @@ mod tests {
     fn result(simple_passes: bool) -> ClassificationResult {
         ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([(
+            dimensions: BTreeMap::from([(
                 "simple".to_string(),
                 if simple_passes {
                     EvaluationValue::Simple
@@ -747,13 +764,49 @@ mod tests {
                     EvaluationValue::Slop
                 },
             )]),
-            scores: HashMap::from([("simple".to_string(), 0.6)]),
+            scores: BTreeMap::from([("simple".to_string(), 0.6)]),
             lattice_element: if simple_passes {
                 EvaluationValue::Simple
             } else {
                 EvaluationValue::Slop
             },
             ..Default::default()
+        }
+    }
+
+    /// Issue #332: `--json` must be byte-identical across runs. The CLI
+    /// builds `serde_json` with `preserve_order`, so these objects come out
+    /// in the source map's iteration order — sorted only while every map
+    /// behind them is a `BTreeMap`.
+    #[test]
+    fn json_output_emits_sorted_map_keys() {
+        let mut scored = result(true);
+        scored.scores = BTreeMap::from([
+            ("simple".to_string(), 0.5),
+            ("composable".to_string(), 0.4),
+            ("secure".to_string(), 0.9),
+            ("navigable".to_string(), 0.7),
+        ]);
+        scored.raw_metrics = BTreeMap::from([
+            ("mdg.fan_out".to_string(), 3.0),
+            ("ast.entropy".to_string(), 0.5),
+            ("cfg.cyclomatic".to_string(), 4.0),
+        ]);
+        let json = json_output(
+            &[PathBuf::from("a.rs")],
+            &[scored],
+            &["rust".to_string()],
+            &[],
+        );
+        for field in ["dimensions", "scores", "raw_metrics"] {
+            let keys: Vec<&String> = json["results"][0][field]
+                .as_object()
+                .unwrap_or_else(|| panic!("`{field}` must be an object"))
+                .keys()
+                .collect();
+            let mut sorted = keys.clone();
+            sorted.sort();
+            assert_eq!(keys, sorted, "`{field}` keys are not in sorted order");
         }
     }
 
@@ -1077,6 +1130,7 @@ mod tests {
     fn styled_summary_colors_failure_and_pass_symbols() {
         let failure = status_text(
             false,
+            0.5,
             RenderOptions {
                 styled: true,
                 width: 120,
@@ -1084,6 +1138,15 @@ mod tests {
         );
         let pass = status_text(
             true,
+            0.5,
+            RenderOptions {
+                styled: true,
+                width: 120,
+            },
+        );
+        let warn = status_text(
+            true,
+            0.2,
             RenderOptions {
                 styled: true,
                 width: 120,
@@ -1091,6 +1154,62 @@ mod tests {
         );
         assert!(failure.contains("\u{1b}[31m"));
         assert!(pass.contains("\u{1b}[32m"));
+        assert!(warn.contains("\u{1b}[33m"));
+        assert!(warn.contains("WARN"));
+    }
+
+    #[test]
+    fn low_score_passing_renders_warn_status() {
+        let mut low = result(true);
+        low.scores.insert("simple".to_string(), 0.1);
+        let output = render_summary(
+            &[PathBuf::from("low.rs")],
+            &[low],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: false,
+                composable_notices: &[],
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+        assert!(output.contains("! WARN"));
+        assert!(!output.contains("✓ PASS"));
+    }
+
+    /// A healthy average hides a file at 2%, and the row prints that 2% in
+    /// its own MIN column — so `✓ PASS` next to it is the same
+    /// contradiction as the single-file case.
+    #[test]
+    fn a_weak_minimum_warns_even_when_the_average_is_healthy() {
+        let mut healthy = result(true);
+        healthy.scores.insert("simple".to_string(), 0.9);
+        let mut weak = result(true);
+        weak.scores.insert("simple".to_string(), 0.02);
+        let output = render_summary(
+            &[PathBuf::from("healthy.rs"), PathBuf::from("weak.rs")],
+            &[healthy, weak],
+            SummaryView {
+                language: "rust",
+                options: RenderOptions {
+                    styled: false,
+                    width: 120,
+                },
+                composable_requested: false,
+                show_info_hint: false,
+                composable_notices: &[],
+                action: "Evaluated",
+            },
+        )
+        .join("\n");
+        assert!(output.contains("46%"), "average should still read healthy");
+        assert!(output.contains("! WARN"));
+        assert!(!output.contains("✓ PASS"));
     }
 
     #[test]
@@ -1124,9 +1243,10 @@ mod tests {
     fn weak_spots_rank_by_displayed_average() {
         let files = vec![PathBuf::from("balanced.rs"), PathBuf::from("weak.rs")];
         let mut balanced = result(true);
-        balanced.scores = HashMap::from([("simple".to_string(), 0.5), ("secure".to_string(), 0.5)]);
+        balanced.scores =
+            BTreeMap::from([("simple".to_string(), 0.5), ("secure".to_string(), 0.5)]);
         let mut weak = result(true);
-        weak.scores = HashMap::from([("simple".to_string(), 0.2), ("secure".to_string(), 0.1)]);
+        weak.scores = BTreeMap::from([("simple".to_string(), 0.2), ("secure".to_string(), 0.1)]);
         assert_eq!(
             ranked_file_indices(&files, &[balanced, weak], 5),
             vec![1, 0]
@@ -1136,7 +1256,7 @@ mod tests {
     #[test]
     fn weak_spots_show_average_before_the_verdict() {
         let mut scored = result(true);
-        scored.scores = HashMap::from([
+        scored.scores = BTreeMap::from([
             ("simple".to_string(), 0.5),
             ("composable".to_string(), 0.0),
             ("secure".to_string(), 1.0),

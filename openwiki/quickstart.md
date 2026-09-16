@@ -1,18 +1,18 @@
 ---
 type: maintenance quickstart
-title: Topos code wiki quickstart
-description: Task-oriented entry point for maintaining the Topos Rust analysis engine, CLI, MCP server, integrations, and release surfaces. Use the linked behavior guides and focused checks before making a change.
+title: Topos engineering quickstart
+description: Task-routed starting point for maintaining the Topos Rust workspace. Find the owning architecture, quality semantics, workflow, integration, or release guide, then run the narrowest relevant validation.
 resource: /README.md
 tags: [topos, maintenance, static-analysis, rust, mcp]
 openwiki:
   roles: [repository, workflow]
   change_kinds: [cli, mcp, analysis, integration, release]
-  source_paths: [Cargo.toml, topos/cli/src/main.rs, topos/engine/src/lib.rs, topos/mcp/src/server.rs]
+  source_paths: [Cargo.toml, topos/cli/src/main.rs, topos/engine/src/lib.rs, topos/mcp/src/main.rs]
   test_paths: [topos/cli/tests/install_e2e.rs]
   validation_commands: [cargo test --workspace]
 verified:
-  - by: openwiki/0.5.0
-    at: 2026-09-01T16:34:02.929Z
+  - by: openwiki/0.5.2
+    at: 2026-09-16T12:21:33.983Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -32,16 +32,25 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
 ---
 
-# Topos code wiki quickstart
+# Topos engineering quickstart
 
-Topos is a three-crate Rust workspace. Keep analysis and policy changes in `topos-engine`; the `topos` CLI and `topos-mcp` stdio server are consumer and delivery layers. The CLI also starts that same MCP server with `topos mcp`. Start with the task route below rather than repairing a symptom in a renderer or protocol response.
+Topos is a three-crate Cargo workspace: `topos-engine` owns shared structural analysis and quality classification; `topos` is the human CLI; and `topos-mcp` is the stdio MCP server. Keep policy and representation changes in the engine. The CLI and MCP layers assemble inputs and expose their interface-specific contracts; `topos mcp` launches the same MCP serving implementation as the standalone binary.
 
-## First local checks
+Source code and tests are authoritative. Use this page to choose the owner and proof, then use the linked guide for behavior details.
 
-Run the narrowest check that proves the changed contract, then widen it for shared code or a merge-ready change:
+## Start safely
+
+From a clean checkout, confirm the command surface and run a local evaluation that intentionally does not create or refresh GitNexus state:
+
+```bash
+cargo run -p topos -- --help
+cargo run -p topos -- evaluate . -r --no-composable
+```
+
+Run the narrowest relevant test while editing; before merging a shared Rust change, widen to:
 
 ```bash
 cargo fmt --all --check
@@ -49,57 +58,54 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-For a public CLI behavior, smoke-test the built command as well:
+For a version, package, plugin, or skill change, also run:
 
 ```bash
-cargo run -p topos -- <command> --help
+python3 scripts/check_versions.py
+python3 scripts/check_skill.py
+python3 scripts/check_agent_plugin.py
 ```
 
-The root `Cargo.toml` owns the workspace version. For versioned or packaged changes, follow the metadata and channel checks in [testing and release operations](operations/testing-and-release.md).
+The root `Cargo.toml` owns the workspace version. Follow [testing, packaging, CI, and release operations](operations/testing-and-release.md) rather than changing release metadata or artifacts in isolation.
 
-## Route the change
+## Route the task
 
-| If you need to change… | Read first | Start at | Focused proof |
+| Change or symptom | Read first | Start at | Focused proof |
 | --- | --- | --- | --- |
-| A quality pillar, gate, threshold, score, preference, suppression, or medal | [Four-pillar quality model](domain/quality-model.md) | `topos/engine/src/evaluation/`, then `topos/engine/src/core/characteristic_morphism.rs` | `cargo test -p topos-engine <filter>` |
-| Parsing, a supported language, UAST identity, CFG/PDG/CPG construction, or a structural metric | [Rust analysis and evaluation architecture](architecture/overview.md) | `topos/engine/src/graphs/` and `topos/engine/src/functors/` | `cargo test -p topos-engine <filter>` |
-| CLI commands, arguments, JSON/terminal presentation, or `topos mcp` | [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, then `topos/cli/src/commands/` | `cargo test -p topos <filter>` |
-| An MCP tool, resource, prompt, router, protocol lifecycle, assessment, or agent loop | [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md) | `topos/mcp/src/server.rs`, then `topos/mcp/src/tools/` | `cargo test -p topos-mcp`; use `cargo test -p topos-mcp --test lifecycle` for wire-surface changes |
-| Installing, inspecting, or removing an agent-harness registration | [Agent-harness MCP registration lifecycle](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `cargo test -p topos --test install_e2e` |
-| GitNexus/COMPOSABLE, Sighthound, MCP path containment, Docker, VS Code, plugin, skill, or registry packaging | [Analysis integrations and distribution surfaces](integrations/distribution.md) | The integration boundary named in that guide | Run its integration-specific Rust, Python, or extension check |
-| CI admission, release assets, installer, version parity, wheel, VSIX, or publishing | [Testing, packaging, CI, and release operations](operations/testing-and-release.md) | `.github/workflows/`, `scripts/`, or the relevant package surface | `python3 scripts/check_versions.py` plus the guide’s channel-specific check |
-| An owner or test location not listed here | [Topos maintenance source map](source-map.md) | The source-map row for the observable behavior | The focused check named by that row |
+| A pillar, gate, medal, score, preference, suppression, or security acknowledgement | [Four-pillar quality model](domain/quality-model.md) | `topos/engine/src/evaluation/` and `topos/engine/src/core/characteristic_morphism.rs` | `cargo test -p topos-engine <filter>` |
+| Parser support, UAST identity, CFG/PDG/CPG construction, a graph metric, or parse behavior | [Rust analysis and evaluation architecture](architecture/overview.md) | `topos/engine/src/graphs/` and `topos/engine/src/functors/` | `cargo test -p topos-engine <filter>` |
+| CLI arguments, discovery, terminal/JSON output, or `topos mcp` | [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, then `topos/cli/src/commands/` | `cargo test -p topos <filter>` and `cargo run -p topos -- <command> --help` |
+| MCP tools, schemas, resources, prompts, protocol lifecycle, assessment, or snapshots | [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md) | `topos/mcp/src/main.rs`, `topos/mcp/src/server.rs`, then the owning router | `cargo test -p topos-mcp --test lifecycle` |
+| Install, status, uninstall, harness ownership, pi skill references, or cleanup | [Agent-harness MCP registration lifecycle](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `cargo test -p topos --test install_e2e` |
+| GitNexus, Sighthound, filesystem containment, Docker, VS Code, registry/wheel, plugin, or skill delivery | [Analysis integrations and distribution surfaces](integrations/distribution.md) | The integration boundary named in that guide | Its Rust, Python, or extension check |
+| CI admission, installer behavior, version parity, release assets, VSIX, or publishing | [Testing, packaging, CI, and release operations](operations/testing-and-release.md) | `.github/workflows/`, `scripts/`, or the package surface | `python3 scripts/check_versions.py` plus channel-specific checks |
+| An owner or regression test not listed here | [Topos maintenance source map](source-map.md) | The row for the observable behavior | The focused check named there |
 
-## Non-negotiable boundaries
+## High-value boundaries
 
-- **Classify in the engine.** The engine owns program representations and four-pillar evaluation; CLI and MCP should assemble inputs, apply their interface contracts, and render or transport results. Read the [architecture overview](architecture/overview.md) before changing representation assembly.
-- **Do not confuse a score with a verdict.** SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE are independently evaluated; the quality-model guide distinguishes decisive raw gates, optional evidence, normalized reporting scores, and advisory analyses.
-- **Treat COMPOSABLE as optional topology evidence.** It requires a GitNexus-derived dependency graph. If that graph is unavailable, preserve the other analysis results and diagnose the graph path rather than declaring an ordinary evaluation unusable.
-- **Treat MCP as a wire and trust boundary.** Router registration, `tools/list` schemas and annotations, resources/prompts, negotiated protocol versions, and filesystem containment are externally observable. Test the real stdio lifecycle when changing those surfaces.
-- **Keep registration ownership narrow.** Installer changes must preserve foreign harness configuration and only remove entries Topos recognizes as its own; use the scratch-home end-to-end suite.
+- **Classify in the engine.** Do not repair a score or verdict in a CLI renderer or MCP formatter before tracing the representation and policy path.
+- **A score is not a verdict.** SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE use gate decisions; normalized scores and advisory analyses do not replace those decisions. The quality-model guide also distinguishes parse failure from unavailable optional evidence.
+- **COMPOSABLE is optional repository evidence.** It uses a GitNexus-derived module graph. Normal evaluation can retain the other pillars when graph preparation is unavailable; use `topos depgraph generate` when graph setup itself is the task.
+- **MCP is a protocol and trust boundary.** Tool schemas and annotations, lifecycle negotiation, and filesystem containment are externally observable. Exercise the real stdio lifecycle for wire changes.
+- **Harness registration has narrow ownership.** Preserve foreign configuration and remove only Topos-owned entries. The scratch-home E2E suite is the required safety proof.
 
-## Common operating routes
+## Evaluate and improve
 
-### Evaluate locally
+For ordinary local evaluation, use:
 
 ```bash
-topos evaluate src/ -r
+topos evaluate . -r
 ```
 
-To prepare cross-module COMPOSABLE evidence, install the tested GitNexus version, generate the graph, and supply its directory:
+When GitNexus is installed, Topos can prepare the COMPOSABLE graph by default. To make that operation explicit instead:
 
 ```bash
-npm install -g gitnexus@1.6.8
 topos depgraph generate
-topos evaluate src/ -r --gitnexus-dir .gitnexus
+topos evaluate . -r
 ```
 
-For an agent-led change, use the baseline-aware evaluate–edit–assess route in [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md). Structural coverage and comparison commands are advisory: they inform a change but do not change the four-pillar verdict.
-
-### Change a shipped surface
-
-Before changing an integration or release artifact, identify which host launches which binary and what path/trust configuration it supplies. In particular, file-oriented MCP tools have a project-discovery and containment boundary, and GitNexus generation is a subprocess/store integration rather than a replacement parser. The [distribution guide](integrations/distribution.md) documents both boundaries; the [operations guide](operations/testing-and-release.md) gives the proof required for each delivery channel.
+For an agent-driven refactor, use the baseline-aware evaluate–edit–assess workflow in [CLI, MCP, and agent improvement workflows](workflows/agent-and-cli.md). Structural evaluation informs a change; it does not replace the repository's behavior tests, type checks, linters, or release checks.
 
 ## Maintenance rule
 
-Source code and tests are authoritative. This page routes work; use the linked guide for behavior details and the [source map](source-map.md) to find the owning implementation and regression coverage. Update the owning tests whenever a user-visible contract, security boundary, lifecycle, or evaluation decision changes.
+Update the owning tests whenever a user-visible command or wire contract, security boundary, lifecycle, evaluation decision, or delivery artifact changes. For a cross-cutting symptom, start from the [source map](source-map.md), not from the first renderer that displays it.

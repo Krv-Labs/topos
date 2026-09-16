@@ -1,36 +1,44 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c98e6daf57055695845b9f00e2bac63d539b4efd4b05247bf615462c2923b014",
+  "pageVersion": "sha256:eba3bd3a6a56d1489a5053c7af5cea0c74057c0d29bbf89ce29362ee4c005876",
   "claims": [
     {
       "id": "claim_74f28609c9e24ccd8ca4b841c7a0678b",
-      "statement": "Topos exposes install, uninstall, and status commands to manage a single MCP registration per harness, and deliberately does not write skill files, instruction blocks, or @import directives.",
+      "statement": "Topos exposes install, uninstall, and status commands to manage one MCP registration per supported harness and does not write skill files, instruction blocks, or @import directives; pi alone may additionally receive a reference to an already-installed skill directory.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/harness.rs#L1-L10",
-          "version": "repo-lines-v1:sha256:89dda73c0e18f0d592fc83eb6a4e75ee7e953233f12d159f3e1f5bdc8b523f4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYmQ1OTU1YWZhNzg1OTUyM2FmNGI1NTU0ZmY1MzMzZTY5ZTg3ZDM2NjUzMWRjZDg0ZDFjMjExNzhkY2ZjZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZmViMGY4MjE0YWQyYWNmNzk3YzkyYjhkYWYzYzY3MDZjMTczMDYzYmM4NzQwYTQ1NTI0MmFjNjNmZGUxMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZWYyZDcyYmIwM2Y3ZjllY2ZmMzg5NTdhNzYwZjBhYTkxMmI2YmFjNGQ0MTczZDU5NzczY2M5YjI0NjA2OTIifQ"
+          "resource": "repo://topos/cli/src/commands/install/harness.rs",
+          "version": "repo-file-v1:sha256:ea8d70cf0c54e4b9185ceabc8795088f106540897c1efd53a76cb948a51b55e2"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/mod.rs#L1-L14",
-          "version": "repo-lines-v1:sha256:0a137db4fd5923ea47fec1dd20232c739273c227b4ed367b7692e1f4f3c0da0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MjM1OTQzNGQ1MDIxZDg2Mzk2NDJiMWNmN2RkMTNhNzE2MzRlZjAxYjBlYWNjNWE4OGFiMjY5Yjg2M2E1Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ZDUwZGIyOTY2NmY3MDZkZjMzNDM1NmFjZmQ5ZGExYTJlYjM3NDA5YmVhMzUzNjI1ZDNiYjQ4MTYxMjYxMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxZTZiMzY5MWNkNGUzMmYyYWU1YTNiZTQ0MGM5ZTE4NzFlM2ZkZTQ0ZjI0NThhYzY1ZWFmN2UwYmYyZjU3N2MifQ"
+          "resource": "repo://topos/cli/src/commands/install/mod.rs",
+          "version": "repo-file-v1:sha256:6fce394b4f51b0c5529d7e45ca235203adc37d5023229d9ce3c769a2c319db53"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/residue.rs#L1-L10",
-          "version": "repo-lines-v1:sha256:cbea31b557c2d1ec507164125e22b0c9197819188ec077f4d8e8915b4fe8e979:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNjgzZDg1NmFjZWMxODU4MTc0YjhiZDgxOWY5ZjNjNTBhZmM3NTg4NjRjYmE4YjZiOTlmMTgwYzNkMzg2MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3ZDg5ZDg2NmMyMmNjZWJlOTU3OTA1MmJhMDBjNWZiYTAyMzNiZTRhMmYwMzc1NjNkNzczNjY4MjQwNjY1MDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwY2E0NWYzMmVmNzFmOTZlMjY3MDQwZDNlZWFmN2NlZWM1MTE2MTUwOTU5NDZiZjZmMWM3ZDM1MGRkYzZmNmIifQ"
+          "resource": "repo://topos/cli/src/commands/install/residue.rs",
+          "version": "repo-file-v1:sha256:bc84c44fbac66403ecb6c39cad7485e5065a2d32ffc65b3c20d008e79d71c0ba"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/skills_entry.rs",
+          "version": "repo-file-v1:sha256:cc4122da8dd3748cec07934811a6eaf6c9b6ca7069e06dbd57ccb3155ce2a2e8"
         }
       ]
     },
     {
       "id": "claim_e22a6f467b534356a1869da0bd24fb3a",
-      "statement": "The HARNESSES table defines eight supported harnesses and centralizes each harness's id, user config path, artifact format, detection predicate, messages, and caveat; command layers operate through that table rather than per-harness branches.",
+      "statement": "The nine-row HARNESSES table centralizes each supported harness's id, user config path, artifact format, detection predicate, messages, caveat, and pi skill-reference flag; command layers iterate the table instead of branching by harness.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/configure.rs#L1-L6",
-          "version": "repo-lines-v1:sha256:8d0da86fc2f4986b22933b3cb8e34c53f21e375f72c7a9a137c2f9b07e4985f6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzU2OWFkY2Y1ZmM5NmFkZjgyMDdlZjYxZGZmMjUyYTRkYWFkYjY4YTQwYTlmOWY4MzNkMWM3ZGY3ODNmM2ZmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzU0MTRkOTI0N2MzYmE3YzFjNTgwMzg1NDU3ODkwZDg3ZjliMWI2ZmQ0MTZmMTM2YWE4N2ZiMGRmZGYyMzg4ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmU5ZWM4MDliMDA0NGExMTY5M2NmY2NkOTI5MjkxMjc0MWUxMzNmNDI0Mjg3ZDQ4MjgwMzg4ZGQxN2I5ZDI0MCJ9"
+          "resource": "repo://topos/cli/src/commands/install/configure.rs",
+          "version": "repo-file-v1:sha256:34acf478d24101b4a304f42fff3158b85e7279c39c902ca2eac10da7829b13d6"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/harness.rs#L17-L117",
-          "version": "repo-lines-v1:sha256:a76839ff67cafcc5490075028e1638a7d28116015e94fa651757c7e5be20bc0a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjNTBmMmNkZTY0N2U1MTRmOWYzMzRhMTg0NjhiMThiODAzMzA2ODZhY2YzZDhlYWI2OTFhMzVkNDJhOWRhY2Y1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMDJkMmMwZDZkYzVlNzRkOTJmYTE0YjkxZGJlYTI2NDA5MGJlYjM1ZmRiOTE4OGQ5YjM0MTE4MWRjZTlmNGNlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2ZmUyYWY1Y2E1NGU5NTVhOGEyZDljZDExN2RkODg4NjlhYzU1ZjJmNGMyZTQ4MTA3NWRmYWE3YTYwYTY2MWM1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NjYxOGY0N2U0YWFlMmYxMDc0ODg2OGQyOTUxZTgxNzM3YTNmMjA5ZjY2YWIwOGU3YTQ5M2Y4YzJkMGI2ZDA1In0"
+          "resource": "repo://topos/cli/src/commands/install/harness.rs",
+          "version": "repo-file-v1:sha256:ea8d70cf0c54e4b9185ceabc8795088f106540897c1efd53a76cb948a51b55e2"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/mod.rs",
+          "version": "repo-file-v1:sha256:6fce394b4f51b0c5529d7e45ca235203adc37d5023229d9ce3c769a2c319db53"
         }
       ]
     },
@@ -151,24 +159,16 @@
       "statement": "The persistent install ledger records created files per harness and created directories so uninstall can delete an emptied config only when Topos created it, prune only its recorded effectively-empty directories, and retain protected shared roots.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/state.rs#L1-L25",
-          "version": "repo-lines-v1:sha256:4be43899b4de74cb998559c4fab86c86c8ce13f214733ec1b9dfdecedbc3c4dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNmIyNDFmMWZhOWVkOGViZmViZmFkZjg1OGUxZmYzYmFhMDZkYTFiYzNjNGY4NzExYTc4NmUzM2M4NjU4OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNTA0NjA1ZWMwNzY0YjQxNmQ5ZTExNGEzNDQzODFhMjMzYzg1MGNmMWVlNjU3YmQ5NjdlNGFlNWI0Njc2M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4MTgyN2RkZDYyOWQ2MmFmZTkwNjYwOWFmM2Y4NzkzY2ViNDc5MGIzZmQ1NGRiM2UyMjU0NWM0ZjI2NTM2MmQifQ"
+          "resource": "repo://topos/cli/src/commands/install/fsops.rs",
+          "version": "repo-file-v1:sha256:069c223fb065435f51730b9f99e19736a618eb5ec0d716c8ba12024de3918717"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/state.rs#L153-L170",
-          "version": "repo-lines-v1:sha256:14d3119da0cc1e2fc6dbcf6d49f74ed75e3d77718489c3fa357fa46bf697a9b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NmJiMzg1YmUwZjFlZGQwMzcyN2NhZjRlMmMyMDdiZmI3NmFmNzU5Nzg4YzcxYWI0MmYyYzQ1NmRhYWFmODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MGRhMjk1ZGVkZjgxNTQyNDUzN2Q1MWQ2YTM5MzcwOGJiYmUxNjY0OWI3YWFhOTJjZjNkYTI5MGM4YWI4YTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4ZWZjMTZkY2Y5YzkxNmFiNWZiZDY3NjE2NmRkZGYwZGU0MzdjNGMzNjIzNDU3N2FjYzFkZWI1ZGJiNzE0MWIifQ"
+          "resource": "repo://topos/cli/src/commands/install/state.rs",
+          "version": "repo-file-v1:sha256:0ac5f894953d594f4b9f8809fb8e9606ec532544b39de06f1bbce3bc3f5e3d68"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/state.rs#L72-L151",
-          "version": "repo-lines-v1:sha256:84c4fc4fbedd1c6ad8f0553462a4fcbdb4590199c4aa4e80164c109cbb18016c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlYzQ3NzMwOTkyYzE5ZmZlNDMwZjNmNTY1YmNkZTRiMzRlYTFhMDA1MjM2NjcwMDlhNjY2MGU2NzAwZTRhYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMTFlODMyNjc2Y2Y3Njg3MzFjOWI3MWY5YWEwYjU4ZTdiZjJiMzU5NDhkZDIxMzAxMDk4NWY5NDY4NGRiOWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjOTVjYjJhODE2MDg5ODRhMTgwYWU1MTdmOTRhMjFkNTk2MTAzOWE2ZTFjNGJkY2FhNDFkMmM5YTllNjRkNjEifQ"
-        },
-        {
-          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L166-L179",
-          "version": "repo-lines-v1:sha256:b2ba10c1f35b57e121aad0f7293c1978dedb9f580fa3c907c31dfd07a1eafce9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmNDI3NDRlMGNiNTFlNjY5NDI5MmRhZDk3MmM2NTg5M2UxOTFiZGFmMDE2NGQ1MzJlOTZhOTQ1OTdjNGI0YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiODJkNDZmYzIxYzg5MmMyNjk3NDkwMjJjMDA1NGVmMWI0MDllZDc0Zjg4YWNkNzA3YTJmOGViNDM5NzEwYzUifQ"
-        },
-        {
-          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L196-L245",
-          "version": "repo-lines-v1:sha256:d75d50efcd6053e41cdd422bb0afdc385046384fc4c099e22412a268499b6e87:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1MzU3MTlmNWMyYmU5YjYxZjA4N2M4MWFjMDNhMmQ5NzhjN2U3NDU5YjZjODY0ZGVjN2EwMmI0MDYzZjUzOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmOGVkMmIzMjNjYzQ5NmNjYWU5YzgzM2NhM2I4YjMyNjBmZmIyM2Q5YzlkMzk2MGMzMDE0ZGIxMzZhNGEyYjUifQ"
+          "resource": "repo://topos/cli/src/commands/install/uninstall.rs",
+          "version": "repo-file-v1:sha256:bb4082aa9470f0296f03af6a0f48a9432787f392f95e62001470b3c2eceb7d29"
         }
       ]
     },
@@ -213,20 +213,12 @@
       "statement": "Status inspects every harness and can emit JSON with the resolved binary, aggregate counts, harness state/config/detail/note rows, and report-only residue; residue includes legacy artifacts and foreign-key duplicate registrations without a write or removal path.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/residue.rs#L1-L30",
-          "version": "repo-lines-v1:sha256:8c8ad8d9b874562b1399897d8cb1a93e390983a6a672be17408255dc13981391:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNjgzZDg1NmFjZWMxODU4MTc0YjhiZDgxOWY5ZjNjNTBhZmM3NTg4NjRjYmE4YjZiOTlmMTgwYzNkMzg2MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NDkwYWY4OGNmMDEzYjA5ZmU1NGExMmUwYmJlZjEwNzIwMTZiZTBlOGU4ZjNkNjYyYjNmZTcwYWIwZmNjNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZWYyZDcyYmIwM2Y3ZjllY2ZmMzg5NTdhNzYwZjBhYTkxMmI2YmFjNGQ0MTczZDU5NzczY2M5YjI0NjA2OTIifQ"
+          "resource": "repo://topos/cli/src/commands/install/residue.rs",
+          "version": "repo-file-v1:sha256:bc84c44fbac66403ecb6c39cad7485e5065a2d32ffc65b3c20d008e79d71c0ba"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/residue.rs#L101-L168",
-          "version": "repo-lines-v1:sha256:aeda39114c3114305690d6f43c94e300e3a21d8e7ae7d1523589d6cc7b5875f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiNTkzZTI2NGYzYWFmNzQ2MDEzYjE5YmI3ODc3ZjFhNGQ4YWI5ZDU1N2NiZjdkZTI0MzIwNDQwMTEyOTM2NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzNTBjZjM0NjY3NGZmZDc0ZTBhZGM3ODI2MTdjNTYwNzQyNmVlMmExYjgyNjBhYmQ0NDA5MDU4NGZkMjQyNzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
-        },
-        {
-          "resource": "repo://topos/cli/src/commands/install/status.rs#L120-L162",
-          "version": "repo-lines-v1:sha256:fbd73b6b6569d26692ade37a0b016fa902728d456dab7bbf8e64907b4083f264:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZjA0N2M3OWFlNWRmZDgzMzg4NzI4ZGU3ZDMxNzY5M2IxZGZlYzlkZDI2ZjZiMDcwYjlhOWVjNzMwNjYzZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMTU1YWVjZjYzODM1MjMxZjQwOTgwMDQzOWVjYzEwMjdlZjI2Mzk4MDNkNzY5N2FhZDgzZmViODc3OTBkYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
-        },
-        {
-          "resource": "repo://topos/cli/src/commands/install/status.rs#L21-L38",
-          "version": "repo-lines-v1:sha256:0524696a92e547299e393e8b89f77c4121efdd02affe651473dc0a37d9b09c7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNDFmNjU0MWFkNjhmZmYzMzIwNzIwMjlkYjE0MjBhMDQyODhlYjg3MWViYWEwNjU0OWMzNmVlYWRmZTk5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4OTc3MWZlMWI2NjI4ODc1YWEyM2U3ZGJlNGFhNzE0NjFkMDBjZGZiNjZkZGYxMWI5ZDgyMGFjNTg5N2ZkZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhOTNiY2MzY2E0MzUzMWZkMjZhMDY2YTE4ODkyNWE3N2MyNGYwZjllMzZhYmI4ZmNjNGJmZjhjMDNhMjBhOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5Mjg3NWRhZWI5NWUzN2NiZTYyZTMyZjAyZTA5NWRlNTBlZDQ4MjhkZjdlNmRlM2UyMWU1N2UzYjgyMjRhMjIifQ"
+          "resource": "repo://topos/cli/src/commands/install/status.rs",
+          "version": "repo-file-v1:sha256:b98706a805c7ea52b89465cf95378d2c4b31dd18bde003be020929ea639efaa0"
         }
       ]
     },
@@ -235,22 +227,56 @@
       "statement": "The end-to-end suite runs the real binary against a scratch home and tests leave-no-trace with file and directory snapshots, absolute commands, idempotency, drift repair, backup preservation, headless uninstall, residue preservation, and VS Code JSONC conflict handling.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/tests/install_e2e.rs#L1-L29",
-          "version": "repo-lines-v1:sha256:cf564d5a8c760ebd8750a2dc1c01fd1a6f1dfa5aa654d7abde172c70722cc911:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxOWQ5YTk2ZDJmZWNkYzIzYzNlZmUzYzQxMGY5MDFjZGNmMzBlNGY1ZjQ2YTNhNjM1ZWFhNWU0ZDI5MjkyOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3M2RmYjRiMmYxYjE0NmVlMDdjZGQzODhjMzk1NDc3M2I3MzBjNjU3YWVjZGU4YjYwZmI4Y2NkY2FjOTllNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMjAxNTU4YTljNDRjOTY0YTgyNzc3YmU0YmY5OTMxYmEwNWI3ZGEzZTI0OTVlYTc2ZDY1MjM3NDRjZWQ2ODcifQ"
+          "resource": "repo://topos/cli/tests/install_e2e.rs",
+          "version": "repo-file-v1:sha256:762947c9b0544e4b42afe7ad1cc372527561eea041993d843052bd052dae7cdb"
+        }
+      ]
+    },
+    {
+      "id": "claim_81521df905034587a0d5a91a90a267b6",
+      "statement": "Pi's optional second artifact discovers an existing Topos skill in pi's native directory or the candidate shared directories; it references only a candidate directory when needed, preserves foreign settings and skill paths, and records whether install added the reference so uninstall does not remove a hand-added one.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/install/configure.rs",
+          "version": "repo-file-v1:sha256:34acf478d24101b4a304f42fff3158b85e7279c39c902ca2eac10da7829b13d6"
         },
         {
-          "resource": "repo://topos/cli/tests/install_e2e.rs#L340-L489",
-          "version": "repo-lines-v1:sha256:014f4555aafa455db94255cb54d0ef149b031ddf840a40789c81e5ca33d9ae9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkMmNkNGRiNDhhMzUwZThmMGI0Nzk0NGM0NmUzZmZkYmJhMTMyZDIyOTBhOTFkNzAxMmI1NmViNDZjOGFiNGY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3Y2M3NjEyNGQ1MGRmMzk1YzAwNmRjOGY3NTU3Zjc2NmJjYmIyMGM2NWM0Zjc5ZDI3MTRhNGUyZjcwYWFmNGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2MWE0MjU0NzkyOWJiYzU2OWE3ZWRlM2I5ODZkNjk4Zjg0ZjM2YWJkNmM0MjQ3OTgzNTM5YmRhNjkzMzZlNTdhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYTJiZjQ4MDI1NTNmZmJlNmUzY2Q5YTk4MWE3ZGNmNDIzNjgxNTc2ZTUzZTc2NTAwYzE4MTdlODJmZWQzMzBlIn0"
+          "resource": "repo://topos/cli/src/commands/install/skills_entry.rs",
+          "version": "repo-file-v1:sha256:cc4122da8dd3748cec07934811a6eaf6c9b6ca7069e06dbd57ccb3155ce2a2e8"
         },
         {
-          "resource": "repo://topos/cli/tests/install_e2e.rs#L496-L810",
-          "version": "repo-lines-v1:sha256:d9a75df93adf987a438b3428370e1aa8d5f2b5d2020a841e502c747be8fda421:eyJzZWxlY3RlZExpbmVDb3VudCI6MzE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkMmNkNGRiNDhhMzUwZThmMGI0Nzk0NGM0NmUzZmZkYmJhMTMyZDIyOTBhOTFkNzAxMmI1NmViNDZjOGFiNGY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3Y2M3NjEyNGQ1MGRmMzk1YzAwNmRjOGY3NTU3Zjc2NmJjYmIyMGM2NWM0Zjc5ZDI3MTRhNGUyZjcwYWFmNGY2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3NGViZDNlMzE1YzhkYzRlNDk5YzI0NDVkMGFiM2E5YWNjZGI1NjQ0OTc3YThmZTM2NGJiM2IyMGIxZDJmYjI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+          "resource": "repo://topos/cli/src/commands/install/state.rs",
+          "version": "repo-file-v1:sha256:0ac5f894953d594f4b9f8809fb8e9606ec532544b39de06f1bbce3bc3f5e3d68"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/uninstall.rs",
+          "version": "repo-file-v1:sha256:bb4082aa9470f0296f03af6a0f48a9432787f392f95e62001470b3c2eceb7d29"
+        }
+      ]
+    },
+    {
+      "id": "claim_75e71e260e8449a28d88c05c40db3566",
+      "statement": "Status keeps pi's skill-directory reference independent of the MCP registration verdict and represents it in pi's JSON row as active, conflict, discovered, or unavailable with its settings path and candidate skill directory.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/install/status.rs",
+          "version": "repo-file-v1:sha256:b98706a805c7ea52b89465cf95378d2c4b31dd18bde003be020929ea639efaa0"
+        }
+      ]
+    },
+    {
+      "id": "claim_87db80e1ce8a4fc7b312726336757e7e",
+      "statement": "The end-to-end suite additionally verifies pi reference insertion, status, idempotency, ledger-authorized removal, preservation of external skill content and foreign settings, and the discovered and unavailable skill outcomes.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/tests/install_e2e.rs",
+          "version": "repo-file-v1:sha256:762947c9b0544e4b42afe7ad1cc372527561eea041993d843052bd052dae7cdb"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.5.0",
-    "at": "2026-09-01T16:34:02.929Z"
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-16T12:21:33.983Z"
   }
 }

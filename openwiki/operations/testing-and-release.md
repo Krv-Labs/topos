@@ -12,9 +12,6 @@ openwiki:
   test_paths: [scripts/ci_gate.py, tests/packaging/test_install_sh_preflight.py]
   invariants: [Release tags and published metadata must match the Cargo workspace version., CI must not silently skip verification when stack membership is unreadable.]
   validation_commands: [python3 scripts/ci_gate.py --selftest, python3 scripts/check_versions.py]
-verified:
-  - by: openwiki/0.5.0
-    at: 2026-09-01T16:34:02.929Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -30,6 +27,8 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-03ffc32a0ca502ab67c54b25
     resource: repo://install.sh
+  - id: openwiki-source-2c152778a1a90158712820eb
+    resource: repo://packaging/homebrew/topos.rb.template
   - id: openwiki-source-cde23208842b0b3ea8e3c334
     resource: repo://scripts/check_agent_plugin.py
   - id: openwiki-source-5b2f8b93121d4abdca86e76c
@@ -42,7 +41,10 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-16T12:21:33.983Z
 ---
 
 # Testing, packaging, CI, and release operations
@@ -129,7 +131,7 @@ ClawHub publication is a separate reusable-workflow operation. It runs a dry-run
 
 Before installation it discovers existing executables from `PATH` and known local targets, de-duplicates resolved paths, and distinguishes Homebrew using known layouts or an explicitly declared `HOMEBREW_PREFIX`. A same-target install is upgraded in place; foreign installations yield channel-specific advice. It prompts only when stdin is a terminal: piped, CI, and agent-shell installs warn and continue rather than reading `/dev/tty` and hanging. `TOPOS_FORCE`, `TOPOS_YES`, and update mode bypass the confirmation as appropriate. PATH order remains the effective executable selection, so test coexistence behavior after changing any install channel.
 
-The packaging test checks Bash syntax, helper behavior, noninteractive/piped preflight, Homebrew-template expectations, and that install documentation does not advertise `| sh`. The formula intentionally has no Ruby `version` stanza because Homebrew derives it from the release URL. Release automation substitutes version and checksums, opens or updates a tap PR, and leaves merge gated by tap CI; it never pushes the formula directly to the tap default branch.
+The packaging test checks Bash syntax, helper behavior, noninteractive/piped preflight, Homebrew-template expectations, and that install documentation does not advertise `| sh`. The formula intentionally has no Ruby `version` stanza because Homebrew derives it from the release URL. Its macOS branch declares `openssl@3`; during installation it bundles the two OpenSSL dylibs under `libexec`, rewrites their and the executable's load paths, and ad-hoc signs those files. Keep that template behavior and its behavioral `--help` test aligned with the portability checks on released binaries. Release automation substitutes version and checksums, opens or updates a tap PR, and leaves merge gated by tap CI; it never pushes the formula directly to the tap default branch.
 
 ## Release runbook
 

@@ -1,20 +1,11 @@
 ---
 type: domain model
 title: Four-pillar quality model and verdict semantics
-description: How Topos turns SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE measurements into hard-gated lattice verdicts, medals, preference guidance, and disclosed security-risk acknowledgements.
-resource: /topos/engine/src/core/characteristic_morphism.rs
+description: How Topos classifies source with the SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE pillars. Explains canonical gates, advisory scores, unavailable evidence, preferences, and disclosed security acknowledgements.
 tags: [domain-model, quality, security, metrics, policies, rust]
-openwiki:
-  roles: [domain, architecture, testing]
-  change_kinds: [policy, threshold, lattice, security]
-  source_paths: [topos/engine/src/core/omega.rs, topos/engine/src/core/characteristic_morphism.rs, topos/engine/src/evaluation/policies/gates.rs, topos/engine/src/evaluation/policies/navigable.rs]
-  symbols: [Generator, EvaluationValue, CharacteristicMorphism, score_navigable, evaluate_gates]
-  test_paths: [topos/engine/src/evaluation/policies/navigable.rs, topos/engine/src/functors/probes/ast/divergence.rs]
-  invariants: [IDEAL requires all four generators, priority changes guidance rather than gate thresholds, acknowledged security findings retain their raw score.]
-  validation_commands: [cargo test -p topos-engine]
 verified:
-  - by: openwiki/0.5.0
-    at: 2026-09-01T16:34:02.929Z
+  - by: openwiki/0.5.2
+    at: 2026-09-16T12:21:33.983Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
@@ -28,6 +19,8 @@ sources:
     resource: repo://topos/engine/src/evaluation/policies/base.rs
   - id: openwiki-source-a3937f767b8ba9d5a5c1a0bc
     resource: repo://topos/engine/src/evaluation/policies/calibration.rs
+  - id: openwiki-source-18d7b316c44f96018cba22ec
+    resource: repo://topos/engine/src/evaluation/policies/composable.rs
   - id: openwiki-source-fe927feb706cdcb99e08620e
     resource: repo://topos/engine/src/evaluation/policies/gates.rs
   - id: openwiki-source-84ff6fa568804226649607a5
@@ -42,89 +35,102 @@ sources:
     resource: repo://topos/engine/src/evaluation/suppression.rs
   - id: openwiki-source-e99769a989da62cadb7b3f68
     resource: repo://topos/engine/src/functors/probes/ast/divergence.rs
+  - id: openwiki-source-d2e755265f68157a7939a2d3
+    resource: repo://topos/mcp/src/diagnostics.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.5.0", at: "2026-09-01T16:34:02.929Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
 ---
 
 # Four-pillar quality model and verdict semantics
 
-Topos classifies parseable source against four independent generators: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. Each satisfied generator sets one bit in an `EvaluationValue`; the resulting 16-element `Ω` is a powerset lattice, not a linear quality scale. `IDEAL` is the four-bit top and is therefore **PLATINUM**. Three, two, one, and zero satisfied pillars are respectively GOLD, SILVER, BRONZE, and SLOP. In particular, `SIMPLE_COMPOSABLE_SECURE` is a GOLD result, not the pre-NAVIGABLE meaning of `IDEAL`.
+Topos expresses source quality as four independent generators: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. An `EvaluationValue` represents the subset that has passed its **canonical raw-metric gates**, producing a 16-value lattice rather than a single continuous quality scale. `IDEAL` means all four generators passed and receives **PLATINUM**; three, two, one, and zero satisfied pillars receive GOLD, SILVER, BRONZE, and SLOP respectively. Thus `SIMPLE_COMPOSABLE_SECURE` is GOLD, not `IDEAL`.
 
-| Pillar | Primary evidence | Hard gate | Availability |
-| --- | --- | --- | --- |
-| **SIMPLE** | AST entropy and per-function UAST complexity; CFG complexity is reported | entropy in `0.2..=0.8` and max function complexity `<= 10` | Every parseable file |
-| **COMPOSABLE** | MDG coupling and call relationships | file fan-out `<= 10` | Only with an attached GitNexus MDG |
-| **SECURE** | CPG dangerous-call and taint probes | zero dangerous calls **and** zero taint flows | With a CPG |
-| **NAVIGABLE** | UAST scope tree | worst-function divergence `<= 10.0` | Every parseable file |
+The generator atoms are incomparable. Consumers that need lattice comparison must use `Omega::leq`, rather than integer bit ordering. `Omega` also supplies the generic lattice operations and its aggregate operation; an empty aggregate is `IDEAL` by the empty-meet convention.
 
-## Classification control flow
+| Pillar | Canonical input and gate | Availability |
+| --- | --- | --- |
+| **SIMPLE** | `ast.entropy` in `0.2..=0.8` and `ast.max_function_complexity <= 10` | Every parseable source file |
+| **COMPOSABLE** | `mdg.fan_out <= 10` | When MDG observations are attached |
+| **SECURE** | `cpg.dangerous_calls == 0` and `cpg.taint_flows == 0` | When CPG observations are attached |
+| **NAVIGABLE** | `nav.max_function_divergence <= 10.0` | Every parseable source file |
 
-`CharacteristicMorphism::classify_detailed` constructs AST and NAVIGABLE readings itself, accepts optional CFG/MDG/CPG representations, dispatches their metrics to one policy translator per pillar, and records each translator's `achieved` result as either that pillar's singleton value or `SLOP`. It then builds the final verdict from the satisfied generators. A missing MDG or CPG is **not measured**, rather than a failed dimension. Invalid or unparseable input returns the default result: `is_parseable = false` and overall `SLOP`.
+## Classification and evidence states
+
+`CharacteristicMorphism::classify_detailed` is the canonical classification entry point. It rejects absent ASTs or invalid `ProgramMorphism`s with the default, non-parseable `SLOP` result. For valid source it builds `AstRepresentation` and `NavigableRepresentation` from the UAST, merges caller-provided representations by their dimension, invokes each pillar translator, and joins only translators whose `ScoredDecision.achieved` is true into the final value.
 
 ```mermaid
 flowchart TD
-    Source["source input"] --> Parse{"valid parse"}
-    Parse -->|no| Slop["SLOP parse failure"]
-    Parse -->|yes| UAST["AST and UAST readings"]
-    UAST --> Simple["SIMPLE policy"]
-    UAST --> Navigable["NAVIGABLE policy"]
-    Extra["optional CFG MDG CPG"] --> Simple
-    Extra --> Composable["COMPOSABLE policy"]
-    Extra --> Secure["SECURE policy"]
-    Simple --> Verdict["satisfied generator bits"]
-    Composable --> Verdict
-    Secure --> Verdict
-    Navigable --> Verdict
-    Verdict --> Omega["EvaluationValue and medal"]
+    Source["ProgramMorphism and representations"] --> Valid{"AST present and source valid"}
+    Valid -->|no| ParseFail["default result: non-parseable SLOP"]
+    Valid -->|yes| Local["build AST and NAVIGABLE measurements"]
+    Extra["optional representations"] --> Merge["merge metrics by pillar"]
+    Local --> Merge
+    Merge --> Policies["run four policy translators"]
+    Policies --> Bits["retain achieved generator bits"]
+    Bits --> Verdict["EvaluationValue and medal tier"]
 ```
 
-This is the classification path: optional representations can leave a pillar unmeasured, while parse failure collapses the whole result to SLOP.
+*Classification flow: parse failure is a canonical SLOP outcome, while absent optional evidence leaves only its respective pillar unmeasured.*
 
-## Gates are not scores
+SIMPLE and NAVIGABLE are normally measured for every parseable file because their inputs are built locally. By contrast, if no MDG metrics are attached, `composable` is absent from `dimensions`; if neither CPG metric is present, `secure` is absent. **Unmeasured is not failed and is not passed**: it must not be presented as a substitute for a canonical gate result.
 
-A `ScoredDecision` has two separate outputs. `achieved` is the AND of its supplied raw-metric gate comparisons and is what enters the lattice. `score` is a normalized `0.0..=1.0` reporting value, generally the minimum per-metric quality, and does not decide the bit. `evaluate_gates` is the common gate registry used by policies and consumers, which prevents suggestions and scoring from applying different comparisons. It also fails closed for `NaN` values.
+## Gates, scores, and advisories
 
-Some metrics remain deliberately advisory even though they are scored, interpreted, and can suggest refactors. Whole-file `cfg.cyclomatic` does not gate SIMPLE because a merged file CFG rises with the number of otherwise simple functions. For COMPOSABLE at file granularity, instability, main-sequence distance, and fan-in are advisory; only outward fan-out gates the achieved bit. Do not substitute a normalized-score floor for the live raw-gate path: score floors belong to the separate `meet_satisfied` path for callers that possess only pre-aggregated scores.
+Each translator returns a `ScoredDecision` with deliberately separate outputs:
 
-### SIMPLE
+- `achieved` is the AND of registered raw-metric gates marked `gates_achieved`. The classifier uses it to set a lattice bit.
+- `score` is a normalized reporting value, usually the minimum quality among measured metrics. It does not set a lattice bit or override a gate.
+- Interpretation text and suggested operations make gate and advisory readings actionable, but neither is a verdict.
 
-SIMPLE requires AST entropy within the inclusive `0.2..=0.8` band and `ast.max_function_complexity <= 10`. Import/export-only entrypoint modules may be exempted on either entropy side. `cfg.cyclomatic <= 15` remains useful reporting and targeting evidence but is not decisive; the per-function maximum is the hard structural complexity gate.
+`evaluate_gates` is the shared gate registry for scorers and consumers such as suggestion/refactor paths, preventing their comparisons from drifting. Its `NaN` guard fails closed rather than allowing a non-numeric value to pass a bounded comparison. `meet_satisfied` is a separate, score-floor path for callers that possess only aggregated normalized scores; it is not the live `CharacteristicMorphism` decision path.
 
-### COMPOSABLE
+### SIMPLE: local structure
 
-<!-- openwiki: broken internal link [../integrations/distribution.md#gitnexus-for-composable] heading anchor "gitnexus-for-composable" does not exist in "../integrations/distribution.md". Fix the href or restore the target, then delete this comment. -->
-COMPOSABLE needs MDG metrics, normally supplied from GitNexus; when none are attached, the dimension key is absent rather than failed. Its decisive file-level check is `mdg.fan_out <= 10`. Instability (`0.3..=0.7` reference band), fan-in (`<= 15` reference), and, where there is real abstractness and coupling signal, Martin main-sequence distance `|A + I - 1| <= 0.5`, remain advisory score and interpretation inputs. The stable-leaf and entrypoint conditions are thus diagnostic carve-outs, not routes around the fan-out gate. See [GitNexus for COMPOSABLE](../integrations/distribution.md#gitnexus-for-composable) for acquisition and freshness behavior.
+SIMPLE requires entropy within the inclusive `0.2..=0.8` band and maximum per-function UAST complexity no greater than `10`. Import/export-only entrypoint modules can be exempted from either entropy-side failure. `cfg.cyclomatic <= 15` is still scored, interpreted, and can drive refactor advice, but is advisory: the whole-file merged CFG grows with the count of otherwise-simple functions. A poor advisory score must therefore not be reported as a SIMPLE gate failure.
 
-### SECURE and acknowledged risk
+### COMPOSABLE: outward dependency burden
 
-SECURE is strict: `cpg.dangerous_calls` and `cpg.taint_flows` must both be zero. Its reporting score decays exponentially with finding counts, but any nonzero count clears the canonical SECURE bit.
+At file granularity COMPOSABLE has one decisive metric: `mdg.fan_out <= 10`. Instability, fan-in, and main-sequence distance are retained as scored and interpreted architectural diagnostics, not alternate pass routes or hard failures. When abstractness and a resolvable import-graph coupling signal exist, the scorer diagnoses `mdg.main_sequence_distance = |A + I - 1|`; otherwise it diagnoses raw instability. Neither changes the fan-out gate.
 
-A `.topos.toml` found by walking upward can define `[[secure.allow]]` entries with a pattern, mandatory non-empty reason, and optional glob scope; invalid entries and malformed configuration are ignored rather than terminating evaluation. CLI `--allow` patterns are merged as one-run, all-scope entries with an explicit ephemeral reason.
+COMPOSABLE needs MDG input, commonly supplied by GitNexus, so no attached MDG produces an unavailable dimension rather than a negative verdict. This makes the pillar useful for project context without claiming a file passed solely because dependency evidence was unavailable.
 
-Allowing a finding does not rewrite canonical classification. The suppression overlay keeps the raw SECURE pass/fail status and raw lattice element, partitions full-registry findings into active and acknowledged lists, and recomputes an adjusted SECURE result only when it can inspect the CPG. Acknowledgements and their reasons remain visible. If acknowledgements would otherwise produce `IDEAL`, the overlay clears the SECURE bit and yields `SIMPLE_COMPOSABLE_NAVIGABLE`—GOLD—so an acknowledged risk cannot buy PLATINUM.
+### SECURE: strict canonical result and acknowledgement overlay
 
-### NAVIGABLE
+SECURE is strict: any nonzero dangerous-call or taint-flow count clears the canonical SECURE bit. Its exponential score is reporting only and cannot compensate for a finding.
 
-NAVIGABLE measures **Semantic Compositional Divergence** rather than branch count. For each callable it sums `depth(u) * ln(1 + fanout(u))` over block-scope nodes; `nav.max_function_divergence` is the maximum callable value. The scope set comprises `IfStmt`, `ForStmt`, `WhileStmt`, `MatchStmt`, `TryStmt`, `WithStmt`, and nested function/method declarations. Conditional expressions and short-circuit binary expressions do not open a block and are intentionally excluded.
+Security acknowledgements are a separate overlay, invoked only for a parseable result whose raw CPG metrics show SECURE failure. The MCP diagnostic path then loads configuration, builds a CPG, obtains **raw** findings, and calls `apply_allowlist`; this preserves the information needed to partition findings into active and acknowledged lists. The raw classification remains visible alongside the adjusted view.
 
-A flat function, and a module with no callable, reports `0.0`. Sequential branches can therefore preserve NAVIGABLE while a deeply nested version with similar SIMPLE complexity fails it. The hard gate is inclusive at `10.0`; the independent reporting score decays linearly to zero at the `12.0` cap. Both the gate metric and the located per-function entries use the same scope walk, so a failure can be mapped to its offending callable. Focused regressions cover flat-versus-nested code, the exact threshold, all supported languages, and agreement between the worst located entry and gate metric.
+A nearest `.topos.toml` can supply `[[secure.allow]]` entries. Each entry needs a non-empty `pattern` and `reason`, and may restrict itself with `scope`; malformed configuration or invalid entries are ignored rather than making evaluation fail. One-run `--allow` patterns are merged as all-scope entries with the explicit ephemeral reason `CLI --allow (ephemeral)`.
 
-## Lattice aggregation and preference guidance
+Acknowledgement is not a clean security pass. When the overlay can inspect the CPG, it recomputes adjusted dangerous and taint counts excluding allowlisted patterns, exposes both active findings and acknowledgement reasons, and caps an otherwise `IDEAL` adjusted result by clearing SECURE. An acknowledged risk therefore cannot obtain `IDEAL`/PLATINUM; in the all-other-pillars-passing case the adjusted value is `SIMPLE_COMPOSABLE_NAVIGABLE` (GOLD). Do not treat acknowledgements, adjusted scores, or displayed findings as replacements for the raw SECURE gate outcome.
 
-The default lattice's generator atoms are pairwise incomparable. Use `Omega::leq`, not bit integer order, for its partial order; meet and join correspond to bit-set intersection and union. For a multi-file roll-up, a measured pillar survives only when every parseable file that measured it achieves it; a file missing that representation does not drag the dimension down, but an unparseable file does. An empty lattice aggregate is `IDEAL` by the empty-meet convention.
+### NAVIGABLE: nesting load, not branch count
 
-A `Priority` labels the generator to emphasize in guidance; current policy translators do not change thresholds or `achieved` based on it. `UserPreferences` is stronger: it requires a complete permutation of all four generators and produces a lexicographic total order with weights `8/4/2/1`. The default order is `SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE`; it aims first for `IDEAL` and uses `SIMPLE_NAVIGABLE`, the top two preferences, as its plateau fallback. Legacy three-pillar rankings are rejected as invalid configuration rather than partially applied.
+NAVIGABLE uses the maximum callable **Semantic Compositional Divergence**:
 
-## Scoring versus advisory analyses
+```text
+SCD(fn) = Σ depth(u) · ln(1 + fanout(u))
+```
 
-<!-- openwiki: broken internal link [../workflows/agent-and-cli.md#advisory-and-non-lattice-analysis] heading anchor "advisory-and-non-lattice-analysis" does not exist in "../workflows/agent-and-cli.md". Fix the href or restore the target, then delete this comment. -->
-The four generators alone determine `EvaluationValue`. Structural test coverage, AST comparison, clone detection, and MCP `topos_refactor` cycle/dependency/process hotspots may inform inspection and refactor planning, but do not set a generator or change a medal. Likewise, advisory gate metrics may lower the displayed score without changing `achieved`. Preserve this boundary when adding probes, CLI commands, or MCP response fields; see [agent and CLI workflows](../workflows/agent-and-cli.md#advisory-and-non-lattice-analysis).
+The sum ranges over nested block scopes (`IfStmt`, loops, `MatchStmt`, `TryStmt`, `WithStmt`, and nested function/method declarations). `fanout(u)` counts immediate child scopes, while a callable root starts at depth zero. Conditional expressions and short-circuit binary expressions do not create such scopes, so they are excluded rather than duplicating SIMPLE’s branch-oriented concern.
 
-## Change and test checklist
+A flat callable—and a file with no callable—has divergence `0.0`. The hard gate is inclusive at `10.0`; its independent normalized score declines linearly to zero at the `12.0` cap. The probe also produces per-callable names and spans using the same scope walk as the maximum metric, so the worst failure can be located and targeted. Focused tests cover flat versus nested code, fanout, exact gates, supported languages, and agreement between the worst entry and gate metric.
 
-1. Put decisive raw comparisons and gate metadata in `evaluation/policies/gates.rs`; retain calibration values and score-only caps in `calibration.rs`.
-2. Update the owning translator and its targeted tests whenever a metric's gate, availability, or normalization changes.
-3. Changes to a generator require coordinated `Generator`, `EvaluationValue`, classifier wiring, preference-ranking width, public schemas, and medal tests. The invariant is non-negotiable: `IDEAL`/PLATINUM means all four bits.
-4. For NAVIGABLE changes, retain the nested-versus-sequential and exact-threshold tests. For suppression changes, retain raw-versus-adjusted and capped-grade tests.
-5. Run `cargo test -p topos-engine`; also run CLI/MCP tests when changing their assembly, schemas, diagnostics, or rendering.
+## Project roll-up and guidance
+
+`CharacteristicMorphism::combine_dimensions` rolls a project up per measured dimension. A dimension is retained only when every parseable result that measured it achieved it; an unparseable result fails every dimension that is otherwise being rolled up. Files without a key for a given optional representation are ignored for that dimension. Scores may be averaged or displayed by callers, but they never alter this gate-based roll-up.
+
+`Priority` is a single-pillar emphasis carried with the result; current translators do not change thresholds or `achieved` according to it. `UserPreferences` instead requires a complete permutation of all four generators and induces a lexicographic order over lattice values with weights `8/4/2/1`. The default is `SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE`; its aspirational target is `IDEAL` and its two-top-pillar fallback is `SIMPLE_NAVIGABLE`. A malformed or legacy three-pillar ranking is not partially applied by configuration loading: it falls back to the default preferences.
+
+## Boundaries, operations, and safe changes
+
+Structural coverage, clone detection, AST comparison, and MCP cycle/dependency/process analyses can support inspection and refactoring, but they are outside the four-generator lattice. Likewise, an advisory gate reading may lower a displayed score or create a recommendation without changing a medal or canonical verdict.
+
+When changing this model:
+
+1. Keep decisive comparison structure, exemptions, interpretation, and operations in `evaluation/policies/gates.rs`; keep calibration constants and score curves in the appropriate policy/calibration modules.
+2. Update the owning scorer, classifier wiring, schemas/renderers, and focused tests whenever a gate, representation availability, or generator changes.
+3. Preserve the distinction between parse failure, measured failure, and missing optional evidence. Never promote an advisory score or acknowledgement into a gate pass.
+4. For NAVIGABLE, retain nested-versus-sequential, exact-threshold, and worst-entry-location tests. For suppressions, retain raw-versus-adjusted, scope, disclosure, and grade-cap tests.
+5. Run `cargo test -p topos-engine`; include CLI and MCP tests when changing result assembly, configuration, overlays, schemas, or rendering.

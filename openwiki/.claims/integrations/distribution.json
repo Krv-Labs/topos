@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2908f973316a8f3fb31c2237a3b16668dbef73ca4e829501efc0a79e1acfe1f4",
+  "pageVersion": "sha256:d3d3f44c0bad032cb3b4338b4f31ea61ef78f8eeec117624dfd540361b77427d",
   "claims": [
     {
       "id": "claim_e718d9f2f5ca453d94a51d2b47f9f4d2",
@@ -186,11 +186,11 @@
     },
     {
       "id": "claim_21551ff43d0d4e5d99f43e4e14f88d82",
-      "statement": "The MCP Registry publishes `io.github.Krv-Labs/topos` version 0.5.1 as the stdio `topos-mcp` PyPI/uvx package, and its Maturin bin-wheel metadata states that installation exposes a compiled server without Python runtime dependencies.",
+      "statement": "`.mcp/server.json` declares `io.github.Krv-Labs/topos` version 0.6.0 as the stdio `topos-mcp` PyPI/uvx package, and its Maturin bin-wheel metadata states that installation exposes a compiled server without Python runtime dependencies or an import surface.",
       "evidence": [
         {
           "resource": "repo://.mcp/server.json#L2-L29",
-          "version": "repo-lines-v1:sha256:a410b6475bccdf582076ec3e2a8fd4514900f4cda3866d203340248463574ce1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MWMwYjVhYTlkYWU2ZDU1NzM2YjYwNGZiMzk5ZDQ2Y2M5MGExODI4OWFmZGIzNmQ4NGQzNTJkNGFiNjcyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "version": "repo-lines-v1:sha256:58479391f6cd6d6ad7edeb4fed736605d55640e202da3af61f846422b8b8afdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MWMwYjVhYTlkYWU2ZDU1NzM2YjYwNGZiMzk5ZDQ2Y2M5MGExODI4OWFmZGIzNmQ4NGQzNTJkNGFiNjcyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
           "resource": "repo://pyproject.toml#L1-L25",
@@ -212,7 +212,7 @@
         },
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:1b59a73166a177772f7855b2ccb405a3c81db5a723dd14ef4bedf375874735a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:2a66ced551c1f641ebb099535c4cffd26634dd7374daee3b85698ac22c36e4e0:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
           "resource": "repo://scripts/check_versions.py#L15-L17",
@@ -315,10 +315,128 @@
           "version": "repo-lines-v1:sha256:5532f22d337151320234dbb3eb48ff147bdd08f6debd1e89c296eeb50481e493:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxYTI1ZDY1MmRiNzQ1M2VhOWJkZmIzNzJkODdmMjdmOTE0NmI0NjJkMGQ1ZDVhNTk3OWE2YTI0ODdkYjdlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODJkYjMyYTc5MmU3NzdlNmU3ZDRkMjIyNzA4MDNiZTk5NTFhYzM0MDM4MjQ4MTUxY2FhMmQ4MDViOGQxNDQ3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjNlZmI3N2IzY2E5MjU2ZDAzZWI5MDk3NWExNDRmYzA1ZTc2ZjJlMWZiZjRkYmZkNjE0ZmJhMGU1NTFkNmRmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIxNDU2ZjRhY2I0OGZmYWQ1MTFlZGM4OGI3MWZlMGJhYWJlOTJiYzhkNWIxZjk4ZWE3NDE4ZWZkYmZhYmVkNSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_b04bbca27c90426094fa7e33b79fc2b2",
+      "statement": "GitNexus graph generation is shared by the CLI and MCP paths; default evaluation retries only recoverable graph states once, while an unavailable executable or failed generation leaves COMPOSABLE unscored and the other pillars available.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/adapters/gitnexus.rs#L1-L10",
+          "version": "repo-lines-v1:sha256:ef37968820dcc47f82d1d32465215eb22f9423676933af4400dc228cdfb77565:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxM2M5OTU4ODllOGIzY2JkNmYyNjE1ZGMwMWIyNDRhZjI3ZjAwZmZjMzcwZDkyNGYzMDFkNjZkNTMwNWJlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0OThhZDViZmM5MGM1MzQwZjAxNTRkN2FjMmI3ZGI4OGFmOGE5MmIwNDdiNWY2YWM1MDA4YzQ5ZTExMWRhOGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzNzc1NjM0YjczYzcwNjJiZjQ4MDExYTc3ZGJkNzNlYTdmMmU4MzdkODZjNGE1MWJmYTQzNmFkODQ3MmQxZDQifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L141-L227",
+          "version": "repo-lines-v1:sha256:e3239f805d03d5c86f6bbeb1b30d33bb12764ab6296fe39475081bea9d2f07ec:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMzNmJjNmFmZWY4OTFmNTY2NTk5ZWUxZjk0NjU0YjAxOWYwY2MzODJkMWU2MGEwOGVjODhlNTM1YTQ4YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NTM3NjRhYTkwN2Q1OTJkOGVhN2NlZTQ3ZDhiNWMyZGE5MzU4ZjJhZWRlNjAyODNhZmI2YzlhYmJiMjJlMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhZjgzNzk4ZTk2MWY5ZmNjNWQ4YzBlODFjMjM4YmJkNTQ5YTJmMzFiZmQxZTkzNmJlNjNmMmNmMTZlMDcxZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d47632b1bef4aed94dd2a4d020f0ef6",
+      "statement": "The MCP filesystem boundary canonicalizes existing requests and requires both the request and detected project root to lie under `TOPOS_MCP_FILE_ROOT` when configured; without it, requests must be absolute and yield a project marker.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L27-L97",
+          "version": "repo-lines-v1:sha256:ca66c522ab1511d69a1f959c579c6041d341188b5e42c2ecab7da40c106546cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4YmJiMzk2ODMyZjFmYmJiMTA5OGUyNGY3MDE5MjUwYTkwOTM4OWRlYjUxY2Y2MjEwOGFkM2I3NzNjYjM5YTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMTFhODkzNjE4YmMzNzlkM2NmNTFjNWYyY2RhMzUzMzRmNjljZGRjYmM2MzRlYTMyZWJmZTJlYzk4N2E0MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyM2Y4OGZjOGExNGFjZjE3ZjJiMTk0MzkzZTQ2YTNmYjczYzBlNzkzNDRkNjQ4YTk2MjBiMWRhYTJiMjljZjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_326e2996ddc54e019e66604b0610c09f",
+      "statement": "Sighthound is an in-process, pinned dependency used for supplementary `SecurityFinding` diagnostics on supported languages, with unsupported, disabled, or failed scans falling back to local CPG probes rather than replacing canonical SECURE scoring.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/Cargo.toml#L25-L27",
+          "version": "repo-lines-v1:sha256:f00bb75db8ffe267fc558837d6b97c0645fe06247bc11311c001b609e163866c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjIzYWU4MTFlNzUyZmY4YTkxODIwZDViOGY2NmM5M2FlMjU5MGRjYTNmZmYxMWUwODliODI1OGUyNjBlZDM2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzkzMTdmNGMyMTQ5OTYzMmFiZWY4YmVkMmZkYmMyMGU4YmU5Y2EzNjQ4N2NiNTZiMWUyNGNmMGE5ZjVmYmIxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODJjYzlmZjkwZWNmYTliMWVkNGJmNGI0MTNiNWZhM2U1YTZlYjQzZmUwNGI4OGM1NTM2YjE0ZThmNmVmMmE1MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYThiMmRmOWJkZGI2MTYzZWJiODdjYTU3ZGRhNWYyM2Q3YjYzMzMzZDAwOWU3OGQ0YTVhYjg5YTA1YzVlNDBjYSJ9"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L1-L14",
+          "version": "repo-lines-v1:sha256:61e7fa27004162235c29846a21276a0fd5a4ef3e3fa3ac2f4bab14fedc68315d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZTQzNDBiYjFlZDQxYjVkNzlhZGY5YTgyOTNkMDI2YTc1YTg2OTVkZjBhMTg1ZjkyYWM1MTExOTU0NTY0N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1YmI5ZDg4YjU1NDk4MjBmNzdlM2I2ODFjYzEwZTM5N2Y5ZWM0ZjU1YTkzMmJkMDU3MzdmNGM0NWIwNzllNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYWU2NmU5YjAxMDEyMGViOTgxNWRjNTM4MDlhYTZmNmZlMzJjZWU0ODE5MTYxNDg5OTY0ZjFmNDFmMjEyNWUifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/sighthound.rs#L264-L290",
+          "version": "repo-lines-v1:sha256:8825ba76650cd0f27cd9c83497ca1d45abc711ee5e3add172f27dcb918522fce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZWM4OWJlMjQ4YmY2ZGZmOTU3MDVjYTAwNWU4MTdkNWY0ZjRmM2ZkM2VjMDE0MzA1ZWFlYTA0Zjk3MjY5M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b28da0ae65e34443af92b8e73cc22f3c",
+      "statement": "The VS Code extension passes its first workspace folder as `TOPOS_MCP_FILE_ROOT` when defining the stdio MCP server, and resolves the Topos executable through configured, bundled, cached, PATH, optional Python, and optional verified-download candidates.",
+      "evidence": [
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L158-L193",
+          "version": "repo-lines-v1:sha256:419aafbd13f462db2d3cdbce528d9b5253beee921c301cc545dcd009b64f8058:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZGUzZWRmM2M2NWYzZGE2YjgwYTAyYmFjZTM2MWI0OTk5YTVjODVhOWNmM2VhYjM0NWMwOGYzN2VjNTBiZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MDYyODNjMDI1ZWYyMDc1ZDcxNDM5YzU1YjEyYmIyODI1NGQ1OTdmNzJhMzNlZDIxNmE1ZTEyZDhhMTczNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2OWViODVlZjZhYWNmMDRhYjYxZDlmYWQyZTNhZDI3NzBiNjRhNjBiNTQ0YTk3MTQxMmU1ZGU5OTFiNmI5ZWEifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L299-L426",
+          "version": "repo-lines-v1:sha256:a95675958859d8d55e0c90dad13672bac5509fbe8b32838e0c936c975a10150e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZGE2YTRlMTFkN2QxZDcxZDcxNGNmZGYyMDE1NGQ4YmYzNmViZDAwNTQ2MWMyNzhlN2YwYjcyMTIzZjY3Njg1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3ZmJjZWZmODZiOGRiZTc2NDdiMWUxNzNjM2U2ODk5ZmNmNjQ4MGMzOTk4NWMyNGFjNjc0YTdiYjJlOTU2ODliIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzMjQxMzhmZmZmY2ZiNTUwZmJhNzFmNmQwZjE3OTc3ZTBhMmQ2MjU2MDEwYjhhNzg4NjU3OGU5NWMzMzk4YTcwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMWIwYTUwM2FjNjEzOTViZmNhN2E4ZmQ3MWRhZDE0NDlmMzRjNTMwYzZjMTFkYzJhNTRmZGFlNTQxYWJhZDA4In0"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L96-L143",
+          "version": "repo-lines-v1:sha256:75ea324552308dc06d09281c9f7d0c9adc9003dbe402898d504b62678971cee4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzZGQzYWRhYjE2MWYxZmQ1OGE3MjBkYThlOWM1OGVkYWEwNWIwNzFiZTQ5MDllMTBjMThkYmM5ZmViNmZjMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMjMyZjMzOTFlNjY2OWY4NDllOTgzYzRiMmM0YmVmNzNiZjE0NDVjYTFlYmNkNTQwYWI3NzVlNzQwM2UyODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0NzM1ZjFmNjRlYzE5ZWMzM2ZmMjVlZTNiZDI3NGIxMzM0Mjc0MTYxNWJjODUzYmNiMmY4ZTU5MmQ4Y2EwOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0Mjg4NjM1MGIxNzA2MGUxNWEyZmMyMzE5ZmZhMzZkNjZjYjk0ZDhjNjk0ZTJlMmFlMTkwY2JhN2IwZTA4NDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_28c375c6542344db9ea7537b058cad3c",
+      "statement": "Agent Plugin manifests delegate discovery and launch governance to a compatible host, whereas `topos install` owns only a narrowly defined MCP registration in supported harness configs and preserves conflicting user-owned entries.",
+      "evidence": [
+        {
+          "resource": "repo://agent-plugin/mcp.json#L1-L10",
+          "version": "repo-lines-v1:sha256:948774c61a2527be231c14c5e70a507cbd257cfef2f49f581c950af8446fe6e2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://agent-plugin/plugin.json#L1-L20",
+          "version": "repo-lines-v1:sha256:c5773d7f2e27cf7e1aa853ab7e115799ba98fc7eeb8d10be8a2137ef5d7db6e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/artifact.rs#L31-L50",
+          "version": "repo-lines-v1:sha256:ca17e80df2cae29b0011656fc1b2df6cebbc2e8914bf5d3e315409ef17a5249a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNmU5YWY1ZTM2ZTNlYWZkNTYxMjYwN2U0YzE3ODU2MGE1Mzk2MGYyODc0N2U4MTdlMzZlMDhlOWVjNWM0YmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5OGI5MTEwMjdkNzVkMmE0Y2JmNjEzYzk1Y2UyMmEyNWEzYjE5NzE4YjZmNTVmOTRiMmM2YmMwYzkzY2IwNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhNmU5ODIyNjg3MzdmNGYwZWFmMmVhYzI1Y2U1MDAwZDQ4M2Y2YzJjZDQ1N2EwY2Y0MTZjYTM2NWY0MDJhMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MzY4ODQzYjM5MTQwMjViYTRlNTE3NDkwM2YxNjllMDNlYzQ0ZTM5N2U2YWMyNWUzMmM5ODM2M2U0OGNiYzcifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/configure.rs#L110-L147",
+          "version": "repo-lines-v1:sha256:2d65844ac6d2d1121cb6a94fd59e74ac2f968253bf1e2a1580c2883b89be5323:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5YWQzZTcwMzM0YjQ2YTVmOGZkM2UwYmJlZGM1MDNkNjZhYTUwM2E5MjM0OGFjMmU0ZThjMGQ5NWQyMjFiMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/mod.rs#L1-L19",
+          "version": "repo-lines-v1:sha256:ea5b1f4c2ef58e8d06b25cbbd15dc230ef72009fb80a7bc9896810e5f77e2931:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MjM1OTQzNGQ1MDIxZDg2Mzk2NDJiMWNmN2RkMTNhNzE2MzRlZjAxYjBlYWNjNWE4OGFiMjY5Yjg2M2E1Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ZDUwZGIyOTY2NmY3MDZkZjMzNDM1NmFjZmQ5ZGExYTJlYjM3NDA5YmVhMzUzNjI1ZDNiYjQ4MTYxMjYxMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxZTZiMzY5MWNkNGUzMmYyYWU1YTNiZTQ0MGM5ZTE4NzFlM2ZkZTQ0ZjI0NThhYzY1ZWFmN2UwYmYyZjU3N2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e061231f7414e22bd5506ca46bf2e8a",
+      "statement": "The Agent Plugin checker rejects symlinks and traversal-capable command or working-directory forms, reserves host-provided plugin environment variables, and requires the packaged skill to be a byte-identical regular-file copy of the canonical skill.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L150-L217",
+          "version": "repo-lines-v1:sha256:a25f1246f1f911e58a0a8dfe84993316d03081a39b7014d0c667eec4139bb463:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZGMxM2Y1ZTI1MzU2MmZjMTg4Y2NmNmQ4ZGQyYjIyZDE0MmZlYzUxZDI2NjZiZGIzZjY4M2Y5NGM3YmExNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2YWY3YzJhYzIyNzk2MGZjZDVjM2NjODgwZDViMDhjZmIzOTcxMTJkYTgxMGJmNzVjM2Y0ZWJhYTNhMzdlNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNmNjZDliYjliZjMxOTJkNjNiYzM0NDQyYWY1NTI0NmNhY2UwMjEzZmRlOTZhNTQ4NDIzNmU2ZTBlOTBiM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3MTlkMzg0YjE2ZmQ1Y2E5N2VkZmU1OWIzZmNjMDU3YzgzZWIxOTY3YjQzNTIyZDdkMjEzZDNmYmJjYWNiNTAifQ"
+        },
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L282-L329",
+          "version": "repo-lines-v1:sha256:19e0dab95455597bd71dfabca9b3c080ece941adefd1abe224ea41bf0838eaef:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0ZTg4N2JiNDBlZWFmZDkyNmYxMDJlZWE5NzAyMTBmMzA0NTQ3YTk3MDI1NjMzZjJlODg0Y2M2ZjE5YTgxNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwNzFmZWU5ODE4Y2E0NmNlZGRkOTk2ZDA2MTJlMmFjOGI0MzU1ZjE4YTcyZDgwN2ZiMzYwYzFjZTY5ZDk1OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNmNjZDliYjliZjMxOTJkNjNiYzM0NDQyYWY1NTI0NmNhY2UwMjEzZmRlOTZhNTQ4NDIzNmU2ZTBlOTBiM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxY2YyNGFlNTgxODEzOWQyYTkwZGVhMjJkY2NmZDEwNjBkNTRkMTNlMzlhMWNjMWM4MTlmNDFjMjQ1MjNjMmEifQ"
+        },
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L33-L48",
+          "version": "repo-lines-v1:sha256:3f086a2399cc75b4a74a5da6e1b5395dc21983cb3d8628290324e4c9ad68d628:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZGEzZDVlN2RlNDQxNGExYWM2MTE4MTA5NTlmZjdiZmE3MmYzMWI4MDhkZDRlNWQwZjlkYjhlMTUwMzdiMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMjcxZjhjYmUzY2ViZDg1NTM5MGMxMGFjNzczZTJlZDYwZjA0YmFiNDExNzE5NWUxMWZiZTcwMjA0YjJlNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxODExODJhYzBjNTVhZDc1OThlNmU1OTcwODU1YjlkYjhhY2NjOGJiYzVmMDE4NmFkODA5ZTQ5Yzc1YjgxYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljMjgxMDhjYWU4OWE4OTBiYmZlY2VlZTA5YWRiNDhlODEwZTg5YmI1ZTc5ZTNiNzRkZWQwOWM4OGNiYzk3Y2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e6ab3614926b4cbda2612b92ab403328",
+      "statement": "`topos install pi` may add only a reference to an already-installed Topos skill directory because pi lacks its own MCP client; it does not write skill contents and writes no reference when pi already discovers the skill or none is available.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/commands/install/skills_entry.rs#L1-L16",
+          "version": "repo-lines-v1:sha256:d7831f7f663dc9aca1156bf20ad7d1f3b6082f974db57e1b3ca9c3d974fcdcce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NzQwNjFjY2Y5N2QwNjZiYjA1ZjNiMTI2MTg1YTgzM2QxMzk3OTQzMzhiMjIzNmRhYmZjYjYzZjFkZDdkY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZTYyNjkyOTVjYWEyOGQ5MjdiNGJiNmMxNzNkYjg3NzU0MzA4NDA0ZGVjNjk0ZWE3YmRjNDc3NzYzODY4ZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZWYyZDcyYmIwM2Y3ZjllY2ZmMzg5NTdhNzYwZjBhYTkxMmI2YmFjNGQ0MTczZDU5NzczY2M5YjI0NjA2OTIifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/skills_entry.rs#L69-L147",
+          "version": "repo-lines-v1:sha256:36935ccdebff0fc03d49d8d82833126bc24f12847122ba1f3e9f4b1e0e604947:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllOTQ2ZWIzYjA3OTMxY2MwZDM5ZjFhMjE3YTI2OTNmMjU5ZDlkNjY3MzczMjBhMjc3OTg5NTA0ZDhhNzBjNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxODY1NDRiMzA5OGM1M2VkODMyMWJiMWZhZTlmZTM2MmE0OWFjZWQxMDc1NTQyOGMxY2M3MDAwNGFlMzE3MTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllMmVhMmMyY2I4YzUzNTJjMWQ0YTU0ZDQyMmViZTU3Yjk5YjBjMDY4YTk3OTVhMTRhNDI3MmRkZDk4YTA4NTEifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.5.0",
-    "at": "2026-09-01T16:34:02.929Z"
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-16T12:21:33.983Z"
   }
 }

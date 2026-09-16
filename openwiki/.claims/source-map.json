@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f46e82bd180deadda154ce546f85f2b6f8361bd6c0315e607809285091458ecf",
+  "pageVersion": "sha256:c6ef3f80daf8df6fd358de62675b9d83efddb1d87879d5e817796bfb123ef231",
   "claims": [
     {
       "id": "claim_e4c0eafe313c458291568721ef6e14b0",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:1b59a73166a177772f7855b2ccb405a3c81db5a723dd14ef4bedf375874735a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:2a66ced551c1f641ebb099535c4cffd26634dd7374daee3b85698ac22c36e4e0:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -52,15 +52,23 @@
     },
     {
       "id": "claim_5fd5517d7b5b441cb9a76c0fdda4bac8",
-      "statement": "Harness installation owns only the Topos MCP registration and uses separate modules for harness definitions, artifact formats, binary selection, atomic filesystem operations, state, and cleanup; non-interactive installation requires explicit harnesses or `--all`, while uninstall has distinct interactive, headless, and ambiguous-stream safety behavior.",
+      "statement": "Harness registration is modular around a nine-row harness table, artifact formats, binary selection, atomic filesystem work, state, and cleanup. It writes one Topos-owned MCP registration per ordinary harness without changing instructions or skill content; `pi` is the narrow exception that may receive a reference to an already-installed skill directory. Non-interactive installation requires explicit harnesses or `--all`, while uninstall distinguishes interactive, headless, and ambiguous-stream safety behavior.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/mod.rs#L1-L31",
-          "version": "repo-lines-v1:sha256:41df1ca2e8d4e7abf74b0d6920e72a94da0917a464c2b75a0e3b0fb3459de97f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MjM1OTQzNGQ1MDIxZDg2Mzk2NDJiMWNmN2RkMTNhNzE2MzRlZjAxYjBlYWNjNWE4OGFiMjY5Yjg2M2E1Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWJiZTBjYjUzYWRkODg5Y2Q0ZGYyODYwOTE5ZTc0ODYyNzQ2Yzc1ZWI1NjcyYWJiNDhlZWY0ZjY5YTg0ZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3YmEzODBiOGZkMGI1OGYzZDJhNmU0ZTlhNGM3OTNlNTNmNGM4M2Y4NWJmOGY0OTc0MWY2NjBhYTdlYTIwYjkifQ"
+          "resource": "repo://topos/cli/src/commands/install/harness.rs#L1-L20",
+          "version": "repo-lines-v1:sha256:aa53400c3a180536c88e97bd41c357f501b1e07c1ff09b07bdc56fab1f5614f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYmQ1OTU1YWZhNzg1OTUyM2FmNGI1NTU0ZmY1MzMzZTY5ZTg3ZDM2NjUzMWRjZDg0ZDFjMjExNzhkY2ZjZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MDc2YmY1OTk0YmNiNmI3NDZhOTUwNTBhYTVhZTg3NGI3MjI5Y2Y4OWIwYTk0MGM0MjAwZThlZjZlODk0NDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlZWYyZDcyYmIwM2Y3ZjllY2ZmMzg5NTdhNzYwZjBhYTkxMmI2YmFjNGQ0MTczZDU5NzczY2M5YjI0NjA2OTIifQ"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/mod.rs#L109-L198",
-          "version": "repo-lines-v1:sha256:2b8bd8912a4194a38f3ca61c64ec0c2a51997c93ab3d443f650cf354f9894c0d:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2YjkzNzc5NWQyYmNiOGRlOTA5OWNiNjcwNDFjYWM3MmJlZjA3NDA2YzQzMjBjNjg5ZjRhMzE2NTdhMzEzODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzODg2MmYxMTVhZDc3Y2I4NTUyYjRiYzRmMTVhZDU5NWMwMGZlYzM5NTUyYjEwMTYxMTRmMTk5Mjg3MDA5YTUifQ"
+          "resource": "repo://topos/cli/src/commands/install/harness.rs#L52-L152",
+          "version": "repo-lines-v1:sha256:c0366339cbc74c677d4d563bffc92a20d517872d89c75d51b98c69f41da07bfb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhNzU4NTA4YTJkMmE0ZGY0MjgwNjcxNGUyZWI4MTUwNTRhZmZkYmY1OWU5YWFkZGM4MmNjN2YwMDg2MGZmZWFmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMDJkMmMwZDZkYzVlNzRkOTJmYTE0YjkxZGJlYTI2NDA5MGJlYjM1ZmRiOTE4OGQ5YjM0MTE4MWRjZTlmNGNlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3ZTkxMGQzOGQzYTYyYmI5OTBkNDc3OTVhZDRmNTVlZWFjN2E1YzNkZGYyYjRmMTZlY2Q0YTAwNzJmODg3ZDEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NjYxOGY0N2U0YWFlMmYxMDc0ODg2OGQyOTUxZTgxNzM3YTNmMjA5ZjY2YWIwOGU3YTQ5M2Y4YzJkMGI2ZDA1In0"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/mod.rs#L1-L37",
+          "version": "repo-lines-v1:sha256:d7a5be2a8e2e7df81a1267eec6e2230220abab90409358c530260058a421d38b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3MjM1OTQzNGQ1MDIxZDg2Mzk2NDJiMWNmN2RkMTNhNzE2MzRlZjAxYjBlYWNjNWE4OGFiMjY5Yjg2M2E1Y2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWJiZTBjYjUzYWRkODg5Y2Q0ZGYyODYwOTE5ZTc0ODYyNzQ2Yzc1ZWI1NjcyYWJiNDhlZWY0ZjY5YTg0ZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3YmEzODBiOGZkMGI1OGYzZDJhNmU0ZTlhNGM3OTNlNTNmNGM4M2Y4NWJmOGY0OTc0MWY2NjBhYTdlYTIwYjkifQ"
+        },
+        {
+          "resource": "repo://topos/cli/src/commands/install/mod.rs#L157-L204",
+          "version": "repo-lines-v1:sha256:c150c87e84f43c161a18d9401bd8236b81a0cddb94cb1b0fb8899a21500db773:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NzEyMWQ3NTVmYmFiZTViOTZhZmVmZTM2ZjBhYjk2OWQ4YTE2NGU2OGFhNGE5YjIxOTNmNDkxN2M0NTQxZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2NjljMjQ3Njc4OGQ5ZTBmNDFlZjkxNThkOTNjMTFlMzliYzE4NGJjNzMzYThjMTQ3ZjE3MzI1OGM2MWMwMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzODg2MmYxMTVhZDc3Y2I4NTUyYjRiYzRmMTVhZDU5NWMwMGZlYzM5NTUyYjEwMTYxMTRmMTk5Mjg3MDA5YTUifQ"
         }
       ]
     },
@@ -205,10 +213,42 @@
           "version": "repo-lines-v1:sha256:9fad05905e1690080ecacc7f528d643ce1fd2604f41291830a6a569877dd72dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNDY4NWYyNWY0MzI4MjU0YmFlM2YxZTlkOGJhNDM3ZWZmYTU0Yjg0MTc1ZTJjMDdkYjUxY2E2YzgwZGY4NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkY2NiODZmZTQ2OTNhYzQyMjNjNzRjMWY5YzY1YTRjNjk0OTFiMGM5MTFjNjlmYTgyM2RkZGNjMjdhODUwZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZTk0YjM1NjA4ZjdjMjI3YmNhZjQwNDhjNmY1YjgyOTRiOTEyYzEyNjJhZjQyNWQ1NTU0ZTE1MWEyMzk3ZjMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_0bcbb472aa0d48cd872431c981ce75bc",
+      "statement": "The shell installer preflight treats an existing target at its installation path as an in-place upgrade, but warns and continues rather than blocking for foreign installations in non-interactive or piped runs; force variables bypass confirmation. The focused packaging suite exercises those cases and Homebrew-specific guidance.",
+      "evidence": [
+        {
+          "resource": "repo://tests/packaging/test_install_sh_preflight.py#L242-L280",
+          "version": "repo-lines-v1:sha256:f31d5314f0ed08479b139fbec1c219db1456252c4c5b7a03c3701ae5e90c6ea3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzYWQ5M2NiYWI5M2ZjMWVhMzg4NTYwZjg0ODA0ZTNhZDBkNThkNTlmMDkxNjZiZTcyNzI0YzQxYzEyN2Y3YjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzU4ZmUzYWExYTk2NDk3MTkwN2E4M2I4YTVhY2UzOTcxZTRkYTllYmRhYjQ4Y2M0N2M4MTk4MGE2MTczMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjYjA0NTY5NTY5ZDBhZjU0MmQ3MzIzYjRlOTAwNTU0NTE4NDg2NDhjMzU3MDlkYTU2ODQyNzAzMDQxN2IzZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhNjk2ZWM4NzJkZDExZTI0Nzg5ZWUxYWJlYTI0NTA5ODkzZjY2MTc3YzU2ZmY4MTA5M2JiNTcyMDk4YzhhMGEifQ"
+        },
+        {
+          "resource": "repo://tests/packaging/test_install_sh_preflight.py#L95-L163",
+          "version": "repo-lines-v1:sha256:463b56dbc514bccf34974c9b9b5d57effaa26717329d526af28dcfca0817b380:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkODIyZWQ4M2I3YTVkNWJhNzc3MTQ3YmFlZmFmNzQ1ZGQ3NDcxZjNkYjIxMmIwMWNhMjg4ODEzNTBiZWFkZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNDBjNjA3NmMzZWUyNTYxYWJjZGEyOTE3ZmU1OTVlYzdiNTdlOGQ4ZWYyYTZiOThiMDIxYTNjNDJmMDVjOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0ZTgwZjk5YjI5YmNmY2U3YzdkOGY4YjkxYTY0Y2MzZWFlMWMzNzc0Mjg3M2M5OGFkNzE5MTYyNzBmYzliYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkYTg1MTdiYjRkZjYzMzg5YzNiZTA0YTgzYWU1YWM1MTgxN2E5MDM3Y2E4MDcwNGVjNzcxMWIwNWZkZDMzMWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e271a7e1d9c4ce98b44cb20dc4eca6e",
+      "statement": "MCP dependency-graph operations apply containment checks to a `gitnexus_dir` override with a resolver that canonicalizes each existing path component before accepting a missing tail, preventing an existing symlink prefix from escaping the allowed root.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/security.rs#L154-L221",
+          "version": "repo-lines-v1:sha256:579865fe20238658004e7e4e28f59a42ce3757b655517abecd7d1b5ae5acf68d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNzc5YTJiMDM1NTVlYmUyYTNhNjIyMjliNWE1ZjY2YzczYzlhZTY1NDk4NWE0NDVlNWE5ZTVkYzhhMGVjNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYjZjNjlmZWM5ZDYyYTFkZDQ2NjYxMmQxMzMwMTJjOGFiMWRjMTA3Y2EwMjVmNTljMzVhNmRhZjE3ZjMxNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNmVjMDk5YzBhNGNiYjUyOGMyNGE0MDBjMTI2YjBiN2FhZmViOTA2ZWU3NDFlNzA4NTMzNTdkZTA4MGQzMGMifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/depgraph.rs#L335-L358",
+          "version": "repo-lines-v1:sha256:38931e167d95dd4e09a2d78c8a9f5922bd065c70bc1a214227278cec77dbaeee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ODc5MjA1MzRiNDE3OTQyZGM1YTRhMjYyMTIyZDllYWZiYTJjMTZjOWQyNDNmZDI2Yzc3MzliYjZmODg1ZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNzVjNzBkOTQ2MzYyNWUxMDc5ZmQ4ZmM4ZWU2MmFkMmU5MmM0MmJlYWFiZmQ4NWI3OGQ4ZTBhNDk3OWI5NGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxN2U4YzRhZmNjNmE3YzlhNDYzYzAwYzM3MzdiYmYzZjYzNmM4YTA2YTdiZTlhMDBiNjg1NWQ2MTY1OTBiMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2MGVjMDYyNTAyNDFjNzJlN2ExOTBiZmZlZTk0ZDAwM2QwOGUwMTk2Y2ZhYzBiYWRjZDBlOWY3ZDYzNTQ0YmEifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/tools/depgraph.rs#L392-L409",
+          "version": "repo-lines-v1:sha256:8387fd84cb1d868622e3f8d8506f354ac9812fea49f15d50c6353997ec8f0dc8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ODc5MjA1MzRiNDE3OTQyZGM1YTRhMjYyMTIyZDllYWZiYTJjMTZjOWQyNDNmZDI2Yzc3MzliYjZmODg1ZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlYjliZmU0YmVjMjExOGUyMzQ0MDYzYjZkZTlkYjY4OWY0OTBkYWQyYzdlOWNiZTVhNDU4OWQ4NDZjZTNhNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxN2U4YzRhZmNjNmE3YzlhNDYzYzAwYzM3MzdiYmYzZjYzNmM4YTA2YTdiZTlhMDBiNjg1NWQ2MTY1OTBiMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNTZlNmJmNDM5ODdiMTMwMGNjODI4Nzk3NTZmYzcwMjJhNWJlYjNlYmQ1Y2Y4NTk4MWIwZGRlZDRmODMzMzAifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.5.0",
-    "at": "2026-09-01T16:34:02.929Z"
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-16T12:21:33.983Z"
   }
 }

@@ -18,7 +18,7 @@
 //! default. Absent one, the gating tier leads across pillars too — see
 //! [`rank_key`].
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde_json::Value;
 use sha1::{Digest, Sha1};
@@ -49,7 +49,7 @@ pub fn build_refactor_targets(
     filepath: &str,
     result: &ClassificationResult,
     security_findings: &[SecurityFinding],
-    locations: &HashMap<String, Vec<FunctionEntry>>,
+    locations: &BTreeMap<String, Vec<FunctionEntry>>,
     ranking: Option<&[GeneratorInput]>,
     max_targets: usize,
 ) -> Vec<RefactorTarget> {
@@ -163,7 +163,7 @@ fn location_target(filepath: &str, metric: &str, entry: &FunctionEntry) -> Refac
         severity: gate_severity(metric).to_string(),
         recommended_operations: operations,
         constraints: LOCATION_CONSTRAINTS.iter().map(|s| s.to_string()).collect(),
-        evidence: HashMap::from([
+        evidence: BTreeMap::from([
             ("complexity".to_string(), Value::from(entry.complexity)),
             (
                 "metric_source".to_string(),
@@ -242,7 +242,7 @@ fn structural_metric_targets(filepath: &str, result: &ClassificationResult) -> V
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            evidence: HashMap::from([(
+            evidence: BTreeMap::from([(
                 "interpretation".to_string(),
                 result
                     .interpretation
@@ -287,7 +287,7 @@ fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<Refacto
                 severity: "fix".to_string(),
                 recommended_operations: operations.iter().map(|s| s.to_string()).collect(),
                 constraints: SECURITY_CONSTRAINTS.iter().map(|s| s.to_string()).collect(),
-                evidence: HashMap::from([
+                evidence: BTreeMap::from([
                     ("kind".to_string(), Value::from(finding.kind.clone())),
                     ("snippet".to_string(), Value::from(finding.snippet.clone())),
                     (
@@ -415,7 +415,7 @@ mod tests {
     /// must not outrank a small, genuine gate failure in the same pillar.
     #[test]
     fn gating_failure_outranks_larger_advisory_excess() {
-        let locations = HashMap::from([
+        let locations = BTreeMap::from([
             ("cfg.cyclomatic".to_string(), vec![module_entry(80)]),
             (
                 "ast.max_function_complexity".to_string(),
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn cyclomatic_only_target_is_advisory() {
-        let locations = HashMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(80)])]);
+        let locations = BTreeMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(80)])]);
         let targets = build_refactor_targets(
             "a.py",
             &ClassificationResult::default(),
@@ -471,7 +471,7 @@ mod tests {
         result.raw_metrics.insert("mdg.fan_in".to_string(), 30.0);
         result.raw_metrics.insert("mdg.fan_out".to_string(), 5.0);
 
-        let targets = build_refactor_targets("a.py", &result, &[], &HashMap::new(), None, 5);
+        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
 
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].metric, "mdg.fan_in");
@@ -497,7 +497,7 @@ mod tests {
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &HashMap::new(), None, 5);
+        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
 
         assert!(
             targets.is_empty(),
@@ -525,7 +525,7 @@ mod tests {
             ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &HashMap::new(), None, 5);
+        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
 
         assert_eq!(targets.len(), 1);
         assert_eq!(
@@ -545,8 +545,8 @@ mod tests {
     /// COMPOSABLE gate failure. `default_pillar_rank` puts SIMPLE first,
     /// so this is the fixture that separates "the caller ranked pillars"
     /// from "we fell back to an internal default".
-    fn cross_pillar_fixture() -> (HashMap<String, Vec<FunctionEntry>>, ClassificationResult) {
-        let locations = HashMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(118)])]);
+    fn cross_pillar_fixture() -> (BTreeMap<String, Vec<FunctionEntry>>, ClassificationResult) {
+        let locations = BTreeMap::from([("cfg.cyclomatic".to_string(), vec![module_entry(118)])]);
         let mut result = ClassificationResult::default();
         // `mdg.fan_out` is the gating COMPOSABLE metric (an absolute count,
         // so it has no resolution limit and still fails hard). At 11 against
@@ -625,7 +625,7 @@ mod tests {
             "a.py",
             &result,
             &findings,
-            &HashMap::new(),
+            &BTreeMap::new(),
             Some(&[
                 GeneratorInput::Secure,
                 GeneratorInput::Simple,

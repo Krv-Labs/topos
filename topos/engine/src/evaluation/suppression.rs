@@ -154,7 +154,7 @@ mod tests {
     use crate::core::characteristic_morphism::CharacteristicMorphism;
     use crate::core::morphism::ProgramMorphism;
     use crate::evaluation::policies::base::Priority;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     const EVAL_SRC: &str = "def f(x):\n    return eval(x)\n";
@@ -211,7 +211,7 @@ mod tests {
         let cpg = morphism.build_cpg().unwrap().clone();
         let result = ClassificationResult {
             is_parseable: true,
-            dimensions: HashMap::from([
+            dimensions: BTreeMap::from([
                 ("simple".to_string(), EvaluationValue::Simple),
                 ("composable".to_string(), EvaluationValue::Composable),
                 ("navigable".to_string(), EvaluationValue::Navigable),

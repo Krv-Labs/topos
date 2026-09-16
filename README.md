@@ -112,6 +112,7 @@ topos install
 │   ○ Cursor               (detected)
 │   ○ VS Code              (detected)
 │   ○ Google Antigravity   (detected)
+│   ○ pi                   (detected)
 └
 ```
 

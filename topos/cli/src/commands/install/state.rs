@@ -36,6 +36,8 @@ use super::paths;
 const HARNESSES_KEY: &str = "harnesses";
 /// Key, inside one harness record, listing the files install created.
 const CREATED_FILES_KEY: &str = "createdFiles";
+/// Key, inside one harness record, recording that install appended a skill reference.
+const ADDED_SKILL_REF_KEY: &str = "addedSkillRef";
 /// Top-level key listing every directory install created.
 const CREATED_DIRS_KEY: &str = "createdDirs";
 /// The ledger's file name inside [`state_dir`].
@@ -77,7 +79,12 @@ pub(crate) fn record_created_file(home: &Path, harness: &str, path: &Path) -> Re
     if !files.contains(&key) {
         files.push(key);
     }
-    let mut record = Map::new();
+    let mut record = ledger
+        .harnesses
+        .get(harness)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
     record.insert(
         CREATED_FILES_KEY.to_string(),
         files.into_iter().map(Value::String).collect(),
@@ -90,6 +97,31 @@ pub(crate) fn record_created_file(home: &Path, harness: &str, path: &Path) -> Re
 
 pub(crate) fn was_created_by_install(home: &Path, harness: &str, path: &Path) -> bool {
     files_of(&load(home).harnesses, harness).contains(&path.display().to_string())
+}
+
+pub(crate) fn record_added_skill_ref(home: &Path, harness: &str) -> Result<(), String> {
+    let mut ledger = load(home);
+    let mut record = ledger
+        .harnesses
+        .get(harness)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    record.insert(ADDED_SKILL_REF_KEY.to_string(), Value::Bool(true));
+    ledger
+        .harnesses
+        .insert(harness.to_string(), Value::Object(record));
+    save(home, &ledger)
+}
+
+pub(crate) fn was_skill_ref_added_by_install(home: &Path, harness: &str) -> bool {
+    load(home)
+        .harnesses
+        .get(harness)
+        .and_then(Value::as_object)
+        .and_then(|record| record.get(ADDED_SKILL_REF_KEY))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 /// Merge `dirs` into `createdDirs`, skipping duplicates and any path in
@@ -448,6 +480,23 @@ mod tests {
         assert!(created_dirs(&home).is_empty());
         record_created_file(&home, "claude", &config).unwrap();
         assert!(was_created_by_install(&home, "claude", &config));
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn an_added_skill_reference_is_recorded_and_queried() {
+        let home = tmp_dir("skill-ref");
+        let config = home.join(".pi/agent/mcp.json");
+
+        assert!(!was_skill_ref_added_by_install(&home, "pi"));
+        record_created_file(&home, "pi", &config).unwrap();
+        record_added_skill_ref(&home, "pi").unwrap();
+
+        assert!(was_created_by_install(&home, "pi", &config));
+        assert!(was_skill_ref_added_by_install(&home, "pi"));
+
+        clear_created_files(&home, "pi").unwrap();
+        assert!(!was_skill_ref_added_by_install(&home, "pi"));
         fs::remove_dir_all(home).ok();
     }
 

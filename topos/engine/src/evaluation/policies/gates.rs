@@ -13,7 +13,7 @@
 //! stays in the scorers; only the decisive pass/fail comparisons live
 //! here.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use super::calibration::{COMPOSABLE, NAVIGABLE, SECURE, SIMPLE};
 
@@ -47,7 +47,7 @@ impl GateOutcome {
 /// Everything an exemption predicate may read.
 pub struct GateContext<'a> {
     pub value: f64,
-    pub metrics: &'a HashMap<String, f64>,
+    pub metrics: &'a BTreeMap<String, f64>,
     pub is_entrypoint_module: bool,
     pub is_stable_leaf_module: bool,
     /// Raw Martin instability, threaded separately from `metrics` because
@@ -496,7 +496,7 @@ pub fn pillar_for_metric(metric: &str) -> &'static str {
 
 /// Apply every (optionally pillar-filtered) spec whose metric is present.
 pub fn evaluate_gates(
-    metrics: &HashMap<String, f64>,
+    metrics: &BTreeMap<String, f64>,
     pillar: Option<&str>,
     is_entrypoint_module: bool,
     is_stable_leaf_module: bool,
@@ -527,7 +527,7 @@ pub fn evaluate_gates(
 /// Canonical prose for a single metric value (no exemption context).
 pub fn interpret_metric(metric: &str, value: f64) -> String {
     let spec = gate_for_metric(metric).expect("metric must have a registered GateSpec");
-    let empty = HashMap::new();
+    let empty = BTreeMap::new();
     let outcome = classify(spec, value, &empty, false, false, None);
     (spec.interpret)(value, outcome)
 }
@@ -535,7 +535,7 @@ pub fn interpret_metric(metric: &str, value: f64) -> String {
 fn classify(
     spec: &GateSpec,
     value: f64,
-    metrics: &HashMap<String, f64>,
+    metrics: &BTreeMap<String, f64>,
     is_entrypoint_module: bool,
     is_stable_leaf_module: bool,
     instability: Option<f64>,
@@ -577,7 +577,7 @@ mod tests {
 
     #[test]
     fn cyclomatic_within_threshold_passes() {
-        let metrics = HashMap::from([("cfg.cyclomatic".to_string(), 5.0)]);
+        let metrics = BTreeMap::from([("cfg.cyclomatic".to_string(), 5.0)]);
         let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         assert_eq!(results.len(), 1);
         assert!(results[0].passed());
@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn cyclomatic_over_threshold_fails_with_extract_helper_operation() {
-        let metrics = HashMap::from([("cfg.cyclomatic".to_string(), 20.0)]);
+        let metrics = BTreeMap::from([("cfg.cyclomatic".to_string(), 20.0)]);
         let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         assert!(!results[0].passed());
         assert!(results[0].operations().contains(&"extract_helper"));
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn entropy_low_is_exempt_for_entrypoint_modules() {
-        let metrics = HashMap::from([("ast.entropy".to_string(), 0.05)]);
+        let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.05)]);
         let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
         let entropy = results
             .iter()
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn entropy_low_fails_for_ordinary_modules() {
-        let metrics = HashMap::from([("ast.entropy".to_string(), 0.05)]);
+        let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.05)]);
         let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         let entropy = results
             .iter()
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn entropy_high_is_exempt_for_entrypoint_modules() {
-        let metrics = HashMap::from([("ast.entropy".to_string(), 0.95)]);
+        let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.95)]);
         let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
         let entropy = results
             .iter()
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn instability_exemption_requires_zero_fan_in_not_missing_fan_in() {
-        let metrics = HashMap::from([("mdg.instability".to_string(), 0.99)]);
+        let metrics = BTreeMap::from([("mdg.instability".to_string(), 0.99)]);
         let results = evaluate_gates(&metrics, Some("composable"), true, false, None);
         let instability = results
             .iter()

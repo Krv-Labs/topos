@@ -13,7 +13,7 @@
 //! interpretation prose live in [`super::gates`]; thresholds in
 //! [`super::calibration`].
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use super::base::ScoredDecision;
 use super::calibration::SECURE;
@@ -21,7 +21,7 @@ use super::gates::evaluate_gates;
 
 /// `Φ_SECURE` — score the SECURE generator from CPG observations.
 pub fn score_secure(dangerous_calls: f64, taint_flows: f64) -> ScoredDecision {
-    let metrics = HashMap::from([
+    let metrics = BTreeMap::from([
         ("cpg.dangerous_calls".to_string(), dangerous_calls),
         ("cpg.taint_flows".to_string(), taint_flows),
     ]);
@@ -32,7 +32,7 @@ pub fn score_secure(dangerous_calls: f64, taint_flows: f64) -> ScoredDecision {
         return ScoredDecision {
             score: 1.0,
             achieved: true,
-            interpretation: HashMap::new(),
+            interpretation: BTreeMap::new(),
         };
     }
 

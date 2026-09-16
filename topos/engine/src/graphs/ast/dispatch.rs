@@ -54,6 +54,87 @@ fn tree_sitter_language(language: &str, file: Option<&str>) -> Result<Language, 
     })
 }
 
+/// Sanitize dynamic type import expressions inside TypeScript generic type
+/// arguments (e.g. `load<typeof import("...")>()`) so tree-sitter's parser
+/// recognizes `<` as the opening of `type_arguments` rather than a binary
+/// less-than comparison. Exact byte length is preserved so all node spans
+/// align with the original source.
+fn sanitize_typescript_type_imports(source: &str) -> String {
+    if !source.contains("import(") && !source.contains("import (") && !source.contains("import`") {
+        return source.to_string();
+    }
+
+    let bytes = source.as_bytes();
+    let len = bytes.len();
+    let mut out_bytes = bytes.to_vec();
+
+    let mut i = 0;
+    while i < len {
+        if bytes[i] == b'<' {
+            let start = i + 1;
+            let mut j = start;
+            while j < len
+                && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n' || bytes[j] == b'\r')
+            {
+                j += 1;
+            }
+
+            let is_typeof_import = bytes[j..].starts_with(b"typeof import(")
+                || bytes[j..].starts_with(b"typeof import (")
+                || bytes[j..].starts_with(b"typeof import`");
+            let is_import = bytes[j..].starts_with(b"import(")
+                || bytes[j..].starts_with(b"import (")
+                || bytes[j..].starts_with(b"import`");
+
+            if is_typeof_import || is_import {
+                // Find matching `>` for this type argument list
+                let mut depth = 1;
+                let mut k = start;
+                let mut in_str: Option<u8> = None;
+                let mut in_paren: usize = 0;
+                while k < len && depth > 0 {
+                    let b = bytes[k];
+                    if let Some(quote) = in_str {
+                        if b == quote && (k == 0 || bytes[k - 1] != b'\\') {
+                            in_str = None;
+                        }
+                    } else {
+                        match b {
+                            b'"' | b'\'' | b'`' => in_str = Some(b),
+                            b'(' => in_paren += 1,
+                            b')' => in_paren = in_paren.saturating_sub(1),
+                            b'<' => depth += 1,
+                            b'>' if in_paren == 0 => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    k += 1;
+                }
+
+                if depth == 0 && k < len {
+                    let span_len = k - start;
+                    if span_len >= 3 {
+                        out_bytes[start] = b'a';
+                        out_bytes[start + 1] = b'n';
+                        out_bytes[start + 2] = b'y';
+                        out_bytes[start + 3..k].fill(b' ');
+                    }
+                    i = k + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    String::from_utf8(out_bytes).unwrap_or_else(|_| source.to_string())
+}
+
 /// Parse `source` and build both the tree-sitter tree and the UAST for
 /// it in one pass.
 pub fn parse_source(
@@ -66,8 +147,15 @@ pub fn parse_source(
     parser
         .set_language(&ts_language)
         .map_err(|e| DispatchError(format!("failed to load {language} grammar: {e}")))?;
+
+    let parse_input = if language == "typescript" {
+        sanitize_typescript_type_imports(source)
+    } else {
+        source.to_string()
+    };
+
     let tree = parser
-        .parse(source, None)
+        .parse(&parse_input, None)
         .ok_or_else(|| DispatchError(format!("parsing {language} source was cancelled")))?;
 
     let source_bytes = source.as_bytes();
@@ -150,5 +238,25 @@ mod tests {
         // an error node here.
         let result = parse_source("const el = <Foo />;", "typescript", Some("Widget.tsx")).unwrap();
         assert!(!result.has_errors);
+    }
+
+    #[test]
+    fn typescript_dynamic_type_imports_in_generics_parse_cleanly() {
+        let cases = [
+            "const x = load<typeof import('./module')>();\n",
+            "const x2 = load<import('./module')>();\n",
+            "const x3 = load<import('./module').Type>();\n",
+            "const x4 = load<typeof import('./module').Type>();\n",
+            "const x5 = fn<typeof import('./mod'), Other>();\n",
+            "const x6 = fn<import('./mod'), Other>();\n",
+            "const x7 = obj.method<typeof import('./mod')>();\n",
+            "const x8 = await load<typeof import('./mod')>();\n",
+            "type X = import('ai').StopCondition;\n",
+            "type Y = typeof import('ai');\n",
+        ];
+        for case in cases {
+            let res = parse_source(case, "typescript", None).unwrap();
+            assert!(!res.has_errors, "failed to parse cleanly: {case}");
+        }
     }
 }

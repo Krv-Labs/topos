@@ -42,6 +42,7 @@ pub fn map_node_kind(node: &Node) -> &'static str {
         ("member_expression", "MemberExpr"),
         ("field_expression", "MemberExpr"),
         ("subscript", "MemberExpr"),
+        ("subscript_expression", "MemberExpr"),
         ("identifier", "Identifier"),
         ("module", "File"),
         ("program", "File"),
@@ -106,5 +107,22 @@ mod tests {
         let mut ops = Vec::new();
         collect_binary_operators(&uast, &mut ops);
         assert_eq!(ops, vec!["&&", "&&"]);
+    }
+
+    #[test]
+    fn maps_subscript_expression_to_member_expr() {
+        let source = "function requiredFunction(obj, key) { return obj[key]; }\n";
+        let tree = parse(source);
+        let uast = map_javascript_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        fn find_member_expr(node: &UASTNode) -> bool {
+            if node.kind == "MemberExpr" && node.native.node_kind == "subscript_expression" {
+                return true;
+            }
+            node.children.iter().any(find_member_expr)
+        }
+        assert!(
+            find_member_expr(&uast),
+            "subscript_expression was not mapped to MemberExpr"
+        );
     }
 }

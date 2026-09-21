@@ -262,7 +262,7 @@ fn graph_freshness_uncached(project_root: &Path, store_dir: &Path) -> (bool, Opt
     }
 
     if let Some(fp) = &fingerprint {
-        if let Some(result) = stale_from_mtime_walk(project_root, &store_dir, fp) {
+        if let Some(result) = stale_from_mtime_walk(project_root, store_dir, fp) {
             return result;
         }
     }

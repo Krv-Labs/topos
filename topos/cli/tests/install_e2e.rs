@@ -213,7 +213,7 @@ fn config_of(status: &Value, id: &str) -> PathBuf {
 
 /// Every harness id in table order, so tests can iterate the whole set without
 /// duplicating the table.
-const IDS: [&str; 9] = [
+const IDS: [&str; 10] = [
     "claude",
     "claude-desktop",
     "codex",
@@ -223,6 +223,7 @@ const IDS: [&str; 9] = [
     "vscode",
     "antigravity",
     "pi",
+    "opencode",
 ];
 
 // ---------------------------------------------------------------------------
@@ -307,13 +308,25 @@ fn recorded_entry(path: &Path) -> (String, Vec<String>) {
         );
     }
     let value = json(path);
-    // VS Code names the container `servers`; every other JSON client uses
+    // VS Code names the container `servers`; OpenCode uses `mcp`; every other JSON client uses
     // `mcpServers`.
     let container = value
         .get("mcpServers")
         .or_else(|| value.get("servers"))
+        .or_else(|| value.get("mcp"))
         .unwrap_or_else(|| panic!("{} has no server container", path.display()));
     let entry = &container["topos"];
+    if let Some(cmd_array) = entry.get("command").and_then(Value::as_array) {
+        let cmd = cmd_array[0]
+            .as_str()
+            .expect("first element of `command` must be string")
+            .to_string();
+        let args = cmd_array[1..]
+            .iter()
+            .map(|arg| arg.as_str().expect("args must be strings").to_string())
+            .collect();
+        return (cmd, args);
+    }
     let args = entry["args"]
         .as_array()
         .expect("`args` must be an array")
@@ -330,7 +343,11 @@ fn recorded_entry(path: &Path) -> (String, Vec<String>) {
 /// draft wrote — the exact drift this rewrite exists to detect and repair.
 fn break_command(path: &Path) {
     let mut value = json(path);
-    value["mcpServers"]["topos"]["command"] = Value::String("topos".to_string());
+    if let Some(servers) = value.get_mut("mcp") {
+        servers["topos"]["command"] = serde_json::json!(["topos", "mcp"]);
+    } else {
+        value["mcpServers"]["topos"]["command"] = Value::String("topos".to_string());
+    }
     fs::write(path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
 }
 
@@ -355,6 +372,7 @@ fn install_then_uninstall_leaves_no_file_and_no_directory_behind() {
             ".codex",
             ".gemini",
             ".cursor",
+            ".config",
             ".local/state",
             support_root(&home)
                 .strip_prefix(&home)
@@ -369,6 +387,7 @@ fn install_then_uninstall_leaves_no_file_and_no_directory_behind() {
         home.join(".copilot"),
         support_root(&home).join("Claude"),
         home.join(".gemini/config"),
+        home.join(".config/opencode"),
         home.join(".local/state/topos"),
     ];
     for dir in &must_be_pruned {
@@ -572,7 +591,7 @@ fn a_second_install_reports_everything_active_and_writes_nothing() {
         after_first == snapshot(&home),
         "a second install rewrote files that were already correct"
     );
-    assert_eq!(status_json(&home)["active"], 9);
+    assert_eq!(status_json(&home)["active"], 10);
 
     fs::remove_dir_all(&home).ok();
 }
@@ -686,7 +705,7 @@ fn a_headless_uninstall_applies_without_a_prompt() {
     let home = scratch_home("headless");
     seed(&home, ".claude.json", SEED_CLAUDE_JSON);
     topos(&home, &["install", "--all"]).expect_code(0);
-    assert_eq!(status_json(&home)["active"], 9);
+    assert_eq!(status_json(&home)["active"], 10);
 
     // No `--yes`, no `--dry-run`, and no stream is a tty (see `topos`), so this
     // is the `Headless` arm: CI parity, apply. The `Ambiguous` arm — stderr

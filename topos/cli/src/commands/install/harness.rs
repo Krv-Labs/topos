@@ -49,7 +49,7 @@ pub(crate) struct HarnessSpec {
     pub(crate) skill_ref: bool,
 }
 
-pub(crate) const HARNESSES: [HarnessSpec; 9] = [
+pub(crate) const HARNESSES: [HarnessSpec; 10] = [
     HarnessSpec {
         id: "claude",
         name: "Claude Code",
@@ -149,6 +149,17 @@ pub(crate) const HARNESSES: [HarnessSpec; 9] = [
         note: pi_note,
         skill_ref: true,
     },
+    HarnessSpec {
+        id: "opencode",
+        name: "OpenCode",
+        artifact: Artifact::OpenCodeJsonc,
+        config_path: paths::opencode_config,
+        active_msg: "mcp.topos present in the OpenCode global config",
+        absent_msg: "no mcp.topos in the OpenCode global config",
+        detect: detect_opencode,
+        note: no_note,
+        skill_ref: false,
+    },
 ];
 
 /// Every harness id, in table order — the `--all` set and the `--help` list.
@@ -168,46 +179,211 @@ fn no_note(_home: &Path) -> Option<String> {
     None
 }
 
+/// Helper to check if a file exists and has executable permissions.
+fn file_is_executable(path: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        meta.mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+/// True when `name` (or `<name>.exe`, `<name>.cmd`, `<name>.bat` on Windows)
+/// is found in an absolute directory on `$PATH` and is executable.
+fn binary_on_path(name: &str) -> bool {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    for dir in std::env::split_paths(&path_var) {
+        if !dir.is_absolute() {
+            continue;
+        }
+        if file_is_executable(&dir.join(name)) {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            for ext in ["exe", "cmd", "bat"] {
+                if file_is_executable(&dir.join(format!("{name}.{ext}"))) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// True when `name` is found in standard user bin directories under `home`
+/// (e.g. `~/.local/bin`, `~/.cargo/bin`, `~/.opencode/bin`).
+fn binary_in_home(name: &str, home: &Path) -> bool {
+    home_bin_candidates(name, home)
+        .iter()
+        .any(|p| file_is_executable(p))
+        || windows_user_bin_installed(name)
+}
+
+fn home_bin_candidates(name: &str, home: &Path) -> Vec<PathBuf> {
+    let bases = [
+        home.join(".local/bin").join(name),
+        home.join(".cargo/bin").join(name),
+        home.join(".opencode/bin").join(name),
+        home.join("bin").join(name),
+    ];
+    #[cfg(not(windows))]
+    {
+        bases.to_vec()
+    }
+    #[cfg(windows)]
+    {
+        let mut all = Vec::new();
+        for base in &bases {
+            all.push(base.clone());
+            for ext in ["exe", "cmd", "bat"] {
+                all.push(base.with_extension(ext));
+            }
+        }
+        all
+    }
+}
+
+#[cfg(not(windows))]
+fn windows_user_bin_installed(_name: &str) -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn windows_user_bin_installed(name: &str) -> bool {
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        let npm_bin = Path::new(&app_data).join("npm");
+        for ext in ["cmd", "exe", "bat"] {
+            if file_is_executable(&npm_bin.join(format!("{name}.{ext}"))) {
+                return true;
+            }
+        }
+    }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let win_apps = Path::new(&local_app_data).join("Microsoft/WindowsApps");
+        for ext in ["exe", "cmd"] {
+            if file_is_executable(&win_apps.join(format!("{name}.{ext}"))) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_real_home(home: &Path) -> bool {
+    paths::home_dir().is_ok_and(|real| real == home)
+}
+
+/// True when `name` is executable on `$PATH` or in standard user bin directories.
+fn binary_installed(name: &str, home: &Path) -> bool {
+    binary_in_home(name, home) || (is_real_home(home) && binary_on_path(name))
+}
+
+/// True when a GUI desktop application is installed on the host.
+fn app_installed(app_name: &str, home: &Path) -> bool {
+    if !is_real_home(home) {
+        return home
+            .join("Applications")
+            .join(format!("{app_name}.app"))
+            .is_dir();
+    }
+    platform_app_installed(app_name)
+}
+
+#[cfg(target_os = "macos")]
+fn platform_app_installed(app_name: &str) -> bool {
+    let bundle = format!("{app_name}.app");
+    Path::new("/Applications").join(&bundle).is_dir()
+        || Path::new("/System/Applications").join(&bundle).is_dir()
+}
+
+#[cfg(windows)]
+fn platform_app_installed(app_name: &str) -> bool {
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let p = Path::new(&local).join("Programs").join(app_name);
+        if p.exists() {
+            return true;
+        }
+    }
+    for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(pf) = std::env::var_os(key) {
+            let p = Path::new(&pf).join(app_name);
+            if p.exists() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn platform_app_installed(app_name: &str) -> bool {
+    let lower = app_name.to_lowercase();
+    Path::new("/usr/share").join(&lower).is_dir()
+        || Path::new("/opt").join(app_name).is_dir()
+        || Path::new("/opt").join(&lower).is_dir()
+}
+
+#[cfg(not(any(target_os = "macos", windows, all(unix, not(target_os = "macos")))))]
+fn platform_app_installed(_app_name: &str) -> bool {
+    false
+}
+
 fn detect_claude(home: &Path) -> bool {
-    home.join(".claude").is_dir()
+    binary_installed("claude", home)
 }
 
 fn detect_codex(home: &Path) -> bool {
-    home.join(".codex").is_dir()
+    binary_installed("codex", home)
 }
 
 fn detect_gemini(home: &Path) -> bool {
-    home.join(".gemini").is_dir()
+    binary_installed("gemini", home)
 }
 
 fn detect_copilot(home: &Path) -> bool {
-    home.join(".copilot").is_dir()
+    binary_installed("copilot", home)
 }
 
 fn detect_cursor(home: &Path) -> bool {
-    home.join(".cursor").is_dir()
+    binary_installed("cursor", home) || app_installed("Cursor", home)
 }
 
 fn detect_pi(home: &Path) -> bool {
-    home.join(".pi").is_dir()
+    binary_installed("pi", home)
 }
 
 fn detect_claude_desktop(home: &Path) -> bool {
-    parent_is_dir(&paths::claude_desktop_config(home))
+    app_installed("Claude", home)
 }
 
 fn detect_vscode(home: &Path) -> bool {
-    parent_is_dir(&paths::vscode_config(home))
+    binary_installed("code", home) || app_installed("Visual Studio Code", home)
 }
 
-fn parent_is_dir(path: &Path) -> bool {
-    path.parent().is_some_and(Path::is_dir)
+fn detect_opencode(home: &Path) -> bool {
+    binary_installed("opencode", home)
 }
 
 /// Deliberately not "`~/.gemini` exists": Gemini CLI creates that directory, so
 /// keying off it would pre-check Antigravity for every Gemini user.
 fn detect_antigravity(home: &Path) -> bool {
-    migration_marker(home).exists() || antigravity_data_dirs(home).any(|dir| dir.is_dir())
+    binary_installed("agy", home)
+        || app_installed("Antigravity", home)
+        || migration_marker(home).exists()
+        || antigravity_data_dirs(home).any(|dir| dir.is_dir())
 }
 
 /// Antigravity's own migration writes this marker once it has moved MCP config
@@ -294,10 +470,23 @@ mod tests {
     }
 
     #[test]
-    fn a_bare_pi_directory_detects_pi() {
+    fn a_bare_pi_directory_does_not_detect_pi_until_binary_installed() {
         let home = tmp_dir("pi-detect");
-        fs::create_dir_all(home.join(".pi")).unwrap();
+        fs::create_dir_all(home.join(".pi/agent/skills")).unwrap();
         let pi = spec("pi").unwrap();
+        // A bare directory or skill symlink farm must not detect pi
+        assert!(!(pi.detect)(&home));
+
+        // Adding an executable binary in user bins detects it
+        let bin_dir = home.join(".local/bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let bin_path = bin_dir.join("pi");
+        fs::write(&bin_path, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&bin_path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
         assert!((pi.detect)(&home));
         fs::remove_dir_all(home).ok();
     }
@@ -309,11 +498,31 @@ mod tests {
 
         let antigravity = spec("antigravity").unwrap();
         let gemini = spec("gemini").unwrap();
-        assert!((gemini.detect)(&home));
+        // Neither is detected from a bare directory
+        assert!(!(gemini.detect)(&home));
         assert!(
             !(antigravity.detect)(&home),
             "Gemini CLI's own directory pre-checked Antigravity"
         );
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn opencode_detected_when_binary_present() {
+        let home = tmp_dir("opencode-detect");
+        let opencode = spec("opencode").unwrap();
+        assert!(!(opencode.detect)(&home));
+
+        let bin_dir = home.join(".opencode/bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let bin_path = bin_dir.join("opencode");
+        fs::write(&bin_path, "#!/bin/sh\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&bin_path, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert!((opencode.detect)(&home));
         fs::remove_dir_all(home).ok();
     }
 

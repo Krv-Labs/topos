@@ -21,11 +21,16 @@ pub struct DepgraphArgs {
 pub enum DepgraphAction {
     /// Build or refresh `.gitnexus/` via `gitnexus analyze --skip-agents-md`.
     Generate(GenerateArgs),
+    /// Build the base and head graphs for one pull request, in parallel.
+    /// Does not print the review.
+    #[command(name = "generate-pr")]
+    GeneratePr(generate::GeneratePrArgs),
 }
 
 pub fn run(args: DepgraphArgs) -> Result<(), String> {
     match args.action {
         DepgraphAction::Generate(args) => run_generate(args),
+        DepgraphAction::GeneratePr(args) => generate::run_generate_pr(args),
     }
 }
 

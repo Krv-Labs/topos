@@ -1048,11 +1048,7 @@ fn headline_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, Strin
         .filter(|file| file.medal_before.is_some())
         .collect();
     let all: Vec<&FileRecap> = files.iter().collect();
-    let judged: &[&FileRecap] = if existing.is_empty() {
-        &all
-    } else {
-        &existing
-    };
+    let judged: &[&FileRecap] = if existing.is_empty() { &all } else { &existing };
     let worst = judged
         .iter()
         .min_by_key(|file| rank(&file.status))
@@ -1139,8 +1135,13 @@ fn render_recap(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
     }
     lines.push(guide('│', options));
     lines.push(floor_line(recap, options));
-    if let Some(note) = new_files_note(recap) {
-        lines.push(guide_line(note, Style::new().dim(), options));
+    if let Some((mark, style, note)) = new_files_line(recap) {
+        lines.push(format!(
+            "{}  {} {}",
+            guide(' ', options),
+            paint(mark, style.clone(), options),
+            paint(note, style, options),
+        ));
     }
     if let Some(note) = relocated_note(recap) {
         lines.push(guide_line(note, Style::new().dim(), options));
@@ -1215,7 +1216,7 @@ fn context_line(recap: &PrRecap) -> String {
     let coupling = if recap.scope.coupling_available {
         "COMPOSABLE measured"
     } else {
-        "COMPOSABLE not measured"
+        "COMPOSABLE not measured. topos depgraph generate-pr <number>"
     };
     let mut line = format!("{range} · {coupling}");
     if recap.scope.files_skipped > 0 {
@@ -1311,7 +1312,7 @@ fn floor_line(recap: &PrRecap, options: RenderOptions) -> String {
     )
 }
 
-fn new_files_note(recap: &PrRecap) -> Option<String> {
+fn new_files_line(recap: &PrRecap) -> Option<(&'static str, Style, String)> {
     let new_files: Vec<&FileRecap> = recap
         .files
         .iter()
@@ -1337,10 +1338,22 @@ fn new_files_note(recap: &PrRecap) -> Option<String> {
         .map(|(medal, count)| format!("{count} {medal}"))
         .collect::<Vec<_>>()
         .join(", ");
-    Some(format!(
-        "{} new file{}: {counts}",
-        new_files.len(),
-        if new_files.len() == 1 { "" } else { "s" }
+    let slop = counted
+        .iter()
+        .any(|(medal, count)| *medal == "SLOP" && *count > 0);
+    let (mark, style) = if slop {
+        ("X", Style::new().red().bold())
+    } else {
+        ("+", Style::new().green().bold())
+    };
+    Some((
+        mark,
+        style,
+        format!(
+            "{} new file{}: {counts}",
+            new_files.len(),
+            if new_files.len() == 1 { "" } else { "s" }
+        ),
     ))
 }
 

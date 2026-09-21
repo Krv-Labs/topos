@@ -406,10 +406,8 @@ fn assessment_contract(
     ) {
         next_actions.push("accept the edit if behavior checks pass".into());
         None
-    } else if status == AssessmentStatus::LATERAL_MOVE
-        && proposed_eval.lattice_element == LatticeElement::IDEAL
-    {
-        next_actions.push("no structural change and the file already passes — stop".into());
+    } else if status == AssessmentStatus::LATERAL_MOVE && measured_pillars_pass(proposed_eval) {
+        next_actions.push("no structural change and every measured pillar passes — stop".into());
         None
     } else {
         next_actions.push("try a different focused structural change".into());
@@ -469,6 +467,15 @@ fn err_assessment(
 // ---------------------------------------------------------------------------
 // Markdown
 // ---------------------------------------------------------------------------
+
+fn measured_pillars_pass(eval: &EvaluationResult) -> bool {
+    if eval.lattice_element == LatticeElement::IDEAL {
+        return true;
+    }
+    let pillars = &eval.pillars;
+    // Unmeasured pillars are absent. A present pillar that failed is not a pass.
+    !pillars.is_empty() && pillars.values().all(|pillar| pillar.achieved)
+}
 
 fn status_meaning(status: AssessmentStatus) -> &'static str {
     match status {

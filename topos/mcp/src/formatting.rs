@@ -412,6 +412,10 @@ fn supplementary_action_for_gating_target(
 /// target list means no verdict is waiting on an edit, so the contract
 /// falls through to the ordinary dispatch instead of routing the agent
 /// into an assess loop over a metric that cannot change a pillar.
+fn composable_unfinished(signals: &ComposableContractSignals) -> bool {
+    signals.next_action.is_some()
+}
+
 fn next_step_for_contract(
     composable: &ComposableContractSignals,
     refactor_targets: Option<&[RefactorTarget]>,
@@ -430,14 +434,21 @@ fn next_step_for_contract(
         }
         return (Some("topos_assess_worktree_change".into()), actions);
     }
+    // IDEAL is all four. A repo with no graph can pass every pillar that
+    // was measured and still not be IDEAL. That is a finished file, not a
+    // request to build a graph.
+    if summary == EvaluationValue::Ideal
+        || (simple_ok && security_findings.is_empty() && !composable_unfinished(composable))
+    {
+        let why = if summary == EvaluationValue::Ideal {
+            "all four pillars pass — stop, do not call another Topos tool"
+        } else {
+            "every measured pillar passes — stop. Build a dependency graph only if you need coupling."
+        };
+        return (None, vec![why.into()]);
+    }
     if let Some(action) = &composable.next_action {
         return (composable.next_tool.clone(), vec![action.clone()]);
-    }
-    if summary == EvaluationValue::Ideal {
-        return (
-            None,
-            vec!["all four pillars pass — stop, do not call another Topos tool".into()],
-        );
     }
     if !simple_ok {
         return (
@@ -1040,6 +1051,28 @@ mod tests {
             contract.next_actions.iter().any(|a| a.contains("stop")),
             "{:?}",
             contract.next_actions
+        );
+    }
+
+    #[test]
+    fn measured_pass_without_a_graph_does_not_ask_for_one() {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        assert_ne!(result.summary(), EvaluationValue::Ideal);
+        let contract = build_agent_contract(
+            &result,
+            false,
+            &[],
+            &[],
+            false,
+            &["missing gitnexus".into()],
+            None,
+            false,
+        );
+        assert!(
+            contract.next_tool.is_none(),
+            "a passing file must not be told to build a graph: {:?}",
+            contract
         );
     }
 

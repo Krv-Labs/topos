@@ -353,6 +353,7 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
         &proposed_eval,
         &args.baseline_src,
         &args.proposed_src,
+        args.file_path.as_deref(),
     );
 
     AssessmentResult {
@@ -398,14 +399,45 @@ fn boundary_lines(source: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
+/// Last file contents we already wrote a coupling note for.
+///
+/// Assess compares against a snapshot, which does not move when the agent
+/// re-checks. Distance stays non-zero, so the same note would repeat. The
+/// working file's hash is what "this call edited" means.
+fn already_noted(file_path: Option<&Path>, proposed_src: &str) -> bool {
+    let Some(path) = file_path else {
+        return false;
+    };
+    NOTED_FILE_HASH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned())
+        .is_some_and(|(noted_path, noted_hash)| {
+            noted_path == path && noted_hash == sha256_hex(proposed_src)
+        })
+}
+
+fn remember_noted(file_path: Option<&Path>, proposed_src: &str) {
+    let Some(path) = file_path else {
+        return;
+    };
+    if let Ok(mut guard) = NOTED_FILE_HASH.lock() {
+        *guard = Some((path.to_path_buf(), sha256_hex(proposed_src)));
+    }
+}
+
+static NOTED_FILE_HASH: std::sync::Mutex<Option<(PathBuf, String)>> = std::sync::Mutex::new(None);
+
 /// A fact, not an order. `next_tool` stays whatever the verdict decided.
 fn coupling_staleness_note(
     baseline_src: &str,
     proposed_src: &str,
+    file_path: Option<&Path>,
 ) -> Option<(&'static str, String)> {
-    if baseline_src == proposed_src {
+    if baseline_src == proposed_src || already_noted(file_path, proposed_src) {
         return None;
     }
+    remember_noted(file_path, proposed_src);
     let before = boundary_lines(baseline_src);
     let after = boundary_lines(proposed_src);
     if before == after {
@@ -430,6 +462,7 @@ fn assessment_contract(
     proposed_eval: &EvaluationResult,
     baseline_src: &str,
     proposed_src: &str,
+    file_path: Option<&Path>,
 ) -> AgentContract {
     let prelude = agent_contract_prelude(AgentContractPreludeInput {
         coupling_available: proposed_eval.coupling_available,
@@ -472,7 +505,7 @@ fn assessment_contract(
 
     // Advice, not a next step. Putting this in next_tool would order a
     // rebuild on every edit, which is the loop this flag exists to avoid.
-    if let Some((flag, note)) = coupling_staleness_note(baseline_src, proposed_src) {
+    if let Some((flag, note)) = coupling_staleness_note(baseline_src, proposed_src, file_path) {
         risk_flags.push(flag.into());
         next_actions.push(note);
     }
@@ -1855,13 +1888,27 @@ mod tests {
 
     #[test]
     fn unchanged_file_says_nothing_about_the_map() {
-        assert!(coupling_staleness_note("use a;\nfn f() {}", "use a;\nfn f() {}").is_none());
+        assert!(coupling_staleness_note("use a;\nfn f() {}", "use a;\nfn f() {}", None).is_none());
+    }
+
+    #[test]
+    fn recheck_of_the_same_edit_does_not_nag() {
+        let path = Path::new("sample.rs");
+        assert!(coupling_staleness_note("use a;\n", "use a;\nuse b;\n", Some(path)).is_some());
+        assert!(
+            coupling_staleness_note("use a;\n", "use a;\nuse b;\n", Some(path)).is_none(),
+            "the same working file must not be told twice"
+        );
+        if let Ok(mut guard) = NOTED_FILE_HASH.lock() {
+            *guard = None;
+        }
     }
 
     #[test]
     fn in_file_edit_does_not_ask_for_a_rebuild() {
-        let (flag, note) = coupling_staleness_note("use a;\nfn f() { 1 }", "use a;\nfn f() { 2 }")
-            .expect("an edit");
+        let (flag, note) =
+            coupling_staleness_note("use a;\nfn f() { 1 }", "use a;\nfn f() { 2 }", None)
+                .expect("an edit");
         assert_eq!(flag, "coupling_still_current");
         assert!(note.contains("No graph rebuild"));
         assert!(!note.contains("topos_generate_depgraph"));
@@ -1870,7 +1917,7 @@ mod tests {
     #[test]
     fn changed_import_mentions_rebuild_without_ordering_it() {
         let (flag, note) =
-            coupling_staleness_note("use a;\nfn f() {}", "use a;\nuse b;\nfn f() {}")
+            coupling_staleness_note("use a;\nfn f() {}", "use a;\nuse b;\nfn f() {}", None)
                 .expect("an edit");
         assert_eq!(flag, "coupling_may_be_stale");
         assert!(note.contains("topos_generate_depgraph"));
@@ -1891,6 +1938,7 @@ mod tests {
             &eval,
             "use a;\nfn f() { 1 }",
             "use a;\nfn f() { 2 }",
+            None,
         );
         // The note must not become the ordered next step, even when the
         // verdict itself has a next tool.

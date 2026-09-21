@@ -15,7 +15,10 @@ mod freshness;
 mod gitref;
 
 pub use classify::{classify_code_string, classify_file, classify_morphism, detect_language};
-pub use depgraph::{clear_caches, depgraph_status, load_dep_graph, DepgraphStatus};
+pub use depgraph::{
+    clear_caches, depgraph_status, last_store_load_ms, load_dep_graph, DepgraphStatus,
+};
+pub use freshness::clear_freshness_cache;
 pub use freshness::{all_source_suffixes, graph_freshness};
 pub use gitref::{git_head_mtime, git_head_sha, gitnexus_mtime};
 

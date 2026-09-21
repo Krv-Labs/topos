@@ -29,6 +29,28 @@ const MTIME_SKEW_TOLERANCE_S: f64 = 2.0;
 /// to calibrate filesystem-clock drift.
 const MAX_TRUSTED_GENERATION_DURATION_S: f64 = 3600.0;
 
+/// Last freshness answer for one store directory.
+///
+/// `graph_freshness` hashes or walks the working tree. Evaluate calls it
+/// before it knows whether it will load the graph, so a second call in the
+/// same process was paying that walk again even when the store had not
+/// changed. The answer is cached until the fingerprint file's mtime moves.
+struct FreshnessCache {
+    store_dir: std::path::PathBuf,
+    fingerprint_mtime_bits: u64,
+    stale: bool,
+    detail: Option<String>,
+}
+
+static FRESHNESS_CACHE: std::sync::Mutex<Option<FreshnessCache>> = std::sync::Mutex::new(None);
+
+/// Drop the cached freshness answer. Tests call this between cases.
+pub fn clear_freshness_cache() {
+    if let Ok(mut guard) = FRESHNESS_CACHE.lock() {
+        *guard = None;
+    }
+}
+
 /// Topos-owned generation marker: what and when the graph was built from.
 #[derive(Debug, Clone, Default)]
 struct GraphFingerprint {
@@ -198,7 +220,33 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
         .unwrap_or(gitnexus_dir)
         .to_path_buf();
 
-    let fingerprint = read_graph_fingerprint(&store_dir);
+    let fingerprint_mtime_bits = mtime_f64(&store_dir.join(GITNEXUS_FINGERPRINT_FILE))
+        .unwrap_or(0.0)
+        .to_bits();
+    if let Ok(guard) = FRESHNESS_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.store_dir == store_dir
+                && cached.fingerprint_mtime_bits == fingerprint_mtime_bits
+            {
+                return (cached.stale, cached.detail.clone());
+            }
+        }
+    }
+
+    let answer = graph_freshness_uncached(project_root, &store_dir);
+    if let Ok(mut guard) = FRESHNESS_CACHE.lock() {
+        *guard = Some(FreshnessCache {
+            store_dir,
+            fingerprint_mtime_bits,
+            stale: answer.0,
+            detail: answer.1.clone(),
+        });
+    }
+    answer
+}
+
+fn graph_freshness_uncached(project_root: &Path, store_dir: &Path) -> (bool, Option<String>) {
+    let fingerprint = read_graph_fingerprint(store_dir);
     if let Some(fp) = &fingerprint {
         if let Some(result) = stale_from_source_hash(project_root, fp) {
             return result;
@@ -225,7 +273,9 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
     }
 
     // Legacy fallback: compare the graph DB mtime to the latest commit's.
-    let graph_mtime = gitnexus_mtime(gitnexus_dir, branch.as_deref());
+    // `store_dir` is the resolved store (branch-scoped when one matches),
+    // which is the directory `gitnexus_mtime` already selected.
+    let graph_mtime = gitnexus_mtime(store_dir, None);
     let head_mtime = git_head_mtime(project_root);
     match (graph_mtime, head_mtime) {
         (Some(g), Some(h)) if g > 0.0 && g < h => (

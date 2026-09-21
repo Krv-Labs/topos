@@ -568,9 +568,24 @@ fn measured_pillars_pass(eval: &EvaluationResult) -> bool {
     if eval.lattice_element == LatticeElement::IDEAL {
         return true;
     }
-    let pillars = &eval.pillars;
-    // Unmeasured pillars are absent. A present pillar that failed is not a pass.
-    !pillars.is_empty() && pillars.values().all(|pillar| pillar.achieved)
+    // `pillars` is the wrong source. An unmeasured COMPOSABLE is inserted
+    // there with `achieved: false`, and the navigable pass value is mapped
+    // to SIMPLE, so that map never says "all measured pillars passed"
+    // unless the medal is already IDEAL. `dimensions` only contains pillars
+    // that were scored.
+    let measured: Vec<_> = eval
+        .dimensions
+        .iter()
+        .filter(|(name, _)| *name != "composable" || eval.coupling_available)
+        .collect();
+    !measured.is_empty()
+        && measured.iter().all(|(name, value)| match name.as_str() {
+            "simple" => **value == LatticeElement::SIMPLE,
+            "secure" => **value == LatticeElement::SECURE,
+            "navigable" => **value == LatticeElement::NAVIGABLE,
+            "composable" => **value == LatticeElement::COMPOSABLE,
+            _ => false,
+        })
 }
 
 fn status_meaning(status: AssessmentStatus) -> &'static str {
@@ -1922,6 +1937,29 @@ mod tests {
         assert_eq!(flag, "coupling_may_be_stale");
         assert!(note.contains("topos_generate_depgraph"));
         assert!(note.contains("only if"));
+    }
+
+    #[test]
+    fn no_change_assess_of_a_measured_pass_stops() {
+        use crate::evaluation::classify_code_string;
+        use crate::formatting::{to_evaluation_result, EvalResultOptions};
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let eval = to_evaluation_result(&result, false, EvalResultOptions::new());
+        assert_ne!(eval.lattice_element, LatticeElement::IDEAL);
+        assert!(
+            !eval.pillars.values().all(|p| p.achieved),
+            "the pillar map marks unmeasured composable as failed; the check must not use it"
+        );
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "def f():\n    return 1\n",
+            "def f():\n    return 1\n",
+            None,
+        );
+        assert!(contract.next_tool.is_none(), "{contract:?}");
     }
 
     #[test]

@@ -347,7 +347,13 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
         .then(|| regression_diff(&args.baseline_src, &args.proposed_src, &args.language))
         .flatten();
 
-    let agent_contract = assessment_contract(status, &args.warnings, &proposed_eval);
+    let agent_contract = assessment_contract(
+        status,
+        &args.warnings,
+        &proposed_eval,
+        &args.baseline_src,
+        &args.proposed_src,
+    );
 
     AssessmentResult {
         status,
@@ -370,10 +376,60 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
     }
 }
 
+/// Whether the edit changed what another file can see.
+///
+/// A line inside a function does not change coupling. An import, a use, or
+/// a module-level load does. The comparison is the lines themselves, so the
+/// agent gets a fact rather than a size judgment.
+fn boundary_lines(source: &str) -> std::collections::BTreeSet<String> {
+    source
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            let rest = line.strip_prefix("pub ").unwrap_or(line);
+            rest.starts_with("use ")
+                || rest.starts_with("import ")
+                || rest.starts_with("from ")
+                || rest.starts_with("#include")
+                || rest.starts_with("require(")
+                || rest.starts_with("require ")
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// A fact, not an order. `next_tool` stays whatever the verdict decided.
+fn coupling_staleness_note(
+    baseline_src: &str,
+    proposed_src: &str,
+) -> Option<(&'static str, String)> {
+    if baseline_src == proposed_src {
+        return None;
+    }
+    let before = boundary_lines(baseline_src);
+    let after = boundary_lines(proposed_src);
+    if before == after {
+        return Some((
+            "coupling_still_current",
+            "in-file edit; import lines are unchanged, so coupling numbers still match this file. \
+             No graph rebuild needed."
+                .into(),
+        ));
+    }
+    Some((
+        "coupling_may_be_stale",
+        "import lines changed. Coupling numbers are from the map built before this edit. \
+         Run topos_generate_depgraph only if you will trust fan-in or fan-out. Otherwise ignore coupling."
+            .into(),
+    ))
+}
+
 fn assessment_contract(
     status: AssessmentStatus,
     warnings: &[String],
     proposed_eval: &EvaluationResult,
+    baseline_src: &str,
+    proposed_src: &str,
 ) -> AgentContract {
     let prelude = agent_contract_prelude(AgentContractPreludeInput {
         coupling_available: proposed_eval.coupling_available,
@@ -413,6 +469,13 @@ fn assessment_contract(
         next_actions.push("try a different focused structural change".into());
         Some("topos_inspect_code".to_string())
     };
+
+    // Advice, not a next step. Putting this in next_tool would order a
+    // rebuild on every edit, which is the loop this flag exists to avoid.
+    if let Some((flag, note)) = coupling_staleness_note(baseline_src, proposed_src) {
+        risk_flags.push(flag.into());
+        next_actions.push(note);
+    }
 
     finish_agent_contract(
         blocked_by,
@@ -498,6 +561,7 @@ fn push_assessment_agent_contract_lines(lines: &mut Vec<String>, r: &AssessmentR
     if contract.next_tool.is_none()
         && contract.next_actions.is_empty()
         && contract.blocked_by.is_empty()
+        && contract.risk_flags.is_empty()
     {
         return;
     }
@@ -511,6 +575,9 @@ fn push_assessment_agent_contract_lines(lines: &mut Vec<String>, r: &AssessmentR
     }
     for blocked in &contract.blocked_by {
         lines.push(format!("- **Blocked by:** `{blocked}`"));
+    }
+    for flag in &contract.risk_flags {
+        lines.push(format!("- **Note:** `{flag}`"));
     }
 }
 
@@ -1784,6 +1851,61 @@ mod tests {
             .output()
             .unwrap();
         String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn unchanged_file_says_nothing_about_the_map() {
+        assert!(coupling_staleness_note("use a;\nfn f() {}", "use a;\nfn f() {}").is_none());
+    }
+
+    #[test]
+    fn in_file_edit_does_not_ask_for_a_rebuild() {
+        let (flag, note) = coupling_staleness_note("use a;\nfn f() { 1 }", "use a;\nfn f() { 2 }")
+            .expect("an edit");
+        assert_eq!(flag, "coupling_still_current");
+        assert!(note.contains("No graph rebuild"));
+        assert!(!note.contains("topos_generate_depgraph"));
+    }
+
+    #[test]
+    fn changed_import_mentions_rebuild_without_ordering_it() {
+        let (flag, note) =
+            coupling_staleness_note("use a;\nfn f() {}", "use a;\nuse b;\nfn f() {}")
+                .expect("an edit");
+        assert_eq!(flag, "coupling_may_be_stale");
+        assert!(note.contains("topos_generate_depgraph"));
+        assert!(note.contains("only if"));
+    }
+
+    #[test]
+    fn staleness_note_does_not_set_next_tool() {
+        let eval = EvaluationResult::error_result(
+            "fixture",
+            Priority::Simple,
+            PrioritySource::Default,
+            String::new(),
+        );
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "use a;\nfn f() { 1 }",
+            "use a;\nfn f() { 2 }",
+        );
+        // The note must not become the ordered next step, even when the
+        // verdict itself has a next tool.
+        assert_ne!(
+            contract.next_tool.as_deref(),
+            Some("topos_generate_depgraph")
+        );
+        assert!(contract
+            .risk_flags
+            .iter()
+            .any(|f| f == "coupling_still_current"));
+        assert!(contract
+            .next_actions
+            .iter()
+            .any(|a| a.contains("No graph rebuild")));
     }
 
     #[test]

@@ -192,9 +192,19 @@ fn file_is_executable(path: &Path) -> bool {
         use std::os::unix::fs::MetadataExt as _;
         meta.mode() & 0o111 != 0
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        true
+        // On Windows, check for known executable extensions since there's no
+        // executable bit. PATHEXT is not reliably available here.
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| matches!(ext.to_lowercase().as_str(), "exe" | "cmd" | "bat" | "com"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        // Conservative default: assume not executable on unknown platforms.
+        false
     }
 }
 

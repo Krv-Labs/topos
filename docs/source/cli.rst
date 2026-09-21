@@ -304,7 +304,7 @@ instruction blocks. See :doc:`agents` for the harness table and state model.
    topos status [--json]
 
 Harness ids: ``claude``, ``claude-desktop``, ``codex``, ``gemini``,
-``copilot``, ``cursor``, ``vscode``, ``antigravity``.
+``copilot``, ``cursor``, ``vscode``, ``antigravity``, ``pi``, ``opencode``.
 
 .. list-table::
    :header-rows: 1

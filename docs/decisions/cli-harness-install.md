@@ -65,23 +65,24 @@ which of the three standard streams are terminals
 
 ## Harness matrix
 
-Nine harnesses, one artifact each: the single MCP server registration in that
+Ten harnesses, one artifact each: the single MCP server registration in that
 harness's user-scope config. Nothing else is written — except for pi, which gets
 a second one because it is the only harness with no MCP client at all (see
 below).
 
 | id | Name | Config file | Format | Detected by |
 | --- | --- | --- | --- | --- |
-| `claude` | Claude Code | `~/.claude.json` | `mcpServers.topos` | `~/.claude` is a dir |
-| `claude-desktop` | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers.topos` | parent dir exists |
-| `codex` | Codex CLI | `~/.codex/config.toml` | `[mcp_servers.topos]` | `~/.codex` is a dir |
-| `gemini` | Gemini CLI | `~/.gemini/settings.json` | `mcpServers.topos` | `~/.gemini` is a dir |
-| `copilot` | GitHub Copilot CLI | `~/.copilot/mcp-config.json` | `mcpServers.topos` | `~/.copilot` is a dir |
-| `cursor` | Cursor | `~/.cursor/mcp.json` | `mcpServers.topos` | `~/.cursor` is a dir |
-| `vscode` | VS Code | `~/Library/Application Support/Code/User/mcp.json` | `servers.topos` (JSONC) | parent dir exists |
+| `claude` | Claude Code | `~/.claude.json` | `mcpServers.topos` | `claude` binary on PATH or home bins |
+| `claude-desktop` | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers.topos` | desktop app exists |
+| `codex` | Codex CLI | `~/.codex/config.toml` | `[mcp_servers.topos]` | `codex` binary on PATH or home bins |
+| `gemini` | Gemini CLI | `~/.gemini/settings.json` | `mcpServers.topos` | `gemini` binary on PATH or home bins |
+| `copilot` | GitHub Copilot CLI | `~/.copilot/mcp-config.json` | `mcpServers.topos` | `copilot` binary on PATH or home bins |
+| `cursor` | Cursor | `~/.cursor/mcp.json` | `mcpServers.topos` | `cursor` binary or desktop app |
+| `vscode` | VS Code | `~/Library/Application Support/Code/User/mcp.json` | `servers.topos` (JSONC) | `code` binary or desktop app |
 | `antigravity` | Google Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers.topos` | see below |
-| `pi` | pi | `~/.pi/agent/mcp.json` | `mcpServers.topos` | `~/.pi` is a dir |
+| `pi` | pi | `~/.pi/agent/mcp.json` | `mcpServers.topos` | `pi` binary on PATH or home bins |
 | `pi` | pi (second artifact) | `~/.pi/agent/settings.json` | `skills[]` path | see below |
+| `opencode` | OpenCode | `~/.config/opencode/opencode.json` | `mcp.topos` (JSONC) | `opencode` binary on PATH or home bins |
 
 Claude Desktop and VS Code use `~/.config/...` on Linux and `%APPDATA%\...` on
 Windows ([`paths.rs`](../../topos/cli/src/commands/install/paths.rs)). Claude
@@ -179,8 +180,10 @@ There is no dual-write.
 }
 ```
 
-VS Code is the sole exception: `servers.topos` additionally carries
-`"type": "stdio"`. Codex gets the same two fields as `[mcp_servers.topos]`.
+VS Code and OpenCode are the two format exceptions: VS Code uses `servers.topos`
+and carries `"type": "stdio"`; OpenCode uses `mcp.topos` and carries `"type": "local"`
+with an array `command: ["/path/to/topos", "mcp"]` and no sibling `args`. Codex gets
+the same two fields as `[mcp_servers.topos]`.
 
 Three properties of that shape are load-bearing
 ([`artifact.rs`](../../topos/cli/src/commands/install/artifact.rs)):

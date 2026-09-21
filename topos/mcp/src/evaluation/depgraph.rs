@@ -231,6 +231,10 @@ pub fn depgraph_status(
 mod tests {
     use super::*;
 
+    /// Both tests write `LAST_LOAD_MS`. Parallel cargo test will fail the
+    /// zero assertion if the other test records a load in that window.
+    static CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     fn repo_gitnexus() -> Option<std::path::PathBuf> {
         let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -240,6 +244,7 @@ mod tests {
 
     #[test]
     fn second_file_does_not_reopen_the_store() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let Some(dir) = repo_gitnexus() else {
             return;
         };
@@ -265,6 +270,7 @@ mod tests {
 
     #[test]
     fn status_does_not_open_the_store() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let Some(dir) = repo_gitnexus() else {
             return;
         };

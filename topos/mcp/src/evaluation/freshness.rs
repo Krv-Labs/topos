@@ -38,6 +38,10 @@ const MAX_TRUSTED_GENERATION_DURATION_S: f64 = 3600.0;
 struct FreshnessCache {
     store_dir: std::path::PathBuf,
     fingerprint_mtime_bits: u64,
+    /// HEAD at the time of the answer. A commit changes this without
+    /// touching the fingerprint file, so keying on the file alone hid
+    /// every later commit for the life of the process.
+    head_sha: Option<String>,
     stale: bool,
     detail: Option<String>,
 }
@@ -223,10 +227,12 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
     let fingerprint_mtime_bits = mtime_f64(&store_dir.join(GITNEXUS_FINGERPRINT_FILE))
         .unwrap_or(0.0)
         .to_bits();
+    let head_sha = git_head_sha(project_root);
     if let Ok(guard) = FRESHNESS_CACHE.lock() {
         if let Some(cached) = guard.as_ref() {
             if cached.store_dir == store_dir
                 && cached.fingerprint_mtime_bits == fingerprint_mtime_bits
+                && cached.head_sha == head_sha
             {
                 return (cached.stale, cached.detail.clone());
             }
@@ -238,6 +244,7 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
         *guard = Some(FreshnessCache {
             store_dir,
             fingerprint_mtime_bits,
+            head_sha,
             stale: answer.0,
             detail: answer.1.clone(),
         });

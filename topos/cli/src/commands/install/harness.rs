@@ -210,6 +210,10 @@ fn file_is_executable(path: &Path) -> bool {
 
 /// True when `name` (or `<name>.exe`, `<name>.cmd`, `<name>.bat` on Windows)
 /// is found in an absolute directory on `$PATH` and is executable.
+///
+/// Relative PATH entries (e.g., `.` or `./bin`) are skipped for security:
+/// they would resolve against the current working directory, which an
+/// attacker could control.
 fn binary_on_path(name: &str) -> bool {
     let Some(path_var) = std::env::var_os("PATH") else {
         return false;
@@ -282,6 +286,13 @@ fn windows_user_bin_installed(name: &str) -> bool {
         }
     }
     if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        // npm can also install to %LOCALAPPDATA%\npm
+        let npm_bin = Path::new(&local_app_data).join("npm");
+        for ext in ["cmd", "exe", "bat"] {
+            if file_is_executable(&npm_bin.join(format!("{name}.{ext}"))) {
+                return true;
+            }
+        }
         let win_apps = Path::new(&local_app_data).join("Microsoft/WindowsApps");
         for ext in ["exe", "cmd"] {
             if file_is_executable(&win_apps.join(format!("{name}.{ext}"))) {

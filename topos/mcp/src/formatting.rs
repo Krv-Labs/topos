@@ -224,12 +224,50 @@ pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) 
     }
 }
 
+fn pillar_ok(result: &ClassificationResult, name: &str, pass: EvaluationValue) -> bool {
+    result.dimensions.get(name) == Some(&pass)
+}
+
+/// Pillars still short of a pass, in the default ranking.
+///
+/// Measured pillars only. An unmeasured COMPOSABLE is a setup gap, not a
+/// failed check, and the caller says so separately.
+fn unmet_pillars(result: &ClassificationResult) -> Vec<&'static str> {
+    [
+        ("simple", EvaluationValue::Simple, "SIMPLE"),
+        ("navigable", EvaluationValue::Navigable, "NAVIGABLE"),
+        ("secure", EvaluationValue::Secure, "SECURE"),
+        ("composable", EvaluationValue::Composable, "COMPOSABLE"),
+    ]
+    .into_iter()
+    .filter(|(name, pass, _)| {
+        result.dimensions.contains_key(*name) && !pillar_ok(result, name, *pass)
+    })
+    .map(|(_, _, label)| label)
+    .collect()
+}
+
+fn satisfied_tail(priority_name: &str, unmet: &[&str]) -> String {
+    if unmet.is_empty() {
+        return format!("{priority_name} satisfied. All measured pillars pass — stop.");
+    }
+    format!(
+        "{priority_name} satisfied. Still failing: {}.",
+        unmet.join(" / ")
+    )
+}
+
 /// Priority-aware next-step hint for agents.
+///
+/// Names the pillars that actually failed. The old text told the agent to
+/// "add COMPOSABLE / SECURE / NAVIGABLE" whenever SIMPLE passed, including
+/// on a file whose verdict was already PLATINUM.
 pub fn build_guidance(result: &ClassificationResult) -> String {
-    let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
-    let composable_ok = result.dimensions.get("composable") == Some(&EvaluationValue::Composable);
-    let secure_ok = result.dimensions.get("secure") == Some(&EvaluationValue::Secure);
-    let navigable_ok = result.dimensions.get("navigable") == Some(&EvaluationValue::Navigable);
+    let simple_ok = pillar_ok(result, "simple", EvaluationValue::Simple);
+    let composable_ok = pillar_ok(result, "composable", EvaluationValue::Composable);
+    let secure_ok = pillar_ok(result, "secure", EvaluationValue::Secure);
+    let navigable_ok = pillar_ok(result, "navigable", EvaluationValue::Navigable);
+    let unmet = unmet_pillars(result);
 
     match result.priority {
         Priority::Composable => {
@@ -242,9 +280,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  <= 15) to satisfy COMPOSABLE."
                     .into()
             } else {
-                "COMPOSABLE satisfied.  Simplify CFG/functions, flatten deep nesting, and \
-                 address any CPG security findings to reach PLATINUM."
-                    .into()
+                satisfied_tail("COMPOSABLE", &unmet)
             }
         }
         Priority::Simple => {
@@ -253,9 +289,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
                     .into()
             } else {
-                "SIMPLE satisfied.  Add COMPOSABLE / SECURE / NAVIGABLE checks to reach \
-                 PLATINUM."
-                    .into()
+                satisfied_tail("SIMPLE", &unmet)
             }
         }
         Priority::Secure => {
@@ -264,9 +298,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  SECURE."
                     .into()
             } else {
-                "SECURE satisfied.  Address SIMPLE / COMPOSABLE / NAVIGABLE generators to \
-                 reach PLATINUM."
-                    .into()
+                satisfied_tail("SECURE", &unmet)
             }
         }
         Priority::Navigable => {
@@ -275,9 +307,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  top-level helper — to satisfy NAVIGABLE."
                     .into()
             } else {
-                "NAVIGABLE satisfied.  Address SIMPLE / COMPOSABLE / SECURE generators to \
-                 reach PLATINUM."
-                    .into()
+                satisfied_tail("NAVIGABLE", &unmet)
             }
         }
     }
@@ -405,8 +435,8 @@ fn next_step_for_contract(
     }
     if summary == EvaluationValue::Ideal {
         return (
-            Some("topos_evaluate_project".into()),
-            vec!["confirm project rollup and behavior tests before accepting".into()],
+            None,
+            vec!["all four pillars pass — stop, do not call another Topos tool".into()],
         );
     }
     if !simple_ok {
@@ -978,6 +1008,40 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
 mod tests {
     use super::*;
     use crate::evaluation::classify_code_string;
+
+    #[test]
+    fn passing_file_guidance_does_not_ask_for_pillars_that_passed() {
+        // `def f(): return 1` is SIMPLE, SECURE, and NAVIGABLE. COMPOSABLE
+        // is unmeasured without a graph, so it must not be listed as a miss.
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let guidance = build_guidance(&result);
+        assert!(
+            guidance.contains("Still failing") || guidance.contains("stop"),
+            "{guidance}"
+        );
+        assert!(
+            !guidance.contains("Add COMPOSABLE / SECURE / NAVIGABLE"),
+            "{guidance}"
+        );
+        assert!(!guidance.contains("SECURE"), "{guidance}");
+        assert!(!guidance.contains("NAVIGABLE"), "{guidance}");
+    }
+
+    #[test]
+    fn ideal_verdict_has_no_next_tool() {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let mut result = result;
+        result.lattice_element = EvaluationValue::Ideal;
+        let contract = build_agent_contract(&result, true, &[], &[], false, &[], None, false);
+        assert!(contract.next_tool.is_none(), "{:?}", contract.next_tool);
+        assert!(
+            contract.next_actions.iter().any(|a| a.contains("stop")),
+            "{:?}",
+            contract.next_actions
+        );
+    }
 
     #[test]
     fn evaluation_result_round_trip() {

@@ -117,6 +117,9 @@ impl ToposServer {
     /// isn't installed or generation fails, `coupling_available` is false
     /// and `warnings` explains why; the rest of the evaluation still
     /// succeeds.
+    ///
+    /// Do not call again when `agent_contract.next_tool` is absent: the
+    /// file already passes, or this call already returned the edit span.
     #[tool(
         name = "topos_evaluate_file",
         annotations(
@@ -161,6 +164,10 @@ impl ToposServer {
     /// missing or stale before scoring, same as `topos_evaluate_file` and
     /// the CLI's `topos evaluate` — `coupling_available`/`warnings` explain
     /// it when that isn't possible, without failing the evaluation.
+    ///
+    /// Do not call this for one file, or after a file already passed. It
+    /// walks the tree. A person asks for the project rollup; an agent
+    /// editing one file does not.
     #[tool(
         name = "topos_evaluate_project",
         annotations(

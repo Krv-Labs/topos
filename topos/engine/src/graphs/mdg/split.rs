@@ -219,21 +219,22 @@ pub fn detect_splits(
         c == FileChange::Modified || c == FileChange::Deleted
     });
     if children.is_empty() {
+        // Rule 5 only reads `Modified` paths, so that is all it gets.
+        let modified = sorted_paths(changed, |c| c == FileChange::Modified);
         return SplitReport {
-            moved_between_existing: moved_between_existing(base, head, changed, &HashSet::new()),
+            moved_between_existing: moved_between_existing(
+                &symbol_table(base, modified.iter().copied()),
+                &symbol_table(head, modified.iter().copied()),
+                changed,
+                &HashSet::new(),
+            ),
             ..Default::default()
         };
     }
 
     // Symbol tables, computed once per path per revision.
-    let base_defs: BTreeMap<&str, Vec<(String, String)>> = changed
-        .iter()
-        .map(|c| (c.path.as_str(), defined_symbols(base, &c.path)))
-        .collect();
-    let head_defs: BTreeMap<&str, Vec<(String, String)>> = changed
-        .iter()
-        .map(|c| (c.path.as_str(), defined_symbols(head, &c.path)))
-        .collect();
+    let base_defs = symbol_table(base, changed.iter().map(|c| c.path.as_str()));
+    let head_defs = symbol_table(head, changed.iter().map(|c| c.path.as_str()));
     let base_names_all = name_union(&base_defs);
     let head_names_all = name_union(&head_defs);
 
@@ -246,11 +247,23 @@ pub fn detect_splits(
         }
     }
 
-    // Rule 2 (edge evidence): imports(P, C) on the head graph.
+    // Rule 2 (edge evidence): imports(P, C) on the head graph. Each
+    // path's node lookup and containment walk happens once here rather
+    // than once per (parent, child) pair.
+    let head_files: HashMap<&str, Option<FileSymbols>> = parents
+        .iter()
+        .chain(&children)
+        .map(|path| (*path, file_symbols(head, path)))
+        .collect();
     let mut imports_edge: HashMap<(&str, &str), bool> = HashMap::new();
     for parent in &parents {
         for child in &children {
-            imports_edge.insert((parent, child), depends_on(head, parent, child));
+            let edge = depends_on(
+                head,
+                head_files[parent].as_ref(),
+                head_files[child].as_ref(),
+            );
+            imports_edge.insert((parent, child), edge);
         }
     }
 
@@ -402,7 +415,12 @@ pub fn detect_splits(
     SplitReport {
         clusters,
         unclustered_added,
-        moved_between_existing: moved_between_existing(base, head, changed, &clustered_names),
+        moved_between_existing: moved_between_existing(
+            &base_defs,
+            &head_defs,
+            changed,
+            &clustered_names,
+        ),
     }
 }
 
@@ -419,6 +437,17 @@ fn sorted_paths(changed: &[ChangedFile], keep: impl Fn(FileChange) -> bool) -> V
     paths
 }
 
+/// [`defined_symbols`] for each of `paths`, keyed by path.
+fn symbol_table<'a>(
+    graph: &ModuleDependencyGraph,
+    paths: impl IntoIterator<Item = &'a str>,
+) -> BTreeMap<&'a str, Vec<(String, String)>> {
+    paths
+        .into_iter()
+        .map(|path| (path, defined_symbols(graph, path)))
+        .collect()
+}
+
 fn name_union<'a>(defs: &'a BTreeMap<&'a str, Vec<(String, String)>>) -> HashSet<&'a str> {
     defs.values()
         .flatten()
@@ -430,6 +459,19 @@ fn symbol_id_set(graph: &ModuleDependencyGraph, file_id: &str) -> HashSet<String
     let mut ids: HashSet<String> = graph.all_contained_symbols(file_id).into_iter().collect();
     ids.insert(file_id.to_string());
     ids
+}
+
+/// A File node's id plus [`symbol_id_set`] over it, resolved once so
+/// pairwise checks don't repeat the node lookup and containment walk.
+struct FileSymbols {
+    id: String,
+    symbols: HashSet<String>,
+}
+
+fn file_symbols(graph: &ModuleDependencyGraph, path: &str) -> Option<FileSymbols> {
+    let id = graph.file_node_id_for(path)?.to_string();
+    let symbols = symbol_id_set(graph, &id);
+    Some(FileSymbols { id, symbols })
 }
 
 fn file_path_of(graph: &ModuleDependencyGraph, node_id: &str) -> Option<String> {
@@ -479,58 +521,62 @@ fn importing_file_ids(graph: &ModuleDependencyGraph, path: &str) -> Vec<String> 
 }
 
 /// `imports(P, C)`: a File→File `IMPORTS` edge, or any P symbol `CALLS` any
-/// C symbol.
-fn depends_on(graph: &ModuleDependencyGraph, from: &str, to: &str) -> bool {
-    let (Some(from_id), Some(to_id)) = (
-        graph.file_node_id_for(from).map(str::to_string),
-        graph.file_node_id_for(to).map(str::to_string),
-    ) else {
+/// C symbol. `false` when either path has no File node.
+fn depends_on(
+    graph: &ModuleDependencyGraph,
+    from: Option<&FileSymbols>,
+    to: Option<&FileSymbols>,
+) -> bool {
+    let (Some(from), Some(to)) = (from, to) else {
         return false;
     };
     if graph
-        .outgoing(&from_id, Some("IMPORTS"))
+        .outgoing(&from.id, Some("IMPORTS"))
         .iter()
-        .any(|r| r.target_id == to_id)
+        .any(|r| r.target_id == to.id)
     {
         return true;
     }
-    let to_symbols = symbol_id_set(graph, &to_id);
-    symbol_id_set(graph, &from_id).iter().any(|sid| {
+    from.symbols.iter().any(|sid| {
         graph
             .outgoing(sid, Some("CALLS"))
             .iter()
-            .any(|r| to_symbols.contains(&r.target_id))
+            .any(|r| to.symbols.contains(&r.target_id))
     })
 }
 
 /// Rule 5 — names that hopped between two `Modified` files, excluding any
 /// already accounted for by a cluster.
+///
+/// `base_defs` / `head_defs` are [`symbol_table`]s that must cover every
+/// `Modified` path in `changed`; each file's symbols are then computed once
+/// per revision instead of once per `(from, to)` pair.
 fn moved_between_existing(
-    base: &ModuleDependencyGraph,
-    head: &ModuleDependencyGraph,
+    base_defs: &BTreeMap<&str, Vec<(String, String)>>,
+    head_defs: &BTreeMap<&str, Vec<(String, String)>>,
     changed: &[ChangedFile],
     clustered_names: &HashSet<String>,
 ) -> Vec<SymbolMove> {
     let modified: Vec<&str> = sorted_paths(changed, |c| c == FileChange::Modified);
+    let names = |defs: &[(String, String)]| -> HashSet<String> {
+        defs.iter().map(|(n, _)| n.clone()).collect()
+    };
     let mut out: Vec<SymbolMove> = Vec::new();
     for from in &modified {
-        let base_here = defined_symbols(base, from);
-        let head_here: HashSet<String> = defined_symbols(head, from)
-            .into_iter()
-            .map(|(n, _)| n)
-            .collect();
+        let base_here = names(&base_defs[from]);
+        let head_here = names(&head_defs[from]);
         for to in &modified {
             if from == to {
                 continue;
             }
-            for (name, kind) in defined_symbols(head, to) {
-                let left_source = base_here.iter().any(|(n, _)| *n == name)
-                    && !head_here.contains(&name)
-                    && !clustered_names.contains(&name);
+            for (name, kind) in &head_defs[to] {
+                let left_source = base_here.contains(name)
+                    && !head_here.contains(name)
+                    && !clustered_names.contains(name);
                 if left_source {
                     out.push(SymbolMove {
-                        name,
-                        kind,
+                        name: name.clone(),
+                        kind: kind.clone(),
                         from: (*from).to_string(),
                         to: (*to).to_string(),
                     });
@@ -920,6 +966,53 @@ mod tests {
         assert_eq!(
             (m.name.as_str(), m.from.as_str(), m.to.as_str()),
             ("hop", "a.ts", "b.ts")
+        );
+    }
+
+    /// Rule 5 alongside a cluster: a name the cluster already claimed is
+    /// not reported again, while a name that hopped between two modified
+    /// files still is.
+    #[test]
+    fn moved_between_existing_with_a_cluster_skips_clustered_names() {
+        let mut base = ModuleDependencyGraph::new("a.ts");
+        add_file(
+            &mut base,
+            "a.ts",
+            &[("hop", "Function"), ("render", "Function")],
+        );
+        add_file(&mut base, "b.ts", &[("stay", "Function")]);
+
+        let mut head = ModuleDependencyGraph::new("a.ts");
+        add_file(&mut head, "a.ts", &[]);
+        add_file(
+            &mut head,
+            "b.ts",
+            &[
+                ("stay", "Function"),
+                ("hop", "Function"),
+                ("render", "Function"),
+            ],
+        );
+        add_file(&mut head, "kid.ts", &[("render", "Function")]);
+
+        let report = detect_splits(
+            &base,
+            &head,
+            &changed(&[
+                ("a.ts", FileChange::Modified),
+                ("b.ts", FileChange::Modified),
+                ("kid.ts", FileChange::Added),
+            ]),
+        );
+        assert_eq!(report.clusters.len(), 1);
+        assert_eq!(report.clusters[0].parent, "a.ts");
+        assert_eq!(
+            report
+                .moved_between_existing
+                .iter()
+                .map(|m| (m.name.as_str(), m.from.as_str(), m.to.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("hop", "a.ts", "b.ts")]
         );
     }
 

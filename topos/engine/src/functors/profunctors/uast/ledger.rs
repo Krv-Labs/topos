@@ -27,10 +27,16 @@ use blake2::Blake2bVar;
 use serde::Serialize;
 
 use crate::functors::probes::ast::complexity::calculate_function_complexity_entries;
-use crate::functors::probes::ast::scopes::{function_scopes, ANONYMOUS_NAME};
+use crate::functors::probes::ast::scopes::{self, function_scopes};
 use crate::functors::probes::uast::signature::uast_dfs_kind_sequence;
 use crate::functors::profunctors::uast::compare::uast_edit_distance;
 use crate::graphs::uast::models::{AttributeValue, UASTNode};
+
+/// Label stem the scope walk gives callables the grammar never named
+/// (arrow functions, callbacks); the full label is `<anonymous>@<line>`.
+/// Test with `name.starts_with(ANONYMOUS_NAME)`, never equality — or,
+/// for a whole ledger row, [`FunctionMatch::is_named`].
+pub const ANONYMOUS_NAME: &str = scopes::ANONYMOUS_NAME;
 
 /// Minimum similarity for the residue pass to call two callables the
 /// same logic moved or renamed.
@@ -100,6 +106,17 @@ pub enum MatchKind {
     Removed,
 }
 
+impl MatchKind {
+    /// The body changed files under its own name:
+    /// [`MatchKind::MovedIdentical`] or [`MatchKind::MovedModified`].
+    /// [`MatchKind::Renamed`] is deliberately excluded — a rename may
+    /// stay in the same file, and callers that want "carried across the
+    /// change" should test `is_move() || kind == MatchKind::Renamed`.
+    pub fn is_move(self) -> bool {
+        matches!(self, MatchKind::MovedIdentical | MatchKind::MovedModified)
+    }
+}
+
 /// One row of the ledger. Exactly one of `before`/`after` is `None` for
 /// [`MatchKind::New`] / [`MatchKind::Removed`]; both are `Some` otherwise.
 #[derive(Debug, Clone, Serialize)]
@@ -109,6 +126,25 @@ pub struct FunctionMatch {
     pub after: Option<FunctionSnapshot>,
     pub similarity: f64,
     pub complexity_delta: i64,
+}
+
+impl FunctionMatch {
+    /// The present sides, `before` first.
+    fn sides(&self) -> impl Iterator<Item = &FunctionSnapshot> {
+        self.before.iter().chain(self.after.iter())
+    }
+
+    /// Neither side carries a synthetic [`ANONYMOUS_NAME`] label, so the
+    /// row can be reported by name. Nesting is a separate question — see
+    /// [`FunctionMatch::is_nested`].
+    pub fn is_named(&self) -> bool {
+        !self.sides().any(|snapshot| is_anonymous(&snapshot.name))
+    }
+
+    /// Either side is a [`FunctionSnapshot::nested`] closure.
+    pub fn is_nested(&self) -> bool {
+        self.sides().any(|snapshot| snapshot.nested)
+    }
 }
 
 /// Complexity arithmetic across the whole change, over non-nested
@@ -213,8 +249,8 @@ pub fn snapshot_functions(uast_root: &UASTNode, source: &str, file: &str) -> Vec
             );
             FunctionSnapshot {
                 file: file.to_string(),
-                name: scope.name.clone(),
-                qualified_name: scope.qualified_name.clone(),
+                name: scope.name,
+                qualified_name: scope.qualified_name,
                 kind: scope.kind.to_string(),
                 start_line: scope.start_line,
                 end_line: scope.end_line,
@@ -247,8 +283,8 @@ fn node_size(snapshot: &FunctionSnapshot) -> usize {
     uast_dfs_kind_sequence(&snapshot.node, INCLUDE_UNKNOWN).len()
 }
 
-fn is_trivial(snapshot: &FunctionSnapshot) -> bool {
-    node_size(snapshot) < TRIVIAL_MIN_NODES
+fn is_trivial(size: usize) -> bool {
+    size < TRIVIAL_MIN_NODES
 }
 
 /// Synthetic labels for callables the grammar never named. Two unrelated
@@ -263,6 +299,38 @@ fn similarity(before: &FunctionSnapshot, after: &FunctionSnapshot) -> f64 {
         return 1.0;
     }
     1.0 - uast_edit_distance(&before.node, &after.node, INCLUDE_UNKNOWN).normalized_distance
+}
+
+/// [`similarity`], or `None` when node counts alone prove the pair cannot
+/// reach `min` — skipping the quadratic edit distance.
+///
+/// Why this can never change a result: for unequal hashes, `similarity`
+/// is `1 - min(d / max(m, n, 1), 1)` where `d` is the Levenshtein
+/// distance between kind sequences of lengths `m` and `n` (exactly the
+/// `node_size`s passed in — same walk, same [`INCLUDE_UNKNOWN`]). Any
+/// edit script needs at least `|m - n|` insertions or deletions, so
+/// `d >= |m - n|`. The bound below is the *same* float expression with
+/// `d` replaced by `|m - n|`, and every step (`usize -> f64`, division by
+/// a fixed positive divisor, `min`, `1 - x`) is monotone under IEEE-754
+/// rounding, so `bound >= similarity` holds bit-for-bit. A bound below
+/// `min` therefore means the real score is below `min` too, and every
+/// caller rejects such a pair. Equal hashes short-circuit to `1.0` in
+/// `similarity`, so they are never filtered.
+fn similarity_if_reachable(
+    before: &FunctionSnapshot,
+    after: &FunctionSnapshot,
+    before_size: usize,
+    after_size: usize,
+    min: f64,
+) -> Option<f64> {
+    if before.structural_hash != after.structural_hash {
+        let max_size = before_size.max(after_size).max(1) as f64;
+        let bound = 1.0 - (before_size.abs_diff(after_size) as f64 / max_size).min(1.0);
+        if bound < min {
+            return None;
+        }
+    }
+    Some(similarity(before, after))
 }
 
 /// The trailing segment of a qualified name — `Cache.get` and
@@ -295,6 +363,10 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
     let mut after = after;
     sort_pool(&mut before);
     sort_pool(&mut after);
+    // One DFS per callable, not one per comparison: rung 3 would
+    // otherwise re-walk every `after` subtree once per `before` entry.
+    let before_sizes: Vec<usize> = before.iter().map(node_size).collect();
+    let after_sizes: Vec<usize> = after.iter().map(node_size).collect();
 
     let mut before_taken = vec![false; before.len()];
     let mut after_taken = vec![false; after.len()];
@@ -306,7 +378,7 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
         if before_taken[bi] {
             continue;
         }
-        let trivial = is_trivial(b);
+        let trivial = is_trivial(before_sizes[bi]);
         let found = after.iter().enumerate().find(|(ai, a)| {
             !after_taken[*ai]
                 && a.structural_hash == b.structural_hash
@@ -347,7 +419,11 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
         }
         // Best candidate rather than the first, so a shared leaf name
         // (`Cache.get` vs `Store.get`) can't shadow an exact
-        // qualified-name survivor later in the pool.
+        // qualified-name survivor later in the pool. Dropping candidates
+        // that provably score below the threshold can't change the pick:
+        // if the best clears it, every dropped one scored strictly less,
+        // so neither the max nor its tie-break moves; if it doesn't,
+        // nothing is paired either way.
         let best = after
             .iter()
             .enumerate()
@@ -357,7 +433,16 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
                     && !is_anonymous(&a.name)
                     && (a.qualified_name == b.qualified_name || leaf_name(a) == leaf_name(b))
             })
-            .map(|(ai, a)| (ai, similarity(b, a)))
+            .filter_map(|(ai, a)| {
+                similarity_if_reachable(
+                    b,
+                    a,
+                    before_sizes[bi],
+                    after_sizes[ai],
+                    NAME_MATCH_MIN_SIMILARITY,
+                )
+                .map(|score| (ai, score))
+            })
             .max_by(|(ai, sa), (bi2, sb)| {
                 sa.total_cmp(sb).then(bi2.cmp(ai)) // ties → lower index wins
             });
@@ -373,15 +458,21 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
     // --- 3. residue, by similarity -------------------------------------------
     let mut candidates: Vec<(f64, usize, usize)> = Vec::new();
     for (bi, b) in before.iter().enumerate() {
-        if before_taken[bi] || is_trivial(b) {
+        if before_taken[bi] || is_trivial(before_sizes[bi]) {
             continue;
         }
         for (ai, a) in after.iter().enumerate() {
-            if after_taken[ai] || is_trivial(a) {
+            if after_taken[ai] || is_trivial(after_sizes[ai]) {
                 continue;
             }
-            let score = similarity(b, a);
-            if score >= MOVED_MODIFIED_MIN_SIMILARITY {
+            let reachable = similarity_if_reachable(
+                b,
+                a,
+                before_sizes[bi],
+                after_sizes[ai],
+                MOVED_MODIFIED_MIN_SIMILARITY,
+            );
+            if let Some(score) = reachable.filter(|&s| s >= MOVED_MODIFIED_MIN_SIMILARITY) {
                 candidates.push((score, bi, ai));
             }
         }
@@ -423,37 +514,47 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
     }
 
     // --- assemble ------------------------------------------------------------
+    // Totals read the pools before they are consumed; snapshots are then
+    // moved into their rows rather than deep-cloning every UAST subtree.
+    let before_total = counted_total(&before);
+    let after_total = counted_total(&after);
+    let mut before: Vec<Option<FunctionSnapshot>> = before.into_iter().map(Some).collect();
+    let mut after: Vec<Option<FunctionSnapshot>> = after.into_iter().map(Some).collect();
     let mut matches: Vec<FunctionMatch> = pairs
         .into_iter()
-        .map(|(bi, ai, kind, score)| FunctionMatch {
-            kind,
-            complexity_delta: after[ai].complexity as i64 - before[bi].complexity as i64,
-            before: Some(before[bi].clone()),
-            after: Some(after[ai].clone()),
-            similarity: score,
+        .map(|(bi, ai, kind, score)| {
+            let b = before[bi]
+                .take()
+                .expect("each index is paired at most once");
+            let a = after[ai].take().expect("each index is paired at most once");
+            FunctionMatch {
+                kind,
+                complexity_delta: a.complexity as i64 - b.complexity as i64,
+                before: Some(b),
+                after: Some(a),
+                similarity: score,
+            }
         })
         .collect();
-    for (bi, b) in before.iter().enumerate() {
-        if !before_taken[bi] {
-            matches.push(FunctionMatch {
-                kind: MatchKind::Removed,
-                complexity_delta: -(b.complexity as i64),
-                before: Some(b.clone()),
-                after: None,
-                similarity: 0.0,
-            });
-        }
+    // Paired slots were emptied above, so what remains is exactly the
+    // unmatched residue, still in pool order.
+    for b in before.into_iter().flatten() {
+        matches.push(FunctionMatch {
+            kind: MatchKind::Removed,
+            complexity_delta: -(b.complexity as i64),
+            before: Some(b),
+            after: None,
+            similarity: 0.0,
+        });
     }
-    for (ai, a) in after.iter().enumerate() {
-        if !after_taken[ai] {
-            matches.push(FunctionMatch {
-                kind: MatchKind::New,
-                complexity_delta: a.complexity as i64,
-                before: None,
-                after: Some(a.clone()),
-                similarity: 0.0,
-            });
-        }
+    for a in after.into_iter().flatten() {
+        matches.push(FunctionMatch {
+            kind: MatchKind::New,
+            complexity_delta: a.complexity as i64,
+            before: None,
+            after: Some(a),
+            similarity: 0.0,
+        });
     }
     matches.sort_by(|x, y| {
         let key = |m: &FunctionMatch| {
@@ -467,7 +568,7 @@ pub fn match_functions(before: Vec<FunctionSnapshot>, after: Vec<FunctionSnapsho
         key(x).cmp(&key(y))
     });
 
-    let totals = totals_for(&before, &after, &matches);
+    let totals = totals_for(before_total, after_total, &matches);
     debug_assert!(totals.balanced, "ledger complexity must close: {totals:?}");
     Ledger { matches, totals }
 }
@@ -482,22 +583,18 @@ fn counted(snapshot: Option<&FunctionSnapshot>) -> i64 {
     }
 }
 
-fn totals_for(
-    before: &[FunctionSnapshot],
-    after: &[FunctionSnapshot],
-    matches: &[FunctionMatch],
-) -> LedgerTotals {
+/// Total complexity of one pool, nested closures excluded.
+fn counted_total(pool: &[FunctionSnapshot]) -> usize {
+    pool.iter()
+        .filter(|s| !s.nested)
+        .map(|s| s.complexity)
+        .sum()
+}
+
+fn totals_for(before_total: usize, after_total: usize, matches: &[FunctionMatch]) -> LedgerTotals {
     let mut totals = LedgerTotals {
-        before_total: before
-            .iter()
-            .filter(|s| !s.nested)
-            .map(|s| s.complexity)
-            .sum(),
-        after_total: after
-            .iter()
-            .filter(|s| !s.nested)
-            .map(|s| s.complexity)
-            .sum(),
+        before_total,
+        after_total,
         ..LedgerTotals::default()
     };
 
@@ -804,6 +901,91 @@ mod tests {
         assert_eq!(ledger.matches[0].similarity, 1.0);
         assert_eq!(ledger.matches[0].complexity_delta, 0);
         assert!(ledger.totals.balanced);
+    }
+
+    #[test]
+    fn is_move_covers_exactly_the_two_moved_kinds() {
+        let moves: Vec<MatchKind> = [
+            MatchKind::InPlace,
+            MatchKind::MovedIdentical,
+            MatchKind::MovedModified,
+            MatchKind::Renamed,
+            MatchKind::New,
+            MatchKind::Removed,
+        ]
+        .into_iter()
+        .filter(|kind| kind.is_move())
+        .collect();
+        assert_eq!(
+            moves,
+            vec![MatchKind::MovedIdentical, MatchKind::MovedModified]
+        );
+    }
+
+    #[test]
+    fn is_named_and_is_nested_look_at_both_sides() {
+        let snapshots = snap(
+            "function outer(xs){ return xs.map((x) => { if (x) { return x } return 0 }) }\n",
+            "base.ts",
+        );
+        let named = snapshots.iter().find(|s| s.name == "outer").unwrap();
+        let anon = snapshots
+            .iter()
+            .find(|s| s.name.starts_with(ANONYMOUS_NAME))
+            .expect("the arrow function carries the anonymous label");
+        assert!(anon.nested, "{:?}", anon.kind);
+        let row =
+            |before: Option<&FunctionSnapshot>, after: Option<&FunctionSnapshot>| FunctionMatch {
+                kind: MatchKind::InPlace,
+                before: before.cloned(),
+                after: after.cloned(),
+                similarity: 1.0,
+                complexity_delta: 0,
+            };
+
+        let plain = row(Some(named), Some(named));
+        assert!(plain.is_named() && !plain.is_nested());
+        // One-sided rows (New / Removed) judge the side that exists.
+        assert!(row(None, Some(named)).is_named());
+        assert!(!row(Some(anon), None).is_named());
+        assert!(row(Some(anon), None).is_nested());
+        // Either side is enough to disqualify.
+        assert!(!row(Some(named), Some(anon)).is_named());
+        assert!(!row(Some(anon), Some(named)).is_named());
+        assert!(row(Some(named), Some(anon)).is_nested());
+        assert!(row(Some(anon), Some(named)).is_nested());
+    }
+
+    #[test]
+    fn size_prefilter_bound_never_undercuts_the_real_score() {
+        // The prefilter must be an upper bound on `similarity` for every
+        // non-identical pair, or it could drop a pair that would pass.
+        let mut pool = snap(BASE, "base.ts");
+        pool.extend(snap(
+            "function c(z){ if (z) { return z } if (z) { return z } return null }\n\
+             function outer(xs){ return xs.map((x) => { if (x) { return x } return 0 }) }\n",
+            "other.ts",
+        ));
+        pool.extend(snap(
+            "def f(x):\n    if x:\n        return 1\n    return 0\n",
+            "a.py",
+        ));
+        for b in &pool {
+            for a in &pool {
+                let real = similarity(b, a);
+                for min in [
+                    0.0,
+                    NAME_MATCH_MIN_SIMILARITY,
+                    MOVED_MODIFIED_MIN_SIMILARITY,
+                    1.0,
+                ] {
+                    match similarity_if_reachable(b, a, node_size(b), node_size(a), min) {
+                        Some(score) => assert_eq!(score, real),
+                        None => assert!(real < min, "{} -> {}: {real} >= {min}", b.name, a.name),
+                    }
+                }
+            }
+        }
     }
 
     #[test]

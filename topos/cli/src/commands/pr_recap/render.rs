@@ -193,7 +193,11 @@ fn header_dim_line(content: &str, options: RenderOptions) -> String {
     format!(
         "{}  {}",
         guide('│', options),
-        paint(clamp(content, budget(options)), Style::new().bold().dim(), options)
+        paint(
+            clamp(content, budget(options)),
+            Style::new().bold().dim(),
+            options
+        )
     )
 }
 
@@ -1254,7 +1258,11 @@ fn floor_blocks(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
     spots.sort_by_key(|spot| usize::from(spot.metric != SECURE_METRIC));
     if !spots.is_empty() {
         lines.push(String::new());
-        lines.push(paint("  Where to look", Style::new().cyan().bold(), options));
+        lines.push(paint(
+            "  Where to look",
+            Style::new().cyan().bold(),
+            options,
+        ));
         for (index, spot) in spots.iter().enumerate() {
             lines.push(String::new());
             lines.push(format!(

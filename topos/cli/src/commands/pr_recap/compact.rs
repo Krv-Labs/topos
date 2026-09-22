@@ -13,8 +13,8 @@ use console::Style;
 
 use super::model::PrRecap;
 use super::render::{
-    cluster_decisions, floor_line, headline_mark, mean_scores, medal_moves,
-    new_medal_tally, pillar_table_header, pillar_table_rows,
+    cluster_decisions, floor_line, headline_mark, mean_scores, medal_moves, new_medal_tally,
+    pillar_table_header, pillar_table_rows,
 };
 use crate::commands::render::{guide, paint, truncate_right, RenderOptions};
 
@@ -141,7 +141,11 @@ fn quality_line(recap: &PrRecap) -> Option<String> {
     } else {
         " →"
     };
-    Some(row("·", "QUALITY", &format!("{:.0}% → {:.0}%{}", before, after, arrow)))
+    Some(row(
+        "·",
+        "QUALITY",
+        &format!("{:.0}% → {:.0}%{}", before, after, arrow),
+    ))
 }
 
 /// Compact floor: extends render's floor_line with cluster decisions, exit code, and --json pointer.

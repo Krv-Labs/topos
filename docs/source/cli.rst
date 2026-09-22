@@ -296,12 +296,14 @@ reproducible from ``--json``; there is no LLM in the loop.
 
 .. code-block:: bash
 
+   topos pr-recap
    topos pr-recap 5
    topos pr-recap --base main --head HEAD
    topos pr-recap 5 --head :worktree
    topos pr-recap 5 --json
    topos pr-recap 5 --format github
    topos pr-recap 5 --no-coupling
+   topos pr-recap 5 --priority composable
 
 .. list-table::
    :header-rows: 1
@@ -316,13 +318,16 @@ reproducible from ``--json``; there is no LLM in the loop.
      - Git commit the change starts from.
    * - ``--head COMMIT``
      - Git commit the change ends at. Defaults to ``HEAD``. Use
-       ``--head :worktree`` to include uncommitted edits.
+       ``--head :worktree`` to include uncommitted edits and untracked files.
    * - ``--repo PATH``
      - Repository to read. Defaults to the current directory.
    * - ``--json``
      - Emit ``topos.pr_recap.v2`` instead of the review card.
    * - ``--max-files N``
      - Do not score more than this many added or modified files (default 40).
+       The most-changed files (lines added plus removed) are kept; the recap
+       is then marked incomplete and its reason says how many went unscored.
+       Truncation alone does not fail the check.
    * - ``--verbose``
      - Unfold every split cluster and print the per-function move ledger.
    * - ``--compact``
@@ -332,13 +337,25 @@ reproducible from ``--json``; there is no LLM in the loop.
        otherwise. ``github`` renders the Markdown sticky-comment format.
    * - ``--no-coupling``
      - Skip coupling-store preparation; COMPOSABLE is reported as not measured.
+   * - ``--priority VALUE``
+     - Pillar to prioritize when classifying, as for ``evaluate``. Defaults to
+       the priority in ``topos.toml``, or ``secure`` when none is configured.
+       The card's context line names the priority used.
+
+**Range**
+
+- The before side is the merge-base of the base and the head, like
+  ``git diff base...head``: commits that landed on the base branch after the
+  fork are not charged to the change.
+- With no arguments, ``pr-recap`` reviews the uncommitted edits in the working
+  tree (``--base HEAD --head :worktree``), including untracked files.
 
 **Sample card**
 
 .. code-block:: text
 
    ◇  Reviewed 23 changed files  +2539/-1864
-   │  #5 refactor/topos → main · COMPOSABLE measured · 1 skipped
+   │  #5 refactor/topos → main · priority secure · COMPOSABLE measured · 1 skipped
    │
    │  · LATERAL   0 lost · 1 up · 17 new (11 PLATINUM, 5 GOLD, 1 SILVER)
    │
@@ -374,7 +391,9 @@ reproducible from ``--json``; there is no LLM in the loop.
 - Row types: ``LOST`` (a pillar lost), ``DOWN`` (score-only dip), ``COSMETIC``
   (score moved, syntax tree did not), ``UP`` (cleared a pillar or score rose),
   ``NEW`` (added, not part of a split), ``SPLIT`` (a parent file's symbols
-  moved into new children).
+  moved into new children). A new file is ``X NEW`` and fails the check when
+  it arrives failing SECURE or with no pillar passed (SLOP); a passing new
+  file cannot turn a lateral change into an improvement.
 - ``S C E N`` are the four pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE) as
   dots: ``●`` passed, ``○`` failed, ``·`` not measured. A pillar whose score
   moved at least one point carries an arrow (``●↑``, ``○↓``).
@@ -382,7 +401,11 @@ reproducible from ``--json``; there is no LLM in the loop.
   (symbols moved in, or shared-by count) on child rows; the leading mark is
   ``✓`` when worst function fell and decisions grew ≤10%, ``!`` when decisions
   grew more than that or a child arrived SLOP, and ``X`` when the parent lost
-  a pillar or a moved function got more complex.
+  a pillar, SECURE findings rose across the split, or a moved function got
+  more complex while the worst function did not fall. An ``X SPLIT`` fails the
+  check.
+- The project line compares the files that existed at base, on both sides.
+  New files are summarized apart, so they cannot lift or sink the average.
 - Held and deleted files fold into count-only lines; ``--verbose`` unfolds
   every split cluster, lists moved symbol names, and prints the per-function
   ledger.
@@ -391,7 +414,8 @@ reproducible from ``--json``; there is no LLM in the loop.
 
 - ``0`` — pass.
 - ``1`` — the headline is ``REGRESSION``, ``SCORE DOWN``, or ``SUSPICIOUS``.
-- ``2`` — error (bad range, repo not found, etc.).
+- ``2`` — ``pr-recap`` could not produce a verdict (bad range, repository not
+  found, ``gh`` failure, etc.).
 
 .. note::
    Structural direction is not proof that tests or behavior still pass.

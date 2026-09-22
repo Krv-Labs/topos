@@ -146,6 +146,9 @@ pub(crate) struct ClusterMembership {
 pub(crate) struct FileRecap {
     pub(crate) path: String,
     pub(crate) change: FileChange,
+    /// An added file outside a split is `REGRESSION` when it arrives
+    /// failing SECURE or SLOP, `IMPROVEMENT` otherwise; a split child is
+    /// judged through its cluster's mark.
     pub(crate) status: Headline,
     pub(crate) lines_before: usize,
     pub(crate) lines_after: usize,
@@ -182,7 +185,8 @@ impl FileRecap {
     }
 }
 
-/// `✓ SPLIT`, `! SPLIT`, `X SPLIT`.
+/// `✓ SPLIT`, `! SPLIT`, `X SPLIT`. `Fail` fails the check like a lost
+/// pillar does: the headline becomes `REGRESSION`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ClusterMark {
@@ -244,16 +248,43 @@ pub(crate) struct PillarRollup {
     pub(crate) failing_after: usize,
 }
 
-/// Rollup over every scored file at base and at head.
+/// Rollup over the existing (modified or renamed) files at base and at
+/// head. Both sides cover the same files, so a before → after move is a
+/// change in those files and not a change in who was counted. Added files
+/// are reported apart, in [`AddedRollup`]: folding them into the head side
+/// only would let clean new files lift the average.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProjectRollup {
     pub(crate) medal_before: Medal,
     pub(crate) medal_after: Medal,
+    /// A pillar is present only when both sides scored it.
     pub(crate) pillars: BTreeMap<String, PillarRollup>,
     /// A pillar the touched set passed at base is failed at head.
     pub(crate) regression: bool,
+    /// Existing files compared; equal, since both sides are the same files.
     pub(crate) files_before: usize,
     pub(crate) files_after: usize,
+}
+
+/// One pillar over the added files, at head.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AddedPillar {
+    /// Every added file measuring this pillar passes it.
+    pub(crate) passed: bool,
+    /// Mean displayed score over the added files measuring this pillar.
+    pub(crate) score: f64,
+    pub(crate) files: usize,
+    pub(crate) failing: usize,
+}
+
+/// The quality of the files this change added. They have no before side,
+/// so they are never mixed into [`ProjectRollup`]'s comparison.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AddedRollup {
+    pub(crate) files: usize,
+    /// Lattice verdict over the pillars every added file passes.
+    pub(crate) medal: Medal,
+    pub(crate) pillars: BTreeMap<String, AddedPillar>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -271,6 +302,7 @@ pub(crate) struct Scope {
     pub(crate) lines_removed: usize,
     pub(crate) files_skipped: usize,
     pub(crate) files_deleted: usize,
+    /// Scoreable files left out by `--max-files`, lowest churn first out.
     pub(crate) files_capped: usize,
     pub(crate) coupling: CouplingStatus,
 }
@@ -291,18 +323,29 @@ pub(crate) struct PullRequest {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PrRecap {
     pub(crate) schema: &'static str,
+    /// The commit compared against: the merge-base of the requested base
+    /// and the head, so commits that landed on the base branch after the
+    /// fork are not charged to this change.
     pub(crate) base: String,
     pub(crate) head: String,
+    /// The pillar every file was classified with (`secure` unless the
+    /// project configures one, or `--priority` overrides it).
+    pub(crate) priority: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) review: Option<PullRequest>,
     pub(crate) headline: Headline,
     pub(crate) check: &'static str,
     pub(crate) reason: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) error: Option<String>,
+    /// `--max-files` left `scope.files_capped` files unscored. The verdict
+    /// covers only the highest-churn files that were scored.
+    pub(crate) incomplete: bool,
     pub(crate) scope: Scope,
+    /// `None` when no existing file was scored (every file is new).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) project: Option<ProjectRollup>,
+    /// `None` when no file was added.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) added: Option<AddedRollup>,
     pub(crate) clusters: Vec<Cluster>,
     pub(crate) files: Vec<FileRecap>,
     pub(crate) skipped: Vec<SkippedFile>,
@@ -321,4 +364,18 @@ impl PrRecap {
     pub(crate) fn new_files(&self) -> Vec<&FileRecap> {
         self.files.iter().filter(|f| f.is_new()).collect()
     }
+}
+
+/// Whole-percent change from `before` to `after`, rounded; 100 when growing
+/// from nothing. Reasons and renderers share it so the same change never
+/// reads as two different percentages.
+pub(crate) fn percent_change(before: usize, after: usize) -> i64 {
+    if before == 0 {
+        return if after == 0 { 0 } else { 100 };
+    }
+    #[expect(clippy::cast_precision_loss, reason = "decision counts are small")]
+    let fraction = (after as f64 - before as f64) / before as f64;
+    #[expect(clippy::cast_possible_truncation, reason = "rounded percentage")]
+    let percent = (fraction * 100.0).round() as i64;
+    percent
 }

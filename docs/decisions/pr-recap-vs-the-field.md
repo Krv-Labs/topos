@@ -45,7 +45,7 @@ ledger that must balance, and a split-aware coupling delta. That combination is 
 
 The CLI already emits everything the Action needs: `--format github` prints a sticky comment with the marker
 `<!-- topos-pr-recap:v2 -->` on line 1, `--json` carries the document, `--compact` fits the job log, and the
-exit code encodes the headline (0 pass, 1 REGRESSION / SCORE DOWN / SUSPICIOUS, 2 error).
+exit code encodes the headline: 0 pass, 1 regression (REGRESSION, SCORE DOWN or SUSPICIOUS), 2 error.
 
 ```yaml
 # .github/workflows/topos-pr-recap.yml
@@ -75,11 +75,19 @@ jobs:
       - name: Review
         id: recap
         continue-on-error: true
-        env: { GH_TOKEN: ${{ github.token }} }
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        # An explicit `shell: bash` runs as `bash -eo pipefail`; the default is
+        # `bash -e`, where `tee` would hide the exit code of `topos`.
+        shell: bash
         run: |
-          topos pr-recap ${{ github.event.pull_request.number }} --compact | tee -a "$GITHUB_STEP_SUMMARY"
-          topos pr-recap ${{ github.event.pull_request.number }} --format github > recap.md
-          topos pr-recap ${{ github.event.pull_request.number }} --json > recap.json
+          # Write the comment and the document first: under `-e` a regression
+          # (exit 1) would stop the script before they exist.
+          topos pr-recap "$PR" --format github > recap.md || true
+          topos pr-recap "$PR" --json > recap.json || true
+          # Last, so its status (0 pass, 1 regression, 2 error) is the step's.
+          topos pr-recap "$PR" --compact | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Post or update the sticky comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:

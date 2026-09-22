@@ -7,6 +7,7 @@ pub mod config;
 pub mod coverage;
 pub mod depgraph;
 pub mod evaluate;
+mod gh;
 pub mod inspect;
 pub mod install;
 mod lang;

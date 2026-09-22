@@ -1,85 +1,70 @@
 //! Compact CI-log card for `topos pr-recap`.
 //!
-//! One screen of log, never more than [`MAX_LINES`] lines, printed when
-//! stdout is not a TTY or `--compact` is passed. A CI log is scrolled
-//! past, not read, so every row uses the same grammar — `MARK WORD
-//! subject columns…` — and the mark and the word are the only things a
-//! reader has to recognise.
+//! One screen of log, printed when stdout is not a TTY or `--compact` is
+//! passed. A CI log is scrolled past, not read, so every row uses the
+//! same grammar — `MARK WORD subject…` — and the mark and the word are
+//! the only things a reader has to recognise. Every section is capped,
+//! so the card never grows with the size of the change: the reason wraps
+//! to [`MAX_REASON_LINES`], and at most [`MAX_LOCUS`] failures and
+//! hotspots are listed before a `+N more` row.
 //!
 //! Like the full card, nothing here decides anything: the marks come
 //! from `recap.headline`, `cluster.mark` and the medal fields.
 
 use console::Style;
 
-use super::model::PrRecap;
-use super::render::{
-    cluster_decisions, floor_line, headline_mark, mean_scores, medal_moves, new_medal_tally,
-    pillar_table_header, pillar_table_rows,
-};
-use crate::commands::render::{guide, paint, truncate_right, RenderOptions};
+use super::model::{Hotspot, PrRecap};
+use super::render::{colorize, floor_line, mean_scores, pillar_table_header, pillar_table_rows};
+use super::view::{headline_mark, hotspot_pillar, Failure, RecapView};
+use crate::commands::render::{guide, paint, truncate_right, wrap_text, RenderOptions};
 
-/// A CI card that needs scrolling has failed at its one job.
-const MAX_LINES: usize = 12;
-/// Header, headline, floor = 3 fixed.
-const FIXED_LINES: usize = 3;
 const WORD_WIDTH: usize = 8;
+/// The headline reason wraps to at most this many lines.
+const MAX_REASON_LINES: usize = 3;
+/// Failures and hotspots listed before the rest fold into `+N more`.
+const MAX_LOCUS: usize = 5;
 
 pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
+    let view = RecapView::new(recap);
     let width = options.width.clamp(24, 100);
-    let mut body = Vec::new();
-
-    // Quality trend line (single line)
-    if let Some(q) = quality_line(recap) {
-        body.push(q);
+    let content = width - 3;
+    let mut body = vec![headline(&view)];
+    body.extend(reason_lines(&recap.reason, content));
+    if let Some(quality) = quality_line(recap) {
+        body.push(quality);
     }
-
-    // Pillar table: header + up to 4 rows
     if let Some(project) = &recap.project {
         body.push(String::new());
         body.push(pillar_table_header());
         body.extend(pillar_table_rows(project));
         body.push(String::new());
     }
-
-    let room = MAX_LINES - FIXED_LINES;
-    if body.len() > room {
-        let dropped = body.len() - (room - 1);
-        body.truncate(room - 1);
-        body.push(row(
-            "·",
-            "MORE",
-            &format!("{dropped} rows omitted · --json"),
-        ));
+    let locus = locus_lines(&view);
+    if !locus.is_empty() && body.last().is_some_and(|text| !text.is_empty()) {
+        body.push(String::new());
     }
+    body.extend(locus);
 
     let mut lines = vec![paint(
-        truncate_right(&header(recap), width),
+        truncate_right(&header(&view), width),
         Style::new().bold(),
         options,
     )];
     for text in body {
-        if text.is_empty() {
-            lines.push(guide('│', options));
+        lines.push(if text.is_empty() {
+            guide('│', options)
         } else {
-            lines.push(format!(
+            format!(
                 "{}  {}",
                 guide('│', options),
-                super::render::colorize(&truncate_right(&text, width - 3), options)
-            ));
-        }
+                colorize(&truncate_right(&text, content), options)
+            )
+        });
     }
-    lines.insert(
-        1,
-        format!(
-            "{}  {}",
-            guide('│', options),
-            super::render::colorize(&truncate_right(&headline(recap), width - 3), options)
-        ),
-    );
     lines.push(format!(
         "{}  {}",
         guide('└', options),
-        super::render::colorize(&truncate_right(&compact_floor(recap), width - 3), options)
+        colorize(&truncate_right(&compact_floor(&view), content), options)
     ));
     lines
 }
@@ -91,44 +76,65 @@ fn row(mark: &str, word: &str, subject: &str) -> String {
     format!("{head}{}{subject}", " ".repeat(pad.max(2)))
 }
 
-fn header(recap: &PrRecap) -> String {
-    let scope = &recap.scope;
-    let subject = recap.review.as_ref().map_or_else(
-        || format!("{}…{}", short(&recap.base), short(&recap.head)),
-        |review| format!("#{}", review.number),
-    );
+/// Blank space as wide as `row(mark, word, "")`, so a continuation line
+/// starts under its row's subject.
+fn indent(mark: &str, word: &str) -> String {
+    " ".repeat(row(mark, word, "").chars().count())
+}
+
+fn header(view: &RecapView<'_>) -> String {
+    let scope = &view.recap.scope;
     format!(
-        "◇  topos pr-recap {subject}  {} files +{}/-{} · COMPOSABLE {}",
+        "◇  topos pr-recap {}  {} files +{}/-{}{} · {}",
+        view.subject,
         scope.files_scored,
         scope.lines_added,
         scope.lines_removed,
-        if scope.coupling.measured {
-            "measured"
-        } else {
-            "not measured"
-        }
+        view.incomplete_note(),
+        view.context.join(" · ")
     )
 }
 
-fn short(rev: &str) -> &str {
-    super::render::short_rev(rev)
-}
-
-fn headline(recap: &PrRecap) -> String {
-    let (up, down) = medal_moves(recap);
-    let new = recap.new_files().len();
-    let cosmetic = recap.files.iter().filter(|file| file.cosmetic).count();
-    let tally = new_medal_tally(recap);
+fn headline(view: &RecapView<'_>) -> String {
+    let tally = &view.tally;
     format!(
-        "{} {}  {up} up · {down} lost · {new} new{} · {cosmetic} cosmetic",
-        headline_mark(recap.headline),
-        recap.headline.word(),
-        if tally.is_empty() {
+        "{} {}  {} up · {} lost · {} new{} · {} cosmetic",
+        headline_mark(view.recap.headline),
+        view.recap.headline.word(),
+        tally.up,
+        tally.down,
+        tally.new,
+        if tally.new_medals.is_empty() {
             String::new()
         } else {
-            format!(": {tally}")
-        }
+            format!(": {}", tally.new_medals)
+        },
+        tally.cosmetic
     )
+}
+
+/// `· WHY    <recap.reason>`, wrapped under its own subject column.
+fn reason_lines(reason: &str, width: usize) -> Vec<String> {
+    let continuation = indent("·", "WHY");
+    let available = width.saturating_sub(continuation.len()).max(12);
+    let mut chunks = wrap_text(reason, available);
+    if chunks.len() > MAX_REASON_LINES {
+        // Hand the overflow to the last line, which is then cut with an
+        // ellipsis the reader can see.
+        let rest = chunks.split_off(MAX_REASON_LINES - 1).join(" ");
+        chunks.push(rest);
+    }
+    chunks
+        .into_iter()
+        .enumerate()
+        .map(|(index, chunk)| {
+            if index == 0 {
+                row("·", "WHY", &chunk)
+            } else {
+                format!("{continuation}{chunk}")
+            }
+        })
+        .collect()
 }
 
 /// Quality trend: "41% → 59% ↑" showing overall average score change.
@@ -144,18 +150,71 @@ fn quality_line(recap: &PrRecap) -> Option<String> {
     Some(row(
         "·",
         "QUALITY",
-        &format!("{:.0}% → {:.0}%{}", before, after, arrow),
+        &format!("{before:.0}% → {after:.0}%{arrow}"),
     ))
 }
 
-/// Compact floor: extends render's floor_line with cluster decisions, exit code, and --json pointer.
-fn compact_floor(recap: &PrRecap) -> String {
-    let mut parts = vec![floor_line(recap)];
-    if !recap.clusters.is_empty() {
-        let (before, after) = cluster_decisions(recap);
+/// What fails the check, then where to look: one row per failure and
+/// two per hotspot (the finding, then its fix).
+fn locus_lines(view: &RecapView<'_>) -> Vec<String> {
+    let spots = &view.recap.hotspots;
+    let total = view.failures.len() + spots.len();
+    let mut lines: Vec<String> = view
+        .failures
+        .iter()
+        .map(failure_row)
+        .chain(spots.iter().map(hotspot_rows))
+        .take(MAX_LOCUS)
+        .flatten()
+        .collect();
+    if total > MAX_LOCUS {
+        lines.push(row(
+            "·",
+            "MORE",
+            &format!("+{} more · --json", total - MAX_LOCUS),
+        ));
+    }
+    lines
+}
+
+fn failure_row(failure: &Failure<'_>) -> Vec<String> {
+    let (mark, word) = failure.word.split_once(' ').unwrap_or(("X", failure.word));
+    let subject = match failure.split_into {
+        Some(children) => format!("{} → {children} files", failure.path),
+        None => failure.path.to_string(),
+    };
+    vec![row(mark, word, &format!("{subject} · {}", failure.cause))]
+}
+
+fn hotspot_rows(spot: &Hotspot) -> Vec<String> {
+    vec![
+        row(
+            "X",
+            "FIX",
+            &format!(
+                "{}:{} · {} · {}",
+                spot.path,
+                spot.line,
+                hotspot_pillar(spot),
+                spot.detail
+            ),
+        ),
+        format!("{}{}", indent("X", "FIX"), spot.advice),
+    ]
+}
+
+/// Compact floor: extends the card's floor line with cluster decisions,
+/// the exit code, and a `--json` pointer.
+fn compact_floor(view: &RecapView<'_>) -> String {
+    let mut parts = vec![floor_line(view)];
+    if !view.clusters.is_empty() {
+        let (before, after) = view.decisions;
         parts.push(format!("decisions {before}→{after}"));
     }
-    parts.push(format!("exit {}", i32::from(recap.headline.fails_check())));
+    parts.push(format!(
+        "exit {}",
+        i32::from(view.recap.headline.fails_check())
+    ));
     parts.push("--json for the full document".to_string());
     parts.join(" · ")
 }
@@ -163,10 +222,14 @@ fn compact_floor(recap: &PrRecap) -> String {
 #[cfg(test)]
 mod tests {
     use super::render_compact;
-    use crate::commands::pr_recap::render::{
-        fixture_losses, fixture_many_clusters, fixture_mixed, fixture_pr5,
+    use crate::commands::pr_recap::fixtures::{
+        fixture_losses, fixture_many_clusters, fixture_mixed, fixture_pr5, hotspot,
     };
     use crate::commands::render::RenderOptions;
+
+    /// Header, headline, three reason lines, quality, the seven-line
+    /// pillar table, five two-line hotspots, `+N more`, floor.
+    const MAX_LINES: usize = 25;
 
     fn options() -> RenderOptions {
         RenderOptions {
@@ -179,9 +242,9 @@ mod tests {
     fn pr5_fits_a_ci_log() {
         let lines = render_compact(&fixture_pr5(), options());
         let text = lines.join("\n");
-        // Budget: 12 lines (header, headline, quality, 2 spacers, 4 pillar rows + header, floor = 11 lines)
-        assert!(lines.len() <= 12, "{} lines:\n{text}", lines.len());
+        assert!(lines.len() <= MAX_LINES, "{} lines:\n{text}", lines.len());
         assert!(text.contains("✓ IMPROVEMENT"), "{text}");
+        assert!(text.contains("· WHY"), "{text}");
         assert!(text.contains("· QUALITY"), "{text}");
         assert!(text.contains("PILLAR"), "{text}");
         assert!(!text.contains("✓ SPLIT"), "{text}");
@@ -202,13 +265,29 @@ mod tests {
         assert_eq!(lines[last_pillar_idx + 1].trim(), "│");
     }
 
+    #[test]
+    fn the_header_says_how_it_was_scored() {
+        let header = &render_compact(&fixture_pr5(), options())[0];
+        assert!(
+            header.contains("· priority secure · COMPOSABLE measured"),
+            "{header}"
+        );
+    }
+
+    #[test]
+    fn a_capped_recap_says_it_is_incomplete() {
+        let mut recap = fixture_pr5();
+        assert!(!render_compact(&recap, options())[0].contains("incomplete"));
+        recap.incomplete = true;
+        recap.scope.files_capped = 3;
+        let header = &render_compact(&recap, options())[0];
+        assert!(header.contains("· incomplete, 3 unscored ·"), "{header}");
+    }
+
     /// The CI floor carries the same medal the card does.
     #[test]
     fn the_floor_wears_the_medal() {
         let text = render_compact(&fixture_pr5(), options()).join("\n");
-        assert!(text.contains("🥉 BRONZE"), "{text}");
-        assert!(text.contains("SECURE"), "{text}");
-        // Floor includes full verdict (may be truncated in narrow terminals)
         assert!(text.contains("IMPROVEMENT · 🥉 BRONZE · SECURE"), "{text}");
         assert!(text.contains("41% → 58% average"), "{text}");
     }
@@ -216,16 +295,70 @@ mod tests {
     #[test]
     fn a_regression_exits_one() {
         let text = render_compact(&fixture_losses(), options()).join("\n");
-        // Floor now shows full verdict with exit code (may be truncated in narrow terminals)
         assert!(text.contains("X REGRESSION"), "{text}");
         assert!(text.contains("REGRESSION · 🥇 GOLD → 🥈 SILVER"), "{text}");
+    }
+
+    /// A red CI log must say which file failed, why, and what to change:
+    /// the lost file and the failed split with their causes, then the
+    /// hotspot's location, finding and fix.
+    #[test]
+    fn a_regression_names_the_file_the_cause_and_the_fix() {
+        let mut recap = fixture_losses();
+        recap.hotspots = vec![hotspot(
+            "topos/engine/src/functors/probes/cpg/taint.rs",
+            88,
+            "cpg.dangerous_calls",
+        )];
+        let lines = render_compact(&recap, options());
+        let text = lines.join("\n");
+        assert!(
+            text.contains(&format!("· WHY    {}", recap.reason)),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "X LOST   topos/engine/src/functors/probes/cpg/taint.rs · lost SIMPLE, SECURE"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("X SPLIT  topos/engine/src/functors/probes/cpg/taint.rs → 2 files · "),
+            "{text}"
+        );
+        assert!(
+            text.contains("X FIX    topos/engine/src/functors/probes/cpg/taint.rs:88 · SECURE · "),
+            "{text}"
+        );
+        let fix = lines
+            .iter()
+            .position(|line| line.contains("X FIX"))
+            .expect("a fix row");
+        assert!(
+            lines[fix + 1].ends_with(&recap.hotspots[0].advice),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_long_locus_folds_into_more() {
+        let mut recap = fixture_losses();
+        recap.hotspots = (1..=6)
+            .map(|line| hotspot("src/a.rs", line, "ast.max_function_complexity"))
+            .collect();
+        let lines = render_compact(&recap, options());
+        let text = lines.join("\n");
+        // Two failures leave room for three of the six hotspots.
+        assert_eq!(text.matches("X FIX").count(), 3, "{text}");
+        assert!(text.contains("· MORE   +3 more · --json"), "{text}");
+        assert!(lines.len() <= MAX_LINES, "{} lines:\n{text}", lines.len());
     }
 
     #[test]
     fn a_huge_pr_folds_rows_rather_than_scrolling() {
         let lines = render_compact(&fixture_many_clusters(40), options());
         let text = lines.join("\n");
-        assert!(lines.len() <= 12, "{} lines:\n{text}", lines.len());
+        assert!(lines.len() <= MAX_LINES, "{} lines:\n{text}", lines.len());
         assert!(!text.contains("✓ SPLIT"), "{text}");
     }
 
@@ -233,7 +366,7 @@ mod tests {
     fn every_card_stays_inside_the_budget() {
         for recap in [fixture_pr5(), fixture_mixed(), fixture_losses()] {
             let lines = render_compact(&recap, options());
-            assert!(lines.len() <= 12, "{} lines", lines.len());
+            assert!(lines.len() <= MAX_LINES, "{} lines", lines.len());
             for line in lines {
                 assert!(!line.contains('\u{1b}'), "{line}");
                 assert!(line.chars().count() <= 100, "{line}");

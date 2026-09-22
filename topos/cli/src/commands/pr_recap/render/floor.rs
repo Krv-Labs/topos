@@ -6,19 +6,19 @@ use console::Style;
 
 use super::layout::{budget, push_wrapped};
 use crate::commands::pr_recap::model::ProjectRollup;
-use crate::commands::pr_recap::view::{headline_mark, hotspot_pillar, RecapView, PILLARS};
+use crate::commands::pr_recap::view::{hotspot_pillar, RecapView, PILLARS};
 use crate::commands::render::{paint, truncate_left, RenderOptions};
 
 /// At most this many `Why` sentences.
 const MAX_DETAILS: usize = 2;
 
-/// `· LATERAL · 🥉 BRONZE · SECURE · 46% → 58% average.`
+/// `✓ READY · 🥉 BRONZE · SECURE · 46% → 58% average.`
 pub(in crate::commands::pr_recap) fn floor_line(view: &RecapView<'_>) -> String {
     let recap = view.recap;
     let mut parts = vec![format!(
         "{} {}",
-        headline_mark(recap.headline),
-        recap.headline.word()
+        recap.readiness.mark(),
+        recap.readiness.word()
     )];
     if let Some(project) = &recap.project {
         parts.push(medal_phrase(project));

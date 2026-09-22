@@ -7,12 +7,14 @@
 
 use std::collections::HashMap;
 
+use topos_engine::config::PrGateConfig;
 use topos_engine::functors::profunctors::uast::ledger::{
     FunctionMatch, FunctionSnapshot, Ledger, LedgerTotals, MatchKind,
 };
 use topos_engine::graphs::mdg::split::{NewSymbol, Reach, SymbolMove};
 use topos_engine::graphs::uast::models::{NativeRef, SourceSpan, UASTNode};
 
+use super::gates;
 use super::model::{
     Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingStatus, FileChange,
     FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta, PillarRollup, PrRecap,
@@ -47,6 +49,7 @@ pub(super) fn hotspot(path: &str, line: usize, metric: &str) -> Hotspot {
     Hotspot {
         path: path.to_string(),
         line,
+        function: None,
         metric: metric.to_string(),
         detail: format!("finding at line {line}"),
         advice: format!("Change line {line} so it clears the gate."),
@@ -83,6 +86,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
                     before_score: (!is_new).then_some(before_score),
                     after_score: Some(after_score),
                     lost_gate: None,
+                    gate: None,
                 },
             )
         })
@@ -114,6 +118,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
             role,
         }),
         hotspots: Vec::new(),
+        severity: None,
     }
 }
 
@@ -229,6 +234,8 @@ fn cluster_of(
         parent_fan_out_before: Some(fan_out.0),
         parent_fan_out_after: Some(fan_out.1),
         parent_fan_out_after_excluding_children: Some(fan_out.0),
+        secure_findings_before: 0,
+        secure_findings_after: 0,
         symbols_moved: Vec::new(),
         symbols_new: Vec::new(),
         symbols_lost: Vec::new(),
@@ -304,6 +311,14 @@ fn recap_of(
     project: Option<Rollup>,
     scope: Scope,
 ) -> PrRecap {
+    // The readiness comes from the recommended gates, as in `build_recap`.
+    let cfg = PrGateConfig::default();
+    let mut files = files;
+    let (readiness, findings) = gates::evaluate(&files, &clusters, 0, &cfg);
+    for file in &mut files {
+        file.severity = gates::worst_at(&findings, &file.path);
+    }
+    let exit_code = readiness.exit_code(cfg.fail_on);
     PrRecap {
         schema: SCHEMA,
         base: "2e352d7aaaaaaa".to_string(),
@@ -313,12 +328,12 @@ fn recap_of(
             head_ref: "refactor/topos".to_string(),
             base_ref: "main".to_string(),
         }),
-        headline,
-        check: if headline.fails_check() {
-            "fail"
-        } else {
-            "pass"
-        },
+        gate: gates::summary(&cfg, None),
+        readiness,
+        exit_code,
+        check: if exit_code == 1 { "fail" } else { "pass" },
+        findings,
+        direction: headline,
         reason: "the split moved the worst functions down".to_string(),
         priority: "secure",
         incomplete: false,
@@ -746,6 +761,37 @@ pub(super) fn fixture_plain() -> PrRecap {
     )
 }
 
+/// One file that lost SIMPLE while gaining NAVIGABLE: a lateral move by
+/// status, a blocking `pillar_lost` by the gates.
+pub(super) const LATERAL_LOSS: &str = "topos/cli/src/commands/lattice.rs";
+
+pub(super) fn fixture_lateral_loss() -> PrRecap {
+    let files = vec![build(Spec {
+        path: LATERAL_LOSS,
+        change: FileChange::Modified,
+        status: Headline::LateralMove,
+        before: Some("SILVER"),
+        after: "SILVER",
+        pillars: [
+            (true, false, 60.0, 40.0),
+            (true, true, 80.0, 80.0),
+            (true, true, 100.0, 100.0),
+            (false, true, 40.0, 90.0),
+        ],
+        worst: (12, 12),
+        decisions: (30, 30),
+        cluster: None,
+        cosmetic: false,
+    })];
+    recap_of(
+        Headline::LateralMove,
+        files,
+        Vec::new(),
+        Some(rollup("SILVER", "SILVER", false, &[])),
+        scope(1, 0, 0, false),
+    )
+}
+
 /// One cluster plus every unclustered row word the card can print.
 pub(super) fn fixture_mixed() -> PrRecap {
     const PARENT: &str = "topos/mcp/src/evaluation/depgraph.rs";
@@ -934,6 +980,7 @@ pub(super) fn fixture_mixed() -> PrRecap {
     recap.hotspots = vec![Hotspot {
         path: "topos/mcp/src/tools/depgraph.rs".to_string(),
         line: 212,
+        function: Some("cap_generation_detail".to_string()),
         metric: "ast.max_function_complexity".to_string(),
         detail: "cap_generation_detail complexity 14, gate 10".to_string(),
         advice: "Extract a decision so this function clears the gate.".to_string(),

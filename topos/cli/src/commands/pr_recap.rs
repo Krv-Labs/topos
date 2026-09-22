@@ -1,15 +1,17 @@
-//! `topos pr-recap` — the data builder for schema `topos.pr_recap.v2`.
+//! `topos pr-recap` — the data builder for schema `topos.pr_recap.v3`.
 //!
 //! Scores added and modified source files at `--base` and `--head`, groups
-//! the ones that look like a split into clusters, and hands a single
-//! [`model::PrRecap`] document to whichever renderer the caller asked for.
-//! Every verdict on a card is decided here, from the lattice, the UAST
-//! ledger and the two coupling graphs — a formatter can never invent one.
+//! the ones that look like a split into clusters, applies the configured
+//! `[pr_recap]` gates, and hands a single [`model::PrRecap`] document to
+//! whichever renderer the caller asked for. Every verdict on a card is
+//! decided here, from the lattice, the UAST ledger, the two coupling graphs
+//! and the gate policy — a formatter can never invent one.
 
 mod clusters;
 mod compact;
 #[cfg(test)]
 mod fixtures;
+mod gates;
 mod git;
 mod github;
 mod hotspots;
@@ -23,7 +25,9 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum};
 use console::{Style, Term};
-use topos_engine::config::{load_topos_config, ToposConfig};
+use topos_engine::config::{
+    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, ToposConfig,
+};
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
@@ -34,7 +38,7 @@ use self::git::{cap_by_churn, changed_files, churn, skip_reason, worktree_files}
 use self::hotspots::top_hotspots;
 use self::model::*;
 use self::score::Scoring;
-use self::verdict::{added_rollup, finish_statuses, headline_for, project_rollup};
+use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
 use crate::commands::depgraph::{gitnexus_available, prepare_pr_stores, PrStores};
 use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
@@ -50,6 +54,24 @@ pub enum RecapFormat {
     Compact,
     /// Markdown for a sticky pull request comment.
     Github,
+}
+
+/// A built-in `[pr_recap]` preset, for `--preset`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GatePreset {
+    Relaxed,
+    Recommended,
+    Strict,
+}
+
+impl GatePreset {
+    fn preset(self) -> PrGatePreset {
+        match self {
+            GatePreset::Relaxed => PrGatePreset::Relaxed,
+            GatePreset::Recommended => PrGatePreset::Recommended,
+            GatePreset::Strict => PrGatePreset::Strict,
+        }
+    }
 }
 
 /// The long help for `topos pr-recap`, printed by `--help` under the
@@ -94,10 +116,10 @@ Rows:
   SPLIT       a file whose code moved out into new files. It passes (✓) when the
               worst function got simpler and total decisions grew by no more than
               10%, warns (!) when decisions grew by more than 10% or a child
-              landed SLOP, and fails (X) when the parent lost a pillar, a moved
-              function came out more complex than it went in, or the split as a
-              whole has more SECURE findings than the parent had. A failed split
-              fails the check.
+              landed SLOP, and fails (X) when a moved function came out more
+              complex than it went in, or the split as a whole has more SECURE
+              findings than the parent had. What each costs the verdict is the
+              split_* gates' call; a pillar the parent lost is its own finding.
   Children (├─) are the new files a split produced. `N in` counts the symbols or
   functions that moved into that child; `shared ×N` means N files besides the
   parent import it; `N more` folds away the quiet children.
@@ -113,16 +135,20 @@ Project table:
   how many were measured, and a rail showing where the head score sits. Both
   columns cover the same files; added files are rolled up on their own.
 
-Headline / exit codes:
-  IMPROVEMENT  structure got better.            exit 0
-  SCORE UP     scores rose, medals held.        exit 0
-  LATERAL      mixed or flat.                   exit 0
-  SCORE DOWN   scores fell, medals held.        exit 1
-  REGRESSION   a pillar or a medal was lost.    exit 1
-  SUSPICIOUS   the change looks cosmetic.       exit 1
-  An error (a bad range, git or gh failing) exits 2. The worst file, or a failed
-  split, decides the headline for the whole range. An added file counts only when
-  it fails: a clean new file cannot turn a lateral move into an improvement.
+Readiness / exit codes:
+  Each gate in `[pr_recap]` (`topos config`) turns what happened into a finding
+  with a severity: off, info, warn or block. The worst finding decides.
+  X BLOCKED          a block finding, such as a lost pillar.   exit 1
+  ! NEEDS ATTENTION  a warn finding, such as a large drop.     exit 0, or 1
+                     under fail_on = "warn"
+  ✓ READY            info findings only, or none.              exit 0
+  A score drop counts only once it is large enough, in a file changed enough
+  ([pr_recap.score_drop]); a smaller one is info. The policy is the flags, else
+  the nearest .topos.toml, else the recommended preset. --preset picks a
+  built-in preset and ignores the file's [pr_recap]; --strict fails on warn
+  too. An error (a bad range, git or gh failing) exits 2. The direction
+  (IMPROVEMENT, SCORE DOWN, LATERAL, ...) says which way the structure moved and
+  never changes the exit code.
 
 Range:
   The base side is the merge-base of the base and the head, so commits that
@@ -147,7 +173,8 @@ Outputs:
   --format compact  at most 12 lines; the default when output is piped.
   --format github   markdown for a sticky PR comment, with a hidden marker so a
                     later run replaces it instead of adding another comment.
-  --json            schema topos.pr_recap.v2: every number behind the card.
+  --json            schema topos.pr_recap.v3: every number and finding behind
+                    the card.
   --verbose         every split child, each moved function, every score change.
 
 Examples:
@@ -195,6 +222,41 @@ pub struct PrRecapArgs {
     /// full comma-separated ranking, most important first.
     #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE,NAVIGABLE")]
     pub priority: Option<String>,
+    /// Fail the check on NEEDS ATTENTION too (fail_on = "warn").
+    #[arg(long)]
+    pub strict: bool,
+    /// Gate with a built-in preset, ignoring the project's [pr_recap].
+    #[arg(long, value_enum)]
+    pub preset: Option<GatePreset>,
+}
+
+/// The gate policy for one run: `--preset` replaces the project's
+/// `[pr_recap]` with a built-in preset, and `--strict` then fails on warn
+/// as well. With neither, the project's table (itself recommended when
+/// absent) applies as is.
+fn resolve_gate_policy(
+    strict: bool,
+    preset: Option<GatePreset>,
+    file: &PrGateConfig,
+) -> PrGateConfig {
+    let mut policy = match preset {
+        Some(preset) => PrGateConfig::for_preset(preset.preset()),
+        None => file.clone(),
+    };
+    if strict {
+        policy.fail_on = FailOn::Warn;
+    }
+    policy
+}
+
+/// Everything a recap is judged by: the pillar emphasis, the project
+/// config (for its allowlist), and the resolved gate policy with the file
+/// it came from.
+struct Judging {
+    priority: Priority,
+    topos: ToposConfig,
+    gate: PrGateConfig,
+    source: Option<PathBuf>,
 }
 
 /// Which card to print, once `--compact`, `--format` and the terminal have
@@ -274,14 +336,15 @@ fn unmeasured_coupling(pr: Option<u64>, no_coupling: bool) -> CouplingStatus {
     }
 }
 
-/// Exit 0 on a pass, 1 when the headline fails the check, 2 on an error.
+/// Exit 0 on a pass, 1 when the readiness fails the check under
+/// `fail_on`, 2 on an error.
 ///
 /// `main` exits 1 for every command error, which would make a broken run
-/// indistinguishable from a regression in CI, so errors stop here.
+/// indistinguishable from a failed check in CI, so errors stop here.
 pub fn run(args: PrRecapArgs) -> Result<(), String> {
     match run_recap(args) {
-        Ok(headline) if headline.fails_check() => std::process::exit(1),
-        Ok(_) => Ok(()),
+        Ok(0) => Ok(()),
+        Ok(code) => std::process::exit(code),
         Err(message) => {
             eprintln!("Error: {message}");
             std::process::exit(2);
@@ -305,14 +368,28 @@ fn resolve_priority(raw: Option<&str>, config: &ToposConfig) -> Result<Priority,
     })
 }
 
-/// Print the recap and hand back its headline for the exit code.
-fn run_recap(args: PrRecapArgs) -> Result<Headline, String> {
+/// Print the recap and hand back its exit code.
+fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     let repo = args
         .repo
         .clone()
         .unwrap_or(std::env::current_dir().map_err(|e| format!("current directory: {e}"))?);
     let root = git_root(&repo)?;
-    let priority = resolve_priority(args.priority.as_deref(), &load_topos_config(&root))?;
+    let topos = load_topos_config(&root);
+    // A mistyped key is dropped, never silent.
+    for warning in &topos.pr_recap.warnings {
+        eprintln!("warning: {warning}");
+    }
+    let judging = Judging {
+        priority: resolve_priority(args.priority.as_deref(), &topos)?,
+        gate: resolve_gate_policy(args.strict, args.preset, &topos.pr_recap),
+        source: args
+            .preset
+            .is_none()
+            .then(|| find_config_file(&root))
+            .flatten(),
+        topos,
+    };
     let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
     let format = resolve_format(args.compact, args.format, Term::stdout().is_term());
     // The stores must be built at the commit the sources are read from.
@@ -328,7 +405,7 @@ fn run_recap(args: PrRecapArgs) -> Result<Headline, String> {
         args.max_files,
         stores.as_ref(),
         coupling,
-        priority,
+        &judging,
     );
     if let Some(working) = working {
         working.clear();
@@ -365,7 +442,7 @@ fn run_recap(args: PrRecapArgs) -> Result<Headline, String> {
             RecapFormat::Github => println!("{}", github::render_github(&recap)),
         }
     }
-    Ok(recap.headline)
+    Ok(recap.exit_code)
 }
 
 /// Build (or reuse) the two coupling stores, and say why not when we can't.
@@ -421,7 +498,7 @@ fn build_recap(
     max_files: usize,
     stores: Option<&PrStores>,
     coupling: CouplingStatus,
-    priority: Priority,
+    judging: &Judging,
 ) -> Result<PrRecap, String> {
     let repo = git_root(repo)?;
     let worktree = head == ":worktree";
@@ -489,7 +566,8 @@ fn build_recap(
         head: &head_sha,
         base_graph: base_graph.as_ref().filter(|_| measured),
         head_graph: head_graph.as_ref().filter(|_| measured),
-        priority,
+        priority: judging.priority,
+        config: &judging.topos,
     };
     let mut scored = scoreable
         .iter()
@@ -519,9 +597,20 @@ fn build_recap(
     let lattice = Omega::default();
     finish_statuses(&mut scored, &clusters, &lattice);
 
-    let files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
-    let (headline, mut reason) = headline_for(&files, &clusters, &base_sha, &head_sha);
-    if capped > 0 {
+    let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
+    // Pass D — the configured gates decide readiness.
+    let (direction, described) = direction_for(&files, &base_sha, &head_sha);
+    let (readiness, findings) = gates::evaluate(&files, &clusters, capped, &judging.gate);
+    for file in &mut files {
+        file.severity = gates::worst_at(&findings, &file.path);
+    }
+    let mut reason = findings
+        .first()
+        .map_or(described, |finding| finding.text.clone());
+    let incomplete_leads = findings
+        .first()
+        .is_some_and(|finding| finding.gate == GateId::Incomplete);
+    if capped > 0 && !incomplete_leads {
         reason.push_str(&format!(
             " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
              unscored (raise --max-files).",
@@ -541,19 +630,20 @@ fn build_recap(
         files_capped: capped,
         coupling,
     };
+    let exit_code = readiness.exit_code(judging.gate.fail_on);
     Ok(PrRecap {
         schema: SCHEMA,
         base: base_sha,
         head: head_sha,
-        priority: priority_name(priority),
+        priority: priority_name(judging.priority),
         review: None,
-        headline,
-        check: if headline.fails_check() {
-            "fail"
-        } else {
-            "pass"
-        },
+        gate: gates::summary(&judging.gate, judging.source.as_deref()),
+        readiness,
+        exit_code,
+        check: if exit_code == 1 { "fail" } else { "pass" },
         reason,
+        findings,
+        direction,
         incomplete: capped > 0,
         scope,
         project,
@@ -573,11 +663,23 @@ fn load_graph(store: &Path) -> Option<ModuleDependencyGraph> {
 
 #[cfg(test)]
 mod tests {
+    use topos_engine::config::Severity;
+
     use super::*;
     use crate::commands::gh::git;
 
     pub(super) fn no_coupling() -> CouplingStatus {
         unmeasured_coupling(None, false)
+    }
+
+    /// SECURE priority, no project config, the recommended gates.
+    fn judging(priority: Priority) -> Judging {
+        Judging {
+            priority,
+            topos: ToposConfig::default(),
+            gate: PrGateConfig::default(),
+            source: None,
+        }
     }
 
     pub(super) fn recap(repo: &Path, base: &str, head: &str, max_files: usize) -> PrRecap {
@@ -588,7 +690,7 @@ mod tests {
             max_files,
             None,
             no_coupling(),
-            Priority::Secure,
+            &judging(Priority::Secure),
         )
         .unwrap()
     }
@@ -624,7 +726,8 @@ mod tests {
     fn empty_diff_is_a_lateral_move() {
         let (_keep, repo) = write_repo(&[("src/a.py", "def ready():\n    return 1\n")]);
         let recap = recap(&repo, "HEAD", "HEAD", 40);
-        assert_eq!(recap.headline, Headline::LateralMove);
+        assert_eq!(recap.direction, Headline::LateralMove);
+        assert_eq!(recap.readiness, gates::Readiness::Ready);
         assert!(recap.reason.contains("no commits"), "{}", recap.reason);
         assert!(recap.files.is_empty());
         assert_eq!(recap.check, "pass");
@@ -675,8 +778,9 @@ mod tests {
         );
         commit_all(&repo, "shell");
         let recap = recap(&repo, "HEAD~1", "HEAD", 40);
-        assert_eq!(recap.headline, Headline::Regression);
-        assert_eq!(recap.check, "fail");
+        assert_eq!(recap.direction, Headline::Regression);
+        assert_eq!(recap.readiness, gates::Readiness::Blocked);
+        assert_eq!((recap.check, recap.exit_code), ("fail", 1));
         assert!(recap
             .hotspots
             .iter()
@@ -687,7 +791,20 @@ mod tests {
             .any(|h| h.detail.contains("os.system") || h.detail.contains("dangerous call")));
         assert_eq!(recap.files[0].pillars["secure"].after_passed, Some(false));
         assert_eq!(recap.files[0].status, Headline::Regression);
-        assert!(recap.reason.contains("lost a structural pillar"));
+        assert_eq!(recap.files[0].severity, Some(Severity::Block));
+        let lost = &recap.findings[0];
+        assert_eq!(lost.gate, GateId::PillarLost);
+        assert_eq!(lost.metric.as_deref(), Some("cpg.dangerous_calls"));
+        assert_eq!(lost.line, Some(4), "points at the new call");
+        assert!(
+            recap.reason.starts_with("src/run.py lost SECURE"),
+            "{}",
+            recap.reason
+        );
+        assert_eq!(
+            recap.files[0].pillars["secure"].lost_gate.as_deref(),
+            Some("cpg.dangerous_calls")
+        );
         let project = recap.project.expect("a scored file rolls up");
         assert!(project.regression);
     }
@@ -750,7 +867,7 @@ mod tests {
             40,
             None,
             no_coupling(),
-            Priority::Secure,
+            &judging(Priority::Secure),
         )
         .unwrap_err();
         assert!(err.contains("refusing"));
@@ -838,7 +955,7 @@ mod tests {
         let file = &recap.files[0];
         assert_eq!(file.pillars["secure"].before_passed, Some(true));
         assert!(!file.pillars["secure"].cleared());
-        assert_ne!(recap.headline, Headline::Improvement);
+        assert_ne!(recap.direction, Headline::Improvement);
     }
 
     #[test]
@@ -856,7 +973,8 @@ mod tests {
 
         let new = recap.files.iter().find(|f| f.path == "src/run.py").unwrap();
         assert_eq!(new.status, Headline::Regression);
-        assert_eq!(recap.headline, Headline::Regression);
+        assert_eq!(recap.direction, Headline::Regression);
+        assert_eq!(recap.findings[0].gate, GateId::NewFileInsecure);
         assert_eq!(recap.check, "fail");
         assert!(
             recap.reason.contains("src/run.py is new and fails SECURE"),
@@ -889,7 +1007,7 @@ mod tests {
             .find(|f| f.path == "src/clean.py")
             .unwrap();
         assert_eq!(new.status, Headline::Improvement);
-        assert_eq!(recap.headline, Headline::LateralMove);
+        assert_eq!(recap.direction, Headline::LateralMove);
     }
 
     #[test]
@@ -1021,10 +1139,138 @@ mod tests {
             40,
             None,
             no_coupling(),
-            Priority::Navigable,
+            &judging(Priority::Navigable),
         )
         .unwrap();
         assert_eq!(recap.priority, "navigable");
+    }
+
+    #[test]
+    fn the_gate_policy_honors_the_flags_then_the_file_then_recommended() {
+        let recommended = PrGateConfig::default();
+        let by_default = resolve_gate_policy(false, None, &recommended);
+        assert_eq!(by_default, recommended);
+        assert_eq!(by_default.fail_on, FailOn::Block);
+
+        let mut file = PrGateConfig::for_preset(PrGatePreset::Relaxed);
+        file.gates.set(GateId::Cosmetic, Severity::Off);
+        assert_eq!(
+            resolve_gate_policy(false, None, &file),
+            file,
+            "the file as is"
+        );
+
+        let strict = resolve_gate_policy(true, None, &file);
+        assert_eq!(strict.fail_on, FailOn::Warn, "--strict fails on warn");
+        assert_eq!(
+            strict.severity(GateId::Cosmetic),
+            Severity::Off,
+            "the rest is the file's"
+        );
+        assert_eq!(strict.preset, PrGatePreset::Relaxed);
+
+        let preset = resolve_gate_policy(false, Some(GatePreset::Strict), &file);
+        assert_eq!(
+            preset,
+            PrGateConfig::for_preset(PrGatePreset::Strict),
+            "--preset ignores the file"
+        );
+        let both = resolve_gate_policy(true, Some(GatePreset::Recommended), &file);
+        assert_eq!(both.preset, PrGatePreset::Recommended);
+        assert_eq!(both.fail_on, FailOn::Warn);
+        assert_eq!(
+            both.overrides().len(),
+            1,
+            "--strict is one change from the preset"
+        );
+    }
+
+    /// An allowlisted dangerous call is acknowledged risk: a new file
+    /// making it does not trip `new_file_insecure`, as MCP would not fail it.
+    #[test]
+    fn an_allowlisted_call_in_a_new_file_is_not_insecure() {
+        use topos_engine::config::AllowEntry;
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        write_files(&repo, &[("src/run.py", SHELL)]);
+        commit_all(&repo, "shell in a new file");
+        let run = |allow: Vec<AllowEntry>| {
+            let judging = Judging {
+                topos: ToposConfig {
+                    allow,
+                    root: Some(repo.clone()),
+                    ..Default::default()
+                },
+                ..judging(Priority::Secure)
+            };
+            build_recap(&repo, "HEAD~1", "HEAD", 40, None, no_coupling(), &judging).unwrap()
+        };
+        let bare = run(Vec::new());
+        assert_eq!(
+            bare.findings[0].gate,
+            GateId::NewFileInsecure,
+            "{:?}",
+            bare.findings
+        );
+
+        let allowed = run(vec![AllowEntry {
+            pattern: "os.system".to_string(),
+            reason: "the runner shells out by design".to_string(),
+            scope: String::new(),
+        }]);
+        assert!(
+            !allowed
+                .findings
+                .iter()
+                .any(|f| f.gate == GateId::NewFileInsecure),
+            "{:?}",
+            allowed.findings
+        );
+        assert_eq!(allowed.files[0].pillars["secure"].after_passed, Some(true));
+        assert_eq!(allowed.exit_code, 0);
+    }
+
+    #[test]
+    fn the_json_document_is_v3() {
+        let (_keep, repo) = write_repo(&[("src/run.py", "def ready():\n    return 1\n")]);
+        write_files(&repo, &[("src/run.py", SHELL)]);
+        commit_all(&repo, "shell");
+        let judging = Judging {
+            gate: resolve_gate_policy(true, None, &PrGateConfig::default()),
+            source: Some(repo.join(".topos.toml")),
+            ..judging(Priority::Secure)
+        };
+        let recap =
+            build_recap(&repo, "HEAD~1", "HEAD", 40, None, no_coupling(), &judging).unwrap();
+        let json = serde_json::to_value(&recap).unwrap();
+        assert_eq!(json["schema"], "topos.pr_recap.v3");
+        assert!(json.get("headline").is_none(), "headline is now direction");
+        assert_eq!(json["direction"], "REGRESSION");
+        assert_eq!(json["readiness"], "BLOCKED");
+        assert_eq!(
+            (json["exit_code"].as_i64(), json["check"].as_str()),
+            (Some(1), Some("fail"))
+        );
+        assert_eq!(json["gate"]["preset"], "recommended");
+        assert_eq!(json["gate"]["fail_on"], "warn");
+        assert_eq!(json["gate"]["changes"], 1);
+        assert_eq!(
+            json["gate"]["source"].as_str(),
+            Some(repo.join(".topos.toml").to_string_lossy().as_ref())
+        );
+        let finding = &json["findings"][0];
+        assert_eq!(finding["gate"], "pillar_lost");
+        assert_eq!(finding["severity"], "block");
+        assert_eq!(finding["pillar"], "secure");
+        assert_eq!(finding["material"], true);
+        assert_eq!(finding["inherited"], false);
+        for key in [
+            "path", "line", "function", "metric", "before", "after", "limit", "fix", "text",
+        ] {
+            assert!(finding.get(key).is_some(), "finding has {key}");
+        }
+        assert_eq!(json["reason"], finding["text"]);
+        assert_eq!(json["files"][0]["severity"], "block");
+        assert!(json["files"][0]["pillars"]["secure"]["gate"]["limit"].is_number());
     }
 
     /// Errors come back as `Err` for `run` to turn into exit 2, never as a
@@ -1044,6 +1290,8 @@ mod tests {
             format: None,
             no_coupling: true,
             priority: None,
+            strict: false,
+            preset: None,
         };
         let error = run_recap(args).unwrap_err();
         assert!(error.contains("no-such-ref"), "{error}");

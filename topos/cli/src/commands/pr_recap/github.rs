@@ -19,9 +19,7 @@ use topos_engine::functors::profunctors::uast::ledger::MatchKind;
 use topos_engine::graphs::mdg::split::Reach;
 
 use super::model::{Cluster, FileRecap, PillarDelta, PrRecap};
-use super::view::{
-    basename, headline_mark, hotspot_pillar, worst_span, ClusterView, RecapView, PILLARS,
-};
+use super::view::{basename, hotspot_pillar, worst_span, ClusterView, RecapView, PILLARS};
 
 pub(super) const STICKY_MARKER: &str = "<!-- topos-pr-recap:v2 -->";
 
@@ -108,8 +106,8 @@ fn title(view: &RecapView<'_>) -> String {
     let scope = &recap.scope;
     format!(
         "### {} {} · Topos structural review of {} · {} files · +{}/−{}{}",
-        headline_mark(recap.headline),
-        recap.headline.word(),
+        recap.readiness.mark(),
+        recap.readiness.word(),
         view.subject,
         scope.files_scored,
         scope.lines_added,
@@ -460,14 +458,15 @@ fn footer(recap: &PrRecap) -> String {
 mod tests {
     use super::{render_github, MAX_CHARS, STICKY_MARKER};
     use crate::commands::pr_recap::fixtures::{
-        fixture_losses, fixture_many_clusters, fixture_plain, fixture_pr5, hotspot,
+        fixture_lateral_loss, fixture_losses, fixture_many_clusters, fixture_plain, fixture_pr5,
+        hotspot, LATERAL_LOSS,
     };
 
     #[test]
     fn pr5_is_a_sticky_comment() {
         let body = render_github(&fixture_pr5());
         assert!(body.starts_with(STICKY_MARKER), "{body}");
-        assert!(body.contains("### ✓ IMPROVEMENT"), "{body}");
+        assert!(body.contains("### ✓ READY"), "{body}");
         assert!(
             body.contains("<sub>priority secure · COMPOSABLE measured · 1 skipped</sub>"),
             "{body}"
@@ -516,6 +515,19 @@ mod tests {
         );
         let locus = body.find("**Where to look**").expect("a hotspot table");
         assert!(locus < body.find("| Cluster |").expect("a cluster table"));
+    }
+
+    /// A file that lost SIMPLE while gaining NAVIGABLE fails the check as
+    /// a loss, not as a held medal with an unexplained score move.
+    #[test]
+    fn a_pillar_lost_while_another_is_gained_fails_as_a_loss() {
+        let body = render_github(&fixture_lateral_loss());
+        assert!(body.contains("**Failing the check**"), "{body}");
+        assert!(
+            body.contains(&format!("- X LOST `{LATERAL_LOSS}` — lost SIMPLE\n")),
+            "{body}"
+        );
+        assert!(!body.contains("· HELD"), "{body}");
     }
 
     #[test]

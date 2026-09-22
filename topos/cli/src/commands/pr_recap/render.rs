@@ -7,7 +7,7 @@
 //! `SPLIT` header and a pure refactor never prints an empty score table.
 //!
 //! Nothing here computes a verdict. Every glyph is a field of
-//! [`PrRecap`]: `recap.headline`, `file.status`, `cluster.mark`,
+//! [`PrRecap`]: `recap.readiness`, `file.status`, `cluster.mark`,
 //! `file.cosmetic`, `PillarDelta::lost`/`cleared`, `project.regression`.
 //! The renderer only chooses which already-decided fact is the most
 //! useful one to show, and how to fold the rest away.
@@ -17,9 +17,10 @@ mod layout;
 mod splits;
 
 use console::Style;
+use topos_engine::config::Severity;
 
 use super::model::{ClusterRole, FileRecap, Headline, PillarDelta, PrRecap, ProjectRollup};
-use super::view::{change_word, headline_mark, RecapView, PILLARS};
+use super::view::{change_word, lost_a_pillar, RecapView, PILLARS};
 use crate::commands::evaluate::summary::{score_rail, status_text};
 use crate::commands::render::{guide, paint, truncate_left, RenderOptions};
 pub(super) use floor::{floor_line, mean_scores};
@@ -189,8 +190,8 @@ fn headline_line(view: &RecapView<'_>) -> String {
     }
     format!(
         "{} {}   {}",
-        headline_mark(view.recap.headline),
-        view.recap.headline.word(),
+        view.recap.readiness.mark(),
+        view.recap.readiness.word(),
         phrases.join(" · ")
     )
 }
@@ -216,12 +217,12 @@ fn score_rows(recap: &PrRecap) -> Vec<&FileRecap> {
         .files
         .iter()
         .filter(|file| match &file.cluster {
-            None => file.status != Headline::LateralMove,
+            None => file.status != Headline::LateralMove || file.severity >= Some(Severity::Warn),
             Some(member) => member.role == ClusterRole::Parent && medal_changed(file),
         })
         .collect();
     rows.sort_by_key(|file| {
-        let lost = file.status == Headline::Regression;
+        let lost = file.status == Headline::Regression || lost_a_pillar(file);
         let secure = file.pillars.get("secure").is_some_and(PillarDelta::lost);
         (
             if lost {
@@ -340,7 +341,11 @@ fn held_line(recap: &PrRecap, verbose: bool) -> Option<String> {
     let held: Vec<&str> = recap
         .unclustered_files()
         .into_iter()
-        .filter(|file| file.status == Headline::LateralMove && !file.cosmetic)
+        .filter(|file| {
+            file.status == Headline::LateralMove
+                && !file.cosmetic
+                && file.severity < Some(Severity::Warn)
+        })
         .map(|file| file.path.as_str())
         .collect();
     let deleted = &recap.deleted;
@@ -420,9 +425,10 @@ pub(super) fn tips(recap: &PrRecap, verbose: bool) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_card, RenderOptions};
+    use super::{render_card, Headline, RenderOptions, Severity};
     use crate::commands::pr_recap::fixtures::{
-        fixture_losses, fixture_mixed, fixture_plain, fixture_pr5,
+        fixture_lateral_loss, fixture_losses, fixture_mixed, fixture_plain, fixture_pr5,
+        LATERAL_LOSS,
     };
 
     fn options() -> RenderOptions {
@@ -450,7 +456,7 @@ mod tests {
         assert!(text.contains("33→46 +39%"), "{text}");
         assert!(text.contains("BRONZE → SILVER"), "{text}");
         assert!(text.contains("· 1 file held its medal"), "{text}");
-        assert!(text.contains("└  ✓ IMPROVEMENT"), "{text}");
+        assert!(text.contains("└  ✓ READY"), "{text}");
     }
 
     /// The project table, the legend and the floor are `evaluate`'s, to
@@ -644,6 +650,28 @@ the SIMPLE gate here."
         assert!(text.contains("SLOP"), "{text}");
         assert!(text.contains("in, cx 12→19"), "{text}");
         assert!(text.contains("lost SECURE, SIMPLE"), "{text}");
+    }
+
+    /// Gaining NAVIGABLE does not cancel losing SIMPLE: the file is a
+    /// lateral move by status but blocks, so it reads as a loss.
+    #[test]
+    fn a_pillar_lost_while_another_is_gained_reads_as_a_loss() {
+        let recap = fixture_lateral_loss();
+        assert_eq!(recap.files[0].status, Headline::LateralMove);
+        assert_eq!(recap.files[0].severity, Some(Severity::Block));
+        let lines = card(&recap, false);
+        let text = lines.join("\n");
+        let row = lines
+            .iter()
+            .find(|line| line.contains("lattice.rs") && !line.contains("Why"))
+            .expect("the file has a row");
+        assert!(row.contains("X LOST"), "{text}");
+        assert!(!text.contains("· HELD"), "{text}");
+        assert!(!text.contains("held"), "{text}");
+        assert!(
+            text.contains(&format!("Why  {LATERAL_LOSS} lost SIMPLE")),
+            "{text}"
+        );
     }
 
     #[test]

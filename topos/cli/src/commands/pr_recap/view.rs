@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 
+use topos_engine::config::Severity;
 use topos_engine::evaluation::policies::gates::pillar_for_metric;
 
 use super::model::{
@@ -197,6 +198,12 @@ fn secure_lost(file: &FileRecap) -> bool {
     file.pillars.get("secure").is_some_and(PillarDelta::lost)
 }
 
+/// Whether any pillar the base passed now fails — a loss even when
+/// another pillar was gained and `status` reads as a lateral move.
+pub(super) fn lost_a_pillar(file: &FileRecap) -> bool {
+    file.pillars.values().any(PillarDelta::lost)
+}
+
 fn cluster_view<'a>(recap: &'a PrRecap, cluster: &'a Cluster) -> ClusterView<'a> {
     let file_at = |path: &str| recap.files.iter().find(|file| file.path == path);
     let parent = recap
@@ -266,14 +273,14 @@ pub(super) fn pillar_names(file: &FileRecap, keep: impl Fn(&PillarDelta) -> bool
         .collect()
 }
 
-/// Files marked `X` (a lost pillar, SECURE first, then a failing new
-/// file), then failed splits, then files marked `!` — the order a
-/// reviewer should read them in.
+/// Files with a blocking finding (a lost pillar, SECURE first, then a
+/// failing new file), then failed splits, then files with a warning —
+/// the order a reviewer should read them in.
 fn failures(recap: &PrRecap) -> Vec<Failure<'_>> {
     let mut failing: Vec<&FileRecap> = recap
         .files
         .iter()
-        .filter(|file| file.status.fails_check())
+        .filter(|file| file.severity >= Some(Severity::Warn))
         .collect();
     failing.sort_by_key(|file| {
         (
@@ -285,7 +292,7 @@ fn failures(recap: &PrRecap) -> Vec<Failure<'_>> {
     });
     let (severe, warned): (Vec<&FileRecap>, Vec<&FileRecap>) = failing
         .into_iter()
-        .partition(|file| change_word(file).starts_with('X'));
+        .partition(|file| file.severity == Some(Severity::Block));
     let splits = recap
         .clusters
         .iter()
@@ -320,7 +327,7 @@ fn file_failure(file: &FileRecap) -> Failure<'_> {
         } else {
             "arrived as SLOP".to_string()
         }
-    } else if file.status == Headline::Regression {
+    } else if file.status == Headline::Regression || lost_a_pillar(file) {
         let lost = pillar_names(file, PillarDelta::lost);
         if lost.is_empty() {
             "lost a pillar".to_string()
@@ -355,16 +362,6 @@ fn file_failure(file: &FileRecap) -> Failure<'_> {
 
 // ---------------------------------------------------------------- shared
 
-pub(super) fn headline_mark(headline: Headline) -> char {
-    match headline {
-        Headline::Improvement | Headline::ImprovementScore => '✓',
-        Headline::Regression
-        | Headline::RegressionScore
-        | Headline::SuspiciousNoStructuralChange => 'X',
-        Headline::LateralMove => '·',
-    }
-}
-
 pub(super) fn cluster_mark(mark: ClusterMark) -> char {
     match mark {
         ClusterMark::Ok => '✓',
@@ -375,11 +372,16 @@ pub(super) fn cluster_mark(mark: ClusterMark) -> char {
 
 /// The mark and word a file's row leads with.
 pub(super) fn change_word(file: &FileRecap) -> &'static str {
+    // A lost pillar blocks and a cosmetic edit only warns, so the loss
+    // leads even when another pillar was gained.
+    if !file.is_new() && lost_a_pillar(file) {
+        return "X LOST";
+    }
     if file.cosmetic {
         return "! COSMETIC";
     }
     if file.is_new() {
-        return if file.status.fails_check() {
+        return if file.status == Headline::Regression {
             "X NEW"
         } else {
             "✓ NEW"

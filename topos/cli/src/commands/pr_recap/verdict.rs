@@ -1,11 +1,11 @@
 //! Passes C and D: per-file verdicts, the project and added-file
-//! rollups, and the headline for the whole range.
+//! rollups, and the direction of the whole range.
 
 use std::collections::BTreeMap;
 
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
-use topos_engine::evaluation::policies::gates::{pillar_for_metric, GATE_SPECS};
+use topos_engine::evaluation::policies::gates::{evaluate_gates, pillar_for_metric, GATE_SPECS};
 
 use super::model::*;
 use super::score::Scored;
@@ -18,12 +18,7 @@ pub(super) fn finish_statuses(scored: &mut [Scored], clusters: &[Cluster], latti
     // files it was carved into. That is not a coupling regression.
     let routed: Vec<&str> = clusters
         .iter()
-        .filter(|cluster| {
-            cluster
-                .parent_fan_out_after_excluding_children
-                .zip(cluster.parent_fan_out_before)
-                .is_some_and(|(after, before)| after <= before)
-        })
+        .filter(|cluster| cluster.routes_fan_out())
         .map(|cluster| cluster.parent.as_str())
         .collect();
     for file in scored.iter_mut() {
@@ -157,6 +152,9 @@ pub(super) fn pillar_deltas(
         .map(|generator| {
             let key = generator.as_str();
             let measured = pillar_measured(before, key) || pillar_measured(after, key);
+            let gate = crossed_gate(before, after, key);
+            let lost =
+                !is_new && pillar_passed(before, generator) && !pillar_passed(after, generator);
             (
                 key.to_string(),
                 PillarDelta {
@@ -165,15 +163,62 @@ pub(super) fn pillar_deltas(
                     after_passed: measured.then(|| pillar_passed(after, generator)),
                     before_score: (!is_new).then(|| rounded_score(before, key)).flatten(),
                     after_score: rounded_score(after, key),
-                    lost_gate: (!is_new
-                        && pillar_passed(before, generator)
-                        && !pillar_passed(after, generator))
-                    .then(|| lost_gate(before, after, key))
-                    .flatten(),
+                    lost_gate: gate
+                        .as_ref()
+                        .filter(|_| lost)
+                        .map(|crossed| crossed.metric.clone()),
+                    gate,
                 },
             )
         })
         .collect()
+}
+
+/// The gate `pillar` fails at head, through the engine's own evaluation so
+/// its exemptions hold, on whichever bound was violated. A gate the change
+/// pushed further out is preferred over one that was already that far.
+fn crossed_gate(
+    before: &ClassificationResult,
+    after: &ClassificationResult,
+    pillar: &str,
+) -> Option<GateCrossing> {
+    if !after.is_parseable {
+        return None;
+    }
+    let crossings: Vec<GateCrossing> = evaluate_gates(
+        &after.raw_metrics,
+        Some(pillar),
+        after.is_entrypoint_module,
+        after.is_stable_leaf_module,
+        after.raw_metrics.get("mdg.instability").copied(),
+    )
+    .into_iter()
+    .filter(|result| result.spec.gates_achieved && !result.passed())
+    .filter_map(|result| {
+        let limit = result.threshold()?;
+        let was = before
+            .is_parseable
+            .then(|| before.raw_metrics.get(result.spec.metric).copied())
+            .flatten();
+        let below = result.value < limit;
+        let worse = was.is_none_or(|was| {
+            if below {
+                result.value < was
+            } else {
+                result.value > was
+            }
+        });
+        Some(GateCrossing {
+            metric: result.spec.metric.to_string(),
+            before: was,
+            after: result.value,
+            limit,
+            worse,
+        })
+    })
+    .collect();
+    let worse = crossings.iter().position(|crossing| crossing.worse);
+    crossings.into_iter().nth(worse.unwrap_or(0))
 }
 
 fn pillar_measured(result: &ClassificationResult, pillar: &str) -> bool {
@@ -219,24 +264,6 @@ fn measured_verdict_excluding(
         .filter(|generator| pillar_passed(result, *generator))
         .collect();
     verdict_from_generators(&satisfied)
-}
-
-fn lost_gate(
-    before: &ClassificationResult,
-    after: &ClassificationResult,
-    pillar: &str,
-) -> Option<String> {
-    before
-        .raw_metrics
-        .keys()
-        .chain(after.raw_metrics.keys())
-        .filter(|key| pillar_for_metric(key) == pillar)
-        .find(|key| {
-            let was = before.raw_metrics.get(*key).copied().unwrap_or(0.0);
-            let now = after.raw_metrics.get(*key).copied().unwrap_or(0.0);
-            now > was && now > gate_limit(key).unwrap_or(f64::MAX)
-        })
-        .cloned()
 }
 
 /// The upper bound of a gate that can fail its pillar, straight from the
@@ -413,12 +440,9 @@ fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
     Some(values.iter().sum::<f64>() / values.len() as f64)
 }
 
-pub(super) fn headline_for(
-    files: &[FileRecap],
-    clusters: &[Cluster],
-    base: &str,
-    head: &str,
-) -> (Headline, String) {
+/// Which way the structure moved, and what happened, in one line. The
+/// reason is the recap's when no gate raised a finding.
+pub(super) fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
     if files.is_empty() {
         let reason = if base == head {
             // `base` is the merge-base, so this also covers a head that is
@@ -441,7 +465,7 @@ pub(super) fn headline_for(
     } else {
         files
             .iter()
-            .filter(|file| !file.is_new() || file.status.fails_check())
+            .filter(|file| !file.is_new() || file.status == Headline::Regression)
             .collect()
     };
     // Worst measured file wins. A mixed change is not an improvement.
@@ -462,23 +486,6 @@ pub(super) fn headline_for(
         Headline::ImprovementScore if unanimous => Headline::ImprovementScore,
         _ => Headline::LateralMove,
     };
-    // A failed split counts as a lost pillar would: it outranks every
-    // file status short of a regression, which keeps its own reason.
-    if headline.rank() > Headline::Regression.rank() {
-        if let Some(cluster) = clusters
-            .iter()
-            .find(|cluster| cluster.mark == ClusterMark::Fail)
-        {
-            let why = cluster
-                .reasons
-                .first()
-                .map_or(String::new(), |reason| format!(": {reason}"));
-            return (
-                Headline::Regression,
-                format!("The split of {} failed{why}.", cluster.parent),
-            );
-        }
-    }
     let reason = match headline {
         Headline::SuspiciousNoStructuralChange => format!(
             "{} moved its score while the syntax tree barely changed.",
@@ -585,6 +592,35 @@ mod tests {
             |drop_composable: bool| file_status(&before, &after, drop_composable, false, &lattice);
         assert_eq!(status(false), Headline::Regression);
         assert_ne!(status(true), Headline::Regression);
+    }
+
+    /// B2: a metric that fell under its gate's floor crossed the low bound;
+    /// the crossing names the floor, not the ceiling, and a fall is worse.
+    #[test]
+    fn a_crossing_under_the_floor_names_the_low_bound() {
+        use topos_engine::evaluation::policies::calibration::SIMPLE;
+        let side = |entropy: f64| {
+            let mut result = ClassificationResult {
+                is_parseable: true,
+                ..Default::default()
+            };
+            result
+                .raw_metrics
+                .insert("ast.entropy".to_string(), entropy);
+            result
+        };
+        let (floor, ceiling) = (SIMPLE.min_entropy, SIMPLE.max_entropy);
+        let before = side(floor + 0.5);
+        let crossed = crossed_gate(&before, &side(floor - 0.5), "simple").unwrap();
+        assert_eq!(crossed.metric, "ast.entropy");
+        assert_eq!(crossed.limit, floor);
+        assert!(crossed.worse);
+        let high = crossed_gate(&before, &side(ceiling + 0.5), "simple").unwrap();
+        assert_eq!(high.limit, ceiling);
+        assert!(high.worse);
+        let recovering = crossed_gate(&side(floor - 1.0), &side(floor - 0.5), "simple").unwrap();
+        assert!(!recovering.worse, "a rise toward the floor is not worse");
+        assert!(crossed_gate(&before, &before, "simple").is_none());
     }
 
     #[test]

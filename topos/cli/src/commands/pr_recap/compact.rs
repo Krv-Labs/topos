@@ -9,13 +9,13 @@
 //! hotspots are listed before a `+N more` row.
 //!
 //! Like the full card, nothing here decides anything: the marks come
-//! from `recap.headline`, `cluster.mark` and the medal fields.
+//! from `recap.readiness`, `cluster.mark` and the medal fields.
 
 use console::Style;
 
 use super::model::{Hotspot, PrRecap};
 use super::render::{colorize, floor_line, mean_scores, pillar_table_header, pillar_table_rows};
-use super::view::{headline_mark, hotspot_pillar, Failure, RecapView};
+use super::view::{hotspot_pillar, Failure, RecapView};
 use crate::commands::render::{guide, paint, truncate_right, wrap_text, RenderOptions};
 
 const WORD_WIDTH: usize = 8;
@@ -99,8 +99,8 @@ fn headline(view: &RecapView<'_>) -> String {
     let tally = &view.tally;
     format!(
         "{} {}  {} up · {} lost · {} new{} · {} cosmetic",
-        headline_mark(view.recap.headline),
-        view.recap.headline.word(),
+        view.recap.readiness.mark(),
+        view.recap.readiness.word(),
         tally.up,
         tally.down,
         tally.new,
@@ -211,10 +211,7 @@ fn compact_floor(view: &RecapView<'_>) -> String {
         let (before, after) = view.decisions;
         parts.push(format!("decisions {before}→{after}"));
     }
-    parts.push(format!(
-        "exit {}",
-        i32::from(view.recap.headline.fails_check())
-    ));
+    parts.push(format!("exit {}", view.recap.exit_code));
     parts.push("--json for the full document".to_string());
     parts.join(" · ")
 }
@@ -243,7 +240,7 @@ mod tests {
         let lines = render_compact(&fixture_pr5(), options());
         let text = lines.join("\n");
         assert!(lines.len() <= MAX_LINES, "{} lines:\n{text}", lines.len());
-        assert!(text.contains("✓ IMPROVEMENT"), "{text}");
+        assert!(text.contains("✓ READY"), "{text}");
         assert!(text.contains("· WHY"), "{text}");
         assert!(text.contains("· QUALITY"), "{text}");
         assert!(text.contains("PILLAR"), "{text}");
@@ -288,15 +285,16 @@ mod tests {
     #[test]
     fn the_floor_wears_the_medal() {
         let text = render_compact(&fixture_pr5(), options()).join("\n");
-        assert!(text.contains("IMPROVEMENT · 🥉 BRONZE · SECURE"), "{text}");
+        assert!(text.contains("READY · 🥉 BRONZE · SECURE"), "{text}");
         assert!(text.contains("41% → 58% average"), "{text}");
     }
 
     #[test]
     fn a_regression_exits_one() {
         let text = render_compact(&fixture_losses(), options()).join("\n");
-        assert!(text.contains("X REGRESSION"), "{text}");
-        assert!(text.contains("REGRESSION · 🥇 GOLD → 🥈 SILVER"), "{text}");
+        assert!(text.contains("X BLOCKED"), "{text}");
+        assert!(text.contains("BLOCKED · 🥇 GOLD → 🥈 SILVER"), "{text}");
+        assert!(text.contains("· exit 1"), "{text}");
     }
 
     /// A red CI log must say which file failed, why, and what to change:

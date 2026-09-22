@@ -362,6 +362,8 @@ pub fn run(args: PrRecapArgs) -> Result<(), String> {
         match format {
             RecapFormat::Card => {
                 let options = RenderOptions::stdout();
+                println!();
+                println!("...");
                 for line in render::render_card(&recap, args.verbose, options) {
                     println!("{line}");
                 }
@@ -370,6 +372,7 @@ pub fn run(args: PrRecapArgs) -> Result<(), String> {
                 for tip in render::tips(&recap, args.verbose) {
                     println!("{}", paint(tip, Style::new().dim(), options));
                 }
+                println!();
             }
             RecapFormat::Compact => {
                 for line in compact::render_compact(&recap, RenderOptions::stdout()) {

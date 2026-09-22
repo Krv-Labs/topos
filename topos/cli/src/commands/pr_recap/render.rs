@@ -120,7 +120,7 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
 
 // --------------------------------------------------- project pillar table
 
-fn pillar_table_header() -> String {
+pub(super) fn pillar_table_header() -> String {
     format!(
         "{:<PILLAR_NAME_WIDTH$} {:<8}{:>7}{:>8}{:>10}   {}",
         "PILLAR", "STATUS", "BEFORE", "AFTER", "FAILING", "SCORE"
@@ -132,7 +132,7 @@ fn pillar_table_header() -> String {
 /// The status, the rail and the failing count all describe *head*: the
 /// before column is the only backward-looking cell, which is what makes
 /// this table a sibling of `evaluate`'s rather than a diff of two.
-fn pillar_table_rows(project: &ProjectRollup) -> Vec<String> {
+pub(super) fn pillar_table_rows(project: &ProjectRollup) -> Vec<String> {
     PILLARS
         .iter()
         .filter_map(|(key, _)| {
@@ -1104,7 +1104,7 @@ fn lost_files(recap: &PrRecap) -> Vec<&FileRecap> {
 /// `🥉 BRONZE → 🥈 SILVER · SECURE_NAVIGABLE`, or one medal when the tier
 /// held. SLOP is already the failure tier, so it gets no emoji and no
 /// second lattice-name echo — exactly what `evaluate`'s floor does.
-fn medal_phrase(project: &ProjectRollup) -> String {
+pub(super) fn medal_phrase(project: &ProjectRollup) -> String {
     let (before, after) = (&project.medal_before, &project.medal_after);
     if after.tier == "SLOP" {
         return "SLOP".to_string();
@@ -1122,7 +1122,7 @@ fn medal_phrase(project: &ProjectRollup) -> String {
     format!("{tiers} · {}", after.verdict)
 }
 
-fn mean_scores(project: &ProjectRollup) -> Option<(f64, f64)> {
+pub(super) fn mean_scores(project: &ProjectRollup) -> Option<(f64, f64)> {
     let count = project.pillars.len();
     if count == 0 {
         return None;
@@ -1135,7 +1135,7 @@ fn mean_scores(project: &ProjectRollup) -> Option<(f64, f64)> {
 }
 
 /// `· LATERAL · 🥉 BRONZE · SECURE · 46% → 58% average.`
-fn floor_line(recap: &PrRecap) -> String {
+pub(super) fn floor_line(recap: &PrRecap) -> String {
     let mut parts = vec![format!(
         "{} {}",
         headline_mark(recap.headline),
@@ -1353,6 +1353,7 @@ pub(super) fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+#[allow(dead_code)]
 pub(super) fn stem(path: &str) -> &str {
     let name = basename(path);
     name.split('.').next().unwrap_or(name)

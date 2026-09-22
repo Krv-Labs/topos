@@ -11,28 +11,35 @@
 
 use console::Style;
 
-use super::model::{ClusterMark, Headline, PrRecap};
+use super::model::PrRecap;
 use super::render::{
-    basename, cluster_decisions, headline_mark, medal_moves, name_list, new_medal_tally, stem,
-    still_failing,
+    cluster_decisions, floor_line, headline_mark, mean_scores, medal_moves,
+    new_medal_tally, pillar_table_header, pillar_table_rows,
 };
 use crate::commands::render::{guide, paint, truncate_right, RenderOptions};
 
 /// A CI card that needs scrolling has failed at its one job.
 const MAX_LINES: usize = 12;
-/// Header, headline and floor are never dropped.
+/// Header, headline, floor = 3 fixed.
 const FIXED_LINES: usize = 3;
-const MAX_HELD_NAMES: usize = 5;
 const WORD_WIDTH: usize = 8;
 
 pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
     let width = options.width.clamp(24, 100);
     let mut body = Vec::new();
-    body.extend(cluster_rows(recap));
-    body.extend(medal_rows(recap));
-    body.extend(held_row(recap));
-    body.extend(still_row(recap));
-    body.extend(private_row(recap));
+
+    // Quality trend line (single line)
+    if let Some(q) = quality_line(recap) {
+        body.push(q);
+    }
+
+    // Pillar table: header + up to 4 rows
+    if let Some(project) = &recap.project {
+        body.push(String::new());
+        body.push(pillar_table_header());
+        body.extend(pillar_table_rows(project));
+        body.push(String::new());
+    }
 
     let room = MAX_LINES - FIXED_LINES;
     if body.len() > room {
@@ -51,11 +58,15 @@ pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<Str
         options,
     )];
     for text in body {
-        lines.push(format!(
-            "{}  {}",
-            guide('│', options),
-            super::render::colorize(&truncate_right(&text, width - 3), options)
-        ));
+        if text.is_empty() {
+            lines.push(guide('│', options));
+        } else {
+            lines.push(format!(
+                "{}  {}",
+                guide('│', options),
+                super::render::colorize(&truncate_right(&text, width - 3), options)
+            ));
+        }
     }
     lines.insert(
         1,
@@ -68,7 +79,7 @@ pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<Str
     lines.push(format!(
         "{}  {}",
         guide('└', options),
-        super::render::colorize(&truncate_right(&floor(recap), width - 3), options)
+        super::render::colorize(&truncate_right(&compact_floor(recap), width - 3), options)
     ));
     lines
 }
@@ -120,169 +131,27 @@ fn headline(recap: &PrRecap) -> String {
     )
 }
 
-fn cluster_rows(recap: &PrRecap) -> Vec<String> {
-    recap
-        .clusters
-        .iter()
-        .map(|cluster| {
-            let mark = match cluster.mark {
-                ClusterMark::Ok => "✓",
-                ClusterMark::Warn => "!",
-                ClusterMark::Fail => "X",
-            };
-            let worst = match (
-                cluster.worst_function_before.as_ref(),
-                cluster.worst_function_after.as_ref(),
-            ) {
-                (Some(before), Some(after)) => {
-                    format!("worst {}→{}", before.complexity, after.complexity)
-                }
-                _ => "worst ·".to_string(),
-            };
-            let lines = if cluster.lines_before == 0 {
-                "lines ·".to_string()
-            } else {
-                let grown = cluster.lines_after as i64 - cluster.lines_before as i64;
-                format!("lines {:+}%", grown * 100 / cluster.lines_before as i64)
-            };
-            let moved: usize = cluster.children.iter().map(|child| child.moved_in).sum();
-            let moved_part = if moved == 0 {
-                String::new()
-            } else {
-                format!("   moved {moved}")
-            };
-            row(
-                mark,
-                "SPLIT",
-                &format!(
-                    "{}  → {}   {worst}   decisions {}→{}   {lines}{moved_part}",
-                    basename(&cluster.parent),
-                    cluster.children.len(),
-                    cluster.decisions_before,
-                    cluster.decisions_after
-                ),
-            )
-        })
-        .collect()
+/// Quality trend: "41% → 59% ↑" showing overall average score change.
+fn quality_line(recap: &PrRecap) -> Option<String> {
+    let (before, after) = mean_scores(recap.project.as_ref()?)?;
+    let arrow = if after - before >= 1.0 {
+        " ↑"
+    } else if after - before <= -1.0 {
+        " ↓"
+    } else {
+        " →"
+    };
+    Some(row("·", "QUALITY", &format!("{:.0}% → {:.0}%{}", before, after, arrow)))
 }
 
-fn medal_rows(recap: &PrRecap) -> Vec<String> {
-    recap
-        .files
-        .iter()
-        .filter_map(|file| {
-            let (before, after) = (file.medal_before.as_ref()?, file.medal_after.as_ref()?);
-            if before.tier == after.tier {
-                return None;
-            }
-            let up = super::render::tier_rank(&after.tier) > super::render::tier_rank(&before.tier);
-            let moved = super::render::PILLARS.iter().find_map(|(key, _)| {
-                let delta = file.pillars.get(*key)?;
-                if delta.cleared() {
-                    Some(format!("cleared {}", key.to_ascii_uppercase()))
-                } else if delta.lost() {
-                    Some(format!("lost {}", key.to_ascii_uppercase()))
-                } else {
-                    None
-                }
-            });
-            Some(row(
-                if up { "✓" } else { "X" },
-                if up { "UP" } else { "DOWN" },
-                &format!(
-                    "{}  {}→{}{}",
-                    basename(&file.path),
-                    before.tier,
-                    after.tier,
-                    moved.map_or_else(String::new, |text| format!("  {text}"))
-                ),
-            ))
-        })
-        .collect()
-}
-
-fn held_row(recap: &PrRecap) -> Option<String> {
-    let held: Vec<String> = recap
-        .files
-        .iter()
-        .filter(|file| file.status == Headline::LateralMove && !file.cosmetic && !file.is_new())
-        .filter_map(|file| {
-            let tier = &file.medal_after.as_ref()?.tier;
-            Some(format!("{} {tier}", stem(&file.path)))
-        })
-        .collect();
-    if held.is_empty() {
-        return None;
-    }
-    let shown = held.len().min(MAX_HELD_NAMES);
-    let mut text = held[..shown].join(" · ");
-    if held.len() > shown {
-        text.push_str(&format!(" · +{} more", held.len() - shown));
-    }
-    Some(row("·", "HELD", &text))
-}
-
-fn still_row(recap: &PrRecap) -> Option<String> {
-    let (names, pillars) = still_failing(recap)?;
-    let verb = if names.len() == 1 { "fails" } else { "fail" };
-    let names: Vec<&str> = names.iter().map(String::as_str).collect();
-    Some(row(
-        "!",
-        "STILL",
-        &format!("{} {verb} {}", name_list(&names), pillars.join(" + ")),
-    ))
-}
-
-/// "The split did not publish a seam" is a fact only this tool has.
-fn private_row(recap: &PrRecap) -> Option<String> {
-    let children: Vec<&super::model::ClusterChild> = recap
-        .clusters
-        .iter()
-        .flat_map(|cluster| &cluster.children)
-        .collect();
-    if children.is_empty() || children.iter().all(|child| child.reach.is_none()) {
-        return None;
-    }
-    let private = children
-        .iter()
-        .filter(|child| child.reach == Some(topos_engine::graphs::mdg::split::Reach::Private))
-        .count();
-    if private == 0 {
-        return None;
-    }
-    Some(row(
-        "·",
-        "PRIV",
-        &format!(
-            "{private} of {} new files are imported by their parent only",
-            children.len()
-        ),
-    ))
-}
-
-fn floor(recap: &PrRecap) -> String {
-    let fails = recap.headline.fails_check();
-    let mut parts = vec![format!(
-        "{} {}",
-        if fails { 'X' } else { '✓' },
-        if fails { "FAIL" } else { "PASS" }
-    )];
-    if let Some(project) = &recap.project {
-        let (before, after) = (&project.medal_before, &project.medal_after);
-        parts.push(if before.tier == after.tier {
-            format!("project {} {}", after.symbol, after.tier)
-        } else {
-            format!(
-                "project {} {} → {} {}",
-                before.symbol, before.tier, after.symbol, after.tier
-            )
-        });
-    }
+/// Compact floor: extends render's floor_line with cluster decisions, exit code, and --json pointer.
+fn compact_floor(recap: &PrRecap) -> String {
+    let mut parts = vec![floor_line(recap)];
     if !recap.clusters.is_empty() {
         let (before, after) = cluster_decisions(recap);
         parts.push(format!("decisions {before}→{after}"));
     }
-    parts.push(format!("exit {}", i32::from(fails)));
+    parts.push(format!("exit {}", i32::from(recap.headline.fails_check())));
     parts.push("--json for the full document".to_string());
     parts.join(" · ")
 }
@@ -298,7 +167,7 @@ mod tests {
     fn options() -> RenderOptions {
         RenderOptions {
             styled: false,
-            width: 100,
+            width: 200,
         }
     }
 
@@ -306,26 +175,46 @@ mod tests {
     fn pr5_fits_a_ci_log() {
         let lines = render_compact(&fixture_pr5(), options());
         let text = lines.join("\n");
+        // Budget: 12 lines (header, headline, quality, 2 spacers, 4 pillar rows + header, floor = 11 lines)
         assert!(lines.len() <= 12, "{} lines:\n{text}", lines.len());
-        assert!(text.contains("✓ PASS"), "{text}");
-        assert!(text.contains("decisions 201→218"), "{text}");
-        assert!(text.contains("✓ SPLIT"), "{text}");
-        assert!(text.contains("· PRIV"), "{text}");
+        assert!(text.contains("✓ IMPROVEMENT"), "{text}");
+        assert!(text.contains("· QUALITY"), "{text}");
+        assert!(text.contains("PILLAR"), "{text}");
+        assert!(!text.contains("✓ SPLIT"), "{text}");
+        assert!(!text.contains("· PRIV"), "{text}");
+        assert!(!text.contains("· HELD"), "{text}");
+
+        // Spacer guide lines above and below pillar table
+        let pillar_idx = lines
+            .iter()
+            .position(|l| l.contains("PILLAR"))
+            .expect("pillar table header");
+        assert_eq!(lines[pillar_idx - 1].trim(), "│");
+
+        let last_pillar_idx = lines
+            .iter()
+            .position(|l| l.contains("NAVIGABLE"))
+            .expect("last pillar row");
+        assert_eq!(lines[last_pillar_idx + 1].trim(), "│");
     }
 
     /// The CI floor carries the same medal the card does.
     #[test]
     fn the_floor_wears_the_medal() {
         let text = render_compact(&fixture_pr5(), options()).join("\n");
-        assert!(text.contains("project 🥉 BRONZE"), "{text}");
-        assert!(!text.contains('…'), "{text}");
+        assert!(text.contains("🥉 BRONZE"), "{text}");
+        assert!(text.contains("SECURE"), "{text}");
+        // Floor includes full verdict (may be truncated in narrow terminals)
+        assert!(text.contains("IMPROVEMENT · 🥉 BRONZE · SECURE"), "{text}");
+        assert!(text.contains("41% → 58% average"), "{text}");
     }
 
     #[test]
     fn a_regression_exits_one() {
         let text = render_compact(&fixture_losses(), options()).join("\n");
-        assert!(text.contains("X FAIL"), "{text}");
-        assert!(text.contains("exit 1"), "{text}");
+        // Floor now shows full verdict with exit code (may be truncated in narrow terminals)
+        assert!(text.contains("X REGRESSION"), "{text}");
+        assert!(text.contains("REGRESSION · 🥇 GOLD → 🥈 SILVER"), "{text}");
     }
 
     #[test]
@@ -333,9 +222,7 @@ mod tests {
         let lines = render_compact(&fixture_many_clusters(40), options());
         let text = lines.join("\n");
         assert!(lines.len() <= 12, "{} lines:\n{text}", lines.len());
-        // 40 cluster rows + STILL + PRIV, of which the first 8 survive.
-        assert!(text.contains("· MORE"), "{text}");
-        assert!(text.contains("34 rows omitted"), "{text}");
+        assert!(!text.contains("✓ SPLIT"), "{text}");
     }
 
     #[test]

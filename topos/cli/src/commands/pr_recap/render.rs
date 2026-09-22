@@ -78,7 +78,7 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
     ];
 
     if let Some(project) = &recap.project {
-        lines.push(dim_line(&pillar_table_header(), options));
+        lines.push(header_dim_line(&pillar_table_header(), options));
         for text in pillar_table_rows(project) {
             lines.push(line(&text, options));
         }
@@ -87,7 +87,7 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
 
     let scored = score_rows(recap);
     if !scored.is_empty() {
-        lines.push(dim_line(&scores_header(), options));
+        lines.push(header_dim_line(&scores_header(), options));
         for file in &scored {
             lines.extend(score_lines(file, verbose, options));
         }
@@ -95,7 +95,7 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
     }
 
     if !recap.clusters.is_empty() {
-        lines.push(dim_line(&splits_header(), options));
+        lines.push(header_dim_line(&splits_header(), options));
         for cluster in &recap.clusters {
             lines.extend(cluster_block(recap, cluster, verbose, options));
         }
@@ -113,11 +113,7 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
         colorize(&clamp(&floor_line(recap), budget(options)), options)
     ));
     for text in floor_blocks(recap, options) {
-        if text.is_empty() {
-            lines.push(text);
-        } else {
-            lines.push(colorize(&text, options));
-        }
+        lines.push(text);
     }
     lines
 }
@@ -193,6 +189,14 @@ fn line(content: &str, options: RenderOptions) -> String {
     )
 }
 
+fn header_dim_line(content: &str, options: RenderOptions) -> String {
+    format!(
+        "{}  {}",
+        guide('│', options),
+        paint(clamp(content, budget(options)), Style::new().bold().dim(), options)
+    )
+}
+
 fn dim_line(content: &str, options: RenderOptions) -> String {
     format!(
         "{}  {}",
@@ -227,7 +231,7 @@ fn row(change: &str, file: &str, medal: &str, matrix: &str, tail: &str) -> Strin
 ///
 /// `X` is only painted when it stands alone, so a path or an identifier
 /// containing an `X` is never mistaken for a failure mark.
-fn colorize(content: &str, options: RenderOptions) -> String {
+pub(crate) fn colorize(content: &str, options: RenderOptions) -> String {
     if !options.styled {
         return content.to_string();
     }
@@ -238,13 +242,13 @@ fn colorize(content: &str, options: RenderOptions) -> String {
         let glyph = chars[index];
         if glyph.is_ascii_uppercase() {
             let mut end = index;
-            while end < chars.len() && chars[end].is_ascii_uppercase() {
+            while end < chars.len() && (chars[end].is_ascii_uppercase() || chars[end] == '_') {
                 end += 1;
             }
             let word: String = chars[index..end].iter().collect();
             if word == "X" {
                 // A lone `X` is the failure mark (`X FAIL`, `X LOST`), not a word.
-                out.push_str(&paint("X", Style::new().red(), options));
+                out.push_str(&paint("X", Style::new().red().bold(), options));
             } else if let Some(style) = tier_style(&word) {
                 out.push_str(&paint(&word, style, options));
             } else {
@@ -257,10 +261,13 @@ fn colorize(content: &str, options: RenderOptions) -> String {
         let standalone =
             free(index.checked_sub(1).and_then(|p| chars.get(p))) && free(chars.get(index + 1));
         match glyph {
-            '✓' => out.push_str(&paint('✓', Style::new().green(), options)),
-            'X' if standalone => out.push_str(&paint('X', Style::new().red(), options)),
-            '!' => out.push_str(&paint('!', Style::new().yellow(), options)),
+            '✓' => out.push_str(&paint('✓', Style::new().green().bold(), options)),
+            'X' if standalone => out.push_str(&paint('X', Style::new().red().bold(), options)),
+            '!' => out.push_str(&paint('!', Style::new().yellow().bold(), options)),
+            '~' if standalone => out.push_str(&paint('~', Style::new().yellow().bold(), options)),
             '·' => out.push_str(&paint('·', Style::new().dim(), options)),
+            '●' => out.push_str(&paint('●', Style::new().green(), options)),
+            '○' => out.push_str(&paint('○', Style::new().red(), options)),
             '↑' => out.push_str(&paint('↑', Style::new().green(), options)),
             '↓' => out.push_str(&paint('↓', Style::new().yellow(), options)),
             other => out.push(other),
@@ -275,8 +282,18 @@ fn colorize(content: &str, options: RenderOptions) -> String {
 /// (`IMPROVEMENT`, `NAVIGABLE`, `SPLIT`) is left alone.
 fn tier_style(word: &str) -> Option<Style> {
     match word {
-        "SLOP" => Some(Style::new().red()),
-        "GOLD" | "PLATINUM" => Some(Style::new().green()),
+        "SLOP" => Some(Style::new().red().bold()),
+        "GOLD" | "PLATINUM" | "IDEAL" => Some(Style::new().green()),
+        "SIMPLE_COMPOSABLE"
+        | "SIMPLE_SECURE"
+        | "COMPOSABLE_SECURE"
+        | "SIMPLE_COMPOSABLE_SECURE"
+        | "SIMPLE_NAVIGABLE"
+        | "COMPOSABLE_NAVIGABLE"
+        | "SIMPLE_COMPOSABLE_NAVIGABLE"
+        | "SECURE_NAVIGABLE"
+        | "SIMPLE_SECURE_NAVIGABLE"
+        | "COMPOSABLE_SECURE_NAVIGABLE" => Some(Style::new().green().bold()),
         _ => None,
     }
 }
@@ -1237,12 +1254,13 @@ fn floor_blocks(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
     spots.sort_by_key(|spot| usize::from(spot.metric != SECURE_METRIC));
     if !spots.is_empty() {
         lines.push(String::new());
-        lines.push("  Where to look".to_string());
+        lines.push(paint("  Where to look", Style::new().cyan().bold(), options));
         for (index, spot) in spots.iter().enumerate() {
             lines.push(String::new());
             lines.push(format!(
-                "  {}. X FIX · {}",
+                "  {}. {} FIX · {}",
                 index + 1,
+                paint("X", Style::new().red().bold(), options),
                 pillar_for_metric(&spot.metric).to_ascii_uppercase()
             ));
             push_wrapped(&mut lines, "     Why  ", "          ", &spot.detail, width);
@@ -2691,6 +2709,17 @@ the SIMPLE gate here."
                 width: 100,
             },
         );
+        let text = styled.join("\n");
         assert!(styled.iter().any(|line| line.contains('\u{1b}')));
+        // Green ● dot for passed pillar, red ○ dot for failed pillar
+        assert!(text.contains("\u{1b}[32m●\u{1b}[0m"), "{text}");
+        assert!(text.contains("\u{1b}[31m○\u{1b}[0m"), "{text}");
+        // Bold marks matching evaluate/summary conventions
+        assert!(text.contains("\u{1b}[32m\u{1b}[1m✓\u{1b}[0m"), "{text}");
+        assert!(text.contains("\u{1b}[31m\u{1b}[1mX\u{1b}[0m"), "{text}");
+        // Bold dim table headers matching evaluate summary headers
+        assert!(text.contains("\u{1b}[1m\u{1b}[2mPILLAR"), "{text}");
+        assert!(text.contains("\u{1b}[1m\u{1b}[2mCHANGE"), "{text}");
+        assert!(text.contains("\u{1b}[1m\u{1b}[2mSPLIT"), "{text}");
     }
 }

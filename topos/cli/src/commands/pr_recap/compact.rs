@@ -54,7 +54,7 @@ pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<Str
         lines.push(format!(
             "{}  {}",
             guide('│', options),
-            paint(truncate_right(&text, width - 3), Style::new(), options)
+            super::render::colorize(&truncate_right(&text, width - 3), options)
         ));
     }
     lines.insert(
@@ -62,21 +62,13 @@ pub(super) fn render_compact(recap: &PrRecap, options: RenderOptions) -> Vec<Str
         format!(
             "{}  {}",
             guide('│', options),
-            paint(
-                truncate_right(&headline(recap), width - 3),
-                Style::new(),
-                options
-            )
+            super::render::colorize(&truncate_right(&headline(recap), width - 3), options)
         ),
     );
     lines.push(format!(
         "{}  {}",
         guide('└', options),
-        paint(
-            truncate_right(&floor(recap), width - 3),
-            Style::new(),
-            options
-        )
+        super::render::colorize(&truncate_right(&floor(recap), width - 3), options)
     ));
     lines
 }

@@ -12,5 +12,6 @@ pub mod inspect;
 pub mod install;
 mod lang;
 pub mod mcp;
+mod menu;
 pub mod pr_recap;
 mod render;

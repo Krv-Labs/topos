@@ -24,7 +24,6 @@ mod configure;
 mod fsops;
 mod harness;
 mod json_entry;
-mod menu;
 mod paths;
 mod report;
 mod residue;
@@ -41,9 +40,9 @@ use std::path::Path;
 
 use clap::{Args, Subcommand};
 
+use super::menu::{self, run_confirm, run_menu, MenuOption};
 use artifact::State;
 use harness::{ids, spec, HARNESSES};
-use menu::{run_confirm, run_menu, MenuOption};
 use paths::home_dir;
 
 #[derive(Args)]

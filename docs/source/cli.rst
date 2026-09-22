@@ -473,9 +473,11 @@ With no ids in a terminal, both commands open a multi-select checklist.
 config
 ------
 
-View or update project evaluation settings in the nearest ``.topos.toml``.
-Running bare ``topos config`` opens a small priority selector on a TTY and
-falls back to ``show`` when input is non-interactive.
+View or update project settings in the nearest ``.topos.toml``: the
+evaluation priority and the PR gate preset ``topos pr-recap`` checks against.
+Running bare ``topos config`` opens a two-step wizard on a TTY (priority,
+then PR gate) that writes once at the end, and falls back to ``show`` when
+input is non-interactive.
 
 .. code-block:: bash
 
@@ -483,6 +485,14 @@ falls back to ``show`` when input is non-interactive.
    topos config show
    topos config set --priority secure
    topos config set --priority composable,secure,simple
+   topos config set --pr-preset strict
+
+``--pr-preset`` takes ``relaxed``, ``recommended`` (the default), ``strict``,
+or ``custom``. A named preset is stored alone under ``[pr_recap]``, so the
+project picks up improved defaults; ``custom`` writes every gate setting,
+with its default and meaning in a comment, for you to edit in the file.
+``config show`` lists every PR gate setting and marks the ones that differ
+from the preset.
 
 ``--priority`` accepts either form: a single pillar sets the emphasis and
 reorders the existing ranking around it; a full comma-separated ranking

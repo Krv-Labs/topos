@@ -141,6 +141,8 @@ topos evaluate . -r
 
 Topos discovers Python, Rust, JavaScript, TypeScript, C++, and Go automatically. Pass `--language` only when you want to narrow the run.
 
+Reviewing a pull request instead? `topos pr-recap 5` gives a structural before/after card for the PR's changed files — no LLM, fully reproducible.
+
 See [Installation](https://docs.krv.ai/topos/installation.html) for platform support and alternative install paths.
 
 

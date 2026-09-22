@@ -27,11 +27,23 @@ impl RenderOptions {
         Self::for_term(&term)
     }
 
+    /// Width a piped or captured card is laid out for. `console` reports
+    /// 80 columns when stdout is not a terminal, which truncates every table
+    /// column; CI logs and pagers are comfortably wider than that.
+    const PIPED_WIDTH: usize = 100;
+
     fn for_term(term: &Term) -> Self {
         let width = usize::from(term.size().1);
+        let is_term = term.is_term();
         Self {
-            styled: term.is_term() && std::env::var_os("NO_COLOR").is_none(),
-            width: if width == 0 { 120 } else { width },
+            styled: is_term && std::env::var_os("NO_COLOR").is_none(),
+            width: if !is_term {
+                Self::PIPED_WIDTH
+            } else if width == 0 {
+                120
+            } else {
+                width
+            },
         }
     }
 }

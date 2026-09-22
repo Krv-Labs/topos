@@ -67,7 +67,7 @@ enum Command {
     /// Start the MCP server over stdio.
     Mcp(mcp::McpArgs),
     /// Structural before/after for a git range or a pull request number.
-    #[command(name = "pr-recap")]
+    #[command(name = "pr-recap", after_long_help = pr_recap::LONG_HELP)]
     PrRecap(pr_recap::PrRecapArgs),
 }
 

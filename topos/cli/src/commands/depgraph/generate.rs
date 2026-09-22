@@ -1,6 +1,6 @@
 //! `topos depgraph generate` — ensure `.gitnexus/` is present and fresh.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Args;
 use console::Style;
@@ -78,6 +78,84 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
     finish_generate(args.json, result)
 }
 
+/// Re-export so callers (e.g. `pr-recap`) don't need to reach into
+/// `topos_engine` directly to decide whether to attempt graph generation.
+pub(crate) use topos_engine::adapters::gitnexus::gitnexus_available;
+
+/// Paths to the worktrees (and their shared parent) backing a PR's coupling
+/// graphs.
+pub(crate) struct PrStores {
+    pub(crate) parent: PathBuf,
+    pub(crate) base: PathBuf,
+    pub(crate) head: PathBuf,
+}
+
+/// Ensure both coupling stores exist for `base_sha`/`head_sha` under
+/// `<repo_root>/.git/topos-pr-<pr>/`. Idempotent: if `commits` already
+/// records these two shas and both `<side>/.gitnexus` dirs exist, return
+/// immediately without regenerating. Otherwise create the worktrees, build
+/// both graphs in parallel, and write `commits`. Never prints. Errors are
+/// `String`.
+pub(crate) fn prepare_pr_stores(
+    repo_root: &Path,
+    pr: u64,
+    base_sha: &str,
+    head_sha: &str,
+) -> Result<PrStores, String> {
+    let parent = repo_root.join(".git").join(format!("topos-pr-{}", pr));
+    let base_tree = parent.join("base");
+    let head_tree = parent.join("head");
+
+    let commits_path = parent.join("commits");
+    if let Ok(existing) = std::fs::read_to_string(&commits_path) {
+        let mut lines = existing.lines();
+        if lines.next() == Some(base_sha)
+            && lines.next() == Some(head_sha)
+            && base_tree.join(".gitnexus").exists()
+            && head_tree.join(".gitnexus").exists()
+        {
+            return Ok(PrStores {
+                parent,
+                base: base_tree,
+                head: head_tree,
+            });
+        }
+    }
+
+    std::fs::create_dir_all(&parent).map_err(|e| format!("creating graph worktrees: {e}"))?;
+    ensure_worktree(repo_root, &base_tree, base_sha)?;
+    ensure_worktree(repo_root, &head_tree, head_sha)?;
+
+    let base_job = std::thread::spawn({
+        let path = base_tree.clone();
+        move || generate_depgraph(&path, true, None)
+    });
+    let head_job = std::thread::spawn({
+        let path = head_tree.clone();
+        move || generate_depgraph(&path, true, None)
+    });
+    let base_result = base_job
+        .join()
+        .map_err(|_| "base graph generation failed".to_string())?;
+    let head_result = head_job
+        .join()
+        .map_err(|_| "head graph generation failed".to_string())?;
+    if !base_result.ok {
+        return Err(format!("base graph: {}", base_result.message));
+    }
+    if !head_result.ok {
+        return Err(format!("head graph: {}", head_result.message));
+    }
+    std::fs::write(&commits_path, format!("{base_sha}\n{head_sha}\n"))
+        .map_err(|e| format!("recording graph commits: {e}"))?;
+
+    Ok(PrStores {
+        parent,
+        base: base_tree,
+        head: head_tree,
+    })
+}
+
 #[derive(Args)]
 pub struct GeneratePrArgs {
     /// Pull request to prepare. Both commits are indexed; the review is not printed.
@@ -133,35 +211,23 @@ pub fn run_generate_pr(args: GeneratePrArgs) -> Result<(), String> {
     let base = sha("baseRefOid")?;
     let head = sha("headRefOid")?;
     let root = git_root(&repo)?;
-    let parent = root.join(".git").join(format!("topos-pr-{}", args.pr));
-    std::fs::create_dir_all(&parent).map_err(|e| format!("creating graph worktrees: {e}"))?;
-    let base_tree = parent.join("base");
-    let head_tree = parent.join("head");
-    ensure_worktree(&root, &base_tree, &base)?;
-    ensure_worktree(&root, &head_tree, &head)?;
 
-    let base_job = std::thread::spawn({
-        let path = base_tree.clone();
-        move || generate_depgraph(&path, true, None)
-    });
-    let head_job = std::thread::spawn({
-        let path = head_tree.clone();
-        move || generate_depgraph(&path, true, None)
-    });
-    let base_result = base_job
-        .join()
-        .map_err(|_| "base graph generation failed".to_string())?;
-    let head_result = head_job
-        .join()
-        .map_err(|_| "head graph generation failed".to_string())?;
-    if !base_result.ok {
-        return Err(format!("base graph: {}", base_result.message));
-    }
-    if !head_result.ok {
-        return Err(format!("head graph: {}", head_result.message));
-    }
-    std::fs::write(parent.join("commits"), format!("{base}\n{head}\n"))
-        .map_err(|e| format!("recording graph commits: {e}"))?;
+    let options = RenderOptions::stderr();
+    eprintln!(
+        "{}",
+        paint(
+            format!("◇  Preparing coupling graphs for #{}", args.pr),
+            Style::new().bold(),
+            options,
+        )
+    );
+    eprintln!(
+        "{}",
+        guide_line("base and head, in parallel", Style::new().dim(), options)
+    );
+
+    let stores = prepare_pr_stores(&root, args.pr, &base, &head)?;
+    let parent = stores.parent;
 
     let options = RenderOptions::stdout();
     println!(
@@ -181,7 +247,7 @@ pub fn run_generate_pr(args: GeneratePrArgs) -> Result<(), String> {
     println!(
         "{}",
         paint(
-            format!("Next: topos pr-recap {} --coupling", args.pr),
+            format!("Next: topos pr-recap {}", args.pr),
             Style::new().dim(),
             options,
         )
@@ -189,7 +255,7 @@ pub fn run_generate_pr(args: GeneratePrArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn git_root(start: &std::path::Path) -> Result<PathBuf, String> {
+pub(crate) fn git_root(start: &std::path::Path) -> Result<PathBuf, String> {
     let output = std::process::Command::new("git")
         .arg("-C")
         .arg(start)

@@ -1,20 +1,25 @@
-//! `topos pr-recap` — structural before/after for a git range.
+//! `topos pr-recap` — the data builder for schema `topos.pr_recap.v2`.
 //!
-//! Scores added and modified source files at `--base` and `--head`. The
-//! headline is computed here, from the lattice, so a later formatter cannot
-//! invent a medal. Deleted files are listed, not scored. Module coupling is
-//! not generated: when no dependency graph is attached, COMPOSABLE is
-//! reported as not measured.
+//! Scores added and modified source files at `--base` and `--head`, groups
+//! the ones that look like a split into clusters, and hands a single
+//! [`model::PrRecap`] document to whichever renderer the caller asked for.
+//! Every verdict on a card is decided here, from the lattice, the UAST
+//! ledger and the two coupling graphs — a formatter can never invent one.
+
+mod compact;
+mod github;
+mod model;
+mod render;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use clap::Args;
-use serde::Serialize;
+use clap::{Args, ValueEnum};
+use console::{Style, Term};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::morphism::ProgramMorphism;
-use topos_engine::core::omega::{EvaluationValue, Generator, Omega};
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::{COMPOSABLE, NAVIGABLE, SIMPLE};
 use topos_engine::evaluation::policies::gates::pillar_for_metric;
@@ -22,18 +27,23 @@ use topos_engine::evaluation::security_guidance::remediation_for;
 use topos_engine::functors::probes::ast::complexity::calculate_function_complexity_entries;
 use topos_engine::functors::probes::ast::divergence::calculate_function_divergence_entries;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
+use topos_engine::functors::profunctors::uast::ledger::{
+    match_functions, FunctionSnapshot, Ledger, MatchKind,
+};
 use topos_engine::graphs::ast::languages::all_source_suffixes;
+use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
+use topos_engine::graphs::mdg::split::{
+    detect_splits, fan_out_excluding, ChangedFile, FileChange as SplitChange, Reach, SplitCluster,
+};
 
+use self::model::*;
 use super::classify::classify_with_representations;
 use super::lang::detect_language;
-use crate::commands::render::{guide, guide_line, paint, RenderOptions, Working};
-use console::Style;
+use crate::commands::depgraph::{git_root, gitnexus_available, prepare_pr_stores, PrStores};
+use crate::commands::render::{paint, RenderOptions, Working};
 
-/// Score movement this large, with almost no syntax-tree change, is cosmetic.
-const MEANINGFUL_SCORE_DELTA: f64 = 0.03;
 /// Below this, a score dip is noise (0.1 on the displayed 0–100 scale).
 const SCORE_REGRESSION_FLOOR: f64 = 0.001;
-const STRUCTURAL_CHANGE_THRESHOLD: f64 = 0.02;
 const DEFAULT_FILE_CAP: usize = 40;
 const HOTSPOT_CAP: usize = 2;
 
@@ -46,155 +56,157 @@ const SKIP_PREFIXES: &[&str] = &[
     ".git/",
 ];
 
+/// Lines that could be an import of a sibling module, for the no-graph
+/// split fallback.
+const IMPORT_PREFIXES: &[&str] = &["import", "from", "use", "#include", "require("];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum RecapFormat {
+    /// Full terminal review card.
+    Card,
+    /// One-screen card for a CI log.
+    Compact,
+    /// Markdown for a sticky pull request comment.
+    Github,
+}
+
+/// The long help for `topos pr-recap`, printed by `--help` under the
+/// flag list. `-h` stays short: it shows only the flag one-liners.
+pub const LONG_HELP: &str = r#"What it does:
+  Scores the files your change touched at the base commit and at the head commit,
+  then reports the structural difference between the two. It is deterministic and
+  reads only your code: no LLM, no network call, no model judgement. The medal is
+  Topos's lattice verdict over the pillars below. Structure moving in the right
+  direction is not proof that behaviour is unchanged or that the tests still pass;
+  read it as a review aid, not as a green check.
+
+Pillars (S C E N):
+  S  SIMPLE      per-function complexity and the control-flow gates.
+  C  COMPOSABLE  module coupling from the GitNexus dependency graph: fan-out and
+                 instability.
+  E  SECURE      dangerous calls and taint flows.
+  N  NAVIGABLE   nesting divergence.
+  In the matrix a pillar is `●` when it passes at head, `○` when it fails, and `·`
+  when it was not measured (COMPOSABLE with no graph, or a file that did not
+  parse). On a modified file, `↑` or `↓` next to the mark means that pillar's score
+  moved by at least one point.
+
+Medals:
+  PLATINUM  all four pillars pass.
+  GOLD      three pass.
+  SILVER    two pass.
+  BRONZE    one passes.
+  SLOP      none pass.
+  `BRONZE → SILVER` means the medal itself changed over this range.
+
+Rows:
+  ✓ UP        a pillar was cleared, or a score rose.
+  ! DOWN      a score fell, but the medal held.
+  X LOST      a pillar was lost.
+  ! COSMETIC  scores moved while the syntax tree barely changed (an agent-slop
+              signal: the shape of the code is the same, the numbers are not).
+  ✓ NEW       an added file that is not part of a split.
+  SPLIT       a file whose code moved out into new files. It passes (✓) when the
+              worst function got simpler and total decisions grew by no more than
+              10%, warns (!) when decisions grew by more than 10% or a child
+              landed SLOP, and fails (X) when the parent lost a pillar or a moved
+              function came out more complex than it went in.
+  Children (├─) are the new files a split produced. `N in` counts the symbols or
+  functions that moved into that child; `shared ×N` means N files besides the
+  parent import it; `N more` folds away the quiet children.
+
+Splits table columns:
+  WORST FN   the highest single-function complexity, before and after.
+  DECISIONS  total decision points (cyclomatic) in the parent before, then in the
+             parent and all of its children after. A `+P%` marks growth over 10%.
+
+Project table:
+  One row per pillar over every scored file: whether it passes at head, the mean
+  score before and after, how many files fail it out of how many were measured,
+  and a rail showing where the head score sits.
+
+Headline / exit codes:
+  IMPROVEMENT  structure got better.            exit 0
+  SCORE UP     scores rose, medals held.        exit 0
+  LATERAL      mixed or flat.                   exit 0
+  SCORE DOWN   scores fell, medals held.        exit 1
+  REGRESSION   a pillar or a medal was lost.    exit 1
+  SUSPICIOUS   the change looks cosmetic.       exit 1
+  An error exits 2. The worst file decides the headline for the whole range.
+
+Coupling:
+  Given a PR number and an installed GitNexus, both commits are indexed under
+  `.git/topos-pr-<N>/` (a few seconds each) so that COMPOSABLE and split tracing
+  use real import and call edges. `--no-coupling` skips that work and reports
+  COMPOSABLE as not measured. With `--base/--head` there is no PR store, so
+  splits are detected from import lines and the moved-function ledger instead.
+
+Outputs:
+  --format card     the full review card; the default on a terminal.
+  --format compact  at most 12 lines; the default when output is piped.
+  --format github   markdown for a sticky PR comment, with a hidden marker so a
+                    later run replaces it instead of adding another comment.
+  --json            schema topos.pr_recap.v2: every number behind the card.
+  --verbose         every split child, each moved function, every score change.
+
+Examples:
+  topos pr-recap 306
+  topos pr-recap --base main --head HEAD
+  topos pr-recap --head :worktree
+  topos pr-recap 306 --format github > comment.md
+"#;
+
 #[derive(Args)]
 pub struct PrRecapArgs {
-    /// Review this pull request against the branch it merges into.
-    /// Mutually exclusive with `--base` and `--head`.
+    /// Pull request number to review against the branch it merges into.
     #[arg(value_name = "PR")]
     pub pr: Option<u64>,
-    /// Git commit the change starts from (the pull request base).
+    /// Commit the change starts from (the pull request base).
     #[arg(long)]
     pub base: Option<String>,
-    /// Git commit the change ends at. Defaults to `HEAD`.
-    /// Use `--head :worktree` to include uncommitted edits.
+    /// Commit the change ends at; `:worktree` includes uncommitted edits.
     #[arg(long)]
     pub head: Option<String>,
     /// Repository to read. Defaults to the current directory.
     #[arg(long)]
     pub repo: Option<PathBuf>,
-    /// Emit the machine-readable document instead of the review card.
+    /// Print the machine-readable document instead of the review card.
     #[arg(long)]
     pub json: bool,
-    /// Do not score more than this many added or modified files.
+    /// Score at most this many added or modified files.
     #[arg(long, default_value_t = DEFAULT_FILE_CAP)]
     pub max_files: usize,
+    /// Unfold every split and print the per-function ledger.
+    #[arg(long)]
+    pub verbose: bool,
+    /// Print the short CI card. Same as `--format compact`.
+    #[arg(long)]
+    pub compact: bool,
+    /// Which card to print: card, compact or github.
+    #[arg(long, value_enum)]
+    pub format: Option<RecapFormat>,
+    /// Skip coupling preparation; COMPOSABLE is reported as not measured.
+    #[arg(long)]
+    pub no_coupling: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum Headline {
-    SuspiciousNoStructuralChange,
-    Regression,
-    RegressionScore,
-    Improvement,
-    ImprovementScore,
-    LateralMove,
-}
-
-impl Headline {
-    fn as_str(self) -> &'static str {
-        match self {
-            Headline::SuspiciousNoStructuralChange => "SUSPICIOUS_NO_STRUCTURAL_CHANGE",
-            Headline::Regression => "REGRESSION",
-            Headline::RegressionScore => "REGRESSION_SCORE",
-            Headline::Improvement => "IMPROVEMENT",
-            Headline::ImprovementScore => "IMPROVEMENT_SCORE",
-            Headline::LateralMove => "LATERAL_MOVE",
-        }
+/// Which card to print, once `--compact`, `--format` and the terminal have
+/// all had their say. `--json` is decided by the caller and wins over this.
+fn resolve_format(compact: bool, format: Option<RecapFormat>, is_term: bool) -> RecapFormat {
+    if compact {
+        return RecapFormat::Compact;
     }
-
-    fn fails_check(self) -> bool {
-        matches!(
-            self,
-            Headline::SuspiciousNoStructuralChange
-                | Headline::Regression
-                | Headline::RegressionScore
-        )
+    if let Some(format) = format {
+        return format;
+    }
+    if is_term {
+        RecapFormat::Card
+    } else {
+        RecapFormat::Compact
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct PillarDelta {
-    measured: bool,
-    before_passed: Option<bool>,
-    after_passed: Option<bool>,
-    before_score: Option<f64>,
-    after_score: Option<f64>,
-    /// The gate that failed, when a previously passing pillar no longer does.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lost_gate: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct Hotspot {
-    path: String,
-    line: usize,
-    metric: String,
-    detail: String,
-    advice: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct FileRecap {
-    path: String,
-    status: String,
-    lines_added: usize,
-    lines_removed: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    medal_before: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    medal_after: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    verdict_before: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    verdict_after: Option<String>,
-    pillars: BTreeMap<String, PillarDelta>,
-    structural_distance: Option<f64>,
-    #[serde(skip_serializing_if = "is_false")]
-    complexity_relocated_within_file: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    hotspots: Vec<Hotspot>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct SkippedFile {
-    path: String,
-    reason: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct Scope {
-    files_scored: usize,
-    lines_added: usize,
-    lines_removed: usize,
-    files_skipped: usize,
-    files_deleted: usize,
-    files_capped: usize,
-    coupling_available: bool,
-    note: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct PrRecap {
-    schema: &'static str,
-    base: String,
-    head: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    review: Option<PullRequest>,
-    headline: Headline,
-    check: &'static str,
-    reason: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    scope: Scope,
-    files: Vec<FileRecap>,
-    skipped: Vec<SkippedFile>,
-    deleted: Vec<String>,
-    hotspots: Vec<Hotspot>,
-    /// Structural direction is not proof that behavior is unchanged.
-    non_claim: &'static str,
-}
-
-fn is_false(value: &bool) -> bool {
-    !value
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct PullRequest {
-    number: u64,
-    head_ref: String,
-    base_ref: String,
-}
+// --- Range resolution --------------------------------------------------
 
 fn resolve_range(
     repo: &Path,
@@ -298,25 +310,74 @@ fn ensure_commit(repo: &Path, sha: &str) -> Result<(), String> {
         .map_err(|_| format!("could not fetch {sha}. The commit may be from a fork."))
 }
 
+// --- Entry point -------------------------------------------------------
+
+/// Why COMPOSABLE is not measured on this run.
+fn unmeasured_coupling(pr: Option<u64>, no_coupling: bool) -> CouplingStatus {
+    let note = if no_coupling {
+        "skipped (--no-coupling)".to_string()
+    } else if pr.is_none() {
+        "pass a pull request number to measure COMPOSABLE".to_string()
+    } else {
+        "gitnexus not installed (npm install -g gitnexus)".to_string()
+    };
+    CouplingStatus {
+        measured: false,
+        note,
+    }
+}
+
 pub fn run(args: PrRecapArgs) -> Result<(), String> {
     let repo = args
         .repo
         .clone()
         .unwrap_or(std::env::current_dir().map_err(|e| format!("current directory: {e}"))?);
-    let (base, head, review) = resolve_range(&repo, args.pr, args.base, args.head)?;
+    let root = git_root(&repo)?;
+    let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
+    let format = resolve_format(args.compact, args.format, Term::stdout().is_term());
+
+    // The spinner covers store generation too: that is the slow part.
     let working = (!args.json).then(Working::start);
-    let mut recap = build_recap(&repo, &base, &head, args.max_files)?;
+    let (stores, coupling) = coupling_stores(&root, &base, &head, &args);
+    let recap = build_recap(
+        &root,
+        &base,
+        &head,
+        args.max_files,
+        stores.as_ref(),
+        coupling,
+    );
     if let Some(working) = working {
         working.clear();
     }
+    let mut recap = recap?;
     recap.review = review;
+
     if args.json {
         println!(
             "{}",
             serde_json::to_string_pretty(&recap).map_err(|e| format!("serializing recap: {e}"))?
         );
     } else {
-        print_recap(&recap);
+        match format {
+            RecapFormat::Card => {
+                let options = RenderOptions::stdout();
+                for line in render::render_card(&recap, args.verbose, options) {
+                    println!("{line}");
+                }
+                // The card's own tips sit outside it, like `evaluate`'s.
+                println!();
+                for tip in render::tips(&recap, args.verbose) {
+                    println!("{}", paint(tip, Style::new().dim(), options));
+                }
+            }
+            RecapFormat::Compact => {
+                for line in compact::render_compact(&recap, RenderOptions::stdout()) {
+                    println!("{line}");
+                }
+            }
+            RecapFormat::Github => println!("{}", github::render_github(&recap)),
+        }
     }
     if recap.headline.fails_check() && recap.error.is_none() {
         std::process::exit(1);
@@ -327,7 +388,72 @@ pub fn run(args: PrRecapArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn build_recap(repo: &Path, base: &str, head: &str, max_files: usize) -> Result<PrRecap, String> {
+/// Build (or reuse) the two coupling stores, and say why not when we can't.
+fn coupling_stores(
+    root: &Path,
+    base: &str,
+    head: &str,
+    args: &PrRecapArgs,
+) -> (Option<PrStores>, CouplingStatus) {
+    let Some(pr) = args.pr.filter(|_| !args.no_coupling) else {
+        return (None, unmeasured_coupling(args.pr, args.no_coupling));
+    };
+    if !gitnexus_available() {
+        return (None, unmeasured_coupling(args.pr, args.no_coupling));
+    }
+    let (Ok(base_sha), Ok(head_sha)) = (resolve_commit(root, base), resolve_commit(root, head))
+    else {
+        return (
+            None,
+            CouplingStatus {
+                measured: false,
+                note: format!("could not resolve {base}...{head}"),
+            },
+        );
+    };
+    match prepare_pr_stores(root, pr, &base_sha, &head_sha) {
+        Ok(stores) => {
+            let note = format!("built from {}", stores.parent.display());
+            (
+                Some(stores),
+                CouplingStatus {
+                    measured: true,
+                    note,
+                },
+            )
+        }
+        Err(error) => (
+            None,
+            CouplingStatus {
+                measured: false,
+                note: error,
+            },
+        ),
+    }
+}
+
+// --- Document assembly -------------------------------------------------
+
+/// One scored file with the intermediate state the later passes need.
+struct Scored {
+    recap: FileRecap,
+    before: ClassificationResult,
+    after: ClassificationResult,
+    after_src: String,
+    before_snapshots: Option<Vec<FunctionSnapshot>>,
+    after_snapshots: Option<Vec<FunctionSnapshot>>,
+    distance: Option<f64>,
+    is_new: bool,
+}
+
+fn build_recap(
+    repo: &Path,
+    base: &str,
+    head: &str,
+    max_files: usize,
+    stores: Option<&PrStores>,
+    coupling: CouplingStatus,
+) -> Result<PrRecap, String> {
     let repo = git_root(repo)?;
     let worktree = head == ":worktree";
     let base_sha = resolve_commit(&repo, base)?;
@@ -363,41 +489,68 @@ fn build_recap(repo: &Path, base: &str, head: &str, max_files: usize) -> Result<
         }
     }
 
+    // One load per store, not one per file: the graph is the whole repo.
+    let base_graph = stores.and_then(|stores| load_graph(&stores.base));
+    let head_graph = stores.and_then(|stores| load_graph(&stores.head));
+    let measured = coupling.measured && base_graph.is_some() && head_graph.is_some();
+
+    // Pass A — score every file on its own.
     let classifier = CharacteristicMorphism;
-    let lattice = Omega::default();
-    let mut files = Vec::new();
+    let mut scored = Vec::new();
     for entry in &scoreable {
-        files.push(score_file(
+        scored.push(score_file(
             &repo,
             &base_sha,
             &head_sha,
             entry,
             &classifier,
-            &lattice,
+            base_graph.as_ref().filter(|_| measured),
+            head_graph.as_ref().filter(|_| measured),
         )?);
     }
 
+    // Pass B — group the split parents with their children.
+    let changed = changed_list(&scoreable, &diff.deleted);
+    let report = (measured)
+        .then(|| {
+            detect_splits(
+                base_graph.as_ref().expect("measured implies a base graph"),
+                head_graph.as_ref().expect("measured implies a head graph"),
+                &changed,
+            )
+        })
+        .map(|report| report.clusters)
+        .unwrap_or_default();
+    let clusters = build_clusters(
+        &mut scored,
+        &report,
+        measured,
+        head_graph.as_ref().filter(|_| measured),
+    );
+
+    // Pass C — per-file verdicts, now that cluster fan-out is known.
+    let lattice = Omega::default();
+    finish_statuses(&mut scored, &clusters, &lattice);
+
+    let files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
     let (headline, reason) = headline_for(&files, &base_sha, &head_sha);
     let hotspots = top_hotspots(&files);
-    let coupling_available = false;
+    let project = project_rollup(&files);
     let scope = Scope {
         files_scored: files.len(),
+        files_new: files.iter().filter(|file| file.is_new()).count(),
         lines_added: files.iter().map(|file| file.lines_added).sum(),
         lines_removed: files.iter().map(|file| file.lines_removed).sum(),
         files_skipped: skipped.len(),
         files_deleted: diff.deleted.len(),
         files_capped: capped,
-        coupling_available,
-        note: format!(
-            "scored {} changed file{}; module coupling was not measured",
-            files.len(),
-            if files.len() == 1 { "" } else { "s" }
-        ),
+        coupling,
     };
     Ok(PrRecap {
-        schema: "topos.pr_recap.v1",
+        schema: SCHEMA,
         base: base_sha,
         head: head_sha,
+        review: None,
         headline,
         check: if headline.fails_check() {
             "fail"
@@ -405,9 +558,10 @@ fn build_recap(repo: &Path, base: &str, head: &str, max_files: usize) -> Result<
             "pass"
         },
         reason,
-        review: None,
         error: None,
         scope,
+        project,
+        clusters,
         files,
         skipped,
         deleted: diff.deleted,
@@ -416,19 +570,44 @@ fn build_recap(repo: &Path, base: &str, head: &str, max_files: usize) -> Result<
     })
 }
 
+fn load_graph(store: &Path) -> Option<ModuleDependencyGraph> {
+    ModuleDependencyGraph::from_lbug_path(&store.join(".gitnexus").join("lbug"), "").ok()
+}
+
+fn changed_list(entries: &[DiffEntry], deleted: &[String]) -> Vec<ChangedFile> {
+    let mut changed: Vec<ChangedFile> = entries
+        .iter()
+        .map(|entry| ChangedFile {
+            path: entry.path.clone(),
+            change: match file_change(&entry.status) {
+                FileChange::Added => SplitChange::Added,
+                FileChange::Renamed => SplitChange::Renamed,
+                FileChange::Modified => SplitChange::Modified,
+            },
+        })
+        .collect();
+    changed.extend(deleted.iter().map(|path| ChangedFile {
+        path: path.clone(),
+        change: SplitChange::Deleted,
+    }));
+    changed
+}
+
+// --- Git plumbing ------------------------------------------------------
+
 struct DiffEntry {
     status: String,
     path: String,
+    /// Pre-rename path, set only for `R*` entries. `git diff --name-status
+    /// --find-renames` emits `R100\told/path\tnew/path`; the base revision
+    /// only has `old/path`, so callers reading the base side must use this
+    /// instead of `path`.
+    old_path: Option<String>,
 }
 
 struct Diff {
     entries: Vec<DiffEntry>,
     deleted: Vec<String>,
-}
-
-fn git_root(start: &Path) -> Result<PathBuf, String> {
-    let output = git(start, &["rev-parse", "--show-toplevel"])?;
-    Ok(PathBuf::from(output.trim()))
 }
 
 fn resolve_commit(repo: &Path, rev: &str) -> Result<String, String> {
@@ -493,7 +672,13 @@ fn parse_name_status(output: &str) -> Result<Diff, String> {
         if status.starts_with('D') {
             deleted.push(path);
         } else if status.starts_with('A') || status.starts_with('M') || status.starts_with('R') {
-            entries.push(DiffEntry { status, path });
+            let old_path =
+                (status.starts_with('R') && paths.len() >= 2).then(|| paths[0].to_string());
+            entries.push(DiffEntry {
+                status,
+                path,
+                old_path,
+            });
         }
     }
     Ok(Diff { entries, deleted })
@@ -536,64 +721,174 @@ fn skip_reason(entry: &DiffEntry) -> Option<String> {
     None
 }
 
+fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, String> {
+    git(
+        repo,
+        &["show", "--end-of-options", &format!("{rev}:{path}")],
+    )
+    .map_err(|_| format!("could not read {path} at {rev}"))
+}
+
+fn file_change(status: &str) -> FileChange {
+    match status.chars().next() {
+        Some('A') => FileChange::Added,
+        Some('R') => FileChange::Renamed,
+        _ => FileChange::Modified,
+    }
+}
+
+// --- Pass A: one file at a time ---------------------------------------
+
+/// Everything one parse of one revision of one file yields.
+struct ParsedSide {
+    worst: Option<FunctionRef>,
+    snapshots: Option<Vec<FunctionSnapshot>>,
+}
+
+fn parse_side(source: &str, language: &str, path: &str) -> ParsedSide {
+    let morphism = ProgramMorphism::with_path(source, language, path);
+    let Some(ast) = morphism.ast.as_ref().filter(|_| morphism.is_valid()) else {
+        return ParsedSide {
+            worst: None,
+            snapshots: None,
+        };
+    };
+    let worst = calculate_function_complexity_entries(&ast.uast_root, source)
+        .into_iter()
+        .max_by_key(|entry| entry.complexity)
+        .map(|entry| FunctionRef {
+            name: entry.qualified_name,
+            line: entry.start_line,
+            complexity: entry.complexity,
+        });
+    let snapshots = Some(
+        topos_engine::functors::profunctors::uast::ledger::snapshot_functions(
+            &ast.uast_root,
+            source,
+            path,
+        ),
+    );
+    ParsedSide { worst, snapshots }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn score_file(
     repo: &Path,
     base: &str,
     head: &str,
     entry: &DiffEntry,
     classifier: &CharacteristicMorphism,
-    lattice: &Omega,
-) -> Result<FileRecap, String> {
-    let language = detect_language(Path::new(&entry.path));
-    let is_new = entry.status.starts_with('A');
+    base_graph: Option<&ModuleDependencyGraph>,
+    head_graph: Option<&ModuleDependencyGraph>,
+) -> Result<Scored, String> {
+    let path = entry.path.clone();
+    let language = detect_language(Path::new(&path));
+    let change = file_change(&entry.status);
+    let is_new = change == FileChange::Added;
+    let base_path = entry.old_path.as_deref().unwrap_or(&path);
     let before_src = if is_new {
         String::new()
     } else {
-        show_file(repo, base, &entry.path)?
+        show_file(repo, base, base_path)?
     };
     let after_src = if head == "worktree" {
-        std::fs::read_to_string(repo.join(&entry.path))
-            .map_err(|e| format!("reading {}: {e}", entry.path))?
+        std::fs::read_to_string(repo.join(&path)).map_err(|e| format!("reading {path}: {e}"))?
     } else {
-        show_file(repo, head, &entry.path)?
+        show_file(repo, head, &path)?
     };
-    let before = classify_source(&before_src, &language, classifier);
-    let after = classify_source(&after_src, &language, classifier);
-    let distance = structural_distance(&before_src, &after_src, &language);
-    let before_verdict = measured_verdict(&before);
-    let after_verdict = measured_verdict(&after);
-    let status = file_status(
-        &before,
-        &after,
-        before_verdict,
-        after_verdict,
-        distance,
-        lattice,
-        is_new,
-    );
-    let hotspots = file_hotspots(
-        &entry.path,
+
+    let before = classify_source(
         &before_src,
+        &language,
+        &path,
+        classifier,
+        targeted(base_graph, &path).as_ref(),
+    );
+    let after = classify_source(
         &after_src,
         &language,
-        &before,
-        &after,
+        &path,
+        classifier,
+        targeted(head_graph, &path).as_ref(),
     );
+    let distance = structural_distance(&before_src, &after_src, &language, &path);
+
+    let before_side = if is_new {
+        ParsedSide {
+            worst: None,
+            snapshots: None,
+        }
+    } else {
+        parse_side(&before_src, &language, &path)
+    };
+    let after_side = parse_side(&after_src, &language, &path);
+
+    let before_verdict = measured_verdict(&before);
+    let after_verdict = measured_verdict(&after);
+    let hotspots = file_hotspots(&path, &before_src, &after_src, &language, &before, &after);
     let (lines_added, lines_removed) = line_delta(&before_src, &after_src);
-    Ok(FileRecap {
-        path: entry.path.clone(),
-        status: status.as_str().to_string(),
+    let measured = base_graph.is_some() && head_graph.is_some();
+
+    let recap = FileRecap {
+        path: path.clone(),
+        change,
+        // Pass C decides this, once cluster fan-out is known.
+        status: Headline::LateralMove,
+        lines_before: before_src.lines().count(),
+        lines_after: after_src.lines().count(),
         lines_added,
         lines_removed,
-        medal_before: (!is_new).then(|| medal_label(before_verdict)),
-        medal_after: Some(medal_label(after_verdict)),
-        verdict_before: (!is_new).then(|| before_verdict.name().to_string()),
-        verdict_after: Some(after_verdict.name().to_string()),
+        medal_before: (!is_new).then(|| medal(before_verdict)),
+        medal_after: after.is_parseable.then(|| medal(after_verdict)),
         pillars: pillar_deltas(&before, &after, is_new),
         structural_distance: distance,
+        cosmetic: false,
         complexity_relocated_within_file: complexity_relocated(&before, &after),
+        worst_function_before: before_side.worst.clone(),
+        worst_function_after: after_side.worst.clone(),
+        decisions_before: (!is_new).then(|| decisions(&before)).flatten(),
+        decisions_after: decisions(&after),
+        fan_in_before: measured.then(|| raw(&before, "mdg.fan_in")).flatten(),
+        fan_in_after: measured.then(|| raw(&after, "mdg.fan_in")).flatten(),
+        fan_out_before: measured.then(|| raw(&before, "mdg.fan_out")).flatten(),
+        fan_out_after: measured.then(|| raw(&after, "mdg.fan_out")).flatten(),
+        cluster: None,
         hotspots,
+    };
+    Ok(Scored {
+        recap,
+        before,
+        after,
+        after_src,
+        before_snapshots: before_side.snapshots,
+        after_snapshots: after_side.snapshots,
+        distance,
+        is_new,
     })
+}
+
+/// A clone of the repository graph aimed at one file. Cloning is far
+/// cheaper than re-reading the store for every path.
+fn targeted(graph: Option<&ModuleDependencyGraph>, path: &str) -> Option<ModuleDependencyGraph> {
+    let mut graph = graph?.clone();
+    graph.target_file = path.to_string();
+    Some(graph)
+}
+
+fn raw(result: &ClassificationResult, key: &str) -> Option<usize> {
+    result.raw_metrics.get(key).map(|value| *value as usize)
+}
+
+fn decisions(result: &ClassificationResult) -> Option<usize> {
+    raw(result, "cfg.cyclomatic")
+}
+
+fn medal(value: EvaluationValue) -> Medal {
+    Medal {
+        symbol: value.symbol().to_string(),
+        tier: value.medal_tier().to_string(),
+        verdict: value.name().to_string(),
+    }
 }
 
 fn line_delta(before: &str, after: &str) -> (usize, usize) {
@@ -618,29 +913,23 @@ fn counts(source: &str) -> std::collections::HashMap<&str, usize> {
     counts
 }
 
-fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, String> {
-    git(
-        repo,
-        &["show", "--end-of-options", &format!("{rev}:{path}")],
-    )
-    .map_err(|_| format!("could not read {path} at {rev}"))
-}
-
 fn classify_source(
     source: &str,
     language: &str,
+    path: &str,
     classifier: &CharacteristicMorphism,
+    graph: Option<&ModuleDependencyGraph>,
 ) -> ClassificationResult {
-    let mut morphism = ProgramMorphism::new(source, language);
-    classify_with_representations(classifier, &mut morphism, None, Priority::Secure)
+    let mut morphism = ProgramMorphism::with_path(source, language, path);
+    classify_with_representations(classifier, &mut morphism, graph, Priority::Secure)
 }
 
-fn structural_distance(before: &str, after: &str, language: &str) -> Option<f64> {
+fn structural_distance(before: &str, after: &str, language: &str, path: &str) -> Option<f64> {
     if before.is_empty() {
         return None;
     }
-    let base = ProgramMorphism::new(before, language);
-    let proposed = ProgramMorphism::new(after, language);
+    let base = ProgramMorphism::with_path(before, language, path);
+    let proposed = ProgramMorphism::with_path(after, language, path);
     match (base.ast.as_ref(), proposed.ast.as_ref()) {
         (Some(base_ast), Some(proposed_ast)) if base.is_valid() && proposed.is_valid() => {
             Some(calculate_ast_distance(base_ast, proposed_ast).normalized_distance)
@@ -649,12 +938,485 @@ fn structural_distance(before: &str, after: &str, language: &str) -> Option<f64>
     }
 }
 
+// --- Pass B: split clusters -------------------------------------------
+
+/// A parent and its children, before the arithmetic is done.
+struct Seed<'a> {
+    parent: String,
+    children: Vec<String>,
+    split: Option<&'a SplitCluster>,
+}
+
+/// Group split parents with the children actually carved out of them.
+///
+/// Both seed passes are candidate finders only — an import line or a graph
+/// edge says "the parent now uses this file", not "this file came out of
+/// the parent". The ledger decides: a child survives only with moved-code
+/// evidence (graph `moved_in`, or a `Moved*` match landing in it), so a
+/// brand-new module the parent merely started calling renders as a plain
+/// NEW row instead of a bogus `! SPLIT`.
+fn build_clusters(
+    scored: &mut [Scored],
+    report: &[SplitCluster],
+    measured: bool,
+    head_graph: Option<&ModuleDependencyGraph>,
+) -> Vec<Cluster> {
+    let index: BTreeMap<String, usize> = scored
+        .iter()
+        .enumerate()
+        .map(|(i, file)| (file.recap.path.clone(), i))
+        .collect();
+    let seeds = if measured {
+        graph_seeds(report, &index)
+    } else {
+        fallback_seeds(scored, &index)
+    };
+
+    let mut clusters = Vec::new();
+    for seed in seeds {
+        if seed.children.is_empty() {
+            continue;
+        }
+        let candidate = materialize(&seed, scored, &index, head_graph);
+        // `moved_in` is already max(graph evidence, ledger evidence); zero
+        // means nothing travelled into this file, so it is not a child.
+        let kept: Vec<String> = candidate
+            .children
+            .iter()
+            .filter(|child| {
+                child.moved_in > 0
+                    // The cluster ledger is all-or-nothing over the
+                    // candidate set: one unparseable sibling must not
+                    // erase the evidence for the others.
+                    || (candidate.ledger.is_none()
+                        && index.get(&child.path).is_some_and(|i| {
+                            solo_moved_in(&scored[index[&seed.parent]], &scored[*i], &child.path)
+                                > 0
+                        }))
+            })
+            .map(|child| child.path.clone())
+            .collect();
+        if kept.is_empty() {
+            // No child survived: the parent keeps no cluster membership.
+            continue;
+        }
+        // One prune pass only. Re-deriving the cluster re-runs the ledger
+        // over the surviving set so no pruned file is counted anywhere.
+        let cluster = if kept.len() == seed.children.len() {
+            candidate
+        } else {
+            let pruned = Seed {
+                parent: seed.parent.clone(),
+                children: kept.clone(),
+                split: seed.split,
+            };
+            materialize(&pruned, scored, &index, head_graph)
+        };
+        for (path, role) in std::iter::once((seed.parent.clone(), ClusterRole::Parent))
+            .chain(kept.iter().map(|child| (child.clone(), ClusterRole::Child)))
+        {
+            if let Some(i) = index.get(&path) {
+                scored[*i].recap.cluster = Some(ClusterMembership {
+                    parent: seed.parent.clone(),
+                    role,
+                });
+            }
+        }
+        clusters.push(cluster);
+    }
+    clusters
+}
+
+fn graph_seeds<'a>(report: &'a [SplitCluster], index: &BTreeMap<String, usize>) -> Vec<Seed<'a>> {
+    report
+        .iter()
+        .filter(|cluster| index.contains_key(&cluster.parent))
+        .map(|cluster| Seed {
+            parent: cluster.parent.clone(),
+            children: cluster
+                .children
+                .iter()
+                .map(|child| child.path.clone())
+                .filter(|path| index.contains_key(path))
+                .collect(),
+            split: Some(cluster),
+        })
+        .collect()
+}
+
+/// No coupling graphs: attribute each added file to the modified file whose
+/// head source imports it most often. Ties go to the smallest path.
+fn fallback_seeds<'a>(scored: &[Scored], index: &BTreeMap<String, usize>) -> Vec<Seed<'a>> {
+    let parents: Vec<&str> = scored
+        .iter()
+        .filter(|file| file.recap.change == FileChange::Modified)
+        .map(|file| file.recap.path.as_str())
+        .collect();
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for child in scored.iter().filter(|file| file.is_new) {
+        let stem = file_stem(&child.recap.path);
+        if stem.is_empty() {
+            continue;
+        }
+        let best = parents
+            .iter()
+            .filter_map(|parent| {
+                let source = &scored[index[*parent]].after_src;
+                let hits = import_hits(source, &stem);
+                (hits > 0).then_some((hits, *parent))
+            })
+            // Most import lines wins; on a tie the smallest path does.
+            .max_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(a.1)));
+        if let Some((_, parent)) = best {
+            grouped
+                .entry(parent.to_string())
+                .or_default()
+                .push(child.recap.path.clone());
+        }
+    }
+    grouped
+        .into_iter()
+        .map(|(parent, children)| Seed {
+            parent,
+            children,
+            split: None,
+        })
+        .collect()
+}
+
+fn file_stem(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn import_hits(source: &str, stem: &str) -> usize {
+    source
+        .lines()
+        .filter(|line| {
+            let line = line.trim_start();
+            IMPORT_PREFIXES
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+                || line.contains("require(")
+        })
+        .filter(|line| line.contains(stem))
+        .count()
+}
+
+fn materialize(
+    seed: &Seed<'_>,
+    scored: &[Scored],
+    index: &BTreeMap<String, usize>,
+    head_graph: Option<&ModuleDependencyGraph>,
+) -> Cluster {
+    let parent = &scored[index[&seed.parent]];
+    let kids: Vec<&Scored> = seed
+        .children
+        .iter()
+        .map(|path| &scored[index[path]])
+        .collect();
+
+    let decisions_before = parent.recap.decisions_before.unwrap_or(0);
+    let decisions_after = parent.recap.decisions_after.unwrap_or(0)
+        + kids
+            .iter()
+            .map(|kid| kid.recap.decisions_after.unwrap_or(0))
+            .sum::<usize>();
+    let lines_after =
+        parent.recap.lines_after + kids.iter().map(|kid| kid.recap.lines_after).sum::<usize>();
+    let worst_function_after = std::iter::once(parent.recap.worst_function_after.clone())
+        .chain(
+            kids.iter()
+                .map(|kid| kid.recap.worst_function_after.clone()),
+        )
+        .flatten()
+        .max_by_key(|entry| entry.complexity);
+
+    let kept: Vec<&str> = seed.children.iter().map(String::as_str).collect();
+    let ledger = cluster_ledger(parent, &kids);
+    let children = cluster_children(seed, &kids, ledger.as_ref());
+    let (mark, reasons) = cluster_mark(
+        parent,
+        &children,
+        &kids,
+        ledger.as_ref(),
+        decisions_before,
+        decisions_after,
+        &worst_function_after,
+    );
+
+    Cluster {
+        parent: seed.parent.clone(),
+        children,
+        mark,
+        reasons,
+        lines_before: parent.recap.lines_before,
+        lines_after,
+        decisions_before,
+        decisions_after,
+        worst_function_before: parent.recap.worst_function_before.clone(),
+        worst_function_after,
+        parent_fan_out_before: seed.split.map(|split| split.parent_fan_out_before),
+        parent_fan_out_after: seed.split.map(|split| split.parent_fan_out_after),
+        // Recomputed on the head graph over the surviving children only;
+        // the split report's value still counted the pruned ones.
+        parent_fan_out_after_excluding_children: match head_graph {
+            Some(graph) => Some(fan_out_excluding(graph, &seed.parent, &kept)),
+            None => seed
+                .split
+                .map(|split| split.parent_fan_out_after_excluding_children),
+        },
+        symbols_moved: seed
+            .split
+            .map(|split| {
+                split
+                    .moved
+                    .iter()
+                    .filter(|entry| kept.contains(&entry.to.as_str()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default(),
+        symbols_new: seed
+            .split
+            .map(|split| {
+                split
+                    .new_symbols
+                    .iter()
+                    .filter(|entry| kept.contains(&entry.file.as_str()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default(),
+        symbols_lost: seed
+            .split
+            .map(|split| split.lost.clone())
+            .unwrap_or_default(),
+        ledger,
+    }
+}
+
+/// The parent at base against the parent plus every child at head.
+fn cluster_ledger(parent: &Scored, kids: &[&Scored]) -> Option<Ledger> {
+    let before = parent.before_snapshots.clone()?;
+    let mut after = parent.after_snapshots.clone()?;
+    for kid in kids {
+        after.extend(kid.after_snapshots.clone()?);
+    }
+    Some(match_functions(before, after))
+}
+
+fn cluster_children(
+    seed: &Seed<'_>,
+    kids: &[&Scored],
+    ledger: Option<&Ledger>,
+) -> Vec<ClusterChild> {
+    kids.iter()
+        .map(|kid| {
+            let path = kid.recap.path.clone();
+            let reported = seed
+                .split
+                .and_then(|split| split.children.iter().find(|child| child.path == path));
+            ClusterChild {
+                reach: reported.map(|child| child.reach),
+                importers: reported
+                    .map(|child| child.importers.clone())
+                    .unwrap_or_default(),
+                // A child whose only evidence is a moved anonymous
+                // callback has graph `moved_in == 0`; the ledger sees it.
+                moved_in: reported
+                    .map_or(0, |child| child.moved_in)
+                    .max(moved_into(ledger, &path)),
+                path,
+            }
+        })
+        .collect()
+}
+
+/// Moves from the parent into one child, ledgered on its own. Used only
+/// when the whole-cluster ledger is `None` because some other candidate
+/// child failed to parse.
+fn solo_moved_in(parent: &Scored, kid: &Scored, path: &str) -> usize {
+    let (Some(before), Some(mut after), Some(kid_after)) = (
+        parent.before_snapshots.clone(),
+        parent.after_snapshots.clone(),
+        kid.after_snapshots.clone(),
+    ) else {
+        return 0;
+    };
+    after.extend(kid_after);
+    moved_into(Some(&match_functions(before, after)), path)
+}
+
+/// Ledger moves landing in `child`, counting nested and anonymous
+/// callables: JSX extracted into a new component often moves only
+/// anonymous callbacks, and that is still moved code.
+fn moved_into(ledger: Option<&Ledger>, child: &str) -> usize {
+    let Some(ledger) = ledger else { return 0 };
+    ledger
+        .matches
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                MatchKind::MovedIdentical | MatchKind::MovedModified
+            )
+        })
+        .filter(|entry| {
+            entry
+                .after
+                .as_ref()
+                .is_some_and(|after| after.file == child)
+        })
+        .count()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cluster_mark(
+    parent: &Scored,
+    children: &[ClusterChild],
+    kids: &[&Scored],
+    ledger: Option<&Ledger>,
+    decisions_before: usize,
+    decisions_after: usize,
+    worst_after: &Option<FunctionRef>,
+) -> (ClusterMark, Vec<String>) {
+    let mut reasons = Vec::new();
+    let lost: Vec<&str> = parent
+        .recap
+        .pillars
+        .iter()
+        .filter(|(_, delta)| delta.lost())
+        .map(|(pillar, _)| pillar.as_str())
+        .collect();
+    if !lost.is_empty() {
+        reasons.push(format!("{} lost {}", parent.recap.path, lost.join(", ")));
+    }
+    let grew = ledger.is_some_and(|ledger| {
+        ledger.matches.iter().any(|entry| {
+            matches!(entry.kind, MatchKind::MovedModified | MatchKind::Renamed)
+                && entry.complexity_delta > 0
+        })
+    });
+    let worst_fell = parent
+        .recap
+        .worst_function_before
+        .as_ref()
+        .zip(worst_after.as_ref())
+        .is_some_and(|(before, after)| after.complexity < before.complexity);
+    if let (Some(before), Some(after)) = (
+        parent.recap.worst_function_before.as_ref(),
+        worst_after.as_ref(),
+    ) {
+        if before.complexity != after.complexity {
+            reasons.push(format!(
+                "worst function {}→{}",
+                before.complexity, after.complexity
+            ));
+        }
+    }
+    if decisions_after != decisions_before {
+        reasons.push(decision_reason(decisions_before, decisions_after));
+    }
+    let private = children
+        .iter()
+        .filter(|child| child.reach == Some(Reach::Private))
+        .count();
+    if private > 0 {
+        reasons.push(format!("{private} of {} children private", children.len()));
+    }
+
+    if !lost.is_empty() || (grew && !worst_fell) {
+        if grew {
+            reasons.push("a moved function gained complexity on the way".to_string());
+        }
+        return (ClusterMark::Fail, reasons);
+    }
+    let bloated = decisions_after as f64 > decisions_before as f64 * (1.0 + CLUSTER_GROWTH_WARN);
+    let sloppy = kids.iter().any(|kid| {
+        kid.recap
+            .medal_after
+            .as_ref()
+            .map(|medal| medal.tier == "SLOP")
+            .unwrap_or(true)
+    });
+    if sloppy {
+        reasons.push("a child is SLOP or did not parse".to_string());
+    }
+    if bloated || sloppy {
+        (ClusterMark::Warn, reasons)
+    } else {
+        (ClusterMark::Ok, reasons)
+    }
+}
+
+fn decision_reason(before: usize, after: usize) -> String {
+    if after > before {
+        let percent = if before == 0 {
+            100
+        } else {
+            (((after as f64 - before as f64) / before as f64) * 100.0).round() as i64
+        };
+        format!("decisions rose {before}→{after} (+{percent}%)")
+    } else {
+        format!("decisions fell {before}→{after}")
+    }
+}
+
+// --- Pass C: per-file verdicts ----------------------------------------
+
+fn finish_statuses(scored: &mut [Scored], clusters: &[Cluster], lattice: &Omega) {
+    // A split parent's raw fan-out rises simply because it now imports the
+    // files it was carved into. That is not a coupling regression.
+    let routed: Vec<&str> = clusters
+        .iter()
+        .filter(|cluster| {
+            cluster
+                .parent_fan_out_after_excluding_children
+                .zip(cluster.parent_fan_out_before)
+                .is_some_and(|(after, before)| after <= before)
+        })
+        .map(|cluster| cluster.parent.as_str())
+        .collect();
+    for file in scored.iter_mut() {
+        let drop_composable = routed.contains(&file.recap.path.as_str());
+        let deltas = score_deltas(&file.before, &file.after, drop_composable);
+        let cosmetic = file
+            .distance
+            .is_some_and(|distance| distance < STRUCTURAL_CHANGE_THRESHOLD)
+            && deltas.iter().any(|d| d.abs() >= MEANINGFUL_SCORE_DELTA);
+        file.recap.cosmetic = !file.is_new && cosmetic;
+        if drop_composable {
+            file.recap
+                .hotspots
+                .retain(|spot| spot.metric != "mdg.fan_out");
+        }
+        // The verdict has to drop COMPOSABLE too. A parent that trips the
+        // fan-out gate loses a pillar outright, and the score deltas are
+        // never consulted once the medal itself moved.
+        file.recap.status = file_status(
+            &file.before,
+            &file.after,
+            measured_verdict_excluding(&file.before, drop_composable),
+            measured_verdict_excluding(&file.after, drop_composable),
+            cosmetic,
+            &deltas,
+            lattice,
+            file.is_new,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn file_status(
     before: &ClassificationResult,
     after: &ClassificationResult,
     before_verdict: EvaluationValue,
     after_verdict: EvaluationValue,
-    distance: Option<f64>,
+    suspicious: bool,
+    deltas: &[f64],
     lattice: &Omega,
     is_new: bool,
 ) -> Headline {
@@ -668,14 +1430,9 @@ fn file_status(
     if !before.is_parseable || !after.is_parseable {
         return Headline::LateralMove;
     }
-    let score_deltas = score_deltas(before, after);
-    let suspicious = distance.is_some_and(|d| d < STRUCTURAL_CHANGE_THRESHOLD)
-        && score_deltas
-            .iter()
-            .any(|d| d.abs() >= MEANINGFUL_SCORE_DELTA);
     if before_verdict == after_verdict {
-        let improved = score_deltas.iter().any(|d| *d >= SCORE_REGRESSION_FLOOR);
-        let regressed = score_deltas.iter().any(|d| *d <= -SCORE_REGRESSION_FLOOR);
+        let improved = deltas.iter().any(|d| *d >= SCORE_REGRESSION_FLOOR);
+        let regressed = deltas.iter().any(|d| *d <= -SCORE_REGRESSION_FLOOR);
         return if suspicious && improved {
             Headline::SuspiciousNoStructuralChange
         } else if improved && !regressed {
@@ -703,9 +1460,14 @@ fn file_status(
     }
 }
 
-fn score_deltas(before: &ClassificationResult, after: &ClassificationResult) -> Vec<f64> {
+fn score_deltas(
+    before: &ClassificationResult,
+    after: &ClassificationResult,
+    drop_composable: bool,
+) -> Vec<f64> {
     Generator::ALL
         .into_iter()
+        .filter(|g| !(drop_composable && g.as_str() == "composable"))
         .filter_map(|g| {
             let key = g.as_str();
             Some(after.scores.get(key)? - before.scores.get(key)?)
@@ -744,7 +1506,7 @@ fn pillar_deltas(
 
 fn pillar_measured(result: &ClassificationResult, pillar: &str) -> bool {
     // `mdg.abstractness` can exist from the file alone. COMPOSABLE's gate
-    // needs the dependency graph, which this command does not attach.
+    // needs the dependency graph, which is only attached for a pull request.
     if pillar == "composable" {
         return result.raw_metrics.contains_key("mdg.fan_out");
     }
@@ -769,11 +1531,22 @@ fn pillar_passed(result: &ClassificationResult, generator: Generator) -> bool {
 /// Without a dependency graph, COMPOSABLE is not a pass and not a fail.
 /// Counting it as failed would turn every file into a fake regression.
 fn measured_verdict(result: &ClassificationResult) -> EvaluationValue {
+    measured_verdict_excluding(result, false)
+}
+
+/// The same verdict with COMPOSABLE optionally set aside, for a split
+/// parent whose fan-out rose only because it now imports its own children.
+/// Only `file_status` uses this; the reported medal stays factual.
+fn measured_verdict_excluding(
+    result: &ClassificationResult,
+    drop_composable: bool,
+) -> EvaluationValue {
     let satisfied: Vec<Generator> = Generator::ALL
         .into_iter()
+        .filter(|generator| !(drop_composable && generator.as_str() == "composable"))
         .filter(|generator| pillar_passed(result, *generator))
         .collect();
-    topos_engine::core::omega::verdict_from_generators(&satisfied)
+    verdict_from_generators(&satisfied)
 }
 
 fn lost_gate(
@@ -811,10 +1584,6 @@ fn rounded_score(result: &ClassificationResult, pillar: &str) -> Option<f64> {
         .map(|score| (score * 1000.0).round() / 10.0)
 }
 
-fn medal_label(value: EvaluationValue) -> String {
-    format!("{} {}", value.symbol(), value.medal_tier())
-}
-
 fn complexity_relocated(before: &ClassificationResult, after: &ClassificationResult) -> bool {
     let func = metric_delta(before, after, "ast.max_function_complexity");
     let file = metric_delta(before, after, "cfg.cyclomatic");
@@ -830,6 +1599,183 @@ fn metric_worsened(before: &ClassificationResult, after: &ClassificationResult, 
     metric_delta(before, after, key) > 0.0
 }
 
+// --- Pass D: project rollup and headline -------------------------------
+
+/// A pillar is achieved only if every file that measures it passes it.
+/// Vacuous truth is excluded: a pillar nobody measured is not achieved.
+fn project_rollup(files: &[FileRecap]) -> Option<ProjectRollup> {
+    if files.is_empty() {
+        return None;
+    }
+    let mut pillars = BTreeMap::new();
+    let mut before_achieved = Vec::new();
+    let mut after_achieved = Vec::new();
+    for generator in Generator::ALL {
+        let key = generator.as_str();
+        let before: Vec<&PillarDelta> = files
+            .iter()
+            .filter(|file| !file.is_new())
+            .filter_map(|file| file.pillars.get(key))
+            .filter(|delta| delta.before_passed.is_some())
+            .collect();
+        let after: Vec<&PillarDelta> = files
+            .iter()
+            .filter_map(|file| file.pillars.get(key))
+            .filter(|delta| delta.after_passed.is_some())
+            .collect();
+        if after.is_empty() {
+            continue;
+        }
+        let before_passed =
+            !before.is_empty() && before.iter().all(|d| d.before_passed == Some(true));
+        let after_passed = after.iter().all(|d| d.after_passed == Some(true));
+        if before_passed {
+            before_achieved.push(generator);
+        }
+        if after_passed {
+            after_achieved.push(generator);
+        }
+        pillars.insert(
+            key.to_string(),
+            PillarRollup {
+                before_passed,
+                after_passed,
+                before_score: mean(before.iter().filter_map(|d| d.before_score)),
+                after_score: mean(after.iter().filter_map(|d| d.after_score)),
+                files_before: before.len(),
+                files_after: after.len(),
+                failing_before: before
+                    .iter()
+                    .filter(|d| d.before_passed == Some(false))
+                    .count(),
+                failing_after: after
+                    .iter()
+                    .filter(|d| d.after_passed == Some(false))
+                    .count(),
+            },
+        );
+    }
+    let regression = pillars
+        .values()
+        .any(|pillar| pillar.before_passed && !pillar.after_passed);
+    Some(ProjectRollup {
+        medal_before: medal(verdict_from_generators(&before_achieved)),
+        medal_after: medal(verdict_from_generators(&after_achieved)),
+        pillars,
+        regression,
+        files_before: files.iter().filter(|file| !file.is_new()).count(),
+        files_after: files.len(),
+    })
+}
+
+fn mean(values: impl Iterator<Item = f64>) -> f64 {
+    let values: Vec<f64> = values.collect();
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn headline_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
+    if files.is_empty() {
+        let reason = if base == head {
+            "Those two commits are the same. Uncommitted edits need --head :worktree.".to_string()
+        } else {
+            "No supported source files changed.".to_string()
+        };
+        return (Headline::LateralMove, reason);
+    }
+    // A new file has no before-medal, so it cannot make an existing file's
+    // lateral move into an improvement, and it cannot hide one either.
+    let existing: Vec<&FileRecap> = files.iter().filter(|file| !file.is_new()).collect();
+    let all: Vec<&FileRecap> = files.iter().collect();
+    let judged: &[&FileRecap] = if existing.is_empty() { &all } else { &existing };
+    // Worst measured file wins. A mixed change is not an improvement.
+    let worst = judged
+        .iter()
+        .min_by_key(|file| file.status.rank())
+        .expect("judged is non-empty");
+    let best = judged
+        .iter()
+        .max_by_key(|file| file.status.rank())
+        .expect("judged is non-empty");
+    let unanimous = best.status.rank() == worst.status.rank();
+    let headline = match worst.status {
+        Headline::SuspiciousNoStructuralChange => Headline::SuspiciousNoStructuralChange,
+        Headline::Regression => Headline::Regression,
+        Headline::RegressionScore => Headline::RegressionScore,
+        Headline::Improvement if unanimous => Headline::Improvement,
+        Headline::ImprovementScore if unanimous => Headline::ImprovementScore,
+        _ => Headline::LateralMove,
+    };
+    let reason = match headline {
+        Headline::SuspiciousNoStructuralChange => format!(
+            "{} moved its score while the syntax tree barely changed.",
+            worst.path
+        ),
+        Headline::Regression => format!("{} lost a structural pillar.", worst.path),
+        Headline::RegressionScore => {
+            format!(
+                "{} kept its medal, but a pillar score went down.",
+                worst.path
+            )
+        }
+        Headline::Improvement => format!(
+            "{} cleared a structural pillar it missed before.",
+            worst.path
+        ),
+        Headline::ImprovementScore => {
+            format!("{} kept its medal and improved a pillar score.", worst.path)
+        }
+        Headline::LateralMove => lateral_reason(&existing),
+    };
+    (headline, reason)
+}
+
+/// A lateral move is a mixed or flat change. Say what actually happened to
+/// the existing files instead of claiming they all held, which is false as
+/// soon as one of them went up.
+fn lateral_reason(existing: &[&FileRecap]) -> String {
+    if existing.is_empty() {
+        return "New files arrived; no existing file was compared.".to_string();
+    }
+    let up = existing
+        .iter()
+        .filter(|file| {
+            matches!(
+                file.status,
+                Headline::Improvement | Headline::ImprovementScore
+            )
+        })
+        .count();
+    let held = existing.len() - up;
+    if up == 0 {
+        return "Existing files kept their medals.".to_string();
+    }
+    format!(
+        "{up} existing file{} improved, {held} held; no pillar was lost.",
+        if up == 1 { "" } else { "s" }
+    )
+}
+
+fn top_hotspots(files: &[FileRecap]) -> Vec<Hotspot> {
+    let mut ranked: Vec<&Hotspot> = files.iter().flat_map(|f| f.hotspots.iter()).collect();
+    ranked.sort_by_key(|spot| hotspot_rank(&spot.metric));
+    ranked.into_iter().take(HOTSPOT_CAP).cloned().collect()
+}
+
+fn hotspot_rank(metric: &str) -> u8 {
+    match metric {
+        "cpg.dangerous_calls" => 0,
+        "ast.max_function_complexity" => 1,
+        "nav.max_function_divergence" => 2,
+        "mdg.fan_out" => 3,
+        _ => 4,
+    }
+}
+
+// --- Hotspots ----------------------------------------------------------
+
 fn file_hotspots(
     path: &str,
     before_src: &str,
@@ -842,7 +1788,7 @@ fn file_hotspots(
     if before_src.is_empty() {
         return hotspots;
     }
-    let morphism = ProgramMorphism::new(source, language);
+    let morphism = ProgramMorphism::with_path(source, language, path);
     if let Some(ast) = morphism.ast.as_ref().filter(|_| morphism.is_valid()) {
         if metric_worsened(before, after, "ast.max_function_complexity")
             && after
@@ -896,7 +1842,7 @@ fn file_hotspots(
             .get("cpg.dangerous_calls")
             .is_some_and(|v| *v > 0.0)
     {
-        if let Some(finding) = new_security_finding(before_src, source, language, after) {
+        if let Some(finding) = new_security_finding(before_src, source, language, path, after) {
             let (advice, _) = remediation_for(&finding);
             hotspots.insert(
                 0,
@@ -936,8 +1882,9 @@ fn file_hotspots(
 fn dangerous_calls(
     source: &str,
     language: &str,
+    path: &str,
 ) -> Vec<topos_engine::evaluation::security_guidance::SecurityFinding> {
-    let mut morphism = ProgramMorphism::new(source, language);
+    let mut morphism = ProgramMorphism::with_path(source, language, path);
     let Some(cpg) = morphism.build_cpg() else {
         return Vec::new();
     };
@@ -984,9 +1931,10 @@ fn new_security_finding(
     before_src: &str,
     after_src: &str,
     language: &str,
+    path: &str,
     after: &ClassificationResult,
 ) -> Option<topos_engine::evaluation::security_guidance::SecurityFinding> {
-    let before = classify_source(before_src, language, &CharacteristicMorphism);
+    let before = classify_source(before_src, language, path, &CharacteristicMorphism, None);
     let calls_before = before
         .raw_metrics
         .get("cpg.dangerous_calls")
@@ -1004,12 +1952,12 @@ fn new_security_finding(
         return None;
     }
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for finding in dangerous_calls(before_src, language) {
+    for finding in dangerous_calls(before_src, language, path) {
         *seen
             .entry(finding.callee.unwrap_or(finding.snippet))
             .or_insert(0) += 1;
     }
-    dangerous_calls(after_src, language)
+    dangerous_calls(after_src, language, path)
         .into_iter()
         .find(|finding| {
             match seen.get_mut(&finding.callee.clone().unwrap_or(finding.snippet.clone())) {
@@ -1022,398 +1970,21 @@ fn new_security_finding(
         })
 }
 
-fn headline_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
-    if files.is_empty() {
-        let reason = if base == head {
-            "Those two commits are the same. Uncommitted edits need --head :worktree.".to_string()
-        } else {
-            "No supported source files changed.".to_string()
-        };
-        return (Headline::LateralMove, reason);
-    }
-    // Worst measured file wins. A mixed change is not an improvement.
-    let rank = |status: &str| match status {
-        "SUSPICIOUS_NO_STRUCTURAL_CHANGE" => 0,
-        "REGRESSION" => 1,
-        "REGRESSION_SCORE" => 2,
-        "LATERAL_MOVE" => 3,
-        "IMPROVEMENT_SCORE" => 4,
-        "IMPROVEMENT" => 5,
-        _ => 3,
-    };
-    // A new file has no before-medal, so it cannot make an existing file's
-    // lateral move into an improvement, and it cannot hide one either.
-    let existing: Vec<&FileRecap> = files
-        .iter()
-        .filter(|file| file.medal_before.is_some())
-        .collect();
-    let all: Vec<&FileRecap> = files.iter().collect();
-    let judged: &[&FileRecap] = if existing.is_empty() { &all } else { &existing };
-    let worst = judged
-        .iter()
-        .min_by_key(|file| rank(&file.status))
-        .expect("judged is non-empty");
-    let best = judged
-        .iter()
-        .max_by_key(|file| rank(&file.status))
-        .expect("judged is non-empty");
-    let headline = match worst.status.as_str() {
-        "SUSPICIOUS_NO_STRUCTURAL_CHANGE" => Headline::SuspiciousNoStructuralChange,
-        "REGRESSION" => Headline::Regression,
-        "REGRESSION_SCORE" => Headline::RegressionScore,
-        "IMPROVEMENT" if rank(&best.status) == rank(&worst.status) => Headline::Improvement,
-        "IMPROVEMENT_SCORE" if rank(&best.status) == rank(&worst.status) => {
-            Headline::ImprovementScore
-        }
-        _ => Headline::LateralMove,
-    };
-    let reason = match headline {
-        Headline::SuspiciousNoStructuralChange => format!(
-            "{} moved its score while the syntax tree barely changed.",
-            worst.path
-        ),
-        Headline::Regression => format!("{} lost a structural pillar.", worst.path),
-        Headline::RegressionScore => {
-            format!(
-                "{} kept its medal, but a pillar score went down.",
-                worst.path
-            )
-        }
-        Headline::Improvement => format!(
-            "{} cleared a structural pillar it missed before.",
-            worst.path
-        ),
-        Headline::ImprovementScore => {
-            format!("{} kept its medal and improved a pillar score.", worst.path)
-        }
-        Headline::LateralMove => {
-            if existing.is_empty() {
-                "New files arrived; no existing file was compared.".to_string()
-            } else {
-                "Existing files kept their medals.".to_string()
-            }
-        }
-    };
-    (headline, reason)
-}
-
-fn top_hotspots(files: &[FileRecap]) -> Vec<Hotspot> {
-    let mut ranked: Vec<&Hotspot> = files.iter().flat_map(|f| f.hotspots.iter()).collect();
-    ranked.sort_by_key(|spot| hotspot_rank(&spot.metric));
-    ranked.into_iter().take(HOTSPOT_CAP).cloned().collect()
-}
-
-fn hotspot_rank(metric: &str) -> u8 {
-    match metric {
-        "cpg.dangerous_calls" => 0,
-        "ast.max_function_complexity" => 1,
-        "nav.max_function_divergence" => 2,
-        "mdg.fan_out" => 3,
-        _ => 4,
-    }
-}
-
-fn render_recap(recap: &PrRecap, options: RenderOptions) -> Vec<String> {
-    let mut lines = Vec::new();
-    lines.push(paint(
-        format!("◇  Reviewed {}", range_label(recap)),
-        Style::new().bold(),
-        options,
-    ));
-    lines.push(guide_line(context_line(recap), Style::new().dim(), options));
-    lines.push(guide('│', options));
-    lines.push(guide_line(
-        format!(
-            "{:<12}  {:<9}  {:>5}  {:>5}  FILE",
-            "PILLAR", "CHANGE", "FROM", "TO"
-        ),
-        Style::new().bold().dim(),
-        options,
-    ));
-    for (file, pillar) in change_rows(recap) {
-        lines.push(change_row(file, pillar, options));
-    }
-    lines.push(guide('│', options));
-    lines.push(floor_line(recap, options));
-    if let Some((mark, style, note)) = new_files_line(recap) {
-        lines.push(format!(
-            "{}  {} {}",
-            guide(' ', options),
-            paint(mark, style.clone(), options),
-            paint(note, style, options),
-        ));
-    }
-    if let Some(note) = relocated_note(recap) {
-        lines.push(guide_line(note, Style::new().dim(), options));
-    }
-    if let Some(note) = split_note(recap) {
-        lines.push(guide_line(note, Style::new().dim(), options));
-    }
-    if recap
-        .files
-        .iter()
-        .any(|file| file.status == "REGRESSION_SCORE")
-        && recap.headline != Headline::RegressionScore
-    {
-        lines.push(guide_line(
-            "Score-only dips are in --json; they did not move a medal.",
-            Style::new().dim(),
-            options,
-        ));
-    }
-    if !recap.deleted.is_empty() {
-        lines.push(guide_line(
-            format!("Deleted, not scored: {}", recap.deleted.join(", ")),
-            Style::new().dim(),
-            options,
-        ));
-    }
-    if !recap.hotspots.is_empty() {
-        lines.push(String::new());
-        lines.push(guide_line("Where to look", Style::new().bold(), options));
-        for spot in &recap.hotspots {
-            lines.push(guide_line(
-                format!("{}:{}  {}", spot.path, spot.line, spot.detail),
-                Style::new(),
-                options,
-            ));
-            lines.push(guide_line(
-                format!("  {}", spot.advice),
-                Style::new().dim(),
-                options,
-            ));
-        }
-    }
-    lines
-}
-
-fn range_label(recap: &PrRecap) -> String {
-    let n = recap.scope.files_scored;
-    format!(
-        "{n} changed file{}  +{}/-{ }",
-        if n == 1 { "" } else { "s" },
-        recap.scope.lines_added,
-        recap.scope.lines_removed,
-    )
-}
-
-fn short_rev(rev: &str) -> &str {
-    if rev.chars().all(|c| c.is_ascii_hexdigit()) {
-        return &rev[..7.min(rev.len())];
-    }
-    rev
-}
-
-fn context_line(recap: &PrRecap) -> String {
-    let range = if let Some(review) = &recap.review {
-        format!(
-            "#{} {} → {}",
-            review.number, review.head_ref, review.base_ref
-        )
-    } else {
-        format!("{}…{}", short_rev(&recap.base), short_rev(&recap.head))
-    };
-    let coupling = if recap.scope.coupling_available {
-        "COMPOSABLE measured"
-    } else {
-        "COMPOSABLE not measured. topos depgraph generate-pr <number>"
-    };
-    let mut line = format!("{range} · {coupling}");
-    if recap.scope.files_skipped > 0 {
-        line.push_str(&format!(" · {} skipped", recap.scope.files_skipped));
-    }
-    if recap.scope.files_capped > 0 {
-        line.push_str(&format!(
-            " · {} over the file cap",
-            recap.scope.files_capped
-        ));
-    }
-    line
-}
-
-fn change_rows(recap: &PrRecap) -> Vec<(&FileRecap, &str)> {
-    let mut rows = Vec::new();
-    for file in &recap.files {
-        for pillar in Generator::ALL.map(Generator::as_str) {
-            let Some(delta) = file.pillars.get(pillar) else {
-                continue;
-            };
-            let lost = delta.before_passed == Some(true) && delta.after_passed == Some(false);
-            let cleared = delta.before_passed == Some(false) && delta.after_passed == Some(true);
-            let shift = delta
-                .before_score
-                .zip(delta.after_score)
-                .map(|(before, after)| after - before);
-            let moved = shift.is_some_and(|shift| shift.abs() >= 1.0);
-            if lost || cleared || moved {
-                rows.push((file, pillar));
-            }
-        }
-    }
-    rows
-}
-
-fn change_row(file: &FileRecap, pillar: &str, options: RenderOptions) -> String {
-    let delta = &file.pillars[pillar];
-    let lost = delta.before_passed == Some(true) && delta.after_passed == Some(false);
-    let cleared = delta.before_passed == Some(false) && delta.after_passed == Some(true);
-    let shift = delta
-        .before_score
-        .zip(delta.after_score)
-        .map(|(before, after)| after - before)
-        .unwrap_or(0.0);
-    let (mark, label, style) = if lost {
-        ("X", "LOST", Style::new().red().bold())
-    } else if cleared {
-        ("✓", "CLEARED", Style::new().green().bold())
-    } else if shift <= -1.0 {
-        ("!", "DOWN", Style::new().yellow().bold())
-    } else {
-        ("✓", "UP", Style::new().green().bold())
-    };
-    let before = score_cell(delta.before_score);
-    let after = score_cell(delta.after_score);
-    let gate = delta
-        .lost_gate
-        .as_deref()
-        .map(|gate| format!("  {gate}"))
-        .unwrap_or_default();
-    format!(
-        "{}  {:<12}  {}  {before}  {after}  {}{gate}",
-        guide('│', options),
-        pillar.to_ascii_uppercase(),
-        paint(format!("{mark} {label:<7}"), style, options),
-        file.path,
-    )
-}
-
-fn score_cell(score: Option<f64>) -> String {
-    score
-        .map(|value| format!("{value:>4.0}%"))
-        .unwrap_or_else(|| "   —".to_string())
-}
-
-fn floor_line(recap: &PrRecap, options: RenderOptions) -> String {
-    let (mark, style, word) = match recap.headline {
-        Headline::Regression => ("X", Style::new().red().bold(), "REGRESSION"),
-        Headline::RegressionScore => ("!", Style::new().yellow().bold(), "SCORE DOWN"),
-        Headline::SuspiciousNoStructuralChange => ("!", Style::new().yellow().bold(), "SUSPICIOUS"),
-        Headline::Improvement | Headline::ImprovementScore => {
-            ("✓", Style::new().green().bold(), recap.headline.as_str())
-        }
-        Headline::LateralMove => ("·", Style::new().dim(), "LATERAL"),
-    };
-    format!(
-        "{}  {} {} · {}",
-        guide('└', options),
-        paint(mark, style.clone(), options),
-        paint(word, style, options),
-        recap.reason,
-    )
-}
-
-fn new_files_line(recap: &PrRecap) -> Option<(&'static str, Style, String)> {
-    let new_files: Vec<&FileRecap> = recap
-        .files
-        .iter()
-        .filter(|file| file.medal_before.is_none())
-        .collect();
-    if new_files.is_empty() {
-        return None;
-    }
-    let mut medals: BTreeMap<&str, usize> = BTreeMap::new();
-    for file in &new_files {
-        let medal = file
-            .medal_after
-            .as_deref()
-            .and_then(|label| label.split_whitespace().nth(1))
-            .unwrap_or("unscored");
-        *medals.entry(medal).or_insert(0) += 1;
-    }
-    let order = ["SLOP", "BRONZE", "SILVER", "GOLD", "PLATINUM"];
-    let mut counted: Vec<(&str, usize)> = medals.into_iter().collect();
-    counted.sort_by_key(|(medal, _)| order.iter().position(|tier| tier == medal).unwrap_or(9));
-    let counts = counted
-        .iter()
-        .map(|(medal, count)| format!("{count} {medal}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let slop = counted
-        .iter()
-        .any(|(medal, count)| *medal == "SLOP" && *count > 0);
-    let (mark, style) = if slop {
-        ("X", Style::new().red().bold())
-    } else {
-        ("+", Style::new().green().bold())
-    };
-    Some((
-        mark,
-        style,
-        format!(
-            "{} new file{}: {counts}",
-            new_files.len(),
-            if new_files.len() == 1 { "" } else { "s" }
-        ),
-    ))
-}
-
-fn split_note(recap: &PrRecap) -> Option<String> {
-    let simpler: Vec<&str> = recap
-        .files
-        .iter()
-        .filter(|file| file.medal_before.is_some())
-        .filter(|file| {
-            file.pillars.values().any(|delta| {
-                delta
-                    .before_score
-                    .zip(delta.after_score)
-                    .is_some_and(|(before, after)| after - before >= 1.0)
-            })
-        })
-        .map(|file| file.path.as_str())
-        .collect();
-    let arrived: Vec<&str> = recap
-        .files
-        .iter()
-        .filter(|file| file.medal_before.is_none())
-        .map(|file| file.path.as_str())
-        .collect();
-    if simpler.is_empty() || arrived.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "{} got simpler as {} new file{} arrived. This does not trace which function moved.",
-        simpler.join(", "),
-        arrived.len(),
-        if arrived.len() == 1 { "" } else { "s" }
-    ))
-}
-
-fn relocated_note(recap: &PrRecap) -> Option<String> {
-    let paths: Vec<&str> = recap
-        .files
-        .iter()
-        .filter(|file| file.complexity_relocated_within_file)
-        .map(|file| file.path.as_str())
-        .collect();
-    if paths.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "Complexity stayed inside {} rather than leaving it.",
-        paths.join(", ")
-    ))
-}
-
-fn print_recap(recap: &PrRecap) {
-    for line in render_recap(recap, RenderOptions::stdout()) {
-        println!("{line}");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ALPHA: &str = "def alpha(x):\n    if x:\n        return 1\n    return 0\n";
+    const BETA: &str = "def beta(x):\n    if x:\n        return 2\n    return 0\n";
+    const GAMMA: &str = "def gamma(x):\n    if x:\n        return 3\n    return 0\n";
+
+    fn no_coupling() -> CouplingStatus {
+        unmeasured_coupling(None, false)
+    }
+
+    fn recap(repo: &Path, base: &str, head: &str, max_files: usize) -> PrRecap {
+        build_recap(repo, base, head, max_files, None, no_coupling()).unwrap()
+    }
 
     fn write_repo(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1421,6 +1992,13 @@ mod tests {
         git(&repo, &["init", "-q"]).expect("init");
         git(&repo, &["config", "user.email", "recap@example.com"]).unwrap();
         git(&repo, &["config", "user.name", "Recap"]).unwrap();
+        write_files(&repo, files);
+        git(&repo, &["add", "."]).unwrap();
+        git(&repo, &["commit", "-qm", "base"]).unwrap();
+        (dir, repo)
+    }
+
+    fn write_files(repo: &Path, files: &[(&str, &str)]) {
         for (path, body) in files {
             let full = repo.join(path);
             if let Some(parent) = full.parent() {
@@ -1428,9 +2006,6 @@ mod tests {
             }
             std::fs::write(&full, body).unwrap();
         }
-        git(&repo, &["add", "."]).unwrap();
-        git(&repo, &["commit", "-qm", "base"]).unwrap();
-        (dir, repo)
     }
 
     fn commit_all(repo: &Path, message: &str) {
@@ -1441,39 +2016,34 @@ mod tests {
     #[test]
     fn empty_diff_is_a_lateral_move() {
         let (_keep, repo) = write_repo(&[("src/a.py", "def ready():\n    return 1\n")]);
-        let recap = build_recap(&repo, "HEAD", "HEAD", 40).unwrap();
+        let recap = recap(&repo, "HEAD", "HEAD", 40);
         assert_eq!(recap.headline, Headline::LateralMove);
         assert!(recap.reason.contains("same"));
         assert!(recap.files.is_empty());
         assert_eq!(recap.check, "pass");
+        assert!(recap.project.is_none());
     }
 
     #[test]
     fn added_source_is_scored_and_markdown_is_skipped() {
         let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
-        std::fs::create_dir_all(repo.join("src")).unwrap();
-        std::fs::write(repo.join("src/new.py"), "def ready():\n    return 1\n").unwrap();
-        std::fs::write(repo.join("notes.md"), "not code\n").unwrap();
+        write_files(
+            &repo,
+            &[
+                ("src/new.py", "def ready():\n    return 1\n"),
+                ("notes.md", "not code\n"),
+            ],
+        );
         commit_all(&repo, "add");
-        let recap = build_recap(&repo, "HEAD~1", "HEAD", 40).unwrap();
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
         assert_eq!(recap.files.len(), 1);
         assert_eq!(recap.files[0].path, "src/new.py");
+        assert_eq!(recap.files[0].change, FileChange::Added);
+        assert!(recap.files[0].medal_before.is_none());
+        assert!(recap.files[0].medal_after.is_some());
+        assert_eq!(recap.scope.files_new, 1);
         assert!(recap.skipped.iter().any(|s| s.path == "notes.md"));
-        assert!(!recap.scope.coupling_available);
-        let card = render_recap(
-            &recap,
-            RenderOptions {
-                styled: false,
-                width: 100,
-            },
-        )
-        .join("\n");
-        assert!(card.contains("◇  Reviewed 1 changed file  +"));
-        assert!(card.contains("1 new file"));
-        assert!(!card.contains("Files that moved"));
-        assert!(card.contains("COMPOSABLE not measured"));
-        assert!(!card.contains("notes.md"));
-        assert!(!card.contains("X  REGRESSION"));
+        assert!(!recap.scope.coupling.measured);
     }
 
     #[test]
@@ -1481,7 +2051,7 @@ mod tests {
         let (_keep, repo) = write_repo(&[("src/gone.py", "def ready():\n    return 1\n")]);
         std::fs::remove_file(repo.join("src/gone.py")).unwrap();
         commit_all(&repo, "delete");
-        let recap = build_recap(&repo, "HEAD~1", "HEAD", 40).unwrap();
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
         assert!(recap.files.is_empty());
         assert_eq!(recap.deleted, vec!["src/gone.py".to_string()]);
     }
@@ -1489,63 +2059,65 @@ mod tests {
     #[test]
     fn a_dangerous_call_introduced_against_base_is_a_regression() {
         let (_keep, repo) = write_repo(&[("src/run.py", "def ready():\n    return 1\n")]);
-        std::fs::write(
-            repo.join("src/run.py"),
-            "import os\n\ndef ready(cmd):\n    os.system(cmd)\n",
-        )
-        .unwrap();
+        write_files(
+            &repo,
+            &[(
+                "src/run.py",
+                "import os\n\ndef ready(cmd):\n    os.system(cmd)\n",
+            )],
+        );
         commit_all(&repo, "shell");
-        let recap = build_recap(&repo, "HEAD~1", "HEAD", 40).unwrap();
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
         assert_eq!(recap.headline, Headline::Regression);
         assert_eq!(recap.check, "fail");
         assert!(recap
             .hotspots
             .iter()
             .any(|h| h.metric == "cpg.dangerous_calls"));
-        let card = render_recap(
-            &recap,
-            RenderOptions {
-                styled: false,
-                width: 100,
-            },
-        )
-        .join("\n");
-        assert!(card.contains("SECURE") && card.contains("X LOST"));
-        assert!(card.contains("src/run.py"));
-        assert!(card.contains("X LOST") || card.contains("! DOWN"));
-        assert!(!card.contains("+ GAIN"));
-        assert!(!card.contains("· HELD"));
-        assert!(card.contains("lost a structural pillar"));
-        assert!(card.contains("os.system") || card.contains("dangerous call"));
-        assert!(!card.contains("LATERAL_MOVE"));
-        assert!(!card.contains("held  "));
-        assert!(
-            recap.files[0]
-                .pillars
-                .get("secure")
-                .and_then(|p| p.after_passed)
-                == Some(false)
-        );
+        assert!(recap
+            .hotspots
+            .iter()
+            .any(|h| h.detail.contains("os.system") || h.detail.contains("dangerous call")));
+        assert_eq!(recap.files[0].pillars["secure"].after_passed, Some(false));
+        assert_eq!(recap.files[0].status, Headline::Regression);
+        assert!(recap.reason.contains("lost a structural pillar"));
+        let project = recap.project.expect("a scored file rolls up");
+        assert!(project.regression);
     }
 
     #[test]
     fn cap_skips_the_overflow_instead_of_hiding_it() {
         let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
-        std::fs::create_dir_all(repo.join("src")).unwrap();
         for i in 0..3 {
-            std::fs::write(repo.join(format!("src/f{i}.py")), "x = 1\n").unwrap();
+            write_files(&repo, &[(&format!("src/f{i}.py"), "x = 1\n")]);
         }
         commit_all(&repo, "three");
-        let recap = build_recap(&repo, "HEAD~1", "HEAD", 1).unwrap();
+        let recap = recap(&repo, "HEAD~1", "HEAD", 1);
         assert_eq!(recap.files.len(), 1);
         assert_eq!(recap.scope.files_capped, 2);
         assert_eq!(recap.skipped.len(), 2);
     }
 
     #[test]
+    fn renamed_file_is_scored_against_its_old_path() {
+        let (_keep, repo) = write_repo(&[(
+            "src/a.py",
+            "def ready():\n    if True:\n        return 1\n    return 0\n",
+        )]);
+        git(&repo, &["mv", "src/a.py", "src/b.py"]).unwrap();
+        commit_all(&repo, "rename");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        assert_eq!(recap.files.len(), 1);
+        assert_eq!(recap.files[0].path, "src/b.py");
+        assert_eq!(recap.files[0].change, FileChange::Renamed);
+        assert!(recap.files[0].medal_before.is_some());
+    }
+
+    #[test]
     fn refuses_a_revision_that_looks_like_an_option() {
         let (_keep, repo) = write_repo(&[("src/a.py", "x = 1\n")]);
-        let err = build_recap(&repo, "--output=/tmp/x", "HEAD", 40).unwrap_err();
+        let err =
+            build_recap(&repo, "--output=/tmp/x", "HEAD", 40, None, no_coupling()).unwrap_err();
         assert!(err.contains("refusing"));
     }
 
@@ -1555,5 +2127,228 @@ mod tests {
         assert!(message.contains("gh is not installed"));
         assert!(message.contains("brew install gh"));
         assert!(message.contains("--base <base-sha> --head <head-sha>"));
+    }
+
+    #[test]
+    fn no_pr_means_coupling_not_measured() {
+        let (_keep, repo) = write_repo(&[("src/a.py", "def ready():\n    return 1\n")]);
+        write_files(&repo, &[("src/a.py", "def ready():\n    return 2\n")]);
+        commit_all(&repo, "edit");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        assert!(!recap.scope.coupling.measured);
+        assert!(recap.scope.coupling.note.contains("pull request"));
+    }
+
+    #[test]
+    fn format_falls_back_to_compact_off_a_terminal() {
+        assert_eq!(resolve_format(false, None, true), RecapFormat::Card);
+        assert_eq!(resolve_format(false, None, false), RecapFormat::Compact);
+        assert_eq!(resolve_format(true, None, true), RecapFormat::Compact);
+        assert_eq!(
+            resolve_format(false, Some(RecapFormat::Github), false),
+            RecapFormat::Github
+        );
+    }
+
+    /// A split parent's fan-out rises only because it imports its own
+    /// children: COMPOSABLE must be set aside for the verdict too, not
+    /// only for the score deltas.
+    #[test]
+    fn a_routed_fan_out_does_not_read_as_a_regression() {
+        fn side(composable: bool) -> ClassificationResult {
+            let mut result = ClassificationResult {
+                is_parseable: true,
+                ..Default::default()
+            };
+            for generator in Generator::ALL {
+                let key = generator.as_str().to_string();
+                let passing = generator.as_str() != "composable" || composable;
+                result.dimensions.insert(
+                    key.clone(),
+                    if passing {
+                        generator.value()
+                    } else {
+                        EvaluationValue::Slop
+                    },
+                );
+                result.scores.insert(key, if passing { 1.0 } else { 0.0 });
+            }
+            result.raw_metrics.insert("mdg.fan_out".to_string(), 1.0);
+            result.raw_metrics.insert("cfg.cyclomatic".to_string(), 1.0);
+            result
+                .raw_metrics
+                .insert("cpg.dangerous_calls".to_string(), 0.0);
+            result
+                .raw_metrics
+                .insert("nav.max_function_divergence".to_string(), 0.0);
+            result
+        }
+        let (before, after) = (side(true), side(false));
+        let lattice = Omega::default();
+        let status = |drop_composable: bool| {
+            file_status(
+                &before,
+                &after,
+                measured_verdict_excluding(&before, drop_composable),
+                measured_verdict_excluding(&after, drop_composable),
+                false,
+                &score_deltas(&before, &after, drop_composable),
+                &lattice,
+                false,
+            )
+        };
+        assert_eq!(status(false), Headline::Regression);
+        assert_ne!(status(true), Headline::Regression);
+    }
+
+    #[test]
+    fn tsx_files_are_scored() {
+        let base = "export const Widget = ({ a }: { a: number }) => { if (a > 1) { return <b/> } return <i/> }\n";
+        let head = "export const Widget = ({ a }: { a: number }) => { if (a > 1) { return <b/> } if (a > 2) { return <u/> } return <i/> }\n";
+        let (_keep, repo) = write_repo(&[("Widget.tsx", base)]);
+        write_files(&repo, &[("Widget.tsx", head)]);
+        commit_all(&repo, "branch");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        let file = &recap.files[0];
+        assert_eq!(file.path, "Widget.tsx");
+        assert!(file.medal_before.is_some(), "base .tsx must parse");
+        assert!(file.medal_after.is_some(), "head .tsx must parse");
+        assert!(file.pillars["simple"].measured);
+        assert!(file.structural_distance.is_some());
+    }
+
+    /// A brand-new module the parent merely starts importing is not an
+    /// extraction: RefDiff's rule needs moved code, not just a call edge.
+    #[test]
+    fn a_new_module_the_parent_merely_uses_is_not_a_split() {
+        let (_keep, repo) = write_repo(&[(
+            "src/app.py",
+            "def run(x):\n    if x:\n        return 1\n    return 0\n",
+        )]);
+        write_files(
+            &repo,
+            &[
+                (
+                    "src/app.py",
+                    "from util import helper\n\ndef run(x):\n    if x:\n        return helper(x)\n    return 0\n",
+                ),
+                (
+                    "src/util.py",
+                    "def helper(x):\n    if x > 1:\n        return 2\n    return 3\n",
+                ),
+            ],
+        );
+        commit_all(&repo, "use a new module");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+
+        assert!(
+            recap.clusters.is_empty(),
+            "an import edge alone is not a split: {:?}",
+            recap.clusters
+        );
+        for file in &recap.files {
+            assert!(
+                file.cluster.is_none(),
+                "{} must not be clustered",
+                file.path
+            );
+        }
+        let child = recap
+            .files
+            .iter()
+            .find(|f| f.path == "src/util.py")
+            .expect("new file scored");
+        assert_eq!(child.change, FileChange::Added);
+    }
+
+    /// Only a *nested* callable moved into the child — the top-level
+    /// wrapper there is new. Nested moves are still moved code, so the
+    /// child stays in the cluster and must not render with `moved_in 0`.
+    #[test]
+    fn a_child_kept_alive_by_moved_callbacks() {
+        let (_keep, repo) = write_repo(&[(
+            "src/app.py",
+            "def run(x):\n    def check(y):\n        if y > 1:\n            return 2\n        return 3\n    return check(x)\n",
+        )]);
+        write_files(
+            &repo,
+            &[
+                (
+                    "src/app.py",
+                    "from worker import work\n\ndef run(x):\n    return work(x)\n",
+                ),
+                (
+                    "src/worker.py",
+                    "def work(x):\n    def check(y):\n        if y > 1:\n            return 2\n        return 3\n    return check(x)\n",
+                ),
+            ],
+        );
+        commit_all(&repo, "extract");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+
+        assert_eq!(recap.clusters.len(), 1, "the nested move is evidence");
+        let child = &recap.clusters[0].children[0];
+        assert_eq!(child.path, "src/worker.py");
+        assert_eq!(child.moved_in, 1, "the moved closure counts");
+    }
+
+    #[test]
+    fn split_is_clustered_without_stores() {
+        let big = format!("{ALPHA}\n\n{BETA}\n\n{GAMMA}");
+        let (_keep, repo) = write_repo(&[("src/big.py", big.as_str())]);
+        write_files(
+            &repo,
+            &[
+                (
+                    "src/big.py",
+                    &format!("from helpers import beta, gamma\n\n\n{ALPHA}"),
+                ),
+                ("src/helpers.py", &format!("{BETA}\n\n{GAMMA}")),
+            ],
+        );
+        commit_all(&repo, "split");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+
+        assert_eq!(recap.clusters.len(), 1, "one cluster");
+        let cluster = &recap.clusters[0];
+        assert_eq!(cluster.parent, "src/big.py");
+        assert_eq!(cluster.children.len(), 1);
+        assert_eq!(cluster.children[0].path, "src/helpers.py");
+        assert!(cluster.children[0].reach.is_none(), "no stores, no reach");
+        let ledger = cluster.ledger.as_ref().expect("both sides parse");
+        assert_eq!(ledger.totals.moved_identical, 2);
+        assert_eq!(cluster.children[0].moved_in, 2);
+        assert_eq!(
+            cluster.decisions_before, cluster.decisions_after,
+            "a pure move adds no decisions"
+        );
+        assert_eq!(cluster.mark, ClusterMark::Ok);
+
+        let parent = recap
+            .files
+            .iter()
+            .find(|f| f.path == "src/big.py")
+            .expect("parent scored");
+        assert_eq!(
+            parent.cluster.as_ref().map(|c| c.role),
+            Some(ClusterRole::Parent)
+        );
+        let child = recap
+            .files
+            .iter()
+            .find(|f| f.path == "src/helpers.py")
+            .expect("child scored");
+        assert_eq!(
+            child.cluster.as_ref().map(|c| c.role),
+            Some(ClusterRole::Child)
+        );
+        assert_eq!(
+            child.cluster.as_ref().map(|c| c.parent.as_str()),
+            Some("src/big.py")
+        );
+
+        let json = serde_json::to_value(&recap).expect("recap serializes");
+        assert_eq!(json["clusters"][0]["parent"], "src/big.py");
+        assert_eq!(json["schema"], SCHEMA);
     }
 }

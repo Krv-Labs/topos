@@ -11,6 +11,8 @@ use clap::{Args, Subcommand};
 
 use generate::{run_generate, GenerateArgs};
 
+pub(crate) use generate::{git_root, gitnexus_available, prepare_pr_stores, PrStores};
+
 #[derive(Args)]
 pub struct DepgraphArgs {
     #[command(subcommand)]

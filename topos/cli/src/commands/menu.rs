@@ -1,11 +1,12 @@
-//! Interactive multi-select TTY menu for `topos install` / `topos
-//! uninstall`, styled after the kos wiki Clack-style multi-select:
-//! colored radio glyphs, cyan cursor, and hint styling — not whole-row
-//! paint.
+//! Interactive TTY menus: the multi-select for `topos install` / `topos
+//! uninstall`, their destructive-action confirm, and the single-select
+//! steps of `topos config`. Styled after the kos wiki Clack-style
+//! multi-select: colored radio glyphs, cyan cursor, and hint styling — not
+//! whole-row paint.
 
 use console::{Key, Style, Term};
 
-use crate::commands::render::{paint, RenderOptions};
+use super::render::{paint, RenderOptions};
 
 /// How the trailing hint should be painted. Plain text stays in
 /// [`MenuOption::hint`]; the style decides the glyph + color wrapper.
@@ -147,6 +148,91 @@ pub(crate) fn run_confirm(title: &str, plan: &[String]) -> Result<bool, String> 
     result
 }
 
+/// One choice in a [`SelectStep`].
+pub(crate) struct SelectOption {
+    pub(crate) label: &'static str,
+    pub(crate) hint: String,
+    /// The value the project uses today, marked `current`.
+    pub(crate) current: bool,
+}
+
+/// One single-select screen: a cyan title, a dim key hint, then choices.
+pub(crate) struct SelectStep {
+    pub(crate) title: &'static str,
+    pub(crate) keys: &'static str,
+    pub(crate) options: Vec<SelectOption>,
+    pub(crate) initial: usize,
+}
+
+/// Run one single-select step below `header` (the frame title and any
+/// finished steps, redrawn on every keypress). Returns the chosen index, or
+/// `None` if the user cancelled. Clears everything it drew before
+/// returning, so the caller can redraw the header with this step folded in.
+pub(crate) fn run_select(header: &[String], step: &SelectStep) -> Result<Option<usize>, String> {
+    let term = Term::stderr();
+    let mut cursor = step.initial.min(step.options.len().saturating_sub(1));
+    let mut rendered = 0usize;
+    term.hide_cursor().map_err(|e| e.to_string())?;
+    let result = (|| -> Result<Option<usize>, String> {
+        loop {
+            if rendered > 0 {
+                term.clear_last_lines(rendered).map_err(|e| e.to_string())?;
+            }
+            let lines = render_select(header, step, cursor, RenderOptions::stderr());
+            rendered = lines.len();
+            for line in &lines {
+                term.write_line(line).map_err(|e| e.to_string())?;
+            }
+            match interpret_confirm_key(term.read_key().map_err(|e| e.to_string())?) {
+                ConfirmAction::Move(delta) => {
+                    cursor = move_cursor(cursor, delta, step.options.len())
+                }
+                ConfirmAction::Accept => return Ok(Some(cursor)),
+                ConfirmAction::No => return Ok(None),
+                ConfirmAction::Yes | ConfirmAction::Ignore => {}
+            }
+        }
+    })();
+    term.clear_last_lines(rendered).ok();
+    term.show_cursor().ok();
+    result
+}
+
+pub(crate) fn render_select(
+    header: &[String],
+    step: &SelectStep,
+    cursor: usize,
+    opts: RenderOptions,
+) -> Vec<String> {
+    let mut lines = header.to_vec();
+    lines.push(format!(
+        "│  {}",
+        paint(step.title, Style::new().cyan().bold(), opts)
+    ));
+    lines.push(format!("│  {}", paint(step.keys, Style::new().dim(), opts)));
+    lines.push("│".to_string());
+    let width = step
+        .options
+        .iter()
+        .map(|o| o.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    for (idx, option) in step.options.iter().enumerate() {
+        let label = format!("{:<width$}", option.label);
+        let mut hint = option.hint.clone();
+        if option.current {
+            hint.push_str(" · current");
+        }
+        lines.push(format!(
+            "│ {}   {}",
+            choice_row(&label, idx == cursor, opts),
+            paint(hint, Style::new().dim(), opts)
+        ));
+    }
+    lines.push("└".to_string());
+    lines
+}
+
 enum ConfirmAction {
     Move(isize),
     /// Enter — take whatever the cursor is on.
@@ -189,10 +275,7 @@ fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptio
     }
     lines.push("│".to_string());
     for (idx, label) in choices.iter().enumerate() {
-        lines.push(format!(
-            "│ {}",
-            render_confirm_row(label, idx == cursor, opts)
-        ));
+        lines.push(format!("│ {}", choice_row(label, idx == cursor, opts)));
     }
     lines.push("│".to_string());
     lines.push(format!(
@@ -203,7 +286,8 @@ fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptio
     lines
 }
 
-fn render_confirm_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
+/// Cursor, radio and label of one single-select row.
+fn choice_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
     let pointer = if is_cursor {
         paint("❯", Style::new().cyan(), opts)
     } else {
@@ -497,5 +581,42 @@ mod tests {
             selected.contains("36m") || selected.contains("36;"),
             "cursor should be cyan: {selected:?}"
         );
+    }
+
+    #[test]
+    fn select_marks_cursor_and_current_below_the_header() {
+        let step = SelectStep {
+            title: "PR gate",
+            keys: "↑↓ move · enter save · esc cancel",
+            options: vec![
+                SelectOption {
+                    label: "Recommended",
+                    hint: "the default".into(),
+                    current: true,
+                },
+                SelectOption {
+                    label: "Strict",
+                    hint: "warnings fail too".into(),
+                    current: false,
+                },
+            ],
+            initial: 0,
+        };
+        let header = vec!["┌  Topos project settings".to_string(), "│".to_string()];
+        let lines = render_select(&header, &step, 1, opts());
+        assert_eq!(lines[0], "┌  Topos project settings");
+        assert_eq!(lines[2], "│  PR gate");
+        let recommended = lines.iter().find(|l| l.contains("Recommended")).unwrap();
+        let strict = lines.iter().find(|l| l.contains("Strict")).unwrap();
+        assert!(recommended.contains('○') && recommended.contains("the default · current"));
+        assert!(strict.contains('❯') && strict.contains('●'), "{strict}");
+        // Labels are padded so the hints line up. Compare columns, not byte
+        // offsets: the `❯` cursor is wider in UTF-8 than the blank it replaces.
+        let column = |line: &str, needle: &str| line[..line.find(needle).unwrap()].chars().count();
+        assert_eq!(
+            column(recommended, "the default"),
+            column(strict, "warnings fail too")
+        );
+        assert_eq!(lines.last().unwrap(), "└");
     }
 }

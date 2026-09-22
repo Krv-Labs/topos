@@ -119,7 +119,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos evaluate <path> -r` | Show the cumulative project quality rollup |
 | `topos evaluate <path> -r --failures <pillar>` | List the files whose gates fail one pillar |
 | `topos evaluate <path> -r --info` | Select a weak file and show ranked line-level refactor targets |
-| `topos config show \| set --priority <ranking>` | View or persist project priority and preference settings |
+| `topos config show \| set --priority <ranking> --pr-preset <preset>` | View or persist project priority, preference, and PR gate settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
 | `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |

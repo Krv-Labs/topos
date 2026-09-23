@@ -30,7 +30,9 @@ use super::model::{Cluster, FileRecap, PrRecap};
 use super::render::{
     change_text, changed_rows, facts, gate_line, headline, kept_count, medal_cell, severity_mark,
 };
-use super::view::{basename, worst_span, ClusterView, Item, RecapView};
+use super::view::{
+    basename, idle_waiver_text, waived_text, worst_span, ClusterView, Item, RecapView,
+};
 
 pub(super) const STICKY_MARKER: &str = "<!-- topos-pr-recap:v2 -->";
 
@@ -65,6 +67,7 @@ pub(super) fn render_github(recap: &PrRecap) -> String {
     head.push_str(&finding_list("Blocking", &blocking));
     head.push_str(&finding_list("Needs attention", &attention));
     head.push_str(&notes(&view.note_items()));
+    head.push_str(&waived_section(&view));
     head.push_str(&changed_table(recap));
     if !view.clusters.is_empty() {
         head.push_str(&cluster_table(&view));
@@ -77,7 +80,7 @@ pub(super) fn render_github(recap: &PrRecap) -> String {
         tail.push_str(&graph);
         tail.push('\n');
     }
-    let _ = writeln!(tail, "{}", footer(recap));
+    let _ = writeln!(tail, "{}", footer(&view));
 
     assemble(&head, &recap.clusters, details, &tail)
 }
@@ -289,6 +292,40 @@ fn item_line(item: &Item<'_>) -> String {
         Some(place) => format!("{place} — {facts}"),
         None => facts,
     }
+}
+
+/// **Waived**: each finding a `[[pr_recap.waive]]` entry covers, with the
+/// reason, then the waivers that waived nothing. None of it changes the
+/// verdict, but a reviewer should see what was set aside.
+fn waived_section(view: &RecapView<'_>) -> String {
+    let idle = view.idle_waivers();
+    if view.waived.is_empty() && idle.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("**Waived**\n\n");
+    for item in view.waived.iter().take(MAX_NOTES) {
+        let text = escape(&waived_text(item));
+        match location(item.lead()) {
+            Some(place) => {
+                let _ = writeln!(out, "- {place} · {text}");
+            }
+            None => {
+                let _ = writeln!(out, "- {text}");
+            }
+        }
+    }
+    if view.waived.len() > MAX_NOTES {
+        let _ = writeln!(
+            out,
+            "- +{} more — see `--json`.",
+            view.waived.len() - MAX_NOTES
+        );
+    }
+    for waiver in idle {
+        let _ = writeln!(out, "- {}", escape(&idle_waiver_text(waiver)));
+    }
+    out.push('\n');
+    out
 }
 
 fn location(finding: &Finding) -> Option<String> {
@@ -553,16 +590,21 @@ fn dependency_graph(view: &RecapView<'_>) -> Option<String> {
 
 // ------------------------------------------------------------------ footer
 
-/// The gate settings that produced the verdict, then how to reproduce
-/// the document.
-fn footer(recap: &PrRecap) -> String {
+/// The gate settings that produced the verdict and what the waivers did,
+/// then how to reproduce the document.
+fn footer(view: &RecapView<'_>) -> String {
+    let recap = view.recap;
+    let gate = match view.waiver_note() {
+        Some(note) => format!("{} · {note}", gate_line(recap)),
+        None => gate_line(recap),
+    };
     let subject = recap.review.as_ref().map_or_else(
         || "--base &lt;rev&gt;".to_string(),
         |review| review.number.to_string(),
     );
     format!(
         "<sub>{}<br>Deterministic, no LLM. {} <code>topos pr-recap {subject} --json</code> reproduces this document.</sub>",
-        gate_line(recap),
+        gate,
         recap.non_claim
     )
 }
@@ -914,5 +956,69 @@ mod tests {
             let body = render_github(&recap);
             assert!(!body.contains('\u{1b}'), "{body}");
         }
+    }
+
+    /// One site that lost two pillars under one waiver is one waived line,
+    /// naming both pillars in the recap's order (SECURE first), and counts
+    /// once everywhere.
+    #[test]
+    fn a_site_waived_for_two_pillars_is_one_line() {
+        use crate::commands::pr_recap::gates::Waived;
+        use crate::commands::pr_recap::render::{render_card, Detail};
+        use crate::commands::render::RenderOptions;
+
+        let mut recap = fixture_losses();
+        let lost: Vec<usize> = (0..recap.findings.len())
+            .filter(|&i| recap.findings[i].gate == GateId::PillarLost)
+            .collect();
+        assert!(lost.len() >= 2, "{:#?}", recap.findings);
+        let (path, line, function) = {
+            let lead = &recap.findings[lost[0]];
+            (lead.path.clone(), lead.line, lead.function.clone())
+        };
+        for &i in &lost {
+            let finding = &mut recap.findings[i];
+            (finding.path, finding.line, finding.function) = (path.clone(), line, function.clone());
+            finding.waived = Some(Waived {
+                reason: "tracked in #412".to_string(),
+                source: ".topos.toml".to_string(),
+                expires: None,
+            });
+        }
+        recap
+            .findings
+            .sort_by_key(|finding| finding.waived.is_some());
+
+        let comment = render_github(&recap);
+        let waived: Vec<&str> = comment
+            .lines()
+            .filter(|line| line.contains("tracked in #412"))
+            .collect();
+        assert_eq!(waived.len(), 1, "{comment}");
+        assert!(
+            waived[0].contains("pillar_lost SECURE, SIMPLE — tracked in #412"),
+            "{comment}"
+        );
+        assert!(comment.contains(" · 1 waived"), "{comment}");
+
+        let options = RenderOptions {
+            styled: false,
+            width: 160,
+        };
+        let verbose = Detail {
+            verbose: true,
+            info: false,
+        };
+        let card = render_card(&recap, verbose, options);
+        let waived: Vec<&String> = card
+            .iter()
+            .filter(|line| line.contains("tracked in #412"))
+            .collect();
+        assert_eq!(waived.len(), 1, "{card:#?}");
+        assert!(
+            waived[0].contains("pillar_lost SECURE, SIMPLE"),
+            "{card:#?}"
+        );
+        assert!(card.contains(&"│  1 waived".to_string()), "{card:#?}");
     }
 }

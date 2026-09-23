@@ -435,7 +435,7 @@ fn cluster_mark(cluster: &Cluster, kids: &[&Scored]) -> (ClusterMark, Vec<String
 }
 
 /// Dangerous calls plus taint flows: every metric that gates SECURE.
-fn secure_findings(result: &ClassificationResult) -> usize {
+pub(super) fn secure_findings(result: &ClassificationResult) -> usize {
     GATE_SPECS
         .iter()
         .filter(|spec| spec.pillar == "secure" && spec.gates_achieved)

@@ -60,16 +60,26 @@ pub(in crate::commands::pr_recap) fn headline(recap: &PrRecap, items: &[Item<'_>
     if !medal_lost && !recap.files.iter().any(lost_a_pillar) {
         return format!("no pillar or medal lost{}", dips_phrase(recap, &paths));
     }
-    recap.findings.first().map_or_else(
-        || sentence(&recap.reason),
-        |finding| finding_phrase(recap, finding, &paths),
-    )
+    // Waived findings sort last: one leads only when nothing else is left,
+    // and then it says so.
+    match (
+        recap.findings.iter().find(|finding| finding.counts()),
+        recap.findings.first(),
+    ) {
+        (Some(finding), _) => finding_phrase(recap, finding, &paths),
+        (None, Some(waived)) => format!("{}, waived", finding_phrase(recap, waived, &paths)),
+        (None, None) => sentence(&recap.reason),
+    }
 }
 
 /// `; 5 small dips (largest graphs/mod.rs SIMPLE −7.5)`, counting only
 /// dips of a point or more.
 fn dips_phrase(recap: &PrRecap, paths: &[&str]) -> String {
-    let dips: Vec<&Finding> = recap.findings.iter().filter(|f| visible_dip(f)).collect();
+    let dips: Vec<&Finding> = recap
+        .findings
+        .iter()
+        .filter(|f| visible_dip(f) && f.counts())
+        .collect();
     let Some(largest) = dips.iter().max_by(|a, b| drop_of(a).total_cmp(&drop_of(b))) else {
         return String::new();
     };
@@ -265,6 +275,7 @@ fn fact(finding: &Finding) -> String {
     match finding.gate {
         GateId::PillarLost
         | GateId::PillarInherited
+        | GateId::MovedPillar
         | GateId::NewFileInsecure
         | GateId::NewFilePillar => match (finding.after, finding.limit) {
             (Some(after), Some(limit)) => format!(
@@ -278,6 +289,7 @@ fn fact(finding: &Finding) -> String {
                 match finding.gate {
                     GateId::PillarLost => "lost",
                     GateId::PillarInherited => "worse",
+                    GateId::MovedPillar => "moved",
                     _ => "fails",
                 }
             ),

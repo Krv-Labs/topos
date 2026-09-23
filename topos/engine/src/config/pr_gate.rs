@@ -10,8 +10,14 @@
 //! change. Parsing is best-effort like the rest of `.topos.toml`: a bad key
 //! is dropped and recorded in [`PrGateConfig::warnings`] instead of
 //! discarding the whole table.
+//!
+//! `[[pr_recap.waive]]` entries ([`Waiver`]) are parsed here too, but they
+//! are not settings: no preset owns them, they never make the gate
+//! `custom`, and `topos config` leaves them where they are.
 
 use std::fmt;
+
+use crate::evaluation::waivers::{parse_waivers, Waiver};
 
 /// How much a gate's finding matters. Ordered, so the worst finding wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,6 +55,7 @@ impl Severity {
 pub enum GateId {
     PillarLost,
     PillarInherited,
+    MovedPillar,
     ScoreDrop,
     NewFileInsecure,
     NewFileSlop,
@@ -61,7 +68,7 @@ pub enum GateId {
     Incomplete,
 }
 
-pub const GATE_COUNT: usize = 12;
+pub const GATE_COUNT: usize = 13;
 
 struct GateSpec {
     id: GateId,
@@ -86,6 +93,12 @@ const GATES: [GateSpec; GATE_COUNT] = [
         key: "pillar_inherited",
         describe: "a pillar that already failed got worse",
         defaults: [Off, Info, Warn],
+    },
+    GateSpec {
+        id: GateId::MovedPillar,
+        key: "moved_pillar",
+        describe: "pillar loss or score drop caused by moved code",
+        defaults: [Info, Info, Warn],
     },
     GateSpec {
         id: GateId::ScoreDrop,
@@ -307,6 +320,9 @@ pub struct PrGateConfig {
     pub fail_on: FailOn,
     /// Exactly how many "where to look" items the report lists.
     pub max_hotspots: u32,
+    /// `[[pr_recap.waive]]`, in file order. Not a setting: see the module
+    /// docs.
+    pub waivers: Vec<Waiver>,
     /// Keys dropped while parsing, so a typo is never silent.
     pub warnings: Vec<String>,
 }
@@ -380,6 +396,7 @@ impl PrGateConfig {
             score_drop: preset.score_drop(),
             fail_on: preset.fail_on(),
             max_hotspots: DEFAULT_MAX_HOTSPOTS,
+            waivers: Vec::new(),
             warnings: Vec::new(),
         }
     }
@@ -554,6 +571,7 @@ impl PrGateConfig {
                 },
                 "gates" => config.apply_gates(value, &mut warnings),
                 "score_drop" => config.apply_score_drop(value, &mut warnings),
+                "waive" => config.waivers = parse_waivers(value, &mut warnings),
                 other => warnings.push(format!("pr_recap.{other}: unknown setting, ignored")),
             }
         }
@@ -661,6 +679,51 @@ mod tests {
             assert_eq!(config.severity(GateId::PillarLost), Severity::Block);
             assert_eq!(config.severity(GateId::NewFileInsecure), Severity::Block);
         }
+    }
+
+    #[test]
+    fn moved_code_only_warns_under_strict() {
+        let row = GateId::parse("moved_pillar").expect("moved_pillar is a gate");
+        assert_eq!(row, GateId::MovedPillar);
+        assert!(row.describe().contains("moved code"), "{}", row.describe());
+        let severity = |preset| PrGateConfig::for_preset(preset).severity(GateId::MovedPillar);
+        assert_eq!(severity(PrGatePreset::Relaxed), Severity::Info);
+        assert_eq!(severity(PrGatePreset::Recommended), Severity::Info);
+        assert_eq!(severity(PrGatePreset::Custom), Severity::Info);
+        assert_eq!(severity(PrGatePreset::Strict), Severity::Warn);
+        assert_eq!(GateId::ALL.len(), 13);
+    }
+
+    const WAIVERS: &str = "[pr_recap]\npreset = \"strict\"\n\n[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/legacy/**\"\nreason = \"being rewritten in #412\"\nexpires = \"2026-12-31\"\n\n[[pr_recap.waive]]\ngate = \"cosmetic\"\npath = \"src/gen/**\"\n\n[[pr_recap.waive]]\ngate = \"pilar_lost\"\npath = \"a/**\"\nreason = \"x\"\n\n[[pr_recap.waive]]\ngate = \"score_drop\"\npath = \"a/**\"\nreason = \"x\"\nexpires = \"next week\"\n";
+
+    #[test]
+    fn waivers_parse_and_bad_ones_are_reported() {
+        let config = parse(WAIVERS);
+        assert_eq!(config.waivers.len(), 1, "{:?}", config.waivers);
+        let waiver = &config.waivers[0];
+        assert_eq!(waiver.gate(), "pillar_lost");
+        assert_eq!(waiver.path(), "src/legacy/**");
+        assert_eq!(waiver.reason(), "being rewritten in #412");
+        assert_eq!(waiver.expires.as_deref(), Some("2026-12-31"));
+        let joined = config.warnings.join("\n");
+        for needle in [
+            "pr_recap.waive #2: missing reason",
+            "pr_recap.waive #3: unknown gate",
+            "pr_recap.waive #4: expires \"next week\" is not a YYYY-MM-DD date",
+        ] {
+            assert!(joined.contains(needle), "missing {needle}: {joined}");
+        }
+        assert_eq!(config.warnings.len(), 3, "{joined}");
+    }
+
+    #[test]
+    fn waivers_are_not_settings() {
+        let config = parse(WAIVERS);
+        assert_eq!(config.preset, PrGatePreset::Strict);
+        assert!(config.overrides().is_empty());
+        assert_eq!(config.label(), "strict");
+        assert!(!config.to_commented_toml().contains("waive"));
+        assert!(!PrGateConfig::preset_keys().contains(&"waive"));
     }
 
     #[test]

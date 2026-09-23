@@ -435,6 +435,28 @@ pub(crate) struct GateSummary {
     pub(crate) max_hotspots: usize,
 }
 
+/// What one `[[pr_recap.waive]]` entry did on this run.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct WaiverSummary {
+    pub(crate) gate: String,
+    /// The path glob.
+    pub(crate) path: String,
+    pub(crate) reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires: Option<String>,
+    /// Findings it waived; for an expired waiver, the findings it would
+    /// have waived.
+    pub(crate) matched: usize,
+    /// `used`, `unused` (matched nothing) or `expired`.
+    pub(crate) status: &'static str,
+}
+
+impl WaiverSummary {
+    pub(crate) fn is_used(&self) -> bool {
+        self.status == "used"
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PrRecap {
     pub(crate) schema: &'static str,
@@ -455,10 +477,15 @@ pub(crate) struct PrRecap {
     pub(crate) exit_code: i32,
     /// `"fail"` iff `exit_code` is 1.
     pub(crate) check: &'static str,
-    /// The first finding's text, or what happened when there is none.
+    /// The first counting finding's text, or what happened when there is
+    /// none.
     pub(crate) reason: String,
-    /// Every finding the configured gates kept, most important first.
+    /// Every finding the configured gates kept, most important first, the
+    /// waived ones last.
     pub(crate) findings: Vec<Finding>,
+    /// Every `[[pr_recap.waive]]` entry and what it did.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) waivers: Vec<WaiverSummary>,
     /// Which way the structure moved. Descriptive only.
     pub(crate) direction: Headline,
     /// `--max-files` left `scope.files_capped` files unscored. The verdict

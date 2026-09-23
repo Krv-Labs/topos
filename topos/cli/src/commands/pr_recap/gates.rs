@@ -5,15 +5,25 @@
 //! alone ([`PrGateConfig`]): this module names what happened, looks the
 //! severity up, and orders the findings so the one a reviewer should read
 //! first comes first. The readiness is the worst severity kept.
+//!
+//! Two things soften a finding without hiding it. A loss the range's moves
+//! explain ([`RangeMoves`]) is reported under `moved_pillar`, and a score
+//! drop they explain is immaterial. A finding a `[[pr_recap.waive]]` entry
+//! covers keeps its severity and its place in the document, marked
+//! [`Finding::waived`], but no longer counts toward the readiness.
 
 use std::cmp::Ordering;
 use std::path::Path;
 
 use serde::{Serialize, Serializer};
 use topos_engine::config::{FailOn, GateId, PrGateConfig, Severity};
+use topos_engine::evaluation::waivers::{self, Waiver};
 
 use super::hotspots::FUNCTION_COMPLEXITY;
-use super::model::{percent_change, Cluster, FileRecap, GateCrossing, GateSummary, Headline};
+use super::model::{
+    percent_change, Cluster, FileRecap, GateCrossing, GateSummary, Headline, WaiverSummary,
+};
+use super::moves::{MoveCause, RangeMoves};
 
 /// Sort points per SECURE finding a split added, so one new finding
 /// outranks a few points of score drop or added complexity.
@@ -89,8 +99,16 @@ pub(crate) struct Finding {
     /// The pillar was already failing at base; this change made it worse.
     pub(crate) inherited: bool,
     /// False only for a score drop below the `[pr_recap.score_drop]`
-    /// thresholds, which is capped at info.
+    /// thresholds, or explained by moved code, which is capped at info.
     pub(crate) material: bool,
+    /// The file the code behind this finding moved from, when the range's
+    /// moves explain it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) moved_from: Option<String>,
+    /// Set when a `[[pr_recap.waive]]` entry covers the finding: it keeps
+    /// its severity but no longer counts toward the readiness.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) waived: Option<Waived>,
     pub(crate) text: String,
     /// How big the finding is, in points, so every gate sorts on one
     /// scale: a pillar finding's score drop plus how far its metric sits
@@ -119,9 +137,16 @@ impl Finding {
             fix: default_fix(gate).to_string(),
             inherited: false,
             material: true,
+            moved_from: None,
+            waived: None,
             text,
             magnitude: 0.0,
         }
+    }
+
+    /// Counts toward the readiness and the exit code.
+    pub(crate) fn counts(&self) -> bool {
+        self.waived.is_none()
     }
 
     fn is_secure(&self) -> bool {
@@ -129,8 +154,19 @@ impl Finding {
     }
 }
 
+/// Why a finding does not count: the waiver that covers it.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Waived {
+    pub(crate) reason: String,
+    /// The file the waiver is written in.
+    pub(crate) source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires: Option<String>,
+}
+
 /// Apply the gates in `cfg` to the scored files, the split clusters and
-/// the scoring cap (`incomplete` files left unscored).
+/// the scoring cap (`incomplete` files left unscored), with the range's
+/// `moves` to tell a moved regression from a new one.
 ///
 /// Findings are sorted most important first: severity, then SECURE, then
 /// magnitude, then path and line. The readiness is the first one's
@@ -140,6 +176,7 @@ pub(crate) fn evaluate(
     clusters: &[Cluster],
     incomplete: usize,
     cfg: &PrGateConfig,
+    moves: &RangeMoves,
 ) -> (Readiness, Vec<Finding>) {
     let mut found = Vec::new();
     for file in files {
@@ -151,7 +188,7 @@ pub(crate) fn evaluate(
             let routed = clusters
                 .iter()
                 .any(|cluster| cluster.parent == file.path && cluster.routes_fan_out());
-            changed_file_findings(file, routed, cfg, &mut found);
+            changed_file_findings(file, routed, cfg, moves, &mut found);
         }
     }
     for cluster in clusters {
@@ -165,8 +202,62 @@ pub(crate) fn evaluate(
         .filter_map(|finding| judged(finding, cfg))
         .collect();
     findings.sort_by(importance);
-    let readiness = Readiness::from_worst(findings.first().map(|finding| finding.severity));
-    (readiness, findings)
+    (readiness(&findings), findings)
+}
+
+/// The worst severity among the findings that count.
+pub(crate) fn readiness(findings: &[Finding]) -> Readiness {
+    Readiness::from_worst(
+        findings
+            .iter()
+            .filter(|finding| finding.counts())
+            .map(|finding| finding.severity)
+            .max(),
+    )
+}
+
+/// Mark every finding a `[[pr_recap.waive]]` entry covers on `today`
+/// (`YYYY-MM-DD`), move the waived ones after the rest, and summarize what
+/// each waiver did. `source` is the file the waivers came from, reported
+/// relative to the repository `root` so a CI document names no runner
+/// path. Call this
+/// after [`evaluate`], so an `off` gate's findings are already gone and a
+/// moved regression is matched under `moved_pillar`.
+pub(crate) fn waive(
+    findings: &mut [Finding],
+    list: &[Waiver],
+    today: &str,
+    source: Option<&Path>,
+    root: &Path,
+) -> Vec<WaiverSummary> {
+    let source = source.map_or_else(|| ".topos.toml".to_string(), |path| relative_to(path, root));
+    let (waived_by, outcomes) = waivers::apply(
+        list,
+        today,
+        findings
+            .iter()
+            .map(|finding| (finding.gate.key(), finding.path.as_str())),
+    );
+    for (finding, index) in findings.iter_mut().zip(waived_by) {
+        finding.waived = index.map(|index| Waived {
+            reason: list[index].reason().to_string(),
+            source: source.clone(),
+            expires: list[index].expires.clone(),
+        });
+    }
+    // Stable: each group keeps its importance order.
+    findings.sort_by_key(|finding| !finding.counts());
+    list.iter()
+        .zip(outcomes)
+        .map(|(waiver, outcome)| WaiverSummary {
+            gate: waiver.gate().to_string(),
+            path: waiver.path().to_string(),
+            reason: waiver.reason().to_string(),
+            expires: waiver.expires.clone(),
+            matched: outcome.matched,
+            status: outcome.status.as_str(),
+        })
+        .collect()
 }
 
 /// The policy's severity for the finding, or `None` when its gate is off.
@@ -224,6 +315,7 @@ fn changed_file_findings(
     file: &FileRecap,
     routed: bool,
     cfg: &PrGateConfig,
+    moves: &RangeMoves,
     found: &mut Vec<Finding>,
 ) {
     let moved = largest_move(file);
@@ -263,13 +355,12 @@ fn changed_file_findings(
         let drop = tenths(-shift);
         let crossing = delta.gate.as_ref();
         if delta.lost() {
-            found.push(pillar_finding(
-                GateId::PillarLost,
-                file,
-                pillar,
-                crossing,
-                drop,
-            ));
+            let lost = pillar_finding(GateId::PillarLost, file, pillar, crossing, drop);
+            let cause = moves.caused(&file.path, pillar, lost.function.as_deref(), lost.line);
+            found.push(match cause {
+                Some(cause) => moved_pillar(lost, file, pillar, crossing, cause),
+                None => lost,
+            });
             continue;
         }
         let inherited = delta.before_passed == Some(false)
@@ -285,7 +376,23 @@ fn changed_file_findings(
             ));
         }
         if drop > 0.0 {
-            found.push(score_drop(file, pillar, delta.before_score, drop, cfg));
+            let mut finding = score_drop(file, pillar, delta.before_score, drop, cfg);
+            let worst = file.worst_function_after.as_ref();
+            if let Some(cause) = moves.caused(
+                &file.path,
+                pillar,
+                worst.map(|worst| worst.name.as_str()),
+                worst.map(|worst| worst.line),
+            ) {
+                finding.material = false;
+                finding.text = format!(
+                    "{}, {}.",
+                    finding.text.trim_end_matches('.'),
+                    moved_here(cause.from.as_deref())
+                );
+                finding.moved_from = cause.from;
+            }
+            found.push(finding);
         }
     }
 }
@@ -350,6 +457,40 @@ fn pillar_finding(
     }
     finding.magnitude += drop.max(0.0);
     finding
+}
+
+/// A lost pillar the range's moves explain: the same finding, reported
+/// under `moved_pillar` and naming where the code came from.
+fn moved_pillar(
+    mut finding: Finding,
+    file: &FileRecap,
+    pillar: &str,
+    crossing: Option<&GateCrossing>,
+    cause: MoveCause,
+) -> Finding {
+    finding.gate = GateId::MovedPillar;
+    finding.text = format!(
+        "{} lost {} {}{}{}.",
+        file.path,
+        pillar.to_ascii_uppercase(),
+        moved_here(cause.from.as_deref()),
+        site(finding.function.as_deref(), finding.line),
+        crossing.map_or(String::new(), measured)
+    );
+    finding.fix = format!(
+        "The code moved here from {}; the regression predates this PR.",
+        cause.from.as_deref().unwrap_or("another file")
+    );
+    finding.moved_from = cause.from;
+    finding
+}
+
+/// `with code moved here from src/a.py`.
+fn moved_here(from: Option<&str>) -> String {
+    match from {
+        Some(from) => format!("with code moved here from {from}"),
+        None => "with code moved here from another file".to_string(),
+    }
 }
 
 /// A pillar score that fell without failing, or on a pillar already
@@ -532,6 +673,9 @@ fn default_fix(gate: GateId) -> &'static str {
         | GateId::PillarInherited
         | GateId::NewFileInsecure
         | GateId::NewFilePillar => "Bring the failing metric back inside its gate.",
+        GateId::MovedPillar => {
+            "The code moved here from another file; the regression predates this PR."
+        }
         GateId::ScoreDrop => "Simplify what this change added so the score recovers.",
         GateId::NewFileSlop => "Bring at least one pillar inside its gates before merging.",
         GateId::SplitSecureRise => {
@@ -548,11 +692,38 @@ fn default_fix(gate: GateId) -> &'static str {
     }
 }
 
-/// The worst severity among the findings at `path`.
+/// `path` relative to `root`, `/` separated, or as given when it is not
+/// under `root`. Tried as given, then with symlinks resolved (a temp dir
+/// under `/var` is `/private/var` on macOS); only the directory is
+/// resolved, so the file itself need not exist.
+fn relative_to(path: &Path, root: &Path) -> String {
+    let resolved = || {
+        let dir = path.parent()?.canonicalize().ok()?;
+        Some((dir.join(path.file_name()?), root.canonicalize().ok()?))
+    };
+    let rest = path
+        .strip_prefix(root)
+        .ok()
+        .map(Path::to_path_buf)
+        .or_else(|| {
+            let (path, root) = resolved()?;
+            path.strip_prefix(root).ok().map(Path::to_path_buf)
+        });
+    match rest {
+        Some(rest) => rest
+            .components()
+            .map(|part| part.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+        None => path.display().to_string(),
+    }
+}
+
+/// The worst severity among the findings at `path` that count.
 pub(super) fn worst_at(findings: &[Finding], path: &str) -> Option<Severity> {
     findings
         .iter()
-        .filter(|finding| finding.path == path)
+        .filter(|finding| finding.path == path && finding.counts())
         .map(|finding| finding.severity)
         .max()
 }
@@ -601,6 +772,16 @@ mod tests {
     use super::*;
 
     const PILLARS: [&str; 4] = ["composable", "navigable", "secure", "simple"];
+
+    /// The gates over a range in which nothing moved.
+    fn unmoved(
+        files: &[FileRecap],
+        clusters: &[Cluster],
+        incomplete: usize,
+        cfg: &PrGateConfig,
+    ) -> (Readiness, Vec<Finding>) {
+        evaluate(files, clusters, incomplete, cfg, &RangeMoves::default())
+    }
 
     fn medal(tier: &str) -> Medal {
         Medal {
@@ -737,7 +918,7 @@ mod tests {
         set(&mut file, "simple", (true, false), (60.0, 40.0));
         file.pillars.get_mut("simple").unwrap().gate =
             crossing("ast.max_function_complexity", 9.0, 14.0, 10.0);
-        let (readiness, findings) = evaluate(&[file], &[], 0, &recommended());
+        let (readiness, findings) = unmoved(&[file], &[], 0, &recommended());
         assert_eq!(readiness, Readiness::Blocked);
         assert_eq!(gates(&findings), [GateId::PillarLost]);
         let lost = &findings[0];
@@ -773,7 +954,7 @@ mod tests {
             detail: String::new(),
             advice: "Flatten nest.".to_string(),
         });
-        let (_, findings) = evaluate(&[file], &[], 0, &recommended());
+        let (_, findings) = unmoved(&[file], &[], 0, &recommended());
         assert_eq!(
             (findings[0].line, findings[0].function.as_deref()),
             (Some(30), Some("nest"))
@@ -789,7 +970,7 @@ mod tests {
         set(&mut file, "simple", (true, false), (60.0, 40.0));
         set(&mut file, "navigable", (false, true), (40.0, 90.0));
         assert_eq!(file.status, Headline::LateralMove);
-        let (readiness, findings) = evaluate(&[file], &[], 0, &recommended());
+        let (readiness, findings) = unmoved(&[file], &[], 0, &recommended());
         assert_eq!(readiness, Readiness::Blocked);
         assert_eq!(gates(&findings), [GateId::PillarLost]);
         assert_eq!(findings[0].pillar.as_deref(), Some("simple"));
@@ -805,7 +986,7 @@ mod tests {
         set(&mut same, "simple", (false, false), (30.0, 30.0));
         same.pillars.get_mut("simple").unwrap().gate =
             crossing("ast.max_function_complexity", 15.0, 15.0, 10.0);
-        let (readiness, findings) = evaluate(&[worse, same], &[], 0, &recommended());
+        let (readiness, findings) = unmoved(&[worse, same], &[], 0, &recommended());
         assert_eq!(gates(&findings), [GateId::PillarInherited]);
         assert!(findings[0].inherited);
         assert_eq!(findings[0].path, "src/worse.rs");
@@ -826,7 +1007,7 @@ mod tests {
             file("src/lines_only.rs", 5.0, 60),
             file("src/points_only.rs", 12.0, 5),
         ];
-        let (readiness, findings) = evaluate(&files, &[], 0, &recommended());
+        let (readiness, findings) = unmoved(&files, &[], 0, &recommended());
         let by_path = |path: &str| findings.iter().find(|f| f.path == path).unwrap();
         assert!(by_path("src/both.rs").material);
         assert_eq!(by_path("src/both.rs").severity, Severity::Warn);
@@ -847,11 +1028,11 @@ mod tests {
         let mut file = changed("src/a.rs");
         set(&mut file, "simple", (true, true), (80.0, 70.0));
         (file.lines_added, file.lines_removed) = (20, 0);
-        let (_, findings) = evaluate(std::slice::from_ref(&file), &[], 0, &recommended());
+        let (_, findings) = unmoved(std::slice::from_ref(&file), &[], 0, &recommended());
         assert!(findings[0].material, "10 points over 20 lines is material");
         let mut cfg = recommended();
         cfg.score_drop.min_changed_lines = 21;
-        let (_, findings) = evaluate(&[file], &[], 0, &cfg);
+        let (_, findings) = unmoved(&[file], &[], 0, &cfg);
         assert!(!findings[0].material);
     }
 
@@ -861,7 +1042,7 @@ mod tests {
         set(&mut file, "simple", (true, false), (60.0, 40.0));
         let mut cfg = recommended();
         cfg.gates.set(GateId::PillarLost, Severity::Off);
-        let (readiness, findings) = evaluate(&[file], &[], 0, &cfg);
+        let (readiness, findings) = unmoved(&[file], &[], 0, &cfg);
         assert!(findings.is_empty(), "{findings:?}");
         assert_eq!(readiness, Readiness::Ready);
     }
@@ -875,7 +1056,7 @@ mod tests {
             file
         };
         let files = [file("src/configure.rs", 22.5), file("src/status.rs", 30.0)];
-        let (readiness, findings) = evaluate(&files, &[], 0, &recommended());
+        let (readiness, findings) = unmoved(&files, &[], 0, &recommended());
         assert_eq!(readiness, Readiness::NeedsAttention);
         assert_eq!(findings[0].path, "src/status.rs");
         assert_eq!(findings[1].path, "src/configure.rs");
@@ -893,7 +1074,7 @@ mod tests {
         set(&mut tie, "simple", (true, true), (80.0, 65.0));
         let mut lost = changed("src/z.rs");
         set(&mut lost, "navigable", (true, false), (80.0, 79.0));
-        let (_, findings) = evaluate(&[big, secure, small, tie, lost], &[], 0, &recommended());
+        let (_, findings) = unmoved(&[big, secure, small, tie, lost], &[], 0, &recommended());
         let order: Vec<&str> = findings.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(
             order,
@@ -923,7 +1104,7 @@ mod tests {
             set(&mut slop, pillar, (false, false), (0.0, 10.0));
         }
         slop.medal_after = Some(medal("SLOP"));
-        let (readiness, findings) = evaluate(
+        let (readiness, findings) = unmoved(
             &[insecure, slop, added("src/clean.py")],
             &[],
             0,
@@ -962,7 +1143,7 @@ mod tests {
             parent: "src/big.py".to_string(),
             role: ClusterRole::Child,
         });
-        let (_, findings) = evaluate(
+        let (_, findings) = unmoved(
             &[child],
             &[cluster("src/big.py", "src/helpers.py")],
             0,
@@ -994,7 +1175,7 @@ mod tests {
         let mut bloated = cluster("src/c.py", "src/c_child.py");
         bloated.decisions_after = 30;
         let (readiness, findings) =
-            evaluate(&[], &[insecure, grown.clone(), bloated], 0, &recommended());
+            unmoved(&[], &[insecure, grown.clone(), bloated], 0, &recommended());
         assert_eq!(readiness, Readiness::Blocked);
         assert_eq!(
             gates(&findings),
@@ -1020,7 +1201,7 @@ mod tests {
             complexity: 5,
         });
         entry.complexity_delta = 2;
-        let (_, findings) = evaluate(&[], &[grown], 0, &recommended());
+        let (_, findings) = unmoved(&[], &[grown], 0, &recommended());
         assert!(findings.is_empty(), "{findings:?}");
     }
 
@@ -1032,7 +1213,7 @@ mod tests {
         let mut suspicious = cosmetic.clone();
         suspicious.path = "src/b.rs".to_string();
         suspicious.status = Headline::SuspiciousNoStructuralChange;
-        let (readiness, findings) = evaluate(&[cosmetic, suspicious], &[], 2, &recommended());
+        let (readiness, findings) = unmoved(&[cosmetic, suspicious], &[], 2, &recommended());
         assert_eq!(readiness, Readiness::NeedsAttention);
         let found = gates(&findings);
         assert_eq!(
@@ -1060,7 +1241,7 @@ mod tests {
         let mut routed = cluster("src/big.py", "src/child.py");
         routed.parent_fan_out_before = Some(5);
         routed.parent_fan_out_after_excluding_children = Some(5);
-        let (_, findings) = evaluate(&[parent], &[routed], 0, &recommended());
+        let (_, findings) = unmoved(&[parent], &[routed], 0, &recommended());
         assert!(findings.is_empty(), "{findings:?}");
     }
 
@@ -1102,7 +1283,7 @@ mod tests {
     fn a_finding_serializes_its_gate_and_severity_by_name() {
         let mut file = changed("src/a.rs");
         set(&mut file, "simple", (true, false), (60.0, 40.0));
-        let (_, findings) = evaluate(&[file], &[], 0, &recommended());
+        let (_, findings) = unmoved(&[file], &[], 0, &recommended());
         let json = serde_json::to_value(&findings[0]).unwrap();
         assert_eq!(json["gate"], "pillar_lost");
         assert_eq!(json["severity"], "block");
@@ -1112,5 +1293,19 @@ mod tests {
             serde_json::to_value(Readiness::NeedsAttention).unwrap(),
             "NEEDS_ATTENTION"
         );
+    }
+
+    #[test]
+    fn a_waiver_source_is_named_from_the_repository_root() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        std::fs::create_dir_all(root.join("sub/dir")).unwrap();
+        assert_eq!(relative_to(&root.join(".topos.toml"), root), ".topos.toml");
+        assert_eq!(
+            relative_to(&root.join("sub/dir/.topos.toml"), root),
+            "sub/dir/.topos.toml"
+        );
+        let elsewhere = Path::new("/elsewhere/.topos.toml");
+        assert_eq!(relative_to(elsewhere, root), "/elsewhere/.topos.toml");
     }
 }

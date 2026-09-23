@@ -16,6 +16,7 @@ mod git;
 mod github;
 mod hotspots;
 mod model;
+mod moves;
 mod render;
 mod score;
 mod verdict;
@@ -29,14 +30,16 @@ use topos_engine::config::{
 };
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::waivers::today_utc;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
-use topos_engine::graphs::mdg::split::detect_splits;
+use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
 use self::clusters::{build_clusters, changed_list};
 use self::coupling::{plan_coupling, prepare, settle};
 use self::git::{cap_by_churn, changed_files, churn, skip_reason, worktree_files};
 use self::hotspots::top_hotspots;
 use self::model::*;
+use self::moves::RangeMoves;
 use self::score::Scoring;
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
@@ -157,12 +160,22 @@ Readiness / exit codes:
                      under fail_on = "warn"
   ✓ READY            info findings only, or none.              exit 0
   A score drop counts only once it is large enough, in a file changed enough
-  ([pr_recap.score_drop]); a smaller one is info. The policy is the flags, else
-  the nearest .topos.toml, else the recommended preset. --preset picks a
-  built-in preset and ignores the file's [pr_recap]; --strict fails on warn
-  too. An error (a bad range, git or gh failing) exits 2. The direction
-  (IMPROVEMENT, SCORE DOWN, LATERAL, ...) says which way the structure moved and
-  never changes the exit code.
+  ([pr_recap.score_drop]); a smaller one is info. A pillar lost only because
+  code moved in from another file in the range is `moved_pillar` (info, warn
+  under strict), not `pillar_lost`; a moved function that grew still loses it.
+  The policy is the flags, else the nearest .topos.toml, else the recommended
+  preset. --preset picks a built-in preset and ignores the file's [pr_recap],
+  waivers included; --strict fails on warn too. An error (a bad range, git or
+  gh failing) exits 2. The direction (IMPROVEMENT, SCORE DOWN, LATERAL, ...)
+  says which way the structure moved and never changes the exit code.
+
+Waivers:
+  A [[pr_recap.waive]] entry (gate, path glob, reason, optional expires =
+  "YYYY-MM-DD") sets a finding aside: it keeps its severity and stays in the
+  report, marked waived, but no longer counts toward readiness or the exit
+  code. A waiver applies through its expiry date (UTC). The card counts waived
+  sites (a place, gate and waiver, its pillars named together) and unused or
+  expired waivers; --verbose lists them with reasons.
 
 Range:
   The base side is the merge-base of the base and the head, so commits that
@@ -203,8 +216,8 @@ Outputs:
                     later run replaces it instead of adding another comment.
   --json            schema topos.pr_recap.v3: every number and finding behind
                     the card.
-  --verbose         adds the changed-files table, every split child and each
-                    moved function.
+  --verbose         adds the changed-files table, every split child, each
+                    moved function and the waived findings.
   --info            appends the recommended change for each finding.
 
 Examples:
@@ -273,7 +286,9 @@ pub struct PrRecapArgs {
 /// The gate policy for one run: `--preset` replaces the project's
 /// `[pr_recap]` with a built-in preset, and `--strict` then fails on warn
 /// as well. With neither, the project's table (itself recommended when
-/// absent) applies as is.
+/// absent) applies as is. A preset replaces the whole table, its
+/// `[[pr_recap.waive]]` entries included: `--preset` answers "what would
+/// this preset say", with nothing waived.
 fn resolve_gate_policy(
     strict: bool,
     preset: Option<GatePreset>,
@@ -290,13 +305,16 @@ fn resolve_gate_policy(
 }
 
 /// Everything a recap is judged by: the pillar emphasis, the project
-/// config (for its allowlist), and the resolved gate policy with the file
-/// it came from.
+/// config (for its allowlist), the resolved gate policy with the file it
+/// came from, and the date its waivers are checked against.
 struct Judging {
     priority: Priority,
     topos: ToposConfig,
     gate: PrGateConfig,
     source: Option<PathBuf>,
+    /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
+    /// nothing.
+    today: String,
 }
 
 /// Which card to print. The card is the same on a terminal and in a
@@ -408,6 +426,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
             .then(|| find_config_file(&root))
             .flatten(),
         topos,
+        today: today_utc(),
     };
     let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
     let format = resolve_format(args.compact, args.format);
@@ -551,21 +570,29 @@ fn build_recap(
 
     // Pass B — group the split parents with their children.
     let changed = changed_list(&scoreable, &diff.deleted);
-    let report = (measured)
-        .then(|| {
-            detect_splits(
-                base_graph.as_ref().expect("measured implies a base graph"),
-                head_graph.as_ref().expect("measured implies a head graph"),
-                &changed,
-            )
-        })
-        .map(|report| report.clusters)
-        .unwrap_or_default();
+    let report = if measured {
+        detect_splits(
+            base_graph.as_ref().expect("measured implies a base graph"),
+            head_graph.as_ref().expect("measured implies a head graph"),
+            &changed,
+        )
+    } else {
+        SplitReport::default()
+    };
     let clusters = build_clusters(
         &mut scored,
-        &report,
+        &report.clusters,
         measured,
         head_graph.as_ref().filter(|_| measured),
+    );
+    // Every move in the range, split or not, so a regression that only
+    // changed address is not charged to the file it landed in.
+    let moves = RangeMoves::build(
+        &repo,
+        &base_sha,
+        &scored,
+        &diff.deleted,
+        &report.moved_between_existing,
     );
 
     // Pass C — per-file verdicts, now that cluster fan-out is known.
@@ -575,16 +602,22 @@ fn build_recap(
     let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
     // Pass D — the configured gates decide readiness.
     let (direction, described) = direction_for(&files, &base_sha, &head_sha);
-    let (readiness, findings) = gates::evaluate(&files, &clusters, capped, &judging.gate);
+    let (_, mut findings) = gates::evaluate(&files, &clusters, capped, &judging.gate, &moves);
+    let waivers = gates::waive(
+        &mut findings,
+        &judging.gate.waivers,
+        &judging.today,
+        judging.source.as_deref(),
+        &repo,
+    );
+    let readiness = gates::readiness(&findings);
     for file in &mut files {
         file.severity = gates::worst_at(&findings, &file.path);
     }
-    let mut reason = findings
-        .first()
-        .map_or(described, |finding| finding.text.clone());
-    let incomplete_leads = findings
-        .first()
-        .is_some_and(|finding| finding.gate == GateId::Incomplete);
+    // Waived findings sort last, so the first one that counts leads.
+    let lead = findings.iter().find(|finding| finding.counts());
+    let mut reason = lead.map_or(described, |finding| finding.text.clone());
+    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
     if capped > 0 && !incomplete_leads {
         reason.push_str(&format!(
             " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
@@ -618,6 +651,7 @@ fn build_recap(
         check: if exit_code == 1 { "fail" } else { "pass" },
         reason,
         findings,
+        waivers,
         direction,
         incomplete: capped > 0,
         scope,
@@ -658,6 +692,7 @@ mod tests {
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
+            today: "2026-09-22".to_string(),
         }
     }
 
@@ -1209,6 +1244,232 @@ mod tests {
         );
         assert_eq!(allowed.files[0].pillars["secure"].after_passed, Some(true));
         assert_eq!(allowed.exit_code, 0);
+    }
+
+    const SIMPLE_B: &str = "def ready():\n    return 1\n";
+
+    /// A range that moves `pick`, over the SIMPLE gate, from `src/a.py`
+    /// into `src/b.py`: verbatim, or with one more branch on the way.
+    fn move_pick(grown: bool) -> (tempfile::TempDir, PathBuf) {
+        let a = format!("{}\ndef keep():\n    return 0\n", branchy("pick"));
+        let (keep, repo) = write_repo(&[("src/a.py", &a), ("src/b.py", SIMPLE_B)]);
+        let mut pick = branchy("pick");
+        if grown {
+            pick = pick.replace(
+                "    return -1\n",
+                "    if x == 99:\n        return 99\n    return -1\n",
+            );
+        }
+        write_files(
+            &repo,
+            &[
+                ("src/a.py", "def keep():\n    return 0\n"),
+                ("src/b.py", &format!("{SIMPLE_B}\n{pick}")),
+            ],
+        );
+        commit_all(&repo, "move pick");
+        (keep, repo)
+    }
+
+    /// The recommended gates with `waivers`, a `[[pr_recap.waive]]` list,
+    /// checked on the tests' fixed today, 2026-09-22.
+    fn waiving(repo: &Path, waivers: &str) -> Judging {
+        let gate = PrGateConfig::from_table(&waivers.parse().unwrap());
+        assert!(gate.warnings.is_empty(), "{:?}", gate.warnings);
+        Judging {
+            gate,
+            source: Some(repo.join(".topos.toml")),
+            ..judging(Priority::Secure)
+        }
+    }
+
+    #[test]
+    fn moving_a_complex_function_between_existing_files_is_not_blocked() {
+        let (_keep, repo) = move_pick(false);
+
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+
+        let b = recap.files.iter().find(|f| f.path == "src/b.py").unwrap();
+        assert!(b.pillars["simple"].lost(), "b.py lost SIMPLE");
+        assert_ne!(recap.readiness, gates::Readiness::Blocked, "{recap:#?}");
+        assert!(
+            !recap.findings.iter().any(|f| f.gate == GateId::PillarLost),
+            "{:#?}",
+            recap.findings
+        );
+        let moved = recap
+            .findings
+            .iter()
+            .find(|f| f.gate == GateId::MovedPillar)
+            .expect("a moved_pillar finding");
+        assert_eq!(moved.path, "src/b.py");
+        assert_eq!(moved.moved_from.as_deref(), Some("src/a.py"));
+        assert!(
+            moved.text.contains("moved here from src/a.py"),
+            "{}",
+            moved.text
+        );
+    }
+
+    #[test]
+    fn a_moved_function_that_grew_is_still_blocked() {
+        let (_keep, repo) = move_pick(true);
+
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+
+        assert_eq!(recap.readiness, gates::Readiness::Blocked);
+        let lost = &recap.findings[0];
+        assert_eq!(
+            (lost.gate, lost.path.as_str()),
+            (GateId::PillarLost, "src/b.py")
+        );
+        assert!(lost.moved_from.is_none());
+    }
+
+    const WAIVE_B: &str = "\
+[[waive]]
+gate = \"pillar_lost\"
+path = \"src/b.py\"
+reason = \"pick is split up in the next PR\"
+expires = \"2026-12-31\"
+
+[[waive]]
+gate = \"cosmetic\"
+path = \"src/gen/**\"
+reason = \"generated\"
+";
+
+    #[test]
+    fn a_waived_loss_is_ready_and_still_reported() {
+        let (_keep, repo) = move_pick(true);
+
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            40,
+            None,
+            no_coupling(),
+            &waiving(&repo, WAIVE_B),
+        )
+        .unwrap();
+
+        assert_eq!(recap.readiness, gates::Readiness::Ready, "{recap:#?}");
+        assert_eq!((recap.check, recap.exit_code), ("pass", 0));
+        let lost = recap
+            .findings
+            .iter()
+            .find(|f| f.gate == GateId::PillarLost)
+            .expect("the waived finding stays in the document");
+        assert_eq!(
+            lost.severity,
+            Severity::Block,
+            "a waiver keeps the severity"
+        );
+        let waived = lost.waived.as_ref().expect("marked waived");
+        assert_eq!(waived.reason, "pick is split up in the next PR");
+        assert_eq!(waived.expires.as_deref(), Some("2026-12-31"));
+        assert_eq!(waived.source, ".topos.toml", "relative to the repository");
+        assert!(!recap.reason.contains("lost SIMPLE"), "{}", recap.reason);
+        let status: Vec<(&str, usize, &str)> = recap
+            .waivers
+            .iter()
+            .map(|w| (w.gate.as_str(), w.matched, w.status))
+            .collect();
+        assert_eq!(
+            status,
+            [("pillar_lost", 1, "used"), ("cosmetic", 0, "unused")]
+        );
+        let json = serde_json::to_value(&recap).unwrap();
+        assert_eq!(json["schema"], "topos.pr_recap.v3");
+        assert_eq!(json["waivers"][1]["status"], "unused");
+
+        let options = RenderOptions {
+            styled: false,
+            width: 120,
+        };
+        let card = render::render_card(&recap, render::Detail::default(), options).join("\n");
+        assert!(card.contains("1 waived · 1 unused waiver"), "{card}");
+        assert!(
+            card.contains("Tip: --verbose lists the waived findings with their reasons."),
+            "{card}"
+        );
+        assert!(!card.contains("pick is split up"), "{card}");
+        let verbose = render::Detail {
+            verbose: true,
+            info: false,
+        };
+        let card = render::render_card(&recap, verbose, options).join("\n");
+        assert!(card.contains("WAIVED"), "{card}");
+        assert!(
+            card.lines().any(|line| line.starts_with("│  src/b.py:")
+                && line.ends_with(
+                    " · pick · pillar_lost SIMPLE — pick is split up in the next PR (expires 2026-12-31)"
+                )),
+            "{card}"
+        );
+        assert!(
+            card.contains("unused waiver: cosmetic on src/gen/** — generated"),
+            "{card}"
+        );
+
+        let comment = github::render_github(&recap);
+        assert!(comment.contains("**Waived**"), "{comment}");
+        assert!(
+            comment.contains(
+                "· `pick` · pillar_lost SIMPLE — pick is split up in the next PR (expires 2026-12-31)"
+            ),
+            "{comment}"
+        );
+        assert!(comment.contains("1 waived · 1 unused waiver"), "{comment}");
+        assert!(!comment.contains("**Blocking**"), "{comment}");
+    }
+
+    #[test]
+    fn an_expired_waiver_waives_nothing_and_says_so() {
+        let (_keep, repo) = move_pick(true);
+        let expired = WAIVE_B.replace("2026-12-31", "2026-09-21");
+
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            40,
+            None,
+            no_coupling(),
+            &waiving(&repo, &expired),
+        )
+        .unwrap();
+
+        assert_eq!(recap.readiness, gates::Readiness::Blocked);
+        assert!(recap.findings.iter().all(|f| f.waived.is_none()));
+        assert_eq!(recap.waivers[0].status, "expired");
+        assert_eq!(recap.waivers[0].matched, 1, "what it would have waived");
+        let comment = github::render_github(&recap);
+        assert!(
+            comment.contains("expired waiver: pillar_lost on src/b.py"),
+            "{comment}"
+        );
+    }
+
+    #[test]
+    fn a_waiver_is_active_on_its_expiry_date() {
+        let (_keep, repo) = move_pick(true);
+        let today = WAIVE_B.replace("2026-12-31", "2026-09-22");
+
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            40,
+            None,
+            no_coupling(),
+            &waiving(&repo, &today),
+        )
+        .unwrap();
+
+        assert_eq!(recap.readiness, gates::Readiness::Ready);
+        assert_eq!(recap.waivers[0].status, "used");
     }
 
     #[test]

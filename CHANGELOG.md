@@ -17,6 +17,18 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 - **`topos install opencode`** ([#370](https://github.com/Krv-Labs/topos/pull/370)) — tenth supported harness, registering `mcp.topos` with `"type": "local"` and `command: ["<path>", "mcp"]` in `~/.config/opencode/opencode.json` (or `.jsonc`). OpenCode parses JSONC and uses an array command with no separate `args` key; install handles probe precedence (`opencode.jsonc` > `opencode.json` > `config.json`), strips trailing commas, refuses writes into commented configs with paste-ready advice, and heals path drift idempotently.
 
+- **`topos pr-recap`** ([#379](https://github.com/Krv-Labs/topos/pull/379), [#380](https://github.com/Krv-Labs/topos/pull/380)) — a new command that reviews a pull request (`topos pr-recap 362`), a `--base`/`--head` range, or uncommitted changes, and gives a verdict: **READY**, **NEEDS ATTENTION**, or **BLOCKED**. It exits 0 when the check passes, 1 when a finding reaches the `fail_on` level, and 2 on error. Each finding names the file and function, says what changed, and suggests a fix. Sixteen gates cover:
+  - pillar regressions: `pillar_lost`, `pillar_inherited`, `score_drop`;
+  - new files: `new_file_insecure`, `new_file_slop`, `new_file_pillar`;
+  - refactors that split files: `split_secure_rise`, `split_moved_growth`, `split_bloat`;
+  - score changes with no real structural change: `cosmetic`, `suspicious`;
+  - files that could not be scored: `incomplete`;
+  - coupling: `import_cycle`, `fan_in_growth`, `blast_radius`.
+
+  Code that only moved between files is traced and reported as `moved_pillar`, so it doesn't count as a loss. The coupling gates use the two GitNexus graphs, which are cached per PR in the git common dir. On a terminal the command asks before building them; in CI it builds them by default. Output is a card by default, or `--format github` for a PR comment, `--verbose`, or `--json` (schema `topos.pr_recap.v3`). Other flags: `--info`, `--strict`, `--preset`, `--yes`, `--no-input`, `--no-coupling`, `--max-files`.
+
+- **`[pr_recap]` settings in `.topos.toml`** ([#380](https://github.com/Krv-Labs/topos/pull/380)) — choose a preset (`relaxed`, `recommended` (the default), or `strict`) or set gates individually to `off` / `info` / `warn` / `block`. Also configurable: `fail_on`, `max_hotspots`, `score_drop` and `fan_in_growth` thresholds, and per-language `import_cycle` severity. `[[pr_recap.waive]]` waives a finding by gate and path glob; each waiver requires a reason and can have an expiry date. Waived findings stay visible but don't affect the verdict. Switch presets with `topos config set --pr-preset`; the `topos config` wizard also offers a PR-gate step.
+
 ### Changed
 
 - **MCP keeps one dependency graph per process** ([#375](https://github.com/Krv-Labs/topos/issues/375)) — a second `topos_evaluate_file` no longer rereads the Ladybug store: 15.8 s → 83 ms for a second file on this repo, 15 ms for the same file again. The store is opened once per `(dir, branch, store mtime)` and retargeted per file; `depgraph_status` goes through the same store, so a half-written or wrong-schema store still reports `load_error` / `schema_mismatch`. The graph-freshness answer is cached until the fingerprint, HEAD, or the uncommitted working tree (`git status` plus dirty-file mtimes) changes.
@@ -26,6 +38,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 ### Fixed
 
 - **Harness detection precision across all platforms** ([#370](https://github.com/Krv-Labs/topos/pull/370)) — `spec.detect` now checks whether each CLI executable or desktop application is actually installed on the machine (searching `$PATH`, standard user bin paths, and desktop application bundles across macOS Apple Silicon/Intel, Windows, and Linux) instead of checking bare dot-directories in `$HOME`. This eliminates false positives where skill managers (OpenClaw, Hermes) or leftover cache folders created `~/.pi`, `~/.cursor`, or `~/.gemini` without the corresponding harness binary ever being installed.
+
+- **Arrow-function components are named from their binding** ([#379](https://github.com/Krv-Labs/topos/pull/379)) — `const Foo = () => …` shows up as `Foo` in `topos inspect` instead of `<anonymous>@line`.
 
 ## [0.6.0] - 2026-09-16
 

@@ -100,6 +100,32 @@ impl ProgramMorphism {
         ))
     }
 
+    /// Construct a morphism from in-memory source while still naming the file it
+    /// came from, so grammar selection can see the extension (`.tsx` needs the
+    /// TSX grammar; `new` passes no path and parses JSX as plain TypeScript, which
+    /// fails). `filepath` is recorded but never read from disk.
+    pub fn with_path(
+        source: impl Into<String>,
+        language: impl Into<String>,
+        filepath: impl AsRef<Path>,
+    ) -> Self {
+        let source = source.into();
+        let language = language.into();
+        let path = filepath.as_ref();
+        let file = path.to_string_lossy().into_owned();
+        let ast = Self::parse(&source, &language, Some(&file));
+        ProgramMorphism {
+            source,
+            language,
+            filepath: Some(path.to_path_buf()),
+            ast,
+            representations: Vec::new(),
+            cfg: None,
+            pdg: None,
+            cpg: None,
+        }
+    }
+
     /// Create a morphism from a source file.
     pub fn from_file(
         filepath: impl AsRef<Path>,
@@ -242,6 +268,13 @@ mod tests {
             hasher.finish()
         };
         assert_eq!(hash_of(&m1), hash_of(&m2));
+    }
+
+    #[test]
+    fn program_morphism_with_path_tsx_grammar() {
+        let src = "const el = <Foo />;\nexport function f(a: boolean) { return a ? 1 : 0 }\n";
+        assert!(!ProgramMorphism::new(src, "typescript").is_valid());
+        assert!(ProgramMorphism::with_path(src, "typescript", "Widget.tsx").is_valid());
     }
 
     #[test]

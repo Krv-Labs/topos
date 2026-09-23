@@ -649,7 +649,7 @@ pub(crate) fn failure_file_indices(
 /// decides pass/fail.
 const WEAK_SCORE: f64 = 0.25;
 
-fn status_text(passing: bool, weakest: f64, options: RenderOptions) -> String {
+pub(crate) fn status_text(passing: bool, weakest: f64, options: RenderOptions) -> String {
     let (symbol, label, style) = if !passing {
         ("X", "FAIL", Style::new().red().bold())
     } else if weakest < WEAK_SCORE {
@@ -707,7 +707,7 @@ fn mean_score(result: &ClassificationResult) -> f64 {
     result.scores.values().sum::<f64>() / result.scores.len() as f64
 }
 
-fn score_rail(score: f64, width: usize) -> String {
+pub(crate) fn score_rail(score: f64, width: usize) -> String {
     let marker = (score.clamp(0.0, 1.0) * (width.saturating_sub(1)) as f64).round() as usize;
     (0..width)
         .map(|index| {

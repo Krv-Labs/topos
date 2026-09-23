@@ -27,11 +27,23 @@ impl RenderOptions {
         Self::for_term(&term)
     }
 
+    /// Width a piped or captured card is laid out for. `console` reports
+    /// 80 columns when stdout is not a terminal, which truncates every table
+    /// column; CI logs and pagers are comfortably wider than that.
+    const PIPED_WIDTH: usize = 100;
+
     fn for_term(term: &Term) -> Self {
         let width = usize::from(term.size().1);
+        let is_term = term.is_term();
         Self {
-            styled: term.is_term() && std::env::var_os("NO_COLOR").is_none(),
-            width: if width == 0 { 120 } else { width },
+            styled: is_term && std::env::var_os("NO_COLOR").is_none(),
+            width: if !is_term {
+                Self::PIPED_WIDTH
+            } else if width == 0 {
+                120
+            } else {
+                width
+            },
         }
     }
 }
@@ -48,6 +60,112 @@ pub(crate) fn spinner(hidden: bool, message: &'static str) -> ProgressBar {
     spinner.set_message(message);
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
     spinner
+}
+
+const WORKING_FRAMES: [char; 6] = ['⠿', '⠛', '⠹', '⠼', '⠶', '⠦'];
+const WORKING_HOLD: std::time::Duration = std::time::Duration::from_secs(7);
+const WORKING_LINES: &[&str] = &[
+    "Reading the two trees...",
+    "Scoring the files that actually changed",
+    "Checking which gates still hold...",
+    "Separating a medal move from a score dip",
+    "Looking for a call that was not there before...",
+    "Leaving unmeasured coupling unmeasured",
+];
+
+/// A stderr working line for a command long enough to look hung.
+///
+/// The frame turns continuously. The sentence types in, holds for seven
+/// seconds, deletes itself one character at a time, waits half a second,
+/// and the next sentence types in. A fast command drops the line before
+/// the card, so a quick run never flashes it.
+pub(crate) struct Working {
+    shown: bool,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Working {
+    pub(crate) fn start() -> Self {
+        let term = Term::stderr();
+        if !term.is_term() || std::env::var_os("NO_COLOR").is_some() {
+            return Self {
+                shown: false,
+                stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                thread: None,
+            };
+        }
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&stop);
+        let thread = std::thread::spawn(move || working_loop(&term, &flag));
+        Self {
+            shown: true,
+            stop,
+            thread: Some(thread),
+        }
+    }
+
+    pub(crate) fn clear(mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        if self.shown {
+            let _ = Term::stderr().clear_line();
+            let _ = Term::stderr().write_str("\r");
+        }
+        self.shown = false;
+    }
+}
+
+impl Drop for Working {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn working_loop(term: &Term, stop: &std::sync::atomic::AtomicBool) {
+    // Three times the old 80ms character step. The spinner still moves
+    // on this tick, so it turns faster too.
+    let tick = std::time::Duration::from_millis(27);
+    let gap = std::time::Duration::from_millis(500);
+    let mut frame = 0usize;
+    let mut line = 0usize;
+    let mut shown = 0usize;
+    let mut deleting = false;
+    let mut hold_started = std::time::Instant::now();
+    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+        let text = WORKING_LINES[line];
+        let count = text.chars().count();
+        let visible: String = text.chars().take(shown).collect();
+        let painted = Style::new().dim().force_styling(true).apply_to(format!(
+            "{}  {visible}",
+            WORKING_FRAMES[frame % WORKING_FRAMES.len()]
+        ));
+        let _ = term.clear_line();
+        let _ = term.write_str(&format!("\r{painted}"));
+        let _ = term.flush();
+        frame += 1;
+        if !deleting && shown < count {
+            shown += 1;
+            if shown == count {
+                hold_started = std::time::Instant::now();
+            }
+        } else if !deleting && hold_started.elapsed() >= WORKING_HOLD {
+            deleting = true;
+        } else if deleting && shown > 0 {
+            shown -= 1;
+        } else if deleting {
+            deleting = false;
+            line = (line + 1) % WORKING_LINES.len();
+            std::thread::sleep(gap);
+            continue;
+        }
+        std::thread::sleep(tick);
+    }
 }
 
 pub(crate) fn paint(text: impl ToString, style: Style, options: RenderOptions) -> String {

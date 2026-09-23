@@ -25,9 +25,15 @@ clap = { version = "4", features = ["derive"] }
 # here rather than inherited: `resolver = "2"` keeps tree-sitter's
 # build-dependency copy from unifying the feature.
 serde_json = { version = "1.0", features = ["preserve_order"] }
+serde = { version = "1.0", features = ["derive"] }
 # Already present transitively through the MCP stack; used directly for
 # terminal progress and the lightweight interactive config selector.
 indicatif = "0.17.11"
 console = "0.15.11"
 # Preserve comments and unrelated settings when updating `.topos.toml`.
 toml_edit = "0.22.27"
+# Temp git repos for `pr-recap` tests. Declared here because integration
+# tests and `cfg(test)` modules do not see `[dev-dependencies]` of a bin
+# crate the way a lib would — tempfile is only referenced under `cfg(test)`.
+[dev-dependencies]
+tempfile = "3"

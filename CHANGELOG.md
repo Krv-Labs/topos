@@ -9,11 +9,13 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-23
+
 ### Added
 
 - **Assess says whether coupling may be stale after an edit** ([#377](https://github.com/Krv-Labs/topos/issues/377)) — when a dependency graph is loaded, the assess result compares the baseline's import lines with the working file's (including Go `import ( … )` blocks, `require(…)`, dynamic `import(…)`, `export … from`, and Rust `pub(crate) use` / `mod`). Unchanged imports add the `coupling_still_current` risk flag and say no rebuild is needed; changed imports add `coupling_may_be_stale` and name `topos_generate_depgraph` as optional. The flag is advice only: it never sets `next_tool` or `blocked_by`, is not repeated for a re-check of the same edit, and is omitted when no graph is loaded. The assessment markdown shows it as a **Note** line.
 
-- **`topos install opencode`** — tenth supported harness, registering `mcp.topos` with `"type": "local"` and `command: ["<path>", "mcp"]` in `~/.config/opencode/opencode.json` (or `.jsonc`). OpenCode parses JSONC and uses an array command with no separate `args` key; install handles probe precedence (`opencode.jsonc` > `opencode.json` > `config.json`), strips trailing commas, refuses writes into commented configs with paste-ready advice, and heals path drift idempotently.
+- **`topos install opencode`** ([#370](https://github.com/Krv-Labs/topos/pull/370)) — tenth supported harness, registering `mcp.topos` with `"type": "local"` and `command: ["<path>", "mcp"]` in `~/.config/opencode/opencode.json` (or `.jsonc`). OpenCode parses JSONC and uses an array command with no separate `args` key; install handles probe precedence (`opencode.jsonc` > `opencode.json` > `config.json`), strips trailing commas, refuses writes into commented configs with paste-ready advice, and heals path drift idempotently.
 
 ### Changed
 
@@ -23,7 +25,7 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ### Fixed
 
-- **Harness detection precision across all platforms** — `spec.detect` now checks whether each CLI executable or desktop application is actually installed on the machine (searching `$PATH`, standard user bin paths, and desktop application bundles across macOS Apple Silicon/Intel, Windows, and Linux) instead of checking bare dot-directories in `$HOME`. This eliminates false positives where skill managers (OpenClaw, Hermes) or leftover cache folders created `~/.pi`, `~/.cursor`, or `~/.gemini` without the corresponding harness binary ever being installed.
+- **Harness detection precision across all platforms** ([#370](https://github.com/Krv-Labs/topos/pull/370)) — `spec.detect` now checks whether each CLI executable or desktop application is actually installed on the machine (searching `$PATH`, standard user bin paths, and desktop application bundles across macOS Apple Silicon/Intel, Windows, and Linux) instead of checking bare dot-directories in `$HOME`. This eliminates false positives where skill managers (OpenClaw, Hermes) or leftover cache folders created `~/.pi`, `~/.cursor`, or `~/.gemini` without the corresponding harness binary ever being installed.
 
 ## [0.6.0] - 2026-09-16
 

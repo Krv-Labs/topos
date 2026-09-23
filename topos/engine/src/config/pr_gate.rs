@@ -1,8 +1,9 @@
 //! PR gate policy for `topos pr-recap`: the `[pr_recap]` table.
 //!
 //! Every gate has a severity (`off | info | warn | block`) and every
-//! threshold is a setting. The defaults live in [`GATES`] and
-//! [`PrGatePreset::score_drop`], and nowhere else: `pr-recap` reads the
+//! threshold is a setting. The defaults live in [`GATES`],
+//! [`PrGatePreset::score_drop`], [`PrGatePreset::import_cycle`] and
+//! [`PrGatePreset::fan_in_growth`], and nowhere else: `pr-recap` reads the
 //! resolved [`PrGateConfig`] and adds no policy of its own.
 //!
 //! On disk the table holds a `preset` plus only the keys that differ from
@@ -18,6 +19,7 @@
 use std::fmt;
 
 use crate::evaluation::waivers::{parse_waivers, Waiver};
+use crate::graphs::ast::languages::language_for_path;
 
 /// How much a gate's finding matters. Ordered, so the worst finding wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -66,9 +68,12 @@ pub enum GateId {
     Cosmetic,
     Suspicious,
     Incomplete,
+    ImportCycle,
+    FanInGrowth,
+    BlastRadius,
 }
 
-pub const GATE_COUNT: usize = 13;
+pub const GATE_COUNT: usize = 16;
 
 struct GateSpec {
     id: GateId,
@@ -160,6 +165,24 @@ const GATES: [GateSpec; GATE_COUNT] = [
         describe: "some files were skipped or failed to score",
         defaults: [Info, Info, Info],
     },
+    GateSpec {
+        id: GateId::ImportCycle,
+        key: "import_cycle",
+        describe: "new import cycle base→head (languages not in [pr_recap.import_cycle])",
+        defaults: [Info, Warn, Block],
+    },
+    GateSpec {
+        id: GateId::FanInGrowth,
+        key: "fan_in_growth",
+        describe: "more files depend on a file that already fails SIMPLE",
+        defaults: [Info, Warn, Warn],
+    },
+    GateSpec {
+        id: GateId::BlastRadius,
+        key: "blast_radius",
+        describe: "direct and transitive dependents of the change",
+        defaults: [Off, Info, Info],
+    },
 ];
 
 impl GateId {
@@ -213,6 +236,39 @@ pub struct ScoreDropThreshold {
     pub min_points: u32,
     /// Lines added plus lines removed in the file.
     pub min_changed_lines: u32,
+}
+
+/// Languages with their own severity under `[pr_recap.import_cycle]`, in
+/// table order. Keys match [`crate::graphs::ast::languages`].
+pub const CYCLE_LANGUAGES: [&str; 4] = ["rust", "typescript", "javascript", "python"];
+
+/// Severity of a new import cycle per language, indexed like
+/// [`CYCLE_LANGUAGES`]. A cycle in any other language falls back to the
+/// `import_cycle` gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportCycleSeverities([Severity; 4]);
+
+impl ImportCycleSeverities {
+    /// `None` for a language without its own row.
+    pub fn get(&self, language: &str) -> Option<Severity> {
+        let slot = CYCLE_LANGUAGES.iter().position(|l| *l == language)?;
+        Some(self.0[slot])
+    }
+
+    fn slot(&mut self, language: &str) -> Option<&mut Severity> {
+        let slot = CYCLE_LANGUAGES.iter().position(|l| *l == language)?;
+        Some(&mut self.0[slot])
+    }
+}
+
+/// Fan-in growth on a file that fails SIMPLE only counts once this many
+/// new files depend on it and its dependents grew by at least this share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FanInGrowthThreshold {
+    /// New dependents, and also the smallest absolute growth that counts.
+    pub min_new_dependents: u32,
+    /// Growth as a percentage of the dependents the file had at base.
+    pub min_growth_percent: u32,
 }
 
 /// Which findings fail the check (exit 1).
@@ -296,6 +352,25 @@ impl PrGatePreset {
         }
     }
 
+    /// Rust and TypeScript/JavaScript tolerate module cycles; Python's can
+    /// fail at import time, so its row is stricter.
+    const fn import_cycle(self) -> ImportCycleSeverities {
+        match self {
+            PrGatePreset::Relaxed => ImportCycleSeverities([Off, Off, Off, Warn]),
+            PrGatePreset::Recommended | PrGatePreset::Custom => {
+                ImportCycleSeverities([Info, Info, Info, Warn])
+            }
+            PrGatePreset::Strict => ImportCycleSeverities([Warn, Warn, Warn, Block]),
+        }
+    }
+
+    const fn fan_in_growth(self) -> FanInGrowthThreshold {
+        FanInGrowthThreshold {
+            min_new_dependents: 2,
+            min_growth_percent: 25,
+        }
+    }
+
     const fn fail_on(self) -> FailOn {
         match self {
             PrGatePreset::Strict => FailOn::Warn,
@@ -317,6 +392,8 @@ pub struct PrGateConfig {
     pub preset: PrGatePreset,
     pub gates: GateSeverities,
     pub score_drop: ScoreDropThreshold,
+    pub import_cycle: ImportCycleSeverities,
+    pub fan_in_growth: FanInGrowthThreshold,
     pub fail_on: FailOn,
     /// Exactly how many "where to look" items the report lists.
     pub max_hotspots: u32,
@@ -361,7 +438,8 @@ impl fmt::Display for SettingValue {
 /// One editable setting, for listing and for the commented TOML block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Setting {
-    /// Table under `[pr_recap]` (`""`, `"gates"` or `"score_drop"`).
+    /// Table under `[pr_recap]` (`""`, `"gates"`, `"score_drop"`,
+    /// `"import_cycle"` or `"fan_in_growth"`).
     pub table: &'static str,
     pub key: &'static str,
     pub value: SettingValue,
@@ -394,6 +472,8 @@ impl PrGateConfig {
             preset,
             gates: GateSeverities(GATES.map(|spec| spec.defaults[column])),
             score_drop: preset.score_drop(),
+            import_cycle: preset.import_cycle(),
+            fan_in_growth: preset.fan_in_growth(),
             fail_on: preset.fail_on(),
             max_hotspots: DEFAULT_MAX_HOTSPOTS,
             waivers: Vec::new(),
@@ -403,6 +483,22 @@ impl PrGateConfig {
 
     pub fn severity(&self, gate: GateId) -> Severity {
         self.gates.get(gate)
+    }
+
+    /// Severity of a new import cycle through `members`: each file takes its
+    /// language's `[pr_recap.import_cycle]` row, or the `import_cycle` gate
+    /// when its language has none, and the strictest file wins.
+    pub fn cycle_severity<'a>(&self, members: impl IntoIterator<Item = &'a str>) -> Severity {
+        let fallback = self.severity(GateId::ImportCycle);
+        members
+            .into_iter()
+            .map(|path| {
+                language_for_path(path)
+                    .and_then(|language| self.import_cycle.get(language))
+                    .unwrap_or(fallback)
+            })
+            .max()
+            .unwrap_or(fallback)
     }
 
     /// Every editable setting with its active, preset and default value.
@@ -443,6 +539,24 @@ impl PrGateConfig {
             "score_drop",
             "min_changed_lines",
             "lines added + removed in the file; smaller edits don't count",
+        );
+        for (language, describe) in CYCLE_LANGUAGES.into_iter().zip([
+            "a new cycle among Rust modules",
+            "a new cycle among TypeScript modules",
+            "a new cycle among JavaScript modules",
+            "a new cycle among Python modules; these can fail at import time",
+        ]) {
+            push("import_cycle", language, describe);
+        }
+        push(
+            "fan_in_growth",
+            "min_new_dependents",
+            "fewest new dependents that count, and the smallest growth",
+        );
+        push(
+            "fan_in_growth",
+            "min_growth_percent",
+            "growth as a share of the dependents at base",
         );
         rows
     }
@@ -490,6 +604,18 @@ impl PrGateConfig {
             ("score_drop", "min_changed_lines") => {
                 SettingValue::Number(self.score_drop.min_changed_lines)
             }
+            ("fan_in_growth", "min_new_dependents") => {
+                SettingValue::Number(self.fan_in_growth.min_new_dependents)
+            }
+            ("fan_in_growth", "min_growth_percent") => {
+                SettingValue::Number(self.fan_in_growth.min_growth_percent)
+            }
+            ("import_cycle", language) => SettingValue::Text(
+                self.import_cycle
+                    .get(language)
+                    .unwrap_or(Severity::Off)
+                    .as_str(),
+            ),
             ("gates", gate) => SettingValue::Text(
                 GateId::parse(gate)
                     .map_or(Severity::Off, |g| self.severity(g))
@@ -516,6 +642,8 @@ impl PrGateConfig {
                 table = setting.table;
                 let header_note = match table {
                     "gates" => "off | info | warn | block   [default in brackets]",
+                    "import_cycle" => "per language; other languages use gates.import_cycle",
+                    "fan_in_growth" => "fan-in growth has to clear both",
                     _ => "a score drop has to clear both",
                 };
                 lines.push((String::new(), String::new()));
@@ -571,6 +699,8 @@ impl PrGateConfig {
                 },
                 "gates" => config.apply_gates(value, &mut warnings),
                 "score_drop" => config.apply_score_drop(value, &mut warnings),
+                "import_cycle" => config.apply_import_cycle(value, &mut warnings),
+                "fan_in_growth" => config.apply_fan_in_growth(value, &mut warnings),
                 "waive" => config.waivers = parse_waivers(value, &mut warnings),
                 other => warnings.push(format!("pr_recap.{other}: unknown setting, ignored")),
             }
@@ -607,6 +737,46 @@ impl PrGateConfig {
             let slot = match key.as_str() {
                 "min_points" => &mut self.score_drop.min_points,
                 "min_changed_lines" => &mut self.score_drop.min_changed_lines,
+                _ => {
+                    warnings.push(format!("pr_recap.{path}: unknown setting, ignored"));
+                    continue;
+                }
+            };
+            match count(value) {
+                Some(n) => *slot = n,
+                None => warnings.push(invalid(&path, value, "a whole number")),
+            }
+        }
+    }
+
+    fn apply_import_cycle(&mut self, value: &toml::Value, warnings: &mut Vec<String>) {
+        let Some(table) = value.as_table() else {
+            warnings.push("pr_recap.import_cycle: expected a table, ignored".to_string());
+            return;
+        };
+        for (key, value) in table {
+            let path = format!("import_cycle.{key}");
+            let Some(slot) = self.import_cycle.slot(key) else {
+                warnings.push(format!("pr_recap.{path}: unknown language, ignored"));
+                continue;
+            };
+            match value.as_str().and_then(Severity::parse) {
+                Some(severity) => *slot = severity,
+                None => warnings.push(invalid(&path, value, "off, info, warn or block")),
+            }
+        }
+    }
+
+    fn apply_fan_in_growth(&mut self, value: &toml::Value, warnings: &mut Vec<String>) {
+        let Some(table) = value.as_table() else {
+            warnings.push("pr_recap.fan_in_growth: expected a table, ignored".to_string());
+            return;
+        };
+        for (key, value) in table {
+            let path = format!("fan_in_growth.{key}");
+            let slot = match key.as_str() {
+                "min_new_dependents" => &mut self.fan_in_growth.min_new_dependents,
+                "min_growth_percent" => &mut self.fan_in_growth.min_growth_percent,
                 _ => {
                     warnings.push(format!("pr_recap.{path}: unknown setting, ignored"));
                     continue;
@@ -691,7 +861,7 @@ mod tests {
         assert_eq!(severity(PrGatePreset::Recommended), Severity::Info);
         assert_eq!(severity(PrGatePreset::Custom), Severity::Info);
         assert_eq!(severity(PrGatePreset::Strict), Severity::Warn);
-        assert_eq!(GateId::ALL.len(), 13);
+        assert_eq!(GateId::ALL.len(), 16);
     }
 
     const WAIVERS: &str = "[pr_recap]\npreset = \"strict\"\n\n[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/legacy/**\"\nreason = \"being rewritten in #412\"\nexpires = \"2026-12-31\"\n\n[[pr_recap.waive]]\ngate = \"cosmetic\"\npath = \"src/gen/**\"\n\n[[pr_recap.waive]]\ngate = \"pilar_lost\"\npath = \"a/**\"\nreason = \"x\"\n\n[[pr_recap.waive]]\ngate = \"score_drop\"\npath = \"a/**\"\nreason = \"x\"\nexpires = \"next week\"\n";
@@ -768,7 +938,14 @@ mod tests {
     fn preset_keys_are_the_top_level_settings_and_tables() {
         assert_eq!(
             PrGateConfig::preset_keys(),
-            ["fail_on", "max_hotspots", "gates", "score_drop"]
+            [
+                "fail_on",
+                "max_hotspots",
+                "gates",
+                "score_drop",
+                "import_cycle",
+                "fan_in_growth"
+            ]
         );
     }
 
@@ -796,6 +973,78 @@ mod tests {
         assert!(reparsed.warnings.is_empty(), "{:?}", reparsed.warnings);
         assert_eq!(reparsed.gates, seeded.gates);
         assert_eq!(reparsed.score_drop, seeded.score_drop);
+        assert_eq!(reparsed.import_cycle, seeded.import_cycle);
+        assert_eq!(reparsed.fan_in_growth, seeded.fan_in_growth);
         assert_eq!(reparsed.fail_on, seeded.fail_on);
+    }
+
+    #[test]
+    fn coupling_gates_default_per_preset() {
+        let severity = |preset, gate| PrGateConfig::for_preset(preset).severity(gate);
+        use PrGatePreset::{Recommended, Relaxed, Strict};
+        let rows = [
+            (GateId::ImportCycle, [Info, Warn, Block]),
+            (GateId::FanInGrowth, [Info, Warn, Warn]),
+            (GateId::BlastRadius, [Off, Info, Info]),
+        ];
+        for (gate, [relaxed, recommended, strict]) in rows {
+            assert_eq!(severity(Relaxed, gate), relaxed, "{}", gate.key());
+            assert_eq!(severity(Recommended, gate), recommended, "{}", gate.key());
+            assert_eq!(severity(Strict, gate), strict, "{}", gate.key());
+        }
+        let language = |preset, language| {
+            PrGateConfig::for_preset(preset)
+                .import_cycle
+                .get(language)
+                .unwrap()
+        };
+        assert_eq!(language(Relaxed, "rust"), Off);
+        assert_eq!(language(Relaxed, "python"), Warn);
+        assert_eq!(language(Recommended, "typescript"), Info);
+        assert_eq!(language(Recommended, "python"), Warn);
+        assert_eq!(language(Strict, "javascript"), Warn);
+        assert_eq!(language(Strict, "python"), Block);
+        for preset in PrGatePreset::ALL {
+            let config = PrGateConfig::for_preset(preset);
+            assert_eq!(config.fan_in_growth.min_new_dependents, 2);
+            assert_eq!(config.fan_in_growth.min_growth_percent, 25);
+        }
+    }
+
+    #[test]
+    fn a_cycle_takes_its_strictest_language_and_falls_back_to_the_gate() {
+        let config = PrGateConfig::default();
+        assert_eq!(config.cycle_severity(["a.rs", "b.rs"]), Info);
+        assert_eq!(config.cycle_severity(["a.rs", "b.py"]), Warn);
+        // Go has no row, and a Markdown file has no language: the gate.
+        assert_eq!(config.cycle_severity(["a.go", "b.rs"]), Warn);
+        assert_eq!(config.cycle_severity(["README.md", "a.ts"]), Warn);
+        assert_eq!(config.cycle_severity([]), Warn);
+    }
+
+    #[test]
+    fn coupling_tables_parse_and_bad_keys_are_reported() {
+        let config = parse(
+            "[pr_recap]\n[pr_recap.import_cycle]\nrust = \"block\"\ncobol = \"warn\"\npython = \"loud\"\n[pr_recap.fan_in_growth]\nmin_new_dependents = 4\nmin_growth_percent = -1\nmax = 3\n",
+        );
+        assert_eq!(config.import_cycle.get("rust"), Some(Block));
+        assert_eq!(config.import_cycle.get("python"), Some(Warn));
+        assert_eq!(config.fan_in_growth.min_new_dependents, 4);
+        assert_eq!(config.fan_in_growth.min_growth_percent, 25);
+        let joined = config.warnings.join("\n");
+        for needle in [
+            "pr_recap.import_cycle.cobol: unknown language, ignored",
+            "pr_recap.import_cycle.python",
+            "pr_recap.fan_in_growth.min_growth_percent",
+            "pr_recap.fan_in_growth.max: unknown setting",
+        ] {
+            assert!(joined.contains(needle), "missing {needle}: {joined}");
+        }
+        assert_eq!(config.warnings.len(), 4, "{joined}");
+        let changed: Vec<String> = config.overrides().iter().map(Setting::path).collect();
+        assert_eq!(
+            changed,
+            ["import_cycle.rust", "fan_in_growth.min_new_dependents"]
+        );
     }
 }

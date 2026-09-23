@@ -132,7 +132,10 @@ fn pr_gate_rows(gate: &PrGateConfig, options: RenderOptions) -> Vec<String> {
         paint("PR GATE", Style::new().cyan().bold(), options),
         paint(gate.label(), Style::new().dim(), options)
     )];
-    for setting in gate.settings() {
+    let settings = gate.settings();
+    // One column for every path, sized by the longest setting path.
+    let width = settings.iter().map(|s| s.path().len()).max().unwrap_or(0);
+    for setting in settings {
         let value = format!("{:<6}", setting.value.to_string());
         let (value, note) = if setting.is_changed() {
             (
@@ -143,7 +146,7 @@ fn pr_gate_rows(gate: &PrGateConfig, options: RenderOptions) -> Vec<String> {
             (value, setting.describe.to_string())
         };
         lines.push(format!(
-            "{rail}  {:<28} {value} {}",
+            "{rail}  {:<width$} {value} {}",
             setting.path(),
             paint(note, Style::new().dim(), options)
         ));
@@ -154,7 +157,7 @@ fn pr_gate_rows(gate: &PrGateConfig, options: RenderOptions) -> Vec<String> {
             .as_deref()
             .map_or_else(String::new, |date| format!(" (expires {date})"));
         lines.push(format!(
-            "{rail}  {:<28} {} {}",
+            "{rail}  {:<width$} {} {}",
             format!("waive.{}", waiver.gate()),
             waiver.path(),
             paint(
@@ -1038,6 +1041,9 @@ reason = \"y\"
 
 [pr_recap.import_cycle]
 rust = \"info\"
+
+[pr_recap.team]
+owner = \"x\"
 ";
 
     #[test]
@@ -1047,13 +1053,18 @@ rust = \"info\"
         let updated = write_pr_gate(&dir, PrGatePreset::Recommended);
 
         assert!(updated.contains("preset = \"recommended\""), "{updated}");
-        for gone in ["fail_on", "[pr_recap.gates]", "cosmetic = "] {
+        for gone in [
+            "fail_on",
+            "[pr_recap.gates]",
+            "cosmetic = ",
+            "[pr_recap.import_cycle]",
+        ] {
             assert!(!updated.contains(gone), "{gone} survived:\n{updated}");
         }
         for kept in [
             "[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/legacy/**\"\nreason = \"x\"\n",
             "[[pr_recap.waive]]\ngate = \"cosmetic\"\npath = \"src/gen/**\"\nreason = \"y\"\n",
-            "[pr_recap.import_cycle]\nrust = \"info\"\n",
+            "[pr_recap.team]\nowner = \"x\"\n",
         ] {
             assert!(updated.contains(kept), "lost {kept:?}:\n{updated}");
         }
@@ -1099,6 +1110,31 @@ rust = \"info\"
     }
 
     #[test]
+    fn a_custom_import_cycle_language_round_trips_and_a_preset_resets_it() {
+        use topos_engine::config::Severity;
+        let dir = project(
+            "import-cycle-language",
+            "[pr_recap]\npreset = \"custom\"\n\n[pr_recap.import_cycle]\npython = \"block\"\n",
+        );
+
+        let custom = write_pr_gate(&dir, PrGatePreset::Custom);
+        assert!(custom.contains("[pr_recap.import_cycle]"), "{custom}");
+        assert!(custom.contains("[pr_recap.fan_in_growth]"), "{custom}");
+        let gate = load_topos_config(&dir).pr_recap;
+        assert!(gate.warnings.is_empty(), "{:?}", gate.warnings);
+        assert_eq!(gate.import_cycle.get("python"), Some(Severity::Block));
+        assert_eq!(gate.import_cycle.get("rust"), Some(Severity::Info));
+        assert_eq!(gate.label(), "custom · 1 change");
+
+        let relaxed = write_pr_gate(&dir, PrGatePreset::Relaxed);
+        assert!(!relaxed.contains("import_cycle"), "{relaxed}");
+        let gate = load_topos_config(&dir).pr_recap;
+        assert_eq!(gate.import_cycle.get("python"), Some(Severity::Warn));
+        assert_eq!(gate.label(), "relaxed");
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
     fn show_lists_the_waivers() {
         let config = ToposConfig {
             pr_recap: PrGateConfig::from_table(
@@ -1121,7 +1157,7 @@ rust = \"info\"
         );
         assert!(
             lines.contains(
-                &"│  waive.pillar_lost            src/legacy/** vendored (expires 2026-12-31)"
+                &"│  waive.pillar_lost                src/legacy/** vendored (expires 2026-12-31)"
                     .to_string()
             ),
             "{lines:#?}"
@@ -1154,7 +1190,7 @@ rust = \"info\"
         let cosmetic = lines.iter().find(|l| l.contains("gates.cosmetic")).unwrap();
         assert_eq!(
             cosmetic,
-            "│  gates.cosmetic               info   (preset: block) a score moved but the code structure did not"
+            "│  gates.cosmetic                   info   (preset: block) a score moved but the code structure did not"
         );
         let unchanged = lines
             .iter()

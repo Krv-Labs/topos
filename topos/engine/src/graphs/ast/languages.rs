@@ -38,9 +38,27 @@ pub fn all_source_suffixes() -> Vec<&'static str> {
     all
 }
 
+/// The supported language whose suffix `path` ends with, if any — the
+/// reverse of [`language_file_suffixes`].
+pub fn language_for_path(path: &str) -> Option<&'static str> {
+    SUPPORTED_LANGUAGES.iter().copied().find(|language| {
+        language_file_suffixes(language)
+            .is_some_and(|suffixes| suffixes.iter().any(|suffix| path.ends_with(suffix)))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_maps_back_to_its_language() {
+        assert_eq!(language_for_path("src/app.tsx"), Some("typescript"));
+        assert_eq!(language_for_path("lib/run.mjs"), Some("javascript"));
+        assert_eq!(language_for_path("a/b.rs"), Some("rust"));
+        assert_eq!(language_for_path("README.md"), None);
+        assert_eq!(language_for_path("Makefile"), None);
+    }
 
     #[test]
     fn known_language_returns_suffixes() {

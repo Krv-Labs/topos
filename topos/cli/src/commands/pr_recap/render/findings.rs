@@ -120,6 +120,7 @@ fn finding_phrase(recap: &PrRecap, finding: &Finding, paths: &[&str]) -> String 
             number(finding.after.unwrap_or_default()),
             file.lines_added + file.lines_removed
         ),
+        (GateId::ImportCycle, _) => fact(finding),
         _ => sentence(&finding.text.replace(&finding.path, short)),
     }
 }
@@ -297,6 +298,22 @@ fn fact(finding: &Finding) -> String {
         GateId::ScoreDrop => format!(
             "{pillar} {} → {}",
             number(finding.before.unwrap_or_default()),
+            number(finding.after.unwrap_or_default())
+        ),
+        GateId::ImportCycle => {
+            let all: Vec<&str> = finding.related.iter().map(String::as_str).collect();
+            let chain: Vec<&str> = all.iter().map(|path| short_name(path, &all)).collect();
+            format!("new import cycle {}", chain.join(" → "))
+        }
+        GateId::FanInGrowth => format!(
+            "{} while failing SIMPLE ({} → {} dependents)",
+            plural(finding.related.len(), "new dependent", "new dependents"),
+            number(finding.before.unwrap_or_default()),
+            number(finding.after.unwrap_or_default())
+        ),
+        GateId::BlastRadius => format!(
+            "reaches {} directly, {} transitively",
+            plural(finding.before.unwrap_or_default() as usize, "file", "files"),
             number(finding.after.unwrap_or_default())
         ),
         _ => without_path(finding),

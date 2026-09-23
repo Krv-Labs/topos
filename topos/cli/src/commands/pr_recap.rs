@@ -22,6 +22,7 @@ mod score;
 mod verdict;
 mod view;
 
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum};
@@ -31,6 +32,7 @@ use topos_engine::config::{
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::waivers::today_utc;
+use topos_engine::graphs::mdg::file_graph::FileGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
@@ -197,6 +199,17 @@ Coupling:
   that work and reports COMPOSABLE as not measured. With `--base/--head` there
   is no PR store, so splits are detected from import lines and the
   moved-function ledger instead.
+  With both graphs measured, three more gates read them, over every changed
+  file (--max-files aside):
+    import_cycle   an import cycle new at head, cut at an import this change
+                   added. Severity per language in [pr_recap.import_cycle]; the
+                   strictest file in the cycle wins, other languages use the
+                   gate. Under recommended, Python warns and the rest is info.
+    fan_in_growth  a changed file failing SIMPLE that gained dependents past
+                   [pr_recap.fan_in_growth] (2 new, and 25% more). Tests and a
+                   split's own children are not counted.
+    blast_radius   how many files outside the change depend on it, directly
+                   and transitively. Info, off under relaxed.
 
 Prompts:
   On a terminal, pr-recap asks before a slow step: building coupling graphs
@@ -510,6 +523,14 @@ fn build_recap(
         changed_files(&repo, &base_sha, &head_sha)?
     };
 
+    // Renames and the changed source files, before the cap trims the
+    // list: the coupling gates see the whole range.
+    let head_to_base: HashMap<String, String> = diff
+        .entries
+        .iter()
+        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
+        .collect();
+    let mut changed_sources = BTreeSet::new();
     let mut skipped = Vec::new();
     let mut scoreable = Vec::new();
     for entry in diff.entries {
@@ -518,7 +539,10 @@ fn build_recap(
                 path: entry.path,
                 reason,
             }),
-            None => scoreable.push(entry),
+            None => {
+                changed_sources.insert(entry.path.clone());
+                scoreable.push(entry);
+            }
         }
     }
     let capped = scoreable.len().saturating_sub(max_files);
@@ -602,7 +626,25 @@ fn build_recap(
     let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
     // Pass D — the configured gates decide readiness.
     let (direction, described) = direction_for(&files, &base_sha, &head_sha);
-    let (_, mut findings) = gates::evaluate(&files, &clusters, capped, &judging.gate, &moves);
+    let coupling_graphs = base_graph
+        .as_ref()
+        .zip(head_graph.as_ref())
+        .filter(|_| measured)
+        .map(|(base, head)| gates::Coupling {
+            base: FileGraph::build(base),
+            head: FileGraph::build(head),
+            head_to_base,
+            changed: changed_sources,
+            deleted: diff.deleted.iter().cloned().collect(),
+        });
+    let (_, mut findings) = gates::evaluate(
+        &files,
+        &clusters,
+        capped,
+        &judging.gate,
+        &moves,
+        coupling_graphs.as_ref(),
+    );
     let waivers = gates::waive(
         &mut findings,
         &judging.gate.waivers,

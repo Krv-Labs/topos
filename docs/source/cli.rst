@@ -393,6 +393,28 @@ warn under strict. A score drop the same move explains is info. A moved
 function that grew on the way is still ``pillar_lost``, and a SECURE loss is
 never excused when the range as a whole gained SECURE findings.
 
+Three gates read the file dependency graphs at base and head, so they run only
+when COMPOSABLE was measured (not with ``--no-coupling``), and they see every
+changed source file, not only the ``--max-files`` that were scored:
+
+- ``import_cycle``: an import cycle at head that did not exist at base. The
+  finding walks the cycle from an import this change added and suggests
+  breaking it there. Its severity comes from ``[pr_recap.import_cycle]``, one
+  row per language (``rust``, ``typescript``, ``javascript``, ``python``);
+  a cycle takes the strictest row among its files, and a file in another
+  language falls back to the ``import_cycle`` gate. Under the recommended
+  preset a Python cycle needs attention and the others are info.
+- ``fan_in_growth``: a changed file that fails SIMPLE and gained dependents.
+  It fires when the new dependents (tests and a split's own children aside)
+  clear both ``[pr_recap.fan_in_growth]`` thresholds, ``min_new_dependents``
+  (2) and ``min_growth_percent`` (25). Warn under recommended and strict.
+- ``blast_radius``: how many files outside the change depend on it directly
+  and transitively, named through the changed file with the widest reach.
+  Info under recommended and strict, off under relaxed.
+
+In ``--json`` these findings carry a ``related`` list: the cycle's files, the
+new dependents, or the most depended-on files the change reaches.
+
 **Waivers**
 
 A known finding can be set aside with a ``[[pr_recap.waive]]`` entry:
@@ -587,7 +609,10 @@ or ``custom``. A named preset is stored alone under ``[pr_recap]``, so the
 project picks up improved defaults; ``custom`` writes every gate setting,
 with its default and meaning in a comment, for you to edit in the file.
 ``config show`` lists every PR gate setting and marks the ones that differ
-from the preset, then any ``[[pr_recap.waive]]`` entries.
+from the preset, then any ``[[pr_recap.waive]]`` entries. Besides
+``[pr_recap.gates]``, a custom policy can tune ``[pr_recap.score_drop]``,
+``[pr_recap.import_cycle]`` (a severity per language; an unknown language is
+ignored with a warning) and ``[pr_recap.fan_in_growth]``.
 
 ``--priority`` accepts either form: a single pillar sets the emphasis and
 reorders the existing ranking around it; a full comma-separated ranking

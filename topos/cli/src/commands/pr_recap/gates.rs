@@ -11,6 +11,11 @@
 //! drop they explain is immaterial. A finding a `[[pr_recap.waive]]` entry
 //! covers keeps its severity and its place in the document, marked
 //! [`Finding::waived`], but no longer counts toward the readiness.
+//!
+//! The coupling gates (`import_cycle`, `fan_in_growth`, `blast_radius`)
+//! read the two file dependency graphs and live in [`coupling`].
+
+mod coupling;
 
 use std::cmp::Ordering;
 use std::path::Path;
@@ -24,6 +29,8 @@ use super::model::{
     percent_change, Cluster, FileRecap, GateCrossing, GateSummary, Headline, WaiverSummary,
 };
 use super::moves::{MoveCause, RangeMoves};
+
+pub(crate) use self::coupling::Coupling;
 
 /// Sort points per SECURE finding a split added, so one new finding
 /// outranks a few points of score drop or added complexity.
@@ -109,6 +116,10 @@ pub(crate) struct Finding {
     /// its severity but no longer counts toward the readiness.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) waived: Option<Waived>,
+    /// Paths behind a coupling finding: the cycle walked from its cut, the
+    /// new dependents, or the most depended-on files the change reaches.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) related: Vec<String>,
     pub(crate) text: String,
     /// How big the finding is, in points, so every gate sorts on one
     /// scale: a pillar finding's score drop plus how far its metric sits
@@ -117,6 +128,9 @@ pub(crate) struct Finding {
     /// or the complexity a split added.
     #[serde(skip)]
     magnitude: f64,
+    /// Every file in a new import cycle, for its per-language severity.
+    #[serde(skip)]
+    cycle: Vec<String>,
 }
 
 impl Finding {
@@ -139,8 +153,10 @@ impl Finding {
             material: true,
             moved_from: None,
             waived: None,
+            related: Vec::new(),
             text,
             magnitude: 0.0,
+            cycle: Vec::new(),
         }
     }
 
@@ -166,7 +182,8 @@ pub(crate) struct Waived {
 
 /// Apply the gates in `cfg` to the scored files, the split clusters and
 /// the scoring cap (`incomplete` files left unscored), with the range's
-/// `moves` to tell a moved regression from a new one.
+/// `moves` to tell a moved regression from a new one. The coupling gates
+/// run only when `coupling` was measured.
 ///
 /// Findings are sorted most important first: severity, then SECURE, then
 /// magnitude, then path and line. The readiness is the first one's
@@ -177,6 +194,7 @@ pub(crate) fn evaluate(
     incomplete: usize,
     cfg: &PrGateConfig,
     moves: &RangeMoves,
+    coupling: Option<&Coupling>,
 ) -> (Readiness, Vec<Finding>) {
     let mut found = Vec::new();
     for file in files {
@@ -193,6 +211,9 @@ pub(crate) fn evaluate(
     }
     for cluster in clusters {
         split_findings(cluster, files, &mut found);
+    }
+    if let Some(coupling) = coupling {
+        coupling::coupling_findings(coupling, files, clusters, cfg, &mut found);
     }
     if incomplete > 0 {
         found.push(incomplete_finding(incomplete));
@@ -261,9 +282,14 @@ pub(crate) fn waive(
 }
 
 /// The policy's severity for the finding, or `None` when its gate is off.
-/// A score drop under the materiality thresholds is at most info.
+/// A score drop under the materiality thresholds is at most info, and an
+/// import cycle takes the strictest `[pr_recap.import_cycle]` row among
+/// its files' languages.
 fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
-    let severity = cfg.severity(finding.gate);
+    let severity = match finding.gate {
+        GateId::ImportCycle => cfg.cycle_severity(finding.cycle.iter().map(String::as_str)),
+        gate => cfg.severity(gate),
+    };
     finding.severity = if finding.gate == GateId::ScoreDrop && !finding.material {
         severity.min(Severity::Info)
     } else {
@@ -689,6 +715,14 @@ fn default_fix(gate: GateId) -> &'static str {
             "Check that the change does more than reshuffle code the scores react to."
         }
         GateId::Incomplete => "Raise --max-files to score every changed file.",
+        GateId::ImportCycle => "Break the cycle by inverting one of the imports this change added.",
+        GateId::FanInGrowth => {
+            "Simplify the file before more code depends on it, or give the new callers a \
+             narrower module."
+        }
+        GateId::BlastRadius => {
+            "Review the dependents most exposed to the change, and test through them."
+        }
     }
 }
 
@@ -765,6 +799,12 @@ mod tests {
     use topos_engine::evaluation::policies::gates::GATE_SPECS;
     use topos_engine::functors::profunctors::uast::ledger::{FunctionMatch, Ledger, MatchKind};
 
+    use std::collections::HashMap;
+
+    use topos_engine::graphs::mdg::file_graph::FileGraph;
+    use topos_engine::graphs::mdg::models::{GraphNode, GraphRelationship};
+    use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
+
     use super::super::model::{
         ClusterChild, ClusterMark, ClusterMembership, ClusterRole, FileChange, FunctionRef,
         Hotspot, Medal, PillarDelta,
@@ -780,7 +820,14 @@ mod tests {
         incomplete: usize,
         cfg: &PrGateConfig,
     ) -> (Readiness, Vec<Finding>) {
-        evaluate(files, clusters, incomplete, cfg, &RangeMoves::default())
+        evaluate(
+            files,
+            clusters,
+            incomplete,
+            cfg,
+            &RangeMoves::default(),
+            None,
+        )
     }
 
     fn medal(tier: &str) -> Medal {
@@ -1307,5 +1354,244 @@ mod tests {
         );
         let elsewhere = Path::new("/elsewhere/.topos.toml");
         assert_eq!(relative_to(elsewhere, root), "/elsewhere/.topos.toml");
+    }
+
+    // --- coupling gates --------------------------------------------------
+
+    /// A file-level MDG: one `File` node per path, one `IMPORTS` per pair.
+    fn mdg(files: &[&str], imports: &[(&str, &str)]) -> ModuleDependencyGraph {
+        let mut graph = ModuleDependencyGraph::new("x");
+        for path in files {
+            graph.add_node(GraphNode {
+                id: format!("File:{path}"),
+                label: "File".to_string(),
+                properties: HashMap::from([("filePath".to_string(), (*path).into())]),
+            });
+        }
+        for (from, to) in imports {
+            graph.add_relationship(GraphRelationship {
+                id: format!("{from}->{to}"),
+                source_id: format!("File:{from}"),
+                target_id: format!("File:{to}"),
+                rel_type: "IMPORTS".to_string(),
+                confidence: 1.0,
+                reason: String::new(),
+                properties: HashMap::new(),
+            });
+        }
+        graph
+    }
+
+    fn coupling(
+        base: &ModuleDependencyGraph,
+        head: &ModuleDependencyGraph,
+        changed: &[&str],
+    ) -> Coupling {
+        Coupling {
+            base: FileGraph::build(base),
+            head: FileGraph::build(head),
+            changed: changed.iter().map(|path| path.to_string()).collect(),
+            ..Coupling::default()
+        }
+    }
+
+    /// The findings of one gate over `files` and `coupling`.
+    fn coupled(
+        files: &[FileRecap],
+        clusters: &[Cluster],
+        coupling: &Coupling,
+        cfg: &PrGateConfig,
+        gate: GateId,
+    ) -> Vec<Finding> {
+        let (_, findings) = evaluate(
+            files,
+            clusters,
+            0,
+            cfg,
+            &RangeMoves::default(),
+            Some(coupling),
+        );
+        findings
+            .into_iter()
+            .filter(|finding| finding.gate == gate)
+            .collect()
+    }
+
+    /// `a` and `b` import each other at head, and `b → a` is new.
+    fn new_cycle(a: &str, b: &str) -> Coupling {
+        coupling(
+            &mdg(&[a, b], &[(a, b)]),
+            &mdg(&[a, b], &[(a, b), (b, a)]),
+            &[b],
+        )
+    }
+
+    #[test]
+    fn a_new_import_cycle_is_judged_by_its_strictest_language() {
+        let cycle = |a, b, cfg: &PrGateConfig| {
+            coupled(&[], &[], &new_cycle(a, b), cfg, GateId::ImportCycle)
+        };
+        let rust = cycle("src/a.rs", "src/b.rs", &recommended());
+        assert_eq!(rust.len(), 1);
+        let finding = &rust[0];
+        assert_eq!(finding.severity, Severity::Info);
+        assert_eq!(finding.path, "src/b.rs");
+        assert_eq!(
+            finding.text,
+            "New import cycle: src/b.rs → src/a.rs → src/b.rs."
+        );
+        assert_eq!(
+            finding.fix,
+            "Break the cycle at src/b.rs → src/a.rs (introduced by this change)."
+        );
+        assert_eq!(finding.related, ["src/b.rs", "src/a.rs", "src/b.rs"]);
+        assert_eq!(finding.magnitude, 20.0);
+
+        let python = cycle("app/a.py", "app/b.py", &recommended());
+        assert_eq!(python[0].severity, Severity::Warn);
+        // Rust says info, Python says warn: the cycle warns.
+        let mixed = cycle("src/a.rs", "bind/b.py", &recommended());
+        assert_eq!(mixed[0].severity, Severity::Warn);
+        // Go has no row: the import_cycle gate decides, and still the
+        // strictest member wins.
+        let mut strict_gate = recommended();
+        strict_gate.gates.set(GateId::ImportCycle, Severity::Block);
+        let go = cycle("src/a.rs", "cmd/b.go", &strict_gate);
+        assert_eq!(go[0].severity, Severity::Block);
+        // Relaxed turns Rust cycles off; the finding is dropped, not kept
+        // at off.
+        let relaxed = PrGateConfig::for_preset(PrGatePreset::Relaxed);
+        assert!(cycle("src/a.rs", "src/b.rs", &relaxed).is_empty());
+        let json = serde_json::to_value(finding).unwrap();
+        assert_eq!(json["gate"], "import_cycle");
+        assert_eq!(json["related"][1], "src/a.rs");
+    }
+
+    #[test]
+    fn more_dependents_on_a_file_failing_simple_is_fan_in_growth() {
+        let engine = "src/engine.py";
+        let base = mdg(&[engine, "src/a.py", "src/b.py"], &[("src/a.py", engine)]);
+        let importers = [
+            "src/a.py",
+            "src/b.py",
+            "src/c.py",
+            "src/d.py",
+            "src/engine_io.py",
+            "tests/test_engine.py",
+        ];
+        let mut files = vec![engine];
+        files.extend(importers);
+        let imports: Vec<(&str, &str)> = importers.iter().map(|from| (*from, engine)).collect();
+        let head = mdg(&files, &imports);
+        let graphs = coupling(&base, &head, &[engine]);
+        let split = [cluster(engine, "src/engine_io.py")];
+
+        let mut failing = changed(engine);
+        set(&mut failing, "simple", (false, false), (40.0, 40.0));
+        let found = coupled(
+            &[failing.clone()],
+            &split,
+            &graphs,
+            &recommended(),
+            GateId::FanInGrowth,
+        );
+        assert_eq!(found.len(), 1);
+        let finding = &found[0];
+        assert_eq!(finding.severity, Severity::Warn);
+        assert_eq!(finding.path, engine);
+        // The split's child and the test are not new dependents.
+        assert_eq!(
+            finding.text,
+            "3 new files depend on src/engine.py, which fails SIMPLE: src/b.py, src/c.py, \
+             src/d.py."
+        );
+        assert_eq!(finding.related, ["src/b.py", "src/c.py", "src/d.py"]);
+        assert_eq!((finding.before, finding.after), (Some(1.0), Some(4.0)));
+
+        // A file that clears SIMPLE may gain dependents freely.
+        let passing = changed(engine);
+        assert!(coupled(
+            &[passing],
+            &split,
+            &graphs,
+            &recommended(),
+            GateId::FanInGrowth
+        )
+        .is_empty());
+        // Below the threshold: 4 new dependents are needed.
+        let mut cfg = recommended();
+        cfg.fan_in_growth.min_new_dependents = 4;
+        assert!(coupled(
+            &[failing.clone()],
+            &split,
+            &graphs,
+            &cfg,
+            GateId::FanInGrowth
+        )
+        .is_empty());
+        // A base graph that never indexed the file has nothing to grow from.
+        let unindexed = coupling(&mdg(&["src/a.py"], &[]), &head, &[engine]);
+        assert!(coupled(
+            &[failing],
+            &split,
+            &unindexed,
+            &recommended(),
+            GateId::FanInGrowth
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn the_blast_radius_counts_direct_and_transitive_dependents() {
+        let paths = [
+            "src/core.rs",
+            "src/util.rs",
+            "src/api.rs",
+            "src/cli.rs",
+            "src/main.rs",
+            "src/x.rs",
+        ];
+        let imports = [
+            ("src/api.rs", "src/core.rs"),
+            ("src/cli.rs", "src/api.rs"),
+            ("src/main.rs", "src/cli.rs"),
+            ("src/x.rs", "src/util.rs"),
+            // A changed file depending on another is not reach.
+            ("src/util.rs", "src/core.rs"),
+        ];
+        let graph = mdg(&paths, &imports);
+        let graphs = coupling(&graph, &graph, &["src/core.rs", "src/util.rs"]);
+        let found = coupled(&[], &[], &graphs, &recommended(), GateId::BlastRadius);
+        assert_eq!(found.len(), 1);
+        let finding = &found[0];
+        assert_eq!(finding.severity, Severity::Info);
+        assert_eq!(finding.path, "src/core.rs");
+        assert_eq!(
+            finding.text,
+            "The change reaches 2 files directly, 4 transitively (most through src/core.rs)."
+        );
+        assert_eq!(finding.related, ["src/api.rs", "src/x.rs"]);
+
+        // Nothing depends on the change: no finding at all.
+        let lonely = coupling(&graph, &graph, &["src/main.rs"]);
+        assert!(coupled(&[], &[], &lonely, &recommended(), GateId::BlastRadius).is_empty());
+        // Off under relaxed.
+        let relaxed = PrGateConfig::for_preset(PrGatePreset::Relaxed);
+        assert!(coupled(&[], &[], &graphs, &relaxed, GateId::BlastRadius).is_empty());
+    }
+
+    #[test]
+    fn a_deleted_file_reaches_its_base_dependents() {
+        let base = mdg(
+            &["src/old.rs", "src/user.rs"],
+            &[("src/user.rs", "src/old.rs")],
+        );
+        let head = mdg(&["src/user.rs"], &[]);
+        let mut graphs = coupling(&base, &head, &[]);
+        graphs.deleted.insert("src/old.rs".to_string());
+        let found = coupled(&[], &[], &graphs, &recommended(), GateId::BlastRadius);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, "src/old.rs");
+        assert_eq!(found[0].related, ["src/user.rs"]);
     }
 }

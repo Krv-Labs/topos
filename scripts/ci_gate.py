@@ -99,7 +99,7 @@ def decide(event_name: str, base_ref: str, response: str | None) -> tuple[bool, 
         )
     try:
         number = stack_number(response)
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
         return True, (
             f"::warning::FAIL-OPEN: could not read stack membership ({exc}), "
             "so CI is running anyway. The stacked-PR-only policy is NOT in "
@@ -147,6 +147,15 @@ SELFTEST_CASES: tuple[tuple[str, str, str | None, bool], ...] = (
         True,
     ),
     ("pull_request", "someones/topic", '{"data":{"repository":null}}', True),
+    # Non-object JSON and an unreadable PR raise AttributeError on `.get()`.
+    ("pull_request", "someones/topic", "null", True),
+    ("pull_request", "someones/topic", "[]", True),
+    (
+        "pull_request",
+        "someones/topic",
+        '{"data":{"repository":{"pullRequest":null}}}',
+        True,
+    ),
 )
 
 

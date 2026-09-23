@@ -107,12 +107,11 @@ fn graph_loop(stop: &Receiver<()>, done: &AtomicUsize, transient: Transient) {
     }
     let term = Term::stderr();
     let mut typing = Typewriter::new();
+    // Cut before painting, like `plain`: a wrapped row breaks the redraw.
     let rows = |typing: &Typewriter, count: usize| {
         let dim = |text: &str| paint(text, Style::new().dim(), transient.options);
-        vec![
-            dim(&typing.text()),
-            format!("   {} {count}/2", dim("graphs")),
-        ]
+        let text = truncate_right(&typing.text(), transient.options.width.saturating_sub(1));
+        vec![dim(&text), format!("   {} {count}/2", dim("graphs"))]
     };
     let plain = |typing: &Typewriter, count: usize| {
         transient.plain(&[typing.text(), format!("   graphs {count}/2")])

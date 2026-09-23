@@ -2,10 +2,10 @@
 //!
 //! COMPOSABLE and split tracing read GitNexus graphs of the base and the
 //! head. Building them is the slow step of a recap (about 20 s a side, the
-//! two in parallel), so it is settled in three steps, all before the
-//! spinner starts: [`plan_coupling`] reads what is already built without
-//! running anything, [`settle`] asks on a terminal when a build is needed,
-//! and [`prepare`] builds under the spinner. A run that cannot ask takes
+//! two in parallel), so it is settled in three steps: [`plan_coupling`]
+//! reads what is already built without running anything, [`settle`] asks
+//! on a terminal when a build is needed, and [`prepare`] builds, reporting
+//! each side as it finishes so the caller can count. A run that cannot ask takes
 //! the default, which is to build, so a required check never passes or
 //! fails on whether a terminal was attached or a cache survived.
 
@@ -34,6 +34,13 @@ pub(super) enum CouplingPlan {
         state: StoreState,
         estimate_ms: Option<u64>,
     },
+}
+
+impl CouplingPlan {
+    /// Whether [`prepare`] will build anything, the one slow case.
+    pub(super) fn needs_build(&self) -> bool {
+        matches!(self, CouplingPlan::NeedsBuild { .. })
+    }
 }
 
 /// A status with no graphs behind it.
@@ -102,7 +109,7 @@ pub(super) fn plan_coupling(
 /// else take `--yes` or the default (build). A declined build becomes
 /// [`CouplingPlan::Unavailable`]. Every other plan passes through without
 /// a question. Ctrl-C at the prompt comes back as an error. Must run
-/// before the spinner starts: the prompt and the spinner share stderr.
+/// before any progress line draws: the prompt and the lines share stderr.
 pub(super) fn settle(
     plan: CouplingPlan,
     interaction: Interaction,
@@ -141,7 +148,12 @@ pub(super) fn settle(
 
 /// Carry out a settled plan: build the graphs a [`CouplingPlan::NeedsBuild`]
 /// still wants, and say where the graphs came from or why there are none.
-pub(super) fn prepare(root: &Path, plan: CouplingPlan) -> (Option<PrStores>, CouplingStatus) {
+/// `on_side_done` runs once per side built, from that side's thread.
+pub(super) fn prepare(
+    root: &Path,
+    plan: CouplingPlan,
+    on_side_done: &(dyn Fn() + Sync),
+) -> (Option<PrStores>, CouplingStatus) {
     match plan {
         CouplingPlan::Unavailable(status) => (None, status),
         CouplingPlan::Ready(stores) => {
@@ -158,7 +170,7 @@ pub(super) fn prepare(root: &Path, plan: CouplingPlan) -> (Option<PrStores>, Cou
             base_sha,
             head_sha,
             ..
-        } => match prepare_pr_stores(root, pr, &base_sha, &head_sha) {
+        } => match prepare_pr_stores(root, pr, &base_sha, &head_sha, on_side_done) {
             Ok(stores) => {
                 let status = CouplingStatus {
                     measured: true,

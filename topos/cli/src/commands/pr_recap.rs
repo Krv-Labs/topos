@@ -8,6 +8,7 @@
 //! and the gate policy — a formatter can never invent one.
 
 mod clusters;
+mod coupling;
 #[cfg(test)]
 mod fixtures;
 mod gates;
@@ -32,14 +33,16 @@ use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::detect_splits;
 
 use self::clusters::{build_clusters, changed_list};
+use self::coupling::{plan_coupling, prepare, settle};
 use self::git::{cap_by_churn, changed_files, churn, skip_reason, worktree_files};
 use self::hotspots::top_hotspots;
 use self::model::*;
 use self::score::Scoring;
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
-use crate::commands::depgraph::{gitnexus_available, prepare_pr_stores, PrStores};
+use crate::commands::depgraph::{gitnexus_available, PrStores};
 use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
+use crate::commands::interaction::{self, PromptEnv, Streams, TermAsker};
 use crate::commands::render::{RenderOptions, Working};
 
 const DEFAULT_FILE_CAP: usize = 40;
@@ -174,10 +177,24 @@ Priority:
 
 Coupling:
   Given a PR number and an installed GitNexus, both commits are indexed under
-  `.git/topos-pr-<N>/` (a few seconds each) so that COMPOSABLE and split tracing
-  use real import and call edges. `--no-coupling` skips that work and reports
-  COMPOSABLE as not measured. With `--base/--head` there is no PR store, so
-  splits are detected from import lines and the moved-function ledger instead.
+  `.git/topos-pr-<N>/` so that COMPOSABLE and split tracing use real import and
+  call edges. A first build takes about 20 s per commit, the two in parallel:
+  about 25 s in all. Later runs on the same commits reuse the graphs without
+  GitNexus, and a new head rebuilds only the head graph. `--no-coupling` skips
+  that work and reports COMPOSABLE as not measured. With `--base/--head` there
+  is no PR store, so splits are detected from import lines and the
+  moved-function ledger instead.
+
+Prompts:
+  On a terminal, pr-recap asks before a slow step: building coupling graphs
+  that are not built yet. Graphs already built are reused without asking.
+    --yes, -y      answer yes to every question.
+    --no-input     never ask; take each question's default.
+    --no-coupling  skip the graphs without asking, even with --yes.
+  Without a terminal on stdin, stdout and stderr, or with CI or
+  GH_PROMPT_DISABLED set, nothing is asked and each default is taken; the
+  default builds the graphs, so a required check never depends on a terminal
+  or a cache. Esc at the prompt skips the build; Ctrl-C stops with exit 2.
 
 Outputs:
   --format card     the review card, the default. The same layout on a terminal
@@ -235,6 +252,12 @@ pub struct PrRecapArgs {
     /// Skip coupling preparation; COMPOSABLE is reported as not measured.
     #[arg(long)]
     pub no_coupling: bool,
+    /// Answer yes to every question: build coupling graphs, run optional checks.
+    #[arg(long, short = 'y', conflicts_with = "no_input")]
+    pub yes: bool,
+    /// Never ask; take each question's default.
+    #[arg(long)]
+    pub no_input: bool,
     /// Pillar to prioritize (simple, composable, secure, navigable), or a
     /// full comma-separated ranking, most important first.
     #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE,NAVIGABLE")]
@@ -332,21 +355,6 @@ fn head_commit(head: &str) -> &str {
 
 // --- Entry point -------------------------------------------------------
 
-/// Why COMPOSABLE is not measured on this run.
-fn unmeasured_coupling(pr: Option<u64>, no_coupling: bool) -> CouplingStatus {
-    let note = if no_coupling {
-        "--no-coupling".to_string()
-    } else if pr.is_none() {
-        "pass a pull request number to measure COMPOSABLE".to_string()
-    } else {
-        "gitnexus not installed (npm install -g gitnexus)".to_string()
-    };
-    CouplingStatus {
-        measured: false,
-        note,
-    }
-}
-
 /// Exit 0 on a pass, 1 when the readiness fails the check under
 /// `fail_on`, 2 on an error.
 ///
@@ -406,9 +414,19 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     // The stores must be built at the commit the sources are read from.
     let base = merge_base(&root, &base, head_commit(&head))?;
 
+    // Any question is asked here, before the spinner takes stderr.
+    let interaction = interaction::resolve(
+        args.yes,
+        args.no_input,
+        &PromptEnv::from_env(),
+        &Streams::detect(),
+    );
+    let plan = plan_coupling(&root, &base, &head, &args, gitnexus_available());
+    let plan = settle(plan, interaction, &mut TermAsker)?;
+
     // The spinner covers store generation too: that is the slow part.
     let working = (!args.json).then(Working::start);
-    let (stores, coupling) = coupling_stores(&root, &base, &head, &args);
+    let (stores, coupling) = prepare(&root, plan);
     let recap = build_recap(
         &root,
         &base,
@@ -444,50 +462,6 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         }
     }
     Ok(recap.exit_code)
-}
-
-/// Build (or reuse) the two coupling stores, and say why not when we can't.
-fn coupling_stores(
-    root: &Path,
-    base: &str,
-    head: &str,
-    args: &PrRecapArgs,
-) -> (Option<PrStores>, CouplingStatus) {
-    let Some(pr) = args
-        .pr
-        .filter(|_| !args.no_coupling && gitnexus_available())
-    else {
-        return (None, unmeasured_coupling(args.pr, args.no_coupling));
-    };
-    let (Ok(base_sha), Ok(head_sha)) = (resolve_commit(root, base), resolve_commit(root, head))
-    else {
-        return (
-            None,
-            CouplingStatus {
-                measured: false,
-                note: format!("could not resolve {base}...{head}"),
-            },
-        );
-    };
-    match prepare_pr_stores(root, pr, &base_sha, &head_sha) {
-        Ok(stores) => {
-            let note = format!("built from {}", stores.parent.display());
-            (
-                Some(stores),
-                CouplingStatus {
-                    measured: true,
-                    note,
-                },
-            )
-        }
-        Err(error) => (
-            None,
-            CouplingStatus {
-                measured: false,
-                note: error,
-            },
-        ),
-    }
 }
 
 // --- Document assembly -------------------------------------------------
@@ -671,7 +645,10 @@ mod tests {
     use crate::commands::gh::git;
 
     pub(super) fn no_coupling() -> CouplingStatus {
-        unmeasured_coupling(None, false)
+        coupling::unmeasured(
+            CouplingReason::NoPr,
+            "pass a pull request number to measure COMPOSABLE",
+        )
     }
 
     /// SECURE priority, no project config, the recommended gates.
@@ -1295,6 +1272,8 @@ mod tests {
             compact: false,
             format: None,
             no_coupling: true,
+            yes: false,
+            no_input: false,
             priority: None,
             strict: false,
             preset: None,

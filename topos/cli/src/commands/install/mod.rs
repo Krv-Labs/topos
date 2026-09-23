@@ -35,11 +35,11 @@ mod testing;
 mod toml_entry;
 mod uninstall;
 
-use std::io::IsTerminal;
 use std::path::Path;
 
 use clap::{Args, Subcommand};
 
+use super::interaction::Streams;
 use super::menu::{self, run_confirm, run_menu, MenuOption};
 use artifact::State;
 use harness::{ids, spec, HARNESSES};
@@ -90,25 +90,6 @@ pub struct UninstallArgs {
     /// Also delete the `.topos.backup` files left by earlier installs.
     #[arg(long)]
     purge_backups: bool,
-}
-
-/// Which of the three standard streams are terminals. Resolved once so the gate
-/// below is a pure function of them, and every combination is unit-testable.
-#[derive(Clone, Copy)]
-pub(crate) struct Streams {
-    pub(crate) stderr: bool,
-    pub(crate) stdout: bool,
-    pub(crate) stdin: bool,
-}
-
-impl Streams {
-    fn detect() -> Self {
-        Self {
-            stderr: std::io::stderr().is_terminal(),
-            stdout: std::io::stdout().is_terminal(),
-            stdin: std::io::stdin().is_terminal(),
-        }
-    }
 }
 
 pub(crate) enum Interactivity {

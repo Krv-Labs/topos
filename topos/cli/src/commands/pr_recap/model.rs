@@ -362,6 +362,35 @@ pub(crate) struct CouplingStatus {
     pub(crate) measured: bool,
     /// Why not, or where from ("built from .git/topos-pr-5", "gitnexus not installed").
     pub(crate) note: String,
+    pub(crate) reason: CouplingReason,
+    /// The quoted wait for building the graphs, when they were left
+    /// unbuilt and there was a past build to go on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) estimate_ms: Option<u64>,
+}
+
+/// Why the coupling graphs were or were not there for this run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CouplingReason {
+    /// Built on this run.
+    Built,
+    /// Already built at these commits and reused.
+    Cached,
+    /// `--no-coupling`.
+    Flag,
+    /// The graphs needed building and the person at the terminal said no
+    /// (or skipped the question).
+    Declined,
+    /// The graphs needed building, nobody was asked, and the default was
+    /// not to build.
+    NotAsked,
+    /// No pull request number, so no stores to build.
+    NoPr,
+    /// `gitnexus` is not on `PATH` and nothing was built already.
+    GitnexusMissing,
+    /// Resolving the commits or building the graphs failed; `note` says how.
+    Error,
 }
 
 #[derive(Debug, Clone, Serialize)]

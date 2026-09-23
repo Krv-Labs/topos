@@ -10,6 +10,7 @@ pub mod evaluate;
 mod gh;
 pub mod inspect;
 pub mod install;
+mod interaction;
 mod lang;
 pub mod mcp;
 mod menu;

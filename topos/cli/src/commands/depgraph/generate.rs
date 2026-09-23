@@ -1,6 +1,7 @@
 //! `topos depgraph generate` — ensure `.gitnexus/` is present and fresh.
 
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use clap::Args;
 use console::Style;
@@ -8,6 +9,7 @@ use topos_engine::adapters::gitnexus::generate_depgraph;
 use topos_mcp::evaluation::depgraph_status;
 
 use super::print_json;
+use super::store::{pr_store_state, write_commits, PrStores, StoreState};
 use crate::commands::gh::{ensure_commit, git, git_root, merge_base, pull_request, resolve_commit};
 use crate::commands::render::{guide, guide_line, paint, RenderOptions};
 
@@ -83,63 +85,42 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
 /// `topos_engine` directly to decide whether to attempt graph generation.
 pub(crate) use topos_engine::adapters::gitnexus::gitnexus_available;
 
-/// Paths to the worktrees (and their shared parent) backing a PR's coupling
-/// graphs.
-pub(crate) struct PrStores {
-    pub(crate) parent: PathBuf,
-    pub(crate) base: PathBuf,
-    pub(crate) head: PathBuf,
-}
-
 /// Ensure both coupling stores exist for `base_sha`/`head_sha` under
-/// `<repo_root>/.git/topos-pr-<pr>/`. Idempotent: if `commits` already
+/// `<git-common-dir>/topos-pr-<pr>/`. Idempotent: if `commits` already
 /// records these two shas and both `<side>/.gitnexus` dirs exist, return
 /// immediately without regenerating. Otherwise move the worktrees onto the
-/// requested commits, build both graphs in parallel, and write `commits`.
-/// `commits` is removed before anything is rebuilt, so it only ever names
-/// the commits the graphs on disk were built from. Never prints. Errors are
-/// `String`.
+/// requested commits, build both graphs in parallel, and write `commits`
+/// with the time the build took. `commits` is removed before anything is
+/// rebuilt, so it only ever names the commits the graphs on disk were built
+/// from. Never prints. Errors are `String`.
 pub(crate) fn prepare_pr_stores(
     repo_root: &Path,
     pr: u64,
     base_sha: &str,
     head_sha: &str,
 ) -> Result<PrStores, String> {
-    let parent = repo_root.join(".git").join(format!("topos-pr-{}", pr));
-    let base_tree = parent.join("base");
-    let head_tree = parent.join("head");
-
-    let commits_path = parent.join("commits");
-    if let Ok(existing) = std::fs::read_to_string(&commits_path) {
-        let mut lines = existing.lines();
-        if lines.next() == Some(base_sha)
-            && lines.next() == Some(head_sha)
-            && base_tree.join(".gitnexus").exists()
-            && head_tree.join(".gitnexus").exists()
-        {
-            return Ok(PrStores {
-                parent,
-                base: base_tree,
-                head: head_tree,
-            });
-        }
+    let stores = PrStores::locate(repo_root, pr)?;
+    if pr_store_state(&stores, base_sha, head_sha) == StoreState::Ready {
+        return Ok(stores);
     }
 
-    match std::fs::remove_file(&commits_path) {
+    let started = Instant::now();
+    match std::fs::remove_file(stores.commits_path()) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(format!("clearing graph commits: {e}")),
     }
-    std::fs::create_dir_all(&parent).map_err(|e| format!("creating graph worktrees: {e}"))?;
-    ensure_worktree(repo_root, &base_tree, base_sha)?;
-    ensure_worktree(repo_root, &head_tree, head_sha)?;
+    std::fs::create_dir_all(&stores.parent)
+        .map_err(|e| format!("creating graph worktrees: {e}"))?;
+    ensure_worktree(repo_root, &stores.base, base_sha)?;
+    ensure_worktree(repo_root, &stores.head, head_sha)?;
 
     let base_job = std::thread::spawn({
-        let path = base_tree.clone();
+        let path = stores.base.clone();
         move || generate_depgraph(&path, true, None)
     });
     let head_job = std::thread::spawn({
-        let path = head_tree.clone();
+        let path = stores.head.clone();
         move || generate_depgraph(&path, true, None)
     });
     let base_result = base_job
@@ -154,14 +135,11 @@ pub(crate) fn prepare_pr_stores(
     if !head_result.ok {
         return Err(format!("head graph: {}", head_result.message));
     }
-    std::fs::write(&commits_path, format!("{base_sha}\n{head_sha}\n"))
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    write_commits(&stores, base_sha, head_sha, elapsed_ms)
         .map_err(|e| format!("recording graph commits: {e}"))?;
 
-    Ok(PrStores {
-        parent,
-        base: base_tree,
-        head: head_tree,
-    })
+    Ok(stores)
 }
 
 #[derive(Args)]
@@ -391,5 +369,34 @@ mod tests {
 
         assert!(err.is_some_and(|e| e.contains("could not resolve")));
         assert!(!parent.join("commits").exists());
+    }
+
+    /// Run from a linked worktree, whose `.git` is a file, the stores land
+    /// in the main repository's `.git` directory and check out there.
+    #[test]
+    fn a_linked_worktree_keeps_its_stores_in_the_common_dir() {
+        let (_keep, repo, first, _) = two_commit_repo();
+        let elsewhere = tempfile::tempdir().expect("tempdir");
+        let linked = elsewhere.path().join("linked");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &linked.display().to_string(),
+            ],
+        )
+        .unwrap();
+
+        let stores = PrStores::locate(&linked, 1).unwrap();
+        let canonical = |path: &Path| std::fs::canonicalize(path).unwrap();
+        assert_eq!(
+            canonical(stores.parent.parent().unwrap()),
+            canonical(&repo.join(".git"))
+        );
+        ensure_worktree(&linked, &stores.base, &first).unwrap();
+        assert_eq!(head_of(&stores.base), first);
     }
 }

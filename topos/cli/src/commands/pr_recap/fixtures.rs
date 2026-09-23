@@ -16,9 +16,9 @@ use topos_engine::graphs::uast::models::{NativeRef, SourceSpan, UASTNode};
 
 use super::gates;
 use super::model::{
-    Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingStatus, FileChange,
-    FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta, PillarRollup, PrRecap,
-    ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
+    Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingReason,
+    CouplingStatus, FileChange, FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta,
+    PillarRollup, PrRecap, ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
 };
 use super::view::PILLARS;
 
@@ -288,6 +288,12 @@ fn scope(files: usize, new: usize, skipped: usize, measured: bool) -> Scope {
             } else {
                 "gitnexus not installed".to_string()
             },
+            reason: if measured {
+                CouplingReason::Built
+            } else {
+                CouplingReason::GitnexusMissing
+            },
+            estimate_ms: None,
         },
     }
 }

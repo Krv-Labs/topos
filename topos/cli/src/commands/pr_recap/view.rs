@@ -16,9 +16,10 @@ use topos_engine::config::{GateId, Severity};
 
 use super::gates::Finding;
 use super::model::{
-    percent_change, Cluster, ClusterChild, ClusterMark, FileRecap, FunctionRef, PillarDelta,
-    PrRecap, CLUSTER_GROWTH_WARN,
+    percent_change, Cluster, ClusterChild, ClusterMark, CouplingReason, FileRecap, FunctionRef,
+    PillarDelta, PrRecap, CLUSTER_GROWTH_WARN,
 };
+use crate::commands::render::truncate_right;
 
 /// Pillar keys in `Generator::ALL` order.
 pub(super) const PILLARS: [&str; 4] = ["simple", "composable", "secure", "navigable"];
@@ -228,12 +229,52 @@ fn context(recap: &PrRecap) -> Vec<String> {
     let coupling = &recap.scope.coupling;
     if coupling.measured {
         parts.push("COMPOSABLE measured".to_string());
+    } else if coupling.reason == CouplingReason::Error {
+        // The error itself can run to lines of gitnexus output; the tip
+        // points at it.
+        parts.push("COMPOSABLE not measured (graph build failed)".to_string());
     } else if coupling.note.is_empty() {
         parts.push("COMPOSABLE not measured".to_string());
     } else {
         parts.push(format!("COMPOSABLE not measured ({})", coupling.note));
     }
     parts
+}
+
+/// What to do about unmeasured COMPOSABLE, by why it went unmeasured.
+/// Nothing when it was measured, turned off, or there was no pull request.
+pub(super) fn coupling_tip(recap: &PrRecap) -> Option<String> {
+    let coupling = &recap.scope.coupling;
+    match coupling.reason {
+        CouplingReason::Declined | CouplingReason::NotAsked => {
+            let wait = coupling.estimate_ms.map_or_else(
+                || "usually 10–60 s".to_string(),
+                |ms| format!("~{}", seconds(ms)),
+            );
+            Some(format!(
+                "Tip: re-run with --yes to build the coupling graphs ({wait} once)."
+            ))
+        }
+        CouplingReason::GitnexusMissing => Some(
+            "Tip: install GitNexus (npm install -g gitnexus) to measure COMPOSABLE.".to_string(),
+        ),
+        CouplingReason::Error => {
+            let cause = coupling.note.lines().next().unwrap_or("").trim();
+            Some(format!(
+                "Tip: building the coupling graphs failed ({}); --json has the full error.",
+                truncate_right(cause, 80)
+            ))
+        }
+        CouplingReason::Built
+        | CouplingReason::Cached
+        | CouplingReason::Flag
+        | CouplingReason::NoPr => None,
+    }
+}
+
+/// `25000` → `25 s`.
+pub(super) fn seconds(ms: u64) -> String {
+    format!("{} s", (ms + 500) / 1_000)
 }
 
 fn tally_of(recap: &PrRecap) -> Tally {

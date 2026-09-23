@@ -23,7 +23,7 @@ use console::Style;
 
 use super::gates::Readiness;
 use super::model::{FileRecap, PrRecap, ProjectRollup};
-use super::view::{visible_shift, Item, RecapView, PILLARS};
+use super::view::{coupling_tip, visible_shift, Item, RecapView, PILLARS};
 use crate::commands::evaluate::summary::{score_rail, status_text};
 use crate::commands::render::{guide, paint, RenderOptions};
 use layout::{dim_wrapped, header_dim_line, line};
@@ -301,12 +301,7 @@ fn tips(recap: &PrRecap, items: &[Item<'_>], detail: Detail) -> Vec<String> {
     } else if !detail.info && !items.is_empty() {
         tips.push("Tip: add --info for the recommended change at each finding.".to_string());
     }
-    let coupling = &recap.scope.coupling;
-    if !coupling.measured && recap.review.is_some() && !coupling.note.contains("--no-coupling") {
-        tips.push(
-            "Tip: install GitNexus (npm install -g gitnexus) to measure COMPOSABLE.".to_string(),
-        );
-    }
+    tips.extend(coupling_tip(recap));
     tips.truncate(MAX_TIPS);
     if tips.is_empty() {
         tips.push(
@@ -325,7 +320,7 @@ mod tests {
         LATERAL_LOSS,
     };
     use crate::commands::pr_recap::gates::Readiness;
-    use crate::commands::pr_recap::model::PrRecap;
+    use crate::commands::pr_recap::model::{CouplingReason, CouplingStatus, PrRecap};
     use topos_engine::config::Severity;
 
     const VERBOSE: Detail = Detail {
@@ -612,6 +607,97 @@ mod tests {
 
         let ready = card(&fixture_pr5(), INFO).join("\n");
         assert!(!ready.contains("Recommended changes"), "{ready}");
+    }
+
+    /// `fixture_plain` with COMPOSABLE settled for `reason`.
+    fn with_coupling(reason: CouplingReason, note: &str, estimate_ms: Option<u64>) -> PrRecap {
+        let mut recap = fixture_plain();
+        recap.scope.coupling = CouplingStatus {
+            measured: matches!(reason, CouplingReason::Built | CouplingReason::Cached),
+            note: note.to_string(),
+            reason,
+            estimate_ms,
+        };
+        recap
+    }
+
+    fn coupling_tips(recap: &PrRecap) -> Vec<String> {
+        card(recap, Detail::default())
+            .into_iter()
+            .filter(|line| line.starts_with("Tip: ") && line.contains("oupling"))
+            .collect()
+    }
+
+    #[test]
+    fn a_declined_build_tips_the_yes_flag_with_its_wait() {
+        let quoted = with_coupling(CouplingReason::Declined, "graphs not built", Some(25_000));
+        assert_eq!(
+            coupling_tips(&quoted),
+            ["Tip: re-run with --yes to build the coupling graphs (~25 s once)."]
+        );
+        let unknown = with_coupling(CouplingReason::NotAsked, "graphs not built", None);
+        assert_eq!(
+            coupling_tips(&unknown),
+            ["Tip: re-run with --yes to build the coupling graphs (usually 10–60 s once)."]
+        );
+        let text = card(&quoted, Detail::default()).join("\n");
+        assert!(!text.contains("install GitNexus"), "{text}");
+        assert!(
+            text.contains("COMPOSABLE not measured (graphs not built)"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_missing_gitnexus_tips_the_install() {
+        let recap = with_coupling(
+            CouplingReason::GitnexusMissing,
+            "gitnexus not installed (npm install -g gitnexus)",
+            None,
+        );
+        let text = card(&recap, Detail::default()).join("\n");
+        assert!(
+            text.contains("Tip: install GitNexus (npm install -g gitnexus) to measure COMPOSABLE."),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_failed_build_points_at_its_error() {
+        let recap = with_coupling(
+            CouplingReason::Error,
+            "gitnexus analyze failed: out of memory\nat step 3\nat step 4",
+            None,
+        );
+        assert_eq!(
+            coupling_tips(&recap),
+            ["Tip: building the coupling graphs failed (gitnexus analyze failed: out of memory); \
+              --json has the full error."]
+        );
+        let text = card(&recap, Detail::default()).join("\n");
+        assert!(
+            text.contains("COMPOSABLE not measured (graph build failed)"),
+            "{text}"
+        );
+        assert!(!text.contains("at step 3"), "{text}");
+    }
+
+    #[test]
+    fn a_measured_skipped_or_prless_run_has_no_coupling_tip() {
+        for (reason, note) in [
+            (CouplingReason::Built, "built from /tmp/topos-pr-1"),
+            (CouplingReason::Cached, "reused from /tmp/topos-pr-1"),
+            (CouplingReason::Flag, "--no-coupling"),
+            (
+                CouplingReason::NoPr,
+                "pass a pull request number to measure COMPOSABLE",
+            ),
+        ] {
+            let recap = with_coupling(reason, note, None);
+            let text = card(&recap, Detail::default()).join("\n");
+            assert!(coupling_tips(&recap).is_empty(), "{reason:?}: {text}");
+            assert!(!text.contains("install GitNexus"), "{reason:?}: {text}");
+        }
     }
 
     fn every_card() -> Vec<(PrRecap, Detail)> {

@@ -14,7 +14,7 @@ use topos_engine::evaluation::preferences::{
     default_preferences, Generator, UserPreferences, RANKING_LEN,
 };
 
-use super::menu::{self, SelectOption, SelectStep};
+use super::menu::{self, SelectOption, SelectStep, StepLayout};
 use super::render::{guide, guide_line, paint, print_lines, RenderOptions};
 
 #[derive(Args)]
@@ -303,12 +303,14 @@ fn priority_step(current: Priority) -> SelectStep {
                 label,
                 hint: hint.to_string(),
                 current: priority == current,
+                key: None,
             })
             .collect(),
         initial: PRIORITY_CHOICES
             .iter()
             .position(|(priority, ..)| *priority == current)
             .unwrap_or(0),
+        layout: StepLayout::Wizard,
     }
 }
 
@@ -330,12 +332,14 @@ fn pr_gate_step(current: PrGatePreset) -> SelectStep {
                 label,
                 hint: preset_hint(preset),
                 current: preset == current,
+                key: None,
             })
             .collect(),
         initial: PR_GATE_CHOICES
             .iter()
             .position(|(preset, _)| *preset == current)
             .unwrap_or(0),
+        layout: StepLayout::Wizard,
     }
 }
 

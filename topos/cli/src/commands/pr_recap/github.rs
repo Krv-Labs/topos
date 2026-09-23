@@ -575,7 +575,7 @@ mod tests {
         fixture_pr5, LATERAL_LOSS,
     };
     use crate::commands::pr_recap::gates::Readiness;
-    use crate::commands::pr_recap::model::PrRecap;
+    use crate::commands::pr_recap::model::{CouplingReason, CouplingStatus, PrRecap};
     use topos_engine::config::{GateId, Severity};
 
     /// `fixture_mixed` with its block finding dropped: only warnings
@@ -855,6 +855,41 @@ mod tests {
             &body[body.len() - 400..]
         );
         assert!(body.starts_with(STICKY_MARKER));
+    }
+
+    /// The comment has no tip lines: why COMPOSABLE went unmeasured rides
+    /// on the meta line, with a failed build's output left to `--json`.
+    #[test]
+    fn the_meta_line_says_why_composable_went_unmeasured() {
+        for (reason, note, expected) in [
+            (
+                CouplingReason::Declined,
+                "graphs not built",
+                "COMPOSABLE not measured (graphs not built)</sub>",
+            ),
+            (
+                CouplingReason::Error,
+                "gitnexus analyze failed\nstack trace",
+                "COMPOSABLE not measured (graph build failed)</sub>",
+            ),
+            (
+                CouplingReason::Flag,
+                "--no-coupling",
+                "COMPOSABLE not measured (--no-coupling)</sub>",
+            ),
+        ] {
+            let mut recap = fixture_plain();
+            recap.scope.coupling = CouplingStatus {
+                measured: false,
+                note: note.to_string(),
+                reason,
+                estimate_ms: None,
+            };
+            let body = render_github(&recap);
+            assert!(body.contains(expected), "{reason:?}: {body}");
+            assert!(!body.contains("stack trace"), "{body}");
+            assert!(!body.contains("Tip:"), "{body}");
+        }
     }
 
     #[test]

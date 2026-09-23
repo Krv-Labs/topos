@@ -6,12 +6,16 @@
 //! extension, and agent docs (issue #206).
 
 mod generate;
+mod store;
 
 use clap::{Args, Subcommand};
 
 use generate::{run_generate, GenerateArgs};
 
-pub(crate) use generate::{gitnexus_available, prepare_pr_stores, PrStores};
+pub(crate) use generate::{gitnexus_available, prepare_pr_stores};
+#[cfg(test)]
+pub(crate) use store::write_commits;
+pub(crate) use store::{build_estimate_ms, last_build_ms, pr_store_state, PrStores, StoreState};
 
 #[derive(Args)]
 pub struct DepgraphArgs {

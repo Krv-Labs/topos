@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Changed
+
+- **MCP keeps one dependency graph per process** ([#375](https://github.com/Krv-Labs/topos/issues/375)) — a second `topos_evaluate_file` no longer rereads the Ladybug store: 15.8 s → 83 ms for a second file on this repo, 15 ms for the same file again. The store is opened once per `(dir, branch, store mtime)` and retargeted per file; `depgraph_status` goes through the same store, so a half-written or wrong-schema store still reports `load_error` / `schema_mismatch`. The graph-freshness answer is cached until the fingerprint, HEAD, or the uncommitted working tree (`git status` plus dirty-file mtimes) changes.
+
 ## [0.6.0] - 2026-09-16
 
 ### Added

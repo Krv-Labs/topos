@@ -11,6 +11,9 @@ use topos_engine::config::PrGateConfig;
 use topos_engine::functors::profunctors::uast::ledger::{
     FunctionMatch, FunctionSnapshot, Ledger, LedgerTotals, MatchKind,
 };
+use topos_engine::graphs::mdg::file_graph::FileGraph;
+use topos_engine::graphs::mdg::models::{GraphNode, GraphRelationship};
+use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{NewSymbol, Reach, SymbolMove};
 use topos_engine::graphs::uast::models::{NativeRef, SourceSpan, UASTNode};
 
@@ -309,7 +312,8 @@ fn recap_of(
     // The readiness comes from the recommended gates, as in `build_recap`.
     let cfg = PrGateConfig::default();
     let mut files = files;
-    let (readiness, findings) = gates::evaluate(&files, &clusters, 0, &cfg, &RangeMoves::default());
+    let (readiness, findings) =
+        gates::evaluate(&files, &clusters, 0, &cfg, &RangeMoves::default(), None);
     for file in &mut files {
         file.severity = gates::worst_at(&findings, &file.path);
     }
@@ -756,6 +760,83 @@ pub(super) fn fixture_plain() -> PrRecap {
         Some(rollup("SILVER", "SILVER", false, &[])),
         scope(2, 0, 0, false),
     )
+}
+
+/// The path in [`fixture_plain`] that fails SIMPLE on both sides.
+pub(super) const FAN_IN_TARGET: &str = "topos/cli/src/commands/config.rs";
+
+/// A file-level MDG over `imports`, one `File` node per path named.
+fn file_graph(imports: &[(&str, &str)]) -> FileGraph {
+    let mut graph = ModuleDependencyGraph::new("x");
+    for (from, to) in imports {
+        for path in [from, to] {
+            graph.add_node(GraphNode {
+                id: format!("File:{path}"),
+                label: "File".to_string(),
+                properties: HashMap::from([("filePath".to_string(), (*path).into())]),
+            });
+        }
+        graph.add_relationship(GraphRelationship {
+            id: format!("{from}->{to}"),
+            source_id: format!("File:{from}"),
+            target_id: format!("File:{to}"),
+            rel_type: "IMPORTS".to_string(),
+            confidence: 1.0,
+            reason: String::new(),
+            properties: HashMap::new(),
+        });
+    }
+    FileGraph::build(&graph)
+}
+
+/// [`fixture_plain`], measured: a new Python import cycle (warn), three
+/// new dependents on a file failing SIMPLE (warn), and the change's reach
+/// (info), all from two hand-built graphs.
+pub(super) fn fixture_coupling() -> PrRecap {
+    let mut recap = fixture_plain();
+    recap.scope = scope(2, 0, 0, true);
+    let base = [
+        ("topos/bind/models.py", "topos/bind/views.py"),
+        ("topos/cli/src/main.rs", "topos/cli/src/commands/inspect.rs"),
+        (FAN_IN_TARGET, "topos/engine/src/config/mod.rs"),
+    ];
+    let mut head = base.to_vec();
+    head.extend([
+        ("topos/bind/views.py", "topos/bind/models.py"),
+        ("topos/cli/src/commands/a.rs", FAN_IN_TARGET),
+        ("topos/cli/src/commands/b.rs", FAN_IN_TARGET),
+        ("topos/cli/src/commands/c.rs", FAN_IN_TARGET),
+    ]);
+    let coupling = gates::Coupling {
+        base: file_graph(&base),
+        head: file_graph(&head),
+        changed: [
+            FAN_IN_TARGET,
+            "topos/cli/src/commands/inspect.rs",
+            "topos/bind/views.py",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        ..gates::Coupling::default()
+    };
+    let cfg = PrGateConfig::default();
+    let (readiness, findings) = gates::evaluate(
+        &recap.files,
+        &recap.clusters,
+        0,
+        &cfg,
+        &RangeMoves::default(),
+        Some(&coupling),
+    );
+    for file in &mut recap.files {
+        file.severity = gates::worst_at(&findings, &file.path);
+    }
+    recap.readiness = readiness;
+    recap.exit_code = readiness.exit_code(cfg.fail_on);
+    recap.check = if recap.exit_code == 1 { "fail" } else { "pass" };
+    recap.findings = findings;
+    recap
 }
 
 /// One file that lost SIMPLE while gaining NAVIGABLE: a lateral move by

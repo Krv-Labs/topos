@@ -613,8 +613,8 @@ fn footer(view: &RecapView<'_>) -> String {
 mod tests {
     use super::{render_github, MAX_CHARS, STICKY_MARKER};
     use crate::commands::pr_recap::fixtures::{
-        fixture_lateral_loss, fixture_losses, fixture_many_clusters, fixture_mixed, fixture_plain,
-        fixture_pr5, LATERAL_LOSS,
+        fixture_coupling, fixture_lateral_loss, fixture_losses, fixture_many_clusters,
+        fixture_mixed, fixture_plain, fixture_pr5, LATERAL_LOSS,
     };
     use crate::commands::pr_recap::gates::Readiness;
     use crate::commands::pr_recap::model::{CouplingReason, CouplingStatus, PrRecap};
@@ -942,6 +942,25 @@ mod tests {
         assert!(body.starts_with(STICKY_MARKER));
     }
 
+    /// Coupling findings list like any other: the cycle and the fan-in
+    /// need attention, the reach is folded into the notes.
+    #[test]
+    fn coupling_findings_list_like_the_others() {
+        let body = render_github(&fixture_coupling());
+        let attention = section(&body, "Needs attention");
+        assert_eq!(attention.lines().count(), 2, "{attention}");
+        assert!(
+            attention.contains("new import cycle views.py → models.py → views.py"),
+            "{attention}"
+        );
+        assert!(
+            attention.contains("3 new dependents while failing SIMPLE"),
+            "{attention}"
+        );
+        let at = body.find("<details>\n<summary>").expect("a notes block");
+        assert!(body[at..].contains("transitively"), "{body}");
+    }
+
     /// The comment is Markdown for a browser: no escape sequence, ever.
     #[test]
     fn no_comment_carries_ansi() {
@@ -952,6 +971,7 @@ mod tests {
             fixture_mixed(),
             fixture_losses(),
             needs_attention(),
+            fixture_coupling(),
         ] {
             let body = render_github(&recap);
             assert!(!body.contains('\u{1b}'), "{body}");

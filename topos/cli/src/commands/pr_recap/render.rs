@@ -363,8 +363,8 @@ fn tips(view: &RecapView<'_>, items: &[Item<'_>], detail: Detail) -> Vec<String>
 mod tests {
     use super::{render_card, Detail, RenderOptions};
     use crate::commands::pr_recap::fixtures::{
-        fixture_lateral_loss, fixture_losses, fixture_mixed, fixture_plain, fixture_pr5,
-        LATERAL_LOSS,
+        fixture_coupling, fixture_lateral_loss, fixture_losses, fixture_mixed, fixture_plain,
+        fixture_pr5, LATERAL_LOSS,
     };
     use crate::commands::pr_recap::gates::Readiness;
     use crate::commands::pr_recap::model::{CouplingReason, CouplingStatus, PrRecap};
@@ -747,6 +747,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn coupling_findings_read_like_the_others() {
+        let lines = card(&fixture_coupling(), Detail::default());
+        let text = lines.join("\n");
+        assert!(
+            text.contains(
+                "│  ! NEEDS ATTENTION   new import cycle views.py → models.py → views.py"
+            ),
+            "{text}"
+        );
+        let rows = numbered(&lines);
+        assert_eq!(rows.len(), 2, "{text}");
+        assert!(
+            rows[0].contains("1. ! bind/views.py ")
+                && rows[0].ends_with("  new import cycle views.py → models.py → views.py"),
+            "{text}"
+        );
+        assert!(
+            rows[1].contains("2. ! cli/src/commands/config.rs ")
+                && rows[1].ends_with("  3 new dependents while failing SIMPLE (0 → 3 dependents)"),
+            "{text}"
+        );
+        // The reach is a note.
+        assert!(text.contains("· 1 note"), "{text}");
+        let verbose = card(&fixture_coupling(), VERBOSE).join("\n");
+        assert!(verbose.contains("new import cycle"), "{verbose}");
+    }
+
     fn every_card() -> Vec<(PrRecap, Detail)> {
         let details = [
             Detail::default(),
@@ -763,6 +791,7 @@ mod tests {
             fixture_mixed(),
             fixture_losses(),
             needs_attention(),
+            fixture_coupling(),
         ]
         .into_iter()
         .flat_map(|recap| details.map(|detail| (recap.clone(), detail)))

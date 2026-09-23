@@ -224,12 +224,50 @@ pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) 
     }
 }
 
+fn pillar_ok(result: &ClassificationResult, name: &str, pass: EvaluationValue) -> bool {
+    result.dimensions.get(name) == Some(&pass)
+}
+
+/// Pillars still short of a pass, in the default ranking.
+///
+/// Measured pillars only. An unmeasured COMPOSABLE is a setup gap, not a
+/// failed check, and the caller says so separately.
+fn unmet_pillars(result: &ClassificationResult) -> Vec<&'static str> {
+    [
+        ("simple", EvaluationValue::Simple, "SIMPLE"),
+        ("navigable", EvaluationValue::Navigable, "NAVIGABLE"),
+        ("secure", EvaluationValue::Secure, "SECURE"),
+        ("composable", EvaluationValue::Composable, "COMPOSABLE"),
+    ]
+    .into_iter()
+    .filter(|(name, pass, _)| {
+        result.dimensions.contains_key(*name) && !pillar_ok(result, name, *pass)
+    })
+    .map(|(_, _, label)| label)
+    .collect()
+}
+
+fn satisfied_tail(priority_name: &str, unmet: &[&str]) -> String {
+    if unmet.is_empty() {
+        return format!("{priority_name} satisfied. All measured pillars pass — stop.");
+    }
+    format!(
+        "{priority_name} satisfied. Still failing: {}.",
+        unmet.join(" / ")
+    )
+}
+
 /// Priority-aware next-step hint for agents.
+///
+/// Names the pillars that actually failed. The old text told the agent to
+/// "add COMPOSABLE / SECURE / NAVIGABLE" whenever SIMPLE passed, including
+/// on a file whose verdict was already PLATINUM.
 pub fn build_guidance(result: &ClassificationResult) -> String {
-    let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
-    let composable_ok = result.dimensions.get("composable") == Some(&EvaluationValue::Composable);
-    let secure_ok = result.dimensions.get("secure") == Some(&EvaluationValue::Secure);
-    let navigable_ok = result.dimensions.get("navigable") == Some(&EvaluationValue::Navigable);
+    let simple_ok = pillar_ok(result, "simple", EvaluationValue::Simple);
+    let composable_ok = pillar_ok(result, "composable", EvaluationValue::Composable);
+    let secure_ok = pillar_ok(result, "secure", EvaluationValue::Secure);
+    let navigable_ok = pillar_ok(result, "navigable", EvaluationValue::Navigable);
+    let unmet = unmet_pillars(result);
 
     match result.priority {
         Priority::Composable => {
@@ -242,9 +280,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  <= 15) to satisfy COMPOSABLE."
                     .into()
             } else {
-                "COMPOSABLE satisfied.  Simplify CFG/functions, flatten deep nesting, and \
-                 address any CPG security findings to reach PLATINUM."
-                    .into()
+                satisfied_tail("COMPOSABLE", &unmet)
             }
         }
         Priority::Simple => {
@@ -253,9 +289,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
                     .into()
             } else {
-                "SIMPLE satisfied.  Add COMPOSABLE / SECURE / NAVIGABLE checks to reach \
-                 PLATINUM."
-                    .into()
+                satisfied_tail("SIMPLE", &unmet)
             }
         }
         Priority::Secure => {
@@ -264,9 +298,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  SECURE."
                     .into()
             } else {
-                "SECURE satisfied.  Address SIMPLE / COMPOSABLE / NAVIGABLE generators to \
-                 reach PLATINUM."
-                    .into()
+                satisfied_tail("SECURE", &unmet)
             }
         }
         Priority::Navigable => {
@@ -275,9 +307,7 @@ pub fn build_guidance(result: &ClassificationResult) -> String {
                  top-level helper — to satisfy NAVIGABLE."
                     .into()
             } else {
-                "NAVIGABLE satisfied.  Address SIMPLE / COMPOSABLE / SECURE generators to \
-                 reach PLATINUM."
-                    .into()
+                satisfied_tail("NAVIGABLE", &unmet)
             }
         }
     }
@@ -314,6 +344,7 @@ pub fn build_agent_contract(
 
     let summary = result.summary();
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
+    let measured_pass = unmet_pillars(result).is_empty();
     let missing_gitnexus = prelude
         .blocked_by
         .iter()
@@ -324,6 +355,7 @@ pub fn build_agent_contract(
         refactor_targets,
         summary,
         simple_ok,
+        measured_pass,
         security_findings,
         missing_gitnexus,
     );
@@ -382,11 +414,16 @@ fn supplementary_action_for_gating_target(
 /// target list means no verdict is waiting on an edit, so the contract
 /// falls through to the ordinary dispatch instead of routing the agent
 /// into an assess loop over a metric that cannot change a pillar.
+fn composable_unfinished(signals: &ComposableContractSignals) -> bool {
+    signals.next_action.is_some()
+}
+
 fn next_step_for_contract(
     composable: &ComposableContractSignals,
     refactor_targets: Option<&[RefactorTarget]>,
     summary: EvaluationValue,
     simple_ok: bool,
+    measured_pass: bool,
     security_findings: &[SecurityFinding],
     missing_gitnexus: bool,
 ) -> (Option<String>, Vec<String>) {
@@ -400,14 +437,21 @@ fn next_step_for_contract(
         }
         return (Some("topos_assess_worktree_change".into()), actions);
     }
+    // IDEAL is all four. A repo with no graph can pass every pillar that
+    // was measured and still not be IDEAL. That is a finished file, not a
+    // request to build a graph.
+    if summary == EvaluationValue::Ideal
+        || (measured_pass && security_findings.is_empty() && !composable_unfinished(composable))
+    {
+        let why = if summary == EvaluationValue::Ideal {
+            "all four pillars pass — stop, do not call another Topos tool"
+        } else {
+            "every measured pillar passes — stop. Build a dependency graph only if you need coupling."
+        };
+        return (None, vec![why.into()]);
+    }
     if let Some(action) = &composable.next_action {
         return (composable.next_tool.clone(), vec![action.clone()]);
-    }
-    if summary == EvaluationValue::Ideal {
-        return (
-            Some("topos_evaluate_project".into()),
-            vec!["confirm project rollup and behavior tests before accepting".into()],
-        );
     }
     if !simple_ok {
         return (
@@ -978,6 +1022,90 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
 mod tests {
     use super::*;
     use crate::evaluation::classify_code_string;
+
+    #[test]
+    fn passing_file_guidance_does_not_ask_for_pillars_that_passed() {
+        // `def f(): return 1` is SIMPLE, SECURE, and NAVIGABLE. COMPOSABLE
+        // is unmeasured without a graph, so it must not be listed as a miss.
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let guidance = build_guidance(&result);
+        assert!(
+            guidance.contains("Still failing") || guidance.contains("stop"),
+            "{guidance}"
+        );
+        assert!(
+            !guidance.contains("Add COMPOSABLE / SECURE / NAVIGABLE"),
+            "{guidance}"
+        );
+        assert!(!guidance.contains("SECURE"), "{guidance}");
+        assert!(!guidance.contains("NAVIGABLE"), "{guidance}");
+    }
+
+    #[test]
+    fn ideal_verdict_has_no_next_tool() {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let mut result = result;
+        result.lattice_element = EvaluationValue::Ideal;
+        let contract = build_agent_contract(&result, true, &[], &[], false, &[], None, false);
+        assert!(contract.next_tool.is_none(), "{:?}", contract.next_tool);
+        assert!(
+            contract.next_actions.iter().any(|a| a.contains("stop")),
+            "{:?}",
+            contract.next_actions
+        );
+    }
+
+    #[test]
+    fn failing_measured_pillar_does_not_stop() {
+        // SIMPLE passes and there are no security findings, but another
+        // measured pillar failed. That is not a finished file.
+        for (dim, coupling_available) in [("navigable", false), ("composable", true)] {
+            let mut result =
+                classify_code_string("def f():\n    return 1\n", "python", Priority::Simple)
+                    .unwrap();
+            result.dimensions.insert(dim.into(), EvaluationValue::Slop);
+            let contract = build_agent_contract(
+                &result,
+                coupling_available,
+                &[],
+                &[],
+                false,
+                &[],
+                None,
+                false,
+            );
+            assert!(contract.next_tool.is_some(), "{dim}: {contract:?}");
+            assert!(
+                !contract.next_actions.iter().any(|a| a.contains("stop")),
+                "{dim}: {:?}",
+                contract.next_actions
+            );
+        }
+    }
+
+    #[test]
+    fn measured_pass_without_a_graph_does_not_ask_for_one() {
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        assert_ne!(result.summary(), EvaluationValue::Ideal);
+        let contract = build_agent_contract(
+            &result,
+            false,
+            &[],
+            &[],
+            false,
+            &["missing gitnexus".into()],
+            None,
+            false,
+        );
+        assert!(
+            contract.next_tool.is_none(),
+            "a passing file must not be told to build a graph: {:?}",
+            contract
+        );
+    }
 
     #[test]
     fn evaluation_result_round_trip() {

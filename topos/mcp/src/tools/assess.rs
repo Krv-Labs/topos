@@ -404,8 +404,11 @@ fn assessment_contract(
         status,
         AssessmentStatus::IMPROVEMENT | AssessmentStatus::IMPROVEMENT_SCORE
     ) {
-        next_actions.push("run project rollup and behavior checks before accepting".into());
-        Some("topos_evaluate_project".to_string())
+        next_actions.push("accept the edit if behavior checks pass".into());
+        None
+    } else if status == AssessmentStatus::LATERAL_MOVE && measured_pillars_pass(proposed_eval) {
+        next_actions.push("no structural change and every measured pillar passes — stop".into());
+        None
     } else {
         next_actions.push("try a different focused structural change".into());
         Some("topos_inspect_code".to_string())
@@ -464,6 +467,15 @@ fn err_assessment(
 // ---------------------------------------------------------------------------
 // Markdown
 // ---------------------------------------------------------------------------
+
+fn measured_pillars_pass(eval: &EvaluationResult) -> bool {
+    if eval.lattice_element == LatticeElement::IDEAL {
+        return true;
+    }
+    let pillars = &eval.pillars;
+    // Unmeasured pillars are absent. A present pillar that failed is not a pass.
+    !pillars.is_empty() && pillars.values().all(|pillar| pillar.achieved)
+}
 
 fn status_meaning(status: AssessmentStatus) -> &'static str {
     match status {
@@ -1080,6 +1092,9 @@ impl ToposServer {
     /// working-tree file. No prior call required. For untracked/new files
     /// or an uncommitted pre-edit baseline, use `topos_begin_refactor` +
     /// `topos_assess_snapshot`.
+    ///
+    /// Do not call if you have not edited the file. A no-change result on a
+    /// passing file has no `next_tool`.
     #[tool(
         name = "topos_assess_worktree_change",
         annotations(

@@ -231,6 +231,10 @@ impl ToposServer {
     /// attaches the ModuleDependencyGraph — so this tool is side-effecting.
     /// With inline `code` there is no module to place in the graph, so only
     /// SIMPLE/SECURE/NAVIGABLE are reachable, as in `topos_evaluate_code`.
+    ///
+    /// Do not call after `topos_evaluate_file` already returned a passing
+    /// verdict or a `refactor_targets` span. This is the detail view, not
+    /// the next step.
     #[tool(
         name = "topos_inspect_code",
         annotations(

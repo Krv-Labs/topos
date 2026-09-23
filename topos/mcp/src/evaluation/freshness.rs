@@ -7,7 +7,7 @@ use topos_engine::adapters::gitnexus::{
     current_git_branch, resolve_lbug_store, source_fingerprint, GITNEXUS_FINGERPRINT_FILE,
 };
 
-use super::gitref::{git_head_mtime, git_head_sha, gitnexus_mtime, mtime_f64};
+use super::gitref::{git_head_mtime, git_head_sha, gitnexus_mtime, mtime_f64, worktree_signature};
 use super::STALE_GITNEXUS_MARKER;
 
 /// All supported source suffixes, deduped.
@@ -34,7 +34,8 @@ const MAX_TRUSTED_GENERATION_DURATION_S: f64 = 3600.0;
 /// `graph_freshness` hashes or walks the working tree. Evaluate calls it
 /// before it knows whether it will load the graph, so a second call in the
 /// same process was paying that walk again even when the store had not
-/// changed. The answer is cached until the fingerprint file's mtime moves.
+/// changed. The answer is cached until the fingerprint file, HEAD, or the
+/// uncommitted working tree changes.
 struct FreshnessCache {
     store_dir: std::path::PathBuf,
     fingerprint_mtime_bits: u64,
@@ -42,6 +43,9 @@ struct FreshnessCache {
     /// touching the fingerprint file, so keying on the file alone hid
     /// every later commit for the life of the process.
     head_sha: Option<String>,
+    /// [`worktree_signature`] at the time of the answer. Without it an
+    /// uncommitted edit kept a "fresh" answer for the life of the process.
+    worktree: String,
     stale: bool,
     detail: Option<String>,
 }
@@ -228,11 +232,15 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
         .unwrap_or(0.0)
         .to_bits();
     let head_sha = git_head_sha(project_root);
+    let Some(worktree) = worktree_signature(project_root) else {
+        return graph_freshness_uncached(project_root, &store_dir);
+    };
     if let Ok(guard) = FRESHNESS_CACHE.lock() {
         if let Some(cached) = guard.as_ref() {
             if cached.store_dir == store_dir
                 && cached.fingerprint_mtime_bits == fingerprint_mtime_bits
                 && cached.head_sha == head_sha
+                && cached.worktree == worktree
             {
                 return (cached.stale, cached.detail.clone());
             }
@@ -245,6 +253,7 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
             store_dir,
             fingerprint_mtime_bits,
             head_sha,
+            worktree,
             stale: answer.0,
             detail: answer.1.clone(),
         });

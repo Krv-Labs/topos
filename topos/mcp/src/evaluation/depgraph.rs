@@ -29,36 +29,35 @@ struct StoreCache {
 
 static STORE_CACHE: Mutex<Option<StoreCache>> = Mutex::new(None);
 
-/// Wall time of the most recent store open that actually read Ladybug.
-///
-/// A cache hit records `0`. Tests and the bench binary read this; it is not
-/// an agent-facing field.
-static LAST_LOAD_MS: Mutex<u128> = Mutex::new(0);
+thread_local! {
+    /// Wall time of the most recent store open that actually read Ladybug.
+    ///
+    /// A cache hit records `0`. Tests read this; it is not an agent-facing
+    /// field. Per thread, so parallel tests cannot overwrite each other's value.
+    static LAST_LOAD_MS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+}
 
 /// Clear the dep-graph cache (primarily for tests).
 pub fn clear_caches() {
     if let Ok(mut guard) = STORE_CACHE.lock() {
         *guard = None;
     }
-    if let Ok(mut ms) = LAST_LOAD_MS.lock() {
-        *ms = 0;
-    }
+    LAST_LOAD_MS.with(|ms| ms.set(0));
 }
 
 /// Milliseconds spent inside the last Ladybug open. `0` when the last
 /// [`load_dep_graph`] was served from the process store.
 pub fn last_store_load_ms() -> u128 {
-    LAST_LOAD_MS.lock().map(|ms| *ms).unwrap_or(0)
+    LAST_LOAD_MS.with(std::cell::Cell::get)
 }
 
 fn remember_load_ms(started: Instant, hit: bool) {
-    if let Ok(mut ms) = LAST_LOAD_MS.lock() {
-        *ms = if hit {
-            0
-        } else {
-            started.elapsed().as_millis()
-        };
-    }
+    let ms = if hit {
+        0
+    } else {
+        started.elapsed().as_millis()
+    };
+    LAST_LOAD_MS.with(|cell| cell.set(ms));
 }
 
 fn load_mdg_branch_aware(
@@ -98,11 +97,28 @@ pub fn load_dep_graph(
     let Some(gitnexus_dir) = gitnexus_dir else {
         return (None, None);
     };
+    let branch = gitnexus_dir
+        .canonicalize()
+        .unwrap_or_else(|_| gitnexus_dir.to_path_buf())
+        .parent()
+        .and_then(current_git_branch);
+    match store_graph(gitnexus_dir, branch, target_file) {
+        Ok(graph) => (Some(graph), None),
+        Err(err) => (None, Some(err)),
+    }
+}
+
+/// The process store retargeted at `target_file`, opening Ladybug only
+/// when `(dir, branch, mtime)` differs from the cached store.
+fn store_graph(
+    gitnexus_dir: &Path,
+    branch: Option<String>,
+    target_file: &str,
+) -> Result<ModuleDependencyGraph, String> {
     let started = Instant::now();
     let gitnexus_dir = gitnexus_dir
         .canonicalize()
         .unwrap_or_else(|_| gitnexus_dir.to_path_buf());
-    let branch = gitnexus_dir.parent().and_then(current_git_branch);
     let mtime_bits = gitnexus_mtime(&gitnexus_dir, branch.as_deref())
         .unwrap_or(0.0)
         .to_bits();
@@ -114,29 +130,22 @@ pub fn load_dep_graph(
                 let graph = cached.graph.for_target(target_file);
                 drop(guard);
                 remember_load_ms(started, true);
-                return (Some(graph), None);
+                return Ok(graph);
             }
         }
     }
 
-    match load_mdg_branch_aware(&gitnexus_dir, target_file, branch.as_deref()) {
-        Ok(graph) => {
-            if let Ok(mut guard) = STORE_CACHE.lock() {
-                *guard = Some(StoreCache {
-                    dir,
-                    branch,
-                    mtime_bits,
-                    graph: graph.clone(),
-                });
-            }
-            remember_load_ms(started, false);
-            (Some(graph), None)
-        }
-        Err(err) => {
-            remember_load_ms(started, false);
-            (None, Some(err))
-        }
+    let loaded = load_mdg_branch_aware(&gitnexus_dir, target_file, branch.as_deref());
+    if let (Ok(graph), Ok(mut guard)) = (&loaded, STORE_CACHE.lock()) {
+        *guard = Some(StoreCache {
+            dir,
+            branch,
+            mtime_bits,
+            graph: graph.clone(),
+        });
     }
+    remember_load_ms(started, false);
+    loaded
 }
 
 /// Structured `.gitnexus` state for the depgraph status MCP tool.
@@ -183,24 +192,10 @@ pub fn depgraph_status(
     let graph_mtime = gitnexus_mtime(&gitnexus_dir, branch.as_deref());
     let head_mtime = git_head_mtime(project_root);
     let dir_str = gitnexus_dir.to_string_lossy().to_string();
-    // Kept on the signature so status callers that already pass a file do
-    // not change. Presence does not depend on which file will be scored.
-    let _ = target_file;
-
-    // Presence only. Opening Ladybug here made every evaluate pay the load
-    // before `load_dep_graph` could hit its cache. Schema and load failures
-    // still surface when that load runs.
-    let resolved = resolve_lbug_store(&gitnexus_dir, branch.as_deref());
-    if resolved.path.is_none() {
-        let msg = if resolved.available_branches.is_empty() {
-            MdgError::NotFound(gitnexus_dir.join("lbug")).to_string()
-        } else {
-            format!(
-                "{BRANCH_NOT_INDEXED_MARKER} '{}' (indexed: {})",
-                branch.as_deref().unwrap_or("<detached>"),
-                resolved.available_branches.join(", ")
-            )
-        };
+    // Through the process store: the first status pays the open that the
+    // following `load_dep_graph` then reuses, and a half-written or
+    // wrong-schema store still reports `load_error` / `schema_mismatch`.
+    if let Err(msg) = store_graph(&gitnexus_dir, branch, target_file) {
         let state = if is_branch_not_indexed(&msg) {
             "branch_not_indexed"
         } else if is_schema_mismatch(&msg) {
@@ -231,8 +226,8 @@ pub fn depgraph_status(
 mod tests {
     use super::*;
 
-    /// Both tests write `LAST_LOAD_MS`. Parallel cargo test will fail the
-    /// zero assertion if the other test records a load in that window.
+    /// Both tests load the real store and clear the process cache; the
+    /// lock keeps one from clearing it between the other's two calls.
     static CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn repo_gitnexus() -> Option<std::path::PathBuf> {
@@ -269,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn status_does_not_open_the_store() {
+    fn status_reopens_neither_a_loaded_store_nor_a_second_file() {
         let _guard = CACHE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let Some(dir) = repo_gitnexus() else {
             return;
@@ -278,20 +273,42 @@ mod tests {
         crate::evaluation::clear_freshness_cache();
         let root = dir.parent().unwrap();
         let _ = depgraph_status(None, root, "topos/mcp/src/lib.rs");
-        let started = Instant::now();
+        assert!(last_store_load_ms() > 0, "first status must open the store");
         let status = depgraph_status(None, root, "topos/mcp/src/server.rs");
-        let elapsed = started.elapsed().as_millis();
         assert!(
             matches!(status.state, "present" | "stale"),
             "unexpected status {} ({})",
             status.state,
             status.detail.unwrap_or_default()
         );
-        assert!(
-            elapsed < 50,
-            "second status rewalked the tree: {elapsed} ms for state {}",
-            status.state
+        assert_eq!(last_store_load_ms(), 0, "second status reopened Ladybug");
+        let (graph, err) = load_dep_graph(
+            Some(&dir),
+            &dir.join("../topos/mcp/src/lib.rs").to_string_lossy(),
         );
-        assert_eq!(last_store_load_ms(), 0);
+        assert!(err.is_none() && graph.is_some(), "{err:?}");
+        assert_eq!(
+            last_store_load_ms(),
+            0,
+            "load after status reopened Ladybug"
+        );
+        clear_caches();
+    }
+}
+
+#[cfg(test)]
+mod broken_store_tests {
+    use super::*;
+
+    #[test]
+    fn half_written_store_is_a_load_error_not_present() {
+        let root = std::env::temp_dir().join(format!("topos_broken_store_{}", std::process::id()));
+        let lbug = root.join(".gitnexus/lbug");
+        std::fs::create_dir_all(root.join(".gitnexus")).unwrap();
+        std::fs::write(&lbug, b"not a ladybug store").unwrap();
+        let status = depgraph_status(None, &root, &root.to_string_lossy());
+        std::fs::remove_dir_all(&root).ok();
+        assert_ne!(status.state, "present", "{:?}", status.detail);
+        assert_ne!(status.state, "stale", "{:?}", status.detail);
     }
 }

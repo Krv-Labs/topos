@@ -344,6 +344,7 @@ pub fn build_agent_contract(
 
     let summary = result.summary();
     let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
+    let measured_pass = unmet_pillars(result).is_empty();
     let missing_gitnexus = prelude
         .blocked_by
         .iter()
@@ -354,6 +355,7 @@ pub fn build_agent_contract(
         refactor_targets,
         summary,
         simple_ok,
+        measured_pass,
         security_findings,
         missing_gitnexus,
     );
@@ -421,6 +423,7 @@ fn next_step_for_contract(
     refactor_targets: Option<&[RefactorTarget]>,
     summary: EvaluationValue,
     simple_ok: bool,
+    measured_pass: bool,
     security_findings: &[SecurityFinding],
     missing_gitnexus: bool,
 ) -> (Option<String>, Vec<String>) {
@@ -438,7 +441,7 @@ fn next_step_for_contract(
     // was measured and still not be IDEAL. That is a finished file, not a
     // request to build a graph.
     if summary == EvaluationValue::Ideal
-        || (simple_ok && security_findings.is_empty() && !composable_unfinished(composable))
+        || (measured_pass && security_findings.is_empty() && !composable_unfinished(composable))
     {
         let why = if summary == EvaluationValue::Ideal {
             "all four pillars pass — stop, do not call another Topos tool"
@@ -1052,6 +1055,34 @@ mod tests {
             "{:?}",
             contract.next_actions
         );
+    }
+
+    #[test]
+    fn failing_measured_pillar_does_not_stop() {
+        // SIMPLE passes and there are no security findings, but another
+        // measured pillar failed. That is not a finished file.
+        for (dim, coupling_available) in [("navigable", false), ("composable", true)] {
+            let mut result =
+                classify_code_string("def f():\n    return 1\n", "python", Priority::Simple)
+                    .unwrap();
+            result.dimensions.insert(dim.into(), EvaluationValue::Slop);
+            let contract = build_agent_contract(
+                &result,
+                coupling_available,
+                &[],
+                &[],
+                false,
+                &[],
+                None,
+                false,
+            );
+            assert!(contract.next_tool.is_some(), "{dim}: {contract:?}");
+            assert!(
+                !contract.next_actions.iter().any(|a| a.contains("stop")),
+                "{dim}: {:?}",
+                contract.next_actions
+            );
+        }
     }
 
     #[test]

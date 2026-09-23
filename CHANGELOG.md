@@ -13,6 +13,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 - **MCP keeps one dependency graph per process** ([#375](https://github.com/Krv-Labs/topos/issues/375)) — a second `topos_evaluate_file` no longer rereads the Ladybug store: 15.8 s → 83 ms for a second file on this repo, 15 ms for the same file again. The store is opened once per `(dir, branch, store mtime)` and retargeted per file; `depgraph_status` goes through the same store, so a half-written or wrong-schema store still reports `load_error` / `schema_mismatch`. The graph-freshness answer is cached until the fingerprint, HEAD, or the uncommitted working tree (`git status` plus dirty-file mtimes) changes.
 
+- **The MCP agent contract stops when a file already passes** ([#376](https://github.com/Krv-Labs/topos/issues/376)) — `next_tool` is omitted, with a "stop" action, when every measured pillar passes (IDEAL no longer routes to `topos_evaluate_project`) and when an assess of an unchanged passing file returns `LATERAL_MOVE`. A pillar that was measured and failed still gets a next step; an unmeasured COMPOSABLE (no graph) does not count as failed. Guidance names only the pillars still failing instead of "add COMPOSABLE / SECURE / NAVIGABLE", and the four loop tools' descriptions say when not to call them.
+
 ## [0.6.0] - 2026-09-16
 
 ### Added

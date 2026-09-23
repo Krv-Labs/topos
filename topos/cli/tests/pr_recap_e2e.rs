@@ -38,6 +38,11 @@ struct Run {
 /// Run the binary in `repo` with `bin` first on `PATH`, killing it at the
 /// deadline.
 fn topos(repo: &Path, bin: &Path, args: &[&str]) -> Run {
+    topos_on_path(repo, &format!("{}:/usr/bin:/bin", bin.display()), args)
+}
+
+/// [`topos`] with an exact `PATH`.
+fn topos_on_path(repo: &Path, path: &str, args: &[&str]) -> Run {
     // Beside the repository, so its `git status` stays clean.
     let scratch = repo.parent().expect("the repository has a parent");
     let out = scratch.join("topos.out");
@@ -45,7 +50,7 @@ fn topos(repo: &Path, bin: &Path, args: &[&str]) -> Run {
     let mut child = Command::new(env!("CARGO_BIN_EXE_topos"))
         .args(args)
         .current_dir(repo)
-        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("PATH", path)
         .env("NO_COLOR", "1")
         .env_remove("CI")
         .env_remove("GH_PROMPT_DISABLED")
@@ -148,13 +153,32 @@ fn a_range_without_a_pull_request_never_asks() {
 }
 
 /// With `gh` missing, a pull request number fails before any question.
+/// `PATH` holds only `git`: CI images ship `gh` in `/usr/bin`.
+#[cfg(unix)]
 #[test]
 fn an_unresolvable_pull_request_fails_fast_without_asking() {
     let (_keep, repo, bin) = scratch();
-    let run = topos(&repo, &bin, &["pr-recap", "7", "--json"]);
+    std::os::unix::fs::symlink(which("git"), bin.join("git")).unwrap();
+    let run = topos_on_path(
+        &repo,
+        &bin.display().to_string(),
+        &["pr-recap", "7", "--json"],
+    );
     assert_eq!(run.code, 2, "{}", run.stderr);
     assert_no_prompt(&run);
     assert!(run.stderr.contains("pull request 7"), "{}", run.stderr);
+}
+
+/// The first `name` on the test process's own `PATH`.
+#[cfg(unix)]
+fn which(name: &str) -> PathBuf {
+    std::env::var_os("PATH")
+        .and_then(|path| {
+            std::env::split_paths(&path)
+                .map(|dir| dir.join(name))
+                .find(|candidate| candidate.is_file())
+        })
+        .unwrap_or_else(|| panic!("{name} is not on PATH"))
 }
 
 /// Stand-ins for `gh` (one same-repository pull request) and `gitnexus`

@@ -155,6 +155,29 @@ Choose an agent path
            that host's plugin configuration with Antigravity's plugin commands,
            then verify in Antigravity before relying on Topos tools.
 
+      .. dropdown:: OpenCode
+
+         OpenCode connects to Topos over stdio using local MCP configuration.
+         Add the server in your user-wide ``~/.config/opencode/opencode.json`` (or
+         project-root ``opencode.json``):
+
+         .. code-block:: json
+
+            {
+              "mcp": {
+                "topos": {
+                  "type": "local",
+                  "command": ["topos", "mcp"]
+                }
+              }
+            }
+
+         Confirm the server status with:
+
+         .. code-block:: bash
+
+            opencode mcp list
+
    .. tab-item:: Manual JSON
       :sync: manual-json
 

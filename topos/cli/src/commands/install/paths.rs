@@ -91,6 +91,27 @@ pub(crate) fn vscode_config(home: &Path) -> PathBuf {
     }
 }
 
+pub(crate) fn opencode_config_dir(home: &Path) -> PathBuf {
+    home.join(".config/opencode")
+}
+
+/// OpenCode's configuration file.
+///
+/// OpenCode searches `opencode.jsonc`, then `opencode.json`, then `config.json`
+/// and loads the first candidate that exists. If one already exists on disk,
+/// target it so existing user settings are preserved; otherwise default to
+/// `opencode.jsonc` which has the highest priority and cannot be shadowed.
+pub(crate) fn opencode_config(home: &Path) -> PathBuf {
+    let dir = opencode_config_dir(home);
+    for file in ["opencode.jsonc", "opencode.json", "config.json"] {
+        let candidate = dir.join(file);
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    dir.join("opencode.jsonc")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +127,7 @@ mod tests {
             cursor_config(home),
             antigravity_config(home),
             pi_config(home),
+            opencode_config(home),
         ] {
             assert!(
                 path.starts_with(home),
@@ -139,5 +161,41 @@ mod tests {
         for severed in ["antigravity/", "antigravity-cli/", "antigravity-ide/"] {
             assert!(!text.contains(severed), "would sever {severed}");
         }
+    }
+
+    #[test]
+    fn opencode_picks_existing_candidate_or_defaults_to_jsonc() {
+        let home = crate::commands::install::testing::tmp_dir("opencode-pick");
+
+        // 1. None exist -> opencode.jsonc
+        assert_eq!(
+            opencode_config(&home),
+            home.join(".config/opencode/opencode.jsonc")
+        );
+
+        // 2. config.json exists -> config.json
+        let opencode_dir = opencode_config_dir(&home);
+        std::fs::create_dir_all(&opencode_dir).unwrap();
+        std::fs::write(opencode_dir.join("config.json"), "{}").unwrap();
+        assert_eq!(
+            opencode_config(&home),
+            home.join(".config/opencode/config.json")
+        );
+
+        // 3. opencode.json also exists -> opencode.json wins over config.json
+        std::fs::write(opencode_dir.join("opencode.json"), "{}").unwrap();
+        assert_eq!(
+            opencode_config(&home),
+            home.join(".config/opencode/opencode.json")
+        );
+
+        // 4. opencode.jsonc also exists -> opencode.jsonc wins over all
+        std::fs::write(opencode_dir.join("opencode.jsonc"), "{}").unwrap();
+        assert_eq!(
+            opencode_config(&home),
+            home.join(".config/opencode/opencode.jsonc")
+        );
+
+        std::fs::remove_dir_all(&home).ok();
     }
 }

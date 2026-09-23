@@ -38,7 +38,7 @@ Two commands: get the binary, then register it with your agents.
 
 ``topos install`` opens a checklist of the agent harnesses it finds — Claude
 Code, Claude Desktop, Codex CLI, Gemini CLI, GitHub Copilot CLI, Cursor,
-VS Code, Google Antigravity — and registers the Topos MCP server in the ones you
+VS Code, Google Antigravity, pi, OpenCode — and registers the Topos MCP server in the ones you
 pick. ``topos status`` shows what is wired up and what drifted; ``topos
 uninstall`` takes it back out. Other channels for the binary itself (Homebrew,
 PyPI, source) are in :doc:`installation`.

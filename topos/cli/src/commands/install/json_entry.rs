@@ -123,7 +123,7 @@ fn classify(
         return Inspection::plain(State::Absent);
     };
     let command = command_of(entry).unwrap_or_default();
-    if !names_topos(command) || !args_are_mcp(entry.get("args")) {
+    if !names_topos(command) || !entry_args_are_mcp(artifact, entry) {
         return Inspection::conflict(format!(
             "`{SERVER_KEY}` in {} is an MCP entry topos did not write — inspect it by hand",
             path.display()
@@ -132,11 +132,13 @@ fn classify(
     if let Some(reason) = drift(command, binary) {
         return Inspection::incomplete(reason);
     }
-    if artifact.wants_stdio_type() && entry.get("type").and_then(Value::as_str) != Some("stdio") {
-        return Inspection::incomplete(format!(
-            "`{SERVER_KEY}` in {} is missing \"type\": \"stdio\"",
-            path.display()
-        ));
+    if let Some(expected_type) = artifact.entry_type() {
+        if entry.get("type").and_then(Value::as_str) != Some(expected_type) {
+            return Inspection::incomplete(format!(
+                "`{SERVER_KEY}` in {} is missing \"type\": \"{expected_type}\"",
+                path.display()
+            ));
+        }
     }
     Inspection::plain(State::Active)
 }
@@ -146,20 +148,42 @@ fn entry_of(artifact: Artifact, map: &Map<String, Value>) -> Option<&Value> {
 }
 
 fn command_of(entry: &Value) -> Option<&str> {
-    entry.get("command").and_then(Value::as_str)
+    entry.get("command").and_then(|cmd| {
+        cmd.as_str().or_else(|| {
+            cmd.as_array()
+                .and_then(|a| a.first())
+                .and_then(Value::as_str)
+        })
+    })
 }
 
 fn owns_entry(artifact: Artifact, map: &Map<String, Value>) -> bool {
     let Some(entry) = entry_of(artifact, map) else {
         return false;
     };
-    names_topos(command_of(entry).unwrap_or_default()) && args_are_mcp(entry.get("args"))
+    names_topos(command_of(entry).unwrap_or_default()) && entry_args_are_mcp(artifact, entry)
 }
 
-fn args_are_mcp(args: Option<&Value>) -> bool {
-    args.and_then(Value::as_array)
-        .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>() == MCP_ARGS)
-        .unwrap_or(false)
+fn entry_args_are_mcp(artifact: Artifact, entry: &Value) -> bool {
+    if artifact.is_opencode() {
+        entry
+            .get("command")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .skip(1)
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    == MCP_ARGS
+            })
+            .unwrap_or(false)
+    } else {
+        entry
+            .get("args")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>() == MCP_ARGS)
+            .unwrap_or(false)
+    }
 }
 
 fn args_value() -> Value {
@@ -172,14 +196,22 @@ fn args_value() -> Value {
 }
 
 fn set_owned_fields(fields: &mut Map<String, Value>, artifact: Artifact, binary: &Path) {
-    if artifact.wants_stdio_type() {
-        fields.insert("type".to_string(), Value::String("stdio".to_string()));
+    if let Some(expected_type) = artifact.entry_type() {
+        fields.insert("type".to_string(), Value::String(expected_type.to_string()));
     }
-    fields.insert(
-        "command".to_string(),
-        Value::String(binary.display().to_string()),
-    );
-    fields.insert("args".to_string(), args_value());
+    if artifact.is_opencode() {
+        let mut cmd = vec![Value::String(binary.display().to_string())];
+        cmd.extend(MCP_ARGS.iter().map(|arg| Value::String((*arg).to_string())));
+        fields.insert("command".to_string(), Value::Array(cmd));
+        // Remove any dangling sibling `args` from previous draft or cross-client copy.
+        fields.remove("args");
+    } else {
+        fields.insert(
+            "command".to_string(),
+            Value::String(binary.display().to_string()),
+        );
+        fields.insert("args".to_string(), args_value());
+    }
 }
 
 fn fresh_entry(artifact: Artifact, binary: &Path) -> Value {
@@ -410,6 +442,91 @@ mod tests {
 
         let keys = Artifact::McpJson.duplicate_keys(&path, &binary);
         assert_eq!(keys, vec!["topos-mcp".to_string()]);
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn opencode_uses_mcp_container_local_type_and_command_array() {
+        let dir = tmp_dir("opencode-round-trip");
+        let binary = fake_binary(&dir);
+        let path = dir.join("opencode.json");
+
+        // Seed with existing foreign server and unrelated top-level key
+        fs::write(
+            &path,
+            r#"{"$schema": "https://opencode.ai/config.json", "mcp": {"other": {"type": "local", "command": ["node", "other.js"]}}}"#,
+        )
+        .unwrap();
+
+        let art = Artifact::OpenCodeJsonc;
+        assert_eq!(art.inspect(&path, &binary).state, State::Absent);
+        assert!(art.apply(&path, &binary).unwrap().is_some());
+        assert_eq!(art.inspect(&path, &binary).state, State::Active);
+
+        let map = read_json_object(&path).unwrap();
+        let entry = &map["mcp"]["topos"];
+        assert_eq!(entry["type"], "local");
+        assert_eq!(
+            entry["command"],
+            serde_json::json!([binary.display().to_string(), "mcp"])
+        );
+        assert!(entry.get("args").is_none(), "args must not be present");
+        assert_eq!(map["mcp"]["other"]["command"][0], "node");
+
+        // Idempotent: second apply writes nothing
+        assert!(art.apply(&path, &binary).unwrap().is_none());
+
+        // Client-added keys (like enabled: true) survive and remain Active
+        let mut map = read_json_object(&path).unwrap();
+        map["mcp"]["topos"]["enabled"] = serde_json::json!(true);
+        fs::write(&path, serde_json::to_string_pretty(&map).unwrap()).unwrap();
+        assert_eq!(art.inspect(&path, &binary).state, State::Active);
+
+        // Remove removes topos entry and leaves foreign entries intact
+        assert!(art.remove(&path, false).unwrap());
+        assert_eq!(art.inspect(&path, &binary).state, State::Absent);
+        let remaining = read_json_object(&path).unwrap();
+        assert!(remaining["mcp"].get("other").is_some());
+        assert!(remaining.get("$schema").is_some());
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn opencode_drift_and_missing_type_are_incomplete_and_repaired() {
+        let dir = tmp_dir("opencode-drift");
+        let binary = fake_binary(&dir);
+        let path = dir.join("opencode.jsonc");
+        fs::write(&path, "{\"mcp\": {}}\n").unwrap();
+
+        Artifact::OpenCodeJsonc.apply(&path, &binary).unwrap();
+
+        // 1. Missing type: "local"
+        let mut map = read_json_object(&path).unwrap();
+        map["mcp"]["topos"].as_object_mut().unwrap().remove("type");
+        fs::write(&path, serde_json::to_string_pretty(&map).unwrap()).unwrap();
+        let inspection = Artifact::OpenCodeJsonc.inspect(&path, &binary);
+        assert_eq!(inspection.state, State::Incomplete);
+
+        Artifact::OpenCodeJsonc.apply(&path, &binary).unwrap();
+        assert_eq!(
+            Artifact::OpenCodeJsonc.inspect(&path, &binary).state,
+            State::Active
+        );
+
+        // 2. Drifted relative command
+        let mut map = read_json_object(&path).unwrap();
+        map["mcp"]["topos"]["command"] = serde_json::json!(["topos", "mcp"]);
+        fs::write(&path, serde_json::to_string_pretty(&map).unwrap()).unwrap();
+        let inspection = Artifact::OpenCodeJsonc.inspect(&path, &binary);
+        assert_eq!(inspection.state, State::Incomplete);
+
+        Artifact::OpenCodeJsonc.apply(&path, &binary).unwrap();
+        assert_eq!(
+            Artifact::OpenCodeJsonc.inspect(&path, &binary).state,
+            State::Active
+        );
+
         fs::remove_dir_all(dir).ok();
     }
 }

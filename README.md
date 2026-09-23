@@ -113,6 +113,7 @@ topos install
 │   ○ VS Code              (detected)
 │   ○ Google Antigravity   (detected)
 │   ○ pi                   (detected)
+│   ○ OpenCode             (detected)
 └
 ```
 

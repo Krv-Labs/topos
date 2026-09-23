@@ -92,27 +92,40 @@ pub(crate) enum Artifact {
     /// `servers.topos` carrying `"type": "stdio"`, in a file that may contain
     /// comments and trailing commas.
     VsCodeJsonc,
+    /// `mcp.topos` carrying `"type": "local"` and array `command` in OpenCode's
+    /// JSON/JSONC configuration.
+    OpenCodeJsonc,
 }
 
 impl Artifact {
-    /// The table holding server entries: `servers` for VS Code, `mcpServers`
-    /// for JSON clients, `mcp_servers` for Codex's TOML.
+    /// The table holding server entries: `servers` for VS Code, `mcp` for
+    /// OpenCode, `mcpServers` for JSON clients, `mcp_servers` for Codex's TOML.
     pub(crate) fn container_key(self) -> &'static str {
         match self {
             Artifact::McpJson => "mcpServers",
             Artifact::McpToml => "mcp_servers",
             Artifact::VsCodeJsonc => "servers",
+            Artifact::OpenCodeJsonc => "mcp",
         }
     }
 
-    /// Whether this client wants an explicit transport. VS Code alone does.
-    pub(crate) fn wants_stdio_type(self) -> bool {
-        matches!(self, Artifact::VsCodeJsonc)
+    /// Whether this client wants an explicit `type` field, and which value.
+    pub(crate) fn entry_type(self) -> Option<&'static str> {
+        match self {
+            Artifact::VsCodeJsonc => Some("stdio"),
+            Artifact::OpenCodeJsonc => Some("local"),
+            _ => None,
+        }
     }
 
     /// Whether the file may carry comments and trailing commas.
     pub(crate) fn is_jsonc(self) -> bool {
-        matches!(self, Artifact::VsCodeJsonc)
+        matches!(self, Artifact::VsCodeJsonc | Artifact::OpenCodeJsonc)
+    }
+
+    /// Whether this artifact uses OpenCode's array-command format.
+    pub(crate) fn is_opencode(self) -> bool {
+        matches!(self, Artifact::OpenCodeJsonc)
     }
 
     pub(crate) fn inspect(self, path: &Path, binary: &Path) -> Inspection {
@@ -195,15 +208,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_vscode_declares_a_transport_and_uses_the_servers_key() {
+    fn artifact_container_keys_and_types_match_spec() {
         assert_eq!(Artifact::McpJson.container_key(), "mcpServers");
         assert_eq!(Artifact::McpToml.container_key(), "mcp_servers");
         assert_eq!(Artifact::VsCodeJsonc.container_key(), "servers");
-        assert!(Artifact::VsCodeJsonc.wants_stdio_type());
-        assert!(!Artifact::McpJson.wants_stdio_type());
-        assert!(!Artifact::McpToml.wants_stdio_type());
+        assert_eq!(Artifact::OpenCodeJsonc.container_key(), "mcp");
+
+        assert_eq!(Artifact::VsCodeJsonc.entry_type(), Some("stdio"));
+        assert_eq!(Artifact::OpenCodeJsonc.entry_type(), Some("local"));
+        assert_eq!(Artifact::McpJson.entry_type(), None);
+        assert_eq!(Artifact::McpToml.entry_type(), None);
+
         assert!(Artifact::VsCodeJsonc.is_jsonc());
+        assert!(Artifact::OpenCodeJsonc.is_jsonc());
         assert!(!Artifact::McpJson.is_jsonc());
+        assert!(!Artifact::McpToml.is_jsonc());
+
+        assert!(Artifact::OpenCodeJsonc.is_opencode());
+        assert!(!Artifact::VsCodeJsonc.is_opencode());
     }
 
     #[test]

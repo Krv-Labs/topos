@@ -1,7 +1,7 @@
 ---
 name: topos
 description: Evaluate and improve code with Topos. Use for complexity reduction, security checks, refactor verification, and PLATINUM/GOLD goals.
-version: "0.6.0"
+version: "0.7.0"
 homepage: https://docs.krv.ai/topos/
 metadata:
   openclaw:

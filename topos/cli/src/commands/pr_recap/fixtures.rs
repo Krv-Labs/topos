@@ -1,8 +1,8 @@
 //! Hand-built `PrRecap` documents for the renderer tests.
 //!
-//! Shared by the card, the compact card, the GitHub comment and the view
-//! model, so all of them are asserted against exactly the same numbers.
-//! The shape and the counts are PR #5 from
+//! Shared by the card, the GitHub comment and the view model, so all of
+//! them are asserted against exactly the same numbers. The shape and the
+//! counts are PR #5 from
 //! `docs/decisions/pr-recap-refactor-tracing.md`.
 
 use std::collections::HashMap;
@@ -41,18 +41,6 @@ pub(super) fn medal_for(tier: &str) -> Medal {
             _ => "NONE",
         }
         .to_string(),
-    }
-}
-
-/// A hotspot at `path:line` for `metric`, with a finding and a fix.
-pub(super) fn hotspot(path: &str, line: usize, metric: &str) -> Hotspot {
-    Hotspot {
-        path: path.to_string(),
-        line,
-        function: None,
-        metric: metric.to_string(),
-        detail: format!("finding at line {line}"),
-        advice: format!("Change line {line} so it clears the gate."),
     }
 }
 
@@ -345,6 +333,7 @@ fn recap_of(
         skipped: Vec::new(),
         deleted: Vec::new(),
         hotspots: Vec::new(),
+        hotspots_total: 0,
         non_claim: "Structural direction is not proof that tests or behavior still pass.",
     }
 }
@@ -985,6 +974,7 @@ pub(super) fn fixture_mixed() -> PrRecap {
         detail: "cap_generation_detail complexity 14, gate 10".to_string(),
         advice: "Extract a decision so this function clears the gate.".to_string(),
     }];
+    recap.hotspots_total = 1;
     recap
 }
 

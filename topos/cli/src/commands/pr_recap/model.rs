@@ -400,6 +400,10 @@ pub(crate) struct GateSummary {
     /// The `.topos.toml` consulted, or `None` when `--preset` set the
     /// policy or no file was found.
     pub(crate) source: Option<String>,
+    /// How many findings a card lists before folding the rest into
+    /// `N more` (`max_hotspots`). Rendering only; not in the document.
+    #[serde(skip)]
+    pub(crate) max_hotspots: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -442,17 +446,15 @@ pub(crate) struct PrRecap {
     pub(crate) files: Vec<FileRecap>,
     pub(crate) skipped: Vec<SkippedFile>,
     pub(crate) deleted: Vec<String>,
+    /// The first `[pr_recap] max_hotspots` hotspots, in rank order.
     pub(crate) hotspots: Vec<Hotspot>,
+    /// Every hotspot the range has, shown or not.
+    pub(crate) hotspots_total: usize,
     /// Structural direction is not proof that behavior is unchanged.
     pub(crate) non_claim: &'static str,
 }
 
 impl PrRecap {
-    /// Files not belonging to any cluster, in document order.
-    pub(crate) fn unclustered_files(&self) -> Vec<&FileRecap> {
-        self.files.iter().filter(|f| f.cluster.is_none()).collect()
-    }
-
     pub(crate) fn new_files(&self) -> Vec<&FileRecap> {
         self.files.iter().filter(|f| f.is_new()).collect()
     }

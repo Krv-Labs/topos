@@ -1,23 +1,23 @@
 //! The facts every `topos pr-recap` renderer shows, derived once.
 //!
-//! The terminal card, the compact CI card and the GitHub comment each
-//! print the same document in their own grammar. Anything a renderer
-//! would otherwise *derive* from [`PrRecap`] — the tallies, the
-//! worst-function span, a cluster's decision growth, which items fail
-//! the check and why — is computed here, in [`RecapView::new`], so the
-//! three can never drift apart on a number.
+//! The terminal card and the GitHub comment each print the same document
+//! in their own grammar. Anything a renderer would otherwise *derive*
+//! from [`PrRecap`] — the tallies, the worst-function span, a cluster's
+//! decision growth, which findings block and which need attention — is
+//! computed here, in [`RecapView::new`], so the two can never drift apart
+//! on a number.
 //!
 //! Like the renderers, nothing here decides a verdict: every mark still
 //! comes from a field the data builder set.
 
 use std::collections::BTreeMap;
 
-use topos_engine::config::Severity;
-use topos_engine::evaluation::policies::gates::pillar_for_metric;
+use topos_engine::config::{GateId, Severity};
 
+use super::gates::Finding;
 use super::model::{
-    percent_change, Cluster, ClusterChild, ClusterMark, FileRecap, FunctionRef, Headline, Hotspot,
-    PillarDelta, PrRecap, CLUSTER_GROWTH_WARN,
+    percent_change, Cluster, ClusterChild, ClusterMark, FileRecap, FunctionRef, PillarDelta,
+    PrRecap, CLUSTER_GROWTH_WARN,
 };
 
 /// Pillar keys in `Generator::ALL` order.
@@ -30,8 +30,8 @@ pub(super) struct RecapView<'a> {
     pub(super) recap: &'a PrRecap,
     /// `#5` for a pull request, `2e352d7…7b18166` for two revisions.
     pub(super) subject: String,
-    /// `priority secure`, `COMPOSABLE measured`, `1 skipped` — what the
-    /// verdict was computed with. Files over `--max-files` are
+    /// `priority secure`, `COMPOSABLE measured` — what the verdict was
+    /// computed with. Files over `--max-files` are
     /// [`RecapView::incomplete_note`]'s to report.
     pub(super) context: Vec<String>,
     pub(super) tally: Tally,
@@ -44,11 +44,16 @@ pub(super) struct RecapView<'a> {
     /// Split parents that still fail pillars, grouped by the exact set
     /// they fail; the largest group, as `(names, pillars)`.
     pub(super) still_failing: Option<(Vec<String>, Vec<String>)>,
-    /// Everything that fails the check, most severe first.
-    pub(super) failures: Vec<Failure<'a>>,
+    /// The block findings, most important first.
+    pub(super) blocking: Vec<&'a Finding>,
+    /// The warn findings, most important first.
+    pub(super) attention: Vec<&'a Finding>,
+    /// The info findings: counted on the card, collapsed in the GitHub
+    /// comment.
+    pub(super) notes: Vec<&'a Finding>,
 }
 
-/// The counts the headline row and the summary sentence are made of.
+/// The counts the summary sentence is made of.
 pub(super) struct Tally {
     /// Medal moves over files scored on both sides.
     pub(super) up: usize,
@@ -57,10 +62,6 @@ pub(super) struct Tally {
     /// `11 PLATINUM, 5 GOLD, 1 SILVER`, biggest group first; empty when
     /// no file was added.
     pub(super) new_medals: String,
-    /// Files that kept their medal while a pillar score went down.
-    pub(super) dipped: usize,
-    pub(super) cosmetic: usize,
-    pub(super) secure_lost: usize,
 }
 
 pub(super) struct ClusterView<'a> {
@@ -85,16 +86,22 @@ impl ClusterView<'_> {
     }
 }
 
-/// One reason the check fails, in the card's own row grammar.
-pub(super) struct Failure<'a> {
-    /// `X LOST`, `X NEW`, `X SPLIT`, `! DOWN`, `! SUSPECT`, `! COSMETIC`.
-    pub(super) word: &'static str,
-    /// The file, or the parent of the failed split.
-    pub(super) path: &'a str,
-    /// How many files a failed split became; `None` for a file.
-    pub(super) split_into: Option<usize>,
-    /// `lost SIMPLE, SECURE`, `fails SECURE`, `parent lost SECURE`.
-    pub(super) cause: String,
+/// Findings at one place — the same file, line and function — read as
+/// one item: a function that lost SIMPLE and NAVIGABLE is one thing to
+/// fix, not two.
+pub(super) struct Item<'a> {
+    /// In the recap's order, so the first is the most important.
+    pub(super) findings: Vec<&'a Finding>,
+}
+
+impl<'a> Item<'a> {
+    pub(super) fn lead(&self) -> &'a Finding {
+        self.findings[0]
+    }
+
+    pub(super) fn severity(&self) -> Severity {
+        self.lead().severity
+    }
 }
 
 impl<'a> RecapView<'a> {
@@ -121,9 +128,27 @@ impl<'a> RecapView<'a> {
             decisions,
             worst_drop: worst_drop(recap),
             still_failing: still_failing(&clusters),
-            failures: failures(recap),
+            blocking: at_severity(recap, Severity::Block),
+            attention: at_severity(recap, Severity::Warn),
+            notes: at_severity(recap, Severity::Info),
             clusters,
         }
+    }
+
+    /// The block and warn findings merged by place, most important first.
+    pub(super) fn items(&self) -> Vec<Item<'a>> {
+        merged(self.blocking.iter().chain(&self.attention).copied())
+    }
+
+    /// The info findings merged by place, in the recap's order, less the
+    /// dips too small to show.
+    pub(super) fn note_items(&self) -> Vec<Item<'a>> {
+        merged(
+            self.notes
+                .iter()
+                .copied()
+                .filter(|finding| !hidden_dip(finding)),
+        )
     }
 
     /// ` · incomplete, 3 unscored` when `--max-files` left files out; a
@@ -135,6 +160,58 @@ impl<'a> RecapView<'a> {
             String::new()
         }
     }
+}
+
+/// Findings at the same `(path, line, function)` as one item, placed
+/// where its first finding was.
+fn merged<'a>(findings: impl Iterator<Item = &'a Finding>) -> Vec<Item<'a>> {
+    let mut items: Vec<Item<'a>> = Vec::new();
+    for finding in findings {
+        let same_place = |other: &Finding| {
+            other.path == finding.path
+                && other.line == finding.line
+                && other.function == finding.function
+        };
+        match items.iter_mut().find(|item| same_place(item.lead())) {
+            Some(item) => item.findings.push(finding),
+            None => items.push(Item {
+                findings: vec![finding],
+            }),
+        }
+    }
+    items
+}
+
+/// Score moves under this, on the displayed 0–100 scale, are hidden by
+/// both renderers: no arrow, no CHANGE segment, no note.
+const MIN_VISIBLE_SHIFT: f64 = 1.0;
+
+/// A score move of at least a point, either way.
+pub(super) fn visible_shift(shift: f64) -> bool {
+    shift.abs() >= MIN_VISIBLE_SHIFT
+}
+
+/// How far a finding's score fell, `before − after`.
+pub(super) fn drop_of(finding: &Finding) -> f64 {
+    finding.before.unwrap_or_default() - finding.after.unwrap_or_default()
+}
+
+/// A score drop of at least a point: shown, or counted as a smaller dip.
+pub(super) fn visible_dip(finding: &Finding) -> bool {
+    finding.gate == GateId::ScoreDrop && drop_of(finding) >= MIN_VISIBLE_SHIFT
+}
+
+/// A score drop under a point: neither renderer shows or counts it.
+fn hidden_dip(finding: &Finding) -> bool {
+    finding.gate == GateId::ScoreDrop && !visible_dip(finding)
+}
+
+fn at_severity(recap: &PrRecap, severity: Severity) -> Vec<&Finding> {
+    recap
+        .findings
+        .iter()
+        .filter(|finding| finding.severity == severity)
+        .collect()
 }
 
 fn subject(recap: &PrRecap) -> String {
@@ -156,9 +233,6 @@ fn context(recap: &PrRecap) -> Vec<String> {
     } else {
         parts.push(format!("COMPOSABLE not measured ({})", coupling.note));
     }
-    if recap.scope.files_skipped > 0 {
-        parts.push(format!("{} skipped", recap.scope.files_skipped));
-    }
     parts
 }
 
@@ -176,7 +250,6 @@ fn tally_of(recap: &PrRecap) -> Tally {
         }
     }
     let new_files = recap.new_files();
-    let count = |keep: fn(&FileRecap) -> bool| recap.files.iter().filter(|f| keep(f)).count();
     Tally {
         up,
         down,
@@ -188,14 +261,7 @@ fn tally_of(recap: &PrRecap) -> Tally {
                 .map(|medal| (medal.tier.clone(), medal.tier.clone())),
             false,
         ),
-        dipped: count(|file| file.status == Headline::RegressionScore),
-        cosmetic: count(|file| file.cosmetic),
-        secure_lost: count(secure_lost),
     }
-}
-
-fn secure_lost(file: &FileRecap) -> bool {
-    file.pillars.get("secure").is_some_and(PillarDelta::lost)
 }
 
 /// Whether any pillar the base passed now fails — a loss even when
@@ -273,93 +339,6 @@ pub(super) fn pillar_names(file: &FileRecap, keep: impl Fn(&PillarDelta) -> bool
         .collect()
 }
 
-/// Files with a blocking finding (a lost pillar, SECURE first, then a
-/// failing new file), then failed splits, then files with a warning —
-/// the order a reviewer should read them in.
-fn failures(recap: &PrRecap) -> Vec<Failure<'_>> {
-    let mut failing: Vec<&FileRecap> = recap
-        .files
-        .iter()
-        .filter(|file| file.severity >= Some(Severity::Warn))
-        .collect();
-    failing.sort_by_key(|file| {
-        (
-            file.status.rank(),
-            !secure_lost(file),
-            file.is_new(),
-            file.path.clone(),
-        )
-    });
-    let (severe, warned): (Vec<&FileRecap>, Vec<&FileRecap>) = failing
-        .into_iter()
-        .partition(|file| file.severity == Some(Severity::Block));
-    let splits = recap
-        .clusters
-        .iter()
-        .filter(|cluster| cluster.mark == ClusterMark::Fail)
-        .map(|cluster| Failure {
-            word: "X SPLIT",
-            path: &cluster.parent,
-            split_into: Some(cluster.children.len()),
-            cause: cluster
-                .reasons
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "the split failed".to_string()),
-        });
-    severe
-        .into_iter()
-        .map(file_failure)
-        .chain(splits)
-        .chain(warned.into_iter().map(file_failure))
-        .collect()
-}
-
-fn file_failure(file: &FileRecap) -> Failure<'_> {
-    let word = change_word(file);
-    let cause = if file.is_new() {
-        if file
-            .pillars
-            .get("secure")
-            .is_some_and(|delta| delta.after_passed == Some(false))
-        {
-            "arrived failing SECURE".to_string()
-        } else {
-            "arrived as SLOP".to_string()
-        }
-    } else if file.status == Headline::Regression || lost_a_pillar(file) {
-        let lost = pillar_names(file, PillarDelta::lost);
-        if lost.is_empty() {
-            "lost a pillar".to_string()
-        } else {
-            format!("lost {}", lost.join(", "))
-        }
-    } else if file.status == Headline::RegressionScore {
-        let fell: Vec<String> = PILLARS
-            .iter()
-            .filter_map(|key| {
-                let delta = file.pillars.get(*key)?;
-                let (before, after) = delta.before_score.zip(delta.after_score)?;
-                (after < before)
-                    .then(|| format!("{} {before:.0}% → {after:.0}%", key.to_ascii_uppercase()))
-            })
-            .collect();
-        if fell.is_empty() {
-            "a pillar score went down".to_string()
-        } else {
-            fell.join(", ")
-        }
-    } else {
-        "scores moved while the syntax tree barely changed".to_string()
-    };
-    Failure {
-        word,
-        path: &file.path,
-        split_into: None,
-        cause,
-    }
-}
-
 // ---------------------------------------------------------------- shared
 
 pub(super) fn cluster_mark(mark: ClusterMark) -> char {
@@ -367,32 +346,6 @@ pub(super) fn cluster_mark(mark: ClusterMark) -> char {
         ClusterMark::Ok => '✓',
         ClusterMark::Warn => '!',
         ClusterMark::Fail => 'X',
-    }
-}
-
-/// The mark and word a file's row leads with.
-pub(super) fn change_word(file: &FileRecap) -> &'static str {
-    // A lost pillar blocks and a cosmetic edit only warns, so the loss
-    // leads even when another pillar was gained.
-    if !file.is_new() && lost_a_pillar(file) {
-        return "X LOST";
-    }
-    if file.cosmetic {
-        return "! COSMETIC";
-    }
-    if file.is_new() {
-        return if file.status == Headline::Regression {
-            "X NEW"
-        } else {
-            "✓ NEW"
-        };
-    }
-    match file.status {
-        Headline::Regression => "X LOST",
-        Headline::RegressionScore => "! DOWN",
-        Headline::SuspiciousNoStructuralChange => "! SUSPECT",
-        Headline::Improvement | Headline::ImprovementScore => "✓ UP",
-        Headline::LateralMove => "· HELD",
     }
 }
 
@@ -412,9 +365,9 @@ pub(super) fn worst_span(
     }
 }
 
-/// `●●●● PLATINUM ×2, ○●●● GOLD` (multiply) or `11 PLATINUM, 5 GOLD`
-/// (count). Entries are `(tier, label)`: the tier orders the groups, the
-/// label is what the reader sees.
+/// `PLATINUM ×2, GOLD` (multiply) or `11 PLATINUM, 5 GOLD` (count).
+/// Entries are `(tier, label)`: the tier orders the groups, the label is
+/// what the reader sees.
 pub(super) fn tally<I: Iterator<Item = (String, String)>>(entries: I, multiply: bool) -> String {
     let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
     for entry in entries {
@@ -441,11 +394,6 @@ pub(super) fn tally<I: Iterator<Item = (String, String)>>(entries: I, multiply: 
         .join(", ")
 }
 
-/// `SECURE` for a dangerous-call finding, `SIMPLE` for a complexity one.
-pub(super) fn hotspot_pillar(spot: &Hotspot) -> String {
-    pillar_for_metric(&spot.metric).to_ascii_uppercase()
-}
-
 pub(super) fn tier_rank(tier: &str) -> usize {
     TIERS.iter().position(|known| *known == tier).unwrap_or(0)
 }
@@ -454,9 +402,91 @@ pub(super) fn basename(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
+/// The directory every path sits under, with its trailing `/`, when at
+/// least two different paths share one. Paths are then shown relative to
+/// it, and it is printed once.
+pub(super) fn common_parent<'p>(paths: impl IntoIterator<Item = &'p str>) -> Option<String> {
+    let mut paths: Vec<&str> = paths.into_iter().collect();
+    paths.sort_unstable();
+    paths.dedup();
+    let (first, rest) = paths.split_first()?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parent = dirname(first);
+    for path in rest {
+        while !path.starts_with(parent) {
+            parent = dirname(parent.trim_end_matches('/'));
+        }
+    }
+    (!parent.is_empty()).then(|| parent.to_string())
+}
+
+/// Everything up to and including the last `/`; empty for a bare name.
+fn dirname(path: &str) -> &str {
+    &path[..path.rfind('/').map_or(0, |at| at + 1)]
+}
+
+/// `path` without the `parent` that [`common_parent`] found.
+pub(super) fn relative<'p>(path: &'p str, parent: Option<&str>) -> &'p str {
+    parent
+        .and_then(|parent| path.strip_prefix(parent))
+        .unwrap_or(path)
+}
+
+/// The shortest trailing part of `path` that no other path in `all` ends
+/// with: `dispatch.rs`, or `graphs/mod.rs` beside another `mod.rs`.
+pub(super) fn short_name<'p>(path: &'p str, all: &[&str]) -> &'p str {
+    let mut start = path.rfind('/').map_or(0, |at| at + 1);
+    loop {
+        let suffix = &path[start..];
+        let clashes = all.iter().any(|other| {
+            *other != path && (*other == suffix || other.ends_with(&format!("/{suffix}")))
+        });
+        if !clashes || start == 0 {
+            return suffix;
+        }
+        start = path[..start - 1].rfind('/').map_or(0, |at| at + 1);
+    }
+}
+
 pub(super) fn short_rev(rev: &str) -> &str {
     if rev.len() >= 7 && rev.chars().all(|c| c.is_ascii_hexdigit()) {
         return &rev[..7];
     }
     rev
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{common_parent, relative, short_name};
+
+    #[test]
+    fn a_common_parent_needs_two_paths() {
+        let install = [
+            "topos/cli/src/commands/install/status.rs",
+            "topos/cli/src/commands/install/configure.rs",
+        ];
+        let parent = common_parent(install);
+        assert_eq!(parent.as_deref(), Some("topos/cli/src/commands/install/"));
+        assert_eq!(relative(install[0], parent.as_deref()), "status.rs");
+        assert_eq!(
+            common_parent(["topos/engine/a.rs", "topos/cli/b.rs"]).as_deref(),
+            Some("topos/")
+        );
+        assert_eq!(common_parent(["a.rs", "src/b.rs"]), None);
+        assert_eq!(common_parent(["src/a.rs", "src/a.rs"]), None);
+    }
+
+    #[test]
+    fn a_short_name_is_the_shortest_unambiguous_suffix() {
+        let all = [
+            "topos/engine/src/graphs/mod.rs",
+            "topos/cli/src/commands/mod.rs",
+            "topos/engine/src/graphs/ast/dispatch.rs",
+        ];
+        assert_eq!(short_name(all[0], &all), "graphs/mod.rs");
+        assert_eq!(short_name(all[2], &all), "dispatch.rs");
+        assert_eq!(short_name("mod.rs", &["mod.rs", "src/mod.rs"]), "mod.rs");
+    }
 }

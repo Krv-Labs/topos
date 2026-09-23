@@ -8,7 +8,6 @@
 //! and the gate policy — a formatter can never invent one.
 
 mod clusters;
-mod compact;
 #[cfg(test)]
 mod fixtures;
 mod gates;
@@ -24,7 +23,6 @@ mod view;
 use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum};
-use console::{Style, Term};
 use topos_engine::config::{
     find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, ToposConfig,
 };
@@ -42,7 +40,7 @@ use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup
 use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
 use crate::commands::depgraph::{gitnexus_available, prepare_pr_stores, PrStores};
 use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
-use crate::commands::render::{paint, RenderOptions, Working};
+use crate::commands::render::{RenderOptions, Working};
 
 const DEFAULT_FILE_CAP: usize = 40;
 
@@ -50,7 +48,8 @@ const DEFAULT_FILE_CAP: usize = 40;
 pub enum RecapFormat {
     /// Full terminal review card.
     Card,
-    /// One-screen card for a CI log.
+    /// The review card; kept so existing scripts keep working.
+    #[value(hide = true)]
     Compact,
     /// Markdown for a sticky pull request comment.
     Github,
@@ -79,21 +78,19 @@ impl GatePreset {
 pub const LONG_HELP: &str = r#"What it does:
   Scores the files your change touched at the base commit and at the head commit,
   then reports the structural difference between the two. It is deterministic and
-  reads only your code: no LLM, no network call, no model judgement. The medal is
+  reads only your code: no LLM, no network call, no model judgment. The medal is
   Topos's lattice verdict over the pillars below. Structure moving in the right
-  direction is not proof that behaviour is unchanged or that the tests still pass;
+  direction is not proof that behavior is unchanged or that the tests still pass;
   read it as a review aid, not as a green check.
 
-Pillars (S C E N):
-  S  SIMPLE      per-function complexity and the control-flow gates.
-  C  COMPOSABLE  module coupling from the GitNexus dependency graph: fan-out and
-                 instability.
-  E  SECURE      dangerous calls and taint flows.
-  N  NAVIGABLE   nesting divergence.
-  In the matrix a pillar is `●` when it passes at head, `○` when it fails, and `·`
-  when it was not measured (COMPOSABLE with no graph, or a file that did not
-  parse). On a modified file, `↑` or `↓` next to the mark means that pillar's score
-  moved by at least one point.
+Pillars:
+  SIMPLE      per-function complexity and the control-flow gates.
+  COMPOSABLE  module coupling from the GitNexus dependency graph: fan-out and
+              instability.
+  SECURE      dangerous calls and taint flows.
+  NAVIGABLE   nesting divergence.
+  COMPOSABLE is not measured with no graph, and no pillar is measured on a file
+  that did not parse.
 
 Medals:
   PLATINUM  all four pillars pass.
@@ -103,16 +100,30 @@ Medals:
   SLOP      none pass.
   `BRONZE → SILVER` means the medal itself changed over this range.
 
-Rows:
-  ✓ UP        a pillar was cleared, or a score rose.
-  ! DOWN      a score fell, but the medal held.
-  X LOST      a pillar was lost.
-  ! COSMETIC  scores moved while the syntax tree barely changed (an agent-slop
-              signal: the shape of the code is the same, the numbers are not).
-  ✓ NEW       an added file that is not part of a split.
-  X NEW       an added file that arrives failing SECURE, or as SLOP. New code
-              is gated like changed code; a split child is judged through its
-              split instead, since moved code brings its findings with it.
+Findings:
+  The card lists what blocks (X) and what needs attention (!), most important
+  first, at most max_hotspots of them; findings at the same function merge into
+  one item. A dim line counts the rest: `N more`, smaller dips, and notes (info
+  findings). Score dips under one point are not shown.
+
+Changed files (--verbose):
+  One row per file whose medal, pillars or scores moved. The mark is the file's
+  worst finding: X blocks, ! needs attention, none is info or nothing.
+  CHANGE says what happened, pillar by pillar:
+    X SIMPLE lost       a pillar the base passed now fails. Gaining another
+                        pillar does not cancel it: `X SIMPLE lost · ✓ NAVIGABLE
+                        gained` is a trade, and still a loss.
+    ✓ NAVIGABLE gained  a pillar the base failed now passes.
+    ↓ SIMPLE 69 → 64    a score moved at least one point without crossing a gate.
+    new                 an added file; `X SECURE fails` when it arrives failing.
+                        New code is gated like changed code; a split child is
+                        judged through its split instead, since moved code
+                        brings its findings with it.
+    cosmetic            scores moved while the syntax tree barely changed (an
+                        agent-slop signal: the shape of the code is the same, the
+                        numbers are not).
+
+Splits (--verbose):
   SPLIT       a file whose code moved out into new files. It passes (✓) when the
               worst function got simpler and total decisions grew by no more than
               10%, warns (!) when decisions grew by more than 10% or a child
@@ -122,7 +133,7 @@ Rows:
               split_* gates' call; a pillar the parent lost is its own finding.
   Children (├─) are the new files a split produced. `N in` counts the symbols or
   functions that moved into that child; `shared ×N` means N files besides the
-  parent import it; `N more` folds away the quiet children.
+  parent import it.
 
 Splits table columns:
   WORST FN   the highest single-function complexity, before and after.
@@ -169,13 +180,15 @@ Coupling:
   splits are detected from import lines and the moved-function ledger instead.
 
 Outputs:
-  --format card     the full review card; the default on a terminal.
-  --format compact  at most 12 lines; the default when output is piped.
+  --format card     the review card, the default. The same layout on a terminal
+                    and in a pipe; piped output drops the color.
   --format github   markdown for a sticky PR comment, with a hidden marker so a
                     later run replaces it instead of adding another comment.
   --json            schema topos.pr_recap.v3: every number and finding behind
                     the card.
-  --verbose         every split child, each moved function, every score change.
+  --verbose         adds the changed-files table, every split child and each
+                    moved function.
+  --info            appends the recommended change for each finding.
 
 Examples:
   topos pr-recap
@@ -206,13 +219,17 @@ pub struct PrRecapArgs {
     /// Score at most this many added or modified files, most changed first.
     #[arg(long, default_value_t = DEFAULT_FILE_CAP)]
     pub max_files: usize,
-    /// Unfold every split and print the per-function ledger.
+    /// Add the changed-files table, every split child and the per-function
+    /// ledger.
     #[arg(long)]
     pub verbose: bool,
-    /// Print the short CI card. Same as `--format compact`.
+    /// Append the recommended change for each finding after the card.
     #[arg(long)]
+    pub info: bool,
+    /// The review card; kept so existing scripts keep working.
+    #[arg(long, hide = true)]
     pub compact: bool,
-    /// Which card to print: card, compact or github.
+    /// Which card to print: card or github.
     #[arg(long, value_enum)]
     pub format: Option<RecapFormat>,
     /// Skip coupling preparation; COMPOSABLE is reported as not measured.
@@ -259,19 +276,13 @@ struct Judging {
     source: Option<PathBuf>,
 }
 
-/// Which card to print, once `--compact`, `--format` and the terminal have
-/// all had their say. `--json` is decided by the caller and wins over this.
-fn resolve_format(compact: bool, format: Option<RecapFormat>, is_term: bool) -> RecapFormat {
-    if compact {
-        return RecapFormat::Compact;
-    }
-    if let Some(format) = format {
-        return format;
-    }
-    if is_term {
-        RecapFormat::Card
-    } else {
-        RecapFormat::Compact
+/// Which card to print. The card is the same on a terminal and in a
+/// pipe, so `--compact` and `--format compact` are aliases for it. `--json`
+/// is decided by the caller and wins over this.
+fn resolve_format(compact: bool, format: Option<RecapFormat>) -> RecapFormat {
+    match format {
+        Some(RecapFormat::Github) if !compact => RecapFormat::Github,
+        _ => RecapFormat::Card,
     }
 }
 
@@ -391,7 +402,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         topos,
     };
     let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
-    let format = resolve_format(args.compact, args.format, Term::stdout().is_term());
+    let format = resolve_format(args.compact, args.format);
     // The stores must be built at the commit the sources are read from.
     let base = merge_base(&root, &base, head_commit(&head))?;
 
@@ -420,22 +431,12 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         );
     } else {
         match format {
-            RecapFormat::Card => {
-                let options = RenderOptions::stdout();
-                println!();
-                println!("...");
-                for line in render::render_card(&recap, args.verbose, options) {
-                    println!("{line}");
-                }
-                // The card's own tips sit outside it, like `evaluate`'s.
-                println!();
-                for tip in render::tips(&recap, args.verbose) {
-                    println!("{}", paint(tip, Style::new().dim(), options));
-                }
-                println!();
-            }
-            RecapFormat::Compact => {
-                for line in compact::render_compact(&recap, RenderOptions::stdout()) {
+            RecapFormat::Card | RecapFormat::Compact => {
+                let detail = render::Detail {
+                    verbose: args.verbose,
+                    info: args.info,
+                };
+                for line in render::render_card(&recap, detail, RenderOptions::stdout()) {
                     println!("{line}");
                 }
             }
@@ -617,7 +618,7 @@ fn build_recap(
             if capped == 1 { "" } else { "s" }
         ));
     }
-    let hotspots = top_hotspots(&files);
+    let (hotspots, hotspots_total) = top_hotspots(&files, judging.gate.max_hotspots as usize);
     let project = project_rollup(&files);
     let added = added_rollup(&files);
     let scope = Scope {
@@ -653,6 +654,7 @@ fn build_recap(
         skipped,
         deleted: diff.deleted,
         hotspots,
+        hotspots_total,
         non_claim: "Structural direction is not proof that tests or behavior still pass.",
     })
 }
@@ -884,12 +886,15 @@ mod tests {
     }
 
     #[test]
-    fn format_falls_back_to_compact_off_a_terminal() {
-        assert_eq!(resolve_format(false, None, true), RecapFormat::Card);
-        assert_eq!(resolve_format(false, None, false), RecapFormat::Compact);
-        assert_eq!(resolve_format(true, None, true), RecapFormat::Compact);
+    fn compact_is_an_alias_for_the_card() {
+        assert_eq!(resolve_format(false, None), RecapFormat::Card);
+        assert_eq!(resolve_format(true, None), RecapFormat::Card);
         assert_eq!(
-            resolve_format(false, Some(RecapFormat::Github), false),
+            resolve_format(false, Some(RecapFormat::Compact)),
+            RecapFormat::Card
+        );
+        assert_eq!(
+            resolve_format(false, Some(RecapFormat::Github)),
             RecapFormat::Github
         );
     }
@@ -1286,6 +1291,7 @@ mod tests {
             json: true,
             max_files: DEFAULT_FILE_CAP,
             verbose: false,
+            info: false,
             compact: false,
             format: None,
             no_coupling: true,

@@ -12,16 +12,17 @@ use super::model::{FileRecap, Hotspot};
 use super::score::Side;
 use super::verdict::{gate_limit, metric_delta};
 
-const HOTSPOT_CAP: usize = 2;
-
-/// The range's hotspots in their one canonical order, which renderers
-/// rely on: by metric (dangerous call, function complexity, nesting
-/// divergence, fan-out), then in file order. Each file's own list is
-/// already in metric order, so a stable sort keeps the files in place.
-pub(super) fn top_hotspots(files: &[FileRecap]) -> Vec<Hotspot> {
+/// The range's first `cap` hotspots in their one canonical order, which
+/// renderers rely on, and how many there were in all, so a capped list
+/// can say `N more`. The order is by metric (dangerous call, function
+/// complexity, nesting divergence, fan-out), then by file. Each file's
+/// own list is already in metric order, so a stable sort keeps the files
+/// in place.
+pub(super) fn top_hotspots(files: &[FileRecap], cap: usize) -> (Vec<Hotspot>, usize) {
     let mut ranked: Vec<&Hotspot> = files.iter().flat_map(|f| f.hotspots.iter()).collect();
     ranked.sort_by_key(|spot| hotspot_rank(&spot.metric));
-    ranked.into_iter().take(HOTSPOT_CAP).cloned().collect()
+    let total = ranked.len();
+    (ranked.into_iter().take(cap).cloned().collect(), total)
 }
 
 fn hotspot_rank(metric: &str) -> u8 {

@@ -1,55 +1,62 @@
-//! Primary terminal card for `topos pr-recap`.
+//! Primary terminal card for `topos pr-recap`, on a terminal and in a
+//! pipe alike: only the color changes.
 //!
-//! Two headed tables and a floor. The **scores** table answers "what did
-//! the lattice do to the files I touched"; the **splits** table answers
-//! "what happened to the files that were broken apart". Either table is
-//! omitted entirely when it has no rows, so a plain edit never prints a
-//! `SPLIT` header and a pure refactor never prints an empty score table.
+//! The default card is `evaluate`'s shape: a title, the meta line, one
+//! verdict line, the project pillar table, the numbered findings, the
+//! gate settings in the legend slot, and the `└` footer with the
+//! readiness mark. `--verbose` adds the **Changed files** table and the
+//! splits table inside the frame; `--info` appends `inspect`'s
+//! recommended changes after it.
 //!
-//! Nothing here computes a verdict. Every glyph is a field of
-//! [`PrRecap`]: `recap.readiness`, `file.status`, `cluster.mark`,
-//! `file.cosmetic`, `PillarDelta::lost`/`cleared`, `project.regression`.
-//! The renderer only chooses which already-decided fact is the most
-//! useful one to show, and how to fold the rest away.
+//! Nothing here computes a verdict. Every mark is a field of
+//! [`PrRecap`]: `recap.readiness`, `finding.severity`, `file.severity`,
+//! `cluster.mark`, `PillarDelta::lost`/`cleared`. The renderer only
+//! chooses which already-decided fact is the most useful one to show,
+//! and how to fold the rest away.
 
-mod floor;
+mod changed;
+mod findings;
 mod layout;
 mod splits;
 
 use console::Style;
-use topos_engine::config::Severity;
 
-use super::model::{ClusterRole, FileRecap, Headline, PillarDelta, PrRecap, ProjectRollup};
-use super::view::{change_word, lost_a_pillar, RecapView, PILLARS};
+use super::gates::Readiness;
+use super::model::{FileRecap, PrRecap, ProjectRollup};
+use super::view::{visible_shift, Item, RecapView, PILLARS};
 use crate::commands::evaluate::summary::{score_rail, status_text};
-use crate::commands::render::{guide, paint, truncate_left, RenderOptions};
-pub(super) use floor::{floor_line, mean_scores};
-pub(super) use layout::colorize;
-use layout::{
-    budget, clamp, dim_line, header_dim_line, line, pad, plain_budget, row, CHANGE_WIDTH,
-    FILE_WIDTH, MATRIX_HEADER, PILLAR_COL,
-};
+use crate::commands::render::{guide, paint, RenderOptions};
+use layout::{dim_wrapped, header_dim_line, line};
 
-const MAX_NAMES: usize = 3;
+// The GitHub comment states the same facts in Markdown, so it takes
+// its segments, medals and sentences from here rather than restating them.
+pub(super) use changed::{change_text, changed_rows, kept_count};
+pub(super) use findings::{facts, gate_line, headline, severity_mark};
+
 /// Columns of the project pillar table, `evaluate`'s exact shape.
 const PILLAR_NAME_WIDTH: usize = 13;
 const RAIL_WIDTH: usize = 10;
-/// Longest branch name shown on the context line.
-const MAX_BRANCH_CHARS: usize = 40;
+/// At most this many tips under the card.
+const MAX_TIPS: usize = 2;
 
-pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions) -> Vec<String> {
+/// How much of the card to print beyond the default view.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Detail {
+    /// The changed-files table, every split child, and the ledger.
+    pub(super) verbose: bool,
+    /// The recommended change for each finding, after the card.
+    pub(super) info: bool,
+}
+
+/// Every line `pr-recap` prints for the card, the tips included.
+pub(super) fn render_card(recap: &PrRecap, detail: Detail, options: RenderOptions) -> Vec<String> {
     let view = RecapView::new(recap);
-    let mut lines = vec![
-        paint(
-            clamp(&header_line(recap), plain_budget(options)),
-            Style::new().bold(),
-            options,
-        ),
-        dim_line(&context_line(&view), options),
-        guide('│', options),
-        line(&headline_line(&view), options),
-        guide('│', options),
-    ];
+    let items = view.items();
+    let mut lines = vec![paint(title(&view), Style::new().bold(), options)];
+    lines.extend(dim_wrapped("", "", &meta(&view), options));
+    lines.push(guide('│', options));
+    lines.extend(findings::verdict_lines(&view, &items, options));
+    lines.push(guide('│', options));
 
     if let Some(project) = &recap.project {
         lines.push(header_dim_line(&pillar_table_header(), options));
@@ -59,34 +66,40 @@ pub(super) fn render_card(recap: &PrRecap, verbose: bool, options: RenderOptions
         lines.push(guide('│', options));
     }
 
-    let scored = score_rows(recap);
-    if !scored.is_empty() {
-        lines.push(header_dim_line(&scores_header(), options));
-        for file in &scored {
-            lines.extend(score_lines(file, verbose, options));
+    if !items.is_empty() {
+        lines.extend(findings::list_lines(&view, &items, options));
+        lines.push(guide('│', options));
+    }
+
+    if detail.verbose {
+        let changed = changed::changed_lines(recap, options);
+        if !changed.is_empty() {
+            lines.extend(changed);
+            lines.push(guide('│', options));
         }
-        lines.push(guide('│', options));
-    }
-
-    if !view.clusters.is_empty() {
-        lines.push(header_dim_line(&splits::splits_header(), options));
-        for cluster in &view.clusters {
-            lines.extend(splits::cluster_block(cluster, verbose, options));
+        if !view.clusters.is_empty() {
+            lines.push(header_dim_line(&splits::splits_header(), options));
+            for cluster in &view.clusters {
+                lines.extend(splits::cluster_block(cluster, detail.verbose, options));
+            }
+            lines.push(guide('│', options));
         }
-        lines.push(guide('│', options));
     }
 
-    if let Some(text) = held_line(recap, verbose) {
-        lines.push(line(&text, options));
-        lines.push(guide('│', options));
-    }
+    lines.extend(dim_wrapped("", "", &findings::gate_line(recap), options));
+    lines.push(footer(recap, options));
 
-    lines.push(format!(
-        "{}  {}",
-        guide('└', options),
-        colorize(&clamp(&floor_line(&view), budget(options)), options)
-    ));
-    lines.extend(floor::floor_blocks(&view, options));
+    if detail.info && !items.is_empty() {
+        lines.push(String::new());
+        lines.extend(findings::recommendations(recap, &items, options));
+    }
+    let tips = tips(recap, &items, detail);
+    if !tips.is_empty() {
+        lines.push(String::new());
+        for tip in tips {
+            lines.push(paint(tip, Style::new().dim(), options));
+        }
+    }
     lines
 }
 
@@ -128,122 +141,117 @@ pub(super) fn pillar_table_rows(project: &ProjectRollup) -> Vec<String> {
                 score_rail(pillar.after_score / 100.0, RAIL_WIDTH),
             );
             let shift = pillar.after_score - pillar.before_score;
-            if shift >= 1.0 {
-                row.push_str(" ↑");
-            } else if shift <= -1.0 {
-                row.push_str(" ↓");
+            if visible_shift(shift) {
+                row.push_str(if shift > 0.0 { " ↑" } else { " ↓" });
             }
             Some(row)
         })
         .collect()
 }
 
-// -------------------------------------------------------------- headline
+// ------------------------------------------------------------ title, meta
 
-fn header_line(recap: &PrRecap) -> String {
-    let count = recap.scope.files_scored;
-    format!(
-        "◇  Reviewed {count} changed file{}  +{}/-{}",
-        if count == 1 { "" } else { "s" },
-        recap.scope.lines_added,
-        recap.scope.lines_removed
-    )
+/// `◇  Reviewed #359  fix/ts-parser-cpg-precision → main`, or the two
+/// revisions when there is no pull request. Branch names are shown whole.
+fn title(view: &RecapView<'_>) -> String {
+    match &view.recap.review {
+        Some(review) => format!(
+            "◇  Reviewed {}  {} → {}",
+            view.subject, review.head_ref, review.base_ref
+        ),
+        None => format!("◇  Reviewed {}", view.subject),
+    }
 }
 
-fn context_line(view: &RecapView<'_>) -> String {
-    // A long branch name must not push COMPOSABLE off the line; the tail
-    // of the branch is the informative part, so trim its head.
-    let subject = view.recap.review.as_ref().map_or_else(
-        || view.subject.clone(),
-        |review| {
-            format!(
-                "{} {} → {}",
-                view.subject,
-                truncate_left(&review.head_ref, MAX_BRANCH_CHARS),
-                review.base_ref
-            )
-        },
-    );
-    let mut parts = vec![subject];
+/// `3 files · +174/-1 · priority navigable · COMPOSABLE not measured`.
+fn meta(view: &RecapView<'_>) -> String {
+    let recap = view.recap;
+    let scope = &recap.scope;
+    let mut parts = vec![
+        format!(
+            "{} file{}",
+            scope.files_scored,
+            if scope.files_scored == 1 { "" } else { "s" }
+        ),
+        format!("+{}/-{}", scope.lines_added, scope.lines_removed),
+    ];
     parts.extend(view.context.iter().cloned());
+    if !recap.deleted.is_empty() {
+        parts.push(format!("{} deleted", recap.deleted.len()));
+    }
     format!("{}{}", parts.join(" · "), view.incomplete_note())
 }
 
-fn headline_line(view: &RecapView<'_>) -> String {
-    let tally = &view.tally;
-    let mut phrases = vec![format!("{} lost", tally.down), format!("{} up", tally.up)];
-    if tally.new > 0 {
-        phrases.push(if tally.new_medals.is_empty() {
-            format!("{} new", tally.new)
-        } else {
-            format!("{} new ({})", tally.new, tally.new_medals)
-        });
-    }
-    if tally.dipped > 0 {
-        phrases.push(format!("{} scores dipped", tally.dipped));
-    }
-    if tally.cosmetic > 0 {
-        phrases.push(format!("{} cosmetic", tally.cosmetic));
-    }
-    if tally.secure_lost > 0 {
-        phrases.push(format!("{} SECURE lost", tally.secure_lost));
-    }
-    format!(
-        "{} {}   {}",
-        view.recap.readiness.mark(),
-        view.recap.readiness.word(),
-        phrases.join(" · ")
-    )
+// ------------------------------------------------------------------ footer
+
+/// `└  X 🥇 GOLD → 🥉 BRONZE · SECURE · 87% → 70% average.`, `evaluate`'s
+/// floor with the readiness mark: only the mark and the lattice name are
+/// colored, and SLOP gets neither an emoji nor a lattice-name echo.
+fn footer(recap: &PrRecap, options: RenderOptions) -> String {
+    let readiness = recap.readiness;
+    let mark = paint(readiness.mark(), readiness_style(readiness), options);
+    let rest = match (&recap.project, &recap.added) {
+        (Some(project), _) => medal_phrase(project, options),
+        (None, Some(added)) => format!(
+            "{} new file{} · {}",
+            added.files,
+            if added.files == 1 { "" } else { "s" },
+            added.medal.tier
+        ),
+        (None, None) => readiness.word().to_string(),
+    };
+    format!("{}  {mark} {rest}", guide('└', options))
 }
 
-// --------------------------------------------------------- scores table
-
-fn scores_header() -> String {
-    row("CHANGE", "FILE", "MEDAL", MATRIX_HEADER, "")
-}
-
-fn medal_changed(file: &FileRecap) -> bool {
-    match (&file.medal_before, &file.medal_after) {
-        (Some(before), Some(after)) => before.tier != after.tier,
-        _ => false,
+fn readiness_style(readiness: Readiness) -> Style {
+    match readiness {
+        Readiness::Ready => Style::new().green().bold(),
+        Readiness::NeedsAttention => Style::new().yellow().bold(),
+        Readiness::Blocked => Style::new().red().bold(),
     }
 }
 
-/// Every non-child file that moved, plus split parents whose medal moved
-/// (those appear in both tables — the split is one story, the lattice
-/// move is another).
-fn score_rows(recap: &PrRecap) -> Vec<&FileRecap> {
-    let mut rows: Vec<&FileRecap> = recap
-        .files
-        .iter()
-        .filter(|file| match &file.cluster {
-            None => file.status != Headline::LateralMove || file.severity >= Some(Severity::Warn),
-            Some(member) => member.role == ClusterRole::Parent && medal_changed(file),
-        })
-        .collect();
-    rows.sort_by_key(|file| {
-        let lost = file.status == Headline::Regression || lost_a_pillar(file);
-        let secure = file.pillars.get("secure").is_some_and(PillarDelta::lost);
-        (
-            if lost {
-                0
-            } else if file.is_new() {
-                2
-            } else {
-                1
-            },
-            usize::from(!(lost && secure)),
-            file.status.rank(),
-            file.path.clone(),
-        )
+/// `🥉 BRONZE → 🥈 SILVER · SECURE_NAVIGABLE · 46% → 58% average.`, or one
+/// medal when the tier held.
+fn medal_phrase(project: &ProjectRollup, options: RenderOptions) -> String {
+    let (before, after) = (&project.medal_before, &project.medal_after);
+    let average = mean_scores(project).map_or_else(String::new, |(before, after)| {
+        format!(" · {before:.0}% → {after:.0}% average.")
     });
-    rows
+    if after.tier == "SLOP" {
+        let slop = paint("SLOP", Style::new().red().bold(), options);
+        return format!("{slop}{average}");
+    }
+    let tiers = if before.tier == after.tier {
+        format!("{} {}", after.symbol, after.tier)
+    } else if before.tier == "SLOP" {
+        format!("SLOP → {} {}", after.symbol, after.tier)
+    } else {
+        format!(
+            "{} {} → {} {}",
+            before.symbol, before.tier, after.symbol, after.tier
+        )
+    };
+    let lattice = paint(&after.verdict, Style::new().green().bold(), options);
+    format!("{tiers} · {lattice}{average}")
 }
 
-/// The tier word, and both tiers when the medal moved: `GOLD`,
-/// `BRONZE → SILVER`, `unparsed`. Which pillars hold is the matrix's
-/// job, not this column's.
-fn medal_cell(file: &FileRecap) -> String {
+/// The mean pillar score before and after, `None` with no pillar measured.
+fn mean_scores(project: &ProjectRollup) -> Option<(f64, f64)> {
+    let count = project.pillars.len();
+    if count == 0 {
+        return None;
+    }
+    #[expect(clippy::cast_precision_loss, reason = "four pillars at most")]
+    let divisor = count as f64;
+    let before: f64 = project.pillars.values().map(|p| p.before_score).sum();
+    let after: f64 = project.pillars.values().map(|p| p.after_score).sum();
+    Some((before / divisor, after / divisor))
+}
+
+/// The *medal* the card shows for a file: the tier, both tiers when it
+/// moved (`BRONZE → SILVER`), or `unparsed`.
+pub(super) fn medal_cell(file: &FileRecap) -> String {
     let Some(after) = &file.medal_after else {
         return "unparsed".to_string();
     };
@@ -255,165 +263,51 @@ fn medal_cell(file: &FileRecap) -> String {
     }
 }
 
-/// The four-pillar matrix of the *head* state, in simple, composable,
-/// secure, navigable order: `●` passes, `○` fails, `·` not measured.
-///
-/// A modified file also gets a movement arrow when that pillar's
-/// displayed score shifted by at least one point — `●↑` still passing
-/// and better, `○↓` still failing and worse. An added file has no before
-/// side, so it never carries an arrow.
-fn pillar_matrix(file: Option<&FileRecap>) -> String {
-    PILLARS
-        .iter()
-        .map(|key| pad(&matrix_cell(file, key), PILLAR_COL))
-        .collect::<String>()
-        .trim_end()
-        .to_string()
-}
+// ------------------------------------------------------------------- tips
 
-fn matrix_cell(file: Option<&FileRecap>, key: &str) -> String {
-    let Some(delta) = file.and_then(|file| file.pillars.get(key)) else {
-        return "·".to_string();
-    };
-    if !delta.measured || delta.after_passed.is_none() {
-        return "·".to_string();
-    }
-    let dot = if delta.after_passed == Some(true) {
-        '●'
-    } else {
-        '○'
-    };
-    if file.is_some_and(FileRecap::is_new) {
-        return dot.to_string();
-    }
-    match delta.shift() {
-        Some(shift) if shift >= 1.0 => format!("{dot}↑"),
-        Some(shift) if shift <= -1.0 => format!("{dot}↓"),
-        _ => dot.to_string(),
-    }
-}
-
-fn percent(value: Option<f64>) -> String {
-    value.map_or_else(|| "·".to_string(), |score| format!("{score:.0}%"))
-}
-
-/// One row per file. The matrix carries every pillar, so a file never
-/// needs a continuation row; `--verbose` spells the moved scores out
-/// underneath instead.
-fn score_lines(file: &FileRecap, verbose: bool, options: RenderOptions) -> Vec<String> {
-    let mut lines = vec![line(
-        &row(
-            change_word(file),
-            &truncate_left(&file.path, FILE_WIDTH - 1),
-            &medal_cell(file),
-            &pillar_matrix(Some(file)),
-            "",
-        ),
-        options,
-    )];
-    if !verbose {
-        return lines;
-    }
-    for key in PILLARS {
-        let Some(delta) = file.pillars.get(key) else {
-            continue;
-        };
-        if delta.shift().is_none_or(|shift| shift.abs() < 1.0) {
-            continue;
-        }
-        lines.push(dim_line(
-            &format!(
-                "{}{} {} → {}",
-                " ".repeat(CHANGE_WIDTH),
-                key.to_ascii_uppercase(),
-                percent(delta.before_score),
-                percent(delta.after_score)
-            ),
-            options,
-        ));
-    }
-    lines
-}
-
-// ----------------------------------------------------------- held line
-
-fn held_line(recap: &PrRecap, verbose: bool) -> Option<String> {
-    let held: Vec<&str> = recap
-        .unclustered_files()
-        .into_iter()
-        .filter(|file| {
-            file.status == Headline::LateralMove
-                && !file.cosmetic
-                && file.severity < Some(Severity::Warn)
-        })
-        .map(|file| file.path.as_str())
-        .collect();
-    let deleted = &recap.deleted;
-    if held.is_empty() && deleted.is_empty() {
-        return None;
-    }
-    let mut parts = Vec::new();
-    if !held.is_empty() {
-        parts.push(if verbose {
-            format!("{} held their medal: {}", held.len(), held.join(", "))
-        } else if held.len() == 1 {
-            "1 file held its medal".to_string()
-        } else {
-            format!("{} files held their medal", held.len())
-        });
-    }
-    if !deleted.is_empty() {
-        let names: Vec<&str> = deleted.iter().map(String::as_str).collect();
-        parts.push(if verbose {
-            format!("deleted, not scored: {}", name_list(&names))
-        } else {
-            format!("{} deleted, not scored", names.len())
-        });
-    }
-    Some(format!("· {}", parts.join(" · ")))
-}
-
-fn name_list(names: &[&str]) -> String {
-    if names.len() <= MAX_NAMES {
-        return names.join(", ");
-    }
-    format!(
-        "{}, +{} more",
-        names[..MAX_NAMES].join(", "),
-        names.len() - MAX_NAMES
-    )
-}
-
-// ----------------------------------------------------------------- tips
-
-/// The one or two lines printed under the card, `evaluate`'s grammar.
-///
-/// First match wins down the list, at most two; the `--json` pointer is
-/// the fallback for a card that had nothing more useful to say.
-pub(super) fn tips(recap: &PrRecap, verbose: bool) -> Vec<String> {
+/// At most two lines under the card, each pointing at the next level of
+/// detail, `evaluate`'s grammar. The `--json` pointer is the fallback
+/// for a card that had nothing more useful to say.
+fn tips(recap: &PrRecap, items: &[Item<'_>], detail: Detail) -> Vec<String> {
     let mut tips = Vec::new();
-    if !recap.clusters.is_empty() && !verbose {
-        tips.push(
-            "Tip: add --verbose to list the functions that moved and each score that changed."
-                .to_string(),
-        );
+    let changed = changed_rows(recap).len();
+    let plural = if changed == 1 { "" } else { "s" };
+    if !detail.verbose {
+        match recap.readiness {
+            Readiness::Blocked => {
+                let path = items.first().map(|item| item.lead().path.as_str());
+                tips.push(match path.filter(|path| !path.is_empty()) {
+                    Some(path) => {
+                        format!("Tip: add --verbose for every file, or run topos inspect {path}.")
+                    }
+                    None => "Tip: add --verbose for every file.".to_string(),
+                });
+            }
+            Readiness::NeedsAttention => {
+                let strict = if recap.gate.fail_on == "block" {
+                    "; --strict makes warnings fail the check"
+                } else {
+                    ""
+                };
+                tips.push(format!(
+                    "Tip: add --verbose for all {changed} changed file{plural}{strict}."
+                ));
+            }
+            Readiness::Ready if changed > 0 => tips.push(format!(
+                "Tip: add --verbose to see the {changed} file{plural} whose scores moved."
+            )),
+            Readiness::Ready => {}
+        }
+    } else if !detail.info && !items.is_empty() {
+        tips.push("Tip: add --info for the recommended change at each finding.".to_string());
     }
-    let attention = score_rows(recap)
-        .into_iter()
-        .find(|file| matches!(change_word(file), "X LOST" | "! DOWN"))
-        .map(|file| file.path.clone())
-        .or_else(|| recap.hotspots.first().map(|spot| spot.path.clone()));
-    if let Some(path) = attention {
-        tips.push(format!(
-            "Tip: run topos inspect {path} for the gate and the fix."
-        ));
-    }
-    if !recap.scope.coupling.measured && recap.review.is_some() {
+    let coupling = &recap.scope.coupling;
+    if !coupling.measured && recap.review.is_some() && !coupling.note.contains("--no-coupling") {
         tips.push(
             "Tip: install GitNexus (npm install -g gitnexus) to measure COMPOSABLE.".to_string(),
         );
     }
-    tips.truncate(2);
+    tips.truncate(MAX_TIPS);
     if tips.is_empty() {
         tips.push(
             "Tip: --json reproduces this document; --format github renders the PR comment."
@@ -425,10 +319,22 @@ pub(super) fn tips(recap: &PrRecap, verbose: bool) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_card, Headline, RenderOptions, Severity};
+    use super::{render_card, Detail, RenderOptions};
     use crate::commands::pr_recap::fixtures::{
         fixture_lateral_loss, fixture_losses, fixture_mixed, fixture_plain, fixture_pr5,
         LATERAL_LOSS,
+    };
+    use crate::commands::pr_recap::gates::Readiness;
+    use crate::commands::pr_recap::model::PrRecap;
+    use topos_engine::config::Severity;
+
+    const VERBOSE: Detail = Detail {
+        verbose: true,
+        info: false,
+    };
+    const INFO: Detail = Detail {
+        verbose: false,
+        info: true,
     };
 
     fn options() -> RenderOptions {
@@ -438,64 +344,121 @@ mod tests {
         }
     }
 
-    fn card(recap: &super::PrRecap, verbose: bool) -> Vec<String> {
-        render_card(recap, verbose, options())
+    fn card(recap: &PrRecap, detail: Detail) -> Vec<String> {
+        render_card(recap, detail, options())
+    }
+
+    /// `fixture_mixed` with its block finding dropped: only warnings
+    /// remain, so the change needs attention and still passes.
+    fn needs_attention() -> PrRecap {
+        let mut recap = fixture_mixed();
+        recap
+            .findings
+            .retain(|finding| finding.severity != Severity::Block);
+        recap.readiness = Readiness::NeedsAttention;
+        recap
+    }
+
+    /// The numbered finding rows, `│  1. X …`.
+    fn numbered(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|line| {
+                line.trim_start_matches(['│', ' '])
+                    .split_once(". ")
+                    .is_some_and(|(n, _)| n.parse::<usize>().is_ok())
+            })
+            .collect()
     }
 
     #[test]
-    fn pr5_card_leads_with_the_change_and_the_splits() {
-        let lines = card(&fixture_pr5(), false);
-        let text = lines.join("\n");
-        assert!(text.contains("◇  Reviewed 23 changed files"), "{text}");
-        assert!(text.contains("CHANGE       FILE"), "{text}");
-        assert!(text.contains("SPLIT        PARENT → CHILDREN"), "{text}");
-        assert!(text.contains("S   C   E   N"), "{text}");
-        assert!(text.contains("✓ SPLIT"), "{text}");
-        assert!(text.contains("├─ poll-shell-types.tsx"), "{text}");
-        assert!(text.contains("└─ 3 more"), "{text}");
-        assert!(text.contains("33→46 +39%"), "{text}");
-        assert!(text.contains("BRONZE → SILVER"), "{text}");
-        assert!(text.contains("· 1 file held its medal"), "{text}");
-        assert!(text.contains("└  ✓ READY"), "{text}");
+    fn a_blocked_change_names_its_worst_finding_first() {
+        let text = card(&fixture_losses(), Detail::default()).join("\n");
+        assert!(
+            text.contains("│  X BLOCKED   taint.rs lost SIMPLE and SECURE (GOLD → BRONZE)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("│  1. X topos/engine/src/functors/probes/cpg/taint.rs"),
+            "{text}"
+        );
+        assert!(text.contains("│  gate: recommended\n"), "{text}");
+        assert!(text.contains("└  X 🥇 GOLD → 🥈 SILVER"), "{text}");
+        assert!(
+            text.contains("Tip: add --verbose for every file, or run topos inspect"),
+            "{text}"
+        );
+        assert!(!text.contains("CHANGED FILES"), "{text}");
+        assert!(!text.contains("SPLIT        PARENT"), "{text}");
     }
 
-    /// The project table, the legend and the floor are `evaluate`'s, to
-    /// the column and to the sentence.
     #[test]
-    fn pr5_card_reads_like_an_evaluate_card() {
-        let lines = card(&fixture_pr5(), false);
+    fn a_change_needing_attention_says_why_it_still_passes() {
+        let lines = card(&needs_attention(), Detail::default());
         let text = lines.join("\n");
+        assert!(
+            text.contains("│  ! NEEDS ATTENTION   freshness.rs SIMPLE fell 45 → 30"),
+            "{text}"
+        );
+        let rows = numbered(&lines);
+        assert_eq!(rows.len(), 2, "{text}");
+        assert!(rows.iter().all(|row| row.contains(". ! ")), "{text}");
+        assert!(
+            text.contains("│  gate: recommended · warnings don't fail the check"),
+            "{text}"
+        );
+        assert!(text.contains("└  ! "), "{text}");
+        assert!(
+            text.contains("--strict makes warnings fail the check"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_ready_change_lists_nothing() {
+        let lines = card(&fixture_pr5(), Detail::default());
+        let text = lines.join("\n");
+        assert!(
+            text.contains("│  ✓ READY   no pillar or medal lost"),
+            "{text}"
+        );
+        assert!(numbered(&lines).is_empty(), "{text}");
+        assert!(text.contains("│  gate: recommended\n"), "{text}");
+        assert!(!text.contains("warnings don't fail"), "{text}");
+        assert!(
+            text.contains("└  ✓ 🥉 BRONZE · SECURE · 41% → 58% average."),
+            "{text}"
+        );
+        assert!(
+            text.contains("Tip: add --verbose to see the 2 files whose scores moved."),
+            "{text}"
+        );
+    }
+
+    /// The project table is `evaluate`'s, to the column.
+    #[test]
+    fn the_pillar_table_reads_like_an_evaluate_card() {
+        let text = card(&fixture_pr5(), Detail::default()).join("\n");
         assert!(text.contains("priority secure"), "{text}");
         assert!(
             text.contains("PILLAR        STATUS   BEFORE   AFTER   FAILING   SCORE"),
             "{text}"
         );
         assert!(
-            text.contains("SIMPLE        X FAIL      11%     38%    3 / 23   "),
-            "{text}"
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains('━') && line.contains('◆')),
+            text.contains("SIMPLE        X FAIL      11%     38%    3 / 23   ━━━◆────── ↑"),
             "{text}"
         );
         assert!(
             text.contains("SECURE        ✓ PASS     100%    100%    0 / 23"),
             "{text}"
         );
-        assert!(
-            text.contains("🥉 BRONZE · SECURE · 41% → 58% average."),
-            "{text}"
-        );
-        assert!(text.contains("average."), "{text}");
     }
 
     /// A pillar whose head score moved at least a point says so, and one
     /// that did not stays quiet.
     #[test]
     fn a_moved_pillar_score_carries_an_arrow() {
-        let lines = card(&fixture_pr5(), false);
+        let lines = card(&fixture_pr5(), Detail::default());
         let navigable = lines
             .iter()
             .find(|line| line.contains("NAVIGABLE     "))
@@ -508,204 +471,222 @@ mod tests {
         assert!(!secure.ends_with('↑') && !secure.ends_with('↓'), "{secure}");
     }
 
-    /// The floor's hotspots read like `inspect`'s recommended changes,
-    /// and advice is guidance, so it is never cut: it wraps instead.
     #[test]
-    fn hotspot_advice_is_never_truncated() {
+    fn the_list_stops_at_max_hotspots_and_counts_the_rest() {
+        let full = card(&fixture_mixed(), Detail::default());
+        assert_eq!(numbered(&full).len(), 3, "{full:#?}");
+
         let mut recap = fixture_mixed();
-        let advice = "Extract the nested branch into a named helper so the function clears \
-the SIMPLE gate here."
-            .to_string();
-        assert_eq!(advice.chars().count(), 90, "{advice}");
-        recap.hotspots[0].advice = advice.clone();
-        let narrow = RenderOptions {
-            styled: false,
-            width: 60,
-        };
-        let lines = render_card(&recap, false, narrow);
-        let tail: Vec<&String> = lines
-            .iter()
-            .skip_while(|line| line.trim() != "Where to look")
-            .collect();
-        assert!(!tail.is_empty(), "{lines:?}");
-        let rendered = tail
-            .iter()
-            .map(|line| line.trim().to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(rendered.contains("Where to look"), "{rendered}");
-        assert!(rendered.contains("1. X FIX · SIMPLE"), "{rendered}");
-        assert!(
-            tail.iter().any(|line| line.starts_with("     Do   ")),
-            "{tail:?}"
-        );
-        assert!(!rendered.contains('…'), "{rendered}");
-        for word in advice.split_whitespace() {
-            assert!(rendered.contains(word), "{word} missing from {rendered}");
-        }
-        assert!(tail.len() >= 3, "{tail:?}");
-        for line in lines {
-            assert!(line.chars().count() <= 60, "{line}");
-        }
-    }
-
-    #[test]
-    fn tips_point_at_the_next_command() {
-        let pr5 = super::tips(&fixture_pr5(), false);
-        assert_eq!(
-            pr5.first().map(String::as_str),
-            Some(
-                "Tip: add --verbose to list the functions that moved and each score that changed."
-            )
-        );
-        let mixed = super::tips(&fixture_mixed(), true);
-        assert!(
-            mixed.iter().any(|tip| tip
-                == "Tip: run topos inspect topos/mcp/src/tools/depgraph.rs for the gate and the fix."),
-            "{mixed:?}"
-        );
-        let plain = super::tips(&fixture_plain(), true);
-        assert_eq!(
-            plain,
-            vec!["Tip: install GitNexus (npm install -g gitnexus) to measure COMPOSABLE."]
-        );
-    }
-
-    #[test]
-    fn pr5_card_shows_the_pillar_matrix() {
-        let text = card(&fixture_pr5(), false).join("\n");
-        assert!(!text.contains("○○●○"), "{text}");
-        assert!(text.contains("●↑"), "{text}");
-        assert!(text.contains("○↓"), "{text}");
-        let fold = card(&fixture_pr5(), false)
-            .into_iter()
-            .find(|line| line.contains("└─ 4 files"))
-            .expect("create.ts folds every child");
-        assert!(fold.contains("PLATINUM"), "{fold}");
-        assert!(!fold.contains('●') && !fold.contains('○'), "{fold}");
-    }
-
-    #[test]
-    fn pr5_card_stays_inside_the_terminal() {
-        let lines = card(&fixture_pr5(), false);
-        assert!(lines.len() <= 36, "{} lines", lines.len());
-        for line in &lines {
-            assert!(
-                line.chars().count() <= 100,
-                "{} cols: {line}",
-                line.chars().count()
-            );
-        }
-    }
-
-    #[test]
-    fn verbose_unfolds_and_names_the_moved_functions() {
-        let text = card(&fixture_pr5(), true).join("\n");
-        assert!(text.contains("buildModel"), "{text}");
-        assert!(text.contains("├─ WeekGridLegend.tsx"), "{text}");
-    }
-
-    #[test]
-    fn a_plain_edit_prints_no_split_table() {
-        let text = card(&fixture_plain(), false).join("\n");
-        assert!(!text.contains("SPLIT"), "{text}");
-        assert!(text.contains("CHANGE       FILE"), "{text}");
-    }
-
-    #[test]
-    fn a_mixed_change_prints_both_tables_and_every_row_word() {
-        let lines = card(&fixture_mixed(), false);
+        recap.gate.max_hotspots = 1;
+        let lines = card(&recap, Detail::default());
         let text = lines.join("\n");
-        assert!(text.contains("CHANGE       FILE"), "{text}");
-        assert!(text.contains("SPLIT        PARENT → CHILDREN"), "{text}");
-        assert!(text.contains("S   C   E   N"), "{text}");
-        assert!(text.contains("X LOST"), "{text}");
-        assert!(text.contains("! DOWN"), "{text}");
-        assert!(text.contains("! COSMETIC"), "{text}");
-        assert!(text.contains("✓ UP"), "{text}");
-        assert!(text.contains("✓ NEW"), "{text}");
-        for line in &lines {
-            assert!(line.chars().count() <= 100, "{line}");
-        }
+        let rows = numbered(&lines);
+        assert_eq!(rows.len(), 1, "{text}");
+        assert!(rows[0].contains("1. X "), "{text}");
+        assert!(text.contains("│       2 more"), "{text}");
     }
 
+    /// Findings at the same place are one numbered row whose facts name
+    /// every one of them.
     #[test]
-    fn verbose_spells_out_the_moved_scores() {
-        let text = card(&fixture_mixed(), true).join("\n");
-        assert!(text.contains("NAVIGABLE 77% → 74%"), "{text}");
-        assert!(text.contains("SIMPLE 45% → 30%"), "{text}");
-    }
-
-    #[test]
-    fn losses_sort_first_and_are_named_everywhere() {
-        let lines = card(&fixture_losses(), false);
-        let text = lines.join("\n");
-        let first_row = lines
+    fn findings_at_one_place_merge_into_one_row() {
+        let recap = fixture_losses();
+        let at_taint = recap
+            .findings
             .iter()
-            .position(|line| line.contains("taint.rs"))
-            .expect("the parent has a row");
-        assert!(lines[first_row].contains("X LOST"), "{text}");
+            .filter(|finding| finding.severity == Severity::Block)
+            .filter(|finding| finding.path.ends_with("taint.rs"))
+            .count();
+        assert!(at_taint >= 2, "{:#?}", recap.findings);
+        let lines = card(&recap, Detail::default());
+        let text = lines.join("\n");
+        assert_eq!(numbered(&lines).len(), 1, "{text}");
+        assert!(text.contains("SIMPLE lost"), "{text}");
         assert!(text.contains("SECURE lost"), "{text}");
-        assert!(text.contains("X SPLIT"), "{text}");
-        assert!(text.contains("SLOP"), "{text}");
-        assert!(text.contains("in, cx 12→19"), "{text}");
-        assert!(text.contains("lost SECURE, SIMPLE"), "{text}");
     }
 
-    /// Gaining NAVIGABLE does not cancel losing SIMPLE: the file is a
-    /// lateral move by status but blocks, so it reads as a loss.
     #[test]
-    fn a_pillar_lost_while_another_is_gained_reads_as_a_loss() {
+    fn a_pillar_lost_while_another_is_gained_reads_as_a_trade() {
         let recap = fixture_lateral_loss();
-        assert_eq!(recap.files[0].status, Headline::LateralMove);
-        assert_eq!(recap.files[0].severity, Some(Severity::Block));
-        let lines = card(&recap, false);
-        let text = lines.join("\n");
-        let row = lines
-            .iter()
-            .find(|line| line.contains("lattice.rs") && !line.contains("Why"))
-            .expect("the file has a row");
-        assert!(row.contains("X LOST"), "{text}");
-        assert!(!text.contains("· HELD"), "{text}");
-        assert!(!text.contains("held"), "{text}");
+        let text = card(&recap, Detail::default()).join("\n");
         assert!(
-            text.contains(&format!("Why  {LATERAL_LOSS} lost SIMPLE")),
+            text.contains("│  X BLOCKED   lattice.rs traded SIMPLE for NAVIGABLE"),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("│  1. X {LATERAL_LOSS}  SIMPLE lost")),
+            "{text}"
+        );
+
+        let verbose = card(&recap, VERBOSE).join("\n");
+        let row = verbose
+            .lines()
+            .find(|line| line.contains("lattice.rs") && line.contains("SILVER"))
+            .expect("the file has a CHANGED FILES row");
+        assert!(
+            row.contains("X SIMPLE lost · ✓ NAVIGABLE gained"),
+            "{verbose}"
+        );
+    }
+
+    #[test]
+    fn verbose_lists_every_changed_file_and_its_medal() {
+        let lines = card(&fixture_mixed(), VERBOSE);
+        let text = lines.join("\n");
+        assert!(text.contains("│  CHANGED FILES  topos/"), "{text}");
+        assert!(text.contains("│  FILE  "), "{text}");
+        let depgraph = lines
+            .iter()
+            .skip_while(|line| !line.contains("CHANGED FILES"))
+            .find(|line| line.contains("tools/depgraph.rs") && line.contains("GOLD → SILVER"))
+            .expect("the file that lost a medal has a row");
+        assert!(depgraph.starts_with("│  X "), "{depgraph}");
+        assert!(depgraph.ends_with("X SIMPLE lost"), "{depgraph}");
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("context_budget.rs") && line.ends_with("new")),
+            "{text}"
+        );
+        assert!(text.contains("│  2 files kept their medal"), "{text}");
+        assert!(text.contains("SPLIT        PARENT → CHILDREN"), "{text}");
+        assert!(
+            text.contains("Tip: add --info for the recommended change at each finding."),
             "{text}"
         );
     }
 
+    /// Within a severity the table follows the finding list, so the
+    /// largest drop leads rather than the first path.
     #[test]
-    fn no_color_output_carries_no_escapes() {
-        for recap in [fixture_pr5(), fixture_mixed(), fixture_losses()] {
-            for verbose in [false, true] {
-                for line in card(&recap, verbose) {
-                    assert!(!line.contains('\u{1b}'), "{line}");
-                }
+    fn changed_files_follow_the_finding_order_within_a_severity() {
+        let warned = |recap: &PrRecap| -> Vec<String> {
+            super::changed_rows(recap)
+                .into_iter()
+                .filter(|file| file.severity == Some(Severity::Warn))
+                .map(|file| file.path.clone())
+                .collect()
+        };
+        let mut recap = fixture_mixed();
+        recap
+            .findings
+            .sort_by(|a, b| b.severity.cmp(&a.severity).then(b.path.cmp(&a.path)));
+        let descending = warned(&recap);
+        assert!(descending.len() >= 2, "{descending:?}");
+        assert!(descending.windows(2).all(|w| w[0] > w[1]), "{descending:?}");
+
+        recap
+            .findings
+            .sort_by(|a, b| b.severity.cmp(&a.severity).then(a.path.cmp(&b.path)));
+        let ascending = warned(&recap);
+        assert!(ascending.windows(2).all(|w| w[0] < w[1]), "{ascending:?}");
+    }
+
+    #[test]
+    fn a_plain_edit_prints_no_split_table() {
+        let text = card(&fixture_plain(), VERBOSE).join("\n");
+        assert!(text.contains("CHANGED FILES"), "{text}");
+        assert!(!text.contains("SPLIT        PARENT"), "{text}");
+    }
+
+    #[test]
+    fn info_appends_the_recommended_changes() {
+        let recap = fixture_mixed();
+        let plain = card(&recap, Detail::default()).join("\n");
+        assert!(!plain.contains("Recommended changes"), "{plain}");
+
+        let lines = card(&recap, INFO);
+        let text = lines.join("\n");
+        let at = lines
+            .iter()
+            .position(|line| line.trim() == "Recommended changes")
+            .expect("--info appends the recommendations");
+        let footer = lines
+            .iter()
+            .position(|line| line.starts_with('└'))
+            .expect("the card closes");
+        assert!(footer < at, "{text}");
+        assert!(text.contains("1. X FIX · SIMPLE"), "{text}");
+        assert!(text.contains("2. ~ IMPROVE · SIMPLE"), "{text}");
+        assert!(text.contains("topos/mcp/src/tools/depgraph.rs"), "{text}");
+
+        let ready = card(&fixture_pr5(), INFO).join("\n");
+        assert!(!ready.contains("Recommended changes"), "{ready}");
+    }
+
+    fn every_card() -> Vec<(PrRecap, Detail)> {
+        let details = [
+            Detail::default(),
+            VERBOSE,
+            Detail {
+                verbose: true,
+                info: true,
+            },
+        ];
+        [
+            fixture_pr5(),
+            fixture_plain(),
+            fixture_lateral_loss(),
+            fixture_mixed(),
+            fixture_losses(),
+            needs_attention(),
+        ]
+        .into_iter()
+        .flat_map(|recap| details.map(|detail| (recap.clone(), detail)))
+        .collect()
+    }
+
+    /// Everything but the tips, which stay whole so their commands paste.
+    #[test]
+    fn every_card_stays_inside_the_terminal() {
+        for (recap, detail) in every_card() {
+            for line in card(&recap, detail)
+                .into_iter()
+                .filter(|line| !line.starts_with("Tip: "))
+            {
+                assert!(line.chars().count() <= 100, "{line}");
             }
         }
     }
 
     #[test]
-    fn styled_output_paints_only_the_marks() {
-        let styled = render_card(
-            &fixture_pr5(),
-            false,
-            RenderOptions {
-                styled: true,
-                width: 100,
-            },
-        );
-        let text = styled.join("\n");
-        assert!(styled.iter().any(|line| line.contains('\u{1b}')));
-        // Green ● dot for passed pillar, red ○ dot for failed pillar
-        assert!(text.contains("\u{1b}[32m●\u{1b}[0m"), "{text}");
-        assert!(text.contains("\u{1b}[31m○\u{1b}[0m"), "{text}");
-        // Bold marks matching evaluate/summary conventions
-        assert!(text.contains("\u{1b}[32m\u{1b}[1m✓\u{1b}[0m"), "{text}");
+    fn no_color_output_carries_no_escapes() {
+        for (recap, detail) in every_card() {
+            for line in card(&recap, detail) {
+                assert!(!line.contains('\u{1b}'), "{line}");
+            }
+        }
+    }
+
+    /// Color never moves a line: stripped of its escapes, the styled card
+    /// is the plain one.
+    #[test]
+    fn styled_output_has_the_plain_line_structure() {
+        let styled = RenderOptions {
+            styled: true,
+            width: 100,
+        };
+        for (recap, detail) in every_card() {
+            let painted = render_card(&recap, detail, styled);
+            assert!(painted.iter().any(|line| line.contains('\u{1b}')));
+            let stripped: Vec<String> = painted
+                .iter()
+                .map(|line| console::strip_ansi_codes(line).into_owned())
+                .collect();
+            assert_eq!(stripped, card(&recap, detail));
+        }
+    }
+
+    #[test]
+    fn styled_output_paints_the_marks_and_headers() {
+        let styled = RenderOptions {
+            styled: true,
+            width: 100,
+        };
+        let text = render_card(&fixture_mixed(), VERBOSE, styled).join("\n");
         assert!(text.contains("\u{1b}[31m\u{1b}[1mX\u{1b}[0m"), "{text}");
-        // Bold dim table headers matching evaluate summary headers
         assert!(text.contains("\u{1b}[1m\u{1b}[2mPILLAR"), "{text}");
-        assert!(text.contains("\u{1b}[1m\u{1b}[2mCHANGE"), "{text}");
+        assert!(text.contains("\u{1b}[1m\u{1b}[2mFILE"), "{text}");
         assert!(text.contains("\u{1b}[1m\u{1b}[2mSPLIT"), "{text}");
     }
 }

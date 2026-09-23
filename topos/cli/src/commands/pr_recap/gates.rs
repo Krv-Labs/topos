@@ -494,7 +494,7 @@ fn measured(crossed: &GateCrossing) -> String {
 }
 
 /// Up to two decimals, trailing zeros dropped: `14`, `7.5`, `0.35`.
-fn number(value: f64) -> String {
+pub(super) fn number(value: f64) -> String {
     let text = format!("{value:.2}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
@@ -564,6 +564,7 @@ pub(super) fn summary(cfg: &PrGateConfig, source: Option<&Path>) -> GateSummary 
         fail_on: cfg.fail_on.as_str(),
         changes: cfg.overrides().len(),
         source: source.map(|path| path.display().to_string()),
+        max_hotspots: cfg.max_hotspots as usize,
     }
 }
 

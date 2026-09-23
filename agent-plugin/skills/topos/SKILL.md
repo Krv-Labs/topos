@@ -123,6 +123,7 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
 | `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |
+| `topos pr-recap [<pr>] [--strict] [--preset <preset>] [--verbose] [--info] [--json]` | Judge a PR or git range against the `[pr_recap]` gates: READY / NEEDS ATTENTION / BLOCKED, exit 1 on BLOCKED (and on NEEDS ATTENTION under `fail_on = "warn"`); `--json` emits `topos.pr_recap.v3` |
 | `topos depgraph generate` | Build GitNexus graph for COMPOSABLE scoring |
 | `topos install [--all]` | Register the MCP server in agent harnesses (Claude, Cursor, Codex, …) |
 | `topos uninstall [--all]` | Remove Topos-owned MCP entries from harness configs |

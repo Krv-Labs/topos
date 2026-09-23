@@ -17,6 +17,7 @@ mod github;
 mod hotspots;
 mod model;
 mod moves;
+mod progress;
 mod render;
 mod score;
 mod verdict;
@@ -42,13 +43,14 @@ use self::git::{cap_by_churn, changed_files, churn, skip_reason, worktree_files}
 use self::hotspots::top_hotspots;
 use self::model::*;
 use self::moves::RangeMoves;
+use self::progress::{print_card, GraphProgress, ScoringBar, Transient};
 use self::score::Scoring;
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
 use crate::commands::depgraph::{gitnexus_available, PrStores};
 use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
 use crate::commands::interaction::{self, PromptEnv, Streams, TermAsker};
-use crate::commands::render::{RenderOptions, Working};
+use crate::commands::render::RenderOptions;
 
 const DEFAULT_FILE_CAP: usize = 40;
 
@@ -449,19 +451,25 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     // The stores must be built at the commit the sources are read from.
     let base = merge_base(&root, &base, head_commit(&head))?;
 
-    // Any question is asked here, before the spinner takes stderr.
-    let interaction = interaction::resolve(
-        args.yes,
-        args.no_input,
-        &PromptEnv::from_env(),
-        &Streams::detect(),
-    );
+    // Any question is asked here, before the progress lines take stderr.
+    let streams = Streams::detect();
+    let interaction =
+        interaction::resolve(args.yes, args.no_input, &PromptEnv::from_env(), &streams);
     let plan = plan_coupling(&root, &base, &head, &args, gitnexus_available());
     let plan = settle(plan, interaction, &mut TermAsker)?;
 
-    // The spinner covers store generation too: that is the slow part.
-    let working = (!args.json).then(Working::start);
-    let (stores, coupling) = prepare(&root, plan);
+    let transient = Transient {
+        shown: !args.json && streams.stderr,
+        options: RenderOptions::stderr(),
+    };
+    // Building the graphs is the slow part, so it gets its own counter.
+    let graphs = GraphProgress::start(Transient {
+        shown: transient.shown && plan.needs_build(),
+        ..transient
+    });
+    let (stores, coupling) = prepare(&root, plan, &|| graphs.side_done());
+    graphs.finish();
+    let mut scoring = ScoringBar::new(transient);
     let recap = build_recap(
         &root,
         &base,
@@ -470,10 +478,9 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         stores.as_ref(),
         coupling,
         &judging,
+        &mut scoring,
     );
-    if let Some(working) = working {
-        working.clear();
-    }
+    scoring.finish();
     let mut recap = recap?;
     recap.review = review;
 
@@ -489,9 +496,11 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
                     verbose: args.verbose,
                     info: args.info,
                 };
-                for line in render::render_card(&recap, detail, RenderOptions::stdout()) {
-                    println!("{line}");
-                }
+                let stdout = RenderOptions::stdout();
+                print_card(
+                    &render::render_card(&recap, detail, stdout),
+                    streams.stderr && stdout.styled,
+                );
             }
             RecapFormat::Github => println!("{}", github::render_github(&recap)),
         }
@@ -501,6 +510,21 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
 
 // --- Document assembly -------------------------------------------------
 
+/// Hears Pass A as it goes, so `run_recap` can draw a bar without
+/// `build_recap` knowing about terminals. `()` hears nothing.
+trait ScoreProgress {
+    /// Scoring is about to start on `total` files.
+    fn start(&mut self, total: usize);
+    /// The file at `path` has been scored.
+    fn scored(&mut self, path: &str);
+}
+
+impl ScoreProgress for () {
+    fn start(&mut self, _: usize) {}
+    fn scored(&mut self, _: &str) {}
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_recap(
     repo: &Path,
     base: &str,
@@ -509,6 +533,7 @@ fn build_recap(
     stores: Option<&PrStores>,
     coupling: CouplingStatus,
     judging: &Judging,
+    progress: &mut dyn ScoreProgress,
 ) -> Result<PrRecap, String> {
     let repo = git_root(repo)?;
     let worktree = head == ":worktree";
@@ -590,9 +615,14 @@ fn build_recap(
         priority: judging.priority,
         config: &judging.topos,
     };
+    progress.start(scoreable.len());
     let mut scored = scoreable
         .iter()
-        .map(|entry| scoring.score_file(entry))
+        .map(|entry| {
+            let file = scoring.score_file(entry);
+            progress.scored(&entry.path);
+            file
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     // Pass B — group the split parents with their children.
@@ -750,6 +780,7 @@ mod tests {
             None,
             no_coupling(),
             &judging(Priority::Secure),
+            &mut (),
         )
         .unwrap()
     }
@@ -882,6 +913,48 @@ mod tests {
         assert!(recap.incomplete);
     }
 
+    /// Records what a progress bar would be told.
+    #[derive(Default)]
+    struct Heard {
+        total: Option<usize>,
+        scored: Vec<String>,
+    }
+
+    impl ScoreProgress for Heard {
+        fn start(&mut self, total: usize) {
+            self.total = Some(total);
+        }
+        fn scored(&mut self, path: &str) {
+            self.scored.push(path.to_string());
+        }
+    }
+
+    #[test]
+    fn progress_hears_each_scored_file_once_within_the_cap() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        for i in 0..3 {
+            write_files(&repo, &[(&format!("src/f{i}.py"), "x = 1\n")]);
+        }
+        commit_all(&repo, "three");
+        let mut heard = Heard::default();
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            2,
+            None,
+            no_coupling(),
+            &judging(Priority::Secure),
+            &mut heard,
+        )
+        .unwrap();
+        assert_eq!(heard.total, Some(2), "the capped file is never scored");
+        let mut files: Vec<String> = recap.files.iter().map(|f| f.path.clone()).collect();
+        files.sort();
+        heard.scored.sort();
+        assert_eq!(heard.scored, files);
+    }
+
     #[test]
     fn renamed_file_is_scored_against_its_old_path() {
         let (_keep, repo) = write_repo(&[(
@@ -927,6 +1000,7 @@ mod tests {
             None,
             no_coupling(),
             &judging(Priority::Secure),
+            &mut (),
         )
         .unwrap_err();
         assert!(err.contains("refusing"));
@@ -1202,6 +1276,7 @@ mod tests {
             None,
             no_coupling(),
             &judging(Priority::Navigable),
+            &mut (),
         )
         .unwrap();
         assert_eq!(recap.priority, "navigable");
@@ -1264,7 +1339,17 @@ mod tests {
                 },
                 ..judging(Priority::Secure)
             };
-            build_recap(&repo, "HEAD~1", "HEAD", 40, None, no_coupling(), &judging).unwrap()
+            build_recap(
+                &repo,
+                "HEAD~1",
+                "HEAD",
+                40,
+                None,
+                no_coupling(),
+                &judging,
+                &mut (),
+            )
+            .unwrap()
         };
         let bare = run(Vec::new());
         assert_eq!(
@@ -1396,6 +1481,7 @@ reason = \"generated\"
             None,
             no_coupling(),
             &waiving(&repo, WAIVE_B),
+            &mut (),
         )
         .unwrap();
 
@@ -1483,6 +1569,7 @@ reason = \"generated\"
             None,
             no_coupling(),
             &waiving(&repo, &expired),
+            &mut (),
         )
         .unwrap();
 
@@ -1510,6 +1597,7 @@ reason = \"generated\"
             None,
             no_coupling(),
             &waiving(&repo, &today),
+            &mut (),
         )
         .unwrap();
 
@@ -1527,8 +1615,17 @@ reason = \"generated\"
             source: Some(repo.join(".topos.toml")),
             ..judging(Priority::Secure)
         };
-        let recap =
-            build_recap(&repo, "HEAD~1", "HEAD", 40, None, no_coupling(), &judging).unwrap();
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            40,
+            None,
+            no_coupling(),
+            &judging,
+            &mut (),
+        )
+        .unwrap();
         let json = serde_json::to_value(&recap).unwrap();
         assert_eq!(json["schema"], "topos.pr_recap.v3");
         assert!(json.get("headline").is_none(), "headline is now direction");

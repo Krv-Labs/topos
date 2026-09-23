@@ -92,12 +92,15 @@ pub(crate) use topos_engine::adapters::gitnexus::gitnexus_available;
 /// requested commits, build both graphs in parallel, and write `commits`
 /// with the time the build took. `commits` is removed before anything is
 /// rebuilt, so it only ever names the commits the graphs on disk were built
-/// from. Never prints. Errors are `String`.
+/// from. `on_side_done` runs from each side's build thread as that side
+/// finishes, in whichever order they finish. Never prints. Errors are
+/// `String`.
 pub(crate) fn prepare_pr_stores(
     repo_root: &Path,
     pr: u64,
     base_sha: &str,
     head_sha: &str,
+    on_side_done: &(dyn Fn() + Sync),
 ) -> Result<PrStores, String> {
     let stores = PrStores::locate(repo_root, pr)?;
     if pr_store_state(&stores, base_sha, head_sha) == StoreState::Ready {
@@ -115,20 +118,18 @@ pub(crate) fn prepare_pr_stores(
     ensure_worktree(repo_root, &stores.base, base_sha)?;
     ensure_worktree(repo_root, &stores.head, head_sha)?;
 
-    let base_job = std::thread::spawn({
-        let path = stores.base.clone();
-        move || generate_depgraph(&path, true, None)
+    let (base_result, head_result) = std::thread::scope(|scope| {
+        let [base_job, head_job] = [&stores.base, &stores.head].map(|path| {
+            scope.spawn(move || {
+                let result = generate_depgraph(path, true, None);
+                on_side_done();
+                result
+            })
+        });
+        (base_job.join(), head_job.join())
     });
-    let head_job = std::thread::spawn({
-        let path = stores.head.clone();
-        move || generate_depgraph(&path, true, None)
-    });
-    let base_result = base_job
-        .join()
-        .map_err(|_| "base graph generation failed".to_string())?;
-    let head_result = head_job
-        .join()
-        .map_err(|_| "head graph generation failed".to_string())?;
+    let base_result = base_result.map_err(|_| "base graph generation failed".to_string())?;
+    let head_result = head_result.map_err(|_| "head graph generation failed".to_string())?;
     if !base_result.ok {
         return Err(format!("base graph: {}", base_result.message));
     }
@@ -173,7 +174,7 @@ pub fn run_generate_pr(args: GeneratePrArgs) -> Result<(), String> {
         guide_line("base and head, in parallel", Style::new().dim(), options)
     );
 
-    let stores = prepare_pr_stores(&root, args.pr, &base, &head)?;
+    let stores = prepare_pr_stores(&root, args.pr, &base, &head, &|| {})?;
     let parent = stores.parent;
 
     let options = RenderOptions::stdout();
@@ -365,7 +366,7 @@ mod tests {
 
         // An unresolvable head fails before any graph is built; the stale
         // record must already be gone so no later run trusts it.
-        let err = prepare_pr_stores(&repo, 1, &second, "0000000").err();
+        let err = prepare_pr_stores(&repo, 1, &second, "0000000", &|| {}).err();
 
         assert!(err.is_some_and(|e| e.contains("could not resolve")));
         assert!(!parent.join("commits").exists());

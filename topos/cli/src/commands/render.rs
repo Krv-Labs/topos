@@ -62,109 +62,110 @@ pub(crate) fn spinner(hidden: bool, message: &'static str) -> ProgressBar {
     spinner
 }
 
-const WORKING_FRAMES: [char; 6] = ['⠿', '⠛', '⠹', '⠼', '⠶', '⠦'];
-const WORKING_HOLD: std::time::Duration = std::time::Duration::from_secs(7);
-const WORKING_LINES: &[&str] = &[
-    "Reading the two trees...",
-    "Scoring the files that actually changed",
-    "Checking which gates still hold...",
-    "Separating a medal move from a score dip",
-    "Looking for a call that was not there before...",
-    "Leaving unmeasured coupling unmeasured",
-];
-
-/// A stderr working line for a command long enough to look hung.
-///
-/// The frame turns continuously. The sentence types in, holds for seven
-/// seconds, deletes itself one character at a time, waits half a second,
-/// and the next sentence types in. A fast command drops the line before
-/// the card, so a quick run never flashes it.
-pub(crate) struct Working {
-    shown: bool,
-    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    thread: Option<std::thread::JoinHandle<()>>,
+/// The per-file bar `evaluate` and `pr-recap` share, e.g. `Scoring ██▓░░
+/// 3/13 gates.rs`. A single file finishes before a bar would read as
+/// progress, so it is hidden then too.
+pub(crate) fn progress_bar(label: &str, len: usize, hidden: bool) -> ProgressBar {
+    if !bar_shown(len, hidden) {
+        return ProgressBar::hidden();
+    }
+    let progress = ProgressBar::new(len as u64);
+    progress.set_draw_target(ProgressDrawTarget::stderr());
+    progress.set_style(
+        ProgressStyle::with_template(&format!(
+            "{label} {{bar:24.cyan/dim}} {{pos}}/{{len}} {{msg}}"
+        ))
+        .expect("static progress template")
+        .progress_chars("█▓░"),
+    );
+    progress
 }
 
-impl Working {
-    pub(crate) fn start() -> Self {
-        let term = Term::stderr();
-        if !term.is_term() || std::env::var_os("NO_COLOR").is_some() {
-            return Self {
-                shown: false,
-                stop: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
-                thread: None,
-            };
-        }
-        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flag = std::sync::Arc::clone(&stop);
-        let thread = std::thread::spawn(move || working_loop(&term, &flag));
-        Self {
-            shown: true,
-            stop,
-            thread: Some(thread),
-        }
-    }
+fn bar_shown(len: usize, hidden: bool) -> bool {
+    !hidden && len > 1
+}
 
-    pub(crate) fn clear(mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-        if self.shown {
-            let _ = Term::stderr().clear_line();
-            let _ = Term::stderr().write_str("\r");
-        }
-        self.shown = false;
+/// The unstyled text [`progress_bar`] draws at `pos` of `len`, rebuilt so
+/// a fade can paint the same characters before and after indicatif does.
+/// Mirrors indicatif's rounding: whole cells fill, one `▓` marks a
+/// partial cell.
+pub(crate) fn bar_line(label: &str, pos: u64, len: u64, msg: &str) -> String {
+    const CELLS: usize = 24;
+    let fill = if len == 0 {
+        0.0
+    } else {
+        pos.min(len) as f32 / len as f32 * CELLS as f32
+    };
+    let filled = fill as usize;
+    let head = usize::from(fill > 0.0 && filled < CELLS);
+    format!(
+        "{label} {}{}{} {pos}/{len} {msg}",
+        "█".repeat(filled),
+        "▓".repeat(head),
+        "░".repeat(CELLS - filled - head)
+    )
+}
+
+/// Framer-style opacity, proxied through the 256-color gray ramp: a block
+/// leaving steps down from near-white, one arriving steps up to it.
+pub(crate) const FADE_OUT: [u8; 6] = [252, 248, 244, 240, 237, 235];
+pub(crate) const FADE_IN: [u8; 4] = [240, 244, 248, 252];
+const FADE_STEP: std::time::Duration = std::time::Duration::from_millis(30);
+
+/// Every frame of a fade: `rows` painted once per gray in `grays`.
+pub(crate) fn fade_frames(rows: &[String], grays: &[u8]) -> Vec<Vec<String>> {
+    grays
+        .iter()
+        .map(|&gray| {
+            let style = Style::new().color256(gray).force_styling(true);
+            rows.iter()
+                .map(|row| style.apply_to(row).to_string())
+                .collect()
+        })
+        .collect()
+}
+
+// A transient block is drawn from the cursor's row down, and between
+// draws the cursor rests at the end of its last row, where indicatif
+// leaves it too.
+
+/// Make room for a block of `height` rows below the cursor.
+pub(crate) fn open_block(term: &Term, height: usize) {
+    let _ = term.write_str(&"\n".repeat(height.saturating_sub(1)));
+}
+
+/// Redraw an open block in place.
+pub(crate) fn repaint(term: &Term, rows: &[String]) {
+    let _ = term.write_str("\r");
+    let _ = term.move_cursor_up(rows.len().saturating_sub(1));
+    let _ = term.write_str(&format!("\x1b[2K{}", rows.join("\n\x1b[2K")));
+    let _ = term.flush();
+}
+
+/// Fade an open block in through [`FADE_IN`]; the caller paints the final
+/// styled text over the last frame. Unstyled output does not fade.
+pub(crate) fn fade_in(term: &Term, rows: &[String], styled: bool) {
+    if styled {
+        play(term, &fade_frames(rows, &FADE_IN));
     }
 }
 
-impl Drop for Working {
-    fn drop(&mut self) {
-        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+/// Fade an open block out through [`FADE_OUT`], then clear it and leave
+/// the cursor where the block started. Unstyled output clears at once.
+pub(crate) fn fade_out(term: &Term, rows: &[String], styled: bool) {
+    if styled {
+        play(term, &fade_frames(rows, &FADE_OUT));
     }
+    repaint(term, &vec![String::new(); rows.len()]);
+    let _ = term.move_cursor_up(rows.len().saturating_sub(1));
+    let _ = term.write_str("\r");
+    let _ = term.flush();
 }
 
-fn working_loop(term: &Term, stop: &std::sync::atomic::AtomicBool) {
-    // Three times the old 80ms character step. The spinner still moves
-    // on this tick, so it turns faster too.
-    let tick = std::time::Duration::from_millis(27);
-    let gap = std::time::Duration::from_millis(500);
-    let mut frame = 0usize;
-    let mut line = 0usize;
-    let mut shown = 0usize;
-    let mut deleting = false;
-    let mut hold_started = std::time::Instant::now();
-    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-        let text = WORKING_LINES[line];
-        let count = text.chars().count();
-        let visible: String = text.chars().take(shown).collect();
-        let painted = Style::new().dim().force_styling(true).apply_to(format!(
-            "{}  {visible}",
-            WORKING_FRAMES[frame % WORKING_FRAMES.len()]
-        ));
-        let _ = term.clear_line();
-        let _ = term.write_str(&format!("\r{painted}"));
-        let _ = term.flush();
-        frame += 1;
-        if !deleting && shown < count {
-            shown += 1;
-            if shown == count {
-                hold_started = std::time::Instant::now();
-            }
-        } else if !deleting && hold_started.elapsed() >= WORKING_HOLD {
-            deleting = true;
-        } else if deleting && shown > 0 {
-            shown -= 1;
-        } else if deleting {
-            deleting = false;
-            line = (line + 1) % WORKING_LINES.len();
-            std::thread::sleep(gap);
-            continue;
-        }
-        std::thread::sleep(tick);
+fn play(term: &Term, frames: &[Vec<String>]) {
+    for frame in frames {
+        repaint(term, frame);
+        std::thread::sleep(FADE_STEP);
     }
 }
 
@@ -272,5 +273,55 @@ pub(crate) fn print_raw_metrics(result: &ClassificationResult) {
     keys.sort();
     for key in keys {
         println!("  {key}: {:.3}", result.raw_metrics[key]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bar_needs_two_files_and_a_visible_run() {
+        assert!(bar_shown(2, false));
+        assert!(!bar_shown(1, false), "one file finishes before a bar reads");
+        assert!(!bar_shown(0, false));
+        assert!(!bar_shown(40, true), "--json never draws");
+        assert!(progress_bar("Scoring", 1, false).is_hidden());
+        assert!(progress_bar("Scoring", 40, true).is_hidden());
+    }
+
+    #[test]
+    fn the_bar_line_matches_indicatifs_cells() {
+        assert_eq!(
+            bar_line("Scoring", 0, 13, "a.rs"),
+            format!("Scoring {} 0/13 a.rs", "░".repeat(24))
+        );
+        // 24 * 5/13 = 9.2: nine whole cells, then the partial one.
+        assert_eq!(
+            bar_line("Scoring", 5, 13, "g.rs"),
+            format!("Scoring {}▓{} 5/13 g.rs", "█".repeat(9), "░".repeat(14))
+        );
+        assert_eq!(
+            bar_line("Evaluating", 13, 13, "z.rs"),
+            format!("Evaluating {} 13/13 z.rs", "█".repeat(24))
+        );
+    }
+
+    #[test]
+    fn a_fade_paints_every_row_once_per_gray() {
+        let rows = vec!["⠹  Tracing".to_string(), "   graphs 1/2".to_string()];
+        let frames = fade_frames(&rows, &FADE_OUT);
+        assert_eq!(frames.len(), FADE_OUT.len());
+        for (frame, gray) in frames.iter().zip(FADE_OUT) {
+            assert_eq!(frame.len(), rows.len());
+            for (painted, row) in frame.iter().zip(&rows) {
+                assert!(painted.contains(&format!("38;5;{gray}m")), "{painted:?}");
+                assert_eq!(console::strip_ansi_codes(painted), row.as_str());
+            }
+        }
+        let first = |grays: &[u8]| fade_frames(&rows, grays)[0][0].clone();
+        assert!(first(&FADE_OUT).contains("38;5;252m"), "out starts bright");
+        assert!(first(&FADE_IN).contains("38;5;240m"), "in starts faint");
+        assert!(fade_frames(&rows, &[]).is_empty());
     }
 }

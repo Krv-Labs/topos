@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- **Assess says whether coupling may be stale after an edit** ([#377](https://github.com/Krv-Labs/topos/issues/377)) — when a dependency graph is loaded, the assess result compares the baseline's import lines with the working file's (including Go `import ( … )` blocks, `require(…)`, dynamic `import(…)`, `export … from`, and Rust `pub(crate) use` / `mod`). Unchanged imports add the `coupling_still_current` risk flag and say no rebuild is needed; changed imports add `coupling_may_be_stale` and name `topos_generate_depgraph` as optional. The flag is advice only: it never sets `next_tool` or `blocked_by`, is not repeated for a re-check of the same edit, and is omitted when no graph is loaded. The assessment markdown shows it as a **Note** line.
+
 ### Changed
 
 - **MCP keeps one dependency graph per process** ([#375](https://github.com/Krv-Labs/topos/issues/375)) — a second `topos_evaluate_file` no longer rereads the Ladybug store: 15.8 s → 83 ms for a second file on this repo, 15 ms for the same file again. The store is opened once per `(dir, branch, store mtime)` and retargeted per file; `depgraph_status` goes through the same store, so a half-written or wrong-schema store still reports `load_error` / `schema_mismatch`. The graph-freshness answer is cached until the fingerprint, HEAD, or the uncommitted working tree (`git status` plus dirty-file mtimes) changes.

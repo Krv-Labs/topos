@@ -383,20 +383,38 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
 /// a module-level load does. The comparison is the lines themselves, so the
 /// agent gets a fact rather than a size judgment.
 fn boundary_lines(source: &str) -> std::collections::BTreeSet<String> {
-    source
-        .lines()
-        .map(str::trim)
-        .filter(|line| {
-            let rest = line.strip_prefix("pub ").unwrap_or(line);
-            rest.starts_with("use ")
-                || rest.starts_with("import ")
-                || rest.starts_with("from ")
-                || rest.starts_with("#include")
-                || rest.starts_with("require(")
-                || rest.starts_with("require ")
-        })
-        .map(str::to_string)
-        .collect()
+    let mut lines = std::collections::BTreeSet::new();
+    // Go lists imports one per line inside `import ( ... )`.
+    let mut in_import_block = false;
+    for line in source.lines().map(str::trim) {
+        if in_import_block {
+            if line.starts_with(')') {
+                in_import_block = false;
+            } else if !line.is_empty() {
+                lines.insert(line.to_string());
+            }
+            continue;
+        }
+        in_import_block = line.starts_with("import (") || line == "import(";
+        if is_boundary_line(line) {
+            lines.insert(line.to_string());
+        }
+    }
+    lines
+}
+
+fn is_boundary_line(line: &str) -> bool {
+    let rest = ["pub(crate) ", "pub(super) ", "pub ", "export "]
+        .iter()
+        .find_map(|vis| line.strip_prefix(vis))
+        .unwrap_or(line);
+    ["use ", "import ", "from ", "#include", "mod ", "extern crate ", "require "]
+        .iter()
+        .any(|kw| rest.starts_with(kw))
+        // `const x = require('y')`, `await import('y')`, `export { x } from 'y'`
+        || line.contains("require(")
+        || line.contains("import(")
+        || (line.starts_with("export ") && line.contains(" from "))
 }
 
 /// Last file contents we already wrote a coupling note for.
@@ -505,7 +523,12 @@ fn assessment_contract(
 
     // Advice, not a next step. Putting this in next_tool would order a
     // rebuild on every edit, which is the loop this flag exists to avoid.
-    if let Some((flag, note)) = coupling_staleness_note(baseline_src, proposed_src, file_path) {
+    // No graph means no coupling numbers to go stale.
+    let note = proposed_eval
+        .coupling_available
+        .then(|| coupling_staleness_note(baseline_src, proposed_src, file_path))
+        .flatten();
+    if let Some((flag, note)) = note {
         risk_flags.push(flag.into());
         next_actions.push(note);
     }
@@ -1963,6 +1986,53 @@ mod tests {
     }
 
     #[test]
+    fn import_forms_beyond_line_leading_keywords_count() {
+        for (before, after) in [
+            ("import (\n\t\"fmt\"\n)", "import (\n\t\"fmt\"\n\t\"os\"\n)"),
+            ("const a = 1;", "const a = require('a');"),
+            ("fn f() {}", "pub(crate) use a::b;\nfn f() {}"),
+            ("fn f() {}", "mod a;\nfn f() {}"),
+            ("let x = 1;", "export { x } from './y';"),
+            (
+                "async function f() {}",
+                "async function f() { await import('y'); }",
+            ),
+        ] {
+            assert_ne!(
+                boundary_lines(before),
+                boundary_lines(after),
+                "{before:?} -> {after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_graph_means_no_coupling_note() {
+        let eval = EvaluationResult::error_result(
+            "fixture",
+            Priority::Simple,
+            PrioritySource::Default,
+            String::new(),
+        );
+        assert!(!eval.coupling_available);
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "use a;\n",
+            "use a;\nuse b;\n",
+            None,
+        );
+        assert!(
+            !contract
+                .risk_flags
+                .iter()
+                .any(|f| f.starts_with("coupling_")),
+            "{contract:?}"
+        );
+    }
+
+    #[test]
     fn staleness_note_does_not_set_next_tool() {
         let eval = EvaluationResult::error_result(
             "fixture",
@@ -1970,6 +2040,8 @@ mod tests {
             PrioritySource::Default,
             String::new(),
         );
+        let mut eval = eval;
+        eval.coupling_available = true;
         let contract = assessment_contract(
             AssessmentStatus::LATERAL_MOVE,
             &[],

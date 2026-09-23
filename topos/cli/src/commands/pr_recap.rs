@@ -214,6 +214,7 @@ Coupling:
 Prompts:
   On a terminal, pr-recap asks before a slow step: building coupling graphs
   that are not built yet. Graphs already built are reused without asking.
+  To answer ahead of time, pass one of:
     --yes, -y      answer yes to every question.
     --no-input     never ask; take each question's default.
     --no-coupling  skip the graphs without asking, even with --yes.
@@ -275,10 +276,12 @@ pub struct PrRecapArgs {
     /// Which card to print: card or github.
     #[arg(long, value_enum)]
     pub format: Option<RecapFormat>,
-    /// Skip coupling preparation; COMPOSABLE is reported as not measured.
+    /// Skip coupling preparation without asking; COMPOSABLE is reported as
+    /// not measured.
     #[arg(long)]
     pub no_coupling: bool,
-    /// Answer yes to every question: build coupling graphs, run optional checks.
+    /// Answer yes to every question ahead of time: build coupling graphs, run
+    /// optional checks.
     #[arg(long, short = 'y', conflicts_with = "no_input")]
     pub yes: bool,
     /// Never ask; take each question's default.

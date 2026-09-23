@@ -99,10 +99,12 @@ pub(crate) fn resolve(
 /// One yes/no question, with what answering it will do.
 pub(crate) struct Question {
     pub(crate) title: String,
-    /// One line per fact the answer depends on, shown as `·` bullets.
-    pub(crate) plan: Vec<String>,
     pub(crate) yes: &'static str,
+    /// What yes will do, shown dim beside it.
+    pub(crate) yes_hint: String,
     pub(crate) no: &'static str,
+    /// What no will do, shown dim beside it.
+    pub(crate) no_hint: String,
     /// The answer a run that cannot ask takes. Listed first when asked.
     pub(crate) default: bool,
 }
@@ -139,33 +141,26 @@ pub(crate) fn ask(
     }
 }
 
-/// `┌  title` and one `│  · fact` line per plan entry.
+/// `┌  title`; the key hint and the choices follow in [`question_step`].
 fn question_header(question: &Question, options: RenderOptions) -> Vec<String> {
-    let mut header = vec![paint(
+    vec![paint(
         format!("┌  {}", question.title),
         Style::new().bold(),
         options,
-    )];
-    for item in &question.plan {
-        header.push(format!(
-            "│  {} {item}",
-            paint("·", Style::new().dim(), options)
-        ));
-    }
-    header
+    )]
 }
 
 /// The two choices, the default first and under the cursor, and the index
 /// of the yes choice.
 fn question_step(question: &Question) -> (SelectStep, usize) {
-    let choice = |label, key| SelectOption {
+    let choice = |label, hint: &String, key| SelectOption {
         label,
-        hint: String::new(),
+        hint: hint.clone(),
         current: false,
         key: Some(key),
     };
-    let yes = choice(question.yes, 'y');
-    let no = choice(question.no, 'n');
+    let yes = choice(question.yes, &question.yes_hint, 'y');
+    let no = choice(question.no, &question.no_hint, 'n');
     let (options, yes_at) = if question.default {
         (vec![yes, no], 0)
     } else {
@@ -173,7 +168,7 @@ fn question_step(question: &Question) -> (SelectStep, usize) {
     };
     let step = SelectStep {
         title: "",
-        keys: "↑↓ · enter · y/n · esc skips",
+        keys: "↑↓ move · y/n pick · enter confirm · esc skip",
         options,
         initial: 0,
         layout: StepLayout::Question,
@@ -281,9 +276,10 @@ mod tests {
     fn question(default: bool) -> Question {
         Question {
             title: "Build it?".to_string(),
-            plan: vec!["it is slow".to_string()],
-            yes: "Yes, build it",
-            no: "No, skip it",
+            yes: "Yes",
+            yes_hint: "slow, reused next run".to_string(),
+            no: "No",
+            no_hint: "skip it".to_string(),
             default,
         }
     }
@@ -340,15 +336,17 @@ mod tests {
             lines,
             [
                 "┌  Build it?",
-                "│  · it is slow",
-                "│ ❯ ● Yes, build it",
-                "│   ○ No, skip it",
-                "└  ↑↓ · enter · y/n · esc skips",
+                "│",
+                "│  ↑↓ move · y/n pick · enter confirm · esc skip",
+                "│",
+                "│ ❯ ● Yes   (slow, reused next run)",
+                "│   ○ No    (skip it)",
+                "└",
             ]
         );
         let (step, yes_at) = question_step(&question(false));
         assert_eq!(yes_at, 1);
-        assert_eq!(step.options[0].label, "No, skip it");
+        assert_eq!(step.options[0].label, "No");
         assert_eq!(step.options[0].key, Some('n'));
     }
 }

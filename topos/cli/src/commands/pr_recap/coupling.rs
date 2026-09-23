@@ -11,8 +11,6 @@
 
 use std::path::Path;
 
-use console::Style;
-
 use super::model::{CouplingReason, CouplingStatus};
 use super::view::{seconds, short_rev};
 use super::PrRecapArgs;
@@ -21,7 +19,6 @@ use crate::commands::depgraph::{
 };
 use crate::commands::gh::resolve_commit;
 use crate::commands::interaction::{ask, Asker, Interaction, Question};
-use crate::commands::render::{paint, RenderOptions};
 
 /// What this run can do about coupling graphs, before anything is built.
 pub(super) enum CouplingPlan {
@@ -121,22 +118,13 @@ pub(super) fn settle(
     else {
         return Ok(plan);
     };
+    // The answer leaves nothing behind on stderr: the card's meta line
+    // already says whether COMPOSABLE was built, reused or skipped.
     let build = ask(
         interaction,
         asker,
         &question(pr, base_sha, head_sha, state, estimate_ms),
     )?;
-    if interaction == Interaction::Prompt {
-        let status = if build {
-            "◇  Building coupling graphs (base and head in parallel)"
-        } else {
-            "◇  Skipping COMPOSABLE"
-        };
-        eprintln!(
-            "{}",
-            paint(status, Style::new().bold(), RenderOptions::stderr())
-        );
-    }
     if build {
         return Ok(plan);
     }
@@ -185,7 +173,9 @@ pub(super) fn prepare(root: &Path, plan: CouplingPlan) -> (Option<PrStores>, Cou
     }
 }
 
-/// The build question, with what each graph costs from `state`.
+/// The build question. The yes hint says what each graph costs from
+/// `state`; `--yes` and `--no-coupling` answering it ahead of time is left
+/// to `--help`.
 fn question(
     pr: u64,
     base_sha: &str,
@@ -198,28 +188,19 @@ fn question(
         || "usually 10–60 s".to_string(),
         |ms| format!("about {}", seconds(ms)),
     );
-    let cost = match state {
-        StoreState::BaseReusable => {
-            format!("Base {base} is already built; head {head} is new: {wait}")
-        }
-        StoreState::HeadReusable => {
-            format!("Head {head} is already built; base {base} is new: {wait}")
-        }
+    let yes_hint = match state {
+        StoreState::BaseReusable => format!("head {head} is new, base reused · {wait}"),
+        StoreState::HeadReusable => format!("base {base} is new, head reused · {wait}"),
         StoreState::Cold | StoreState::Ready => {
-            format!("Neither is built yet: {wait} now, reused on the next run")
+            format!("base {base} + head {head} · {wait} · reused next run")
         }
     };
     Question {
         title: format!("Build coupling graphs for #{pr}?"),
-        plan: vec![
-            format!(
-                "COMPOSABLE and split tracing read GitNexus graphs of base {base} and head {head}"
-            ),
-            cost,
-            "--yes or --no-coupling answers this ahead of time".to_string(),
-        ],
-        yes: "Yes, build them",
-        no: "No, report COMPOSABLE as not measured",
+        yes: "Yes",
+        yes_hint,
+        no: "No",
+        no_hint: "report COMPOSABLE as not measured".to_string(),
         default: true,
     }
 }
@@ -411,13 +392,10 @@ mod tests {
         );
         assert_eq!(cold.title, "Build coupling graphs for #362?");
         assert_eq!(
-            cold.plan,
-            [
-                "COMPOSABLE and split tracing read GitNexus graphs of base add9761 and head 3812be2",
-                "Neither is built yet: about 25 s now, reused on the next run",
-                "--yes or --no-coupling answers this ahead of time",
-            ]
+            cold.yes_hint,
+            "base add9761 + head 3812be2 · about 25 s · reused next run"
         );
+        assert_eq!(cold.no_hint, "report COMPOSABLE as not measured");
         assert!(cold.default, "a run that cannot ask builds");
         let half = question(
             362,
@@ -427,14 +405,25 @@ mod tests {
             Some(20_000),
         );
         assert_eq!(
-            half.plan[1],
-            "Base add9761 is already built; head 3812be2 is new: about 20 s"
+            half.yes_hint,
+            "head 3812be2 is new, base reused · about 20 s"
+        );
+        let other_half = question(
+            362,
+            "add9761aaaa",
+            "3812be2bbbb",
+            StoreState::HeadReusable,
+            Some(20_000),
+        );
+        assert_eq!(
+            other_half.yes_hint,
+            "base add9761 is new, head reused · about 20 s"
         );
         let fresh = question(362, "add9761aaaa", "3812be2bbbb", StoreState::Cold, None);
         assert!(
-            fresh.plan[1].contains("usually 10–60 s"),
+            fresh.yes_hint.contains("usually 10–60 s"),
             "{}",
-            fresh.plan[1]
+            fresh.yes_hint
         );
     }
 }

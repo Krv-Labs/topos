@@ -27,7 +27,7 @@ use serde_json::Value;
 const DEADLINE: Duration = Duration::from_secs(60);
 
 /// Text only the coupling question prints.
-const PROMPT_MARKS: [&str; 3] = ["Build coupling graphs", "❯", "esc skips"];
+const PROMPT_MARKS: [&str; 3] = ["Build coupling graphs", "❯", "esc skip"];
 
 struct Run {
     code: i32,

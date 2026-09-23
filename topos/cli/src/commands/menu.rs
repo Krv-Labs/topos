@@ -164,10 +164,11 @@ pub(crate) enum StepLayout {
     /// A wizard step: a cyan title, a dim key hint and a blank rail above
     /// the choices, a bare `└` below. Ctrl-C interrupts the process.
     Wizard,
-    /// A question asked mid-command: the header already carries the title
-    /// and the plan, the choices follow it directly and the key hint rides
-    /// on the closing `└`. `title` is not drawn. Ctrl-C comes back as an
-    /// error, so the command can exit with its own error code.
+    /// A question asked mid-command, laid out like `topos install`: the
+    /// header carries the title, a dim key hint sits between blank rails
+    /// above the choices, each hint is parenthesized, and `└` closes bare.
+    /// `title` is not drawn. Ctrl-C comes back as an error, so the command
+    /// can exit with its own error code.
     Question,
 }
 
@@ -266,14 +267,12 @@ pub(crate) fn render_select(
     opts: RenderOptions,
 ) -> Vec<String> {
     let mut lines = header.to_vec();
-    if step.layout == StepLayout::Wizard {
-        lines.push(format!(
-            "│  {}",
-            paint(step.title, Style::new().cyan().bold(), opts)
-        ));
-        lines.push(format!("│  {}", paint(step.keys, Style::new().dim(), opts)));
-        lines.push("│".to_string());
-    }
+    lines.push(match step.layout {
+        StepLayout::Wizard => format!("│  {}", paint(step.title, Style::new().cyan().bold(), opts)),
+        StepLayout::Question => "│".to_string(),
+    });
+    lines.push(format!("│  {}", paint(step.keys, Style::new().dim(), opts)));
+    lines.push("│".to_string());
     let width = step
         .options
         .iter()
@@ -293,16 +292,16 @@ pub(crate) fn render_select(
         if option.current {
             hint.push_str(" · current");
         }
+        if step.layout == StepLayout::Question {
+            hint = format!("({hint})");
+        }
         lines.push(format!(
             "│ {}   {}",
             choice_row(&label, idx == cursor, opts),
             paint(hint, Style::new().dim(), opts)
         ));
     }
-    lines.push(match step.layout {
-        StepLayout::Wizard => "└".to_string(),
-        StepLayout::Question => format!("└  {}", paint(step.keys, Style::new().dim(), opts)),
-    });
+    lines.push("└".to_string());
     lines
 }
 
@@ -697,33 +696,38 @@ mod tests {
     }
 
     fn yes_no(layout: StepLayout) -> SelectStep {
-        let option = |label, key| SelectOption {
+        let option = |label, hint: &str, key| SelectOption {
             label,
-            hint: String::new(),
+            hint: hint.to_string(),
             current: false,
             key,
         };
         SelectStep {
             title: "Unused by a question",
-            keys: "↑↓ · enter · y/n · esc skips",
-            options: vec![option("Yes", Some('y')), option("No", Some('n'))],
+            keys: "↑↓ move · y/n pick · enter confirm · esc skip",
+            options: vec![
+                option("Yes", "build it", Some('y')),
+                option("No", "", Some('n')),
+            ],
             initial: 0,
             layout,
         }
     }
 
     #[test]
-    fn a_question_puts_its_keys_on_the_closing_rail() {
-        let header = vec!["┌  Build it?".to_string(), "│  · why".to_string()];
+    fn a_question_puts_its_keys_above_the_choices_like_install() {
+        let header = vec!["┌  Build it?".to_string()];
         let lines = render_select(&header, &yes_no(StepLayout::Question), 0, opts());
         assert_eq!(
             lines,
             [
                 "┌  Build it?",
-                "│  · why",
-                "│ ❯ ● Yes",
+                "│",
+                "│  ↑↓ move · y/n pick · enter confirm · esc skip",
+                "│",
+                "│ ❯ ● Yes   (build it)",
                 "│   ○ No",
-                "└  ↑↓ · enter · y/n · esc skips",
+                "└",
             ]
         );
     }

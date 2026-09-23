@@ -1,23 +1,29 @@
 //! Hand-built `PrRecap` documents for the renderer tests.
 //!
-//! Shared by the card, the compact card, the GitHub comment and the view
-//! model, so all of them are asserted against exactly the same numbers.
-//! The shape and the counts are PR #5 from
+//! Shared by the card, the GitHub comment and the view model, so all of
+//! them are asserted against exactly the same numbers. The shape and the
+//! counts are PR #5 from
 //! `docs/decisions/pr-recap-refactor-tracing.md`.
 
 use std::collections::HashMap;
 
+use topos_engine::config::PrGateConfig;
 use topos_engine::functors::profunctors::uast::ledger::{
     FunctionMatch, FunctionSnapshot, Ledger, LedgerTotals, MatchKind,
 };
+use topos_engine::graphs::mdg::file_graph::FileGraph;
+use topos_engine::graphs::mdg::models::{GraphNode, GraphRelationship};
+use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{NewSymbol, Reach, SymbolMove};
 use topos_engine::graphs::uast::models::{NativeRef, SourceSpan, UASTNode};
 
+use super::gates;
 use super::model::{
-    Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingStatus, FileChange,
-    FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta, PillarRollup, PrRecap,
-    ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
+    Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingReason,
+    CouplingStatus, FileChange, FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta,
+    PillarRollup, PrRecap, ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
 };
+use super::moves::RangeMoves;
 use super::view::PILLARS;
 
 pub(super) fn medal_for(tier: &str) -> Medal {
@@ -39,17 +45,6 @@ pub(super) fn medal_for(tier: &str) -> Medal {
             _ => "NONE",
         }
         .to_string(),
-    }
-}
-
-/// A hotspot at `path:line` for `metric`, with a finding and a fix.
-pub(super) fn hotspot(path: &str, line: usize, metric: &str) -> Hotspot {
-    Hotspot {
-        path: path.to_string(),
-        line,
-        metric: metric.to_string(),
-        detail: format!("finding at line {line}"),
-        advice: format!("Change line {line} so it clears the gate."),
     }
 }
 
@@ -83,6 +78,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
                     before_score: (!is_new).then_some(before_score),
                     after_score: Some(after_score),
                     lost_gate: None,
+                    gate: None,
                 },
             )
         })
@@ -114,6 +110,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
             role,
         }),
         hotspots: Vec::new(),
+        severity: None,
     }
 }
 
@@ -229,6 +226,8 @@ fn cluster_of(
         parent_fan_out_before: Some(fan_out.0),
         parent_fan_out_after: Some(fan_out.1),
         parent_fan_out_after_excluding_children: Some(fan_out.0),
+        secure_findings_before: 0,
+        secure_findings_after: 0,
         symbols_moved: Vec::new(),
         symbols_new: Vec::new(),
         symbols_lost: Vec::new(),
@@ -293,6 +292,12 @@ fn scope(files: usize, new: usize, skipped: usize, measured: bool) -> Scope {
             } else {
                 "gitnexus not installed".to_string()
             },
+            reason: if measured {
+                CouplingReason::Built
+            } else {
+                CouplingReason::GitnexusMissing
+            },
+            estimate_ms: None,
         },
     }
 }
@@ -304,6 +309,15 @@ fn recap_of(
     project: Option<Rollup>,
     scope: Scope,
 ) -> PrRecap {
+    // The readiness comes from the recommended gates, as in `build_recap`.
+    let cfg = PrGateConfig::default();
+    let mut files = files;
+    let (readiness, findings) =
+        gates::evaluate(&files, &clusters, 0, &cfg, &RangeMoves::default(), None);
+    for file in &mut files {
+        file.severity = gates::worst_at(&findings, &file.path);
+    }
+    let exit_code = readiness.exit_code(cfg.fail_on);
     PrRecap {
         schema: SCHEMA,
         base: "2e352d7aaaaaaa".to_string(),
@@ -313,12 +327,13 @@ fn recap_of(
             head_ref: "refactor/topos".to_string(),
             base_ref: "main".to_string(),
         }),
-        headline,
-        check: if headline.fails_check() {
-            "fail"
-        } else {
-            "pass"
-        },
+        gate: gates::summary(&cfg, None),
+        readiness,
+        exit_code,
+        check: if exit_code == 1 { "fail" } else { "pass" },
+        findings,
+        waivers: Vec::new(),
+        direction: headline,
         reason: "the split moved the worst functions down".to_string(),
         priority: "secure",
         incomplete: false,
@@ -330,6 +345,7 @@ fn recap_of(
         skipped: Vec::new(),
         deleted: Vec::new(),
         hotspots: Vec::new(),
+        hotspots_total: 0,
         non_claim: "Structural direction is not proof that tests or behavior still pass.",
     }
 }
@@ -746,6 +762,114 @@ pub(super) fn fixture_plain() -> PrRecap {
     )
 }
 
+/// The path in [`fixture_plain`] that fails SIMPLE on both sides.
+pub(super) const FAN_IN_TARGET: &str = "topos/cli/src/commands/config.rs";
+
+/// A file-level MDG over `imports`, one `File` node per path named.
+fn file_graph(imports: &[(&str, &str)]) -> FileGraph {
+    let mut graph = ModuleDependencyGraph::new("x");
+    for (from, to) in imports {
+        for path in [from, to] {
+            graph.add_node(GraphNode {
+                id: format!("File:{path}"),
+                label: "File".to_string(),
+                properties: HashMap::from([("filePath".to_string(), (*path).into())]),
+            });
+        }
+        graph.add_relationship(GraphRelationship {
+            id: format!("{from}->{to}"),
+            source_id: format!("File:{from}"),
+            target_id: format!("File:{to}"),
+            rel_type: "IMPORTS".to_string(),
+            confidence: 1.0,
+            reason: String::new(),
+            properties: HashMap::new(),
+        });
+    }
+    FileGraph::build(&graph)
+}
+
+/// [`fixture_plain`], measured: a new Python import cycle (warn), three
+/// new dependents on a file failing SIMPLE (warn), and the change's reach
+/// (info), all from two hand-built graphs.
+pub(super) fn fixture_coupling() -> PrRecap {
+    let mut recap = fixture_plain();
+    recap.scope = scope(2, 0, 0, true);
+    let base = [
+        ("topos/bind/models.py", "topos/bind/views.py"),
+        ("topos/cli/src/main.rs", "topos/cli/src/commands/inspect.rs"),
+        (FAN_IN_TARGET, "topos/engine/src/config/mod.rs"),
+    ];
+    let mut head = base.to_vec();
+    head.extend([
+        ("topos/bind/views.py", "topos/bind/models.py"),
+        ("topos/cli/src/commands/a.rs", FAN_IN_TARGET),
+        ("topos/cli/src/commands/b.rs", FAN_IN_TARGET),
+        ("topos/cli/src/commands/c.rs", FAN_IN_TARGET),
+    ]);
+    let coupling = gates::Coupling {
+        base: file_graph(&base),
+        head: file_graph(&head),
+        changed: [
+            FAN_IN_TARGET,
+            "topos/cli/src/commands/inspect.rs",
+            "topos/bind/views.py",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        ..gates::Coupling::default()
+    };
+    let cfg = PrGateConfig::default();
+    let (readiness, findings) = gates::evaluate(
+        &recap.files,
+        &recap.clusters,
+        0,
+        &cfg,
+        &RangeMoves::default(),
+        Some(&coupling),
+    );
+    for file in &mut recap.files {
+        file.severity = gates::worst_at(&findings, &file.path);
+    }
+    recap.readiness = readiness;
+    recap.exit_code = readiness.exit_code(cfg.fail_on);
+    recap.check = if recap.exit_code == 1 { "fail" } else { "pass" };
+    recap.findings = findings;
+    recap
+}
+
+/// One file that lost SIMPLE while gaining NAVIGABLE: a lateral move by
+/// status, a blocking `pillar_lost` by the gates.
+pub(super) const LATERAL_LOSS: &str = "topos/cli/src/commands/lattice.rs";
+
+pub(super) fn fixture_lateral_loss() -> PrRecap {
+    let files = vec![build(Spec {
+        path: LATERAL_LOSS,
+        change: FileChange::Modified,
+        status: Headline::LateralMove,
+        before: Some("SILVER"),
+        after: "SILVER",
+        pillars: [
+            (true, false, 60.0, 40.0),
+            (true, true, 80.0, 80.0),
+            (true, true, 100.0, 100.0),
+            (false, true, 40.0, 90.0),
+        ],
+        worst: (12, 12),
+        decisions: (30, 30),
+        cluster: None,
+        cosmetic: false,
+    })];
+    recap_of(
+        Headline::LateralMove,
+        files,
+        Vec::new(),
+        Some(rollup("SILVER", "SILVER", false, &[])),
+        scope(1, 0, 0, false),
+    )
+}
+
 /// One cluster plus every unclustered row word the card can print.
 pub(super) fn fixture_mixed() -> PrRecap {
     const PARENT: &str = "topos/mcp/src/evaluation/depgraph.rs";
@@ -934,10 +1058,12 @@ pub(super) fn fixture_mixed() -> PrRecap {
     recap.hotspots = vec![Hotspot {
         path: "topos/mcp/src/tools/depgraph.rs".to_string(),
         line: 212,
+        function: Some("cap_generation_detail".to_string()),
         metric: "ast.max_function_complexity".to_string(),
         detail: "cap_generation_detail complexity 14, gate 10".to_string(),
         advice: "Extract a decision so this function clears the gate.".to_string(),
     }];
+    recap.hotspots_total = 1;
     recap
 }
 

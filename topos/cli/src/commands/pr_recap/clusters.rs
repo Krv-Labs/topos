@@ -252,6 +252,14 @@ fn materialize(
         reasons: Vec::new(),
         lines_before: parent.recap.lines_before,
         lines_after,
+        // Code moved out of the parent brings its findings along, so only
+        // a rise in the cluster total is new risk.
+        secure_findings_before: secure_findings(&parent.before),
+        secure_findings_after: secure_findings(&parent.after)
+            + kids
+                .iter()
+                .map(|kid| secure_findings(&kid.after))
+                .sum::<usize>(),
         decisions_before: parent.recap.decisions_before.unwrap_or(0),
         decisions_after,
         worst_function_before: parent.recap.worst_function_before.clone(),
@@ -294,7 +302,7 @@ fn materialize(
             .unwrap_or_default(),
         ledger,
     };
-    (cluster.mark, cluster.reasons) = cluster_mark(&cluster, parent, &kids);
+    (cluster.mark, cluster.reasons) = cluster_mark(&cluster, &kids);
     cluster
 }
 
@@ -362,38 +370,19 @@ fn moved_into(ledger: Option<&Ledger>, child: &str) -> usize {
         .count()
 }
 
-fn cluster_mark(
-    cluster: &Cluster,
-    parent: &Scored,
-    kids: &[&Scored],
-) -> (ClusterMark, Vec<String>) {
+/// The split's descriptive mark and its reasons. A pillar the parent lost
+/// is the parent's own finding, not the split's, so it is not repeated
+/// here.
+fn cluster_mark(cluster: &Cluster, kids: &[&Scored]) -> (ClusterMark, Vec<String>) {
     let (decisions_before, decisions_after) = (cluster.decisions_before, cluster.decisions_after);
     // Failure causes come first, so `reasons[0]` of a failed split names
-    // why it failed; the headline quotes it.
+    // why it failed.
     let mut reasons = Vec::new();
-    let lost: Vec<&str> = parent
-        .recap
-        .pillars
-        .iter()
-        .filter(|(_, delta)| delta.lost())
-        .map(|(pillar, _)| pillar.as_str())
-        .collect();
-    if !lost.is_empty() {
-        reasons.push(format!("{} lost {}", parent.recap.path, lost.join(", ")));
-    }
-    // Code moved out of the parent brings its findings with it, so a child
-    // failing SECURE is only new risk when the cluster as a whole has more
-    // findings than the parent had.
-    let findings_before = secure_findings(&parent.before);
-    let findings_after = secure_findings(&parent.after)
-        + kids
-            .iter()
-            .map(|kid| secure_findings(&kid.after))
-            .sum::<usize>();
-    let insecure = findings_after > findings_before;
+    let insecure = cluster.secure_rise().is_some();
     if insecure {
         reasons.push(format!(
-            "SECURE findings rose {findings_before}→{findings_after} across the split"
+            "SECURE findings rose {}→{} across the split",
+            cluster.secure_findings_before, cluster.secure_findings_after
         ));
     }
     let grew = cluster.ledger.as_ref().is_some_and(|ledger| {
@@ -404,10 +393,7 @@ fn cluster_mark(
     });
     let worst_before = cluster.worst_function_before.as_ref();
     let worst_after = cluster.worst_function_after.as_ref();
-    let worst_fell = worst_before
-        .zip(worst_after)
-        .is_some_and(|(before, after)| after.complexity < before.complexity);
-    let failed = !lost.is_empty() || insecure || (grew && !worst_fell);
+    let failed = insecure || cluster.moved_growth().is_some();
     if failed && grew {
         reasons.push("a moved function gained complexity on the way".to_string());
     }
@@ -437,18 +423,11 @@ fn cluster_mark(
     if failed {
         return (ClusterMark::Fail, reasons);
     }
-    let bloated = decisions_after as f64 > decisions_before as f64 * (1.0 + CLUSTER_GROWTH_WARN);
-    let sloppy = kids.iter().any(|kid| {
-        kid.recap
-            .medal_after
-            .as_ref()
-            .map(|medal| medal.tier == "SLOP")
-            .unwrap_or(true)
-    });
+    let sloppy = kids.iter().any(|kid| kid.recap.landed_slop());
     if sloppy {
         reasons.push("a child is SLOP or did not parse".to_string());
     }
-    if bloated || sloppy {
+    if cluster.bloated() || sloppy {
         (ClusterMark::Warn, reasons)
     } else {
         (ClusterMark::Ok, reasons)
@@ -456,7 +435,7 @@ fn cluster_mark(
 }
 
 /// Dangerous calls plus taint flows: every metric that gates SECURE.
-fn secure_findings(result: &ClassificationResult) -> usize {
+pub(super) fn secure_findings(result: &ClassificationResult) -> usize {
     GATE_SPECS
         .iter()
         .filter(|spec| spec.pillar == "secure" && spec.gates_achieved)
@@ -475,6 +454,9 @@ fn decision_reason(before: usize, after: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use topos_engine::config::{GateId, Severity};
+
+    use super::super::gates::{Finding, Readiness};
     use super::super::tests::{commit_all, recap, write_files, write_repo};
     use super::*;
 
@@ -651,13 +633,21 @@ mod tests {
             .find(|f| f.path == "src/helpers.py")
             .unwrap();
         assert_ne!(child.status, Headline::Regression);
-        assert!(!recap.headline.fails_check(), "{}", recap.reason);
+        assert_eq!(recap.exit_code, 0, "{}", recap.reason);
+        assert!(
+            !recap
+                .findings
+                .iter()
+                .any(|f| f.gate == GateId::NewFileInsecure || f.gate == GateId::SplitSecureRise),
+            "{:?}",
+            recap.findings
+        );
     }
 
-    /// A split that brings in a dangerous call the parent never had fails,
-    /// and a failed split fails the headline.
+    /// A split that brings in a dangerous call the parent never had is
+    /// blocked by `split_secure_rise`.
     #[test]
-    fn a_split_adding_a_dangerous_call_fails_the_headline() {
+    fn a_split_adding_a_dangerous_call_is_blocked() {
         let big = format!("{ALPHA}\n\n{BETA}\n\n{GAMMA}");
         let (_keep, repo) = write_repo(&[("src/big.py", big.as_str())]);
         write_files(
@@ -685,18 +675,24 @@ mod tests {
             "{:?}",
             cluster.reasons
         );
-        assert_eq!(recap.headline, Headline::Regression);
+        assert_eq!(recap.readiness, Readiness::Blocked);
+        assert_eq!(recap.findings[0].gate, GateId::SplitSecureRise);
+        assert_eq!(recap.findings[0].path, "src/big.py");
         assert!(
-            recap.reason.contains("The split of src/big.py failed"),
+            recap
+                .reason
+                .starts_with("The split of src/big.py raised SECURE findings 0→1"),
             "{}",
             recap.reason
         );
+        assert_eq!(recap.check, "fail");
     }
 
     /// A moved function that came out more complex while the worst
-    /// function did not fall is an `X SPLIT`, and it fails the check.
+    /// function did not fall is an `X SPLIT`, and `split_moved_growth`
+    /// needs attention under recommended.
     #[test]
-    fn a_moved_function_that_grew_fails_the_headline() {
+    fn a_moved_function_that_grew_needs_attention() {
         let big = format!("{ALPHA}\n\n{BETA}\n\n{GAMMA}");
         let (_keep, repo) = write_repo(&[("src/big.py", big.as_str())]);
         let beta_grown =
@@ -720,7 +716,61 @@ mod tests {
             "{:?}",
             recap.clusters[0].reasons
         );
-        assert_eq!(recap.headline, Headline::Regression);
-        assert_eq!(recap.check, "fail");
+        let grown: Vec<&Finding> = recap
+            .findings
+            .iter()
+            .filter(|f| f.gate == GateId::SplitMovedGrowth)
+            .collect();
+        assert_eq!(grown.len(), 1, "{:?}", recap.findings);
+        assert_eq!(grown[0].severity, Severity::Warn);
+        assert_eq!(recap.readiness, Readiness::NeedsAttention);
+        assert_eq!(recap.check, "pass", "recommended fails only on block");
+    }
+
+    /// B4: a split parent that loses a pillar is one `pillar_lost` on the
+    /// parent, not a second finding on the split repeating it.
+    #[test]
+    fn a_split_parent_losing_a_pillar_is_reported_once() {
+        let branches: String = (0..8)
+            .map(|i| format!("    if x == {i}:\n        return {i}\n"))
+            .collect();
+        let parent = format!("def run(x):\n{branches}    return 0\n");
+        let big = format!("{parent}\n\n{BETA}\n\n{GAMMA}");
+        let (_keep, repo) = write_repo(&[("src/big.py", format!("{ALPHA}\n\n{big}").as_str())]);
+        // Move beta and gamma out; grow run past the complexity gate.
+        let grown = parent.replace(
+            "    return 0\n",
+            "    if x > 99:\n        return 99\n    return 0\n",
+        );
+        write_files(
+            &repo,
+            &[
+                (
+                    "src/big.py",
+                    &format!("from helpers import beta, gamma\n\n\n{ALPHA}\n\n{grown}"),
+                ),
+                ("src/helpers.py", &format!("{BETA}\n\n{GAMMA}")),
+            ],
+        );
+        commit_all(&repo, "split and grow the parent");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        assert_eq!(recap.clusters.len(), 1);
+        let lost = recap
+            .findings
+            .iter()
+            .filter(|f| f.gate == GateId::PillarLost)
+            .count();
+        let at_parent = recap
+            .findings
+            .iter()
+            .filter(|f| f.path == "src/big.py" && f.gate != GateId::ScoreDrop)
+            .count();
+        assert_eq!((lost, at_parent), (1, 1), "{:?}", recap.findings);
+        assert!(
+            !recap.clusters[0].reasons.iter().any(|r| r.contains("lost")),
+            "{:?}",
+            recap.clusters[0].reasons
+        );
+        assert_eq!(recap.readiness, Readiness::Blocked);
     }
 }

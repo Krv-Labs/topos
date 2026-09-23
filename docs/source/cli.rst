@@ -290,9 +290,10 @@ instead of treating an empty corpus as covered.
 pr-recap
 --------
 
-Structural before/after for a git range or a pull request — what changed,
-what moved, and whether the project's medal held. Deterministic and
-reproducible from ``--json``; there is no LLM in the loop.
+Structural before/after for a git range or a pull request, judged by the
+project's PR gates: ``READY``, ``NEEDS ATTENTION``, or ``BLOCKED``, and the
+one finding that decided it. Deterministic and reproducible from ``--json``;
+there is no LLM in the loop.
 
 .. code-block:: bash
 
@@ -300,6 +301,10 @@ reproducible from ``--json``; there is no LLM in the loop.
    topos pr-recap 5
    topos pr-recap --base main --head HEAD
    topos pr-recap 5 --head :worktree
+   topos pr-recap 5 --verbose
+   topos pr-recap 5 --info
+   topos pr-recap 5 --strict
+   topos pr-recap 5 --preset relaxed
    topos pr-recap 5 --json
    topos pr-recap 5 --format github
    topos pr-recap 5 --no-coupling
@@ -322,25 +327,41 @@ reproducible from ``--json``; there is no LLM in the loop.
    * - ``--repo PATH``
      - Repository to read. Defaults to the current directory.
    * - ``--json``
-     - Emit ``topos.pr_recap.v2`` instead of the review card.
+     - Emit ``topos.pr_recap.v3`` instead of the review card: the readiness,
+       the exit code, every finding with its gate and severity, and the
+       ``gate`` settings that produced them.
    * - ``--max-files N``
      - Do not score more than this many added or modified files (default 40).
        The most-changed files (lines added plus removed) are kept; the recap
-       is then marked incomplete and its reason says how many went unscored.
-       Truncation alone does not fail the check.
+       is then marked incomplete and the rest are listed as skipped. What
+       that costs the verdict is the ``incomplete`` gate's call (info by
+       default).
    * - ``--verbose``
-     - Unfold every split cluster and print the per-function move ledger.
-   * - ``--compact``
-     - One-screen card for a CI log. Same as ``--format compact``.
-   * - ``--format [card|compact|github]``
-     - Which card to print. Defaults to ``card`` on a terminal, ``compact``
-       otherwise. ``github`` renders the Markdown sticky-comment format.
+     - Add the **Changed files** table, every split child, and the
+       per-function move ledger inside the card.
+   * - ``--info``
+     - Append the recommended change for each blocking or warning finding
+       after the card, in ``inspect``'s grammar.
+   * - ``--strict``
+     - Fail the check on ``NEEDS ATTENTION`` too (``fail_on = "warn"``).
+   * - ``--preset PRESET``
+     - Gate with a built-in preset (``relaxed``, ``recommended``, ``strict``)
+       for this run, ignoring the project's ``[pr_recap]``, its waivers
+       included.
+   * - ``--format [card|github]``
+     - Which card to print. ``card`` is the default, on a terminal and in a
+       pipe alike; piped output drops the color. ``github`` renders the
+       Markdown sticky-comment format.
    * - ``--no-coupling``
      - Skip coupling-store preparation; COMPOSABLE is reported as not measured.
    * - ``--priority VALUE``
      - Pillar to prioritize when classifying, as for ``evaluate``. Defaults to
-       the priority in ``topos.toml``, or ``secure`` when none is configured.
-       The card's context line names the priority used.
+       the priority in ``.topos.toml``, or ``secure`` when none is configured.
+       The card's meta line names the priority used.
+
+The separate compact layout is retired: the default card already fits a CI
+log. ``--compact`` and ``--format compact`` remain as hidden aliases for the
+default card so existing scripts keep working.
 
 **Range**
 
@@ -350,72 +371,168 @@ reproducible from ``--json``; there is no LLM in the loop.
 - With no arguments, ``pr-recap`` reviews the uncommitted edits in the working
   tree (``--base HEAD --head :worktree``), including untracked files.
 
+**Gates**
+
+Each gate in ``[pr_recap]`` (set with ``topos config``, see `config`_) turns
+what happened into a finding with a severity: ``off``, ``info``, ``warn`` or
+``block``. Under the recommended preset, a lost pillar, a new file that fails
+SECURE or is SLOP, and a split that gained SECURE findings block; a score drop
+past ``[pr_recap.score_drop]`` (10 points, in a file with at least 20 changed
+lines), a score that moved while the structure did not, and a function that
+grew as a split moved it need attention; a pillar that already failed and got
+worse, a new file failing another pillar, a bloated split, and skipped files
+are info. ``topos config show`` lists every gate and its severity.
+
+Moving code is not charged as a regression. When a file loses a pillar only
+because code moved into it from another file in the same range (the function
+arrived unchanged, the file received moved code and little new logic, or the
+dependency graph traced the move), the finding is reported under the
+``moved_pillar`` gate instead of ``pillar_lost``, naming the file the code came
+from; ``moved_pillar`` is info under the relaxed and recommended presets and
+warn under strict. A score drop the same move explains is info. A moved
+function that grew on the way is still ``pillar_lost``, and a SECURE loss is
+never excused when the range as a whole gained SECURE findings.
+
+Three gates read the file dependency graphs at base and head, so they run only
+when COMPOSABLE was measured (not with ``--no-coupling``), and they see every
+changed source file, not only the ``--max-files`` that were scored:
+
+- ``import_cycle``: an import cycle at head that did not exist at base. The
+  finding walks the cycle from an import this change added and suggests
+  breaking it there. Its severity comes from ``[pr_recap.import_cycle]``, one
+  row per language (``rust``, ``typescript``, ``javascript``, ``python``);
+  a cycle takes the strictest row among its files, and a file in another
+  language falls back to the ``import_cycle`` gate. Under the recommended
+  preset a Python cycle needs attention and the others are info.
+- ``fan_in_growth``: a changed file that fails SIMPLE and gained dependents.
+  It fires when the new dependents (tests and a split's own children aside)
+  clear both ``[pr_recap.fan_in_growth]`` thresholds, ``min_new_dependents``
+  (2) and ``min_growth_percent`` (25). Warn under recommended and strict.
+- ``blast_radius``: how many files outside the change depend on it directly
+  and transitively, named through the changed file with the widest reach.
+  Info under recommended and strict, off under relaxed.
+
+In ``--json`` these findings carry a ``related`` list: the cycle's files, the
+new dependents, or the most depended-on files the change reaches.
+
+**Waivers**
+
+A known finding can be set aside with a ``[[pr_recap.waive]]`` entry:
+
+.. code-block:: toml
+
+   [[pr_recap.waive]]
+   gate = "pillar_lost"
+   path = "src/legacy/**"
+   reason = "vendored parser, replaced in #412"
+   expires = "2026-12-31"
+
+``gate`` is a gate key, ``path`` a glob over the finding's file, and
+``reason`` is required; ``expires`` is optional and the waiver applies through
+that date (UTC). A waived finding keeps its severity and stays in the
+document, marked ``waived`` in ``--json``, but no longer counts toward the
+readiness or the exit code. The card counts waived sites and unused or
+expired waivers on a dim line (``1 waived · 1 unused waiver``);
+``--verbose`` lists each waived site with its reason, and the GitHub
+comment adds a **Waived** section. A site is one place, gate and waiver:
+a function that lost two pillars under one waiver is one line naming both
+(``pillar_lost SIMPLE, NAVIGABLE``), while ``--json`` keeps one finding per
+pillar. An entry missing a field, naming an
+unknown gate or carrying a malformed date is dropped with a warning.
+Waivers are not gate settings: they do not make the preset ``custom``, and
+``topos config set --pr-preset`` keeps them.
+
+The policy comes from the flags, else the nearest ``.topos.toml``, else the
+``recommended`` preset. Every card ends with a dim gate line that names it,
+so a reader knows which rules produced the verdict: ``gate: recommended``,
+``gate: strict``, or ``gate: custom · 2 changes · ./.topos.toml``. When the
+change needs attention under a policy that fails only on blocks, the line
+adds ``· warnings don't fail the check``.
+
 **Sample card**
 
 .. code-block:: text
 
-   ◇  Reviewed 23 changed files  +2539/-1864
-   │  #5 refactor/topos → main · priority secure · COMPOSABLE measured · 1 skipped
+   ◇  Reviewed #359  fix/ts-parser-cpg-precision → main
+   │  3 files · +174/-1 · priority navigable · COMPOSABLE not measured (--no-coupling)
    │
-   │  · LATERAL   0 lost · 1 up · 17 new (11 PLATINUM, 5 GOLD, 1 SILVER)
+   │  X BLOCKED   dispatch.rs lost SIMPLE and NAVIGABLE (GOLD → BRONZE)
    │
-   │  CHANGE       FILE                                MEDAL             S   C   E   N
-   │  ✓ UP         lib/bookings/create.ts              BRONZE → SILVER   ○↑  ○↓  ●   ●↑
-   │  ✓ UP         lib/polls/ranges.test.ts            GOLD              ○↑  ●   ●   ●↑
+   │  PILLAR        STATUS   BEFORE   AFTER   FAILING   SCORE
+   │  SIMPLE        X FAIL      62%     42%     1 / 3   ━━━━◆───── ↓
+   │  SECURE        ✓ PASS     100%    100%     0 / 3   ━━━━━━━━━◆
+   │  NAVIGABLE     X FAIL      98%     67%     1 / 3   ━━━━━━◆─── ↓
    │
-   │  SPLIT        PARENT → CHILDREN                   MEDAL             S   C   E   N   WORST FN  DECISIONS
-   │  ! SPLIT      components/links/LinkForm.tsx       BRONZE            ○   ○   ●   ○   117→73    33→46 +39%
-   │               ├─ link-form-defaults.ts            SILVER            ○   ●   ●   ○   13 symbols in · shared by 3
-   │               ├─ form-controls.tsx                PLATINUM          ●   ●   ●   ●   3 symbols in · shared by 2
-   │               ├─ LivePreviewCard.tsx              GOLD              ○   ●   ●   ●   worst fn 15
-   │               └─ 1 more                           PLATINUM
-   │  ✓ SPLIT      components/polls/PollShell.tsx      BRONZE            ○   ○   ●   ○   117→85    68→71
-   │               ├─ poll-shell-types.tsx             PLATINUM          ●   ●   ●   ●   11 symbols in · shared by 4
-   │               ├─ PollSubmittedView.tsx            GOLD              ○   ●   ●   ●   worst fn 24
-   │               └─ 3 more                           PLATINUM ×3
-   │  ✓ SPLIT      components/polls/WeekGrid.tsx       SILVER            ○   ●   ●   ○   134→93    83→87
-   │               ├─ week-grid-model.ts               GOLD              ○   ●   ●   ●   19 symbols in · shared by 4
-   │               ├─ WeekGridDesktop.tsx              GOLD              ○   ●   ●   ●   2 symbols in
-   │               ├─ WeekGridLegend.tsx               PLATINUM          ●   ●   ●   ●   1 symbol in
-   │               └─ 1 more                           GOLD
-   │  ✓ SPLIT      lib/bookings/create.ts              BRONZE → SILVER   ○↑  ○↓  ●   ●↑  33→13     17→14
-   │               ├─ booking-error.ts                 PLATINUM          ●   ●   ●   ●   BookingCreationError in · shared by 3
-   │               └─ 3 more                           PLATINUM ×3
+   │  1. X topos/engine/src/graphs/ast/dispatch.rs · sanitize_typescript_type_imports:62
+   │       SIMPLE 32 > 10 · NAVIGABLE 21.4 > 10 · lift the deepest nested block into a named function
+   │       1 smaller dip
    │
-   │  · 1 file held its medal
-   │
-   └  · LATERAL · project BRONZE → BRONZE · worst functions down 27–60%, decisions 201→218
+   │  gate: recommended
+   └  X 🥇 GOLD → 🥉 BRONZE · SECURE · 87% → 70% average.
+
+   Tip: add --verbose for every file, or run topos inspect topos/engine/src/graphs/ast/dispatch.rs.
+
+``--verbose`` adds the **Changed files** table between the findings and the
+gate line:
+
+.. code-block:: text
+
+   │  CHANGED FILES  topos/engine/src/graphs/
+   │  FILE                        MEDAL            CHANGE
+   │  X ast/dispatch.rs           GOLD → BRONZE    X SIMPLE lost · X NAVIGABLE lost
+   │    uast/mapper_javascript.rs GOLD             ↓ SIMPLE 69 → 64
+   │  1 file kept its medal
 
 **How to read it**
 
-- Row types: ``LOST`` (a pillar lost), ``DOWN`` (score-only dip), ``COSMETIC``
-  (score moved, syntax tree did not), ``UP`` (cleared a pillar or score rose),
-  ``NEW`` (added, not part of a split), ``SPLIT`` (a parent file's symbols
-  moved into new children). A new file is ``X NEW`` and fails the check when
-  it arrives failing SECURE or with no pillar passed (SLOP); a passing new
-  file cannot turn a lateral change into an improvement.
-- ``S C E N`` are the four pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE) as
-  dots: ``●`` passed, ``○`` failed, ``·`` not measured. A pillar whose score
-  moved at least one point carries an arrow (``●↑``, ``○↓``).
-- The splits table appends WORST FN and DECISIONS on parent rows and one fact
-  (symbols moved in, or shared-by count) on child rows; the leading mark is
-  ``✓`` when worst function fell and decisions grew ≤10%, ``!`` when decisions
-  grew more than that or a child arrived SLOP, and ``X`` when the parent lost
-  a pillar, SECURE findings rose across the split, or a moved function got
-  more complex while the worst function did not fall. An ``X SPLIT`` fails the
-  check.
-- The project line compares the files that existed at base, on both sides.
-  New files are summarized apart, so they cannot lift or sink the average.
-- Held and deleted files fold into count-only lines; ``--verbose`` unfolds
-  every split cluster, lists moved symbol names, and prints the per-function
-  ledger.
+- The verdict line states the single most important finding. ``X`` marks a
+  block, ``!`` a warning; info findings carry no mark and are only counted.
+- The project table is ``evaluate``'s, over the existing files the change
+  touched: whether each pillar passes at head, the mean score before and
+  after, and how many files fail it. Added files are rolled up on their own,
+  so they cannot lift or sink the average.
+- The numbered list shows the blocking findings, then the warnings, most
+  important first, at most ``max_hotspots`` of them (3 by default). Findings
+  at the same function merge into one item. A dim line counts the rest:
+  ``N more``, smaller dips, and notes. Score dips under one point are hidden.
+- In **Changed files**, the mark is the file's worst finding, MEDAL shows
+  ``BEFORE → AFTER`` when the tier moved, and CHANGE says what happened pillar
+  by pillar: ``X SIMPLE lost``, ``✓ NAVIGABLE gained``, ``↓ SIMPLE 69 → 64``
+  (a score move of at least a point that crossed no gate), ``new``, and
+  ``cosmetic`` (scores moved while the syntax tree barely changed). Losing a
+  pillar is a loss even when another was gained:
+  ``X SIMPLE lost · ✓ NAVIGABLE gained`` is a trade and still blocks.
+- The splits table shows a parent file whose code moved into new children;
+  ``--verbose`` lists every child and the per-function move ledger. It
+  passes (``✓``) when the split stayed lean, warns (``!``) when decisions grew
+  more than 10% or a child landed SLOP, and fails (``X``) when a moved
+  function came out more complex or the split carries more SECURE findings
+  than the parent had. What each costs the verdict is the ``split_*`` gates'
+  call.
+- The footer carries the readiness mark and the project medal, so the last
+  line summarizes the run on its own.
+
+**GitHub comment**
+
+``--format github`` renders the same document as Markdown for a sticky pull
+request comment, headed ``### X Blocked · Topos structural review of #359``.
+It lists **Blocking** and **Needs attention** items, collapses info findings
+in ``<details>``, shows the changed files with the same MEDAL and CHANGE
+columns, and puts the gate line in the footer. A hidden marker on the first
+line lets a later run edit the comment instead of adding another.
 
 **Exit codes**
 
-- ``0`` — pass.
-- ``1`` — the headline is ``REGRESSION``, ``SCORE DOWN``, or ``SUSPICIOUS``.
+- ``0`` — ``READY``, or ``NEEDS ATTENTION`` under ``fail_on = "block"`` (the
+  recommended and relaxed presets).
+- ``1`` — ``BLOCKED``, or ``NEEDS ATTENTION`` under ``fail_on = "warn"``
+  (``--strict``, or the strict preset).
 - ``2`` — ``pr-recap`` could not produce a verdict (bad range, repository not
   found, ``gh`` failure, etc.).
+
+The ``direction`` field in ``--json`` (``IMPROVEMENT``, ``SCORE DOWN``,
+``LATERAL``, ...) says which way the structure moved and never changes the
+exit code.
 
 .. note::
    Structural direction is not proof that tests or behavior still pass.
@@ -473,9 +590,11 @@ With no ids in a terminal, both commands open a multi-select checklist.
 config
 ------
 
-View or update project evaluation settings in the nearest ``.topos.toml``.
-Running bare ``topos config`` opens a small priority selector on a TTY and
-falls back to ``show`` when input is non-interactive.
+View or update project settings in the nearest ``.topos.toml``: the
+evaluation priority and the PR gate preset ``topos pr-recap`` checks against.
+Running bare ``topos config`` opens a two-step wizard on a TTY (priority,
+then PR gate) that writes once at the end, and falls back to ``show`` when
+input is non-interactive.
 
 .. code-block:: bash
 
@@ -483,6 +602,17 @@ falls back to ``show`` when input is non-interactive.
    topos config show
    topos config set --priority secure
    topos config set --priority composable,secure,simple
+   topos config set --pr-preset strict
+
+``--pr-preset`` takes ``relaxed``, ``recommended`` (the default), ``strict``,
+or ``custom``. A named preset is stored alone under ``[pr_recap]``, so the
+project picks up improved defaults; ``custom`` writes every gate setting,
+with its default and meaning in a comment, for you to edit in the file.
+``config show`` lists every PR gate setting and marks the ones that differ
+from the preset, then any ``[[pr_recap.waive]]`` entries. Besides
+``[pr_recap.gates]``, a custom policy can tune ``[pr_recap.score_drop]``,
+``[pr_recap.import_cycle]`` (a severity per language; an unknown language is
+ignored with a warning) and ``[pr_recap.fan_in_growth]``.
 
 ``--priority`` accepts either form: a single pillar sets the emphasis and
 reorders the existing ranking around it; a full comma-separated ranking

@@ -7,20 +7,22 @@ use topos_engine::functors::probes::ast::complexity::FunctionComplexityEntry;
 use topos_engine::functors::probes::ast::divergence::calculate_function_divergence_entries;
 use topos_mcp::schemas::SecurityFinding;
 
+use super::gates::advice_for;
 use super::model::{FileRecap, Hotspot};
 use super::score::Side;
 use super::verdict::{gate_limit, metric_delta};
 
-const HOTSPOT_CAP: usize = 2;
-
-/// The range's hotspots in their one canonical order, which renderers
-/// rely on: by metric (dangerous call, function complexity, nesting
-/// divergence, fan-out), then in file order. Each file's own list is
-/// already in metric order, so a stable sort keeps the files in place.
-pub(super) fn top_hotspots(files: &[FileRecap]) -> Vec<Hotspot> {
+/// The range's first `cap` hotspots in their one canonical order, which
+/// renderers rely on, and how many there were in all, so a capped list
+/// can say `N more`. The order is by metric (dangerous call, function
+/// complexity, nesting divergence, fan-out), then by file. Each file's
+/// own list is already in metric order, so a stable sort keeps the files
+/// in place.
+pub(super) fn top_hotspots(files: &[FileRecap], cap: usize) -> (Vec<Hotspot>, usize) {
     let mut ranked: Vec<&Hotspot> = files.iter().flat_map(|f| f.hotspots.iter()).collect();
     ranked.sort_by_key(|spot| hotspot_rank(&spot.metric));
-    ranked.into_iter().take(HOTSPOT_CAP).cloned().collect()
+    let total = ranked.len();
+    (ranked.into_iter().take(cap).cloned().collect(), total)
 }
 
 fn hotspot_rank(metric: &str) -> u8 {
@@ -35,7 +37,7 @@ fn hotspot_rank(metric: &str) -> u8 {
 
 const DANGEROUS_CALLS: &str = "cpg.dangerous_calls";
 
-const FUNCTION_COMPLEXITY: &str = "ast.max_function_complexity";
+pub(super) const FUNCTION_COMPLEXITY: &str = "ast.max_function_complexity";
 
 const FUNCTION_DIVERGENCE: &str = "nav.max_function_divergence";
 
@@ -52,12 +54,13 @@ pub(super) fn file_hotspots(
     before: &mut Side,
     after: &mut Side,
 ) -> Vec<Hotspot> {
-    let hotspot = |line: usize, metric: &str, detail: String, advice: String| Hotspot {
+    let hotspot = |line: usize, function: Option<&str>, metric: &str, detail: String| Hotspot {
         path: path.to_string(),
         line,
+        function: function.map(str::to_string),
         metric: metric.to_string(),
         detail,
-        advice,
+        advice: advice_for(metric).unwrap_or_default().to_string(),
     };
     let mut hotspots = Vec::new();
     // A line split can make one call look like two snippets, so only a
@@ -65,15 +68,18 @@ pub(super) fn file_hotspots(
     if over_gate(&before.result, &after.result, DANGEROUS_CALLS).is_some() {
         if let Some(finding) = new_security_finding(before, after) {
             let (advice, _) = remediation_for(&finding.to_core());
-            hotspots.push(hotspot(
-                finding.line as usize,
-                DANGEROUS_CALLS,
-                format!(
-                    "dangerous call {}",
-                    finding.callee.as_deref().unwrap_or("unknown")
-                ),
+            hotspots.push(Hotspot {
                 advice,
-            ));
+                ..hotspot(
+                    finding.line as usize,
+                    None,
+                    DANGEROUS_CALLS,
+                    format!(
+                        "dangerous call {}",
+                        finding.callee.as_deref().unwrap_or("unknown")
+                    ),
+                )
+            });
         }
     }
     if let (Some(gate), Some(worst)) = (
@@ -82,12 +88,12 @@ pub(super) fn file_hotspots(
     ) {
         hotspots.push(hotspot(
             worst.start_line,
+            Some(&worst.name),
             FUNCTION_COMPLEXITY,
             format!(
                 "{} complexity is {}, gate is {}",
                 worst.name, worst.complexity, gate as i64
             ),
-            "Extract a decision or a helper so this function clears the gate.".to_string(),
         ));
     }
     if let (Some(gate), Some(ast)) = (
@@ -100,24 +106,24 @@ pub(super) fn file_hotspots(
         {
             hotspots.push(hotspot(
                 worst.start_line,
+                Some(&worst.name),
                 FUNCTION_DIVERGENCE,
                 format!(
                     "{} nesting divergence is {:.1}, gate is {}",
                     worst.name, worst.divergence, gate as i64
                 ),
-                "Lift the deepest nested block into a named function.".to_string(),
             ));
         }
     }
     if let Some(gate) = over_gate(&before.result, &after.result, FAN_OUT) {
         hotspots.push(hotspot(
             1,
+            None,
             FAN_OUT,
             format!(
                 "fan-out is {:.0}, gate is {}",
                 after.result.raw_metrics[FAN_OUT], gate as i64
             ),
-            "Invert a dependency or split the module.".to_string(),
         ));
     }
     hotspots

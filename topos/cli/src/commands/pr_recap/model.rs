@@ -1,18 +1,21 @@
-//! `topos pr-recap` document model, schema `topos.pr_recap.v2`.
+//! `topos pr-recap` document model, schema `topos.pr_recap.v3`.
 //!
 //! One struct tree feeds `--json`, the terminal card, the compact CI card
 //! and the GitHub comment. Renderers read this and never recompute a
 //! verdict: every mark on a card is a field here, produced by the data
 //! builder in `pr_recap.rs` from the lattice, the UAST ledger and the two
-//! coupling graphs.
+//! coupling graphs, and judged by the configured gates in `gates.rs`.
 
 use std::collections::BTreeMap;
 
 use serde::Serialize;
-use topos_engine::functors::profunctors::uast::ledger::Ledger;
+use topos_engine::config::Severity;
+use topos_engine::functors::profunctors::uast::ledger::{Ledger, MatchKind};
 use topos_engine::graphs::mdg::split::{NewSymbol, Reach, SymbolMove};
 
-pub(crate) const SCHEMA: &str = "topos.pr_recap.v2";
+use super::gates::{optional_severity_name, Finding, Readiness};
+
+pub(crate) const SCHEMA: &str = "topos.pr_recap.v3";
 
 /// Below this normalized AST distance a file is "structurally unchanged".
 pub(crate) const STRUCTURAL_CHANGE_THRESHOLD: f64 = 0.02;
@@ -21,6 +24,8 @@ pub(crate) const MEANINGFUL_SCORE_DELTA: f64 = 0.03;
 /// Cluster decision growth above this fraction earns a `!` mark.
 pub(crate) const CLUSTER_GROWTH_WARN: f64 = 0.10;
 
+/// Which way the structure moved. Descriptive only: whether the change is
+/// ready is [`Readiness`], decided by the configured gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum Headline {
@@ -33,28 +38,7 @@ pub(crate) enum Headline {
 }
 
 impl Headline {
-    /// The word a card prints. `as_str` is the JSON name.
-    pub(crate) fn word(self) -> &'static str {
-        match self {
-            Headline::SuspiciousNoStructuralChange => "SUSPICIOUS",
-            Headline::Regression => "REGRESSION",
-            Headline::RegressionScore => "SCORE DOWN",
-            Headline::Improvement => "IMPROVEMENT",
-            Headline::ImprovementScore => "SCORE UP",
-            Headline::LateralMove => "LATERAL",
-        }
-    }
-
-    pub(crate) fn fails_check(self) -> bool {
-        matches!(
-            self,
-            Headline::SuspiciousNoStructuralChange
-                | Headline::Regression
-                | Headline::RegressionScore
-        )
-    }
-
-    /// Worst-first rank used when one file decides the PR headline.
+    /// Worst-first rank used when one file decides the PR direction.
     pub(crate) fn rank(self) -> u8 {
         match self {
             Headline::SuspiciousNoStructuralChange => 0,
@@ -94,6 +78,25 @@ pub(crate) struct PillarDelta {
     /// The gate that failed, when a previously passing pillar no longer does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) lost_gate: Option<String>,
+    /// The gate this pillar fails at head, when it fails one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) gate: Option<GateCrossing>,
+}
+
+/// A gate a pillar fails at head: which bound, and whether this change
+/// pushed the metric further past it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub(crate) struct GateCrossing {
+    pub(crate) metric: String,
+    /// `None` when the metric was not measured at base (an added file).
+    pub(crate) before: Option<f64>,
+    pub(crate) after: f64,
+    /// The bound on the violated side: the upper bound, or the lower one
+    /// for a metric that fell below its band.
+    pub(crate) limit: f64,
+    /// The change moved the metric further past `limit`, or the base did
+    /// not measure it at all.
+    pub(crate) worse: bool,
 }
 
 impl PillarDelta {
@@ -123,6 +126,9 @@ pub(crate) struct FunctionRef {
 pub(crate) struct Hotspot {
     pub(crate) path: String,
     pub(crate) line: usize,
+    /// The function the line sits in, when the metric is per function.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) function: Option<String>,
     pub(crate) metric: String,
     pub(crate) detail: String,
     pub(crate) advice: String,
@@ -148,8 +154,11 @@ pub(crate) struct FileRecap {
     pub(crate) change: FileChange,
     /// An added file outside a split is `REGRESSION` when it arrives
     /// failing SECURE or SLOP, `IMPROVEMENT` otherwise; a split child is
-    /// judged through its cluster's mark.
+    /// judged through its cluster's mark. Descriptive, like the direction.
     pub(crate) status: Headline,
+    /// The worst severity among this file's findings; `None` without any.
+    #[serde(serialize_with = "optional_severity_name")]
+    pub(crate) severity: Option<Severity>,
     pub(crate) lines_before: usize,
     pub(crate) lines_after: usize,
     pub(crate) lines_added: usize,
@@ -183,10 +192,23 @@ impl FileRecap {
     pub(crate) fn is_new(&self) -> bool {
         self.change == FileChange::Added
     }
+
+    pub(crate) fn is_split_child(&self) -> bool {
+        self.cluster
+            .as_ref()
+            .is_some_and(|member| member.role == ClusterRole::Child)
+    }
+
+    /// Landed as SLOP, or did not parse at head.
+    pub(crate) fn landed_slop(&self) -> bool {
+        self.medal_after
+            .as_ref()
+            .is_none_or(|medal| medal.tier == "SLOP")
+    }
 }
 
-/// `✓ SPLIT`, `! SPLIT`, `X SPLIT`. `Fail` fails the check like a lost
-/// pillar does: the headline becomes `REGRESSION`.
+/// `✓ SPLIT`, `! SPLIT`, `X SPLIT`. Descriptive: the split gates in
+/// `gates.rs` decide what a split costs the verdict.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ClusterMark {
@@ -216,6 +238,10 @@ pub(crate) struct Cluster {
     pub(crate) reasons: Vec<String>,
     pub(crate) lines_before: usize,
     pub(crate) lines_after: usize,
+    /// Every metric that gates SECURE, summed over the parent (before) and
+    /// over the parent plus its children (after).
+    pub(crate) secure_findings_before: usize,
+    pub(crate) secure_findings_after: usize,
     /// Σ `cfg.cyclomatic` over parent (before) and parent + children (after).
     pub(crate) decisions_before: usize,
     pub(crate) decisions_after: usize,
@@ -232,6 +258,50 @@ pub(crate) struct Cluster {
     /// From the UAST function ledger; `None` when a side failed to parse.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) ledger: Option<Ledger>,
+}
+
+impl Cluster {
+    /// The parent's fan-out rose only because it now imports the files it
+    /// was carved into, so COMPOSABLE is set aside for it.
+    pub(crate) fn routes_fan_out(&self) -> bool {
+        self.parent_fan_out_after_excluding_children
+            .zip(self.parent_fan_out_before)
+            .is_some_and(|(after, before)| after <= before)
+    }
+
+    /// SECURE findings the split added across parent and children. Code
+    /// moved out of the parent brings its findings along, so only a rise
+    /// in the cluster total is new risk.
+    pub(crate) fn secure_rise(&self) -> Option<usize> {
+        self.secure_findings_after
+            .checked_sub(self.secure_findings_before)
+            .filter(|rise| *rise > 0)
+    }
+
+    /// Complexity the moved functions gained on the way, when the worst
+    /// function did not fall to pay for it.
+    pub(crate) fn moved_growth(&self) -> Option<i64> {
+        let gained: i64 = self
+            .ledger
+            .as_ref()?
+            .matches
+            .iter()
+            .filter(|entry| matches!(entry.kind, MatchKind::MovedModified | MatchKind::Renamed))
+            .map(|entry| entry.complexity_delta)
+            .filter(|delta| *delta > 0)
+            .sum();
+        let worst_fell = self
+            .worst_function_before
+            .as_ref()
+            .zip(self.worst_function_after.as_ref())
+            .is_some_and(|(before, after)| after.complexity < before.complexity);
+        (gained > 0 && !worst_fell).then_some(gained)
+    }
+
+    /// Total decisions grew past [`CLUSTER_GROWTH_WARN`].
+    pub(crate) fn bloated(&self) -> bool {
+        self.decisions_after as f64 > self.decisions_before as f64 * (1.0 + CLUSTER_GROWTH_WARN)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -292,6 +362,35 @@ pub(crate) struct CouplingStatus {
     pub(crate) measured: bool,
     /// Why not, or where from ("built from .git/topos-pr-5", "gitnexus not installed").
     pub(crate) note: String,
+    pub(crate) reason: CouplingReason,
+    /// The quoted wait for building the graphs, when they were left
+    /// unbuilt and there was a past build to go on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) estimate_ms: Option<u64>,
+}
+
+/// Why the coupling graphs were or were not there for this run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum CouplingReason {
+    /// Built on this run.
+    Built,
+    /// Already built at these commits and reused.
+    Cached,
+    /// `--no-coupling`.
+    Flag,
+    /// The graphs needed building and the person at the terminal said no
+    /// (or skipped the question).
+    Declined,
+    /// The graphs needed building, nobody was asked, and the default was
+    /// not to build.
+    NotAsked,
+    /// No pull request number, so no stores to build.
+    NoPr,
+    /// `gitnexus` is not on `PATH` and nothing was built already.
+    GitnexusMissing,
+    /// Resolving the commits or building the graphs failed; `note` says how.
+    Error,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -320,6 +419,44 @@ pub(crate) struct PullRequest {
     pub(crate) base_ref: String,
 }
 
+/// Which rules produced the verdict.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct GateSummary {
+    pub(crate) preset: &'static str,
+    pub(crate) fail_on: &'static str,
+    /// Settings that differ from the preset's.
+    pub(crate) changes: usize,
+    /// The `.topos.toml` consulted, or `None` when `--preset` set the
+    /// policy or no file was found.
+    pub(crate) source: Option<String>,
+    /// How many findings a card lists before folding the rest into
+    /// `N more` (`max_hotspots`). Rendering only; not in the document.
+    #[serde(skip)]
+    pub(crate) max_hotspots: usize,
+}
+
+/// What one `[[pr_recap.waive]]` entry did on this run.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct WaiverSummary {
+    pub(crate) gate: String,
+    /// The path glob.
+    pub(crate) path: String,
+    pub(crate) reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires: Option<String>,
+    /// Findings it waived; for an expired waiver, the findings it would
+    /// have waived.
+    pub(crate) matched: usize,
+    /// `used`, `unused` (matched nothing) or `expired`.
+    pub(crate) status: &'static str,
+}
+
+impl WaiverSummary {
+    pub(crate) fn is_used(&self) -> bool {
+        self.status == "used"
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct PrRecap {
     pub(crate) schema: &'static str,
@@ -333,9 +470,24 @@ pub(crate) struct PrRecap {
     pub(crate) priority: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) review: Option<PullRequest>,
-    pub(crate) headline: Headline,
+    pub(crate) gate: GateSummary,
+    /// The worst finding's severity: blocked, needs attention, or ready.
+    pub(crate) readiness: Readiness,
+    /// 1 when the readiness fails the check under `gate.fail_on`, else 0.
+    pub(crate) exit_code: i32,
+    /// `"fail"` iff `exit_code` is 1.
     pub(crate) check: &'static str,
+    /// The first counting finding's text, or what happened when there is
+    /// none.
     pub(crate) reason: String,
+    /// Every finding the configured gates kept, most important first, the
+    /// waived ones last.
+    pub(crate) findings: Vec<Finding>,
+    /// Every `[[pr_recap.waive]]` entry and what it did.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) waivers: Vec<WaiverSummary>,
+    /// Which way the structure moved. Descriptive only.
+    pub(crate) direction: Headline,
     /// `--max-files` left `scope.files_capped` files unscored. The verdict
     /// covers only the highest-churn files that were scored.
     pub(crate) incomplete: bool,
@@ -350,17 +502,15 @@ pub(crate) struct PrRecap {
     pub(crate) files: Vec<FileRecap>,
     pub(crate) skipped: Vec<SkippedFile>,
     pub(crate) deleted: Vec<String>,
+    /// The first `[pr_recap] max_hotspots` hotspots, in rank order.
     pub(crate) hotspots: Vec<Hotspot>,
+    /// Every hotspot the range has, shown or not.
+    pub(crate) hotspots_total: usize,
     /// Structural direction is not proof that behavior is unchanged.
     pub(crate) non_claim: &'static str,
 }
 
 impl PrRecap {
-    /// Files not belonging to any cluster, in document order.
-    pub(crate) fn unclustered_files(&self) -> Vec<&FileRecap> {
-        self.files.iter().filter(|f| f.cluster.is_none()).collect()
-    }
-
     pub(crate) fn new_files(&self) -> Vec<&FileRecap> {
         self.files.iter().filter(|f| f.is_new()).collect()
     }

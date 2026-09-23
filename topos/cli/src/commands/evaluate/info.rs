@@ -13,6 +13,7 @@ use topos_mcp::schemas::GeneratorInput;
 
 use super::info_render::{detail_lines, FileDetails};
 use super::summary::{attention_lines, failure_file_indices, failure_lines, ranked_file_indices};
+use crate::commands::render::RenderOptions;
 
 enum BrowserAction {
     Stay,
@@ -64,7 +65,7 @@ pub(crate) fn show_pillar_failures(
             &ranked,
             pillar,
             None,
-            std::env::var_os("NO_COLOR").is_none(),
+            RenderOptions::stdout().styled,
             terminal_width(&Term::stdout(), 120),
         ) {
             println!("{line}");
@@ -98,6 +99,7 @@ fn show_ranked_info(
             ranked,
             None,
             terminal_width(&Term::stdout(), 120),
+            RenderOptions::stdout().styled,
             kind,
         ) {
             println!("{line}");
@@ -111,6 +113,7 @@ fn show_ranked_info(
             ranked,
             None,
             terminal_width(&Term::stdout(), 120),
+            RenderOptions::stdout().styled,
             kind,
         ) {
             println!("{line}");
@@ -131,7 +134,7 @@ fn show_ranked_info(
         &results[selected],
         &details,
         100,
-        Term::stdout().is_term() && std::env::var_os("NO_COLOR").is_none(),
+        RenderOptions::stdout().styled,
         false,
         1,
         ranked.len(),
@@ -151,6 +154,7 @@ fn browse_files(
 ) -> Result<(), String> {
     let term = Term::stderr();
     let width = terminal_width(&term, 100);
+    let styled = RenderOptions::stderr().styled;
     let mut selected = 0;
     let mut rendered = 0;
     let mut detail: Option<FileDetails> = None;
@@ -166,12 +170,14 @@ fn browse_files(
                     &results[ranked[selected]],
                     details,
                     width,
-                    std::env::var_os("NO_COLOR").is_none(),
+                    styled,
                     true,
                     selected + 1,
                     ranked.len(),
                 ),
-                None => selector_lines_for(files, results, ranked, Some(selected), width, kind),
+                None => {
+                    selector_lines_for(files, results, ranked, Some(selected), width, styled, kind)
+                }
             };
             rendered = lines.len();
             for line in lines {
@@ -242,25 +248,14 @@ fn selector_lines_for(
     ranked: &[usize],
     selected: Option<usize>,
     width: usize,
+    styled: bool,
     kind: SelectorKind<'_>,
 ) -> Vec<String> {
     match kind {
-        SelectorKind::WeakSpots => attention_lines(
-            files,
-            results,
-            selected,
-            std::env::var_os("NO_COLOR").is_none(),
-            width,
-        ),
-        SelectorKind::Failures(pillar) => failure_lines(
-            files,
-            results,
-            ranked,
-            pillar,
-            selected,
-            std::env::var_os("NO_COLOR").is_none(),
-            width,
-        ),
+        SelectorKind::WeakSpots => attention_lines(files, results, selected, styled, width),
+        SelectorKind::Failures(pillar) => {
+            failure_lines(files, results, ranked, pillar, selected, styled, width)
+        }
     }
 }
 
@@ -358,6 +353,7 @@ mod tests {
             &ranked,
             Some(0),
             100,
+            false,
             SelectorKind::WeakSpots,
         );
         let output = lines.join("\n");
@@ -380,6 +376,7 @@ mod tests {
             &ranked,
             Some(0),
             72,
+            false,
             SelectorKind::WeakSpots,
         );
         assert!(lines.iter().all(|line| line.chars().count() <= 72));
@@ -406,6 +403,7 @@ mod tests {
             &[1],
             Some(0),
             100,
+            false,
             SelectorKind::Failures("simple"),
         );
         let output = lines.join("\n");
@@ -413,5 +411,30 @@ mod tests {
         assert!(output.contains("›  1  b.rs"));
         assert!(output.contains("20% score"));
         assert!(!output.contains("avg"));
+    }
+
+    /// Piped `--info` output is plain: color follows the shared
+    /// terminal-and-no-`NO_COLOR` detection, not `NO_COLOR` alone.
+    #[test]
+    fn selector_color_follows_the_styled_flag() {
+        let files = vec![PathBuf::from("repo/src/a.rs")];
+        let mut failing = result(0.2, 1.0);
+        failing
+            .dimensions
+            .insert("simple".to_string(), EvaluationValue::Slop);
+        let results = vec![failing];
+        let ranked = ranked_file_indices(&files, &results, 5);
+        for kind in [SelectorKind::WeakSpots, SelectorKind::Failures("simple")] {
+            let plain = selector_lines_for(&files, &results, &ranked, None, 100, false, kind);
+            assert!(
+                plain.iter().all(|line| !line.contains('\u{1b}')),
+                "{plain:#?}"
+            );
+            let painted = selector_lines_for(&files, &results, &ranked, None, 100, true, kind);
+            assert!(
+                painted.iter().any(|line| line.contains('\u{1b}')),
+                "{painted:#?}"
+            );
+        }
     }
 }

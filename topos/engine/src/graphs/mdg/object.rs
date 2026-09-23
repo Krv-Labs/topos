@@ -117,6 +117,23 @@ impl ModuleDependencyGraph {
         }
     }
 
+    /// Same loaded store, scored against a different file.
+    ///
+    /// File identity is only the lookup key in [`Self::file_node_id`]. The
+    /// nodes and edges do not change, so a process that already holds this
+    /// store can retarget it without opening Ladybug again. The maps are
+    /// cloned: callers mutate a graph while loading it, and a shared map
+    /// would make that racy. The expensive part this avoids is the disk read.
+    pub fn for_target(&self, target_file: impl Into<String>) -> Self {
+        ModuleDependencyGraph {
+            target_file: target_file.into(),
+            nodes: self.nodes.clone(),
+            relationships: self.relationships.clone(),
+            outgoing: self.outgoing.clone(),
+            incoming: self.incoming.clone(),
+        }
+    }
+
     pub fn add_node(&mut self, node: GraphNode) {
         self.nodes.insert(node.id.clone(), node);
     }

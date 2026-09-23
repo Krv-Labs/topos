@@ -7,7 +7,7 @@ use topos_engine::adapters::gitnexus::{
     current_git_branch, resolve_lbug_store, source_fingerprint, GITNEXUS_FINGERPRINT_FILE,
 };
 
-use super::gitref::{git_head_mtime, git_head_sha, gitnexus_mtime, mtime_f64};
+use super::gitref::{git_head_mtime, git_head_sha, gitnexus_mtime, mtime_f64, worktree_signature};
 use super::STALE_GITNEXUS_MARKER;
 
 /// All supported source suffixes, deduped.
@@ -28,6 +28,36 @@ const MTIME_SKEW_TOLERANCE_S: f64 = 2.0;
 /// Sanity bound on the measured (finished_at - generated_at) duration used
 /// to calibrate filesystem-clock drift.
 const MAX_TRUSTED_GENERATION_DURATION_S: f64 = 3600.0;
+
+/// Last freshness answer for one store directory.
+///
+/// `graph_freshness` hashes or walks the working tree. Evaluate calls it
+/// before it knows whether it will load the graph, so a second call in the
+/// same process was paying that walk again even when the store had not
+/// changed. The answer is cached until the fingerprint file, HEAD, or the
+/// uncommitted working tree changes.
+struct FreshnessCache {
+    store_dir: std::path::PathBuf,
+    fingerprint_mtime_bits: u64,
+    /// HEAD at the time of the answer. A commit changes this without
+    /// touching the fingerprint file, so keying on the file alone hid
+    /// every later commit for the life of the process.
+    head_sha: Option<String>,
+    /// [`worktree_signature`] at the time of the answer. Without it an
+    /// uncommitted edit kept a "fresh" answer for the life of the process.
+    worktree: String,
+    stale: bool,
+    detail: Option<String>,
+}
+
+static FRESHNESS_CACHE: std::sync::Mutex<Option<FreshnessCache>> = std::sync::Mutex::new(None);
+
+/// Drop the cached freshness answer. Tests call this between cases.
+pub fn clear_freshness_cache() {
+    if let Ok(mut guard) = FRESHNESS_CACHE.lock() {
+        *guard = None;
+    }
+}
 
 /// Topos-owned generation marker: what and when the graph was built from.
 #[derive(Debug, Clone, Default)]
@@ -198,7 +228,41 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
         .unwrap_or(gitnexus_dir)
         .to_path_buf();
 
-    let fingerprint = read_graph_fingerprint(&store_dir);
+    let fingerprint_mtime_bits = mtime_f64(&store_dir.join(GITNEXUS_FINGERPRINT_FILE))
+        .unwrap_or(0.0)
+        .to_bits();
+    let head_sha = git_head_sha(project_root);
+    let Some(worktree) = worktree_signature(project_root) else {
+        return graph_freshness_uncached(project_root, &store_dir);
+    };
+    if let Ok(guard) = FRESHNESS_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.store_dir == store_dir
+                && cached.fingerprint_mtime_bits == fingerprint_mtime_bits
+                && cached.head_sha == head_sha
+                && cached.worktree == worktree
+            {
+                return (cached.stale, cached.detail.clone());
+            }
+        }
+    }
+
+    let answer = graph_freshness_uncached(project_root, &store_dir);
+    if let Ok(mut guard) = FRESHNESS_CACHE.lock() {
+        *guard = Some(FreshnessCache {
+            store_dir,
+            fingerprint_mtime_bits,
+            head_sha,
+            worktree,
+            stale: answer.0,
+            detail: answer.1.clone(),
+        });
+    }
+    answer
+}
+
+fn graph_freshness_uncached(project_root: &Path, store_dir: &Path) -> (bool, Option<String>) {
+    let fingerprint = read_graph_fingerprint(store_dir);
     if let Some(fp) = &fingerprint {
         if let Some(result) = stale_from_source_hash(project_root, fp) {
             return result;
@@ -214,7 +278,7 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
     }
 
     if let Some(fp) = &fingerprint {
-        if let Some(result) = stale_from_mtime_walk(project_root, &store_dir, fp) {
+        if let Some(result) = stale_from_mtime_walk(project_root, store_dir, fp) {
             return result;
         }
     }
@@ -225,7 +289,9 @@ pub fn graph_freshness(project_root: &Path, gitnexus_dir: &Path) -> (bool, Optio
     }
 
     // Legacy fallback: compare the graph DB mtime to the latest commit's.
-    let graph_mtime = gitnexus_mtime(gitnexus_dir, branch.as_deref());
+    // `store_dir` is the resolved store (branch-scoped when one matches),
+    // which is the directory `gitnexus_mtime` already selected.
+    let graph_mtime = gitnexus_mtime(store_dir, None);
     let head_mtime = git_head_mtime(project_root);
     match (graph_mtime, head_mtime) {
         (Some(g), Some(h)) if g > 0.0 && g < h => (

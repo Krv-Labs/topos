@@ -34,9 +34,9 @@ pub(crate) struct ComposableResolve {
 /// availability, generation) is shared with the MCP evaluate tools via
 /// `topos_mcp::evaluation::ensure_gitnexus_dir` — this function only adds
 /// the CLI-specific "load once, reuse across every file in this run" MDG
-/// parsing on top (unlike MCP's `load_dep_graph`, which caches per
-/// `target_file` — a fit for arbitrary single-file tool calls, but N cache
-/// misses across a directory walk of N files).
+/// parsing on top. MCP's `load_dep_graph` keeps the same store for the
+/// process and retargets it per file, so a directory walk is one open
+/// there too.
 ///
 /// Warnings are returned for `--json` and for the evaluate/inspect summary
 /// card (orange `↻` notice). Callers that print a card should not also dump

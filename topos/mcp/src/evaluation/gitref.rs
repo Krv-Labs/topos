@@ -75,3 +75,61 @@ pub fn git_head_sha(project_root: &Path) -> Option<String> {
         Err(_) => packed_ref_sha(&git_dir, git_ref),
     }
 }
+
+/// Uncommitted working-tree state: `git status` plus each dirty path's
+/// mtime. Changes whenever a file is edited, even one already dirty.
+/// `None` outside a git repo, where callers must not cache.
+pub(crate) fn worktree_signature(project_root: &Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+        .current_dir(project_root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let raw = String::from_utf8_lossy(&out.stdout);
+    let mut sig = raw.to_string();
+    // ponytail: a rename's source token is stat'ed too; it yields no mtime,
+    // which is harmless in a signature.
+    for path in raw.split('\0').filter_map(|e| e.get(3..)) {
+        if let Some(m) = mtime_f64(&project_root.join(path)) {
+            sig.push_str(&m.to_bits().to_string());
+        }
+    }
+    Some(sig)
+}
+
+#[cfg(test)]
+mod worktree_signature_tests {
+    use super::*;
+
+    #[test]
+    fn signature_moves_when_a_dirty_file_is_edited_again() {
+        let root = std::env::temp_dir().join(format!("topos_worktree_sig_{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .output()
+                .unwrap()
+        };
+        git(&["init", "-q"]);
+        let file = root.join("a.rs");
+        std::fs::write(&file, "fn a() {}\n").unwrap();
+        let clean = worktree_signature(&root).expect("git repo");
+        std::fs::write(&file, "use b;\nfn a() {}\n").unwrap();
+        let first = worktree_signature(&root).unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(5);
+        std::fs::write(&file, "use c;\nfn a() {}\n").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        let second = worktree_signature(&root).unwrap();
+        std::fs::remove_dir_all(&root).ok();
+        assert_ne!(clean, first);
+        assert_ne!(first, second, "re-editing a dirty file must change the key");
+    }
+}

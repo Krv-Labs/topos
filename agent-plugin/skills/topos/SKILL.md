@@ -159,6 +159,7 @@ MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params
 - **Missing `--gitnexus-dir` from a parent directory → slow COMPOSABLE setup.** Without the override, freshness fingerprints CLI cwd (or the MCP-derived project). Prefer `--gitnexus-dir <repo>/.gitnexus` (or `cd` into the repo) so only that repo is walked. MCP does not need `TOPOS_MCP_FILE_ROOT` for normal editor use.
 - **Cosmetic edits don't count.** Whitespace and rename-only changes won't move the lattice; MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - **SECURE is structural, not full SAST.** Pair with dedicated security tooling for high-stakes code.
+- **Moving code is not a regression in `pr-recap`.** A pillar lost only because code moved into a file is reported under the `moved_pillar` gate (info by default, warn under strict), naming the source file; a moved function that grew on the way is still `pillar_lost`. Set aside a known finding with a `[[pr_recap.waive]]` entry (`gate`, `path` glob, required `reason`, optional `expires = "YYYY-MM-DD"`): it stays in the report, marked waived, but no longer counts toward the verdict. Unused and expired waivers are reported; `--preset` ignores the file's waivers.
 - **`topos_refactor` (MCP-only) is advisory.** It does not replace `topos evaluate` / `topos_evaluate_file` for scoring. There is no `topos refactor` CLI subcommand.
 
 ## Verification

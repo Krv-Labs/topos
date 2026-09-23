@@ -346,7 +346,8 @@ there is no LLM in the loop.
      - Fail the check on ``NEEDS ATTENTION`` too (``fail_on = "warn"``).
    * - ``--preset PRESET``
      - Gate with a built-in preset (``relaxed``, ``recommended``, ``strict``)
-       for this run, ignoring the project's ``[pr_recap]``.
+       for this run, ignoring the project's ``[pr_recap]``, its waivers
+       included.
    * - ``--format [card|github]``
      - Which card to print. ``card`` is the default, on a terminal and in a
        pipe alike; piped output drops the color. ``github`` renders the
@@ -381,6 +382,43 @@ lines), a score that moved while the structure did not, and a function that
 grew as a split moved it need attention; a pillar that already failed and got
 worse, a new file failing another pillar, a bloated split, and skipped files
 are info. ``topos config show`` lists every gate and its severity.
+
+Moving code is not charged as a regression. When a file loses a pillar only
+because code moved into it from another file in the same range (the function
+arrived unchanged, the file received moved code and little new logic, or the
+dependency graph traced the move), the finding is reported under the
+``moved_pillar`` gate instead of ``pillar_lost``, naming the file the code came
+from; ``moved_pillar`` is info under the relaxed and recommended presets and
+warn under strict. A score drop the same move explains is info. A moved
+function that grew on the way is still ``pillar_lost``, and a SECURE loss is
+never excused when the range as a whole gained SECURE findings.
+
+**Waivers**
+
+A known finding can be set aside with a ``[[pr_recap.waive]]`` entry:
+
+.. code-block:: toml
+
+   [[pr_recap.waive]]
+   gate = "pillar_lost"
+   path = "src/legacy/**"
+   reason = "vendored parser, replaced in #412"
+   expires = "2026-12-31"
+
+``gate`` is a gate key, ``path`` a glob over the finding's file, and
+``reason`` is required; ``expires`` is optional and the waiver applies through
+that date (UTC). A waived finding keeps its severity and stays in the
+document, marked ``waived`` in ``--json``, but no longer counts toward the
+readiness or the exit code. The card counts waived sites and unused or
+expired waivers on a dim line (``1 waived · 1 unused waiver``);
+``--verbose`` lists each waived site with its reason, and the GitHub
+comment adds a **Waived** section. A site is one place, gate and waiver:
+a function that lost two pillars under one waiver is one line naming both
+(``pillar_lost SIMPLE, NAVIGABLE``), while ``--json`` keeps one finding per
+pillar. An entry missing a field, naming an
+unknown gate or carrying a malformed date is dropped with a warning.
+Waivers are not gate settings: they do not make the preset ``custom``, and
+``topos config set --pr-preset`` keeps them.
 
 The policy comes from the flags, else the nearest ``.topos.toml``, else the
 ``recommended`` preset. Every card ends with a dim gate line that names it,
@@ -549,7 +587,7 @@ or ``custom``. A named preset is stored alone under ``[pr_recap]``, so the
 project picks up improved defaults; ``custom`` writes every gate setting,
 with its default and meaning in a comment, for you to edit in the file.
 ``config show`` lists every PR gate setting and marks the ones that differ
-from the preset.
+from the preset, then any ``[[pr_recap.waive]]`` entries.
 
 ``--priority`` accepts either form: a single pillar sets the emphasis and
 reorders the existing ranking around it; a full comma-separated ranking

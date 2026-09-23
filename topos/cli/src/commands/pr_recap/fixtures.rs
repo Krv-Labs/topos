@@ -20,6 +20,7 @@ use super::model::{
     CouplingStatus, FileChange, FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta,
     PillarRollup, PrRecap, ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
 };
+use super::moves::RangeMoves;
 use super::view::PILLARS;
 
 pub(super) fn medal_for(tier: &str) -> Medal {
@@ -308,7 +309,7 @@ fn recap_of(
     // The readiness comes from the recommended gates, as in `build_recap`.
     let cfg = PrGateConfig::default();
     let mut files = files;
-    let (readiness, findings) = gates::evaluate(&files, &clusters, 0, &cfg);
+    let (readiness, findings) = gates::evaluate(&files, &clusters, 0, &cfg, &RangeMoves::default());
     for file in &mut files {
         file.severity = gates::worst_at(&findings, &file.path);
     }
@@ -327,6 +328,7 @@ fn recap_of(
         exit_code,
         check: if exit_code == 1 { "fail" } else { "pass" },
         findings,
+        waivers: Vec::new(),
         direction: headline,
         reason: "the split moved the worst functions down".to_string(),
         priority: "secure",

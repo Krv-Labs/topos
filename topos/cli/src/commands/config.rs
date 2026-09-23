@@ -123,8 +123,8 @@ fn evaluation_rows(config: &ToposConfig, options: RenderOptions) -> [String; 2] 
 }
 
 /// The `PR GATE` section of `config show`: every setting with its active
-/// value, the ones that differ from the preset in yellow, then any keys
-/// the parser dropped.
+/// value, the ones that differ from the preset in yellow, the waivers,
+/// then any keys the parser dropped.
 fn pr_gate_rows(gate: &PrGateConfig, options: RenderOptions) -> Vec<String> {
     let rail = guide('│', options);
     let mut lines = vec![format!(
@@ -146,6 +146,22 @@ fn pr_gate_rows(gate: &PrGateConfig, options: RenderOptions) -> Vec<String> {
             "{rail}  {:<28} {value} {}",
             setting.path(),
             paint(note, Style::new().dim(), options)
+        ));
+    }
+    for waiver in &gate.waivers {
+        let expires = waiver
+            .expires
+            .as_deref()
+            .map_or_else(String::new, |date| format!(" (expires {date})"));
+        lines.push(format!(
+            "{rail}  {:<28} {} {}",
+            format!("waive.{}", waiver.gate()),
+            waiver.path(),
+            paint(
+                format!("{}{expires}", waiver.reason()),
+                Style::new().dim(),
+                options
+            )
         ));
     }
     if !gate.warnings.is_empty() {
@@ -1042,6 +1058,74 @@ rust = \"info\"
             assert!(updated.contains(kept), "lost {kept:?}:\n{updated}");
         }
         fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn switching_presets_keeps_the_waivers() {
+        // Custom keeps the file's two settings; the waivers are not a third.
+        for (preset, label) in [
+            (PrGatePreset::Custom, "custom · 2 changes"),
+            (PrGatePreset::Strict, "strict"),
+        ] {
+            let dir = project(
+                &format!("preset-keeps-waivers-{}", preset.as_str()),
+                PRESET_WITH_FUTURE_TABLES,
+            );
+
+            write_pr_gate(&dir, preset);
+
+            let gate = load_topos_config(&dir).pr_recap;
+            let waived: Vec<(&str, &str, &str)> = gate
+                .waivers
+                .iter()
+                .map(|waiver| (waiver.gate(), waiver.path(), waiver.reason()))
+                .collect();
+            assert_eq!(
+                waived,
+                [
+                    ("pillar_lost", "src/legacy/**", "x"),
+                    ("cosmetic", "src/gen/**", "y")
+                ],
+                "{preset:?}"
+            );
+            assert!(
+                !gate.warnings.iter().any(|w| w.contains("waive")),
+                "{preset:?}: {:?}",
+                gate.warnings
+            );
+            assert_eq!(gate.label(), label, "{preset:?}");
+            fs::remove_dir_all(dir).ok();
+        }
+    }
+
+    #[test]
+    fn show_lists_the_waivers() {
+        let config = ToposConfig {
+            pr_recap: PrGateConfig::from_table(
+                &"[[waive]]\ngate = \"pillar_lost\"\npath = \"src/legacy/**\"\nreason = \"vendored\"\nexpires = \"2026-12-31\"\n"
+                    .parse()
+                    .unwrap(),
+            ),
+            ..Default::default()
+        };
+        let options = RenderOptions {
+            styled: false,
+            width: 100,
+        };
+
+        let lines = show_lines(&config, None, options);
+
+        assert!(
+            lines.contains(&"│  PR GATE  recommended".to_string()),
+            "{lines:#?}"
+        );
+        assert!(
+            lines.contains(
+                &"│  waive.pillar_lost            src/legacy/** vendored (expires 2026-12-31)"
+                    .to_string()
+            ),
+            "{lines:#?}"
+        );
     }
 
     #[test]

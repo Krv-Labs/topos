@@ -4,9 +4,9 @@
 //! The default card is `evaluate`'s shape: a title, the meta line, one
 //! verdict line, the project pillar table, the numbered findings, the
 //! gate settings in the legend slot, and the `└` footer with the
-//! readiness mark. `--verbose` adds the **Changed files** table and the
-//! splits table inside the frame; `--info` appends `inspect`'s
-//! recommended changes after it.
+//! readiness mark. `--verbose` adds the **Changed files** table, the
+//! splits table and the waived findings inside the frame; `--info`
+//! appends `inspect`'s recommended changes after it.
 //!
 //! Nothing here computes a verdict. Every mark is a field of
 //! [`PrRecap`]: `recap.readiness`, `finding.severity`, `file.severity`,
@@ -23,7 +23,9 @@ use console::Style;
 
 use super::gates::Readiness;
 use super::model::{FileRecap, PrRecap, ProjectRollup};
-use super::view::{coupling_tip, visible_shift, Item, RecapView, PILLARS};
+use super::view::{
+    coupling_tip, idle_waiver_text, visible_shift, waived_text, Item, RecapView, PILLARS,
+};
 use crate::commands::evaluate::summary::{score_rail, status_text};
 use crate::commands::render::{guide, paint, RenderOptions};
 use layout::{dim_wrapped, header_dim_line, line};
@@ -84,8 +86,16 @@ pub(super) fn render_card(recap: &PrRecap, detail: Detail, options: RenderOption
             }
             lines.push(guide('│', options));
         }
+        let waived = waived_lines(&view, options);
+        if !waived.is_empty() {
+            lines.extend(waived);
+            lines.push(guide('│', options));
+        }
     }
 
+    if let Some(note) = view.waiver_note() {
+        lines.extend(dim_wrapped("", "", &note, options));
+    }
     lines.extend(dim_wrapped("", "", &findings::gate_line(recap), options));
     lines.push(footer(recap, options));
 
@@ -93,7 +103,7 @@ pub(super) fn render_card(recap: &PrRecap, detail: Detail, options: RenderOption
         lines.push(String::new());
         lines.extend(findings::recommendations(recap, &items, options));
     }
-    let tips = tips(recap, &items, detail);
+    let tips = tips(&view, &items, detail);
     if !tips.is_empty() {
         lines.push(String::new());
         for tip in tips {
@@ -182,6 +192,39 @@ fn meta(view: &RecapView<'_>) -> String {
     format!("{}{}", parts.join(" · "), view.incomplete_note())
 }
 
+// ------------------------------------------------------------ waivers
+
+/// `--verbose`'s **WAIVED** block: each waived finding with its waiver's
+/// reason, then the waivers that waived nothing.
+fn waived_lines(view: &RecapView<'_>, options: RenderOptions) -> Vec<String> {
+    let idle = view.idle_waivers();
+    if view.waived.is_empty() && idle.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = vec![header_dim_line("WAIVED", options)];
+    for item in &view.waived {
+        let lead = item.lead();
+        let mut place = match (lead.path.as_str(), lead.line) {
+            ("", _) => String::new(),
+            (path, Some(line)) => format!("{path}:{line} · "),
+            (path, None) => format!("{path} · "),
+        };
+        if let Some(function) = lead.function.as_deref().filter(|_| !place.is_empty()) {
+            place.push_str(&format!("{function} · "));
+        }
+        lines.extend(dim_wrapped(
+            "",
+            "  ",
+            &format!("{place}{}", waived_text(item)),
+            options,
+        ));
+    }
+    for waiver in idle {
+        lines.extend(dim_wrapped("", "  ", &idle_waiver_text(waiver), options));
+    }
+    lines
+}
+
 // ------------------------------------------------------------------ footer
 
 /// `└  X 🥇 GOLD → 🥉 BRONZE · SECURE · 87% → 70% average.`, `evaluate`'s
@@ -268,7 +311,8 @@ pub(super) fn medal_cell(file: &FileRecap) -> String {
 /// At most two lines under the card, each pointing at the next level of
 /// detail, `evaluate`'s grammar. The `--json` pointer is the fallback
 /// for a card that had nothing more useful to say.
-fn tips(recap: &PrRecap, items: &[Item<'_>], detail: Detail) -> Vec<String> {
+fn tips(view: &RecapView<'_>, items: &[Item<'_>], detail: Detail) -> Vec<String> {
+    let recap = view.recap;
     let mut tips = Vec::new();
     let changed = changed_rows(recap).len();
     let plural = if changed == 1 { "" } else { "s" };
@@ -300,6 +344,9 @@ fn tips(recap: &PrRecap, items: &[Item<'_>], detail: Detail) -> Vec<String> {
         }
     } else if !detail.info && !items.is_empty() {
         tips.push("Tip: add --info for the recommended change at each finding.".to_string());
+    }
+    if !detail.verbose && view.waiver_note().is_some() {
+        tips.push("Tip: --verbose lists the waived findings with their reasons.".to_string());
     }
     tips.extend(coupling_tip(recap));
     tips.truncate(MAX_TIPS);

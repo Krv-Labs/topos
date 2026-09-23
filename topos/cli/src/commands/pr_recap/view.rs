@@ -17,7 +17,7 @@ use topos_engine::config::{GateId, Severity};
 use super::gates::Finding;
 use super::model::{
     percent_change, Cluster, ClusterChild, ClusterMark, CouplingReason, FileRecap, FunctionRef,
-    PillarDelta, PrRecap, CLUSTER_GROWTH_WARN,
+    PillarDelta, PrRecap, WaiverSummary, CLUSTER_GROWTH_WARN,
 };
 use crate::commands::render::truncate_right;
 
@@ -52,6 +52,11 @@ pub(super) struct RecapView<'a> {
     /// The info findings: counted on the card, collapsed in the GitHub
     /// comment.
     pub(super) notes: Vec<&'a Finding>,
+    /// Findings a `[[pr_recap.waive]]` entry covers, whatever their
+    /// severity: in none of the lists above. One item per site and waiver,
+    /// so a function that lost two pillars under one waiver is one line;
+    /// every renderer counts these items, not the findings.
+    pub(super) waived: Vec<Item<'a>>,
 }
 
 /// The counts the summary sentence is made of.
@@ -132,6 +137,7 @@ impl<'a> RecapView<'a> {
             blocking: at_severity(recap, Severity::Block),
             attention: at_severity(recap, Severity::Warn),
             notes: at_severity(recap, Severity::Info),
+            waived: merged_waived(recap.findings.iter().filter(|finding| !finding.counts())),
             clusters,
         }
     }
@@ -152,6 +158,39 @@ impl<'a> RecapView<'a> {
         )
     }
 
+    /// `2 waived · 1 unused waiver · 1 expired waiver`, or `None` when no
+    /// waiver matched, went unused or expired.
+    pub(super) fn waiver_note(&self) -> Option<String> {
+        let count = |status: &str| {
+            self.recap
+                .waivers
+                .iter()
+                .filter(|waiver| waiver.status == status)
+                .count()
+        };
+        let mut parts = Vec::new();
+        if !self.waived.is_empty() {
+            parts.push(format!("{} waived", self.waived.len()));
+        }
+        for (status, count) in [("unused", count("unused")), ("expired", count("expired"))] {
+            match count {
+                0 => {}
+                1 => parts.push(format!("1 {status} waiver")),
+                n => parts.push(format!("{n} {status} waivers")),
+            }
+        }
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    }
+
+    /// The waivers that waived nothing: unused, or past their `expires`.
+    pub(super) fn idle_waivers(&self) -> Vec<&'a WaiverSummary> {
+        self.recap
+            .waivers
+            .iter()
+            .filter(|waiver| !waiver.is_used())
+            .collect()
+    }
+
     /// ` · incomplete, 3 unscored` when `--max-files` left files out; a
     /// CI log must not read as complete.
     pub(super) fn incomplete_note(&self) -> String {
@@ -161,6 +200,72 @@ impl<'a> RecapView<'a> {
             String::new()
         }
     }
+}
+
+/// Waived findings at the same `(path, line, function)`, under the same
+/// gate and the same waiver, as one item: they differ only in the pillar.
+fn merged_waived<'a>(findings: impl Iterator<Item = &'a Finding>) -> Vec<Item<'a>> {
+    let mut items: Vec<Item<'a>> = Vec::new();
+    for finding in findings {
+        let same = |other: &Finding| {
+            other.path == finding.path
+                && other.line == finding.line
+                && other.function == finding.function
+                && other.gate == finding.gate
+                && other.waived.as_ref().map(|w| (&w.reason, &w.expires))
+                    == finding.waived.as_ref().map(|w| (&w.reason, &w.expires))
+        };
+        match items.iter_mut().find(|item| same(item.lead())) {
+            Some(item) => item.findings.push(finding),
+            None => items.push(Item {
+                findings: vec![finding],
+            }),
+        }
+    }
+    items
+}
+
+/// `pillar_lost SIMPLE, NAVIGABLE — vendored parser (expires 2026-12-31)`:
+/// why a waived item does not count, after its place.
+pub(super) fn waived_text(item: &Item<'_>) -> String {
+    let lead = item.lead();
+    let mut pillars: Vec<String> = Vec::new();
+    for pillar in item.findings.iter().filter_map(|f| f.pillar.as_deref()) {
+        let pillar = pillar.to_ascii_uppercase();
+        if !pillars.contains(&pillar) {
+            pillars.push(pillar);
+        }
+    }
+    let mut text = lead.gate.key().to_string();
+    if !pillars.is_empty() {
+        text = format!("{text} {}", pillars.join(", "));
+    }
+    let Some(waived) = &lead.waived else {
+        return text;
+    };
+    format!(
+        "{text} — {}{}",
+        waived.reason,
+        expiry(waived.expires.as_deref())
+    )
+}
+
+/// `unused waiver: cosmetic on src/gen/** — generated`, or `expired
+/// waiver: …` with its date: a waiver that waived nothing on this run.
+pub(super) fn idle_waiver_text(waiver: &WaiverSummary) -> String {
+    let expired = if waiver.status == "expired" {
+        format!(" (expired {})", waiver.expires.as_deref().unwrap_or("?"))
+    } else {
+        String::new()
+    };
+    format!(
+        "{} waiver: {} on {} — {}{expired}",
+        waiver.status, waiver.gate, waiver.path, waiver.reason
+    )
+}
+
+fn expiry(expires: Option<&str>) -> String {
+    expires.map_or_else(String::new, |date| format!(" (expires {date})"))
 }
 
 /// Findings at the same `(path, line, function)` as one item, placed
@@ -211,7 +316,7 @@ fn at_severity(recap: &PrRecap, severity: Severity) -> Vec<&Finding> {
     recap
         .findings
         .iter()
-        .filter(|finding| finding.severity == severity)
+        .filter(|finding| finding.severity == severity && finding.counts())
         .collect()
 }
 

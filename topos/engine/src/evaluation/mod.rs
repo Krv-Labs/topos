@@ -13,6 +13,7 @@
 //!   actionable refactor suggestions.
 //! - [`suppression`] — the allowlist overlay that computes an *adjusted*
 //!   SECURE verdict on top of the canonical one (anti-gaming design).
+//! - [`waivers`] — `[[pr_recap.waive]]`, the disclosed PR-gate waivers.
 //!
 //! Issue #144 (`topos/evaluation`) is now fully landed.
 
@@ -24,6 +25,7 @@ pub mod preferences;
 pub mod security_guidance;
 pub mod suggestions;
 pub mod suppression;
+pub mod waivers;
 
 /// Rank a file by its weakest measured pillar. Missing measurements sort first.
 pub fn weakest_score(scores: &BTreeMap<String, f64>) -> f64 {

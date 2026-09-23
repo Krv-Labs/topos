@@ -347,7 +347,14 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
         .then(|| regression_diff(&args.baseline_src, &args.proposed_src, &args.language))
         .flatten();
 
-    let agent_contract = assessment_contract(status, &args.warnings, &proposed_eval);
+    let agent_contract = assessment_contract(
+        status,
+        &args.warnings,
+        &proposed_eval,
+        &args.baseline_src,
+        &args.proposed_src,
+        args.file_path.as_deref(),
+    );
 
     AssessmentResult {
         status,
@@ -370,10 +377,110 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
     }
 }
 
+/// Whether the edit changed what another file can see.
+///
+/// A line inside a function does not change coupling. An import, a use, or
+/// a module-level load does. The comparison is the lines themselves, so the
+/// agent gets a fact rather than a size judgment.
+fn boundary_lines(source: &str) -> std::collections::BTreeSet<String> {
+    let mut lines = std::collections::BTreeSet::new();
+    // Go lists imports one per line inside `import ( ... )`.
+    let mut in_import_block = false;
+    for line in source.lines().map(str::trim) {
+        if in_import_block {
+            if line.starts_with(')') {
+                in_import_block = false;
+            } else if !line.is_empty() {
+                lines.insert(line.to_string());
+            }
+            continue;
+        }
+        in_import_block = line.starts_with("import (") || line == "import(";
+        if is_boundary_line(line) {
+            lines.insert(line.to_string());
+        }
+    }
+    lines
+}
+
+fn is_boundary_line(line: &str) -> bool {
+    let rest = ["pub(crate) ", "pub(super) ", "pub ", "export "]
+        .iter()
+        .find_map(|vis| line.strip_prefix(vis))
+        .unwrap_or(line);
+    ["use ", "import ", "from ", "#include", "mod ", "extern crate ", "require "]
+        .iter()
+        .any(|kw| rest.starts_with(kw))
+        // `const x = require('y')`, `await import('y')`, `export { x } from 'y'`
+        || line.contains("require(")
+        || line.contains("import(")
+        || (line.starts_with("export ") && line.contains(" from "))
+}
+
+/// Last file contents we already wrote a coupling note for.
+///
+/// Assess compares against a snapshot, which does not move when the agent
+/// re-checks. Distance stays non-zero, so the same note would repeat. The
+/// working file's hash is what "this call edited" means.
+fn already_noted(file_path: Option<&Path>, proposed_src: &str) -> bool {
+    let Some(path) = file_path else {
+        return false;
+    };
+    NOTED_FILE_HASH
+        .lock()
+        .ok()
+        .and_then(|guard| guard.as_ref().cloned())
+        .is_some_and(|(noted_path, noted_hash)| {
+            noted_path == path && noted_hash == sha256_hex(proposed_src)
+        })
+}
+
+fn remember_noted(file_path: Option<&Path>, proposed_src: &str) {
+    let Some(path) = file_path else {
+        return;
+    };
+    if let Ok(mut guard) = NOTED_FILE_HASH.lock() {
+        *guard = Some((path.to_path_buf(), sha256_hex(proposed_src)));
+    }
+}
+
+static NOTED_FILE_HASH: std::sync::Mutex<Option<(PathBuf, String)>> = std::sync::Mutex::new(None);
+
+/// A fact, not an order. `next_tool` stays whatever the verdict decided.
+fn coupling_staleness_note(
+    baseline_src: &str,
+    proposed_src: &str,
+    file_path: Option<&Path>,
+) -> Option<(&'static str, String)> {
+    if baseline_src == proposed_src || already_noted(file_path, proposed_src) {
+        return None;
+    }
+    remember_noted(file_path, proposed_src);
+    let before = boundary_lines(baseline_src);
+    let after = boundary_lines(proposed_src);
+    if before == after {
+        return Some((
+            "coupling_still_current",
+            "in-file edit; import lines are unchanged, so coupling numbers still match this file. \
+             No graph rebuild needed."
+                .into(),
+        ));
+    }
+    Some((
+        "coupling_may_be_stale",
+        "import lines changed. Coupling numbers are from the map built before this edit. \
+         Run topos_generate_depgraph only if you will trust fan-in or fan-out. Otherwise ignore coupling."
+            .into(),
+    ))
+}
+
 fn assessment_contract(
     status: AssessmentStatus,
     warnings: &[String],
     proposed_eval: &EvaluationResult,
+    baseline_src: &str,
+    proposed_src: &str,
+    file_path: Option<&Path>,
 ) -> AgentContract {
     let prelude = agent_contract_prelude(AgentContractPreludeInput {
         coupling_available: proposed_eval.coupling_available,
@@ -413,6 +520,18 @@ fn assessment_contract(
         next_actions.push("try a different focused structural change".into());
         Some("topos_inspect_code".to_string())
     };
+
+    // Advice, not a next step. Putting this in next_tool would order a
+    // rebuild on every edit, which is the loop this flag exists to avoid.
+    // No graph means no coupling numbers to go stale.
+    let note = proposed_eval
+        .coupling_available
+        .then(|| coupling_staleness_note(baseline_src, proposed_src, file_path))
+        .flatten();
+    if let Some((flag, note)) = note {
+        risk_flags.push(flag.into());
+        next_actions.push(note);
+    }
 
     finish_agent_contract(
         blocked_by,
@@ -472,9 +591,24 @@ fn measured_pillars_pass(eval: &EvaluationResult) -> bool {
     if eval.lattice_element == LatticeElement::IDEAL {
         return true;
     }
-    let pillars = &eval.pillars;
-    // Unmeasured pillars are absent. A present pillar that failed is not a pass.
-    !pillars.is_empty() && pillars.values().all(|pillar| pillar.achieved)
+    // `pillars` is the wrong source. An unmeasured COMPOSABLE is inserted
+    // there with `achieved: false`, and the navigable pass value is mapped
+    // to SIMPLE, so that map never says "all measured pillars passed"
+    // unless the medal is already IDEAL. `dimensions` only contains pillars
+    // that were scored.
+    let measured: Vec<_> = eval
+        .dimensions
+        .iter()
+        .filter(|(name, _)| *name != "composable" || eval.coupling_available)
+        .collect();
+    !measured.is_empty()
+        && measured.iter().all(|(name, value)| match name.as_str() {
+            "simple" => **value == LatticeElement::SIMPLE,
+            "secure" => **value == LatticeElement::SECURE,
+            "navigable" => **value == LatticeElement::NAVIGABLE,
+            "composable" => **value == LatticeElement::COMPOSABLE,
+            _ => false,
+        })
 }
 
 fn status_meaning(status: AssessmentStatus) -> &'static str {
@@ -498,6 +632,7 @@ fn push_assessment_agent_contract_lines(lines: &mut Vec<String>, r: &AssessmentR
     if contract.next_tool.is_none()
         && contract.next_actions.is_empty()
         && contract.blocked_by.is_empty()
+        && contract.risk_flags.is_empty()
     {
         return;
     }
@@ -511,6 +646,9 @@ fn push_assessment_agent_contract_lines(lines: &mut Vec<String>, r: &AssessmentR
     }
     for blocked in &contract.blocked_by {
         lines.push(format!("- **Blocked by:** `{blocked}`"));
+    }
+    for flag in &contract.risk_flags {
+        lines.push(format!("- **Note:** `{flag}`"));
     }
 }
 
@@ -1784,6 +1922,148 @@ mod tests {
             .output()
             .unwrap();
         String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn unchanged_file_says_nothing_about_the_map() {
+        assert!(coupling_staleness_note("use a;\nfn f() {}", "use a;\nfn f() {}", None).is_none());
+    }
+
+    #[test]
+    fn recheck_of_the_same_edit_does_not_nag() {
+        let path = Path::new("sample.rs");
+        assert!(coupling_staleness_note("use a;\n", "use a;\nuse b;\n", Some(path)).is_some());
+        assert!(
+            coupling_staleness_note("use a;\n", "use a;\nuse b;\n", Some(path)).is_none(),
+            "the same working file must not be told twice"
+        );
+        if let Ok(mut guard) = NOTED_FILE_HASH.lock() {
+            *guard = None;
+        }
+    }
+
+    #[test]
+    fn in_file_edit_does_not_ask_for_a_rebuild() {
+        let (flag, note) =
+            coupling_staleness_note("use a;\nfn f() { 1 }", "use a;\nfn f() { 2 }", None)
+                .expect("an edit");
+        assert_eq!(flag, "coupling_still_current");
+        assert!(note.contains("No graph rebuild"));
+        assert!(!note.contains("topos_generate_depgraph"));
+    }
+
+    #[test]
+    fn changed_import_mentions_rebuild_without_ordering_it() {
+        let (flag, note) =
+            coupling_staleness_note("use a;\nfn f() {}", "use a;\nuse b;\nfn f() {}", None)
+                .expect("an edit");
+        assert_eq!(flag, "coupling_may_be_stale");
+        assert!(note.contains("topos_generate_depgraph"));
+        assert!(note.contains("only if"));
+    }
+
+    #[test]
+    fn no_change_assess_of_a_measured_pass_stops() {
+        use crate::evaluation::classify_code_string;
+        use crate::formatting::{to_evaluation_result, EvalResultOptions};
+        let result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let eval = to_evaluation_result(&result, false, EvalResultOptions::new());
+        assert_ne!(eval.lattice_element, LatticeElement::IDEAL);
+        assert!(
+            !eval.pillars.values().all(|p| p.achieved),
+            "the pillar map marks unmeasured composable as failed; the check must not use it"
+        );
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "def f():\n    return 1\n",
+            "def f():\n    return 1\n",
+            None,
+        );
+        assert!(contract.next_tool.is_none(), "{contract:?}");
+    }
+
+    #[test]
+    fn import_forms_beyond_line_leading_keywords_count() {
+        for (before, after) in [
+            ("import (\n\t\"fmt\"\n)", "import (\n\t\"fmt\"\n\t\"os\"\n)"),
+            ("const a = 1;", "const a = require('a');"),
+            ("fn f() {}", "pub(crate) use a::b;\nfn f() {}"),
+            ("fn f() {}", "mod a;\nfn f() {}"),
+            ("let x = 1;", "export { x } from './y';"),
+            (
+                "async function f() {}",
+                "async function f() { await import('y'); }",
+            ),
+        ] {
+            assert_ne!(
+                boundary_lines(before),
+                boundary_lines(after),
+                "{before:?} -> {after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_graph_means_no_coupling_note() {
+        let eval = EvaluationResult::error_result(
+            "fixture",
+            Priority::Simple,
+            PrioritySource::Default,
+            String::new(),
+        );
+        assert!(!eval.coupling_available);
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "use a;\n",
+            "use a;\nuse b;\n",
+            None,
+        );
+        assert!(
+            !contract
+                .risk_flags
+                .iter()
+                .any(|f| f.starts_with("coupling_")),
+            "{contract:?}"
+        );
+    }
+
+    #[test]
+    fn staleness_note_does_not_set_next_tool() {
+        let eval = EvaluationResult::error_result(
+            "fixture",
+            Priority::Simple,
+            PrioritySource::Default,
+            String::new(),
+        );
+        let mut eval = eval;
+        eval.coupling_available = true;
+        let contract = assessment_contract(
+            AssessmentStatus::LATERAL_MOVE,
+            &[],
+            &eval,
+            "use a;\nfn f() { 1 }",
+            "use a;\nfn f() { 2 }",
+            None,
+        );
+        // The note must not become the ordered next step, even when the
+        // verdict itself has a next tool.
+        assert_ne!(
+            contract.next_tool.as_deref(),
+            Some("topos_generate_depgraph")
+        );
+        assert!(contract
+            .risk_flags
+            .iter()
+            .any(|f| f == "coupling_still_current"));
+        assert!(contract
+            .next_actions
+            .iter()
+            .any(|a| a.contains("No graph rebuild")));
     }
 
     #[test]

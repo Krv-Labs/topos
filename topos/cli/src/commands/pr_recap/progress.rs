@@ -137,7 +137,7 @@ fn graph_loop(stop: &Receiver<()>, done: &AtomicUsize, transient: Transient) {
 }
 
 /// The working line: the frame turns every tick while the sentence types
-/// in, holds for seven seconds, deletes itself one character at a time,
+/// in, holds for seven seconds, deletes itself two characters at a time,
 /// waits half a second, and the next sentence types in.
 struct Typewriter {
     frame: usize,
@@ -182,7 +182,8 @@ impl Typewriter {
         } else if !self.deleting && self.held_since.elapsed() >= Self::HOLD {
             self.deleting = true;
         } else if self.deleting && self.shown > 0 {
-            self.shown -= 1;
+            // Deleting runs twice as fast as typing.
+            self.shown = self.shown.saturating_sub(2);
         } else if self.deleting {
             self.deleting = false;
             self.line = (self.line + 1) % GRAPH_LINES.len();
@@ -300,5 +301,32 @@ pub(super) fn print_card(lines: &[String], fade: bool) {
     }
     for line in lines {
         println!("{line}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_typewriter_deletes_twice_as_fast_as_it_types() {
+        let mut typing = Typewriter::new();
+        let count = GRAPH_LINES[0].chars().count();
+        let typed = (0..count).map(|_| typing.advance()).count();
+        assert_eq!(typed, count, "one character per tick in");
+
+        typing.held_since -= Typewriter::HOLD;
+        typing.advance();
+        assert!(typing.deleting);
+        let mut deletes = 0;
+        while typing.shown > 0 {
+            let before = typing.shown;
+            typing.advance();
+            assert_eq!(before - typing.shown, before.min(2));
+            deletes += 1;
+        }
+        assert_eq!(deletes, count.div_ceil(2), "two characters per tick out");
+        assert_eq!(typing.advance(), Typewriter::GAP);
+        assert_eq!(typing.line, 1);
     }
 }

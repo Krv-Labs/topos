@@ -17,6 +17,8 @@
 
 mod coupling;
 
+pub(crate) use coupling::capped_fan_in_paths;
+
 use std::cmp::Ordering;
 use std::path::Path;
 
@@ -793,7 +795,7 @@ pub(super) fn optional_severity_name<S: Serializer>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use topos_engine::config::PrGatePreset;
     use topos_engine::evaluation::policies::gates::GATE_SPECS;
@@ -1539,6 +1541,51 @@ mod tests {
             GateId::FanInGrowth
         )
         .is_empty());
+    }
+
+    #[test]
+    fn fan_in_growth_reaches_a_file_the_cap_left_unscored() {
+        let engine = "src/engine.py";
+        let base = mdg(&[engine, "src/a.py"], &[("src/a.py", engine)]);
+        let importers = ["src/a.py", "src/b.py", "src/c.py", "src/d.py"];
+        let mut files = vec![engine];
+        files.extend(importers);
+        let imports: Vec<(&str, &str)> = importers.iter().map(|from| (*from, engine)).collect();
+        let graphs = coupling(&base, &mdg(&files, &imports), &[engine]);
+        let mut failing = changed(engine);
+        set(&mut failing, "simple", (false, false), (40.0, 40.0));
+
+        // Not in the scored slice: the gate has nothing to judge.
+        assert!(coupled(&[], &[], &graphs, &recommended(), GateId::FanInGrowth).is_empty());
+
+        let mut capped = graphs;
+        capped.fan_in_files.push(failing.clone());
+        let found = coupled(&[], &[], &capped, &recommended(), GateId::FanInGrowth);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, engine);
+
+        // Listed in both places, it is still one finding.
+        let twice = coupled(
+            &[failing],
+            &[],
+            &capped,
+            &recommended(),
+            GateId::FanInGrowth,
+        );
+        assert_eq!(twice.len(), 1);
+
+        let empty = BTreeSet::new();
+        assert_eq!(
+            capped_fan_in_paths(&capped, &empty, &empty, &[], &recommended()),
+            vec![engine.to_string()]
+        );
+        let scored = BTreeSet::from([engine.to_string()]);
+        assert!(capped_fan_in_paths(&capped, &scored, &empty, &[], &recommended()).is_empty());
+        let added = BTreeSet::from([engine.to_string()]);
+        assert!(capped_fan_in_paths(&capped, &empty, &added, &[], &recommended()).is_empty());
+        let mut strict = recommended();
+        strict.fan_in_growth.min_new_dependents = 4;
+        assert!(capped_fan_in_paths(&capped, &empty, &empty, &[], &strict).is_empty());
     }
 
     #[test]

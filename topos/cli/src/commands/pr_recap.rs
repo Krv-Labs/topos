@@ -28,7 +28,8 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum};
 use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, ToposConfig,
+    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, Severity,
+    ToposConfig,
 };
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
@@ -39,7 +40,9 @@ use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
 use self::clusters::{build_clusters, changed_list};
 use self::coupling::{plan_coupling, prepare, settle};
-use self::git::{cap_by_churn, changed_files, churn, skip_reason, worktree_files};
+use self::git::{
+    cap_by_churn, changed_files, churn, file_change, skip_reason, worktree_files, DiffEntry,
+};
 use self::hotspots::top_hotspots;
 use self::model::*;
 use self::moves::RangeMoves;
@@ -574,6 +577,7 @@ fn build_recap(
         }
     }
     let capped = scoreable.len().saturating_sub(max_files);
+    let mut capped_entries = Vec::new();
     if capped > 0 {
         // Git lists paths alphabetically; dropping that tail would skip
         // whatever sorts last, however much of the change it carries.
@@ -592,9 +596,10 @@ fn build_recap(
                 .unwrap_or(0)
         });
         scoreable = kept;
-        for entry in dropped {
+        capped_entries = dropped;
+        for entry in &capped_entries {
             skipped.push(SkippedFile {
-                path: entry.path,
+                path: entry.path.clone(),
                 reason: format!("over the {max_files}-file scoring cap"),
             });
         }
@@ -659,7 +664,7 @@ fn build_recap(
     let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
     // Pass D — the configured gates decide readiness.
     let (direction, described) = direction_for(&files, &base_sha, &head_sha);
-    let coupling_graphs = base_graph
+    let mut coupling_graphs = base_graph
         .as_ref()
         .zip(head_graph.as_ref())
         .filter(|_| measured)
@@ -669,7 +674,18 @@ fn build_recap(
             head_to_base,
             changed: changed_sources,
             deleted: diff.deleted.iter().cloned().collect(),
+            fan_in_files: Vec::new(),
         });
+    if let Some(graphs) = &mut coupling_graphs {
+        score_capped_for_fan_in(
+            graphs,
+            &files,
+            &capped_entries,
+            &clusters,
+            &scoring,
+            &judging.gate,
+        )?;
+    }
     let (_, mut findings) = gates::evaluate(
         &files,
         &clusters,
@@ -740,6 +756,43 @@ fn build_recap(
         hotspots_total,
         non_claim: "Structural direction is not proof that tests or behavior still pass.",
     })
+}
+
+/// Score capped files whose fan-in already clears the thresholds, so
+/// `fan_in_growth` can see whether they fail SIMPLE. They stay out of
+/// `files`: the cap still limits every other gate and the file table.
+fn score_capped_for_fan_in(
+    coupling: &mut gates::Coupling,
+    files: &[FileRecap],
+    capped: &[DiffEntry],
+    clusters: &[Cluster],
+    scoring: &Scoring,
+    cfg: &PrGateConfig,
+) -> Result<(), String> {
+    if cfg.severity(GateId::FanInGrowth) == Severity::Off {
+        return Ok(());
+    }
+    let scored: BTreeSet<String> = files.iter().map(|file| file.path.clone()).collect();
+    let mut added: BTreeSet<String> = files
+        .iter()
+        .filter(|file| file.is_new())
+        .map(|file| file.path.clone())
+        .collect();
+    for entry in capped {
+        if file_change(&entry.status) == FileChange::Added {
+            added.insert(entry.path.clone());
+        }
+    }
+    let want: BTreeSet<String> =
+        gates::capped_fan_in_paths(coupling, &scored, &added, clusters, cfg)
+            .into_iter()
+            .collect();
+    for entry in capped {
+        if want.contains(&entry.path) {
+            coupling.fan_in_files.push(scoring.score_file(entry)?.recap);
+        }
+    }
+    Ok(())
 }
 
 fn load_graph(store: &Path) -> Option<ModuleDependencyGraph> {

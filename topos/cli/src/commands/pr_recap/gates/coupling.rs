@@ -39,6 +39,10 @@ pub(crate) struct Coupling {
     pub(crate) changed: BTreeSet<String>,
     /// Base paths of the deleted files.
     pub(crate) deleted: BTreeSet<String>,
+    /// Changed files `--max-files` left unscored, scored afterward only
+    /// because their fan-in already clears the thresholds. [`fan_in_finding`]
+    /// reads them; the other gates do not.
+    pub(crate) fan_in_files: Vec<FileRecap>,
 }
 
 impl Coupling {
@@ -80,7 +84,16 @@ pub(super) fn coupling_findings(
         &coupling.changed,
     );
     found.extend(cycles.into_iter().map(cycle_finding));
-    for file in files {
+    // `files` is the scored slice. A file the cap left out is still a
+    // changed file: when the caller scored it for this gate, it is in
+    // `fan_in_files`.
+    let scored: BTreeSet<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    for file in files.iter().chain(
+        coupling
+            .fan_in_files
+            .iter()
+            .filter(|file| !scored.contains(file.path.as_str())),
+    ) {
         if let Some(finding) = fan_in_finding(coupling, file, clusters, cfg) {
             found.push(finding);
         }
@@ -115,9 +128,68 @@ fn cycle_finding(cycle: CycleDelta) -> Finding {
     finding
 }
 
-/// More files depend on `file`, which fails SIMPLE, than the base had:
-/// at least `min_new_dependents` new ones, and growth of at least that
-/// many or `min_growth_percent` of the base count, whichever is larger.
+/// Changed paths the cap did not score whose fan-in already clears
+/// `cfg`, so the caller can score SIMPLE for them. Added files and paths
+/// already in `scored` are left out: an added file has no base to grow
+/// from, and a scored file is judged from its [`FileRecap`].
+pub(crate) fn capped_fan_in_paths(
+    coupling: &Coupling,
+    scored: &BTreeSet<String>,
+    added: &BTreeSet<String>,
+    clusters: &[Cluster],
+    cfg: &PrGateConfig,
+) -> Vec<String> {
+    coupling
+        .changed
+        .iter()
+        .filter(|path| !scored.contains(*path) && !added.contains(*path))
+        .filter(|path| dependent_growth(coupling, path, clusters, cfg).is_some())
+        .cloned()
+        .collect()
+}
+
+/// Dependents before and after, and the new ones, when the growth clears
+/// both fan-in thresholds. `None` when the base graph never indexed the
+/// file or the growth is too small.
+fn dependent_growth(
+    coupling: &Coupling,
+    path: &str,
+    clusters: &[Cluster],
+    cfg: &PrGateConfig,
+) -> Option<(BTreeSet<String>, BTreeSet<String>, Vec<String>)> {
+    let base_path = coupling.to_base(path);
+    if !coupling.base.contains(base_path) {
+        return None;
+    }
+    let children: BTreeSet<&str> = clusters
+        .iter()
+        .filter(|cluster| cluster.parent == path)
+        .flat_map(|cluster| cluster.children.iter().map(|child| child.path.as_str()))
+        .collect();
+    let before: BTreeSet<String> = coupling
+        .to_head(coupling.base.dependents(base_path))
+        .into_iter()
+        .filter(|path| !is_test_path(path))
+        .collect();
+    let after: BTreeSet<String> = coupling
+        .head
+        .dependents(path)
+        .into_iter()
+        .filter(|path| !is_test_path(path) && !children.contains(path.as_str()))
+        .collect();
+    let new: Vec<String> = after.difference(&before).cloned().collect();
+
+    let threshold = cfg.fan_in_growth;
+    let min_new = threshold.min_new_dependents as usize;
+    let by_share = (before.len() * threshold.min_growth_percent as usize).div_ceil(100);
+    let growth = after.len().saturating_sub(before.len());
+    if new.len() < min_new || growth < min_new.max(by_share) {
+        return None;
+    }
+    Some((before, after, new))
+}
+
+/// More files depend on `file`, which fails SIMPLE, than the base had.
 ///
 /// A split's own children and test files are not new dependents, and
 /// tests count on neither side. An added file has no base to grow from:
@@ -133,35 +205,10 @@ fn fan_in_finding(
         .pillars
         .get("simple")
         .is_some_and(|delta| delta.after_passed == Some(false));
-    let base_path = coupling.to_base(&file.path);
-    if !fails_simple || file.is_new() || !coupling.base.contains(base_path) {
+    if !fails_simple || file.is_new() {
         return None;
     }
-    let children: BTreeSet<&str> = clusters
-        .iter()
-        .filter(|cluster| cluster.parent == file.path)
-        .flat_map(|cluster| cluster.children.iter().map(|child| child.path.as_str()))
-        .collect();
-    let before: BTreeSet<String> = coupling
-        .to_head(coupling.base.dependents(base_path))
-        .into_iter()
-        .filter(|path| !is_test_path(path))
-        .collect();
-    let after: BTreeSet<String> = coupling
-        .head
-        .dependents(&file.path)
-        .into_iter()
-        .filter(|path| !is_test_path(path) && !children.contains(path.as_str()))
-        .collect();
-    let new: Vec<String> = after.difference(&before).cloned().collect();
-
-    let threshold = cfg.fan_in_growth;
-    let min_new = threshold.min_new_dependents as usize;
-    let by_share = (before.len() * threshold.min_growth_percent as usize).div_ceil(100);
-    let growth = after.len().saturating_sub(before.len());
-    if new.len() < min_new || growth < min_new.max(by_share) {
-        return None;
-    }
+    let (before, after, new) = dependent_growth(coupling, &file.path, clusters, cfg)?;
     let mut listed = new
         .iter()
         .take(LISTED_DEPENDENTS)

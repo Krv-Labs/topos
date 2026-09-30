@@ -119,10 +119,11 @@ Stop when the target medal is reached, the priority pillar passes, or further it
 | `topos evaluate <path> -r` | Show the cumulative project quality rollup |
 | `topos evaluate <path> -r --failures <pillar>` | List the files whose gates fail one pillar |
 | `topos evaluate <path> -r --info` | Select a weak file and show ranked line-level refactor targets |
-| `topos config show \| set --priority <ranking>` | View or persist project priority and preference settings |
+| `topos config show \| set --priority <ranking> --pr-preset <preset>` | View or persist project priority, preference, and PR gate settings |
 | `topos inspect <file>` | Deep per-file metrics and suggestions |
 | `topos compare <a> <b>` | AST edit distance between two versions |
 | `topos coverage <source>... --tests <test>... [-r]` | Structural test coverage (UAST + k-gram recall) |
+| `topos pr-recap [<pr>] [--strict] [--preset <preset>] [--verbose] [--info] [--json]` | Judge a PR or git range against the `[pr_recap]` gates: READY / NEEDS ATTENTION / BLOCKED, exit 1 on BLOCKED (and on NEEDS ATTENTION under `fail_on = "warn"`); `--json` emits `topos.pr_recap.v3` |
 | `topos depgraph generate` | Build GitNexus graph for COMPOSABLE scoring |
 | `topos install [--all]` | Register the MCP server in agent harnesses (Claude, Cursor, Codex, …) |
 | `topos uninstall [--all]` | Remove Topos-owned MCP entries from harness configs |
@@ -158,6 +159,8 @@ MCP tool arguments are **flat objects** — `{"filepath": "..."}`, not `{"params
 - **Missing `--gitnexus-dir` from a parent directory → slow COMPOSABLE setup.** Without the override, freshness fingerprints CLI cwd (or the MCP-derived project). Prefer `--gitnexus-dir <repo>/.gitnexus` (or `cd` into the repo) so only that repo is walked. MCP does not need `TOPOS_MCP_FILE_ROOT` for normal editor use.
 - **Cosmetic edits don't count.** Whitespace and rename-only changes won't move the lattice; MCP returns `SUSPICIOUS_NO_STRUCTURAL_CHANGE`.
 - **SECURE is structural, not full SAST.** Pair with dedicated security tooling for high-stakes code.
+- **Moving code is not a regression in `pr-recap`.** A pillar lost only because code moved into a file is reported under the `moved_pillar` gate (info by default, warn under strict), naming the source file; a moved function that grew on the way is still `pillar_lost`. Set aside a known finding with a `[[pr_recap.waive]]` entry (`gate`, `path` glob, required `reason`, optional `expires = "YYYY-MM-DD"`): it stays in the report, marked waived, but no longer counts toward the verdict. Unused and expired waivers are reported; `--preset` ignores the file's waivers.
+- **`pr-recap` coupling gates need COMPOSABLE.** With the dependency graphs measured (not under `--no-coupling`), `import_cycle` flags a cycle new at head (severity per language in `[pr_recap.import_cycle]`, strictest file wins; Python warns under recommended), `fan_in_growth` flags a file failing SIMPLE that gained dependents past `[pr_recap.fan_in_growth]`, and `blast_radius` notes how many files depend on the change. They cover every changed file regardless of `--max-files`; `--json` findings list the paths behind them in `related`.
 - **`topos_refactor` (MCP-only) is advisory.** It does not replace `topos evaluate` / `topos_evaluate_file` for scoring. There is no `topos refactor` CLI subcommand.
 
 ## Verification

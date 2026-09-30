@@ -1,11 +1,12 @@
-//! Interactive multi-select TTY menu for `topos install` / `topos
-//! uninstall`, styled after the kos wiki Clack-style multi-select:
-//! colored radio glyphs, cyan cursor, and hint styling — not whole-row
-//! paint.
+//! Interactive TTY menus: the multi-select for `topos install` / `topos
+//! uninstall`, their destructive-action confirm, and the single-select
+//! steps of `topos config`. Styled after the kos wiki Clack-style
+//! multi-select: colored radio glyphs, cyan cursor, and hint styling — not
+//! whole-row paint.
 
 use console::{Key, Style, Term};
 
-use crate::commands::render::{paint, RenderOptions};
+use super::render::{paint, RenderOptions};
 
 /// How the trailing hint should be painted. Plain text stays in
 /// [`MenuOption::hint`]; the style decides the glyph + color wrapper.
@@ -147,6 +148,163 @@ pub(crate) fn run_confirm(title: &str, plan: &[String]) -> Result<bool, String> 
     result
 }
 
+/// One choice in a [`SelectStep`].
+pub(crate) struct SelectOption {
+    pub(crate) label: &'static str,
+    pub(crate) hint: String,
+    /// The value the project uses today, marked `current`.
+    pub(crate) current: bool,
+    /// A letter that picks this choice at once (`y` / `n`), either case.
+    pub(crate) key: Option<char>,
+}
+
+/// How a [`SelectStep`] sits under its header.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StepLayout {
+    /// A wizard step: a cyan title, a dim key hint and a blank rail above
+    /// the choices, a bare `└` below. Ctrl-C interrupts the process.
+    Wizard,
+    /// A question asked mid-command, laid out like `topos install`: the
+    /// header carries the title, a dim key hint sits between blank rails
+    /// above the choices, each hint is parenthesized, and `└` closes bare.
+    /// `title` is not drawn. Ctrl-C comes back as an error, so the command
+    /// can exit with its own error code.
+    Question,
+}
+
+/// One single-select screen: a cyan title, a dim key hint, then choices.
+pub(crate) struct SelectStep {
+    pub(crate) title: &'static str,
+    pub(crate) keys: &'static str,
+    pub(crate) options: Vec<SelectOption>,
+    pub(crate) initial: usize,
+    pub(crate) layout: StepLayout,
+}
+
+/// What a keypress means on a [`SelectStep`].
+#[derive(Debug, PartialEq, Eq)]
+enum SelectAction {
+    Move(isize),
+    /// Enter — take whatever the cursor is on.
+    Accept,
+    /// A choice's own letter.
+    Pick(usize),
+    Cancel,
+    /// Ctrl-C on a [`StepLayout::Question`].
+    Interrupt,
+    Ignore,
+}
+
+fn interpret_select_key(key: Key, step: &SelectStep) -> SelectAction {
+    if let Key::Char(typed) = key {
+        let picked = step.options.iter().position(|option| {
+            option
+                .key
+                .is_some_and(|letter| letter.eq_ignore_ascii_case(&typed))
+        });
+        if let Some(index) = picked {
+            return SelectAction::Pick(index);
+        }
+    }
+    if key == Key::CtrlC && step.layout == StepLayout::Question {
+        return SelectAction::Interrupt;
+    }
+    match interpret_confirm_key(key) {
+        ConfirmAction::Move(delta) => SelectAction::Move(delta),
+        ConfirmAction::Accept => SelectAction::Accept,
+        ConfirmAction::No => SelectAction::Cancel,
+        ConfirmAction::Yes | ConfirmAction::Ignore => SelectAction::Ignore,
+    }
+}
+
+/// Run one single-select step below `header` (the frame title and any
+/// finished steps, redrawn on every keypress). Returns the chosen index, or
+/// `None` if the user cancelled. A [`StepLayout::Question`] returns an
+/// error on Ctrl-C. Clears everything it drew before returning, so the
+/// caller can redraw the header with this step folded in.
+pub(crate) fn run_select(header: &[String], step: &SelectStep) -> Result<Option<usize>, String> {
+    let term = Term::stderr();
+    let mut cursor = step.initial.min(step.options.len().saturating_sub(1));
+    let mut rendered = 0usize;
+    term.hide_cursor().map_err(|e| e.to_string())?;
+    let result = (|| -> Result<Option<usize>, String> {
+        loop {
+            if rendered > 0 {
+                term.clear_last_lines(rendered).map_err(|e| e.to_string())?;
+            }
+            let lines = render_select(header, step, cursor, RenderOptions::stderr());
+            rendered = lines.len();
+            for line in &lines {
+                term.write_line(line).map_err(|e| e.to_string())?;
+            }
+            // `read_key` raises SIGINT on Ctrl-C; the raw read hands it back
+            // as a key, which only a question turns into an error.
+            let key = match step.layout {
+                StepLayout::Wizard => term.read_key(),
+                StepLayout::Question => term.read_key_raw(),
+            };
+            match interpret_select_key(key.map_err(|e| e.to_string())?, step) {
+                SelectAction::Move(delta) => {
+                    cursor = move_cursor(cursor, delta, step.options.len())
+                }
+                SelectAction::Accept => return Ok(Some(cursor)),
+                SelectAction::Pick(index) => return Ok(Some(index)),
+                SelectAction::Cancel => return Ok(None),
+                SelectAction::Interrupt => return Err("interrupted at the prompt".to_string()),
+                SelectAction::Ignore => {}
+            }
+        }
+    })();
+    term.clear_last_lines(rendered).ok();
+    term.show_cursor().ok();
+    result
+}
+
+pub(crate) fn render_select(
+    header: &[String],
+    step: &SelectStep,
+    cursor: usize,
+    opts: RenderOptions,
+) -> Vec<String> {
+    let mut lines = header.to_vec();
+    lines.push(match step.layout {
+        StepLayout::Wizard => format!("│  {}", paint(step.title, Style::new().cyan().bold(), opts)),
+        StepLayout::Question => "│".to_string(),
+    });
+    lines.push(format!("│  {}", paint(step.keys, Style::new().dim(), opts)));
+    lines.push("│".to_string());
+    let width = step
+        .options
+        .iter()
+        .map(|o| o.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    for (idx, option) in step.options.iter().enumerate() {
+        if option.hint.is_empty() && !option.current {
+            lines.push(format!(
+                "│ {}",
+                choice_row(option.label, idx == cursor, opts)
+            ));
+            continue;
+        }
+        let label = format!("{:<width$}", option.label);
+        let mut hint = option.hint.clone();
+        if option.current {
+            hint.push_str(" · current");
+        }
+        if step.layout == StepLayout::Question {
+            hint = format!("({hint})");
+        }
+        lines.push(format!(
+            "│ {}   {}",
+            choice_row(&label, idx == cursor, opts),
+            paint(hint, Style::new().dim(), opts)
+        ));
+    }
+    lines.push("└".to_string());
+    lines
+}
+
 enum ConfirmAction {
     Move(isize),
     /// Enter — take whatever the cursor is on.
@@ -189,10 +347,7 @@ fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptio
     }
     lines.push("│".to_string());
     for (idx, label) in choices.iter().enumerate() {
-        lines.push(format!(
-            "│ {}",
-            render_confirm_row(label, idx == cursor, opts)
-        ));
+        lines.push(format!("│ {}", choice_row(label, idx == cursor, opts)));
     }
     lines.push("│".to_string());
     lines.push(format!(
@@ -203,7 +358,8 @@ fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptio
     lines
 }
 
-fn render_confirm_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
+/// Cursor, radio and label of one single-select row.
+fn choice_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
     let pointer = if is_cursor {
         paint("❯", Style::new().cyan(), opts)
     } else {
@@ -496,6 +652,127 @@ mod tests {
         assert!(
             selected.contains("36m") || selected.contains("36;"),
             "cursor should be cyan: {selected:?}"
+        );
+    }
+
+    #[test]
+    fn select_marks_cursor_and_current_below_the_header() {
+        let step = SelectStep {
+            title: "PR gate",
+            keys: "↑↓ move · enter save · esc cancel",
+            options: vec![
+                SelectOption {
+                    label: "Recommended",
+                    hint: "the default".into(),
+                    current: true,
+                    key: None,
+                },
+                SelectOption {
+                    label: "Strict",
+                    hint: "warnings fail too".into(),
+                    current: false,
+                    key: None,
+                },
+            ],
+            initial: 0,
+            layout: StepLayout::Wizard,
+        };
+        let header = vec!["┌  Topos project settings".to_string(), "│".to_string()];
+        let lines = render_select(&header, &step, 1, opts());
+        assert_eq!(lines[0], "┌  Topos project settings");
+        assert_eq!(lines[2], "│  PR gate");
+        let recommended = lines.iter().find(|l| l.contains("Recommended")).unwrap();
+        let strict = lines.iter().find(|l| l.contains("Strict")).unwrap();
+        assert!(recommended.contains('○') && recommended.contains("the default · current"));
+        assert!(strict.contains('❯') && strict.contains('●'), "{strict}");
+        // Labels are padded so the hints line up. Compare columns, not byte
+        // offsets: the `❯` cursor is wider in UTF-8 than the blank it replaces.
+        let column = |line: &str, needle: &str| line[..line.find(needle).unwrap()].chars().count();
+        assert_eq!(
+            column(recommended, "the default"),
+            column(strict, "warnings fail too")
+        );
+        assert_eq!(lines.last().unwrap(), "└");
+    }
+
+    fn yes_no(layout: StepLayout) -> SelectStep {
+        let option = |label, hint: &str, key| SelectOption {
+            label,
+            hint: hint.to_string(),
+            current: false,
+            key,
+        };
+        SelectStep {
+            title: "Unused by a question",
+            keys: "↑↓ move · y/n pick · enter confirm · esc skip",
+            options: vec![
+                option("Yes", "build it", Some('y')),
+                option("No", "", Some('n')),
+            ],
+            initial: 0,
+            layout,
+        }
+    }
+
+    #[test]
+    fn a_question_puts_its_keys_above_the_choices_like_install() {
+        let header = vec!["┌  Build it?".to_string()];
+        let lines = render_select(&header, &yes_no(StepLayout::Question), 0, opts());
+        assert_eq!(
+            lines,
+            [
+                "┌  Build it?",
+                "│",
+                "│  ↑↓ move · y/n pick · enter confirm · esc skip",
+                "│",
+                "│ ❯ ● Yes   (build it)",
+                "│   ○ No",
+                "└",
+            ]
+        );
+    }
+
+    #[test]
+    fn option_letters_pick_and_ctrl_c_interrupts_only_a_question() {
+        let question = yes_no(StepLayout::Question);
+        assert_eq!(
+            interpret_select_key(Key::Char('Y'), &question),
+            SelectAction::Pick(0)
+        );
+        assert_eq!(
+            interpret_select_key(Key::Char('n'), &question),
+            SelectAction::Pick(1)
+        );
+        assert_eq!(
+            interpret_select_key(Key::Escape, &question),
+            SelectAction::Cancel
+        );
+        assert_eq!(
+            interpret_select_key(Key::CtrlC, &question),
+            SelectAction::Interrupt
+        );
+        assert_eq!(
+            interpret_select_key(Key::Enter, &question),
+            SelectAction::Accept
+        );
+
+        // A wizard step without letters keeps its old keys: `n` and Ctrl-C
+        // cancel, `y` does nothing.
+        let mut wizard = yes_no(StepLayout::Wizard);
+        for option in &mut wizard.options {
+            option.key = None;
+        }
+        assert_eq!(
+            interpret_select_key(Key::Char('n'), &wizard),
+            SelectAction::Cancel
+        );
+        assert_eq!(
+            interpret_select_key(Key::CtrlC, &wizard),
+            SelectAction::Cancel
+        );
+        assert_eq!(
+            interpret_select_key(Key::Char('y'), &wizard),
+            SelectAction::Ignore
         );
     }
 }

@@ -1,16 +1,23 @@
 //! Pass A: one file at a time, both sides parsed once and scored.
 
+use std::collections::HashSet;
 use std::path::Path;
 
+use topos_engine::config::ToposConfig;
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::core::object::ProgramObject;
+use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::evaluation::policies::secure::score_secure;
 use topos_engine::functors::probes::ast::complexity::{
     calculate_function_complexity_entries, FunctionComplexityEntry,
 };
+use topos_engine::functors::probes::cpg::danger::dangerous_api_reachable;
+use topos_engine::functors::probes::cpg::taint::taint_flow_paths;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 use topos_engine::functors::profunctors::uast::ledger::{snapshot_functions, FunctionSnapshot};
+use topos_engine::graphs::cpg::object::CodePropertyGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_mcp::schemas::SecurityFinding;
 use topos_mcp::security_findings::dangerous_call_findings;
@@ -40,22 +47,35 @@ pub(super) struct Scored {
 pub(super) struct Side {
     morphism: ProgramMorphism,
     pub(super) result: ClassificationResult,
+    /// The `.topos.toml` allowlist patterns covering this path.
+    allow: HashSet<String>,
 }
 
 impl Side {
     /// Parse and classify `source` as the file at `path`: its language,
     /// and the graph node it is looked up by, both come from that path.
+    /// SECURE is scored with the allowlist applied, as MCP does.
     fn new(
         source: &str,
         path: &str,
         graph: Option<&ModuleDependencyGraph>,
         priority: Priority,
+        allow: HashSet<String>,
     ) -> Side {
         let language = detect_language(Path::new(path));
         let mut morphism = ProgramMorphism::with_path(source, language, path);
-        let result =
+        let mut result =
             classify_with_representations(&CharacteristicMorphism, &mut morphism, graph, priority);
-        Side { morphism, result }
+        if !allow.is_empty() {
+            if let Some(cpg) = morphism.build_cpg() {
+                allow_secure(&mut result, cpg, &allow);
+            }
+        }
+        Side {
+            morphism,
+            result,
+            allow,
+        }
     }
 
     pub(super) fn source(&self) -> &str {
@@ -71,11 +91,58 @@ impl Side {
     }
 
     pub(super) fn dangerous_calls(&mut self) -> Vec<SecurityFinding> {
+        let allow = (!self.allow.is_empty()).then_some(&self.allow);
         self.morphism
             .build_cpg()
-            .map(|cpg| dangerous_call_findings(cpg, usize::MAX, None))
+            .map(|cpg| dangerous_call_findings(cpg, usize::MAX, allow))
             .unwrap_or_default()
     }
+}
+
+/// Rescore SECURE with `allow` taken out of the counts, the way MCP's
+/// `apply_allowlist` recomputes its gate. MCP's grade cap (acknowledged
+/// risk never buys IDEAL) only changes the medal it displays, so it is
+/// not applied here, where the pillar pass is what gates.
+fn allow_secure(
+    result: &mut ClassificationResult,
+    cpg: &CodePropertyGraph,
+    allow: &HashSet<String>,
+) {
+    const DANGEROUS: &str = "cpg.dangerous_calls";
+    const TAINT: &str = "cpg.taint_flows";
+    if !result.raw_metrics.contains_key(DANGEROUS) && !result.raw_metrics.contains_key(TAINT) {
+        return;
+    }
+    let dangerous = dangerous_api_reachable(cpg, allow) as f64;
+    let taint = taint_flow_paths(cpg, allow) as f64;
+    result.raw_metrics.insert(DANGEROUS.to_string(), dangerous);
+    result.raw_metrics.insert(TAINT.to_string(), taint);
+    let secure = score_secure(dangerous, taint);
+    let key = Generator::Secure.as_str();
+    result.scores.insert(key.to_string(), secure.score);
+    result.interpretation.extend(secure.interpretation);
+    result.dimensions.insert(
+        key.to_string(),
+        if secure.achieved {
+            Generator::Secure.value()
+        } else {
+            EvaluationValue::Slop
+        },
+    );
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|generator| result.dimensions.get(generator.as_str()) == Some(&generator.value()))
+        .collect();
+    result.lattice_element = verdict_from_generators(&satisfied);
+}
+
+/// The allowlist patterns `config` applies to `path`, relative to `repo`.
+fn allow_patterns(config: &ToposConfig, repo: &Path, path: &str) -> HashSet<String> {
+    config
+        .entries_for(Some(&repo.join(path)))
+        .into_iter()
+        .map(|entry| entry.pattern.clone())
+        .collect()
 }
 
 /// The function walk over one side of one file.
@@ -115,6 +182,8 @@ pub(super) struct Scoring<'a> {
     pub(super) base_graph: Option<&'a ModuleDependencyGraph>,
     pub(super) head_graph: Option<&'a ModuleDependencyGraph>,
     pub(super) priority: Priority,
+    /// The project config, for its allowlist.
+    pub(super) config: &'a ToposConfig,
 }
 
 impl Scoring<'_> {
@@ -143,12 +212,14 @@ impl Scoring<'_> {
             base_path,
             targeted(self.base_graph, base_path).as_ref(),
             self.priority,
+            allow_patterns(self.config, self.repo, base_path),
         );
         let mut after = Side::new(
             &after_src,
             &path,
             targeted(self.head_graph, &path).as_ref(),
             self.priority,
+            allow_patterns(self.config, self.repo, &path),
         );
         let distance = structural_distance(&before, &after);
         let before_functions = if is_new {
@@ -175,6 +246,8 @@ impl Scoring<'_> {
             change,
             // Pass C decides this, once cluster fan-out is known.
             status: Headline::LateralMove,
+            // The gates decide this, once every file is scored.
+            severity: None,
             lines_before: before_src.lines().count(),
             lines_after: after_src.lines().count(),
             lines_added,
@@ -317,6 +390,7 @@ mod tests {
             base_graph: Some(&base_graph),
             head_graph: Some(&head_graph),
             priority: Priority::Secure,
+            config: &ToposConfig::default(),
         };
         let scored = scoring.score_file(&entry).unwrap();
         assert_eq!(scored.recap.fan_out_after, Some(2));
@@ -347,6 +421,7 @@ mod tests {
             base_graph: None,
             head_graph: None,
             priority: Priority::Secure,
+            config: &ToposConfig::default(),
         };
         let scored = scoring.score_file(&entry).unwrap();
         assert!(scored.before.is_parseable, "the base side parses as Python");

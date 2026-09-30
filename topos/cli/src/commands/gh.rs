@@ -127,6 +127,16 @@ pub(crate) fn git_root(start: &Path) -> Result<PathBuf, String> {
     ))
 }
 
+/// The `.git` directory every worktree of `repo` shares, as an absolute
+/// path. In a linked worktree `<root>/.git` is a file pointing elsewhere,
+/// so it cannot be joined onto.
+pub(crate) fn git_common_dir(repo: &Path) -> Result<PathBuf, String> {
+    let output = git(repo, &["rev-parse", "--git-common-dir"])?;
+    // git prints it relative to `-C` when it can (`.git` in the main
+    // worktree) and absolute otherwise.
+    Ok(repo.join(output.trim()))
+}
+
 /// Run `git -C <repo> <args>` and return its stdout, untrimmed.
 pub(crate) fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
     let output = git_output(repo, args)?;
@@ -168,5 +178,41 @@ mod tests {
     fn resolve_commit_refuses_an_option_like_revision() {
         let err = resolve_commit(Path::new("."), "--output=/tmp/x").unwrap_err();
         assert!(err.contains("refusing"));
+    }
+
+    /// A linked worktree's `.git` is a file; its stores still belong under
+    /// the main repository's `.git` directory.
+    #[test]
+    fn the_common_dir_of_a_linked_worktree_is_the_main_git_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path().join("main");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]).unwrap();
+        git(&repo, &["config", "user.email", "gh@example.com"]).unwrap();
+        git(&repo, &["config", "user.name", "Gh"]).unwrap();
+        std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+        git(&repo, &["add", "."]).unwrap();
+        git(&repo, &["commit", "-qm", "first"]).unwrap();
+        let linked = dir.path().join("linked");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &linked.display().to_string(),
+            ],
+        )
+        .unwrap();
+        assert!(linked.join(".git").is_file());
+
+        let canonical = |path: PathBuf| std::fs::canonicalize(path).unwrap();
+        let main_git = canonical(repo.join(".git"));
+        let from_main = git_common_dir(&repo).unwrap();
+        let from_linked = git_common_dir(&linked).unwrap();
+        assert!(from_main.is_absolute() && from_linked.is_absolute());
+        assert_eq!(canonical(from_main), main_git);
+        assert_eq!(canonical(from_linked), main_git);
     }
 }

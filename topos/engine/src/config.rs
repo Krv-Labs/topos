@@ -1,4 +1,5 @@
-//! Project configuration for Topos — the `.topos.toml` allowlist.
+//! Project configuration for Topos — `.topos.toml`: the allowlist,
+//! evaluation priority, and the `pr-recap` gates ([`PrGateConfig`]).
 //!
 //! Security findings are *contextual*: a call like `yaml.load` may be an
 //! intentional, trusted pattern in (say) an ML-experiments project. The
@@ -28,6 +29,9 @@ use std::path::{Path, PathBuf};
 
 use crate::evaluation::policies::base::Priority;
 use crate::evaluation::preferences::{Generator, RANKING_LEN};
+
+mod pr_gate;
+pub use pr_gate::*;
 
 const CONFIG_FILENAME: &str = ".topos.toml";
 const CLI_REASON: &str = "CLI --allow (ephemeral)";
@@ -73,6 +77,8 @@ pub struct ToposConfig {
     pub preferences: Option<[Generator; RANKING_LEN]>,
     /// Directory the `.topos.toml` lives in (scope base for `entries_for`).
     pub root: Option<PathBuf>,
+    /// `[pr_recap]`: the gates `topos pr-recap` checks.
+    pub pr_recap: PrGateConfig,
 }
 
 impl ToposConfig {
@@ -134,18 +140,14 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
 
     let Ok(text) = fs::read_to_string(&config_file) else {
         return ToposConfig {
-            allow: Vec::new(),
-            priority: None,
-            preferences: None,
             root,
+            ..ToposConfig::default()
         };
     };
     let Ok(data) = text.parse::<toml::Table>() else {
         return ToposConfig {
-            allow: Vec::new(),
-            priority: None,
-            preferences: None,
             root,
+            ..ToposConfig::default()
         };
     };
 
@@ -170,11 +172,17 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
             .and_then(|table| table.get("preferences"))
             .and_then(parse_preferences)
     });
+    let pr_recap = data
+        .get("pr_recap")
+        .and_then(toml::Value::as_table)
+        .map(PrGateConfig::from_table)
+        .unwrap_or_default();
     ToposConfig {
         allow,
         priority,
         preferences,
         root,
+        pr_recap,
     }
 }
 
@@ -255,12 +263,7 @@ pub fn merge_cli_allows(config: ToposConfig, allows: &[&str]) -> ToposConfig {
     }
     let mut allow = config.allow;
     allow.extend(extra);
-    ToposConfig {
-        allow,
-        priority: config.priority,
-        preferences: config.preferences,
-        root: config.root,
-    }
+    ToposConfig { allow, ..config }
 }
 
 /// Minimal glob matcher for `AllowEntry::scope` patterns: `*` matches any
@@ -491,6 +494,25 @@ mod tests {
             ])
         );
         assert_eq!(config.effective_priority(), Priority::Secure);
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn pr_recap_table_is_loaded_and_survives_cli_allows() {
+        let dir =
+            std::env::temp_dir().join(format!("topos-cfg-pr-recap-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            "[pr_recap]\npreset = \"strict\"\n[pr_recap.gates]\ncosmetic = \"off\"\n",
+        )
+        .unwrap();
+
+        let config = merge_cli_allows(load_topos_config(&dir), &["eval"]);
+        assert_eq!(config.pr_recap.preset, PrGatePreset::Strict);
+        assert_eq!(config.pr_recap.severity(GateId::Cosmetic), Severity::Off);
+        assert_eq!(config.allow.len(), 1);
 
         fs::remove_dir_all(&dir).ok();
     }

@@ -35,9 +35,8 @@ use std::path::PathBuf;
 use super::classify::classify_with_representations;
 use super::composable::resolve_composable_mdg;
 use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
-use super::render::{print_classification, print_raw_metrics, spinner};
+use super::render::{print_classification, print_raw_metrics, progress_bar, spinner};
 use clap::Args;
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
@@ -207,7 +206,7 @@ fn classify_evaluate_inputs(
 ) -> Result<Vec<ClassificationResult>, String> {
     let classifier = CharacteristicMorphism;
     let mut results = Vec::with_capacity(inputs.len());
-    let progress = progress_bar(inputs.len(), json);
+    let progress = progress_bar("Evaluating", inputs.len(), json);
     for input in inputs {
         let file = &input.path;
         progress.set_message(file.file_name().map_or_else(
@@ -351,20 +350,6 @@ fn resolve_priority(args: &EvaluateArgs, config: &ToposConfig) -> Result<Priorit
         PriorityInput::Single(priority) => priority,
         PriorityInput::Ranking(ranking) => priority_for_generator(ranking[0]),
     })
-}
-
-fn progress_bar(len: usize, hidden: bool) -> ProgressBar {
-    if hidden || len <= 1 {
-        return ProgressBar::hidden();
-    }
-    let progress = ProgressBar::new(len as u64);
-    progress.set_draw_target(ProgressDrawTarget::stderr());
-    progress.set_style(
-        ProgressStyle::with_template("Evaluating {bar:24.cyan/dim} {pos}/{len} {msg}")
-            .expect("static progress template")
-            .progress_chars("█▓░"),
-    );
-    progress
 }
 
 #[cfg(test)]

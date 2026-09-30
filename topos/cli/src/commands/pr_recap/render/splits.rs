@@ -7,10 +7,8 @@
 use topos_engine::functors::profunctors::uast::ledger::MatchKind;
 use topos_engine::graphs::mdg::split::Reach;
 
-use super::layout::{
-    dim_line, line, pad, row, CHANGE_WIDTH, CONTENT, FILE_WIDTH, MATRIX_HEADER, TAIL,
-};
-use super::{medal_cell, pillar_matrix};
+use super::layout::{dim_line, line, pad, row, CHANGE_WIDTH, CONTENT, FILE_WIDTH, TAIL};
+use super::medal_cell;
 use crate::commands::pr_recap::model::{Cluster, ClusterChild, FileRecap};
 use crate::commands::pr_recap::view::{basename, tally, tier_rank, ClusterView};
 use crate::commands::render::{truncate_left, truncate_right, RenderOptions};
@@ -31,7 +29,6 @@ pub(super) fn splits_header() -> String {
         "SPLIT",
         "PARENT → CHILDREN",
         "MEDAL",
-        MATRIX_HEADER,
         &format!("{}DECISIONS", pad("WORST FN", WORST_WIDTH)),
     )
 }
@@ -88,7 +85,6 @@ fn cluster_row(view: &ClusterView<'_>, verbose: bool) -> String {
         &change,
         &truncate_left(&cluster.parent, FILE_WIDTH - 1),
         &medal,
-        &pillar_matrix(view.parent),
         &format!("{}{decisions}", pad(&view.worst("→"), WORST_WIDTH)),
     )
 }
@@ -137,7 +133,6 @@ fn child_row(cluster: &Cluster, (child, file): &Child<'_>, connector: char) -> S
         "",
         &format!("{connector}─ {name}"),
         &medal,
-        &pillar_matrix(*file),
         &child_fact(cluster, child, *file),
     )
 }
@@ -239,9 +234,8 @@ fn moved_fact(cluster: &Cluster, child: &ClusterChild) -> Option<String> {
 
 fn fold_row(hidden: &[&Child<'_>], all: bool) -> String {
     let subject = format!("└─ {} {}", hidden.len(), if all { "files" } else { "more" });
-    // No dots on a fold row: the group is summarised, and a signature
-    // that belonged to one of several files would be a lie. The tally is
-    // indented to sit under the tier words of the rows above it.
+    // The group is summarized as a tally of tiers, indented to sit under
+    // the tier words of the rows above it.
     let medal = tally(
         hidden.iter().map(|(_, file)| {
             let tier = file
@@ -251,7 +245,7 @@ fn fold_row(hidden: &[&Child<'_>], all: bool) -> String {
         }),
         true,
     );
-    row("", &subject, &medal, "", "")
+    row("", &subject, &medal, "")
 }
 
 // --------------------------------------------------------------- ledger

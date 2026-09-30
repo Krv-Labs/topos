@@ -111,11 +111,18 @@ fn push_target_lines(
     } else {
         ("~", Style::new().yellow().bold())
     };
-    let pillar = target
-        .failing_generators
-        .first()
-        .map_or("QUALITY", |value| value.as_str())
-        .to_ascii_uppercase();
+    // Every producer but `pr-recap` names one pillar; a merged pr-recap
+    // finding names each pillar it fails, `SIMPLE, NAVIGABLE`.
+    let pillar = if target.failing_generators.is_empty() {
+        "QUALITY".to_string()
+    } else {
+        target
+            .failing_generators
+            .iter()
+            .map(|value| value.to_ascii_uppercase())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     lines.push(format!(
         "{prefix}{index}. {} {} · {pillar}",
         paint(marker, marker_style, RenderOptions { styled, width }),
@@ -126,7 +133,7 @@ fn push_target_lines(
     push_wrapped(lines, &format!("{indent}Why  "), &why_text(target), width);
     push_wrapped(
         lines,
-        &format!("{indent}Do    "),
+        &format!("{indent}Do   "),
         &action_text(target, suggestions),
         width,
     );
@@ -322,8 +329,8 @@ mod tests {
         .join("\n");
 
         assert!(output.contains("esc back · q close"));
-        assert!(output.contains("Why  instability (0.18) is too low"));
-        assert!(output.contains("Do    Rebalance dependencies"));
+        assert!(output.contains("    Why  instability (0.18) is too low"));
+        assert!(output.contains("    Do   Rebalance dependencies"));
         assert!(output.contains("Module-wide · Keep: preserve module API"));
         assert!(!output.contains("0 > 0"));
         assert!(output.lines().all(|line| line.chars().count() <= 72));

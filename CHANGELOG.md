@@ -15,6 +15,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 - **`topos install opencode`** — tenth supported harness, registering `mcp.topos` with `"type": "local"` and `command: ["<path>", "mcp"]` in `~/.config/opencode/opencode.json` (or `.jsonc`). OpenCode parses JSONC and uses an array command with no separate `args` key; install handles probe precedence (`opencode.jsonc` > `opencode.json` > `config.json`), strips trailing commas, refuses writes into commented configs with paste-ready advice, and heals path drift idempotently.
 
+- **`topos pr-recap` v2** — schema `topos.pr_recap.v2`. Split-cluster detection ties changed files together from the two GitNexus stores (`DEFINES` symbol moves, `IMPORTS`/`CALLS` edges), falling back to a UAST import-line scan when coupling stores aren't available. A function-level move ledger tracks moved/renamed/removed/new functions against a balancing complexity invariant. Coupling stores are now built inline for a PR number instead of requiring a separate warm-up (`--no-coupling` skips this and reports COMPOSABLE as not measured). New flags: `--verbose` (unfold split clusters and print the per-function ledger), `--compact` (one-screen card for a CI log), `--format card|compact|github`. The card also carries a project-level rollup line.
+
 ### Changed
 
 - **MCP keeps one dependency graph per process** ([#375](https://github.com/Krv-Labs/topos/issues/375)) — a second `topos_evaluate_file` no longer rereads the Ladybug store: 15.8 s → 83 ms for a second file on this repo, 15 ms for the same file again. The store is opened once per `(dir, branch, store mtime)` and retargeted per file; `depgraph_status` goes through the same store, so a half-written or wrong-schema store still reports `load_error` / `schema_mismatch`. The graph-freshness answer is cached until the fingerprint, HEAD, or the uncommitted working tree (`git status` plus dirty-file mtimes) changes.
@@ -24,6 +26,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 ### Fixed
 
 - **Harness detection precision across all platforms** — `spec.detect` now checks whether each CLI executable or desktop application is actually installed on the machine (searching `$PATH`, standard user bin paths, and desktop application bundles across macOS Apple Silicon/Intel, Windows, and Linux) instead of checking bare dot-directories in `$HOME`. This eliminates false positives where skill managers (OpenClaw, Hermes) or leftover cache folders created `~/.pi`, `~/.cursor`, or `~/.gemini` without the corresponding harness binary ever being installed.
+- **`.tsx` files scored with the plain TypeScript grammar in `pr-recap`** — every `ProgramMorphism` built inside `pr_recap.rs` omitted the file path, so JSX-bearing files failed to parse and read as `SLOP → SLOP` with no pillars measured. Every `ProgramMorphism` in that command now carries its path.
+- **Arrow-function components are now named from their binding** (`const Foo = () => …`) instead of showing up as `<anonymous>@line` — this also fixes the same rows in `topos inspect`.
+- **Renamed files no longer abort the recap.**
+- **`depgraph generate-pr` no longer points at a non-existent `--coupling` flag.**
 
 ## [0.6.0] - 2026-09-16
 

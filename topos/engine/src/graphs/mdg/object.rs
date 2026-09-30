@@ -189,14 +189,26 @@ impl ModuleDependencyGraph {
 
     /// Find the File node ID matching `target_file`.
     pub fn file_node_id(&self) -> Option<&str> {
+        self.file_node_id_for(&self.target_file)
+    }
+
+    /// Find the File node ID matching an arbitrary repo-relative `path`.
+    ///
+    /// Same matching rules as [`Self::file_node_id`] (exact, or either side
+    /// a path-segment suffix of the other), but for a caller-supplied path
+    /// rather than `self.target_file`. One graph holds the whole repo, so
+    /// consumers that reason about several files at once (e.g.
+    /// [`crate::graphs::mdg::split`]) need the lookup without rebuilding a
+    /// graph per target.
+    pub fn file_node_id_for(&self, path: &str) -> Option<&str> {
         self.nodes.values().find_map(|node| {
             if node.label != "File" {
                 return None;
             }
             let file_path = node.properties.get("filePath")?.as_str()?;
-            let matches = file_path == self.target_file
-                || file_path.ends_with(&format!("/{}", self.target_file))
-                || self.target_file.ends_with(&format!("/{file_path}"));
+            let matches = file_path == path
+                || file_path.ends_with(&format!("/{path}"))
+                || path.ends_with(&format!("/{file_path}"));
             matches.then_some(node.id.as_str())
         })
     }

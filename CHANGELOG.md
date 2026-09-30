@@ -9,7 +9,7 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-09-23
+## [0.7.0] - 2026-09-30
 
 ### Added
 

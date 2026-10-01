@@ -9,21 +9,13 @@
 use std::path::{Path, PathBuf};
 
 pub(crate) fn home_dir() -> Result<PathBuf, String> {
-    ["HOME", "USERPROFILE"]
-        .into_iter()
-        .filter_map(std::env::var_os)
-        .map(PathBuf::from)
-        .find(|path| !path.as_os_str().is_empty())
-        .ok_or_else(|| "cannot resolve home directory (HOME and USERPROFILE are unset)".to_string())
+    topos_mcp::paths::home_dir()
 }
 
 /// `%APPDATA%`, falling back to its conventional location under the profile.
 /// Only reached on Windows.
 pub(crate) fn app_data(home: &Path) -> PathBuf {
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| home.join("AppData/Roaming"))
+    topos_mcp::paths::app_data(home)
 }
 
 pub(crate) fn claude_config(home: &Path) -> PathBuf {

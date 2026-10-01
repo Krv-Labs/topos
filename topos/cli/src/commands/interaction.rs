@@ -153,8 +153,8 @@ fn question_header(question: &Question, options: RenderOptions) -> Vec<String> {
 /// The two choices, the default first and under the cursor, and the index
 /// of the yes choice.
 fn question_step(question: &Question) -> (SelectStep, usize) {
-    let choice = |label, hint: &String, key| SelectOption {
-        label,
+    let choice = |label: &'static str, hint: &String, key| SelectOption {
+        label: label.into(),
         hint: hint.clone(),
         current: false,
         key: Some(key),
@@ -167,8 +167,8 @@ fn question_step(question: &Question) -> (SelectStep, usize) {
         (vec![no, yes], 1)
     };
     let step = SelectStep {
-        title: "",
-        keys: "↑↓ move · y/n pick · enter confirm · esc skip",
+        title: "".into(),
+        keys: "↑↓ move · y/n pick · enter confirm · esc skip".into(),
         options,
         initial: 0,
         layout: StepLayout::Question,

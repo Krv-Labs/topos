@@ -1,8 +1,10 @@
 //! `topos` — standalone Rust CLI for structural code-quality evaluation.
 //!
 //! Human commands call directly into `topos-engine`; `topos mcp` launches the
-//! in-process `topos-mcp` server. Update and uninstall remain package-manager
-//! responsibilities rather than CLI subcommands.
+//! in-process `topos-mcp` server. `topos update` reports which distribution
+//! channel a binary came from and delegates to that channel's own upgrade
+//! command, rather than replacing package-manager-managed files itself;
+//! `topos uninstall` removes agent harness registrations, not the binary.
 
 mod commands;
 
@@ -12,9 +14,11 @@ use std::io::IsTerminal;
 use clap::{Parser, Subcommand};
 use console::Style;
 
-use commands::{compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap};
+use commands::{
+    compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap, update,
+};
 
-const ROOT_COMMANDS: [(&str, &str); 11] = [
+const ROOT_COMMANDS: [(&str, &str); 12] = [
     ("evaluate", "Score a file or directory"),
     ("inspect", "Explain one file"),
     ("pr-recap", "Review a change or a pull request"),
@@ -24,6 +28,7 @@ const ROOT_COMMANDS: [(&str, &str); 11] = [
     ("depgraph", "Build the COMPOSABLE graph"),
     ("install", "Configure agent harnesses to use Topos"),
     ("uninstall", "Remove Topos from agent harnesses"),
+    ("update", "Check for and install a newer release"),
     ("status", "Show which harnesses are configured"),
     ("mcp", "Start the MCP server"),
 ];
@@ -62,6 +67,9 @@ enum Command {
     Install(install::InstallArgs),
     /// Remove Topos-owned entries from agent harnesses.
     Uninstall(install::UninstallArgs),
+    /// Check for a newer release and offer to install it.
+    #[command(after_long_help = update::LONG_HELP)]
+    Update(update::UpdateArgs),
     /// Show which agent harnesses are configured to use Topos.
     Status(install::StatusArgs),
     /// Start the MCP server over stdio.
@@ -88,6 +96,20 @@ fn main() {
         return;
     }
     let cli = Cli::parse();
+    // `topos update` and `topos mcp` are excluded from the passive notice:
+    // the first *is* the notice, and printing "an update is available" over
+    // the update command's own report would be noise. The MCP server surfaces
+    // its own notice on the tool-result channel instead.
+    //
+    // `topos uninstall` is excluded too, and for a harder reason: the notice
+    // writes its cache under `~/.local/state/topos`, which is exactly the
+    // directory uninstall prunes. Offering it after a teardown would recreate
+    // the state the user just asked us to remove, and the e2e suite asserts
+    // that uninstall leaves no file behind.
+    let quiet_notice = matches!(
+        cli.command,
+        Command::Update(_) | Command::Mcp(_) | Command::Uninstall(_)
+    );
     let result = match cli.command {
         Command::Config(args) => config::run(args),
         Command::Evaluate(args) => evaluate::run(args),
@@ -97,6 +119,7 @@ fn main() {
         Command::Depgraph(args) => depgraph::run(args),
         Command::Install(args) => install::run_install(args),
         Command::Uninstall(args) => install::run_uninstall(args),
+        Command::Update(args) => update::run(args),
         Command::Status(args) => install::run_status(args),
         Command::Mcp(args) => mcp::run(args),
         Command::PrRecap(args) => pr_recap::run(args),
@@ -104,6 +127,28 @@ fn main() {
     if let Err(message) = result {
         eprintln!("Error: {message}");
         std::process::exit(1);
+    }
+    // Printed *after* the command, so it lands below the output rather than
+    // scrolling away above it, and only on the success path — a command that
+    // failed has bigger news.
+    if !quiet_notice {
+        passive_notice();
+    }
+}
+
+/// The 24-hour "an update is available" line, or nothing at all.
+///
+/// Refreshes the cache first when it is stale, so a user who never runs
+/// `topos update` still hears about a new release. That costs one `stat` on
+/// every normal run and at most one `curl` a day.
+fn passive_notice() {
+    let Ok(home) = topos_mcp::paths::home_dir() else {
+        return;
+    };
+    topos_mcp::update::notice::refresh(&home);
+    if let Some(notice) = topos_mcp::update::notice::cli_notice(&home, env!("CARGO_PKG_VERSION")) {
+        // stderr, so `--json` on stdout stays machine-readable.
+        eprintln!("{notice}");
     }
 }
 
@@ -178,6 +223,7 @@ mod tests {
             "depgraph",
             "install",
             "uninstall",
+            "update",
             "status",
             "mcp",
             "pr-recap",
@@ -194,7 +240,7 @@ mod tests {
         let styled = root_help(true);
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
-        assert_eq!(ROOT_COMMANDS.len(), 11);
+        assert_eq!(ROOT_COMMANDS.len(), 12);
     }
 
     #[test]

@@ -314,12 +314,12 @@ const PRIORITY_CHOICES: [(Priority, &str, &str); RANKING_LEN] = [
 
 fn priority_step(current: Priority) -> SelectStep {
     SelectStep {
-        title: "Evaluation priority",
-        keys: "↑↓ move · enter next · esc cancel",
+        title: "Evaluation priority".into(),
+        keys: "↑↓ move · enter next · esc cancel".into(),
         options: PRIORITY_CHOICES
             .iter()
             .map(|&(priority, label, hint)| SelectOption {
-                label,
+                label: label.into(),
                 hint: hint.to_string(),
                 current: priority == current,
                 key: None,
@@ -343,12 +343,12 @@ const PR_GATE_CHOICES: [(PrGatePreset, &str); 4] = [
 
 fn pr_gate_step(current: PrGatePreset) -> SelectStep {
     SelectStep {
-        title: "PR gate · topos pr-recap",
-        keys: "↑↓ move · enter save · esc cancel (nothing saved)",
+        title: "PR gate · topos pr-recap".into(),
+        keys: "↑↓ move · enter save · esc cancel (nothing saved)".into(),
         options: PR_GATE_CHOICES
             .iter()
             .map(|&(preset, label)| SelectOption {
-                label,
+                label: label.into(),
                 hint: preset_hint(preset),
                 current: preset == current,
                 key: None,

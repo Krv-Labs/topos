@@ -758,6 +758,16 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
         Some(banner) => format!("{banner}\n\n{markdown}"),
         None => markdown,
     };
+    // Same reasoning one step removed: an update notice is a server-level
+    // condition, so it rides the same funnel, and it is latched so one process
+    // prepends it once rather than to all fifty-nine results. It reads the
+    // cache only — the CLI does the fetching, because blocking a tool call on
+    // a network round-trip to decide whether to *mention* an update is a bad
+    // trade for a server that promises to answer fast.
+    let markdown = match crate::update::notice::mcp_banner(crate::build_info::identity().version) {
+        Some(banner) => format!("{banner}\n\n{markdown}"),
+        None => markdown,
+    };
     let mut result = CallToolResult::success(vec![ContentBlock::text(markdown)]);
     result.structured_content = serde_json::to_value(model).ok();
     result

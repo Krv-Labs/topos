@@ -4,6 +4,8 @@
 //! multi-select: colored radio glyphs, cyan cursor, and hint styling — not
 //! whole-row paint.
 
+use std::borrow::Cow;
+
 use console::{Key, Style, Term};
 
 use super::render::{paint, RenderOptions};
@@ -150,12 +152,26 @@ pub(crate) fn run_confirm(title: &str, plan: &[String]) -> Result<bool, String> 
 
 /// One choice in a [`SelectStep`].
 pub(crate) struct SelectOption {
-    pub(crate) label: &'static str,
+    /// Borrowed rather than owned so the static tables in `config` cost
+    /// nothing, while a caller that has to name a version or a discovered
+    /// path at runtime can still pass one.
+    pub(crate) label: Cow<'static, str>,
     pub(crate) hint: String,
     /// The value the project uses today, marked `current`.
     pub(crate) current: bool,
     /// A letter that picks this choice at once (`y` / `n`), either case.
     pub(crate) key: Option<char>,
+}
+
+impl SelectOption {
+    pub(crate) fn new(label: impl Into<Cow<'static, str>>, hint: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            hint: hint.into(),
+            current: false,
+            key: None,
+        }
+    }
 }
 
 /// How a [`SelectStep`] sits under its header.
@@ -174,8 +190,8 @@ pub(crate) enum StepLayout {
 
 /// One single-select screen: a cyan title, a dim key hint, then choices.
 pub(crate) struct SelectStep {
-    pub(crate) title: &'static str,
-    pub(crate) keys: &'static str,
+    pub(crate) title: Cow<'static, str>,
+    pub(crate) keys: Cow<'static, str>,
     pub(crate) options: Vec<SelectOption>,
     pub(crate) initial: usize,
     pub(crate) layout: StepLayout,
@@ -268,10 +284,16 @@ pub(crate) fn render_select(
 ) -> Vec<String> {
     let mut lines = header.to_vec();
     lines.push(match step.layout {
-        StepLayout::Wizard => format!("│  {}", paint(step.title, Style::new().cyan().bold(), opts)),
+        StepLayout::Wizard => format!(
+            "│  {}",
+            paint(&step.title, Style::new().cyan().bold(), opts)
+        ),
         StepLayout::Question => "│".to_string(),
     });
-    lines.push(format!("│  {}", paint(step.keys, Style::new().dim(), opts)));
+    lines.push(format!(
+        "│  {}",
+        paint(&step.keys, Style::new().dim(), opts)
+    ));
     lines.push("│".to_string());
     let width = step
         .options
@@ -283,7 +305,7 @@ pub(crate) fn render_select(
         if option.hint.is_empty() && !option.current {
             lines.push(format!(
                 "│ {}",
-                choice_row(option.label, idx == cursor, opts)
+                choice_row(&option.label, idx == cursor, opts)
             ));
             continue;
         }
@@ -658,17 +680,17 @@ mod tests {
     #[test]
     fn select_marks_cursor_and_current_below_the_header() {
         let step = SelectStep {
-            title: "PR gate",
-            keys: "↑↓ move · enter save · esc cancel",
+            title: "PR gate".into(),
+            keys: "↑↓ move · enter save · esc cancel".into(),
             options: vec![
                 SelectOption {
-                    label: "Recommended",
+                    label: "Recommended".into(),
                     hint: "the default".into(),
                     current: true,
                     key: None,
                 },
                 SelectOption {
-                    label: "Strict",
+                    label: "Strict".into(),
                     hint: "warnings fail too".into(),
                     current: false,
                     key: None,
@@ -696,15 +718,15 @@ mod tests {
     }
 
     fn yes_no(layout: StepLayout) -> SelectStep {
-        let option = |label, hint: &str, key| SelectOption {
-            label,
+        let option = |label: &'static str, hint: &str, key| SelectOption {
+            label: label.into(),
             hint: hint.to_string(),
             current: false,
             key,
         };
         SelectStep {
-            title: "Unused by a question",
-            keys: "↑↓ move · y/n pick · enter confirm · esc skip",
+            title: "Unused by a question".into(),
+            keys: "↑↓ move · y/n pick · enter confirm · esc skip".into(),
             options: vec![
                 option("Yes", "build it", Some('y')),
                 option("No", "", Some('n')),

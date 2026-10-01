@@ -19,6 +19,10 @@ sha1 = "0.10"
 sha2 = "0.10"
 hex = "0.4"
 anyhow = "1.0"
+# Real semver precedence for the update check. Zero dependencies. The hand-rolled
+# comparator in `gitnexus.rs` drops pre-release suffixes, so it cannot order
+# `0.7.1-rc.1` against `0.7.0` — exactly the question the check asks.
+semver = "1.0"
 tempfile = "3"
 # Unified diff for the regression-diff on an assessment (difflib parity).
 similar = "2"

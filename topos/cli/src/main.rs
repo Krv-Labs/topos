@@ -80,37 +80,90 @@ enum Command {
 }
 
 fn main() {
+    match pre_dispatch() {
+        PreDispatch::Exit(code) => std::process::exit(code),
+        PreDispatch::Help => return,
+        PreDispatch::Run => {}
+    }
+    run_command()
+}
+
+/// What `main` has to do before a subcommand can take over.
+///
+/// The bare invocation and a lone `-h` are intercepted here rather than by clap,
+/// because root help is hand-rendered (`root_help`) and `disable_help_subcommand`
+/// means clap would otherwise claim them. Returning the decision rather than
+/// exiting keeps `main` a dispatcher.
+enum PreDispatch {
+    /// Print help on stderr and exit with this code. 2 for a bare `topos`,
+    /// which is clap's own convention for "you gave me nothing to do".
+    Exit(i32),
+    /// Help was printed on stdout; nothing failed.
+    Help,
+    /// A real subcommand was named.
+    Run,
+}
+
+fn pre_dispatch() -> PreDispatch {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if args.is_empty() {
-        eprint!(
-            "{}",
-            root_help(std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none())
-        );
-        std::process::exit(2);
+    let styled = |term: bool| term && std::env::var_os("NO_COLOR").is_none();
+    match args.as_slice() {
+        [] => {
+            eprint!("{}", root_help(styled(std::io::stderr().is_terminal())));
+            PreDispatch::Exit(2)
+        }
+        [only] if matches!(only.to_str(), Some("-h" | "--help")) => {
+            print!("{}", root_help(styled(std::io::stdout().is_terminal())));
+            PreDispatch::Help
+        }
+        _ => PreDispatch::Run,
     }
-    if args.len() == 1 && matches!(args[0].to_str(), Some("-h" | "--help")) {
-        print!(
-            "{}",
-            root_help(std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none())
-        );
-        return;
-    }
+}
+
+/// Parse, dispatch, and report the outcome.
+fn run_command() {
     let cli = Cli::parse();
-    // `topos update` and `topos mcp` are excluded from the passive notice:
-    // the first *is* the notice, and printing "an update is available" over
-    // the update command's own report would be noise. The MCP server surfaces
-    // its own notice on the tool-result channel instead.
+    // `topos update` and `topos mcp` are excluded from the passive notice: the
+    // first *is* the notice, and printing "an update is available" over the
+    // update command's own report would be noise. The MCP server surfaces its
+    // own notice on the tool-result channel instead.
     //
     // `topos uninstall` is excluded too, and for a harder reason: the notice
     // writes its cache under `~/.local/state/topos`, which is exactly the
     // directory uninstall prunes. Offering it after a teardown would recreate
     // the state the user just asked us to remove, and the e2e suite asserts
     // that uninstall leaves no file behind.
-    let quiet_notice = matches!(
-        cli.command,
+    let quiet_notice = wants_no_notice(&cli.command);
+    let result = dispatch(cli.command);
+    if let Err(message) = result {
+        eprintln!("Error: {message}");
+        std::process::exit(1);
+    }
+    // Printed *after* the command, so it lands below the output rather than
+    // scrolling away above it, and only on the success path — a command that
+    // failed has bigger news.
+    if !quiet_notice {
+        passive_notice();
+    }
+}
+
+/// Commands that suppress the passive update notice, and why.
+///
+/// A predicate rather than an inline `matches!` so the list is named, greppable,
+/// and can grow without `main` growing.
+fn wants_no_notice(command: &Command) -> bool {
+    matches!(
+        command,
         Command::Update(_) | Command::Mcp(_) | Command::Uninstall(_)
-    );
-    let result = match cli.command {
+    )
+}
+
+/// The one place a subcommand name becomes a call.
+///
+/// Split from [`run_command`] so the match is the whole of the dispatch layer,
+/// which is what keeps adding a command to one arm instead of three places.
+fn dispatch(command: Command) -> Result<(), String> {
+    match command {
         Command::Config(args) => config::run(args),
         Command::Evaluate(args) => evaluate::run(args),
         Command::Inspect(args) => inspect::run(args),
@@ -123,16 +176,6 @@ fn main() {
         Command::Status(args) => install::run_status(args),
         Command::Mcp(args) => mcp::run(args),
         Command::PrRecap(args) => pr_recap::run(args),
-    };
-    if let Err(message) = result {
-        eprintln!("Error: {message}");
-        std::process::exit(1);
-    }
-    // Printed *after* the command, so it lands below the output rather than
-    // scrolling away above it, and only on the success path — a command that
-    // failed has bigger news.
-    if !quiet_notice {
-        passive_notice();
     }
 }
 

@@ -43,8 +43,13 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   and held inside it.
 - `topos://build` reports **where** its file root came from, so a server pinned
   to the wrong repository — an MCP server's cwd is chosen by the host, not by
-  you — is visible instead of silent. Tools that read a relative path also
-  report the absolute file they resolved to in `warnings`.
+  you — is visible instead of silent. When a relative path was resolved against
+  the startup project, `topos_evaluate_file` and `topos_inspect_code` say which absolute file
+  was read, in both the markdown and `structuredContent.warnings`; an absolute
+  path or a configured `TOPOS_MCP_FILE_ROOT` stays silent. The remaining case —
+  a host that starts the server in a different repository — is disclosed, not
+  prevented. Client roots would decide it, but MCP deprecated them (SEP-2577),
+  so Topos deliberately does not build on them.
 
 ### Changed
 

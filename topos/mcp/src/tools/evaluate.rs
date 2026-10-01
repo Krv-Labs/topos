@@ -20,6 +20,7 @@ use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
+use crate::formatting::append_path_note;
 use crate::formatting::{
     agent_contract_prelude, build_pillars, error_md, finish_agent_contract, render_evaluation_md,
     to_evaluation_result, to_tool_result, AgentContractPreludeInput, EvalResultOptions,
@@ -268,7 +269,8 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         warnings.insert(0, note);
     }
     // A relative path names no project, so say which file was actually read.
-    if let Some(note) = resolution_note(&params.filepath, &resolved) {
+    let path_note = resolution_note(&params.filepath, &resolved);
+    if let Some(note) = path_note.clone() {
         // Appended, not prepended: `warnings.first()` is the COMPOSABLE
         // explanation (`mdg_unavailable_message` reads it), so putting a path
         // note at the front would replace the reason COMPOSABLE is missing.
@@ -316,7 +318,8 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
     let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
-    let md = render_evaluation_md(&model, None, params.verbose);
+    let mut md = render_evaluation_md(&model, None, params.verbose);
+    append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
 }
 

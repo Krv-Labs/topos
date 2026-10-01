@@ -19,7 +19,7 @@ use crate::evaluation::{
     resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
-    render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
+    append_path_note, render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
 };
 use crate::metric_locations::{
     build_metric_locations_from_morphism, function_entry_from_complexity,
@@ -298,12 +298,12 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     // `load_source` accepts either `code` or `filepath`; only the latter can
     // have been resolved from a relative path, so that is the only case where
     // the caller needs to be told which file was read.
-    if let (Some(requested), Some(resolved)) =
-        (params.filepath.as_deref(), loaded.file_path.as_deref())
-    {
-        if let Some(note) = resolution_note(requested, Path::new(resolved)) {
-            classified.warnings.push(note);
-        }
+    let path_note = match (params.filepath.as_deref(), loaded.file_path.as_deref()) {
+        (Some(requested), Some(resolved)) => resolution_note(requested, Path::new(resolved)),
+        _ => None,
+    };
+    if let Some(note) = path_note.clone() {
+        classified.warnings.push(note);
     }
     let result = classified.result;
 
@@ -360,7 +360,8 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
         entropy_interpretation: Some(interpretation),
         error: None,
     };
-    let md = render_inspection_md(&model, params.verbose);
+    let mut md = render_inspection_md(&model, params.verbose);
+    append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
 }
 

@@ -211,3 +211,77 @@ it cannot order `0.7.1-rc.1` against `0.7.0` — exactly the question this asks.
 The once-per-24-hour notice is unit-tested rather than e2e: the notice requires
 a terminal, and the e2e suite has no pty, so an end-to-end assertion would pass
 whether or not the throttle worked.
+---
+
+# MCP file resolution
+
+Recorded separately from the update command, because the next person to hit
+`topos_begin_refactor` failing with "an absolute path is required" will ask
+where the boundary came from, and the answer is not obvious from the code.
+
+## The problem
+
+An MCP server is spawned by its host, so its working directory is the host's
+choice, not the user's. With no `TOPOS_MCP_FILE_ROOT` configured, the server
+derived its boundary by walking up from that directory looking for a project
+marker. On the machine this was diagnosed against, four `topos mcp` processes
+were running with four different working directories, three of them pointing at
+a repository other than the one being edited.
+
+Meanwhile `topos install` writes only `command` and `args` — it never writes
+`TOPOS_MCP_FILE_ROOT` — so the resulting "an absolute file or directory path is
+required" error was the *default* for every unconfigured host, not an edge case.
+
+## The decision
+
+A relative path resolves against `TOPOS_MCP_FILE_ROOT`, else the project the
+server was started in, else fails with an error naming the directory it walked up
+from.
+
+This is stricter than the behaviour it replaces. An absolute path with no
+configured root previously only had to have a project marker somewhere above it;
+a relative path is now resolved against a known root and held inside it, with
+the check applied after `canonicalize()` so a symlink out of the root fails too.
+Absolute paths still take their project from the path itself and are never
+re-rooted — silently re-pinning a server to the host's cwd would be worse than
+the error it replaces.
+
+## Why not MCP `roots`
+
+`roots` is the obvious answer: ask the host which directories it is working in.
+It is deliberately not used.
+
+SEP-2577 (merged 2026-05-15) deprecated `roots`, `sampling` and `logging`,
+citing low adoption and that roots overlap with "tool parameters and server
+configuration". The spec's direction is to pass paths in tool parameters — which
+is what absolute-path-first already does — with `roots` retained as a bridge
+for hosts that still advertise it. Building on a deprecated capability, on an
+SDK (rmcp 3.1.2) that exposes no server→client `roots/list` API at all, would
+be building on something scheduled to disappear.
+
+So the remaining ambiguity — a relative path resolved against a startup
+directory that is not the intended repository — is handled by disclosure rather
+than prevention, because it is not decidable from inside the server: nothing in
+the request says which project was meant. `resolution_note` reports the absolute
+file that was read, on **both** the markdown and `structuredContent.warnings`
+channels, and fires only when the base was genuinely ambiguous: never for an
+absolute path, and never when `TOPOS_MCP_FILE_ROOT` chose the base explicitly.
+A note that fired on every call would be noise an agent learns to ignore.
+
+`topos://build` also reports *where* its root came from, so a mis-pinned server
+is visible rather than silent.
+
+## Verification
+
+- `cargo test -p topos-mcp --lib security` — resolution rules, containment,
+  symlink escapes, and that a configured root still bounds every path.
+- `cargo test -p topos-mcp --test path_resolution` — six protocol-level tests
+  that start the built binary in a controlled cwd and drive it over real
+  JSON-RPC. The unit tests cannot catch a tool that passes its raw parameter
+  around the guard, and there are 46 such call sites across six tool modules.
+
+Both were checked as regression coverage rather than assumed:
+
+- reverting the resolver to its pre-fix behaviour fails 3 of the 6
+- reverting only `append_path_note` fails exactly 1 — the markdown assertion,
+  and nothing else

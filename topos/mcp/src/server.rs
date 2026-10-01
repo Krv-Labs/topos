@@ -39,7 +39,7 @@ with topos_generate_depgraph. topos_calculate_coverage reports test-suite covera
 Read `topos://build` to confirm which binary and file root are serving you. \
 Prefer absolute file paths in tool parameters: a relative one is resolved against \
 the directory this server started in, which the host chose and which may be a \
-different repository; the resolution is reported in the result's warnings.";
+different repository; the result says which file it resolved to.";
 
 /// MCP revisions Topos serves. Under rmcp 3 this list is not advertisement
 /// only: it bounds what `initialize` may negotiate and is what per-request

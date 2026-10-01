@@ -744,6 +744,18 @@ pub fn to_evaluation_result(
 // Dual-channel converter
 // ---------------------------------------------------------------------------
 
+/// Append a path-resolution note to a tool's markdown.
+///
+/// The note is also in `structuredContent.warnings`, but an agent that reads
+/// only the markdown would otherwise never learn which file was actually read,
+/// and the note is the whole safety mechanism for a relative path resolved
+/// against a directory the host chose.
+pub fn append_path_note(markdown: &mut String, note: Option<&str>) {
+    if let Some(note) = note {
+        markdown.push_str(&format!("\n\n> **Note:** {note}"));
+    }
+}
+
 /// Return a dual-channel tool result: markdown for the LLM plus the model's
 /// JSON dump as `structured_content` for programmatic clients.
 pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResult {

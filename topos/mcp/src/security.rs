@@ -218,26 +218,33 @@ pub fn composable_default_root(detected_project: &Path) -> PathBuf {
         .unwrap_or_else(|| detected_project.to_path_buf())
 }
 
-/// A note to attach to a tool result when the caller passed a relative path.
+/// A note to attach to a tool result when a relative path was anchored to the
+/// server's startup directory.
 ///
 /// A relative path carries no project identity: which repository `src/lib.rs`
-/// means depends entirely on the base this function chose. That base can be
-/// wrong — an MCP server's cwd is picked by the host, and three of the four
-/// servers on the machine this was diagnosed against pointed at a repository
-/// other than the one being edited — and when the wrong base happens to
-/// contain the same relative path, the read *succeeds* into the wrong
-/// repository.
+/// means depends entirely on the base the resolver chose. When that base is the
+/// startup directory it can be wrong — an MCP server's cwd is picked by the
+/// host, and three of the four servers on the machine this was diagnosed
+/// against pointed at a repository other than the one being edited — and when
+/// the wrong base happens to contain the same relative path, the read
+/// *succeeds* into the wrong repository.
 ///
-/// That case is not decidable from inside the server: nothing in the request
-/// says which project was meant. So it is made visible instead. Returning
-/// `None` for an absolute path keeps the common case silent.
+/// That case is not decidable from inside the server, and the MCP feature that
+/// would decide it (client roots) is deprecated (SEP-2577), so Topos does not
+/// build on it. The case is made visible instead. There is nothing to say for
+/// an absolute path (it names its own project) or when `TOPOS_MCP_FILE_ROOT` is
+/// set (the user chose the base explicitly), so those return `None` and the
+/// common case stays silent.
 pub fn resolution_note(requested: &str, resolved: &Path) -> Option<String> {
-    if Path::new(requested).is_absolute() {
+    if Path::new(requested).is_absolute() || matches!(configured_file_root(), Ok(Some(_))) {
         return None;
     }
+    let base = startup_project_root()
+        .map(|root| root.display().to_string())
+        .unwrap_or_else(|_| "the server's startup directory".to_string());
     Some(format!(
-        "Resolved the relative path `{requested}` to {} — pass an absolute path if that is \
-         not the file you meant.",
+        "Resolved the relative path `{requested}` to {} against the server's startup \
+         project ({base}). If that is not the repository you meant, pass an absolute path.",
         resolved.display()
     ))
 }

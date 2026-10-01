@@ -19,7 +19,17 @@ use std::process::{Command, Stdio};
 
 /// Exchange frames with a server started in `cwd`, and return its responses.
 fn exchange_in(cwd: &Path, frames: &[&str]) -> Vec<serde_json::Value> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_topos-mcp"))
+    exchange_with_root(cwd, None, frames)
+}
+
+/// As [`exchange_in`], with `TOPOS_MCP_FILE_ROOT` optionally configured.
+fn exchange_with_root(
+    cwd: &Path,
+    file_root: Option<&Path>,
+    frames: &[&str],
+) -> Vec<serde_json::Value> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_topos-mcp"));
+    command
         .current_dir(cwd)
         // A hermetic env. Without these the test inherits the developer's own
         // boundary, their update-check cache, and a live network call — the
@@ -31,9 +41,11 @@ fn exchange_in(cwd: &Path, frames: &[&str]) -> Vec<serde_json::Value> {
         .env("HOME", cwd.join(".state"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn topos-mcp");
+        .stderr(Stdio::null());
+    if let Some(root) = file_root {
+        command.env("TOPOS_MCP_FILE_ROOT", root);
+    }
+    let mut child = command.spawn().expect("spawn topos-mcp");
 
     let mut stdin = child.stdin.take().expect("stdin");
     for frame in frames {
@@ -142,8 +154,9 @@ fn a_relative_path_resolves_over_the_wire() {
     );
 }
 
-/// And the resolution is disclosed, because a relative path carries no project
-/// identity and the base is chosen by the host, not the caller.
+/// And the resolution is disclosed on *both* channels, because a relative path
+/// carries no project identity and the base is chosen by the host, not the
+/// caller. An agent that reads only the markdown must still see it.
 #[test]
 fn a_relative_path_reports_which_file_was_read() {
     let project = Project::new("note");
@@ -151,10 +164,39 @@ fn a_relative_path_reports_which_file_was_read() {
         &project.dir,
         &[&initialize(1), &call_inspect(2, "\"src/lib.rs\"")],
     );
-    let joined = warnings_of(result(&responses, 2));
+    let file = project.file().display().to_string();
+
+    let warnings = warnings_of(result(&responses, 2));
     assert!(
-        joined.contains("src/lib.rs") && joined.contains(&project.file().display().to_string()),
-        "the caller must be able to see which absolute path was read:\n{joined}"
+        warnings.contains("src/lib.rs") && warnings.contains(&file),
+        "the caller must be able to see which absolute path was read:\n{warnings}"
+    );
+
+    let text = text_of(result(&responses, 2));
+    assert!(
+        text.contains("Resolved the relative path") && text.contains(&file),
+        "the markdown channel must carry the note too:\n{text}"
+    );
+}
+
+/// A configured `TOPOS_MCP_FILE_ROOT` is the user choosing the base, so there is
+/// nothing ambiguous to disclose and the note would be noise.
+#[test]
+fn a_configured_root_adds_no_resolution_note() {
+    let project = Project::new("configured");
+    let responses = exchange_with_root(
+        &project.dir,
+        Some(&project.dir),
+        &[&initialize(1), &call_inspect(2, "\"src/lib.rs\"")],
+    );
+    let text = text_of(result(&responses, 2));
+    assert!(
+        text.contains("Total functions") || text.contains("Lattice"),
+        "expected a real inspection, got:\n{text}"
+    );
+    assert!(
+        !text.contains("Resolved the relative path"),
+        "an explicitly configured base is not ambiguous:\n{text}"
     );
 }
 

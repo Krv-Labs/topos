@@ -744,6 +744,18 @@ pub fn to_evaluation_result(
 // Dual-channel converter
 // ---------------------------------------------------------------------------
 
+/// Append a path-resolution note to a tool's markdown.
+///
+/// The note is also in `structuredContent.warnings`, but an agent that reads
+/// only the markdown would otherwise never learn which file was actually read,
+/// and the note is the whole safety mechanism for a relative path resolved
+/// against a directory the host chose.
+pub fn append_path_note(markdown: &mut String, note: Option<&str>) {
+    if let Some(note) = note {
+        markdown.push_str(&format!("\n\n> **Note:** {note}"));
+    }
+}
+
 /// Return a dual-channel tool result: markdown for the LLM plus the model's
 /// JSON dump as `structured_content` for programmatic clients.
 pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResult {
@@ -755,6 +767,16 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
     // are built during the handshake (`initialize` or `server/discover`),
     // when a just-started process is never stale.
     let markdown = match crate::build_info::stale_banner() {
+        Some(banner) => format!("{banner}\n\n{markdown}"),
+        None => markdown,
+    };
+    // Same reasoning one step removed: an update notice is a server-level
+    // condition, so it rides the same funnel, and it is latched so one process
+    // prepends it once rather than to all fifty-nine results. It reads the
+    // cache only — the CLI does the fetching, because blocking a tool call on
+    // a network round-trip to decide whether to *mention* an update is a bad
+    // trade for a server that promises to answer fast.
+    let markdown = match crate::update::notice::mcp_banner(crate::build_info::identity().version) {
         Some(banner) => format!("{banner}\n\n{markdown}"),
         None => markdown,
     };

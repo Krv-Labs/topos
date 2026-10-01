@@ -9,6 +9,68 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- `topos update`: check for a newer release and offer to install it. The card
+  names the channel a binary came from (`binary install`, `homebrew`, `cargo`,
+  `source checkout`, `python package`) and the exact command that upgrades it,
+  then runs that command on your confirmation — Homebrew installs get
+  `brew upgrade topos`, everything else is printed for you to run. `--json`
+  emits the survey; `--check` reports without offering. When more than one
+  `topos` is installed, every one is listed with its path, version and channel,
+  and you pick which to update: `$PATH` order decides which binary actually
+  runs, which is why upgrading the wrong one appears to do nothing.
+- Update notices. A new release is reported once, at most every 24 hours, on
+  the command line (one line, on stderr, so `--json` output is untouched) and
+  once per MCP session on the tool-result channel, where the agent is told to
+  relay it once rather than repeat it. `TOPOS_NO_UPDATE_NOTICES=1`, `CI`, and
+  any non-terminal run suppress both. The check is cached under
+  `~/.local/state/topos/update-check.json`, honours `XDG_STATE_HOME`, and is
+  removed by `topos uninstall`.
+
+### Fixed
+
+- MCP tools accept relative paths again. `resolve_project_path` refused every
+  relative `filepath` unless `TOPOS_MCP_FILE_ROOT` was set, and `topos install`
+  never writes it — it emits `command` and `args` and nothing else — so
+  "an absolute file or directory path is required" was the *default* for every
+  unconfigured host, and `topos_begin_refactor` / `topos_assess_changeset` were
+  unusable without hand-editing a config. A relative path now resolves against
+  `TOPOS_MCP_FILE_ROOT`, else the project the server was started in, else fails
+  naming the directory it walked up from. This is stricter than what it
+  replaces: an absolute path previously only had to have a project marker
+  somewhere above it, while a relative one is now resolved against a known root
+  and held inside it.
+- `topos://build` reports **where** its file root came from, so a server pinned
+  to the wrong repository — an MCP server's cwd is chosen by the host, not by
+  you — is visible instead of silent. When a relative path was resolved against
+  the startup project, `topos_evaluate_file` and `topos_inspect_code` say which absolute file
+  was read, in both the markdown and `structuredContent.warnings`; an absolute
+  path or a configured `TOPOS_MCP_FILE_ROOT` stays silent. The remaining case —
+  a host that starts the server in a different repository — is disclosed, not
+  prevented. Client roots would decide it, but MCP deprecated them (SEP-2577),
+  so Topos deliberately does not build on them.
+
+### Changed
+
+- `topos update` never replaces a package manager's files with a downloaded
+  tarball. A Homebrew install is upgraded by running `brew upgrade topos`, and
+  a binary install by re-running `install.sh`, which verifies the release
+  checksum before replacing anything. Downloading over a Homebrew cellar file
+  produces a binary `brew` knows nothing about, which the next `brew upgrade`
+  silently reverts.
+- `install.json` and `install.sh`'s provenance file now resolve to the same
+  directory. The shell honoured `XDG_STATE_HOME` while the Rust ledger
+  hardcoded `~/.local/state`, so a user who set the variable got two
+  directories and `topos uninstall` pruned only one.
+- MCP tool parameters now say to prefer an absolute path. A relative one is
+  resolved against a directory the host chose, and when the wrong directory
+  happens to contain the same relative path the read succeeds into the wrong
+  repository — not decidable from inside the server, so it is stated instead.
+  `TOPOS_MCP_FILE_ROOT` remains an optional maximum boundary; `topos install`
+  still does not write it, because one hardcoded path is wrong for anyone who
+  works across repositories.
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

@@ -12,7 +12,7 @@ use super::harness::{spec, HarnessSpec};
 use super::report;
 use super::skills_entry;
 use super::state;
-use crate::commands::render::RenderOptions;
+use crate::commands::render::{guide, RenderOptions};
 
 pub(crate) fn run(
     home: &Path,
@@ -22,8 +22,8 @@ pub(crate) fn run(
 ) -> Result<(), String> {
     let opts = RenderOptions::stdout();
     report::header("Topos Harness Install", dry_run, opts);
-    println!("│  Using {}", binary.display());
-    println!("│");
+    println!("{}  Using {}", guide('│', opts), binary.display());
+    println!("{}", guide('│', opts));
 
     let outcomes: Vec<bool> = selected
         .iter()
@@ -46,7 +46,7 @@ fn configure_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: Rend
     if let Some(message) = (harness.note)(home) {
         report::note(&message, opts);
     }
-    println!("│");
+    println!("{}", guide('│', opts));
     success
 }
 

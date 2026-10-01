@@ -363,49 +363,23 @@ calculate_sha256() {
     exit 1
 }
 
+# The 15-line braille logo this used to print is gone.
+#
+# It cost 19 lines of vertical space before the first real message, was never
+# suppressed by anything (no quiet flag, no width check, no NO_COLOR), and drew
+# braille even on a non-UTF-8 locale. `topos update` never showed it at all,
+# so the install and upgrade paths looked like different products. A name and
+# a version say everything the art did, in one line.
 print_header() {
-    if [ -t 1 ]; then
-        printf '\n\n'
-        printf '%b\n' '  ⣀⣤⣄⡀        ⢀⣤⣤⣀        ⢀⣠⣤⣀'
-        printf '%b\n' ' ⢰⠃  ⢻⣶⣶⣶⣶⣶⣶⣶⣶⡟  ⢸⣶⣶⣶⣶⣶⣶⣶⣶⣾  ⠈'
-        printf '%b\n' ' ⠈⠳⣤⡴⠿⣍⠉⠉⠉⠉⠉⠉⣩⠿⣦⣤⠾⣍⡉⠉⠉⠉⠉⠉\033[38;2;182;90;34m⣩⣿\033[0m⣦⣤⠴'
-        printf '%b\n' '      ⠈⠳⣤⣀⣀⣤⠞⠁ ⣿⣿ ⠈⠛⢦⣀⣠\033[38;2;182;90;34m⣴⡿⠟⠁\033[0m'
-        printf '%b\n' '        ⠸⡁⢈⡇   ⣿⣿\033[38;2;182;90;34m⣤⣤⣶⣾\033[0m⣇⢀⡏           █▄'
-        printf '%b\n' '         ⠈⠁⠙⢦\033[38;2;182;90;34m⣴⣾⣿⣿⠉⢉\033[0m⣴⠟⠉⠉           ▄██▄'
-        printf '%b\n' '           \033[38;2;182;90;34m⢠⣿⠟\033[0m⣶⠟⠻⢶⡟⠁               ██ ▄███▄ ████▄ ▄███▄ ▄██▀█'
-        printf '%b\n' '           \033[38;2;182;90;34m⣿⡏\033[0m⠐⣇  ⢠⠇                ██ ██ ██ ██ ██ ██ ██ ▀███▄'
-        printf '%b\n' '          \033[38;2;182;90;34m⠰⣿⡇\033[0m ⠈⣿⣿⠋                ▄██▄▀███▀▄████▀▄▀███▀█▄▄██▀'
-        printf '%b\n' '           \033[38;2;182;90;34m⣿⣇\033[0m  ⣿⣿                           ██'
-        printf '%b\n' '           \033[38;2;182;90;34m⠘⣿⡄\033[0m ⣿⣿                           ▀'
-        printf '%b\n' '            \033[38;2;182;90;34m⠘⣿⣆\033[0m⣿⣿'
-        printf '%b\n' '             \033[38;2;182;90;34m⢈\033[0m⡟⠉⠉⠹⡄'
-        printf '%b\n' '              ⢧⣀⣀⡴⠃'
-        printf '%b\n' '               ⠈⠁'
-        printf '\n\n'
-        return
+    # No version here: this runs before `install_topos` resolves `latest`, so
+    # it would print the literal string "latest" rather than the release being
+    # installed. The resolved version is printed by `install_topos` instead.
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+        printf '\033[1mTopos\033[0m — structural code quality\n'
+    else
+        printf 'Topos — structural code quality\n'
     fi
-
-    cat <<'EOF'
-
-
-  ⣀⣤⣄⡀        ⢀⣤⣤⣀        ⢀⣠⣤⣀
- ⢰⠃  ⢻⣶⣶⣶⣶⣶⣶⣶⣶⡟  ⢸⣶⣶⣶⣶⣶⣶⣶⣶⣾  ⠈
- ⠈⠳⣤⡴⠿⣍⠉⠉⠉⠉⠉⠉⣩⠿⣦⣤⠾⣍⡉⠉⠉⠉⠉⠉⣩⣿⣦⣤⠴
-      ⠈⠳⣤⣀⣀⣤⠞⠁ ⣿⣿ ⠈⠛⢦⣀⣠⣴⡿⠟⠁
-        ⠸⡁⢈⡇   ⣿⣿⣤⣤⣶⣾⣇⢀⡏           █▄
-         ⠈⠁⠙⢦⣴⣾⣿⣿⠉⢉⣴⠟⠉⠉           ▄██▄
-           ⢠⣿⠟⣶⠟⠻⢶⡟⠁               ██ ▄███▄ ████▄ ▄███▄ ▄██▀█
-           ⣿⡏⠐⣇  ⢠⠇                ██ ██ ██ ██ ██ ██ ██ ▀███▄
-          ⠰⣿⡇ ⠈⣿⣿⠋                ▄██▄▀███▀▄████▀▄▀███▀█▄▄██▀
-           ⣿⣇  ⣿⣿                           ██
-           ⠘⣿⡄ ⣿⣿                           ▀
-            ⠘⣿⣆⣿⣿
-             ⢈⡟⠉⠉⠹⡄
-              ⢧⣀⣀⡴⠃
-               ⠈⠁
-
-
-EOF
+    printf '\n'
 }
 
 run_with_spinner() {

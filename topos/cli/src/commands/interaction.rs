@@ -10,7 +10,7 @@ use std::io::IsTerminal;
 use console::Style;
 
 use super::menu::{self, SelectOption, SelectStep, StepLayout};
-use super::render::{paint, RenderOptions};
+use super::render::{guide, paint, RenderOptions};
 
 /// Which of the three standard streams are terminals. Resolved once so the
 /// gates that read it are pure functions of it, and every combination is
@@ -144,7 +144,7 @@ pub(crate) fn ask(
 /// `┌  title`; the key hint and the choices follow in [`question_step`].
 fn question_header(question: &Question, options: RenderOptions) -> Vec<String> {
     vec![paint(
-        format!("┌  {}", question.title),
+        format!("{}  {}", guide('┌', options), question.title),
         Style::new().bold(),
         options,
     )]
@@ -153,8 +153,8 @@ fn question_header(question: &Question, options: RenderOptions) -> Vec<String> {
 /// The two choices, the default first and under the cursor, and the index
 /// of the yes choice.
 fn question_step(question: &Question) -> (SelectStep, usize) {
-    let choice = |label, hint: &String, key| SelectOption {
-        label,
+    let choice = |label: &'static str, hint: &String, key| SelectOption {
+        label: label.into(),
         hint: hint.clone(),
         current: false,
         key: Some(key),
@@ -167,8 +167,8 @@ fn question_step(question: &Question) -> (SelectStep, usize) {
         (vec![no, yes], 1)
     };
     let step = SelectStep {
-        title: "",
-        keys: "↑↓ move · y/n pick · enter confirm · esc skip",
+        title: "".into(),
+        keys: "↑↓ move · y/n pick · enter confirm · esc skip".into(),
         options,
         initial: 0,
         layout: StepLayout::Question,

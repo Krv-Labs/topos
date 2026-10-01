@@ -272,7 +272,17 @@ fn clean_up(
     }
     let dirs = state::created_dirs(home);
     let pruned = prune_dirs(&dirs, false);
+    // Read existence *before* removing the ledger: the guard below must
+    // reflect "there was state here", not "there is state here now".
+    let had_state = state::state_file_path(home).exists();
     state::remove_state_file(home).ok();
+    // The update check's cache lives in the same directory and is topos's own
+    // bookkeeping, not the user's, so a full uninstall takes it with it.
+    // Guarded so an uninstall that had nothing to do does not bring a file
+    // into existence just to delete it.
+    if had_state {
+        topos_mcp::update::notice::remove_cache(home);
+    }
     prune_dirs(&[state::state_dir(home)], false);
     for dir in pruned {
         report::detail(

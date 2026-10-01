@@ -57,14 +57,14 @@ struct Ledger {
 
 /// Directory holding `install.json` — `~/.local/state/topos`, or
 /// `%APPDATA%\topos` on Windows. Pruned last, after `install.json` itself.
+///
+/// Delegated to [`topos_mcp::paths::state_dir`] so this ledger, the update
+/// check's cache and `install.sh`'s provenance file all resolve to one place.
+/// They used to disagree: the shell honored `XDG_STATE_HOME` and this
+/// hardcoded `~/.local/state`, so a user who set the variable got two
+/// directories and `topos uninstall` pruned only one.
 pub(crate) fn state_dir(home: &Path) -> PathBuf {
-    if cfg!(windows) {
-        paths::app_data(home).join("topos")
-    } else {
-        // XDG *state*, not config: this is machine-local bookkeeping nobody
-        // would want synced between hosts.
-        home.join(".local").join("state").join("topos")
-    }
+    topos_mcp::paths::state_dir(home)
 }
 
 pub(crate) fn state_file_path(home: &Path) -> PathBuf {

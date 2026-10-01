@@ -10,6 +10,7 @@ pub mod docs;
 pub mod evaluation;
 pub mod formatting;
 pub mod metric_locations;
+pub mod paths;
 pub mod refactor_hotspots;
 pub mod refactor_targets;
 pub mod schemas;
@@ -19,6 +20,7 @@ pub mod server;
 pub mod sighthound;
 pub mod snapshots;
 pub mod tools;
+pub mod update;
 
 #[cfg(test)]
 mod context_budget;

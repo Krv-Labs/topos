@@ -16,3 +16,4 @@ pub mod mcp;
 mod menu;
 pub mod pr_recap;
 mod render;
+pub mod update;

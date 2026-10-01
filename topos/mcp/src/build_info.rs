@@ -154,12 +154,18 @@ pub fn render() -> String {
         "- **process**: pid {} started {} (epoch seconds)\n",
         id.pid, id.started_at
     ));
+    let (root, source) = crate::security::file_root_with_source();
     out.push_str(&format!(
         "- **file root**: `{}`\n",
-        crate::security::resolve_file_root()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|e| format!("<unresolved: {e}>"))
+        root.map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<unresolved>".into())
     ));
+    // Spelled out because this is the thing that goes wrong silently: a server
+    // started by an editor inherits that editor's working directory, so its
+    // boundary can be a completely different repository than the one being
+    // edited. An agent reading `topos://build` should be able to see that
+    // without having to guess why a relative path failed.
+    out.push_str(&format!("- **file root from**: {}\n", source.describe()));
     match (is_stale(), current_build_time()) {
         (true, Some(built)) => out.push_str(&format!(
             "- **stale**: **yes** — rebuilt {} after this process started; restart the server\n",

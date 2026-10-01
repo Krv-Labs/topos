@@ -26,42 +26,43 @@ fn auto_detect_root(start: &Path) -> Option<PathBuf> {
 
 /// Resolve an existing file or directory and the repository that contains it.
 ///
-/// A configured `TOPOS_MCP_FILE_ROOT` is an optional *maximum* boundary.  In
-/// its absence, the requested absolute path supplies the project identity;
-/// this is what makes a user-level stdio server usable when its process cwd is
-/// not the editor workspace.
+/// A configured `TOPOS_MCP_FILE_ROOT` is an optional *maximum* boundary. In
+/// its absence, the requested absolute path supplies the project identity; this
+/// is what makes a user-level stdio server usable when its process cwd is not
+/// the editor workspace.
+///
+/// A **relative** path needs a base before it can be anything, and there are two:
+/// the configured root, or failing that the project the process was started in.
+/// Previously the second case was refused outright, which made every agent that
+/// writes `src/lib.rs` rather than `/Users/you/repo/src/lib.rs` fail — even
+/// when the server's boundary was already correct. Falling back to the cwd's
+/// project fixes that, and is *stricter* than what it replaced: previously an
+/// absolute path with no configured root was checked only for having a project
+/// marker somewhere above it, whereas a relative one is now resolved against a
+/// known root and held inside it.
 pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     let requested = PathBuf::from(path);
-    let configured_root = std::env::var("TOPOS_MCP_FILE_ROOT")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .map(|root| {
-            root.canonicalize()
-                .map_err(|e| format!("TOPOS_MCP_FILE_ROOT is not a readable directory: {e}"))
-        })
-        .transpose()?;
+    let configured_root = configured_file_root()?;
 
-    if configured_root.is_none() && !requested.is_absolute() {
-        return Err(
-            "An absolute file or directory path is required when TOPOS_MCP_FILE_ROOT is unset. \
-             Pass the current workspace path from the MCP host."
-                .to_string(),
-        );
-    }
+    // Where a relative path is anchored. `None` for an absolute path with no
+    // configured root: there is no boundary to hold it to, and inventing one
+    // from the cwd would silently re-pin the server to a folder the host chose.
+    let base = match (&configured_root, requested.is_absolute()) {
+        (Some(root), _) => Some(root.clone()),
+        (None, false) => Some(startup_project_root()?),
+        (None, true) => None,
+    };
 
-    let resolved = if requested.is_absolute() {
-        requested
-    } else {
-        configured_root
-            .as_ref()
-            .expect("checked above")
-            .join(requested)
+    let resolved = match &base {
+        Some(base) => base.join(&requested),
+        None => requested,
     }
     .canonicalize()
     .map_err(|e| format!("Path is not readable: {e}"))?;
 
-    if let Some(boundary) = &configured_root {
+    // Canonicalization above resolves symlinks, so this is a real containment
+    // check rather than a lexical one: a link out of the root fails here.
+    if let Some(boundary) = &base {
         if !resolved.starts_with(boundary) {
             return Err(format!(
                 "Access denied: path must be inside {}. Got: {}",
@@ -84,8 +85,8 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
             start.display()
         )
     })?;
-    if let Some(boundary) = configured_root {
-        if !project_root.starts_with(&boundary) {
+    if let Some(boundary) = &base {
+        if !project_root.starts_with(boundary) {
             return Err(format!(
                 "Access denied: project root must be inside {}. Got: {}",
                 boundary.display(),
@@ -96,22 +97,75 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     Ok((resolved, project_root))
 }
 
-fn compute_file_root() -> Result<PathBuf, String> {
-    if let Ok(env_value) = std::env::var("TOPOS_MCP_FILE_ROOT") {
-        if !env_value.is_empty() {
-            let path = PathBuf::from(env_value);
-            return path
-                .canonicalize()
-                .map_err(|e| format!("TOPOS_MCP_FILE_ROOT is not a readable directory: {e}"));
-        }
-    }
+/// The explicitly configured boundary, if any. Not an error when unset.
+fn configured_file_root() -> Result<Option<PathBuf>, String> {
+    std::env::var("TOPOS_MCP_FILE_ROOT")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(|root| {
+            root.canonicalize()
+                .map_err(|e| format!("TOPOS_MCP_FILE_ROOT is not a readable directory: {e}"))
+        })
+        .transpose()
+}
+
+/// The project the process was started in, used as the base for relative paths
+/// when nothing is configured.
+///
+/// This is the one place the server's cwd decides anything, and it is a
+/// deliberate fallback rather than the primary source of identity: the host
+/// chooses the cwd, so it may be the wrong project entirely. Absolute paths
+/// never consult it.
+fn startup_project_root() -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| format!("cannot determine cwd: {e}"))?;
     auto_detect_root(&cwd).ok_or_else(|| {
-        "TOPOS_MCP_FILE_ROOT is unset and no project marker (.git / pyproject.toml / \
-         Cargo.toml) was found by walking up from cwd. Set TOPOS_MCP_FILE_ROOT to the \
-         repository root before starting the MCP server."
-            .to_string()
+        format!(
+            "A relative path needs a project to resolve against, and none could be found \
+             above the working directory {}. Either pass an absolute path, or set \
+             TOPOS_MCP_FILE_ROOT to the project root before starting the MCP server.",
+            cwd.display()
+        )
     })
+}
+
+/// Where the server's own file root came from.
+///
+/// Reported by `topos://build` so a server pinned to the wrong project is
+/// visible instead of silently reporting another repository's boundary. This is
+/// a diagnostic, not a decision: it never gates a call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RootSource {
+    /// `TOPOS_MCP_FILE_ROOT` is set.
+    Configured,
+    /// Derived by walking up from the process working directory.
+    StartupCwd,
+    /// No project could be found at all.
+    None,
+}
+
+impl RootSource {
+    pub fn describe(self) -> &'static str {
+        match self {
+            RootSource::Configured => "TOPOS_MCP_FILE_ROOT",
+            RootSource::StartupCwd => "the server's startup working directory",
+            RootSource::None => "nowhere — no project marker found",
+        }
+    }
+}
+
+/// The server's file root and how it was arrived at.
+pub fn file_root_with_source() -> (Option<PathBuf>, RootSource) {
+    match configured_file_root() {
+        Ok(Some(root)) => (Some(root), RootSource::Configured),
+        Ok(None) => match std::env::current_dir().map(|cwd| auto_detect_root(&cwd)) {
+            Ok(Some(root)) => (Some(root), RootSource::StartupCwd),
+            _ => (None, RootSource::None),
+        },
+        // A configured root that cannot be read is reported as "not
+        // configured" here; the call sites that care surface the error.
+        Err(_) => (None, RootSource::None),
+    }
 }
 
 /// Determine a root from the explicitly configured boundary or process cwd.
@@ -120,7 +174,9 @@ fn compute_file_root() -> Result<PathBuf, String> {
 /// [`resolve_project_path`] so a user-level MCP server is not pinned to its
 /// startup cwd.
 pub fn resolve_file_root() -> Result<PathBuf, String> {
-    compute_file_root()
+    file_root_with_source()
+        .0
+        .ok_or_else(|| "no project marker (.git / pyproject.toml / Cargo.toml) was found; set TOPOS_MCP_FILE_ROOT to the repository root".to_string())
 }
 
 /// Root that owns `.gitnexus`: the nearest ancestor holding `.git`.
@@ -260,14 +316,145 @@ pub fn read_resolved_utf8(path: &Path) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// `cargo test` is threaded and `set_var` is process-global, so every test
+    /// that reads or writes `TOPOS_MCP_FILE_ROOT` takes this. Without it one
+    /// test's configured root silently becomes another's answer.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Run `body` with `TOPOS_MCP_FILE_ROOT` set to `value`, then restore it.
+    ///
+    /// The caller must already hold [`ENV_LOCK`] — std's `Mutex::try_lock`
+    /// cannot be used to assert that, since it is undefined for a mutex the
+    /// current thread already holds. This is a *writer*, and
+    /// locking only writers is not enough: every test in this module resolves a
+    /// real path, which reads the same process-global variable, so a reader
+    /// running concurrently would observe the temporary root. Locking writers
+    /// alone makes `cargo test` flaky rather than safe, which is exactly what
+    /// happened the first time.
+    fn with_file_root<T>(value: Option<&Path>, body: impl FnOnce() -> T) -> T {
+        let saved = std::env::var_os("TOPOS_MCP_FILE_ROOT");
+        match value {
+            Some(value) => std::env::set_var("TOPOS_MCP_FILE_ROOT", value),
+            None => std::env::remove_var("TOPOS_MCP_FILE_ROOT"),
+        }
+        let result = body();
+        match saved {
+            Some(saved) => std::env::set_var("TOPOS_MCP_FILE_ROOT", saved),
+            None => std::env::remove_var("TOPOS_MCP_FILE_ROOT"),
+        }
+        result
+    }
+
+    /// A `..` escape out of the startup project is still refused. The message
+    /// changed and says more: it used to be "pass an absolute path", which
+    /// described the symptom rather than the refusal, whereas this names the
+    /// boundary the path had to stay inside.
     #[test]
     fn escape_via_dotdot_is_denied() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let err = resolve_within_root("../../../../../../../../etc/passwd").unwrap_err();
-        assert!(err.contains("absolute"), "{err}");
+        assert!(err.contains("Access denied"), "{err}");
+        assert!(err.contains("/etc/passwd"), "{err}");
+    }
+
+    /// The behaviour this change exists for: a relative path inside the project
+    /// the server was started in resolves, instead of being refused for not
+    /// being absolute.
+    #[test]
+    fn a_relative_path_inside_the_startup_project_resolves() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = crate::security::startup_project_root().expect("tests run inside a crate");
+        let resolved = resolve_within_root("src/security.rs")
+            .expect("a relative path inside the project should resolve");
+        assert!(resolved.is_absolute(), "{resolved:?}");
+        assert!(resolved.starts_with(&root), "{resolved:?} escaped {root:?}");
+        assert!(resolved.is_file(), "{resolved:?}");
+    }
+
+    /// And a relative path that leaves it is refused, by containment rather
+    /// than by shape.
+    #[test]
+    fn a_relative_path_that_escapes_the_startup_project_is_denied() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let err = resolve_within_root("../../../../../../../../etc/hosts").unwrap_err();
+        assert!(err.contains("Access denied"), "{err}");
+        assert!(
+            !err.contains("absolute path is required"),
+            "the refusal should name the boundary, not demand an absolute path: {err}"
+        );
+    }
+
+    /// A configured root still wins over the startup directory, and a path
+    /// outside it is still refused — the configured boundary is a maximum, not
+    /// a default.
+    ///
+    /// The root here is the git root itself, because that is what a configured
+    /// root has to be: pointing it at a subdirectory of the repository makes
+    /// the project-root check fire, since the project is legitimately above
+    /// the boundary.
+    #[test]
+    fn a_configured_root_still_bounds_every_path() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let project = std::env::temp_dir().join(format!("topos-bound-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("topos-outside-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(project.join(".git")).unwrap();
+        std::fs::write(project.join("main.rs"), "fn main() {}\n").unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::create_dir_all(outside.join(".git")).unwrap();
+        std::fs::write(outside.join("other.rs"), "fn main() {}\n").unwrap();
+        let project = project.canonicalize().unwrap();
+        let outside = outside.canonicalize().unwrap();
+
+        with_file_root(Some(&project), || {
+            assert_eq!(file_root_with_source().1, RootSource::Configured);
+
+            // Inside, as a relative path and as an absolute one: both fine.
+            assert_eq!(
+                resolve_within_root("main.rs").expect("inside the configured root"),
+                project.join("main.rs")
+            );
+            let absolute = project.join("main.rs").to_string_lossy().into_owned();
+            assert_eq!(
+                resolve_within_root(&absolute).expect("absolute, inside"),
+                project.join("main.rs")
+            );
+
+            // Outside: refused, even though it is itself a valid project.
+            let escaped = outside.join("other.rs").to_string_lossy().into_owned();
+            let err = resolve_within_root(&escaped)
+                .expect_err("a configured root is a maximum, not a default");
+            assert!(err.contains("Access denied"), "{err}");
+            assert!(err.contains(&project.display().to_string()), "{err}");
+        });
+
+        let _ = std::fs::remove_dir_all(&project);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// The report has to distinguish "configured" from "guessed", because a
+    /// guessed root can be the wrong repository and that is invisible otherwise.
+    #[test]
+    fn the_root_source_is_reported() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        with_file_root(None, || {
+            assert_eq!(
+                file_root_with_source().1,
+                RootSource::StartupCwd,
+                "tests run inside a crate, so there is always a project above cwd"
+            );
+        });
+        assert_eq!(RootSource::Configured.describe(), "TOPOS_MCP_FILE_ROOT");
+        assert!(RootSource::StartupCwd
+            .describe()
+            .contains("working directory"));
     }
 
     #[test]
     fn absolute_file_derives_its_containing_project() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs");
         let (resolved, project_root) = resolve_project_path(&source.to_string_lossy()).unwrap();
         assert_eq!(resolved, source.canonicalize().unwrap());
@@ -280,6 +467,9 @@ mod tests {
     /// `gitnexus analyze` on a directory with no store.
     #[test]
     fn composable_root_climbs_to_the_git_root_not_the_nested_package() {
+        // Reads the env var, so it holds the lock like every other resolving
+        // test here.
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir =
             std::env::temp_dir().join(format!("topos-composable-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

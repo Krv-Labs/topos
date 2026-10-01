@@ -128,20 +128,39 @@ fn render_summary(
     let rail_width = if options.width >= 100 { 15 } else { 10 };
     let header = if single_file && show_rail {
         format!(
-            "│  {:<12}  {:<6}  {:>5}   QUALITY",
-            "PILLAR", "STATUS", "SCORE"
+            "{}  {:<12}  {:<6}  {:>5}   QUALITY",
+            guide_char('│', options),
+            "PILLAR",
+            "STATUS",
+            "SCORE"
         )
     } else if single_file {
-        format!("│  {:<12}  {:<6}  {:>5}", "PILLAR", "STATUS", "SCORE")
+        format!(
+            "{}  {:<12}  {:<6}  {:>5}",
+            guide_char('│', options),
+            "PILLAR",
+            "STATUS",
+            "SCORE"
+        )
     } else if show_rail {
         format!(
-            "│  {:<12}  {:<6}  {:>5}  {:>5}  {:>9}   SCORE",
-            "PILLAR", "STATUS", "AVG", "MIN", "FAILURES"
+            "{}  {:<12}  {:<6}  {:>5}  {:>5}  {:>9}   SCORE",
+            guide_char('│', options),
+            "PILLAR",
+            "STATUS",
+            "AVG",
+            "MIN",
+            "FAILURES"
         )
     } else {
         format!(
-            "│  {:<12}  {:<6}  {:>5}  {:>5}  {:>9}",
-            "PILLAR", "STATUS", "AVG", "MIN", "FAILURES"
+            "{}  {:<12}  {:<6}  {:>5}  {:>5}  {:>9}",
+            guide_char('│', options),
+            "PILLAR",
+            "STATUS",
+            "AVG",
+            "MIN",
+            "FAILURES"
         )
     };
     lines.push(guide_line(
@@ -1225,8 +1244,10 @@ mod tests {
         assert!(verdict.contains("SIMPLE_SECURE"));
     }
 
+    /// The rail inherits the terminal's default foreground so it can never be
+    /// dimmer than an unpainted one; the content still dims.
     #[test]
-    fn dim_content_keeps_the_guide_white() {
+    fn dim_content_leaves_the_guide_unpainted() {
         let line = guide_line(
             "muted",
             Style::new().dim(),
@@ -1235,7 +1256,10 @@ mod tests {
                 width: 120,
             },
         );
-        assert!(line.starts_with("\u{1b}[37m│\u{1b}[0m"));
+        assert!(
+            line.starts_with("│  "),
+            "the rail must carry no SGR of its own: {line:?}"
+        );
         assert!(line.contains("\u{1b}[2m"));
     }
 

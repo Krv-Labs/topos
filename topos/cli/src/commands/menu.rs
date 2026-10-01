@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use console::{Key, Style, Term};
 
-use super::render::{paint, RenderOptions};
+use super::render::{guide, paint, RenderOptions};
 
 /// How the trailing hint should be painted. Plain text stays in
 /// [`MenuOption::hint`]; the style decides the glyph + color wrapper.
@@ -285,16 +285,18 @@ pub(crate) fn render_select(
     let mut lines = header.to_vec();
     lines.push(match step.layout {
         StepLayout::Wizard => format!(
-            "│  {}",
+            "{}  {}",
+            guide('│', opts),
             paint(&step.title, Style::new().cyan().bold(), opts)
         ),
-        StepLayout::Question => "│".to_string(),
+        StepLayout::Question => guide('│', opts),
     });
     lines.push(format!(
-        "│  {}",
+        "{}  {}",
+        guide('│', opts),
         paint(&step.keys, Style::new().dim(), opts)
     ));
-    lines.push("│".to_string());
+    lines.push(guide('│', opts));
     let width = step
         .options
         .iter()
@@ -304,7 +306,8 @@ pub(crate) fn render_select(
     for (idx, option) in step.options.iter().enumerate() {
         if option.hint.is_empty() && !option.current {
             lines.push(format!(
-                "│ {}",
+                "{} {}",
+                guide('│', opts),
                 choice_row(&option.label, idx == cursor, opts)
             ));
             continue;
@@ -318,12 +321,13 @@ pub(crate) fn render_select(
             hint = format!("({hint})");
         }
         lines.push(format!(
-            "│ {}   {}",
+            "{} {}   {}",
+            guide('│', opts),
             choice_row(&label, idx == cursor, opts),
             paint(hint, Style::new().dim(), opts)
         ));
     }
-    lines.push("└".to_string());
+    lines.push(guide('└', opts));
     lines
 }
 
@@ -350,33 +354,44 @@ fn interpret_confirm_key(key: Key) -> ConfirmAction {
 fn render_confirm(title: &str, plan: &[String], cursor: usize, opts: RenderOptions) -> Vec<String> {
     let choices = ["No", "Yes"];
     let mut lines = vec![
-        paint(format!("┌  {title}"), Style::new().bold(), opts),
-        "│".to_string(),
+        paint(
+            format!("{}  {title}", guide('┌', opts)),
+            Style::new().bold(),
+            opts,
+        ),
+        guide('│', opts),
     ];
     if plan.is_empty() {
         lines.push(format!(
-            "│  {}",
+            "{}  {}",
+            guide('│', opts),
             paint("nothing to change", Style::new().dim(), opts)
         ));
     } else {
         for item in plan {
             lines.push(format!(
-                "│  {} {}",
+                "{}  {} {}",
+                guide('│', opts),
                 paint("·", Style::new().dim(), opts),
                 item
             ));
         }
     }
-    lines.push("│".to_string());
+    lines.push(guide('│', opts));
     for (idx, label) in choices.iter().enumerate() {
-        lines.push(format!("│ {}", choice_row(label, idx == cursor, opts)));
+        lines.push(format!(
+            "{} {}",
+            guide('│', opts),
+            choice_row(label, idx == cursor, opts)
+        ));
     }
-    lines.push("│".to_string());
+    lines.push(guide('│', opts));
     lines.push(format!(
-        "│  {}",
+        "{}  {}",
+        guide('│', opts),
         paint("↑↓ · enter · esc", Style::new().dim(), opts)
     ));
-    lines.push("└".to_string());
+    lines.push(guide('└', opts));
     lines
 }
 
@@ -402,22 +417,31 @@ fn choice_row(label: &str, is_cursor: bool, opts: RenderOptions) -> String {
 
 fn render(title: &str, options: &[MenuOption], cursor: usize, opts: RenderOptions) -> Vec<String> {
     let mut lines = vec![
-        paint(format!("┌  {title}"), Style::new().bold(), opts),
-        "│".to_string(),
+        paint(
+            format!("{}  {title}", guide('┌', opts)),
+            Style::new().bold(),
+            opts,
+        ),
+        guide('│', opts),
         format!(
-            "│  {}",
+            "{}  {}",
+            guide('│', opts),
             paint(
                 "↑↓ move · space toggle · a all · enter confirm · esc cancel",
                 Style::new().dim(),
                 opts,
             )
         ),
-        "│".to_string(),
+        guide('│', opts),
     ];
     for (idx, option) in options.iter().enumerate() {
-        lines.push(format!("│ {}", render_row(option, idx == cursor, opts)));
+        lines.push(format!(
+            "{} {}",
+            guide('│', opts),
+            render_row(option, idx == cursor, opts)
+        ));
     }
-    lines.push("└".to_string());
+    lines.push(guide('└', opts));
     lines
 }
 

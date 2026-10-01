@@ -17,7 +17,7 @@ use super::harness::{HarnessSpec, HARNESSES};
 use super::report;
 use super::residue::{self, Residue};
 use super::skills_entry;
-use crate::commands::render::{paint, RenderOptions};
+use crate::commands::render::{guide, paint, RenderOptions};
 
 pub(crate) fn run(home: &Path, json_output: bool) -> Result<(), String> {
     let binary = resolve_binary_path()?;
@@ -42,8 +42,8 @@ pub(crate) fn run(home: &Path, json_output: bool) -> Result<(), String> {
 fn print_human(home: &Path, binary: &Path, rows: &[(&HarnessSpec, Inspection)], found: &[Residue]) {
     let opts = RenderOptions::stdout();
     report::header("Topos Harness Status", false, opts);
-    println!("│  Binary: {}", binary.display());
-    println!("│");
+    println!("{}  Binary: {}", guide('│', opts), binary.display());
+    println!("{}", guide('│', opts));
 
     for (harness, inspection) in sorted(rows) {
         report::harness_line(harness.name, opts);
@@ -60,7 +60,7 @@ fn print_human(home: &Path, binary: &Path, rows: &[(&HarnessSpec, Inspection)], 
         if let Some(message) = (harness.note)(home) {
             report::note(&message, opts);
         }
-        println!("│");
+        println!("{}", guide('│', opts));
     }
 
     print_residue(found, opts);
@@ -145,9 +145,13 @@ fn print_residue(found: &[Residue], opts: RenderOptions) {
             &paint("▲", Style::new().color256(208), opts),
             &format!("{} — {}", item.path.display(), item.what),
         );
-        println!("│      {}", paint(&item.advice, Style::new().dim(), opts));
+        println!(
+            "{}      {}",
+            guide('│', opts),
+            paint(&item.advice, Style::new().dim(), opts)
+        );
     }
-    println!("│");
+    println!("{}", guide('│', opts));
 }
 
 fn print_json(

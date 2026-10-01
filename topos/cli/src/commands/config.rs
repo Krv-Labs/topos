@@ -221,7 +221,11 @@ fn interactive(cwd: &Path) -> Result<(), String> {
     let options = RenderOptions::stderr();
     let config = load_topos_config(cwd);
     let mut header = vec![
-        paint("┌  Topos project settings", Style::new().bold(), options),
+        paint(
+            format!("{}  Topos project settings", guide('┌', options)),
+            Style::new().bold(),
+            options,
+        ),
         guide('│', options),
     ];
     let Some(choice) = menu::run_select(&header, &priority_step(config.effective_priority()))?

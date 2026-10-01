@@ -51,9 +51,7 @@ impl Channel {
     pub fn upgrade_command(self) -> &'static str {
         match self {
             Channel::Homebrew => "brew upgrade topos",
-            Channel::Binary => {
-                "TOPOS_UPDATE=1 curl -fsSL https://docs.krv.ai/topos/install.sh | bash"
-            }
+            Channel::Binary => "curl -fsSL https://docs.krv.ai/topos/install.sh | bash",
             Channel::Cargo => "cargo install topos --force",
             Channel::Source => "git pull && cargo build --release -p topos",
             Channel::Python => "uv pip install -U topos-mcp",
@@ -69,11 +67,7 @@ impl Channel {
     /// to run.
     pub fn action(self) -> Action {
         match self {
-            // Delegated to the installer, which already downloads, verifies the
-            // SHA-256 against `checksums.txt`, and moves the new binary into
-            // place atomically. Reimplementing that in Rust would duplicate
-            // ~60 lines of already-reviewed shell for no gain.
-            Channel::Binary => Action::InstallerScript,
+            Channel::Binary => Action::Download,
             // Homebrew owns its cellar. `brew upgrade` is the only correct
             // move, and it is run on the user's explicit confirmation.
             Channel::Homebrew => Action::Brew,
@@ -85,8 +79,13 @@ impl Channel {
 /// How a channel gets upgraded when `topos update` is confirmed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Re-run `install.sh` with `TOPOS_UPDATE=1`.
-    InstallerScript,
+    /// Download the release asset, verify it, and replace the binary.
+    ///
+    /// In-process rather than by re-running `install.sh`. The installer runs
+    /// `curl --fail -sSL`, and `-s` discards the progress meter with nothing to
+    /// replace it, so delegating inherited an indeterminate spinner and three
+    /// silent phases. The command to run by hand is unchanged.
+    Download,
     /// Run `brew upgrade topos`.
     Brew,
     /// Print the command; do not run it.
@@ -223,7 +222,7 @@ mod tests {
 
     #[test]
     fn only_brew_and_the_installer_are_acted_on() {
-        assert_eq!(Channel::Binary.action(), Action::InstallerScript);
+        assert_eq!(Channel::Binary.action(), Action::Download);
         assert_eq!(Channel::Homebrew.action(), Action::Brew);
         for channel in [
             Channel::Cargo,

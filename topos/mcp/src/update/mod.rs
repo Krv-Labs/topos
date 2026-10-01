@@ -15,6 +15,7 @@
 //! add a second thing to get right about atomic replacement and checksums.
 
 pub mod channel;
+pub mod checksums;
 pub mod installs;
 pub mod notice;
 pub mod release;
@@ -88,24 +89,26 @@ pub fn survey(home: &Path) -> Survey {
     }
 }
 
-/// Run a channel's own upgrade command, wired to the caller's terminal.
+/// Run a channel's upgrade. Only the channels that have a command to run.
 ///
-/// Inheriting stdio rather than capturing it is deliberate: the installer's
-/// banner and progress, or `brew`'s output, are the user watching their own
-/// machine change. Capturing them would produce a silent, unexplained wait.
+/// `Action::Download` is the one variant with no work here: the download needs
+/// a progress bar, and this crate carries no terminal UI. `topos/cli` owns that
+/// and calls into it. Returning an error rather than silently succeeding keeps a
+/// missing dispatch visible instead of reporting an update that changed
+/// nothing.
 pub fn apply(channel: Channel) -> Result<(), String> {
-    let mut command = match channel.action() {
-        Action::InstallerScript => {
-            // `TOPOS_UPDATE=1` is the installer's own "this is an upgrade, do
-            // not stop to ask" switch (`install.sh:321-325`). Without it the
-            // script would prompt about the other installs it discovers —
-            // including the one we just checked — which would be asking the
-            // user a question they already answered.
-            let mut command = Command::new("bash");
-            command.arg("-c").arg(format!(
-                "TOPOS_UPDATE=1 curl -fsSL {INSTALL_SCRIPT_URL} | bash"
-            ));
-            command
+    apply_for(channel.action(), channel)
+}
+
+/// [`apply`], for a caller that has already resolved the action — so the CLI
+/// can dispatch `Download` to its own downloader and everything else here
+/// without asking each channel twice.
+pub fn apply_for(action: Action, channel: Channel) -> Result<(), String> {
+    let mut command = match action {
+        Action::Download => {
+            return Err(
+                "the binary channel is downloaded in-process by the CLI, not here".to_string(),
+            )
         }
         Action::Brew => {
             let mut command = Command::new("brew");

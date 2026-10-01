@@ -10,7 +10,7 @@ use std::io::IsTerminal;
 use console::Style;
 
 use super::menu::{self, SelectOption, SelectStep, StepLayout};
-use super::render::{paint, RenderOptions};
+use super::render::{guide, paint, RenderOptions};
 
 /// Which of the three standard streams are terminals. Resolved once so the
 /// gates that read it are pure functions of it, and every combination is
@@ -144,7 +144,7 @@ pub(crate) fn ask(
 /// `┌  title`; the key hint and the choices follow in [`question_step`].
 fn question_header(question: &Question, options: RenderOptions) -> Vec<String> {
     vec![paint(
-        format!("┌  {}", question.title),
+        format!("{}  {}", guide('┌', options), question.title),
         Style::new().bold(),
         options,
     )]

@@ -178,8 +178,21 @@ pub(crate) fn paint(text: impl ToString, style: Style, options: RenderOptions) -
     }
 }
 
-pub(crate) fn guide(value: char, options: RenderOptions) -> String {
-    paint(value, Style::new().white(), options)
+/// The frame rail.
+///
+/// Deliberately **unpainted**, so the glyph inherits the terminal's default
+/// foreground. It used to be `Style::new().white()`, which is a *palette slot*
+/// rather than "bright white" — most themes render ANSI 7 as a light grey, so
+/// an explicitly-white rail came out **greyer than the unpainted rails in
+/// `menu.rs`**. One card that mixed both (`topos update`) showed the split
+/// mid-frame, with two adjacent blank rails in different colours.
+///
+/// Every rail in the app now goes through here. A frame drawn with unpainted
+/// `│` literals and a frame drawn with painted ones can no longer disagree,
+/// and the rail stays readable in light-on-dark and dark-on-light themes
+/// without depending on what the palette does with slot 7.
+pub(crate) fn guide(value: char, _options: RenderOptions) -> String {
+    value.to_string()
 }
 
 pub(crate) fn guide_line(text: impl ToString, style: Style, options: RenderOptions) -> String {

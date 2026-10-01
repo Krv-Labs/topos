@@ -15,6 +15,7 @@
 //! agent or a CI job has nobody to answer the prompt, and downloading a
 //! binary nobody agreed to is not a safe default.
 
+mod download;
 mod report;
 
 use std::path::Path;
@@ -79,8 +80,8 @@ pub fn run(args: UpdateArgs) -> Result<(), String> {
         return print_json(&survey);
     }
 
-    let interaction =
-        interaction::resolve(args.yes, false, &PromptEnv::from_env(), &Streams::detect());
+    let streams = Streams::detect();
+    let interaction = interaction::resolve(args.yes, false, &PromptEnv::from_env(), &streams);
     let opts = RenderOptions::stdout();
 
     // Always print the survey: a person ran this and is owed an answer even
@@ -106,48 +107,49 @@ pub fn run(args: UpdateArgs) -> Result<(), String> {
         .installs
         .first()
         .map(|install| install.path.as_path());
-    confirm_and_apply(&survey, active, opts)
+    confirm_and_apply(&survey, active, opts, streams.stderr)
 }
 
 /// The card, before any prompt.
+///
+/// Two shapes. Up to date gets a short, closed report and nothing else — there
+/// is no question to ask, so there must be no prompt. An available update gets
+/// the metadata block, then the existing install table when more than one
+/// binary is present.
 fn report_survey(survey: &update::Survey, opts: RenderOptions) {
+    let available = survey.update_available() == Some(true);
     let latest = survey.latest.clone();
-    let mut lines = vec![render::paint(
+    let mut lines = Vec::new();
+
+    // Report the install that a bare `topos` would actually run — the first on
+    // `$PATH`, which is `installs[0]` by construction. Leading with the
+    // running binary instead would name a source checkout while the user types
+    // `topos` and gets the Homebrew one.
+    let primary = survey.installs.first();
+    let primary_path = primary.map(|install| install.path.as_path());
+
+    // `◇` headline, then the rail opens — the shape `config.rs:70` uses for a
+    // finished, non-interactive card. The banner itself carries no rail.
+    lines.push(render::paint(
         format!(
-            "┌  {}",
-            report::title(survey.update_available() == Some(true))
+            "{}  {}",
+            render::guide('◇', opts),
+            report::headline(available, &survey.current, latest.as_deref(),)
         ),
         ConsoleStyle::new().bold(),
-        opts,
-    )];
-    lines.push(render::guide('│', opts));
-    lines.push(render::guide_line(
-        format!(
-            "{} is published for {}.",
-            latest.as_deref().unwrap_or("no release"),
-            update::release::platform()
-        ),
-        ConsoleStyle::new().dim(),
         opts,
     ));
     lines.push(render::guide('│', opts));
 
-    // Report the install that a bare `topos` would actually run — the first on
-    // `$PATH`, which is `installs[0]` by construction — falling back to the
-    // running binary only when `$PATH` resolves nothing. Leading with the
-    // running binary instead would name a source checkout while the user types
-    // `topos` and gets the Homebrew one.
-    let primary = survey.installs.first();
     if let Some(install) = primary {
         lines.extend(report::metadata(
             &survey.current,
-            latest.as_deref(),
+            available.then_some(latest.as_deref()).flatten(),
             &format!("{} · {}", install.channel.label(), install.path.display()),
-            install.channel.upgrade_command(),
+            available.then_some(install.channel.upgrade_command()),
             opts,
         ));
     }
-    let primary_path = primary.map(|install| install.path.as_path());
     if survey.shadowed() {
         lines.push(render::guide('│', opts));
         // The mark is `$PATH`-order "this is the one that runs", which is what
@@ -160,7 +162,7 @@ fn report_survey(survey: &update::Survey, opts: RenderOptions) {
             opts,
         ));
     }
-    lines.push(render::guide('│', opts));
+    lines.push(render::guide('└', opts));
     render::print_lines(lines);
 }
 
@@ -243,6 +245,7 @@ fn confirm_and_apply(
     survey: &update::Survey,
     active: Option<&Path>,
     opts: RenderOptions,
+    draw: bool,
 ) -> Result<(), String> {
     let outdated: Vec<Install> = survey.outdated().into_iter().cloned().collect();
     let latest = survey.latest.clone();
@@ -307,16 +310,43 @@ fn confirm_and_apply(
     }
     let plan: Vec<String> = chosen
         .iter()
-        .map(|install| install.channel.upgrade_command().to_string())
+        .map(|install| describe(install, survey))
         .collect();
     if !menu::run_confirm("Apply this update?", &plan)? {
         return Ok(());
     }
+    let chrome = download::Chrome::interactive(opts, draw);
     for install in &chosen {
-        update::apply(install.channel)?;
+        match install.channel.action() {
+            Action::Download => {
+                // Replace the binary this install *is*, not the running one: a
+                // shadowed Homebrew binary and the one you typed are different
+                // files, and upgrading the wrong one is how an update appears
+                // to do nothing.
+                let _ = download::install(
+                    &install.path,
+                    survey.latest.as_deref().unwrap_or(&survey.current),
+                    &update::release::platform(),
+                    chrome,
+                )?;
+            }
+            other => update::apply_for(other, install.channel)?,
+        }
     }
     announce(&chosen, opts);
     Ok(())
+}
+
+/// One plan line: what runs, and against what.
+fn describe(install: &Install, survey: &update::Survey) -> String {
+    match install.channel.action() {
+        Action::Download => format!(
+            "download and replace {} → {}",
+            install.path.display(),
+            survey.latest.as_deref().unwrap_or(&survey.current)
+        ),
+        _ => install.channel.upgrade_command().to_string(),
+    }
 }
 
 /// Channels topos will not touch, printed with their commands.
@@ -346,26 +376,35 @@ fn print_channels(installs: &[&Install], opts: RenderOptions) {
 }
 
 /// What changed, and what to do if the binary moved.
-fn announce(_chosen: &[Install], opts: RenderOptions) {
-    // A Homebrew upgrade swaps the cellar symlink target, and `install.sh`
-    // replaces the binary in place. Neither *moves* the path a harness entry
-    // records, so drift is checked rather than assumed: `binary::drift` is
-    // the same rule `topos install` uses to decide an entry is stale.
+fn announce(chosen: &[Install], opts: RenderOptions) {
+    // Neither path moves: an in-place replace keeps the file where it was, and
+    // `brew upgrade` swaps the cellar symlink's target rather than the `$PATH`
+    // entry that points at it. So the "re-run `topos install`" advice is
+    // checked with `binary::drift` — the same rule `topos install` uses to
+    // decide an entry is stale — rather than printed whenever anything ran.
     let recorded = binary::resolve_binary_path().ok();
+    let drifted = recorded
+        .as_deref()
+        .and_then(|path| binary::drift(&path.display().to_string(), path));
+
     let mut lines = vec![render::paint(
-        "◇  Topos updated",
+        format!("{}  Topos updated", render::guide('◇', opts)),
         ConsoleStyle::new().bold(),
         opts,
     )];
-    if let Some(path) = recorded {
-        if let Some(reason) = binary::drift(&path.display().to_string(), &path) {
-            lines.push(render::guide_line(
-                format!("{reason} — run `topos install` to refresh harness entries"),
-                ConsoleStyle::new().color256(208),
-                opts,
-            ));
-        }
+    match drifted {
+        Some(reason) => lines.push(render::guide_line(
+            format!("{reason} — run `topos install` so harness entries follow it"),
+            ConsoleStyle::new().color256(208),
+            opts,
+        )),
+        None => lines.push(render::guide_line(
+            "the binary stayed where it was, so harness entries still resolve",
+            ConsoleStyle::new().dim(),
+            opts,
+        )),
     }
+    let _ = chosen;
     lines.push(render::guide('└', opts));
     render::print_lines(lines);
 }

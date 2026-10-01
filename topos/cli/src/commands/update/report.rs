@@ -24,52 +24,45 @@ use crate::commands::render::{paint, RenderOptions};
 /// keys that fit in the same shape as `config.rs`'s 12-character column.
 const LABEL_WIDTH: usize = 8;
 
-/// Label for the upgrade channel, dimmed beside the binary's channel name.
-pub(crate) fn title(survey_latest: bool) -> String {
-    if survey_latest {
-        "Topos update available".to_string()
-    } else {
-        "Topos is up to date".to_string()
+/// The `◇` headline.
+///
+/// An up-to-date report is a closed statement, not a question, so it says what
+/// is true and stops. Offering "install 0.7.0" when 0.7.0 is what is running
+/// is a prompt whose only outcome is downloading what you already have.
+pub(crate) fn headline(available: bool, current: &str, latest: Option<&str>) -> String {
+    match (available, latest) {
+        (true, Some(latest)) => format!("Topos {latest} is available"),
+        (false, Some(_)) => format!("Topos {current} is up to date"),
+        // The release server could not be reached. That is silence about the
+        // release, not a claim that nothing is newer.
+        (false, None) => format!("Topos {current} — could not reach the release server"),
+        (true, None) => format!("Topos {current}"),
     }
 }
 
 /// The `Current` / `Target` / `Source` / `Command` rows.
 ///
-/// `command` is the thing the user would otherwise have to go read the docs to
-/// find, and it is long — so it wraps with a hanging indent under its own
-/// label rather than being truncated. A truncated `curl` command is not a
-/// command.
+/// `command` is `None` when there is nothing to run — an up-to-date report has
+/// no command, and printing one invites the reader to run it.
 pub(crate) fn metadata(
     current: &str,
     latest: Option<&str>,
     source: &str,
-    command: &str,
+    command: Option<&str>,
     opts: RenderOptions,
 ) -> Vec<String> {
     let rail = crate::commands::render::guide('│', opts);
-    let mut lines = vec![guide_line(
-        &rail,
-        &format!("{:<width$}  {}", "Current", current, width = LABEL_WIDTH),
-        opts,
-    )];
+    let row =
+        |label: &str, value: &str| format!("{rail}  {label:<width$}  {value}", width = LABEL_WIDTH);
+    let mut lines = vec![row("Current", current)];
     if let Some(latest) = latest {
-        lines.push(guide_line(
-            &rail,
-            &format!("{:<width$}  {}", "Target", latest, width = LABEL_WIDTH),
-            opts,
-        ));
+        lines.push(row("Target", latest));
     }
-    lines.push(guide_line(
-        &rail,
-        &format!("{:<width$}  {}", "Source", source, width = LABEL_WIDTH),
-        opts,
-    ));
-    wrapped_command(&rail, command, opts, &mut lines);
+    lines.push(row("Source", source));
+    if let Some(command) = command {
+        wrapped_command(&rail, command, opts, &mut lines);
+    }
     lines
-}
-
-fn guide_line(rail: &str, text: &str, _opts: RenderOptions) -> String {
-    format!("{rail}  {text}")
 }
 
 /// The `Command` row, wrapped with a hanging indent so continuation lines read
@@ -94,15 +87,11 @@ fn wrapped_command(rail: &str, command: &str, opts: RenderOptions, lines: &mut V
     if chunks.is_empty() {
         return;
     }
-    lines.push(guide_line(
-        rail,
-        &format!(
-            "{:<width$}  {}",
-            "Command",
-            chunks.remove(0),
-            width = LABEL_WIDTH
-        ),
-        opts,
+    lines.push(format!(
+        "{rail}  {:<width$}  {}",
+        "Command",
+        chunks.remove(0),
+        width = LABEL_WIDTH
     ));
     for chunk in chunks {
         lines.push(format!("{rail}  {indent}{chunk}"));
@@ -237,7 +226,7 @@ mod tests {
             "0.7.0",
             Some("0.7.1"),
             "binary install",
-            "brew upgrade topos",
+            Some("brew upgrade topos"),
             opts(),
         );
         assert_eq!(
@@ -259,7 +248,13 @@ mod tests {
             styled: false,
             width: 48,
         };
-        let lines = metadata("0.7.0", Some("0.7.1"), "binary install", command, narrow);
+        let lines = metadata(
+            "0.7.0",
+            Some("0.7.1"),
+            "binary install",
+            Some(command),
+            narrow,
+        );
         let tail: Vec<_> = lines
             .iter()
             .skip_while(|l| !l.contains("Command"))
@@ -285,7 +280,7 @@ mod tests {
 
     #[test]
     fn the_target_row_is_omitted_when_no_newer_release_is_known() {
-        let lines = metadata("0.7.0", None, "binary install", "curl | bash", opts());
+        let lines = metadata("0.7.0", None, "binary install", Some("curl | bash"), opts());
         assert!(!lines.iter().any(|l| l.contains("Target")), "{lines:?}");
     }
 

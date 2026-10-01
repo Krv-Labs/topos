@@ -18,7 +18,7 @@ use super::harness::{spec, HarnessSpec, HARNESSES};
 use super::report;
 use super::skills_entry;
 use super::state;
-use crate::commands::render::RenderOptions;
+use crate::commands::render::{guide, RenderOptions};
 
 /// One line the confirm UI (or `--dry-run`) shows for a planned removal.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -125,7 +125,7 @@ fn remove_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderO
     if harness.skill_ref {
         success &= remove_skill_ref(harness.id, home, dry_run, opts);
     }
-    println!("│");
+    println!("{}", guide('│', opts));
     success
 }
 

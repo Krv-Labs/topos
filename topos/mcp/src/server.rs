@@ -36,7 +36,10 @@ topos_assess_improvement only for side-by-side variants. Use gitnexus_dir (defau
 to enable COMPOSABLE/IDEAL; check graph state with topos_depgraph_status and build/refresh it \
 with topos_generate_depgraph. topos_calculate_coverage reports test-suite coverage — structural \
 (UAST) declaration matching and k-gram recall — as a separate signal, outside the lattice. \
-Read `topos://build` to confirm which binary and file root are serving you.";
+Read `topos://build` to confirm which binary and file root are serving you. \
+Prefer absolute file paths in tool parameters: a relative one is resolved against \
+the directory this server started in, which the host chose and which may be a \
+different repository; the resolution is reported in the result's warnings.";
 
 /// MCP revisions Topos serves. Under rmcp 3 this list is not advertisement
 /// only: it bounds what `initialize` may negotiate and is what per-request

@@ -29,7 +29,8 @@ use crate::schemas::{
     PrioritySource,
 };
 use crate::security::{
-    composable_default_root, read_safe_utf8_file, resolve_project_path, resolve_within_root,
+    composable_default_root, read_safe_utf8_file, resolution_note, resolve_project_path,
+    resolve_within_root,
 };
 use crate::server::ToposServer;
 use crate::tools::evaluate::overlay_opts;
@@ -293,6 +294,17 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
         Ok(classified) => classified,
         Err(exc) => return err_inspection(priority, priority_source, exc),
     };
+    let mut classified = classified;
+    // `load_source` accepts either `code` or `filepath`; only the latter can
+    // have been resolved from a relative path, so that is the only case where
+    // the caller needs to be told which file was read.
+    if let (Some(requested), Some(resolved)) =
+        (params.filepath.as_deref(), loaded.file_path.as_deref())
+    {
+        if let Some(note) = resolution_note(requested, Path::new(resolved)) {
+            classified.warnings.push(note);
+        }
+    }
     let result = classified.result;
 
     let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {

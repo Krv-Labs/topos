@@ -32,7 +32,9 @@ use crate::schemas::{
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
     SecurityFinding, WorstFileEntry,
 };
-use crate::security::{composable_default_root, read_resolved_utf8, resolve_project_path};
+use crate::security::{
+    composable_default_root, read_resolved_utf8, resolution_note, resolve_project_path,
+};
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -264,6 +266,13 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     );
     if let Some(note) = gitnexus_outcome.generation_note {
         warnings.insert(0, note);
+    }
+    // A relative path names no project, so say which file was actually read.
+    if let Some(note) = resolution_note(&params.filepath, &resolved) {
+        // Appended, not prepended: `warnings.first()` is the COMPOSABLE
+        // explanation (`mdg_unavailable_message` reads it), so putting a path
+        // note at the front would replace the reason COMPOSABLE is missing.
+        warnings.push(note);
     }
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
     let locations = match read_resolved_utf8(&resolved) {

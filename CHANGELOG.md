@@ -28,6 +28,24 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   `~/.local/state/topos/update-check.json`, honours `XDG_STATE_HOME`, and is
   removed by `topos uninstall`.
 
+### Fixed
+
+- MCP tools accept relative paths again. `resolve_project_path` refused every
+  relative `filepath` unless `TOPOS_MCP_FILE_ROOT` was set, and `topos install`
+  never writes it — it emits `command` and `args` and nothing else — so
+  "an absolute file or directory path is required" was the *default* for every
+  unconfigured host, and `topos_begin_refactor` / `topos_assess_changeset` were
+  unusable without hand-editing a config. A relative path now resolves against
+  `TOPOS_MCP_FILE_ROOT`, else the project the server was started in, else fails
+  naming the directory it walked up from. This is stricter than what it
+  replaces: an absolute path previously only had to have a project marker
+  somewhere above it, while a relative one is now resolved against a known root
+  and held inside it.
+- `topos://build` reports **where** its file root came from, so a server pinned
+  to the wrong repository — an MCP server's cwd is chosen by the host, not by
+  you — is visible instead of silent. Tools that read a relative path also
+  report the absolute file they resolved to in `warnings`.
+
 ### Changed
 
 - `topos update` never replaces a package manager's files with a downloaded
@@ -40,6 +58,13 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   directory. The shell honoured `XDG_STATE_HOME` while the Rust ledger
   hardcoded `~/.local/state`, so a user who set the variable got two
   directories and `topos uninstall` pruned only one.
+- MCP tool parameters now say to prefer an absolute path. A relative one is
+  resolved against a directory the host chose, and when the wrong directory
+  happens to contain the same relative path the read succeeds into the wrong
+  repository — not decidable from inside the server, so it is stated instead.
+  `TOPOS_MCP_FILE_ROOT` remains an optional maximum boundary; `topos install`
+  still does not write it, because one hardcoded path is wrong for anyone who
+  works across repositories.
 
 ## [0.7.0] - 2026-09-30
 

@@ -58,7 +58,17 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
         None => requested,
     }
     .canonicalize()
-    .map_err(|e| format!("Path is not readable: {e}"))?;
+    .map_err(|e| match &base {
+        // The base is the actionable part: without it the reader cannot tell
+        // whether the path was simply absent or resolved somewhere they did not
+        // expect, which is the whole failure when a relative path is used
+        // against the wrong project.
+        Some(base) => format!(
+            "Path is not readable: {e} (resolved against {})",
+            base.display()
+        ),
+        None => format!("Path is not readable: {e}"),
+    })?;
 
     // Canonicalization above resolves symlinks, so this is a real containment
     // check rather than a lexical one: a link out of the root fails here.
@@ -194,10 +204,11 @@ pub fn resolve_file_root() -> Result<PathBuf, String> {
 /// stops at `TOPOS_MCP_FILE_ROOT` so an enclosing repo above the configured
 /// boundary is never analyzed.
 pub fn composable_default_root(detected_project: &Path) -> PathBuf {
-    let boundary = std::env::var("TOPOS_MCP_FILE_ROOT")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .and_then(|value| PathBuf::from(value).canonicalize().ok());
+    // Read through the one resolver rather than repeating the lookup: two
+    // copies of this read were how `composable_default_root` and
+    // `resolve_project_path` could come to disagree about whether a boundary
+    // was configured.
+    let boundary = configured_file_root().ok().flatten();
     detected_project
         .ancestors()
         .take_while(|dir| boundary.as_ref().is_none_or(|b| dir.starts_with(b)))
@@ -205,6 +216,30 @@ pub fn composable_default_root(detected_project: &Path) -> PathBuf {
         .map(Path::to_path_buf)
         .or(boundary)
         .unwrap_or_else(|| detected_project.to_path_buf())
+}
+
+/// A note to attach to a tool result when the caller passed a relative path.
+///
+/// A relative path carries no project identity: which repository `src/lib.rs`
+/// means depends entirely on the base this function chose. That base can be
+/// wrong — an MCP server's cwd is picked by the host, and three of the four
+/// servers on the machine this was diagnosed against pointed at a repository
+/// other than the one being edited — and when the wrong base happens to
+/// contain the same relative path, the read *succeeds* into the wrong
+/// repository.
+///
+/// That case is not decidable from inside the server: nothing in the request
+/// says which project was meant. So it is made visible instead. Returning
+/// `None` for an absolute path keeps the common case silent.
+pub fn resolution_note(requested: &str, resolved: &Path) -> Option<String> {
+    if Path::new(requested).is_absolute() {
+        return None;
+    }
+    Some(format!(
+        "Resolved the relative path `{requested}` to {} — pass an absolute path if that is \
+         not the file you meant.",
+        resolved.display()
+    ))
 }
 
 /// Resolve symlinks incrementally, one path component at a time, matching

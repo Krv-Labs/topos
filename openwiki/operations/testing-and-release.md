@@ -7,11 +7,14 @@ tags: [operations, testing, ci, release, packaging, rust]
 openwiki:
   roles: [operations, testing, delivery]
   change_kinds: [ci, release, packaging, metadata]
-  source_paths: [.github/workflows/ci.yml, .github/workflows/release.yml, scripts/ci_gate.py, scripts/check_versions.py]
+  source_paths: [.github/workflows/ci.yml, .github/workflows/openwiki.yml, .github/workflows/release.yml, scripts/ci_gate.py, scripts/check_versions.py]
   symbols: [decide, TRUNK_PATTERNS, check_versions.py]
   test_paths: [scripts/ci_gate.py, tests/packaging/test_install_sh_preflight.py]
   invariants: [Release tags and published metadata must match the Cargo workspace version., CI must not silently skip verification when stack membership is unreadable.]
   validation_commands: [python3 scripts/ci_gate.py --selftest, python3 scripts/check_versions.py]
+verified:
+  - by: openwiki/0.7.1
+    at: 2026-10-09T13:09:16.317Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -21,6 +24,8 @@ sources:
     resource: repo://.github/workflows/clawhub-publish.yml
   - id: openwiki-source-d558e38ccd1b08e055e4f3f5
     resource: repo://.github/workflows/docs.yml
+  - id: openwiki-source-6d3ac2bdfb0e76882a670989
+    resource: repo://.github/workflows/openwiki.yml
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
   - id: openwiki-source-651d1fb6c9e49916a916ab51
@@ -41,10 +46,7 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-16T12:21:33.983Z
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
 ---
 
 # Testing, packaging, CI, and release operations
@@ -95,6 +97,7 @@ flowchart TD
   Known -->|"missing or invalid"| Admit
   Admit --> Jobs["rust, composable, wheel, extension"]
 ```
+Figure 1: CI gate admission decision flow evaluating event types, trunk branches, and GraphQL stack responses.
 
 This is the CI admission path: unreadable stack information results in more validation, not a skipped PR.
 
@@ -149,6 +152,7 @@ flowchart TD
   Wheels --> PyPI["PyPI publish skip existing"]
   PyPI --> Registry["Validate and publish MCP registry"]
 ```
+Figure 2: Execution pipeline and artifact dependencies for full release and PyPI-only delivery.
 
 This is the delivery dependency graph for a normal release; `pypi_only` follows the right-hand wheel path.
 
@@ -160,9 +164,11 @@ This is the delivery dependency graph for a normal release; `pypi_only` follows 
 
 Secret identifiers such as `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64`, `HOMEBREW_TAP_TOKEN`, and `VSCE_PAT` are sufficient for operations documentation. Never copy secret values into manifests, test fixtures, logs, or runbooks.
 
-## Documentation and badge automation
+## Documentation, badges, and OpenWiki CI automation
 
-The docs workflow uses Python 3.12 plus `uv` to build Sphinx HTML on `main` and PRs to `main`; only a successful `main` push deploys the Pages artifact. The self-badge workflow is path-filtered to core Rust inputs and badge generator changes, only runs ordinary PR work for `release/v*` heads, builds/indexes the repository with pinned GitNexus, and commits updated SVG badges only on `main`. Treat that commit as generated output: it uses `[skip ci]` to avoid a CI loop.
+- **Sphinx documentation workflow:** `.github/workflows/docs.yml` builds Sphinx HTML using Python 3.12 and `uv` on `main` pushes and pull requests targeting `main`. Only successful pushes to `main` deploy the Pages site artifact.
+- **Self-badge generator workflow:** `.github/workflows/badge.yml` triggers on path-filtered core Rust inputs and badge generation logic. It builds and indexes the repository with pinned GitNexus and commits updated SVG badges on `main` using `[skip ci]` to prevent workflow loops.
+- **OpenWiki update workflow:** `.github/workflows/openwiki.yml` automates documentation synchronization. It runs on manual dispatch (`workflow_dispatch`) or on pushes to `main` that do not touch `openwiki/**`, `AGENTS.md`, or `CLAUDE.md`. The job sets up Node.js 22, installs `openwiki` globally, and executes `openwiki code --update --print` using Gemini 3.6 Flash (`OPENWIKI_MODEL_ID=gemini-3.6-flash`). Because the `openwiki` CLI writes a stock daily scheduled workflow (`.github/workflows/openwiki-update.yml`) as a side effect during code updates, the job explicitly deletes `openwiki-update.yml` and restores `openwiki.yml` before calling `peter-evans/create-pull-request@v7`. The pull request step targets branch `openwiki/update` and configures `add-paths` strictly to `openwiki`, `AGENTS.md`, and `CLAUDE.md`, omitting `.github/workflows/**` so automated documentation updates cannot alter workflow permissions, triggers, or schedules.
 
 ## Before merge or release
 

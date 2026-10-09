@@ -1,17 +1,11 @@
 ---
 type: integration boundary guide
 title: Analysis integrations and distribution surfaces
-description: Maps Topos analysis dependencies and its MCP, container, package, editor, skill, plugin, and harness-registration surfaces. Explains launch contracts, compatibility controls, and filesystem and artifact trust boundaries.
-resource: /Dockerfile
-tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution]
-openwiki:
-  roles: [integration, operations, security]
-  change_kinds: [gitnexus, mcp, packaging, filesystem]
-  source_paths: [topos/engine/src/adapters/gitnexus.rs, topos/mcp/src/security.rs, Dockerfile, .mcp/server.json]
-  symbols: [ModuleDependencyGraph, resolve_project_path, resolve_existing_prefix]
-  test_paths: [topos/mcp/src/security.rs]
-  invariants: [MCP paths must remain inside a configured canonical maximum boundary, and missing paths must not hide symlink-prefix escapes.]
-  validation_commands: [cargo test -p topos-mcp]
+description: Maps Topos analysis dependencies, update mechanics, and its MCP, container, package, editor, skill, plugin, and harness-registration distribution channels.
+tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
+verified:
+  - by: openwiki/0.7.1
+    at: 2026-10-09T13:09:16.317Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -47,6 +41,8 @@ sources:
     resource: repo://topos/cli/src/commands/install/mod.rs
   - id: openwiki-source-888308d02f8dcccc2c448d06
     resource: repo://topos/cli/src/commands/install/skills_entry.rs
+  - id: openwiki-source-fc2ccc731e9f8934a8dd55ae
+    resource: repo://topos/cli/src/main.rs
   - id: openwiki-source-643b3a33030a101565ff273a
     resource: repo://topos/engine/src/adapters/gitnexus.rs
   - id: openwiki-source-0b48cb3666a38219ba6ca8c8
@@ -69,17 +65,18 @@ sources:
     resource: repo://topos/mcp/src/sighthound.rs
   - id: openwiki-source-a9e2b99472d2a9efbdb51629
     resource: repo://topos/mcp/src/tools/depgraph.rs
+  - id: openwiki-source-160506588f884475240a7640
+    resource: repo://topos/mcp/src/update/mod.rs
+  - id: openwiki-source-4c49af915ba677f94e9fd9a2
+    resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-16T12:21:33.983Z
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
 ---
 
 # Analysis integrations and distribution surfaces
 
-Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers those contracts. For the analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage, see the [agent and CLI workflow](../workflows/agent-and-cli.md).
+Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers those launch contracts, artifact channels, path security controls, and update delivery mechanics. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
 
 ## External topology: GitNexus and the MDG
 
@@ -89,7 +86,7 @@ GitNexus produces `.gitnexus/`; Topos consumes it as an inter-module `ModuleDepe
 
 ### Generation, freshness, and recoverability
 
-Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including a branch-scoped store). It captures a source-content fingerprint, file count, start/end times, and Git HEAD when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale. A status check chooses the branch-specific store where applicable and classifies it as `missing`, `present`, `stale`, `load_error`, `schema_mismatch`, `invalid_dir`, or `branch_not_indexed`.
+Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including a branch-scoped store). It captures a source-content fingerprint, file count, start/end times, and Git HEAD when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale. A status check chooses the branch-specific store where applicable and classifies it as `missing`, `present`, `stale`, `load_error`, `schema_mismatch`, `invalid_dir`, or `branch_not_indexed`. Freshness evaluation evaluates anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
 
 By default, evaluation attempts one generation for a missing, stale, branch-not-indexed, or load-error graph. `--no-composable` / `no_composable` restores read-only behavior. A missing executable, timeout, or failed subprocess yields a structured failure and leaves SIMPLE, SECURE, and NAVIGABLE usable. The subprocess limit is 300 seconds by default; `TOPOS_DEPGRAPH_TIMEOUT` overrides it, and a non-positive value disables the limit. In contrast, a schema mismatch or an outside-root override is not retried because the same command cannot safely repair that condition.
 
@@ -98,7 +95,7 @@ flowchart TD
     Eval["CLI or MCP evaluation"] --> Status["Inspect graph status"]
     Status --> Good{"Present and fresh"}
     Good -->|yes| Load["Load branch-aware MDG"]
-    Good -->|no| Recover{"Missing stale branch miss or load error"}
+    Good -->|no| Recover{"Missing, stale, branch miss, or load error"}
     Recover -->|yes| Tool{"GitNexus on PATH"}
     Tool -->|yes| Generate["Run gitnexus analyze"]
     Generate --> Fingerprint["Write Topos fingerprint"]
@@ -108,7 +105,7 @@ flowchart TD
     Load --> Score["Attach MDG to COMPOSABLE"]
 ```
 
-This is the shared graph-generation decision: recoverable states get one bounded attempt, while unsafe or incompatible states do not.
+Shared graph generation and recovery decision: recoverable graph states receive one bounded generation attempt, while unsafe or schema-mismatched states do not.
 
 ### Root selection is also a containment rule
 
@@ -128,18 +125,19 @@ For taint findings, Topos identifies the actionable callee and display sink from
 
 With no arguments, `topos-mcp` serves MCP over standard input/output until its client closes stdin; `--version` and `--help` are its only local options. The server aggregates tool routers and exposes tools, resources, and the `topos_refactor_until_ideal` prompt. It deliberately pins negotiation to MCP revisions `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`. The latter permits `server/discover` as the first request; the initialize and discovery paths expose the same tool surface.
 
-Filesystem tools call `resolve_project_path`, rather than trusting the server process working directory. A requested existing file or directory is canonicalized and must be readable. When `TOPOS_MCP_FILE_ROOT` is set, the canonical root is a maximum boundary: both the resolved request and its discovered project root must remain below it. When it is unset, a request must be absolute; Topos walks ancestors from the resolved path to find `.git`, `pyproject.toml`, or `Cargo.toml`. Canonicalization failure, boundary escape, and missing project marker are errors, not fallbacks to cwd.
+Filesystem tools call `resolve_project_path`, rather than trusting the server process working directory. A requested existing file or directory is canonicalized and must be readable. When `TOPOS_MCP_FILE_ROOT` is set, the canonical root is a maximum boundary: both the resolved request and its discovered project root must remain below it. When `TOPOS_MCP_FILE_ROOT` is unset, relative requests are anchored against the startup process project root and held inside it, while absolute requests are canonicalized and checked for an ancestor project marker (`.git`, `pyproject.toml`, or `Cargo.toml`). Canonicalization failure, boundary escape, and missing project marker are errors, not fallbacks to process working directory.
 
 ```mermaid
 flowchart TD
     Request["MCP requested path"] --> RootSet{"File root configured"}
     RootSet -->|yes| Root["Canonicalize configured root"]
-    Root --> ResolveRelative["Resolve request against root"]
-    RootSet -->|no| Absolute{"Request is absolute"}
-    Absolute -->|no| RejectAbsolute["Reject request"]
-    Absolute -->|yes| ResolveAbsolute["Canonicalize request"]
-    ResolveRelative --> Canonical["Canonicalize request"]
-    ResolveAbsolute --> Boundary{"Request under root if configured"}
+    Root --> ResolveConfigured["Resolve request against configured root"]
+    RootSet -->|no| PathType{"Request is absolute"}
+    PathType -->|no| Startup["Anchor request to startup project root"]
+    PathType -->|yes| ResolveDirect["Canonicalize absolute request"]
+    ResolveConfigured --> Canonical["Canonicalize resolved path"]
+    Startup --> Canonical
+    ResolveDirect --> Boundary{"Path under root if configured"}
     Canonical --> Boundary
     Boundary -->|no| RejectBoundary["Reject request"]
     Boundary -->|yes| Discover["Walk ancestors for project marker"]
@@ -148,13 +146,13 @@ flowchart TD
     Project -->|no| RejectProject["Reject request"]
 ```
 
-This is the file-tool containment flow. It makes an existing symlink escape observable before Topos reads the target.
+MCP filesystem containment flow: canonicalizes requests and verifies that resolved paths and discovered project markers satisfy containment boundaries.
 
 A separate resolver supports paths that may not exist yet, chiefly a graph-store override. `resolve_existing_prefix` canonicalizes every existing component; it applies a missing tail lexically, but resumes symlink resolution if `..` removes that tail. `resolve_path_within` then compares that result with the canonical root. This is why a missing leaf and paths such as `link/missing/..` cannot hide an existing symlink escape; lexical normalization alone is unsafe here.
 
 ## Registry wheel, native binaries, and container image
 
-`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.6.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.7.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
 
 The workspace version in `Cargo.toml` is the version authority. `scripts/check_versions.py` checks it against the extension, Agent Plugin, registry entry, and its package entry; release CI also compares a tag after stripping an optional leading `v`. PyPI registry metadata must omit both `registryBaseUrl` and a `--index-url` runtime argument, because VS Code appends its own index option and `uv` rejects the duplicate option.
 
@@ -182,6 +180,46 @@ This is distinct from **CLI-owned harness registration**. `topos install`, `topo
 
 `pi` is the narrow exception: it lacks an MCP client unless the user separately installs `pi-mcp-adapter`. If a Topos skill already exists in a known external skill directory, `topos install pi` may append that directory path to pi’s `settings.json` `skills` array; it never writes the skill content. If pi already discovers the skill or no skill is installed, it writes no reference. This preserves the ownership boundary even where a harness needs two integration artifacts.
 
+## Update check mechanism and release notice delivery
+
+Topos incorporates a unified self-update discovery and notice architecture shared between the `topos` CLI and `topos-mcp` server inside `topos/mcp/src/update/`. Because `topos/cli` depends on `topos-mcp`, both surfaces query available releases, inspect installed binary channels, and deliver update notifications using common data structures without duplicate network or parsing logic.
+
+Unprompted update checks and notices are governed by three independent safety controls:
+1. **Opt-Out & CI Gate:** Checks are disabled if `TOPOS_NO_UPDATE_NOTICES` is set or if running in CI environments (`CI` or `GH_PROMPT_DISABLED`).
+2. **Fetch Throttle:** Network release queries are rate-limited to at most once per 24 hours (`THROTTLE_SECS = 86400`). Cached release metadata is stored in `update-check.json` within the user state directory. Atomic file replacement via temporary file staging prevents concurrent processes from reading partial JSON data.
+3. **Display Throttle:** Update notices are displayed at most once per 24 hours (`notified_at`), tracked independently from fetch timestamps so fresh background checks do not reset quiet periods. `claim_notice` claims display rights atomically across processes.
+
+```mermaid
+flowchart TD
+    Trigger["CLI or MCP execution"] --> Gate{"Not opt-out and not CI"}
+    Gate -->|no| Silent["Suppress notice"]
+    Gate -->|yes| Surface{"Execution surface"}
+    Surface -->|CLI interactive| FetchThrottle{"24h fetch throttle expired"}
+    FetchThrottle -->|yes| Network["Fetch release info & discover PATH installs"]
+    Network --> SaveCache["Atomically update update-check.json"]
+    FetchThrottle -->|no| LoadCache["Load cached update-check.json"]
+    SaveCache --> DisplayThrottle
+    Surface -->|MCP server| LoadCache
+    LoadCache --> DisplayThrottle{"24h display throttle & update available"}
+    DisplayThrottle -->|no| Quiet["No notice output"]
+    DisplayThrottle -->|yes| Delivery{"Surface mechanism"}
+    Delivery -->|CLI passive| StderrNotice["Print single-line warning to stderr"]
+    Delivery -->|MCP server| Latch{"Atomic EMITTED latch clear"}
+    Latch -->|yes| Banner["Inject Markdown banner into 1 tool result"]
+    Latch -->|no| Quiet
+```
+
+Update check, throttle, and notice delivery workflow across CLI and MCP execution surfaces.
+
+### Surface-specific delivery mechanics
+
+Notice delivery behavior adapts to the execution context:
+- **CLI passive notices:** On interactive commands where standard input, output, and error streams are terminals (`interactive()`), `passive_notice()` invokes `refresh(&home)` to perform the network fetch when stale. If an update is available or shadowed binaries exist, it prints a single-line advisory to `stderr` so machine-readable `stdout` outputs (such as `--json`) are preserved. Notice delivery is explicitly suppressed for `topos update` and `topos mcp`.
+- **MCP server notice injection:** The stdio `topos-mcp` server **never initiates network checks** during tool execution to guarantee fast, deterministic response times. Instead, it reads the cache file populated by previous CLI runs. When an update is available and display throttle permits, an in-memory `EMITTED` atomic boolean latch ensures that a Markdown update banner is injected into at most **one** tool execution response per server process lifecycle.
+- **Shadowed installation discovery:** `Survey` discovers all `topos` executables across `$PATH` (`installs::discover`). When multiple binaries are found, it detects shadowed installs where $PATH ordering causes a different binary to run, warning the user when an upgrade might appear ineffective.
+
+`topos update` performs direct channel-aware upgrades or downloads signed, checksum-verified native release binaries from official release assets.
+
 ## Focused checks when changing a boundary
 
 - **GitNexus and MDG:** test version classification, branch-store selection, fresh/stale and first-run overrides, containment relationships used for fan metrics, and timeout/failed subprocess behavior. `cargo test -p topos-engine gitnexus` is a focused starting point.
@@ -190,3 +228,4 @@ This is distinct from **CLI-owned harness registration**. `topos install`, `topo
 - **Distribution metadata:** run `python3 scripts/check_versions.py` and `python3 scripts/check_agent_plugin.py`. A version or registry metadata change should also be checked through the release workflow’s platform/linkage paths.
 - **VS Code:** run `pnpm run test` in `extensions/vscode`. Its unit tests cover invocation formation, language detection, SHA-256, manifest selection, redirects, non-200 responses, and timeout behavior without reaching the network.
 - **Harness changes:** use `topos/cli/tests/install_e2e.rs` plus dry-run, conflict, repair, and uninstall scenarios. Do not merge a convenience change that lets harness registration overwrite a user-owned entry or install skill contents.
+- **Update checks and notices:** run `cargo test -p topos-cli update_e2e` to verify survey reporting, cached throttle handling, shadowed binary detection, and offline behavior.

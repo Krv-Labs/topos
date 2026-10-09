@@ -221,7 +221,11 @@ fn interactive(cwd: &Path) -> Result<(), String> {
     let options = RenderOptions::stderr();
     let config = load_topos_config(cwd);
     let mut header = vec![
-        paint("┌  Topos project settings", Style::new().bold(), options),
+        paint(
+            format!("{}  Topos project settings", guide('┌', options)),
+            Style::new().bold(),
+            options,
+        ),
         guide('│', options),
     ];
     let Some(choice) = menu::run_select(&header, &priority_step(config.effective_priority()))?
@@ -314,12 +318,12 @@ const PRIORITY_CHOICES: [(Priority, &str, &str); RANKING_LEN] = [
 
 fn priority_step(current: Priority) -> SelectStep {
     SelectStep {
-        title: "Evaluation priority",
-        keys: "↑↓ move · enter next · esc cancel",
+        title: "Evaluation priority".into(),
+        keys: "↑↓ move · enter next · esc cancel".into(),
         options: PRIORITY_CHOICES
             .iter()
             .map(|&(priority, label, hint)| SelectOption {
-                label,
+                label: label.into(),
                 hint: hint.to_string(),
                 current: priority == current,
                 key: None,
@@ -343,12 +347,12 @@ const PR_GATE_CHOICES: [(PrGatePreset, &str); 4] = [
 
 fn pr_gate_step(current: PrGatePreset) -> SelectStep {
     SelectStep {
-        title: "PR gate · topos pr-recap",
-        keys: "↑↓ move · enter save · esc cancel (nothing saved)",
+        title: "PR gate · topos pr-recap".into(),
+        keys: "↑↓ move · enter save · esc cancel (nothing saved)".into(),
         options: PR_GATE_CHOICES
             .iter()
             .map(|&(preset, label)| SelectOption {
-                label,
+                label: label.into(),
                 hint: preset_hint(preset),
                 current: preset == current,
                 key: None,

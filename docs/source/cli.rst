@@ -55,7 +55,7 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
 
       Agent registration, project settings, and the MCP server.
       ^^^
-      ``install`` · ``status`` · ``uninstall`` · ``config`` · ``depgraph`` · ``mcp``
+      ``install`` · ``status`` · ``uninstall`` · ``update`` · ``config`` · ``depgraph`` · ``mcp``
 
 Quality commands
 ================
@@ -586,6 +586,46 @@ With no ids in a terminal, both commands open a multi-select checklist.
    topos install --all --dry-run   # see what would change
    topos install claude codex      # just those two
    topos status --json             # for scripts and agents
+
+update
+------
+
+Check for a newer release and offer to install it. Topos works out which
+distribution channel each ``topos`` binary came from, shows the exact command
+that upgrades it, and runs that command once you confirm.
+
+.. code-block:: bash
+
+   topos update
+   topos update --check
+   topos update --json
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Flag
+     - Behavior
+   * - ``--check``
+     - Report what is installed and published without being offered anything.
+   * - ``-y``, ``--yes``
+     - Apply without prompting. Applies every supported outdated install without prompting. Binary
+       installs use verified downloads; Homebrew uses its upgrade command.
+   * - ``--json``
+     - Machine-readable survey: current and latest version, platform, and every
+       install with its path, version, channel and upgrade command.
+
+Nothing is applied without a confirmation, and a non-interactive run without --yes reports
+and exits without changing anything — an agent or CI job has nobody to answer
+the prompt. See :doc:`installation` for the channel table and the upgrade paths.
+
+**Example**
+
+.. code-block:: bash
+
+   topos update --check      # what would change
+   topos update              # offer it
+   topos update --json       # for scripts and agents
 
 config
 ------

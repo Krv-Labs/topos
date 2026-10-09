@@ -18,7 +18,7 @@ use super::harness::{spec, HarnessSpec, HARNESSES};
 use super::report;
 use super::skills_entry;
 use super::state;
-use crate::commands::render::RenderOptions;
+use crate::commands::render::{guide, RenderOptions};
 
 /// One line the confirm UI (or `--dry-run`) shows for a planned removal.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -125,7 +125,7 @@ fn remove_one(id: &str, home: &Path, binary: &Path, dry_run: bool, opts: RenderO
     if harness.skill_ref {
         success &= remove_skill_ref(harness.id, home, dry_run, opts);
     }
-    println!("│");
+    println!("{}", guide('│', opts));
     success
 }
 
@@ -272,7 +272,17 @@ fn clean_up(
     }
     let dirs = state::created_dirs(home);
     let pruned = prune_dirs(&dirs, false);
+    // Read existence *before* removing the ledger: the guard below must
+    // reflect "there was state here", not "there is state here now".
+    let had_state = state::state_file_path(home).exists();
     state::remove_state_file(home).ok();
+    // The update check's cache lives in the same directory and is topos's own
+    // bookkeeping, not the user's, so a full uninstall takes it with it.
+    // Guarded so an uninstall that had nothing to do does not bring a file
+    // into existence just to delete it.
+    if had_state {
+        topos_mcp::update::notice::remove_cache(home);
+    }
     prune_dirs(&[state::state_dir(home)], false);
     for dir in pruned {
         report::detail(

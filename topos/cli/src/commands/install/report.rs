@@ -7,7 +7,7 @@
 use console::Style;
 
 use super::artifact::State;
-use crate::commands::render::{paint, RenderOptions};
+use crate::commands::render::{guide, paint, RenderOptions};
 
 pub(crate) fn ok(opts: RenderOptions) -> String {
     paint("✓", Style::new().green(), opts)
@@ -59,16 +59,26 @@ pub(crate) fn header(title: &str, dry_run: bool, opts: RenderOptions) {
     let mode = if dry_run { " (preview)" } else { "" };
     println!(
         "{}",
-        paint(format!("┌  {title}{mode}"), Style::new().bold(), opts)
+        paint(
+            format!("{}  {title}{mode}", guide('┌', opts)),
+            Style::new().bold(),
+            opts,
+        )
     );
-    println!("│");
+    println!("{}", guide('│', opts));
 }
 
 pub(crate) fn harness_line(name: &str, opts: RenderOptions) {
-    println!("│  {}", paint(name, Style::new().bold(), opts));
+    println!(
+        "{}  {}",
+        guide('│', opts),
+        paint(name, Style::new().bold(), opts)
+    );
 }
 
 pub(crate) fn detail(glyph: &str, message: &str) {
+    // No `opts`: the glyph and message are already styled by their caller, so
+    // the rail is the only thing left and it never needs the styled flag.
     println!("│    {glyph} {message}");
 }
 
@@ -86,5 +96,9 @@ pub(crate) fn note(message: &str, opts: RenderOptions) {
 /// Closes the report. Callers already end each section with a bare `│`, so this
 /// adds no separator of its own.
 pub(crate) fn footer(message: &str, opts: RenderOptions) {
-    println!("└  {}", paint(message, Style::new().bold(), opts));
+    println!(
+        "{}  {}",
+        guide('└', opts),
+        paint(message, Style::new().bold(), opts)
+    );
 }

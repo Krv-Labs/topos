@@ -298,27 +298,45 @@ Details and troubleshooting
 
 .. dropdown:: Upgrading
 
-   Re-run the installer to fetch the latest release:
+   ``topos update`` checks for a newer release, tells you which install channel
+   your binary came from, and applies the update once you confirm:
 
    .. code-block:: bash
 
-      curl -fsSL https://docs.krv.ai/topos/install.sh | bash
+      topos update
 
-   Homebrew installs should upgrade through Homebrew:
+   Use ``topos update --check`` to report without being offered anything, and
+   ``topos update --json`` for a machine-readable survey.
+
+   Topos never downloads over a package manager's files. A Homebrew install is
+   upgraded by running ``brew upgrade topos``, and a binary install by
+   downloading the release, verifying its checksum, and atomically replacing
+   the selected binary using a unique staging file. Cargo, source-checkout and pip installs are reported with
+   the command to run, since topos cannot safely update them for you.
+
+   When more than one ``topos`` is installed, ``topos update`` lists each one
+   with its path, version and channel, and lets you pick which to upgrade.
+   ``PATH`` order decides which binary actually runs, so upgrading one while a
+   different one shadows it appears to do nothing.
+
+   To upgrade by hand instead:
 
    .. code-block:: bash
 
-      brew upgrade topos
+      curl -fsSL https://docs.krv.ai/topos/install.sh | bash   # binary install
+      brew upgrade topos                                      # Homebrew
+      git pull && cargo build --release -p topos               # source checkout
 
-   Source checkouts should use ``git pull && cargo build --release -p
-   topos`` (Cargo path) or ``git pull && uv sync`` (uv path). There is no
-   built-in ``topos update`` — that was a pip-specific self-update in the
-   pre-migration Python CLI and doesn't carry over to a cargo/homebrew-distributed
-   binary. ``topos uninstall`` exists, but it removes *agent MCP registrations*,
-   not the binary.
+   ``topos uninstall`` exists, but it removes *agent MCP registrations*, not
+   the binary.
 
    After an upgrade that moves the binary, re-run ``topos install`` so the
    harness entries point at the new path.
+
+   Topos checks for new releases at most once every 24 hours and mentions them
+   in that window at most once, on the command line and once per MCP session.
+   Set ``TOPOS_NO_UPDATE_NOTICES=1`` to silence those notices entirely;
+   ``topos update`` still works and always reports when you ask it to.
 
 .. dropdown:: Clean uninstall
 

@@ -19,7 +19,7 @@
 //! what install created so uninstall removes exactly that much.
 
 mod artifact;
-mod binary;
+pub(crate) mod binary;
 mod configure;
 mod fsops;
 mod harness;

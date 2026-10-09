@@ -20,6 +20,7 @@ use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
+use crate::formatting::append_path_note;
 use crate::formatting::{
     agent_contract_prelude, build_pillars, error_md, finish_agent_contract, render_evaluation_md,
     to_evaluation_result, to_tool_result, AgentContractPreludeInput, EvalResultOptions,
@@ -32,7 +33,9 @@ use crate::schemas::{
     ProjectEvaluationResult, ProjectFileEntry, ProjectLanguageRollup, RefactorTarget,
     SecurityFinding, WorstFileEntry,
 };
-use crate::security::{composable_default_root, read_resolved_utf8, resolve_project_path};
+use crate::security::{
+    composable_default_root, read_resolved_utf8, resolution_note, resolve_project_path,
+};
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -265,6 +268,14 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     if let Some(note) = gitnexus_outcome.generation_note {
         warnings.insert(0, note);
     }
+    // A relative path names no project, so say which file was actually read.
+    let path_note = resolution_note(&params.filepath, &resolved);
+    if let Some(note) = path_note.clone() {
+        // Appended, not prepended: `warnings.first()` is the COMPOSABLE
+        // explanation (`mdg_unavailable_message` reads it), so putting a path
+        // note at the front would replace the reason COMPOSABLE is missing.
+        warnings.push(note);
+    }
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
     let locations = match read_resolved_utf8(&resolved) {
         Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
@@ -307,7 +318,8 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
     let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
-    let md = render_evaluation_md(&model, None, params.verbose);
+    let mut md = render_evaluation_md(&model, None, params.verbose);
+    append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
 }
 

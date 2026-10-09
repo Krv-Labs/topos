@@ -18,7 +18,7 @@ use super::composable::resolve_composable_mdg;
 use super::evaluate::info::details_for_source;
 use super::evaluate::summary::print_inspection_summary;
 use super::lang::detect_language;
-use super::render::{paint, print_lines, spinner, RenderOptions};
+use super::render::{guide, paint, print_lines, spinner, RenderOptions};
 
 use self::detail::inspection_detail_lines;
 
@@ -117,7 +117,8 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
             )
         );
         println!(
-            "└  {} SLOP · parse failure",
+            "{}  {} SLOP · parse failure",
+            guide('└', options),
             paint("X", console::Style::new().red().bold(), options)
         );
         std::process::exit(1);

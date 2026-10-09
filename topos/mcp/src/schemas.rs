@@ -259,7 +259,7 @@ pub struct EvaluateCodeInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvaluateFileInput {
-    /// Source file path.
+    /// Source file path. Prefer an absolute path.
     pub filepath: String,
     /// `.gitnexus` store under the MCP file root (default:
     /// `<file root>/.gitnexus`). Freshness and regeneration always use the
@@ -307,9 +307,8 @@ fn default_project_limit() -> usize {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvaluateProjectInput {
-    /// Directory to evaluate, walked recursively. Must resolve inside the
-    /// trusted file root; paths outside it are refused. All supported
-    /// languages are autodetected — no language argument is needed.
+    /// Directory to evaluate, walked recursively. Prefer an absolute path. Must
+    /// resolve inside the trusted file root. Languages are autodetected.
     pub path: String,
     /// Optional ranking of simple/composable/secure (best first). The
     /// top-ranked generator sets scorer priority; omit to default to
@@ -366,8 +365,10 @@ pub struct CompareCodeInput {
 #[serde(deny_unknown_fields)]
 pub struct CompareFilesInput {
     /// Baseline file path.
+    /// Source path. Prefer absolute.
     pub source: String,
     /// Comparison file path.
+    /// Target path. Prefer absolute.
     pub target: String,
 }
 
@@ -379,9 +380,11 @@ pub struct AssessImprovementInput {
     #[serde(default)]
     pub proposed_code: Option<String>,
     /// Proposed file path.
+    /// Proposed path for `filepath`.
     #[serde(default)]
     pub proposed_filepath: Option<String>,
     /// Baseline file path for side-by-side assessment.
+    /// Path of the file being assessed.
     #[serde(default)]
     pub filepath: Option<String>,
     /// Inline baseline source; COMPOSABLE is unavailable.
@@ -421,7 +424,7 @@ impl AssessImprovementInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BeginRefactorInput {
-    /// File path to snapshot.
+    /// File path to snapshot. Prefer an absolute path.
     pub filepath: String,
     /// Optional generator ranking.
     #[serde(default)]
@@ -502,6 +505,7 @@ pub struct InspectCodeInput {
     pub code: Option<String>,
     /// Path to the source file inside the project root. Prefer this for
     /// large files.
+    /// Path of the file being assessed.
     #[serde(default)]
     pub filepath: Option<String>,
     /// Language for inline `code`; ignored for `filepath`, which is
@@ -1339,6 +1343,7 @@ pub struct RefactorHotspot {
 /// Result of `topos_refactor`.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RefactorResult {
+    /// Target path. Prefer absolute.
     pub target: String,
     pub filepath: String,
     pub betti_1: Option<usize>,

@@ -5,15 +5,11 @@ description: Run Topos structural evaluation locally through the CLI or from an 
 resource: /topos/cli/src/main.rs
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-16T12:21:33.983Z
+  - by: openwiki/0.7.1
+    at: 2026-10-09T13:09:16.317Z
 sources:
-  - id: openwiki-source-8432235404d73e16b0b6b20d
-    resource: repo://topos/cli/src/commands/classify.rs
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
-  - id: openwiki-source-26901a586b4be50e6a6e0158
-    resource: repo://topos/cli/src/commands/depgraph.rs
   - id: openwiki-source-9ae056f05184f6cd4549bf83
     resource: repo://topos/cli/src/commands/depgraph/generate.rs
   - id: openwiki-source-fd92a1f76530ba578d64972c
@@ -50,7 +46,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
 ---
 
 # CLI, MCP, and agent improvement workflows
@@ -59,7 +55,7 @@ Topos provides the `topos` CLI for local work and the stdio `topos-mcp` server f
 
 ## Select an entrypoint
 
-The root command dispatches `config`, `evaluate`, `inspect`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `status`, and `mcp`. A returned command error is printed as `Error: ...` and exits with status 1; invoking `topos` with no arguments prints root help and exits 2.
+The root command dispatches `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. A returned command error is printed as `Error: ...` and exits with status 1; invoking `topos` with no arguments prints root help and exits 2.
 
 | Entry point | Use it when |
 | --- | --- |

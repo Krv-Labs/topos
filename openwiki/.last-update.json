@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2026-09-16T12:34:11.864Z",
+  "updatedAt": "2026-10-09T13:23:11.817Z",
   "command": "update",
-  "gitHead": "675e9c72e794a522a01b8a95d92ccf0ad6093d31",
-  "model": "gpt-5.6-terra",
+  "gitHead": "1363d0052b5a169a0fb3c27d0bb3c70c29171726",
+  "model": "gemini-3.6-flash",
   "status": "complete",
   "language": "en"
 }

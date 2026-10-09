@@ -18,6 +18,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+#[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
@@ -78,6 +81,8 @@ pub fn run_with_timeout(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    #[cfg(unix)]
+    cmd.process_group(0);
     if capture {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     } else {
@@ -89,21 +94,38 @@ pub fn run_with_timeout(
     let stderr_reader = capture.then(|| spawn_reader(child.stderr.take()));
 
     let start = Instant::now();
+    let mut exited = None;
     loop {
-        match child.try_wait().map_err(RunError::Io)? {
-            Some(status) => {
+        if exited.is_none() {
+            exited = child.try_wait().map_err(RunError::Io)?;
+        }
+        let drained = stdout_reader.as_ref().is_none_or(|r| r.is_finished())
+            && stderr_reader.as_ref().is_none_or(|r| r.is_finished());
+        match exited {
+            Some(status) if drained => {
                 return Ok(RunOutput {
                     status_code: status.code(),
                     stdout: stdout_reader.map(join_reader).unwrap_or_default(),
                     stderr: stderr_reader.map(join_reader).unwrap_or_default(),
                 });
             }
-            None => {
+            _ => {
                 if timeout.is_some_and(|limit| start.elapsed() >= limit) {
+                    #[cfg(unix)]
+                    {
+                        let pid = child.id() as i32;
+                        unsafe {
+                            // A deadline must also stop descendants that ignore TERM
+                            // and keep our capture pipes open.
+                            libc::kill(-pid, libc::SIGKILL);
+                        }
+                    }
                     let _ = child.kill();
                     let _ = child.wait();
-                    stdout_reader.map(join_reader);
-                    stderr_reader.map(join_reader);
+                    // Do not wait for EOF from descendants that detached from
+                    // the process group. The readers finish when their pipes close.
+                    drop(stdout_reader);
+                    drop(stderr_reader);
                     return Err(RunError::TimedOut);
                 }
                 std::thread::sleep(POLL_INTERVAL);
@@ -165,6 +187,22 @@ mod tests {
         // The kill actually happened promptly — this isn't just a `sleep 5`
         // that happened to return an unrelated error quickly.
         assert!(start.elapsed() < Duration::from_secs(4));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn kills_term_ignoring_descendants_even_after_the_parent_exits() {
+        for script in [
+            "trap '' TERM; sleep 2 & wait",
+            "trap '' TERM; sleep 2 & exit 0",
+        ] {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-c", script]);
+            let start = Instant::now();
+            let result = run_with_timeout(cmd, None, true, Some(Duration::from_millis(100)));
+            assert!(matches!(result, Err(RunError::TimedOut)));
+            assert!(start.elapsed() < Duration::from_secs(1));
+        }
     }
 
     #[test]

@@ -62,10 +62,10 @@ fn module_marker(metric_source: &str, complexity: i64) -> FunctionEntry {
 ///   functions, worst-first. Without this a NAVIGABLE failure would have
 ///   no location, never become a refactor target, and so never be
 ///   fixable.
-pub fn build_metric_locations(
-    source: &str,
-    language: &str,
+pub fn build_metric_locations_from_morphism(
+    morphism: &ProgramMorphism,
     result: &ClassificationResult,
+    source: &str,
 ) -> BTreeMap<String, Vec<FunctionEntry>> {
     let mut locations = BTreeMap::new();
 
@@ -78,25 +78,52 @@ pub fn build_metric_locations(
         .get("nav.max_function_divergence")
         .is_some_and(|&divergence| divergence > NAVIGABLE.max_function_divergence);
 
-    // One parse per request: both per-function collectors read this same
-    // UAST. Built only when a per-function gate actually failed, so a
-    // passing file still parses zero times here.
     if complexity_gate_failed || divergence_gate_failed {
-        let morphism = parse(source, language);
         if complexity_gate_failed {
-            let offending = offending_functions(&morphism, source);
+            let offending = offending_functions(morphism, source);
             if !offending.is_empty() {
                 locations.insert("ast.max_function_complexity".to_string(), offending);
             }
         }
         if divergence_gate_failed {
-            let offending = diverging_functions(&morphism, source);
+            let offending = diverging_functions(morphism, source);
             if !offending.is_empty() {
                 locations.insert("nav.max_function_divergence".to_string(), offending);
             }
         }
     }
 
+    add_cyclomatic_location(&mut locations, result);
+
+    locations
+}
+
+pub fn build_metric_locations(
+    source: &str,
+    language: &str,
+    result: &ClassificationResult,
+) -> BTreeMap<String, Vec<FunctionEntry>> {
+    let needs_ast = result
+        .raw_metrics
+        .get("ast.max_function_complexity")
+        .is_some_and(|&value| value > SIMPLE.max_function_complexity)
+        || result
+            .raw_metrics
+            .get("nav.max_function_divergence")
+            .is_some_and(|&value| value > NAVIGABLE.max_function_divergence);
+    if !needs_ast {
+        let mut locations = BTreeMap::new();
+        add_cyclomatic_location(&mut locations, result);
+        return locations;
+    }
+    let morphism = parse(source, language);
+    build_metric_locations_from_morphism(&morphism, result, source)
+}
+
+fn add_cyclomatic_location(
+    locations: &mut BTreeMap<String, Vec<FunctionEntry>>,
+    result: &ClassificationResult,
+) {
     if let Some(&cyclomatic) = result.raw_metrics.get("cfg.cyclomatic") {
         if cyclomatic > SIMPLE.max_cyclomatic {
             locations.insert(
@@ -105,8 +132,6 @@ pub fn build_metric_locations(
             );
         }
     }
-
-    locations
 }
 
 #[cfg(test)]
@@ -234,6 +259,20 @@ mod tests {
         assert!(locations.contains_key("ast.max_function_complexity"));
         assert!(locations.contains_key("nav.max_function_divergence"));
         assert_eq!(PARSE_COUNT.with(|count| count.get()), 1);
+    }
+
+    #[test]
+    fn passing_per_function_gates_skip_parsing_even_with_module_complexity() {
+        let morphism = ProgramMorphism::new("def f(): return 1", "python");
+        let mut result =
+            CharacteristicMorphism.classify_detailed(&morphism, &[], Priority::default());
+        result
+            .raw_metrics
+            .insert("cfg.cyclomatic".into(), SIMPLE.max_cyclomatic + 1.0);
+        PARSE_COUNT.with(|count| count.set(0));
+        let locations = build_metric_locations(&morphism.source, "python", &result);
+        assert_eq!(PARSE_COUNT.with(|count| count.get()), 0);
+        assert!(locations.contains_key("cfg.cyclomatic"));
     }
 
     #[test]

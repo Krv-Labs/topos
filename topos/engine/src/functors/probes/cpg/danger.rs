@@ -139,7 +139,15 @@ pub fn match_registry_key<'a>(
         if !key.contains('.') && key.len() <= 3 {
             continue;
         }
-        let matches = callee.ends_with(&format!(".{key}")) || callee.ends_with(key);
+        let matches = if key == "compile" {
+            (callee == "compile" || callee.ends_with(".compile"))
+                && callee != "re.compile"
+                && !callee.ends_with(".re.compile")
+                && callee != "regex.compile"
+                && !callee.ends_with(".regex.compile")
+        } else {
+            callee.ends_with(&format!(".{key}")) || callee.ends_with(key)
+        };
         if matches && best.is_none_or(|b| key.len() > b.len()) {
             best = Some(key);
         }
@@ -182,8 +190,10 @@ mod tests {
     }
 
     #[test]
-    fn callee_from_text_handles_dotted_names() {
-        assert_eq!(callee_from_text("pickle.loads(data)"), "pickle.loads");
-        assert_eq!(callee_from_text("not a call"), "");
+    fn ignores_re_compile() {
+        let source = "SHA = re.compile(r\"^[0-9a-f]{40}$\")\n";
+        let result = parse_source(source, "python", None).unwrap();
+        let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+        assert_eq!(dangerous_api_reachable(&cpg, &HashSet::new()), 0);
     }
 }

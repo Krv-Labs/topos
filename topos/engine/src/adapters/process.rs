@@ -18,6 +18,9 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+#[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
@@ -78,6 +81,8 @@ pub fn run_with_timeout(
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
+    #[cfg(unix)]
+    cmd.process_group(0);
     if capture {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     } else {
@@ -100,6 +105,13 @@ pub fn run_with_timeout(
             }
             None => {
                 if timeout.is_some_and(|limit| start.elapsed() >= limit) {
+                    #[cfg(unix)]
+                    {
+                        let pid = child.id() as i32;
+                        unsafe {
+                            libc::kill(-pid, libc::SIGTERM);
+                        }
+                    }
                     let _ = child.kill();
                     let _ = child.wait();
                     stdout_reader.map(join_reader);

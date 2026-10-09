@@ -288,6 +288,7 @@ pub fn build_path_skip_checker(scan_root: &Path) -> PathFilter {
     });
     let git_usable = git_root.is_some() && git_available();
     let git_root_buf = git_root.clone();
+    let ignore_cache = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
 
     Box::new(move |path: &Path| {
         let rel_to_scan: PathBuf = match path.strip_prefix(&scan_root_buf) {
@@ -332,7 +333,18 @@ pub fn build_path_skip_checker(scan_root: &Path) -> PathFilter {
         }
         if git_usable {
             if let Some(gr) = git_root_buf.as_ref() {
-                if git_is_ignored(gr, &rel_git_posix) {
+                let cache_key = rel_git_posix.clone();
+                let ignored = {
+                    let mut map = ignore_cache.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(&cached) = map.get(&cache_key) {
+                        cached
+                    } else {
+                        let res = git_is_ignored(gr, &rel_git_posix);
+                        map.insert(cache_key, res);
+                        res
+                    }
+                };
+                if ignored {
                     return true;
                 }
             }

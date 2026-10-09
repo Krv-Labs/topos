@@ -16,13 +16,15 @@ use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
 use crate::diagnostics::overlay_for_source;
 use crate::evaluation::{
-    classify_code_string, classify_file, detect_language, ensure_gitnexus_dir, gitnexus_warnings,
-    resolve_mcp_composable_project_root, resolve_override_for_root,
+    classify_code_string, classify_file, classify_morphism, detect_language, ensure_gitnexus_dir,
+    gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
     render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
 };
-use crate::metric_locations::{build_metric_locations, function_entry_from_complexity};
+use crate::metric_locations::{
+    build_metric_locations_from_morphism, function_entry_from_complexity,
+};
 use crate::schemas::{
     resolve_priority, EvaluationResult, FunctionEntry, InspectCodeInput, InspectionResult,
     PrioritySource,
@@ -272,11 +274,68 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     };
     let language = inspection_language(&params, loaded.file_path.as_ref());
 
-    let classified = match classify_inspection(&params, &loaded, &language, priority) {
-        Ok(classified) => classified,
-        Err(exc) => return err_inspection(priority, priority_source, exc),
+    // Build ProgramMorphism once (#322 deduplication)
+    let mut morphism = match loaded.file_path.as_ref() {
+        Some(path) => match ProgramMorphism::from_file(path, &language) {
+            Ok(m) => m,
+            Err(e) => {
+                return err_inspection(
+                    priority,
+                    priority_source,
+                    format!("{}: {e}", path.display()),
+                )
+            }
+        },
+        None => ProgramMorphism::new(&loaded.source, &language),
     };
-    let result = classified.result;
+
+    let (result, coupling_available, warnings) = match loaded.file_path.as_ref() {
+        Some(path) => {
+            let (_resolved, detected_project) = match resolve_project_path(&path.to_string_lossy()) {
+                Ok(res) => res,
+                Err(exc) => return err_inspection(priority, priority_source, exc),
+            };
+            let composable_root = composable_default_root(&detected_project);
+            let project_root = resolve_mcp_composable_project_root(
+                params.gitnexus_dir.as_deref(),
+                &composable_root,
+            );
+            let resolved_override =
+                resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+
+            let outcome = ensure_gitnexus_dir(
+                resolved_override.as_deref(),
+                &project_root,
+                params.no_composable,
+                true,
+            );
+            let gitnexus_dir = outcome.gitnexus_dir;
+
+            let (dep_graph, load_error) = crate::evaluation::load_dep_graph(
+                gitnexus_dir.as_deref(),
+                &path.to_string_lossy(),
+            );
+            let res = classify_morphism(&mut morphism, priority, dep_graph.as_ref());
+            let mut warns = gitnexus_warnings(
+                resolved_override.as_deref(),
+                &project_root,
+                gitnexus_dir.as_deref(),
+                dep_graph.is_some(),
+                load_error.as_deref(),
+            );
+            if let Some(note) = outcome.generation_note {
+                warns.insert(0, note);
+            }
+            (res, dep_graph.is_some(), warns)
+        }
+        None => {
+            let res = match classify_code_string(&loaded.source, &language, priority) {
+                Ok(res) => res,
+                Err(exc) => return err_inspection(priority, priority_source, exc),
+            };
+            (res, false, Vec::new())
+        }
+    };
 
     let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
         Some(Err(exc)) => return err_inspection(priority, priority_source, exc),
@@ -284,9 +343,8 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
         None => None,
     };
 
-    let overlay = overlay_for_source(
-        &loaded.source,
-        &language,
+    let overlay = crate::diagnostics::overlay(
+        &mut morphism,
         &result,
         loaded.file_path.as_deref(),
         &params.allow,
@@ -294,17 +352,14 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     let mut opts = EvalResultOptions::new();
     opts.preferences = prefs.as_ref();
     opts.priority_source = priority_source;
-    opts.warnings = classified.warnings;
+    opts.warnings = warnings;
     opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
     overlay_opts(overlay.as_ref(), &mut opts);
     opts.verbose = params.verbose;
-    opts.metric_locations = build_metric_locations(&loaded.source, &language, &result);
-    let evaluation = to_evaluation_result(&result, classified.coupling_available, opts);
+    opts.metric_locations =
+        build_metric_locations_from_morphism(&morphism, &result, &loaded.source);
+    let evaluation = to_evaluation_result(&result, coupling_available, opts);
 
-    // Use the same AST decision-node probe that feeds
-    // `ast.max_function_complexity` so this table never disagrees with
-    // the failing gate.
-    let morphism = ProgramMorphism::new(&loaded.source, &language);
     let mut all_funcs: Vec<FunctionEntry> = Vec::new();
     if let Some(ast) = morphism.ast.as_ref() {
         if morphism.is_valid() {

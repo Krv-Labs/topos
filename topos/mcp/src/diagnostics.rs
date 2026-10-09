@@ -75,7 +75,7 @@ fn overlay_applies(result: &ClassificationResult) -> bool {
     result.is_parseable && secure_failed(result)
 }
 
-fn overlay(
+pub(crate) fn overlay(
     morphism: &mut ProgramMorphism,
     result: &ClassificationResult,
     file_path: Option<&Path>,

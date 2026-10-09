@@ -62,10 +62,10 @@ fn module_marker(metric_source: &str, complexity: i64) -> FunctionEntry {
 ///   functions, worst-first. Without this a NAVIGABLE failure would have
 ///   no location, never become a refactor target, and so never be
 ///   fixable.
-pub fn build_metric_locations(
-    source: &str,
-    language: &str,
+pub fn build_metric_locations_from_morphism(
+    morphism: &ProgramMorphism,
     result: &ClassificationResult,
+    source: &str,
 ) -> BTreeMap<String, Vec<FunctionEntry>> {
     let mut locations = BTreeMap::new();
 
@@ -78,19 +78,15 @@ pub fn build_metric_locations(
         .get("nav.max_function_divergence")
         .is_some_and(|&divergence| divergence > NAVIGABLE.max_function_divergence);
 
-    // One parse per request: both per-function collectors read this same
-    // UAST. Built only when a per-function gate actually failed, so a
-    // passing file still parses zero times here.
     if complexity_gate_failed || divergence_gate_failed {
-        let morphism = parse(source, language);
         if complexity_gate_failed {
-            let offending = offending_functions(&morphism, source);
+            let offending = offending_functions(morphism, source);
             if !offending.is_empty() {
                 locations.insert("ast.max_function_complexity".to_string(), offending);
             }
         }
         if divergence_gate_failed {
-            let offending = diverging_functions(&morphism, source);
+            let offending = diverging_functions(morphism, source);
             if !offending.is_empty() {
                 locations.insert("nav.max_function_divergence".to_string(), offending);
             }
@@ -107,6 +103,15 @@ pub fn build_metric_locations(
     }
 
     locations
+}
+
+pub fn build_metric_locations(
+    source: &str,
+    language: &str,
+    result: &ClassificationResult,
+) -> BTreeMap<String, Vec<FunctionEntry>> {
+    let morphism = parse(source, language);
+    build_metric_locations_from_morphism(&morphism, result, source)
 }
 
 #[cfg(test)]

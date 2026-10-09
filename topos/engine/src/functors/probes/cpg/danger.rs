@@ -191,9 +191,14 @@ mod tests {
 
     #[test]
     fn ignores_re_compile() {
-        let source = "SHA = re.compile(r\"^[0-9a-f]{40}$\")\n";
-        let result = parse_source(source, "python", None).unwrap();
-        let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
-        assert_eq!(dangerous_api_reachable(&cpg, &HashSet::new()), 0);
+        for source in ["re.compile(pattern)", "regex.compile(pattern)"] {
+            let result = parse_source(source, "python", None).unwrap();
+            let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+            assert_eq!(dangerous_api_reachable(&cpg, &HashSet::new()), 0);
+        }
+        let result = parse_source("compile(source, 'input', 'exec')", "python", None).unwrap();
+        let cpg =
+            CodePropertyGraph::from_uast(&result.uast_root, "compile(source, 'input', 'exec')");
+        assert_eq!(dangerous_api_reachable(&cpg, &HashSet::new()), 1);
     }
 }

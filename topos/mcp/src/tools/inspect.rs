@@ -14,10 +14,9 @@ use topos_engine::evaluation::policies::simple::describe_entropy_ratio;
 use topos_engine::functors::probes::ast::complexity::calculate_function_complexity_entries;
 use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
-use crate::diagnostics::overlay_for_source;
 use crate::evaluation::{
-    classify_code_string, classify_file, classify_morphism, detect_language, ensure_gitnexus_dir,
-    gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
+    classify_morphism, detect_language, ensure_gitnexus_dir, gitnexus_warnings,
+    resolve_mcp_composable_project_root, resolve_override_for_root,
 };
 use crate::formatting::{
     render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
@@ -71,7 +70,7 @@ struct InspectClassification {
 
 /// Classify a file the way `topos_evaluate_file` does — same
 /// [`ensure_gitnexus_dir`] resolve-or-generate decision, same
-/// [`classify_file`] attachment, same [`gitnexus_warnings`] explanation — so
+/// [`classify_morphism`] attachment, same [`gitnexus_warnings`] explanation — so
 /// the two tools cannot report different medals for the same source
 /// (issue #216: inspect used to skip the MDG entirely and read one medal
 /// lower).
@@ -81,7 +80,8 @@ fn classify_inspected_file(
     project_root: &Path,
     path: &Path,
     priority: Priority,
-) -> Result<InspectClassification, String> {
+    morphism: &mut ProgramMorphism,
+) -> InspectClassification {
     let outcome = ensure_gitnexus_dir(
         resolved_gitnexus_override,
         project_root,
@@ -90,7 +90,9 @@ fn classify_inspected_file(
     );
     let gitnexus_dir = outcome.gitnexus_dir;
 
-    let (result, dep_graph, load_error) = classify_file(path, priority, gitnexus_dir.as_deref())?;
+    let (dep_graph, load_error) =
+        crate::evaluation::load_dep_graph(gitnexus_dir.as_deref(), &path.to_string_lossy());
+    let result = classify_morphism(morphism, priority, dep_graph.as_ref());
     let mut warnings = gitnexus_warnings(
         resolved_gitnexus_override,
         project_root,
@@ -101,11 +103,11 @@ fn classify_inspected_file(
     if let Some(note) = outcome.generation_note {
         warnings.insert(0, note);
     }
-    Ok(InspectClassification {
+    InspectClassification {
         result,
         coupling_available: dep_graph.is_some(),
         warnings,
-    })
+    }
 }
 
 /// Classify whichever subject was loaded: a file (COMPOSABLE reachable) or
@@ -113,8 +115,8 @@ fn classify_inspected_file(
 fn classify_inspection(
     params: &InspectCodeInput,
     loaded: &LoadedSource,
-    language: &str,
     priority: Priority,
+    morphism: &mut ProgramMorphism,
 ) -> Result<InspectClassification, String> {
     // An inline string has no module for the dependency graph to key on, so
     // COMPOSABLE is out of reach exactly as in `topos_evaluate_code`.
@@ -122,7 +124,7 @@ fn classify_inspection(
     // from shelling out to `gitnexus analyze` for a graph nothing would read.
     let Some(path) = loaded.file_path.as_deref() else {
         return Ok(InspectClassification {
-            result: classify_code_string(&loaded.source, language, priority)?,
+            result: classify_morphism(morphism, priority, None),
             coupling_available: false,
             warnings: Vec::new(),
         });
@@ -138,13 +140,14 @@ fn classify_inspection(
     // subdirectory.
     let resolved_override =
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-    classify_inspected_file(
+    Ok(classify_inspected_file(
         resolved_override.as_deref(),
         params.no_composable,
         &project_root,
         path,
         priority,
-    )
+        morphism,
+    ))
 }
 
 fn inspection_language(params: &InspectCodeInput, file_path: Option<&PathBuf>) -> String {
@@ -274,68 +277,23 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     };
     let language = inspection_language(&params, loaded.file_path.as_ref());
 
-    // Build ProgramMorphism once (#322 deduplication)
+    if !topos_engine::graphs::ast::languages::SUPPORTED_LANGUAGES.contains(&language.as_str()) {
+        return err_inspection(
+            priority,
+            priority_source,
+            format!("Unsupported language '{language}'"),
+        );
+    }
+    // Use the loaded bytes for every consumer, retaining the path for TSX grammar selection.
     let mut morphism = match loaded.file_path.as_ref() {
-        Some(path) => match ProgramMorphism::from_file(path, &language) {
-            Ok(m) => m,
-            Err(e) => {
-                return err_inspection(
-                    priority,
-                    priority_source,
-                    format!("{}: {e}", path.display()),
-                )
-            }
-        },
+        Some(path) => ProgramMorphism::with_path(&loaded.source, &language, path),
         None => ProgramMorphism::new(&loaded.source, &language),
     };
-
-    let (result, coupling_available, warnings) = match loaded.file_path.as_ref() {
-        Some(path) => {
-            let (_resolved, detected_project) = match resolve_project_path(&path.to_string_lossy()) {
-                Ok(res) => res,
-                Err(exc) => return err_inspection(priority, priority_source, exc),
-            };
-            let composable_root = composable_default_root(&detected_project);
-            let project_root = resolve_mcp_composable_project_root(
-                params.gitnexus_dir.as_deref(),
-                &composable_root,
-            );
-            let resolved_override =
-                resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-
-            let outcome = ensure_gitnexus_dir(
-                resolved_override.as_deref(),
-                &project_root,
-                params.no_composable,
-                true,
-            );
-            let gitnexus_dir = outcome.gitnexus_dir;
-
-            let (dep_graph, load_error) = crate::evaluation::load_dep_graph(
-                gitnexus_dir.as_deref(),
-                &path.to_string_lossy(),
-            );
-            let res = classify_morphism(&mut morphism, priority, dep_graph.as_ref());
-            let mut warns = gitnexus_warnings(
-                resolved_override.as_deref(),
-                &project_root,
-                gitnexus_dir.as_deref(),
-                dep_graph.is_some(),
-                load_error.as_deref(),
-            );
-            if let Some(note) = outcome.generation_note {
-                warns.insert(0, note);
-            }
-            (res, dep_graph.is_some(), warns)
-        }
-        None => {
-            let res = match classify_code_string(&loaded.source, &language, priority) {
-                Ok(res) => res,
-                Err(exc) => return err_inspection(priority, priority_source, exc),
-            };
-            (res, false, Vec::new())
-        }
+    let classified = match classify_inspection(&params, &loaded, priority, &mut morphism) {
+        Ok(classified) => classified,
+        Err(exc) => return err_inspection(priority, priority_source, exc),
     };
+    let result = classified.result;
 
     let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
         Some(Err(exc)) => return err_inspection(priority, priority_source, exc),
@@ -352,13 +310,13 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     let mut opts = EvalResultOptions::new();
     opts.preferences = prefs.as_ref();
     opts.priority_source = priority_source;
-    opts.warnings = warnings;
+    opts.warnings = classified.warnings;
     opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
     overlay_opts(overlay.as_ref(), &mut opts);
     opts.verbose = params.verbose;
     opts.metric_locations =
         build_metric_locations_from_morphism(&morphism, &result, &loaded.source);
-    let evaluation = to_evaluation_result(&result, coupling_available, opts);
+    let evaluation = to_evaluation_result(&result, classified.coupling_available, opts);
 
     let mut all_funcs: Vec<FunctionEntry> = Vec::new();
     if let Some(ast) = morphism.ast.as_ref() {
@@ -429,7 +387,8 @@ mod tests {
         let loaded = load_source(&params).expect("inline code loads");
         assert!(loaded.file_path.is_none());
 
-        let classified = classify_inspection(&params, &loaded, "python", Priority::Simple)
+        let mut morphism = ProgramMorphism::new(&loaded.source, "python");
+        let classified = classify_inspection(&params, &loaded, Priority::Simple, &mut morphism)
             .expect("inline classification runs");
         assert!(classified.result.is_parseable);
         assert!(
@@ -471,14 +430,15 @@ mod tests {
             "filepath": "sample.py",
             "no_composable": true,
         }));
+        let mut morphism = ProgramMorphism::from_file(&file, "python").unwrap();
         let classified = classify_inspected_file(
             params.gitnexus_dir.as_deref(),
             params.no_composable,
             &project_root,
             &file,
             Priority::Simple,
-        )
-        .expect("runs");
+            &mut morphism,
+        );
 
         assert!(!classified.coupling_available);
         assert!(

@@ -9,6 +9,16 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Fixed
+
+- Subprocess deadlines terminate the Unix process group, including descendants
+  that ignore termination or outlive their parent, without blocking on capture pipes.
+- Python regex compilation via `re.compile` and `regex.compile` no longer
+  counts as dynamic code execution.
+- Repeated path filtering caches Git ignore checks during a scan.
+- MCP inspection shares one parsed source across classification, security
+  diagnostics, and metric locations; passing evaluation gates skip extra parsing.
+
 ## [0.7.0] - 2026-09-30
 
 ### Added

@@ -4,13 +4,9 @@ title: Topos maintenance source map
 description: Ownership-oriented starting points for changing Topos analysis, command-line and MCP delivery, integrations, and release controls. Each route identifies the behavior page, implementation boundary, and focused regression coverage to consult before editing.
 resource: /topos
 tags: [source-map, maintenance, navigation, rust]
-openwiki:
-  roles: [repository, testing]
-  change_kinds: [navigation]
-  source_paths: [topos, extensions/vscode, .github/workflows]
 verified:
   - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+    at: 2026-10-09T14:12:21.181Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -48,19 +44,19 @@ sources:
     resource: repo://topos/mcp/src/tools/depgraph.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T14:12:21.181Z" }
 ---
 
 # Topos maintenance source map
 
-Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` is the transport-free analysis library; `topos` owns the human CLI and invokes the MCP server in-process; `topos-mcp` owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority.
+Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.8.0`).
 
 ```mermaid
 flowchart TD
     subgraph CargoWorkspace ["Cargo Workspace Root (Cargo.toml)"]
-        CLI ["topos (CLI Crate)"]
-        MCP ["topos-mcp (MCP Server Crate)"]
-        Engine ["topos-engine (Core Analysis Library)"]
+        CLI ["topos (CLI Crate: topos/cli)"]
+        MCP ["topos-mcp (MCP Server Crate: topos/mcp)"]
+        Engine ["topos-engine (Core Analysis Library: topos/engine)"]
     end
 
     CLI -->|"Human Commands / Dispatch"| Engine
@@ -101,7 +97,7 @@ Workspace crate dependencies and execution entrypoints.
 
 ## Operational invariants
 
-- `topos-engine` is shared analysis code and must not absorb CLI, MCP transport, or Python-binding responsibilities.
+- `topos-engine` (`topos/engine`) is shared analysis code and must not absorb CLI, MCP transport, or Python-binding responsibilities.
 - The command `topos mcp` and the Agent Plugin registration are the common bridge from installed CLI to stdio MCP; the standalone `topos-mcp` binary exists for direct MCP clients and the bin wheel.
 - Native Rust tests are primarily module-local, while the installer E2E and MCP lifecycle suites cover boundaries that unit tests cannot: real filesystem mutation and wire-level stdio behavior.
 - CI needs the prebuilt `lbug` setup before Cargo caching/build steps that link the engine; retain that ordering when changing workflow caching or analysis dependencies.

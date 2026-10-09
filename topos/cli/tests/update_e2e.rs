@@ -135,13 +135,13 @@ fn assert_no_prompt(run: &Run) {
 /// `topos update --json` reports the survey without touching anything.
 #[test]
 fn json_reports_the_install_survey() {
-    let fixture = Fixture::new(Some("v0.7.1"));
+    let fixture = Fixture::new(Some("v99.0.0"));
     let run = fixture.run(&["update", "--json"]);
     assert_eq!(run.code, 0, "stderr:\n{}", run.stderr);
 
     let survey: Value = serde_json::from_str(&run.stdout)
         .unwrap_or_else(|e| panic!("invalid JSON ({e}):\n{}", run.stdout));
-    assert_eq!(survey["latest"], "0.7.1");
+    assert_eq!(survey["latest"], "99.0.0");
     assert_eq!(
         survey["current"],
         env!("CARGO_PKG_VERSION"),

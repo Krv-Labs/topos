@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-09
+
 ### Added
 
 - `topos update`: check for a newer release and offer to install it. The card

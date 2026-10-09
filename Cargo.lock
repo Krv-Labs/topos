@@ -1586,7 +1586,7 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "topos"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "clap",
  "console",
@@ -1602,7 +1602,7 @@ dependencies = [
 
 [[package]]
 name = "topos-engine"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "blake2",
  "flate2",
@@ -1623,7 +1623,7 @@ dependencies = [
 
 [[package]]
 name = "topos-mcp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "hex",

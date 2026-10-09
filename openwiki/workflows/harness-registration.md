@@ -5,8 +5,8 @@ description: How Topos installs, inspects, repairs, and removes its user-scope M
 resource: /topos/cli/src/commands/install/mod.rs
 tags: [workflows, cli, mcp, agents, configuration, safety]
 verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-16T12:21:33.983Z
+  - by: openwiki/0.7.1
+    at: 2026-10-09T13:09:16.317Z
 sources:
   - id: openwiki-source-7d7960e96e037fce64b922b5
     resource: repo://topos/cli/src/commands/install/artifact.rs
@@ -36,7 +36,7 @@ sources:
     resource: repo://topos/cli/src/commands/install/uninstall.rs
   - id: openwiki-source-06d3c16386c87213458c954c
     resource: repo://topos/cli/tests/install_e2e.rs
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
 ---
 
 # Agent-harness MCP registration lifecycle
@@ -45,7 +45,7 @@ generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
 
 ## Supported harnesses and formats
 
-`HARNESSES` is the nine-row extension point. Each row supplies the id, user configuration path, `Artifact` format, detection function, messages, caveat, and whether the pi-only skill reference applies. Command code iterates that table rather than branching on individual harnesses; detection merely preselects interactive choices and never prevents an explicitly selected install.
+`HARNESSES` is the ten-row extension point. Each row supplies the id, user configuration path, `Artifact` format, detection function, messages, caveat, and whether the pi-only skill reference applies. Command code iterates that table rather than branching on individual harnesses; detection merely preselects interactive choices and never prevents an explicitly selected install.
 
 | Id | Harness | User configuration | Topos-owned MCP location |
 | --- | --- | --- | --- |
@@ -58,10 +58,11 @@ generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
 | `vscode` | VS Code | platform-specific `Code/User/mcp.json` | `servers.topos` |
 | `antigravity` | Google Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers.topos` |
 | `pi` | pi | `~/.pi/agent/mcp.json` | `mcpServers.topos` |
+| `opencode` | OpenCode | `~/.config/opencode/opencode.jsonc` (or `opencode.json` / `config.json`) | `mcp.topos` |
 
-Claude Desktop and VS Code use `~/Library/Application Support/...` on macOS, `~/.config/...` on Linux, and `%APPDATA%/...` on Windows. The Linux Claude Desktop path is retained for inspection and cleanup even though the desktop app is not distributed there. All path functions receive the home directory, allowing a real-binary test to run against a scratch home rather than a developer's configuration.
+Claude Desktop and VS Code use `~/Library/Application Support/...` on macOS, `~/.config/...` on Linux, and `%APPDATA%/...` on Windows. OpenCode configuration lives in `~/.config/opencode/`, checking `opencode.jsonc`, `opencode.json`, or `config.json` and defaulting to `opencode.jsonc`. The Linux Claude Desktop path is retained for inspection and cleanup even though the desktop app is not distributed there. All path functions receive the home directory, allowing a real-binary test to run against a scratch home rather than a developer's configuration.
 
-Plain JSON registrations contain `command` and `args`; Codex uses the corresponding TOML table; VS Code is the format exception, using `servers` and requiring `"type": "stdio"`. No portable `type` value is imposed on the other clients. The resolved command is absolute, while binary comparison uses file identity: a stable `$PATH` symlink spelling can be recorded without pinning a versioned canonical path, and equivalent symlink spellings do not cause repair churn.
+Plain JSON registrations contain `command` and `args`; Codex uses the corresponding TOML table; VS Code uses `servers` requiring `"type": "stdio"`; OpenCode uses `mcp` with `"type": "local"` and an array `command` containing `["<binary>", "mcp"]`. No portable `type` value is imposed on the other clients. The resolved command is absolute, while binary comparison uses file identity: a stable `$PATH` symlink spelling can be recorded without pinning a versioned canonical path, and equivalent symlink spellings do not cause repair churn.
 
 ## State, ownership, and non-mutation
 
@@ -80,13 +81,13 @@ stateDiagram-v2
 *Per-harness MCP `Artifact` lifecycle. `Conflict` deliberately has no mutation transition; pi's separate skill-reference outcome is reported alongside, not folded into, this state.*
 
 - **Active** — the `topos` entry is owned, has the required format fields, and resolves to the running binary.
-- **Incomplete** — the entry is owned but has path drift or, for VS Code, lacks `type: stdio`. Re-running `topos install <id>` repairs it.
-- **Conflict** — the file is unparsable, a required container has the wrong shape, the `topos` key is not recognized as Topos-owned, or a necessary VS Code JSONC rewrite would discard comments. Install refuses; uninstall reports and leaves content unchanged.
+- **Incomplete** — the entry is owned but has path drift, lacks `type: stdio` for VS Code, or lacks `type: local` / array `command` formatting for OpenCode. Re-running `topos install <id>` repairs it.
+- **Conflict** — the file is unparsable, a required container has the wrong shape, the `topos` key is not recognized as Topos-owned, or a necessary VS Code or OpenCode JSONC rewrite would discard comments. Install refuses; uninstall reports and leaves content unchanged.
 - **Absent** — no entry exists. Uninstall is idempotent and does not create a ledger merely to record absence.
 
-The ownership test is intentionally field-level rather than whole-object equality. An entry is recognized as owned when its command filename is `topos` or `topos.exe` and its arguments are exactly `["mcp"]`; the path need not still resolve. This permits repairing or removing an old path while treating a hand-authored `topos` entry as a conflict. Writers replace only Topos-owned fields (`command`, `args`, and VS Code's `type`) and preserve client-added entry fields, sibling servers, and unrelated configuration. A non-`topos` key that points to the Topos binary is a report-only duplicate, never renamed or removed.
+The ownership test is intentionally field-level rather than whole-object equality. An entry is recognized as owned when its command filename is `topos` or `topos.exe` and its arguments are exactly `["mcp"]` (either as a separate `args` array or as the second element of OpenCode's array `command`); the path need not still resolve. This permits repairing or removing an old path while treating a hand-authored `topos` entry as a conflict. Writers replace only Topos-owned fields (`command`, `args`, and VS Code/OpenCode's `type`) and preserve client-added entry fields, sibling servers, and unrelated configuration. A non-`topos` key that points to the Topos binary is a report-only duplicate, never renamed or removed.
 
-JSON and TOML are parsed before merging. Codex uses `toml_edit` to retain comments and formatting. VS Code JSONC accepts comments and trailing commas for inspection, but if a write would be required in a commented file, Topos refuses instead of serializing away comments; the diagnostic supplies an entry for manual insertion. Writes use a temporary file then rename, follow an existing configuration symlink to its target, and retain existing Unix permissions.
+JSON and TOML are parsed before merging. Codex uses `toml_edit` to retain comments and formatting. VS Code and OpenCode JSONC accept comments and trailing commas for inspection, but if a write would be required in a commented file, Topos refuses instead of serializing away comments; the diagnostic supplies an entry for manual insertion. Writes use a temporary file then rename, follow an existing configuration symlink to its target, and retain existing Unix permissions.
 
 ## Install and pi's second artifact
 
@@ -133,6 +134,6 @@ When adding a harness or artifact format, keep the table as the integration boun
 
 ## Safety tests
 
-Run `cargo test -p topos --test install_e2e` for the end-to-end contract. The suite invokes the compiled binary with `HOME`/`USERPROFILE` redirected to isolated scratch homes and snapshots both file bytes and directory trees. It exercises absolute commands and exact MCP arguments for all nine harnesses, second-install idempotency, drift reporting and repair, pristine backup preservation, scoped backup purge, headless uninstall, report-only residue preservation, and byte-identical refusal of a commented VS Code JSONC configuration.
+Run `cargo test -p topos --test install_e2e` for the end-to-end contract. The suite invokes the compiled binary with `HOME`/`USERPROFILE` redirected to isolated scratch homes and snapshots both file bytes and directory trees. It exercises absolute commands and exact MCP arguments for all ten harnesses, second-install idempotency, drift reporting and repair, pristine backup preservation, scoped backup purge, headless uninstall, residue preservation, and byte-identical refusal of a commented VS Code JSONC configuration.
 
 The pi cases verify all three skill-source outcomes, the separate `skillRef` status data, idempotent reference insertion, preservation of foreign settings and manually added paths, removal only when the ledger authorized it, and retention of the external `SKILL.md`. The full-suite release context is in [testing and release](../operations/testing-and-release.md).

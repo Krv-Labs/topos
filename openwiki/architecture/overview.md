@@ -1,20 +1,11 @@
 ---
 type: architecture overview
-title: Rust analysis and evaluation architecture
-description: The shared Rust engine parses supported source into a normalized UAST, derives structural representations, and classifies four quality pillars. CLI and MCP are consumer layers that assemble inputs and render or transport the engine result.
-resource: /topos/engine/src/lib.rs
-tags: [architecture, rust, program-graphs, evaluation]
-openwiki:
-  roles: [architecture, domain, testing]
-  change_kinds: [parser, uast, cfg, policy]
-  source_paths: [topos/engine/src/core/characteristic_morphism.rs, topos/engine/src/graphs/ast/dispatch.rs, topos/engine/src/graphs/uast, topos/engine/src/graphs/cfg/builder.rs]
-  symbols: [CharacteristicMorphism, NavigableRepresentation, node_key, evaluate_gates]
-  test_paths: [topos/engine/src/graphs/cfg/edge_contracts.rs, topos/engine/src/functors/probes/ast/divergence.rs]
-  invariants: [Derived graph endpoints use the same UAST node key, SIMPLE and NAVIGABLE are always measured for parseable source, CFG edge contracts span every registered language.]
-  validation_commands: [cargo test -p topos-engine]
+title: Architecture Overview
+description: Architecture overview of the Topos workspace, crate structure, control and data flow, program representations, and diagnostic overlay pipeline.
+tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-16T12:21:33.983Z
+  - by: openwiki/0.7.1
+    at: 2026-10-09T13:09:16.317Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -64,10 +55,10 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.5.2", at: "2026-09-16T12:21:33.983Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
 ---
 
-# Rust analysis and evaluation architecture
+# Architecture Overview
 
 The workspace has three Rust crates: `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server for `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
 
@@ -152,7 +143,7 @@ The UAST's clone, equality, and destruction paths are iterative, and CPG node co
 
 The CLI's `evaluate` and `inspect` commands share `classify_with_representations`, which builds CFG, PDG, CPG, an abstractness reading, and an optional MDG before calling the engine classifier. They recursively discover supported source suffixes when no language filter is supplied. Unless `--no-composable` is set, CLI evaluation and inspection resolve or generate fresh GitNexus state; failures degrade to SIMPLE/SECURE/NAVIGABLE with a warning rather than aborting the whole evaluation.
 
-MCP has equivalent classification helpers. `classify_code_string` rejects an explicitly unsupported language before creating a morphism, while `classify_file` detects a language from its suffix, reads the file, and attempts to load an MDG. Its dep-graph cache is keyed by graph directory, target file, branch, and store modification time; it caps at 32 entries and invalidates naturally when the branch or GitNexus store changes. Inline MCP code has no target file, so it cannot attach an MDG and cannot measure COMPOSABLE.
+MCP has equivalent classification helpers. `classify_code_string` rejects an explicitly unsupported language before creating a morphism, while `classify_file` detects a language from its suffix, reads the file, and attempts to load an MDG. Its dep-graph cache uses a process-wide store keyed by directory, branch, and modification time; it retargets loaded graph data for any requested target file and invalidates naturally when the branch or GitNexus store changes. Inline MCP code has no target file, so it cannot attach an MDG and cannot measure COMPOSABLE.
 
 ### Raw evidence versus consumer overlays
 

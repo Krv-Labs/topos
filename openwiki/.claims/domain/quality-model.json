@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b11848703c84a1f52d034e84997c386391afb3431e7ba7d3097187a4aec9f2c8",
+  "pageVersion": "sha256:151345fe4c183d23660cbbec9c2bf22a75532669f307c456ef96e88217e21e8e",
   "claims": [
     {
       "id": "claim_e8682d5eb5604266a48fb6f6ac3fbb3e",
@@ -105,20 +105,20 @@
       "statement": "SECURE requires zero CPG dangerous-call and taint-flow counts; scoped `.topos.toml` allow entries require a non-empty reason, malformed configuration is nonfatal, and the suppression overlay retains raw results and disclosures while preventing an acknowledged risk from yielding IDEAL/PLATINUM.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/config.rs#L109-L179",
-          "version": "repo-lines-v1:sha256:7b44d12fa818e758e49c69fb3c790c5212f6166299d24c9c5d51254a3eeca638:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkZGJjMDdjMzZkN2RjNTk4MzM1YmIzNTViNmJjM2JhZWViOTk1MTI4MjA0ZTE4MWJjYzUyYTlkNzExODQxNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0NTlkN2Q5Y2VkMmM0MGY5YWZlZjAyNWI2MGYwZjAyZDM5NzUxZjcwZTJhODlkNWM5NTI1YWJhNDE5ZTU2NWMifQ"
+          "resource": "repo://topos/engine/src/config.rs#L135-L187",
+          "version": "repo-lines-v1:sha256:3557dc143a72fc6d680abc039102002624705b015c914846a0268c6bd053d868:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4OThlOWY3NjU0NDVmMDg5ODE4YWI2MjQ0ZDAxM2QzN2NkZWQ3MzQ3OTZjZmMxYjE5YWVmZTM4N2I3OWYyNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxZGIxYmE3YzllZjM0MjJjYWJmYTBjZTBhOTViNjNmMzQ4MjgxZGM3MWQ2ZTIyMDgwMzg4Mjg3NTU1MDZjYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0NTlkN2Q5Y2VkMmM0MGY5YWZlZjAyNWI2MGYwZjAyZDM5NzUxZjcwZTJhODlkNWM5NTI1YWJhNDE5ZTU2NWMifQ"
         },
         {
-          "resource": "repo://topos/engine/src/config.rs#L217-L264",
-          "version": "repo-lines-v1:sha256:81e01ed5f1e62c73d29782246c69f6ed02180e36b6c2303cca2b589c6f7a2ea1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MTM3YzM3MDBjMzE1ZTU1NDZiM2QxMGE3OWY1Yzc1ZTJjMjRmY2M4OGU1MjllYjg4MDM0MDA5N2EzODAxNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTM2N2E5ZDMwNWFhYjQ1ZTJhNmQ1M2I5MjVhYzgzNTk3YTNjNmY2MDBjODkwOWE4YjdhOWYwYjMyNmIzMjYifQ"
+          "resource": "repo://topos/engine/src/config.rs#L225-L267",
+          "version": "repo-lines-v1:sha256:7b04c61e6d4cd9ff56e6a71bef5bd630cd038933d132f9b464e5998b3b0b6fa9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MTM3YzM3MDBjMzE1ZTU1NDZiM2QxMGE3OWY1Yzc1ZTJjMjRmY2M4OGU1MjllYjg4MDM0MDA5N2EzODAxNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTM2N2E5ZDMwNWFhYjQ1ZTJhNmQ1M2I5MjVhYzgzNTk3YTNjNmY2MDBjODkwOWE4YjdhOWYwYjMyNmIzMjYifQ"
         },
         {
           "resource": "repo://topos/engine/src/evaluation/policies/secure.rs#L1-L14",
-          "version": "repo-lines-v1:sha256:719e35866406b2f587e86a19b6eaf1cbccd301f3dff0979f6c07afd5b9c231fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZGQzN2QzNzI0YjEyYmIzYWIzOGEzZjhmMmJjNDc4YTFmM2M2NGVjZWE5NzdmZTRkNTc3ZDAxOWNmNTdhNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliM2Y1ZThlYzQ1YzQ3NGFjZmFiZjEwY2EwODA4YjA5ZDhhMzU4ZDAyMDM0OTE3YjMzYTMyZjgxZmJlYzkyZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ZDgyMWQ5MGViMjIzNGE4ZDVmMmY3NTBmYmZlZjBlNWYxNDlhNmI3NTEwZDQ0YWEzZjEzYjI3ZTU0MGFhNmQifQ"
+          "version": "repo-lines-v1:sha256:719e35866406b2f587e86a19b6eaf1cbccd301f3dff0979f6c07afd5b9c231fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZGQzN2QzNzI0YjEyYmIzYWIzOGEzZjhmMmJjNDc4YTFmM2M2NGVjZWE5NzdmZTRkNTc3ZDAxOWNmNTdhNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliM2Y1ZThlYzQ1YzQ3NGFjZmFiZjEwY2EwODA4YjA5ZDhhMzU4ZDAyMDM0OTE3YjMzYTMyZjgxZmJlYzkyZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0Yzk5MDM2MWUxMWRlNTU4MDZjYjdlZDUzNzJkNDg0NmMzNTJhMDFhYTQ0NmU1ZmYxMmE5NzRlYmFhNzQ0ZmUifQ"
         },
         {
-          "resource": "repo://topos/engine/src/evaluation/suppression.rs#L75-L135",
-          "version": "repo-lines-v1:sha256:15996e4619818984ab816ebfb1c3f1ecaa891d35f74d53e668138e0e3cf0cd7c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxN2IyNzA4ZjhkNzY4OGU2Nzk5YTU4ZTQ2NDBlZDE0YmFmZDU1YTM4NWExMmEyYmE3ZWU2NmNkNGVmZjAwYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMTMwZWIxZDUzMzU5ODkwYjIyYWRjNmQ4MzU0ZmNhYzQwM2U2MDNjODZmZTE0ZGM5NjVhNGNmOTQ1Y2YxYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkY2I5NjJlZjgwZjQ1MjRhYzk5OTM3MGQxZWZmMmIwZWVkNThmZjQ5ZTQ3OGRkYTY3MTBhYmMzZWYyMDZjMjMifQ"
+          "resource": "repo://topos/engine/src/evaluation/suppression.rs#L75-L136",
+          "version": "repo-lines-v1:sha256:6a07395ef441ba5b7a345dc02fb1ab0f2121a06e3b315ba52182897918da66c6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxN2IyNzA4ZjhkNzY4OGU2Nzk5YTU4ZTQ2NDBlZDE0YmFmZDU1YTM4NWExMmEyYmE3ZWU2NmNkNGVmZjAwYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMTMwZWIxZDUzMzU5ODkwYjIyYWRjNmQ4MzU0ZmNhYzQwM2U2MDNjODZmZTE0ZGM5NjVhNGNmOTQ1Y2YxYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwNTQ4MWE5Y2UyOTljM2FhMjQ1OWY0ZjY5NmQ5ZDIwYWM3NDAyMzE2ODcyZWIwNDE0YWZhOTVjYjAwNjU3NTEifQ"
         }
       ]
     },
@@ -153,7 +153,7 @@
       "statement": "Multi-file roll-up preserves a measured pillar only when every parseable result achieves it, ignores files where that dimension is missing, and treats parse failures as failures; priority does not alter policy thresholds, while a complete four-generator preference ranking supplies a lexicographic guidance order with default SIMPLE ≻ NAVIGABLE ≻ SECURE ≻ COMPOSABLE.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/config.rs#L192-L205",
+          "resource": "repo://topos/engine/src/config.rs#L200-L213",
           "version": "repo-lines-v1:sha256:1ce025a6ab304d7ef94cbc50c48a49b8d0a520d6c22b38cffecb37329ff0e782:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NzdjNTU5OGZjN2U0N2JjNmVhNjQ0ZWUxOGVmMjhkMWRmMjI1NWJhNzY5MDQ2MDljOGY2NTQxZjljY2U2NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMmFiYjg4MDBmNDdkYWI2ZTU0ZDRlY2Y5NGFlNjM2Mzg3ZmViOGVjOGI4MTc0YzBmZTE1NjQyN2ViMDNkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmM2UxYzkxYjgwOTQ0YTMxNTE3ODY1ZGU0OTU4MmU0MDVkMTFkY2FmNWI3ODcxZGNkMjJiYzNkYzdkN2FkODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxMjRmYTBjZThlMDc5ZDkxNDI3ODlhMDY0ZDU1ZjlkMDY1NzA1Yzk5MGM3NDUzNGVkMzU2ZjhjN2M3Yzc2YjcifQ"
         },
         {
@@ -208,19 +208,19 @@
     },
     {
       "id": "claim_fc378096e632449caf6f64b7c7522c3d",
-      "statement": "The MCP security overlay is considered only for parseable classifications with a positive raw dangerous-call or taint-flow metric; it performs that guard before reparsing, then supplies raw findings and a CPG to `apply_allowlist` so acknowledged findings remain disclosed and the grade cap can apply.",
+      "statement": "The MCP security overlay is considered only for parseable classifications with a positive raw dangerous-call or taint-flow metric; it performs that guard before reparsing, then supplies raw findings and a CPG to apply_allowlist so acknowledged findings remain disclosed and the grade cap can apply.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L115-L142",
-          "version": "repo-lines-v1:sha256:7a20e6d065b7e6548bab58a7f826f634e546483d5622fa50fb23d7affe811136:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYzEwNDExMzg0YjMxYzRmYzkyYjIyODU1OTkxMjZjN2VlN2Q0YjFiNWYwZTc4NWYyNjk5ZGQ5NGIwYjcwZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L116-L142",
+          "version": "repo-lines-v1:sha256:3d1977ed917379a6edbd43539b5755d504de686af84e8835a8c1e7d5baa298e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMGUzOTFlMjA2N2VhOTdjMmVlNmJmYWY2MTFmZWU1Y2Q1MTM5ZTJiMWJjN2QwM2IxODBhZTkwYTVhZjBjNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3YzJhZDFjMDZmZjJlMzY1MzIzOGJmODk4OTlmZmExODFlNDI1YjYyNzhiNzc3YWE2NGU1NTFmMmE2MTBiZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
         },
         {
           "resource": "repo://topos/mcp/src/diagnostics.rs#L25-L38",
           "version": "repo-lines-v1:sha256:fbce0fbd285f90b12b46aada8a7d69c46ed1460a41df3fdb50ecea3af710afda:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkNDBmN2E0NWYxNGYzZGZhOGQxNzY3NTg5MDQ3ZWVkOTc0OTk5NDE3ODJjYTYxYWUyZThlNzY0ZGI2ZjI1ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhMDFiOWNhYWYzMjFkZDdjNGFjNDgyYTFiZTllZDRjZWJiMWE5NWFiYThiZmZlYjI2MWUyZmE2YWQxNjkxMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMTY3MGJlYWIyN2ViNDM2MDIzY2FkY2M0NzczODE3Nzk1MDQ0ZDQ0Yjk0ZGM5NzhlMGE2MzYxMzFkYjQ4MGYifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L64-L112",
-          "version": "repo-lines-v1:sha256:0086fa28560ec063503eb330253c9ff97b5bd57930e7d84ae971b54242b7cfe9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YzhlMzNiMGVhMzg1YTcyNzRhNzdhMDY0NmE0MGYyYWVmYjljMWE2NGIyNjUxYmNiOTcwODI0MGI5OTQ3NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NzVlOTRhOTA0YWM0OWIzMTU0ZDQ2NzJhNjZlODYyOWI4NmRhYzc0ZTNlMjkzN2JlNjkyN2FlM2RhMTFjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODU5MjEwZWJjYjEyY2Y2OGM2MTYyMjJmYzU2MGMxZjY4ZTJmYTMxZjYzMDQ5M2RmODA5NTg4ODdkNTdhZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YzJhZDFjMDZmZjJlMzY1MzIzOGJmODk4OTlmZmExODFlNDI1YjYyNzhiNzc3YWE2NGU1NTFmMmE2MTBiZGMifQ"
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L74-L113",
+          "version": "repo-lines-v1:sha256:72d27756ec19504fc0c5e09e6ab9913596015b74a34489d603471617857df0b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNzQ0ZTNlZTk1ODUyNjU1MDA3ZDQyYTMzNTVkOTAzOGUyZWRjYmY0ZDgxOWJiYmU0ZDM0NTc1ZGUzNWY0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2ODI3ODQ5NmFkYjM5YTg2MzFkNWIzYTlkNmMyMDBhOGIzOWI3Njk5YjQ1NDA4NDlhZDg0MGYwNjFhNzljNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0ZDNmNDkzZWZjZmM4N2M3NjQ2NjhkMTAzNTc3YTQ0MDM4ZTA1NzE3OGVhNDM1Y2ZmYzEwYjE0NTFhYWJiZDkifQ"
         }
       ]
     },
@@ -229,8 +229,12 @@
       "statement": "Configuration loading accepts a complete valid four-generator ranking only; a malformed or legacy three-entry ranking is ignored, causing consumers to use default preferences rather than applying a partial ranking.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/config.rs#L152-L205",
-          "version": "repo-lines-v1:sha256:e1c79cbec286337c427496f225dac752a37dec9c97aa1069ea591c5541fa3790:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YjRjOGZjOWM4NTk5MTdiMzVhZDI2OWUxOWZlM2RlOTE2MjlhZmViNTEyZTc1YTI0MjM3NDMzODFmZGRmOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMmFiYjg4MDBmNDdkYWI2ZTU0ZDRlY2Y5NGFlNjM2Mzg3ZmViOGVjOGI4MTc0YzBmZTE1NjQyN2ViMDNkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxYjYwZTJhNmQyYzllYzRlODhkODBkMmQxZDIyYzE2ZmY5NDY3OTY5YmFhMWU1ZDM1NDU2MGRlYmYyYzJkOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxMjRmYTBjZThlMDc5ZDkxNDI3ODlhMDY0ZDU1ZjlkMDY1NzA1Yzk5MGM3NDUzNGVkMzU2ZjhjN2M3Yzc2YjcifQ"
+          "resource": "repo://topos/engine/src/config.rs#L160-L215",
+          "version": "repo-lines-v1:sha256:00d75b501e1be2fea59c6483bdff47c3907678bbb76299e7b8165de6b60f4962:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxZjNjM2RiZGJjM2JhNDY4NmM1NDQzMDRjNGVmZDNhZjUwOWJjOGM4ZTdiODA1ZjY5NWM4OWU2ZGY5MWRkYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4MTZlZWUzZGFiY2JlNTgxN2UzMTI0MmU2NmI0NTkwM2U0Zjg5OWVmYWZhNDFkZmJlNGUxNmQ3OWE3ODg0YmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3NmNiYjY0YjIxYWIzMDZjZTY5YzdiNGZkY2IxZThmMTI5ODU0ZThlNDU5NDg3ZDk1MTJmZGUwNjJkOTNhNTcifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/config.rs#L423-L440",
+          "version": "repo-lines-v1:sha256:50f1f1fa817f5fa1f943041346bb659c225f78ba34254548002b9ad3683c3a58:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MDNmNWMzMGZjM2IwNzZjNjM1MzVlZGEzYjFhZjg2Y2FkYWJmOWEzYjI5M2Y4YTk4N2RjNjQxZDcwMGZjODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyNTQ5NjBhM2EyMzA4YjY4ZjcyODE1M2Q2MjU5YzhhZjQzYmZhZmQwMTUzZWZhZmYyMDY1MjI3MmJkYjk1ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlYmM3OTQ2NTk4YWEwZDZhMTg1YTk5MmE5MzY3NmZjMWZhNzI4ODg5N2Q2MzNmYTJkM2Q2NjQ4ZWIxZTY5YjIifQ"
         },
         {
           "resource": "repo://topos/engine/src/evaluation/preferences.rs#L128-L152",
@@ -262,7 +266,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.5.2",
-    "at": "2026-09-16T12:21:33.983Z"
+    "by": "openwiki/0.7.1",
+    "at": "2026-10-09T13:09:16.317Z"
   }
 }

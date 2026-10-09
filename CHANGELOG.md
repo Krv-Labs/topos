@@ -27,15 +27,41 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   once per MCP session on the tool-result channel, where the agent is told to
   relay it once rather than repeat it. `TOPOS_NO_UPDATE_NOTICES=1`, `CI`, and
   any non-terminal run suppress both. The check is cached under
-  `~/.local/state/topos/update-check.json`, honours `XDG_STATE_HOME`, and is
+  `~/.local/state/topos/update-check.json`, honors `XDG_STATE_HOME`, and is
   removed by `topos uninstall`.
+
+### Changed
+
+- `topos update` never replaces a package manager's files with a downloaded
+  tarball. A Homebrew install is upgraded by running `brew upgrade topos`, and
+  a binary install by downloading the release directly and verifying its
+  checksum before replacing anything. Downloading over a Homebrew cellar file
+  produces a binary `brew` knows nothing about, which the next `brew upgrade`
+  silently reverts.
+- `install.json` and `install.sh`'s provenance file now resolve to the same
+  directory. The shell honored `XDG_STATE_HOME` while the Rust ledger
+  hardcoded `~/.local/state`, so a user who set the variable got two
+  directories and `topos uninstall` pruned only one.
+- MCP tool parameters now say to prefer an absolute path. A relative one is
+  resolved against a directory the host chose, and when the wrong directory
+  happens to contain the same relative path the read succeeds into the wrong
+  repository — not decidable from inside the server, so it is stated instead.
+  `TOPOS_MCP_FILE_ROOT` remains an optional maximum boundary; `topos install`
+  still does not write it, because one hardcoded path is wrong for anyone who
+  works across repositories.
 
 ### Fixed
 
+- Subprocess deadlines terminate the Unix process group, including descendants
+  that ignore termination or outlive their parent, without blocking on capture pipes.
+- Python regex compilation via `re.compile` and `regex.compile` no longer
+  counts as dynamic code execution.
+- Repeated path filtering caches Git ignore checks during a scan.
+- MCP inspection shares one parsed source across classification, security
+  diagnostics, and metric locations; passing evaluation gates skip extra parsing.
 - Version probes have a deadline, virtualenv launchers are never replaced by
   downloads, and concurrent downloads use independent staging files.
 - Redirected CLI commands skip passive network checks and state writes.
-
 - MCP tools accept relative paths again. `resolve_project_path` refused every
   relative `filepath` unless `TOPOS_MCP_FILE_ROOT` was set, and `topos install`
   never writes it — it emits `command` and `args` and nothing else — so
@@ -56,36 +82,6 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   a host that starts the server in a different repository — is disclosed, not
   prevented. Client roots would decide it, but MCP deprecated them (SEP-2577),
   so Topos deliberately does not build on them.
-
-### Changed
-
-- `topos update` never replaces a package manager's files with a downloaded
-  tarball. A Homebrew install is upgraded by running `brew upgrade topos`, and
-  a binary install by re-running `install.sh`, which verifies the release
-  checksum before replacing anything. Downloading over a Homebrew cellar file
-  produces a binary `brew` knows nothing about, which the next `brew upgrade`
-  silently reverts.
-- `install.json` and `install.sh`'s provenance file now resolve to the same
-  directory. The shell honoured `XDG_STATE_HOME` while the Rust ledger
-  hardcoded `~/.local/state`, so a user who set the variable got two
-  directories and `topos uninstall` pruned only one.
-- MCP tool parameters now say to prefer an absolute path. A relative one is
-  resolved against a directory the host chose, and when the wrong directory
-  happens to contain the same relative path the read succeeds into the wrong
-  repository — not decidable from inside the server, so it is stated instead.
-  `TOPOS_MCP_FILE_ROOT` remains an optional maximum boundary; `topos install`
-  still does not write it, because one hardcoded path is wrong for anyone who
-  works across repositories.
-
-### Fixed
-
-- Subprocess deadlines terminate the Unix process group, including descendants
-  that ignore termination or outlive their parent, without blocking on capture pipes.
-- Python regex compilation via `re.compile` and `regex.compile` no longer
-  counts as dynamic code execution.
-- Repeated path filtering caches Git ignore checks during a scan.
-- MCP inspection shares one parsed source across classification, security
-  diagnostics, and metric locations; passing evaluation gates skip extra parsing.
 
 ## [0.7.0] - 2026-09-30
 

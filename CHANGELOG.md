@@ -14,8 +14,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 - `topos update`: check for a newer release and offer to install it. The card
   names the channel a binary came from (`binary install`, `homebrew`, `cargo`,
   `source checkout`, `python package`) and the exact command that upgrades it,
-  then runs that command on your confirmation — Homebrew installs get
-  `brew upgrade topos`, everything else is printed for you to run. `--json`
+  then applies the update on confirmation. Homebrew installs run
+  `brew upgrade topos`; binary installs use a checksum-verified download.
+  Cargo, source, Python, and unknown installs print manual commands.
+  `--yes` applies all supported outdated installs without prompting. `--json`
   emits the survey; `--check` reports without offering. When more than one
   `topos` is installed, every one is listed with its path, version and channel,
   and you pick which to update: `$PATH` order decides which binary actually
@@ -29,6 +31,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   removed by `topos uninstall`.
 
 ### Fixed
+
+- Version probes have a deadline, virtualenv launchers are never replaced by
+  downloads, and concurrent downloads use independent staging files.
+- Redirected CLI commands skip passive network checks and state writes.
 
 - MCP tools accept relative paths again. `resolve_project_path` refused every
   relative `filepath` unless `TOPOS_MCP_FILE_ROOT` was set, and `topos install`

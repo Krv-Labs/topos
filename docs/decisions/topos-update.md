@@ -32,41 +32,31 @@ report should not require the package manager to be installed and working, and
 should not be slow because of it. `install.sh` avoided calling `brew` for
 exactly this reason ("preflight must stay fast and offline-friendly").
 
-### Delegate the upgrade; never download over a package manager
+### Upgrade by channel
 
 | Channel | How it is upgraded |
 | --- | --- |
-| binary install | `TOPOS_UPDATE=1 curl … install.sh \| bash`, inherited stdio |
-| homebrew | `brew upgrade topos`, inherited stdio |
-| cargo / source / python | printed, not run |
+| binary install | Download the release asset, verify SHA-256, and replace the selected executable |
+| homebrew | Run brew upgrade topos with inherited stdio |
+| cargo / source / python / unknown | Print a manual command |
 
-Two reasons this is a delegation and not a downloader:
+The binary downloader uses native progress bars and a unique staging file in
+the target directory. It checks the release checksum before renaming the file
+over the selected executable. Concurrent updates cannot share a staging file.
+Homebrew retains ownership of its files; Topos runs its upgrade command.
 
-1. **Homebrew.** Writing over `/opt/homebrew/Cellar/topos/<version>/bin/topos`
-   produces a binary `brew` does not know about. The next `brew upgrade`
-   reverts it silently, and the user concludes the update did nothing.
-2. **Checksums and atomicity already exist.** `install.sh:557-585` downloads to
-   a temp file, verifies the SHA-256 against the release's `checksums.txt`, and
-   only then `mv`s into place. Reimplementing that in Rust would duplicate
-   ~60 lines of reviewed shell and add a second implementation to keep correct
-   about atomic replacement. One source of truth is worth more than
-   in-process control here.
-
-`TOPOS_UPDATE=1` is the installer's existing "this is an upgrade, don't stop to
-ask" switch (`install.sh:321-325`). Without it the script would prompt about
-the other installs it discovers — including the one just checked — asking a
-question the user already answered by choosing "update now".
-
-`cargo`, `source` and `python` are advised rather than acted on. A source
-checkout's working tree is not something topos can locate or safely pull, and
-a pip install belongs to `uv`.
+Classification resolves symlinks before inspecting known install locations.
+Python virtual environments are recognized by pyvenv.cfg. Unrecognized
+locations are reported as unknown and cannot receive an automatic download.
+Probing an installed executable for its version has a two-second deadline.
+A failed or timed-out probe reports an unknown version.
 
 ### Nothing runs unasked
 
 `topos update` never runs a package manager because it was typed. It reports,
 shows the command, and waits for a confirmation. `--yes` is the explicit
-version of that confirmation. A non-terminal run **reports and exits 0 without
-touching anything** — an agent or CI job has nobody to answer a prompt, and
+version of that confirmation. A non-terminal run without --yes **reports and exits 0 without
+replacing binaries** — an agent or CI job has nobody to answer a prompt, and
 downloading a binary nobody agreed to is not a safe default. `update_e2e.rs`
 asserts the prompt glyphs are absent from every redirected run.
 
@@ -168,7 +158,7 @@ pruned only one. The resolver now lives in `topos_mcp::paths` and both callers
 delegate to it, which also fixes the relative-path case the XDG spec calls
 invalid.
 
-The cache is written by rename rather than in place, because the other surface
+The cache is written through a unique staging file and rename rather than in place, because the other surface
 reads it from another process concurrently and must never see half a JSON file.
 A corrupt cache reads as "never checked", which is the correct response.
 

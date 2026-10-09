@@ -109,11 +109,39 @@ fn consider(path: &Path, home: &Path, found: &mut Vec<Install>) {
 /// present. A binary that hangs or refuses is bounded by the timeout and
 /// simply reports an unknown version.
 fn probe_version(path: &Path) -> Option<String> {
-    let output = std::process::Command::new(path)
+    probe_version_with_timeout(path, std::time::Duration::from_secs(2))
+}
+
+fn probe_version_with_timeout(path: &Path, timeout: std::time::Duration) -> Option<String> {
+    use std::io::{Read, Seek};
+    use std::process::{Command, Stdio};
+    // A file avoids waiting for EOF from a launcher descendant holding a pipe.
+    let mut output = tempfile::tempfile().ok()?;
+    let mut child = Command::new(path)
         .arg("--version")
-        .output()
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .stdout(output.try_clone().ok()?)
+        .spawn()
         .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(Some(_)) => return None,
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+    output.rewind().ok()?;
+    let mut text = String::new();
+    output.take(4096).read_to_string(&mut text).ok()?;
     // clap prints `<bin name> <version>`; take the last whitespace-separated
     // token so a customized `name` in Cargo.toml cannot break it.
     text.split_whitespace().last().and_then(parse_version)
@@ -203,6 +231,22 @@ mod tests {
         assert_eq!(parse_version("0.7.0").as_deref(), Some("0.7.0"));
         assert_eq!(parse_version("0.7.0-rc.1").as_deref(), Some("0.7.0-rc.1"));
         assert_eq!(parse_version("subcommand"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_stuck_version_probe_is_bounded() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("topos");
+        std::fs::write(&path, "#!/bin/sh\nexec sleep 2\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = std::time::Instant::now();
+        assert_eq!(
+            probe_version_with_timeout(&path, std::time::Duration::from_millis(100)),
+            None
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[cfg(unix)]

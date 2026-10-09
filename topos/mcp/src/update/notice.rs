@@ -90,12 +90,18 @@ pub fn save(home: &Path, record: &Record) -> Result<(), String> {
     let path = cache_path(home);
     let dir = path.parent().unwrap_or(home);
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let temporary = path.with_extension("json.tmp");
+    use std::io::Write;
+    let mut temporary = tempfile::NamedTempFile::new_in(dir)
+        .map_err(|e| format!("cannot stage update record: {e}"))?;
     let body = serde_json::to_string_pretty(record)
         .map_err(|e| format!("cannot serialize the update record: {e}"))?;
-    std::fs::write(&temporary, body)
-        .map_err(|e| format!("cannot write {}: {e}", temporary.display()))?;
-    std::fs::rename(&temporary, &path).map_err(|e| format!("cannot update {}: {e}", path.display()))
+    temporary
+        .write_all(body.as_bytes())
+        .map_err(|e| format!("cannot write update record: {e}"))?;
+    temporary
+        .persist(&path)
+        .map_err(|e| format!("cannot update {}: {e}", path.display()))?;
+    Ok(())
 }
 
 /// Delete the cache file, so `topos uninstall` leaves nothing of ours behind.
@@ -160,7 +166,7 @@ pub fn stale(record: &Record, at: u64) -> bool {
 /// Returns `None` when the gate is closed or the cached answer is still fresh,
 /// so the common case costs one file read and nothing else.
 pub fn refresh(home: &Path) -> Option<Record> {
-    if !allowed() {
+    if !interactive() {
         return None;
     }
     let at = now();
@@ -290,8 +296,9 @@ pub fn mcp_banner(current: &str) -> Option<String> {
     };
     let record = load(&home);
     let latest = available(&record, current)?;
-    // No claim: the CLI and the server share one daily budget, and whichever
-    // gets there first has already told the user.
+    if !claim_notice(&home) {
+        return None;
+    }
     Some(render_mcp_banner(latest, current))
 }
 

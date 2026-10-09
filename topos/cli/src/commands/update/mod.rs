@@ -2,16 +2,14 @@
 //!
 //! Answers the question `install.sh` can only answer by printing: *which
 //! channel is this binary from, and what command upgrades it?* The upgrade
-//! itself is delegated to that channel's own mechanism — `install.sh` for a
-//! binary install, `brew upgrade` for a Homebrew one — rather than downloading
-//! over a package manager's files, which the next `brew upgrade` would
-//! silently revert.
+//! uses a verified atomic download for binary installs and `brew upgrade`
+//! for Homebrew. Other channels print the matching manual command.
 //!
 //! Nothing happens without a confirmation. `topos update` never runs a package
 //! manager unasked; it reports what it found, shows the exact command, and
 //! waits.
 //!
-//! Non-interactive runs **report and exit 0 without touching anything**. An
+//! Non-interactive runs without `--yes` report without replacing binaries. An
 //! agent or a CI job has nobody to answer the prompt, and downloading a
 //! binary nobody agreed to is not a safe default.
 
@@ -38,7 +36,7 @@ pub struct UpdateArgs {
     #[arg(long)]
     check: bool,
     /// Apply the upgrade without prompting. Still only ever runs a channel's
-    /// own upgrade command, never a download.
+    /// upgrade mechanism: verified download or Homebrew upgrade.
     #[arg(long, short = 'y')]
     yes: bool,
     /// Emit the survey as JSON instead of a card.
@@ -65,14 +63,14 @@ Topos never removes an install. When more than one topos is installed, $PATH
 order decides which one runs — `topos update` lists them so the one you are
 upgrading is the one you are calling.
 
-The check is throttled to once every 24 hours. Set TOPOS_NO_UPDATE_NOTICES=1 to
+Passive checks are throttled to once every 24 hours; explicit checks always fetch. Set TOPOS_NO_UPDATE_NOTICES=1 to
 silence the passive notices entirely.";
 
 /// `topos update` — report, then offer.
 pub fn run(args: UpdateArgs) -> Result<(), String> {
     let home = mcp_paths::home_dir()?;
     // Ask the release server, then cache the answer for the passive notice.
-    // A repeat run within the throttle costs no request.
+    // Explicit requests bypass the passive notice throttle.
     let survey = update::survey(&home);
     let _ = topos_mcp::update::notice::save(&home, &notice_record(&home, &survey));
 
@@ -107,7 +105,7 @@ pub fn run(args: UpdateArgs) -> Result<(), String> {
         .installs
         .first()
         .map(|install| install.path.as_path());
-    confirm_and_apply(&survey, active, opts, streams.stderr)
+    confirm_and_apply(&survey, active, opts, streams.stderr, args.yes)
 }
 
 /// The card, before any prompt.
@@ -246,63 +244,25 @@ fn confirm_and_apply(
     active: Option<&Path>,
     opts: RenderOptions,
     draw: bool,
+    yes: bool,
 ) -> Result<(), String> {
     let outdated: Vec<Install> = survey.outdated().into_iter().cloned().collect();
-    let latest = survey.latest.clone();
-    let mut lines = Vec::new();
-
-    let chosen: Vec<Install> = if outdated.len() <= 1 {
-        // One install: a single-select, matching the Kimi-style card — the
-        // question is genuinely binary.
-        lines.push(render::guide_line(
-            latest
-                .as_deref()
-                .map(|latest| format!("{latest} is ready to install"))
-                .unwrap_or_else(|| "the installer will fetch the newest release".into()),
-            ConsoleStyle::new().dim(),
-            opts,
-        ));
-        lines.push(render::guide('│', opts));
-        render::print_lines(lines);
-        let step = report::action_step(latest.as_deref(), &survey.current);
-        let header = vec![render::guide('│', opts)];
-        match menu::run_select(&header, &step)? {
-            Some(0) => outdated,
-            _ => return Ok(()),
-        }
+    let unhandled: Vec<&Install> = outdated
+        .iter()
+        .filter(|install| install.channel.action() == Action::None)
+        .collect();
+    print_channels(&unhandled, opts);
+    let outdated: Vec<Install> = outdated
+        .into_iter()
+        .filter(|install| install.channel.action() != Action::None)
+        .collect();
+    if outdated.is_empty() {
+        return Ok(());
+    }
+    let chosen = if yes {
+        outdated
     } else {
-        // Filter to what can actually be acted on; a channel topos cannot
-        // upgrade is a manual step, not a checkbox.
-        let actionable: Vec<Install> = outdated
-            .iter()
-            .filter(|install| install.channel.action() != Action::None)
-            .cloned()
-            .collect();
-        let unhandled: Vec<&Install> = outdated
-            .iter()
-            .filter(|install| install.channel.action() == Action::None)
-            .collect();
-        if actionable.is_empty() {
-            print_channels(&unhandled, opts);
-            return Ok(());
-        }
-        if !unhandled.is_empty() {
-            // Named before the prompt rather than after it, so the choice is
-            // made with full knowledge of what the checkbox cannot cover.
-            print_channels(&unhandled, opts);
-        }
-        let target = latest.clone().unwrap_or_else(|| survey.current.clone());
-        let menu_options = report::install_menu(&actionable, active, &target);
-        match menu::run_menu("Topos update available", menu_options)? {
-            Some(ids) if !ids.is_empty() => actionable
-                .into_iter()
-                .filter(|install| {
-                    ids.iter()
-                        .any(|id| *id == install.path.display().to_string())
-                })
-                .collect(),
-            _ => return Ok(()),
-        }
+        prompt_updates(outdated, survey, active, opts)?
     };
 
     if chosen.is_empty() {
@@ -312,7 +272,7 @@ fn confirm_and_apply(
         .iter()
         .map(|install| describe(install, survey))
         .collect();
-    if !menu::run_confirm("Apply this update?", &plan)? {
+    if !yes && !menu::run_confirm("Apply this update?", &plan)? {
         return Ok(());
     }
     let chrome = download::Chrome::interactive(opts, draw);
@@ -335,6 +295,51 @@ fn confirm_and_apply(
     }
     announce(&chosen, opts);
     Ok(())
+}
+
+/// Select the supported installs when interactive confirmation is required.
+fn prompt_updates(
+    outdated: Vec<Install>,
+    survey: &update::Survey,
+    active: Option<&Path>,
+    opts: RenderOptions,
+) -> Result<Vec<Install>, String> {
+    let latest = survey.latest.clone();
+    let mut lines = Vec::new();
+    Ok(if outdated.len() <= 1 {
+        // One install: a single-select, matching the Kimi-style card — the
+        // question is genuinely binary.
+        lines.push(render::guide_line(
+            latest
+                .as_deref()
+                .map(|latest| format!("{latest} is ready to install"))
+                .unwrap_or_else(|| "the installer will fetch the newest release".into()),
+            ConsoleStyle::new().dim(),
+            opts,
+        ));
+        lines.push(render::guide('│', opts));
+        render::print_lines(lines);
+        let step = report::action_step(latest.as_deref(), &survey.current);
+        let header = vec![render::guide('│', opts)];
+        match menu::run_select(&header, &step)? {
+            Some(0) => outdated,
+            _ => return Ok(Vec::new()),
+        }
+    } else {
+        let actionable = outdated;
+        let target = latest.clone().unwrap_or_else(|| survey.current.clone());
+        let menu_options = report::install_menu(&actionable, active, &target);
+        match menu::run_menu("Topos update available", menu_options)? {
+            Some(ids) if !ids.is_empty() => actionable
+                .into_iter()
+                .filter(|install| {
+                    ids.iter()
+                        .any(|id| *id == install.path.display().to_string())
+                })
+                .collect(),
+            _ => return Ok(Vec::new()),
+        }
+    })
 }
 
 /// One plan line: what runs, and against what.

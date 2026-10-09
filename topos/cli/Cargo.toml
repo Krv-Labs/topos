@@ -32,8 +32,5 @@ indicatif = "0.17.11"
 console = "0.15.11"
 # Preserve comments and unrelated settings when updating `.topos.toml`.
 toml_edit = "0.22.27"
-# Temp git repos for `pr-recap` tests. Declared here because integration
-# tests and `cfg(test)` modules do not see `[dev-dependencies]` of a bin
-# crate the way a lib would — tempfile is only referenced under `cfg(test)`.
-[dev-dependencies]
+# Unique download staging and temporary repositories in tests.
 tempfile = "3"

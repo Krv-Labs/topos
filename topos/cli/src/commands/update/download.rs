@@ -94,7 +94,7 @@ pub fn install(
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", target.display()))?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    let staging = dir.join(".topos-download.tmp");
+    let staging = staging_file(dir)?;
 
     let result = download(
         &format!("{base}/{asset}"),
@@ -111,9 +111,17 @@ pub fn install(
         })
     });
 
-    // The staging file is ours whether or not the download worked.
-    std::fs::remove_file(&staging).ok();
+    // The unique staging path is removed on drop, including on failure.
     result
+}
+
+fn staging_file(dir: &Path) -> Result<tempfile::TempPath, String> {
+    tempfile::Builder::new()
+        .prefix(".topos-download-")
+        .suffix(".tmp")
+        .tempfile_in(dir)
+        .map(|file| file.into_temp_path())
+        .map_err(|e| format!("cannot stage download in {}: {e}", dir.display()))
 }
 
 /// Fetch `checksums.txt` and return the hash for `asset`.
@@ -139,6 +147,9 @@ fn download(
     // A `HEAD` costs one round trip and buys a real percentage and ETA.
     let total = content_length(url);
 
+    let file =
+        std::fs::File::create(path).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    let mut writer = std::io::BufWriter::new(file);
     let mut child = Command::new("curl")
         .args([
             "--fail",
@@ -154,9 +165,6 @@ fn download(
         .map_err(|e| format!("cannot run curl: {e}"))?;
 
     let mut reader = child.stdout.take().ok_or("curl produced no output")?;
-    let file =
-        std::fs::File::create(path).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-    let mut writer = std::io::BufWriter::new(file);
 
     let bar = progress_bar(total, display);
     let mut buffer = [0u8; 64 * 1024];
@@ -175,16 +183,22 @@ fn download(
             Err(e) => break Err(format!("download interrupted: {e}")),
         }
     };
-    writer
-        .flush()
-        .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    let transfer_result = read_result.and_then(|()| {
+        writer
+            .flush()
+            .map_err(|e| format!("cannot write {}: {e}", path.display()))
+    });
     bar.finish_and_clear();
+    if let Err(error) = transfer_result {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
 
     // Drain before waiting: a curl blocked on a full pipe would deadlock here.
     let status = child
         .wait()
         .map_err(|e| format!("cannot wait for curl: {e}"))?;
-    read_result?;
     if !status.success() {
         return Err(describe_failure(url, status));
     }
@@ -227,7 +241,7 @@ fn content_length(url: &str) -> Option<u64> {
     header
         .lines()
         .filter_map(|line| line.split_once(':'))
-        .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+        .rfind(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
         .and_then(|(_, value)| value.trim().parse().ok())
 }
 
@@ -354,6 +368,21 @@ mod tests {
             },
             draw: false,
         }
+    }
+
+    #[test]
+    fn concurrent_staging_files_do_not_share_bytes_or_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = staging_file(dir.path()).unwrap();
+        let second = staging_file(dir.path()).unwrap();
+        assert_ne!(first.to_path_buf(), second.to_path_buf());
+        std::fs::write(&first, b"verified").unwrap();
+        std::fs::write(&second, b"other").unwrap();
+        drop(second);
+        assert_eq!(std::fs::read(&first).unwrap(), b"verified");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        drop(first);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     /// `draw: false` must return the worker's value untouched, so the whole

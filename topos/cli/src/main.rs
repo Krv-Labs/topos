@@ -185,6 +185,9 @@ fn dispatch(command: Command) -> Result<(), String> {
 /// `topos update` still hears about a new release. That costs one `stat` on
 /// every normal run and at most one `curl` a day.
 fn passive_notice() {
+    if !topos_mcp::update::notice::interactive() {
+        return;
+    }
     let Ok(home) = topos_mcp::paths::home_dir() else {
         return;
     };

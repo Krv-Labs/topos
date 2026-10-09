@@ -299,8 +299,7 @@ Details and troubleshooting
 .. dropdown:: Upgrading
 
    ``topos update`` checks for a newer release, tells you which install channel
-   your binary came from, and runs that channel's own upgrade command once you
-   confirm:
+   your binary came from, and applies the update once you confirm:
 
    .. code-block:: bash
 
@@ -311,8 +310,8 @@ Details and troubleshooting
 
    Topos never downloads over a package manager's files. A Homebrew install is
    upgraded by running ``brew upgrade topos``, and a binary install by
-   re-running the installer, which verifies the release checksum before
-   replacing anything. Cargo, source-checkout and pip installs are reported with
+   downloading the release, verifying its checksum, and atomically replacing
+   the selected binary using a unique staging file. Cargo, source-checkout and pip installs are reported with
    the command to run, since topos cannot safely update them for you.
 
    When more than one ``topos`` is installed, ``topos update`` lists each one

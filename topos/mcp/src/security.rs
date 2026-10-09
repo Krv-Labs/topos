@@ -394,7 +394,11 @@ mod tests {
     #[test]
     fn escape_via_dotdot_is_denied() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let err = resolve_within_root("../../../../../../../../etc/passwd").unwrap_err();
+        let err = resolve_within_root(&format!(
+            "{}etc/passwd",
+            "../".repeat(startup_project_root().unwrap().components().count())
+        ))
+        .unwrap_err();
         assert!(err.contains("Access denied"), "{err}");
         assert!(err.contains("/etc/passwd"), "{err}");
     }
@@ -418,7 +422,11 @@ mod tests {
     #[test]
     fn a_relative_path_that_escapes_the_startup_project_is_denied() {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let err = resolve_within_root("../../../../../../../../etc/hosts").unwrap_err();
+        let err = resolve_within_root(&format!(
+            "{}etc/hosts",
+            "../".repeat(startup_project_root().unwrap().components().count())
+        ))
+        .unwrap_err();
         assert!(err.contains("Access denied"), "{err}");
         assert!(
             !err.contains("absolute path is required"),

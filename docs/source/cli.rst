@@ -609,13 +609,13 @@ that upgrades it, and runs that command once you confirm.
    * - ``--check``
      - Report what is installed and published without being offered anything.
    * - ``-y``, ``--yes``
-     - Apply without prompting. Still only ever runs a channel's own upgrade
-       command, never a download.
+     - Apply without prompting. Applies every supported outdated install without prompting. Binary
+       installs use verified downloads; Homebrew uses its upgrade command.
    * - ``--json``
      - Machine-readable survey: current and latest version, platform, and every
        install with its path, version, channel and upgrade command.
 
-Nothing is applied without a confirmation, and a non-interactive run reports
+Nothing is applied without a confirmation, and a non-interactive run without --yes reports
 and exits without changing anything — an agent or CI job has nobody to answer
 the prompt. See :doc:`installation` for the channel table and the upgrade paths.
 

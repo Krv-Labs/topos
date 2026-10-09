@@ -8,11 +8,8 @@
 //! `build_info.rs` set the precedent: self-identity questions belong next to
 //! the binary that has the answers.
 //!
-//! What is deliberately *not* here: a downloader. The binary channel delegates
-//! to `install.sh`, which already fetches, verifies the SHA-256 against the
-//! release's `checksums.txt`, and moves the new binary into place atomically.
-//! Reimplementing that in Rust would duplicate ~60 lines of reviewed shell and
-//! add a second thing to get right about atomic replacement and checksums.
+//! Release discovery and channel policy are shared here; the CLI owns the
+//! binary downloader and its progress UI.
 
 pub mod channel;
 pub mod checksums;

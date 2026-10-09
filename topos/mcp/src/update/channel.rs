@@ -97,6 +97,10 @@ pub enum Action {
 /// `home` is the user's home directory, taken explicitly so the classification
 /// rules are testable without touching the process environment.
 pub fn classify(path: &Path, home: &Path) -> Channel {
+    let resolved_home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+    let home = resolved_home.as_path();
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path = resolved.as_path();
     let text = path.to_string_lossy().replace('\\', "/");
 
     if is_homebrew_path(&text) {
@@ -111,10 +115,20 @@ pub fn classify(path: &Path, home: &Path) -> Channel {
     if text.contains("/target/release/") || text.contains("/target/debug/") {
         return Channel::Source;
     }
-    if is_python_path(&text) {
+    if is_python_path(&text) || path.ancestors().any(|p| p.join("pyvenv.cfg").is_file()) {
         return Channel::Python;
     }
-    Channel::Binary
+    if [
+        home.join(".local/bin"),
+        home.join("bin"),
+        home.join(".opencode/bin"),
+    ]
+    .iter()
+    .any(|base| path.starts_with(base))
+    {
+        return Channel::Binary;
+    }
+    Channel::Unknown
 }
 
 /// Homebrew's cellar and opt layout, recognized without invoking `brew`.
@@ -193,12 +207,36 @@ mod tests {
             "/usr/local/bin/topos-not-topos",
         ] {
             let channel = classify(Path::new(path), home());
-            assert_ne!(channel, Channel::Unknown, "{path}");
+            if path == "/home/dev/.local/bin/topos" {
+                assert_eq!(channel, Channel::Binary);
+            } else {
+                assert_eq!(channel, Channel::Unknown);
+            }
         }
         assert_eq!(
             classify(Path::new("/home/dev/.local/bin/topos"), home()),
             Channel::Binary
         );
+    }
+
+    #[test]
+    fn virtualenv_launchers_and_unknown_paths_are_never_download_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("pyvenv.cfg"), "home = /usr/bin").unwrap();
+        std::fs::create_dir(dir.path().join("bin")).unwrap();
+        let launcher = dir.path().join("bin/topos");
+        std::fs::write(&launcher, "#!/usr/bin/python").unwrap();
+        assert_eq!(classify(&launcher, Path::new("/home/dev")), Channel::Python);
+        assert_eq!(
+            classify(Path::new("/custom/bin/topos"), Path::new("/home/dev")),
+            Channel::Unknown
+        );
+        #[cfg(unix)]
+        {
+            let alias = dir.path().join("alias");
+            std::os::unix::fs::symlink(&launcher, &alias).unwrap();
+            assert_eq!(classify(&alias, Path::new("/home/dev")), Channel::Python);
+        }
     }
 
     #[test]

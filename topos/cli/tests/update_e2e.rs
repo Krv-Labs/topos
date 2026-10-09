@@ -1,7 +1,6 @@
 //! `topos update` against the real binary, with no network.
 //!
-//! A fake `curl` on `PATH` is the whole trick. The version lookup is the only
-//! network call the command makes, and it goes through `curl` with
+//! A fake `curl` on `PATH` drives version lookups and release asset downloads, and it goes through `curl` with
 //! `-w '%{url_effective}'`; a script that prints a release redirect URL makes
 //! the check deterministic and lets the tests drive both the "newer release
 //! exists" and "you are already current" branches without a release ever
@@ -361,4 +360,63 @@ fn the_long_help_documents_every_channel() {
         help.contains("TOPOS_NO_UPDATE_NOTICES"),
         "the opt-out must be documented:\n{help}"
     );
+}
+
+/// Fake release assets exercise the checksum and replacement path without network access.
+#[cfg(unix)]
+fn binary_release(fixture: &Fixture, corrupted: bool) -> (PathBuf, Vec<u8>) {
+    let dir = fixture.home.join(".local/bin");
+    fs::create_dir_all(&dir).unwrap();
+    let binary = dir.join("topos");
+    fs::write(&binary, "#!/bin/sh\necho 'topos 0.1.0'\n").unwrap();
+    make_executable(&binary);
+    let payload = b"#!/bin/sh\necho 'topos 99.0.0'\n".to_vec();
+    let asset = fixture.home.join("release-asset");
+    fs::write(&asset, &payload).unwrap();
+    let digest = topos_mcp::update::checksums::sha256_file(&asset).unwrap();
+    if corrupted {
+        fs::write(&asset, "corrupt transfer").unwrap();
+    }
+    // Paths come from tempfile, not shell input.
+    let script = format!(
+        "#!/bin/sh\nhead=0\nfor arg do\n  [ \"$arg\" = --head ] && head=1\n  last=$arg\ndone\nif [ \"$head\" = 1 ]; then\n  printf 'Content-Length: 30\r\n'\n  exit 0\nfi\ncase \"$last\" in\n  */releases/latest) printf '%s' 'https://github.com/Krv-Labs/topos/releases/tag/v99.0.0' ;;\n  */checksums.txt) printf '%s\n' '{digest}  topos-{}' ;;\n  *) /bin/cat '{}' ;;\nesac\n",
+        topos_mcp::update::release::platform(), asset.display()
+    );
+    fs::write(fixture.bin.join("curl"), script).unwrap();
+    (binary, payload)
+}
+
+#[cfg(unix)]
+#[test]
+fn yes_installs_a_verified_binary_without_prompting() {
+    let fixture = Fixture::new(Some("v99.0.0"));
+    let (binary, payload) = binary_release(&fixture, false);
+    let run = fixture.run(&["update", "--yes"]);
+    assert_eq!(run.code, 0, "stderr: {}", run.stderr);
+    assert_no_prompt(&run);
+    assert_eq!(fs::read(&binary).unwrap(), payload);
+    assert!(run.stdout.contains("Topos updated"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_bad_checksum_preserves_the_binary_and_removes_staging() {
+    let fixture = Fixture::new(Some("v99.0.0"));
+    let (binary, _) = binary_release(&fixture, true);
+    let original = fs::read(&binary).unwrap();
+    let run = fixture.run(&["update", "--yes"]);
+    assert_eq!(run.code, 1, "stderr: {}", run.stderr);
+    assert!(run.stderr.contains("checksum mismatch"), "{}", run.stderr);
+    assert_eq!(fs::read(&binary).unwrap(), original);
+    let entries: Vec<_> = fs::read_dir(binary.parent().unwrap()).unwrap().collect();
+    assert_eq!(entries.len(), 1, "staging files must be cleaned on failure");
+}
+
+#[test]
+fn redirected_commands_do_not_fetch_or_write_passive_state() {
+    let fixture = Fixture::new(Some("v99.0.0"));
+    let run = fixture.run(&["compare", "a.rs", "b.rs"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(!fixture.state_dir().join("update-check.json").exists());
+    assert!(!run.stderr.contains("topos update"));
 }

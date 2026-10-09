@@ -2,19 +2,10 @@
 type: operations runbook
 title: Testing, packaging, CI, and release operations
 description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, CI admission, and release channels.
-resource: /.github/workflows/ci.yml
 tags: [operations, testing, ci, release, packaging, rust]
-openwiki:
-  roles: [operations, testing, delivery]
-  change_kinds: [ci, release, packaging, metadata]
-  source_paths: [.github/workflows/ci.yml, .github/workflows/openwiki.yml, .github/workflows/release.yml, scripts/ci_gate.py, scripts/check_versions.py]
-  symbols: [decide, TRUNK_PATTERNS, check_versions.py]
-  test_paths: [scripts/ci_gate.py, tests/packaging/test_install_sh_preflight.py]
-  invariants: [Release tags and published metadata must match the Cargo workspace version., CI must not silently skip verification when stack membership is unreadable.]
-  validation_commands: [python3 scripts/ci_gate.py --selftest, python3 scripts/check_versions.py]
 verified:
   - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+    at: 2026-10-09T14:12:21.181Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml

@@ -5,7 +5,7 @@ description: Architecture overview of the Topos workspace, crate structure, cont
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+    at: 2026-10-09T14:12:21.181Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.1", at: "2026-10-09T14:12:21.181Z" }
 ---
 
 # Architecture Overview
 
-The workspace has three Rust crates: `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server for `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
+The workspace has three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server for `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
 
 ## From source to verdict
 

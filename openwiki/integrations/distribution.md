@@ -4,8 +4,8 @@ title: Analysis integrations and distribution surfaces
 description: Maps Topos analysis dependencies, update mechanics, and its MCP, container, package, editor, skill, plugin, and harness-registration distribution channels.
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T14:12:21.181Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T11:59:46.794Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -71,7 +71,7 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T14:12:21.181Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
 ---
 
 # Analysis integrations and distribution surfaces
@@ -152,7 +152,7 @@ A separate resolver supports paths that may not exist yet, chiefly a graph-store
 
 ## Registry wheel, native binaries, and container image
 
-`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.8.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.9.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
 
 The workspace version in `Cargo.toml` is the version authority. `scripts/check_versions.py` checks it against the extension, Agent Plugin, registry entry, and its package entry; release CI also compares a tag after stripping an optional leading `v`. PyPI registry metadata must omit both `registryBaseUrl` and a `--index-url` runtime argument, because VS Code appends its own index option and `uv` rejects the duplicate option.
 

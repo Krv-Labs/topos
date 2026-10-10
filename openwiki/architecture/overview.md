@@ -1,11 +1,11 @@
 ---
 type: architecture overview
 title: Architecture Overview
-description: Architecture overview of the Topos workspace, crate structure, control and data flow, program representations, and diagnostic overlay pipeline.
+description: Architecture overview of the Topos workspace, crate structure, categorical model representations, control flow, and diagnostic pipeline.
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T14:12:21.181Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T11:59:46.794Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,46 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T14:12:21.181Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
 ---
 
 # Architecture Overview
 
 The workspace has three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server for `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
+
+## Workspace Crate Topology
+
+```mermaid
+flowchart TD
+    subgraph CLI["topos (CLI binary)"]
+        CLICmds["Command Handlers (evaluate, inspect, etc.)"]
+        CLIMcp["mcp subcommand"]
+    end
+
+    subgraph MCP["topos-mcp (MCP server)"]
+        MCPServer["ServerHandler & Tool Router"]
+        MCPDiag["Diagnostics & Allowlist Overlay"]
+        MCPDep["Depgraph Cache Store"]
+    end
+
+    subgraph Engine["topos-engine (Shared Compute Engine)"]
+        Core["core (Morphism, Omega, CharacteristicMorphism)"]
+        Graphs["graphs (UAST, CFG, PDG, CPG, MDG)"]
+        Functors["functors (probes, metrics)"]
+        Evaluation["evaluation (policies, gates, suppression)"]
+        Adapters["adapters (GitNexus, filesystem)"]
+        Config["config (.topos.toml)"]
+    end
+
+    CLICmds --> Engine
+    CLIMcp --> MCPServer
+    MCPServer --> MCPDiag
+    MCPServer --> MCPDep
+    MCPServer --> Engine
+    MCPDiag --> Evaluation
+```
+
+*Caption: Crate dependency topology and key module boundaries across topos CLI, topos-mcp, and topos-engine.*
 
 ## From source to verdict
 

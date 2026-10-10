@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f53678ab63d83e36b4fc0b05c9177b77c9f03d8861a47bde9b95de763cd8bf6d",
+  "pageVersion": "sha256:331d6d1a453005d6b7aa30761e387065e0406fdad60b270b997cd9405fbac360",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -51,12 +51,8 @@
           "version": "repo-lines-v1:sha256:82a138fdf3b07c5ebf71ec1ab9ed4192d88af623aeeaa66f61629dbacf9f6d5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkOTdlNGIyODBlNzBjYjEwZjc4ZDA4MDJhODIzOGNlMmY1N2IxM2QwNTQzYjM0YTQ1N2M4ZjU4MDJlMTg1MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNjNhOTZhZTBkMDkzZmRkOWUxYWNmYTBlYWU2YTgyMzYzNWJkMjY3YTc1MTdhMTFlYjcwNzc4MTkxYzZiZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5Yjk2MWYyMzE0ZTAxNGM0MTQ2YWY4NTcyZDMzNGEyNTM0MWVmMWIyMDMzYmY3ZWRkYmEyNDAzZWY0Y2EyNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkOTEyMzU5OTM0ODUwOTFjMTYwMzE4NzFiYmNmMmJkOTBkMzRmZmNjZmZlZTIzNzY0Yzg4ZDBjYWQwY2FlOTgifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L144-L159",
-          "version": "repo-lines-v1:sha256:1d18e5536d9a6b439d8656b1e48d78aeeed5e22714bc32227818ea651b9f15fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMzNmJjNmFmZWY4OTFmNTY2NTk5ZWUxZjk0NjU0YjAxOWYwY2MzODJkMWU2MGEwOGVjODhlNTM1YTQ4YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzdmZmU1OGQzNGQwMDM0NjNmNzkwYTU1NjUxNTY1ZWRlOGJiZWU0NzQzYjc5NjgwODA1NDdjN2JjNzVlMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NTM3NjRhYTkwN2Q1OTJkOGVhN2NlZTQ3ZDhiNWMyZGE5MzU4ZjJhZWRlNjAyODNhZmI2YzlhYmJiMjJlMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjZjAzMzQ4NzgxNGI4YTVlZThmN2I2MjIyMTE2YmUxYmViN2I5M2Y4YTUyYzE0MTg4MTg4ZjY2MWU3ZDZiNzcifQ"
-        },
-        {
-          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L178-L229",
-          "version": "repo-lines-v1:sha256:80fd015889627a32c2cd1396847361fb3f4480df94547b058cccad6e4e3bca69:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1ZWI4MmEyNmYyMjA0NDY0MDZiMjU1MTEwMjQyNjFlNjlmM2JmODY2Nzc0YTYxYTVjMzNhY2JlM2UxNWM2ZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMzExZTVmZTIxZGVjOTdmZDkzZjM1OTBlNDk2NmZlZWExOTM4ZDA1YTk4ZTM5OWMxOWRmODg5MGE1MThlZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0Yzg2NWExYjM5NjA3YzhkNTE0MDhjZDUwOTFmZTc2NzBkYTg2ZDI5YzcwMmMxMWViMDcwYWE2YTAyN2U1YTEifQ"
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L161-L231",
+          "version": "repo-lines-v1:sha256:28b6d3c6f66e9f8cdf9c5af16ba856af037d694c4e24e327d641d551e220739d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1NzdkMWE4Yzk0NWZlMzE4ZmE4Y2U1NjlkMWE4YTBlMzVhMTE3OTEwNTljN2ZkNWIwYTkyMWNjNTUzYzhmZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyYThlZGNiNzM0YzQxOGIyYTM4YjU5MDZhNmM4YzhiMGYyYzljODRiMWZiZTk0Y2VkMTkwY2ZlNWVjYmM3YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhZjgzNzk4ZTk2MWY5ZmNjNWQ4YzBlODFjMjM4YmJkNTQ5YTJmMzFiZmQxZTkzNmJlNjNmMmNmMTZlMDcxZjAifQ"
         }
       ]
     },
@@ -65,7 +61,7 @@
       "statement": "A GitNexus override derives the COMPOSABLE project root from the store parent and must be resolved before reuse to avoid relative-path double joins; the MCP-specific root resolver prevents an override outside the file root from being used.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L281-L310",
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L282-L311",
           "version": "repo-lines-v1:sha256:a74ab84042ed96def047e0adc7a567bce1043eb3517ba7e424d0a6e3de17824c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMDA3MTdhOGU1OGI4MjRiYTc5ZTE5YWNjNTI5ZjY1YjliYzlkOGJmYjRiNDNmYTAwM2I0ZGJhNWQ2N2Y2NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjYzI1NGQ3ODhkOTVkYmQwMThhYTZhNWRlNzg2YWNhYTdmOTRkNmVkMWQyNmNlZmVkMmEyNWI2ZDI0ZjhjNGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NmY4Y2IwODNmYTgwMGE0ZGNkMjk2OTcyMmQ3YjkyNjg2YWRkOWViZTM2NTU0OTJmYTY3MmIxYTdjZWQyNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiZDE3YzIxYzY2MDFlM2ZlM2IzNTQwYmQxN2U4ZjJlY2IwZTNjYzU3MTllNmY4M2Q5ODExNjE3M2NmZjYyYWIifQ"
         },
         {
@@ -267,8 +263,8 @@
       "statement": "`topos_evaluate_project` recursively discovers all supported source files, detects a language per file, returns per-language rollups and a weakest-file floor, and paginates the sorted file rows using bounded `limit` and `offset` values.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/schemas.rs#L309-L355",
-          "version": "repo-lines-v1:sha256:7cffa9506dccac8a818b4f02b124cf017749e774e7502671e5fc13e830b51913:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmOWE0ZTQ5MTY3YjVhZjVjMWMyZjBkNGZiYWRmMjNiNjNmYjViYjQzNDg0NGZhZDE3ZWQ1NGY4M2Y4NDk3YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjNjViNmExZTViNzcwNTRiY2ZkZTg0Njc1M2NmZTY0NDdhMGNiOGI2MmM0YjRmYzJmYmM4ODJhZmE4MjhmYTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZDgxMzU2Yzc3Y2JhZjQxNDQ2MGU3MWFhYmZlMzZjMjk4MjM0MDk2OTY2MWQwZTI4ZjZmNmJkZTAxNDRjMjEifQ"
+          "resource": "repo://topos/mcp/src/schemas.rs#L315-L353",
+          "version": "repo-lines-v1:sha256:0d7d6ea9b91a1bd33e300b4cd3e888492e9b2d16e7235bf12bc463ecb84ad618:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NzlhOGNiZmU3NWE1YmU0MzhkMzdmYmY4NDQ0MjI1NzY1ZDAyYjg0MTlhZTI5MzY1NDIxNzlkODUzOGY2YjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMjU1MDY5YzA4OWVmMDc4MzdiODAwZWJkOWU3YTYxOTE3OTNhMmVmYjYyM2E1ZWE4NTdlZDg4YzU3ZmY0ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZDgxMzU2Yzc3Y2JhZjQxNDQ2MGU3MWFhYmZlMzZjMjk4MjM0MDk2OTY2MWQwZTI4ZjZmNmJkZTAxNDRjMjEifQ"
         },
         {
           "resource": "repo://topos/mcp/src/tools/evaluate.rs#L194-L220",
@@ -327,6 +323,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T13:18:21.510Z"
+    "at": "2026-10-10T18:54:00.655Z"
   }
 }

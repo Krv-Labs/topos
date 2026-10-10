@@ -5,7 +5,7 @@ description: Maps Topos analysis dependencies, update mechanics, and its MCP, co
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T13:18:21.510Z
+    at: 2026-10-10T18:54:00.655Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -71,7 +71,7 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:18:21.510Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T18:54:00.655Z" }
 ---
 
 # Analysis Integrations and Distribution Surfaces
@@ -86,18 +86,22 @@ GitNexus produces `.gitnexus/`; Topos consumes it as an inter-module `ModuleDepe
 
 ### Generation, freshness, and recoverability
 
-Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including a branch-scoped store). It captures a source-content fingerprint, file count, start/end times, and Git HEAD when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale. A status check chooses the branch-specific store where applicable and classifies it as `missing`, `present`, `stale`, `load_error`, `schema_mismatch`, `invalid_dir`, or `branch_not_indexed`. Freshness evaluation evaluates anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
+Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including a branch-scoped store). It captures a source-content fingerprint, file count, start/end times, and Git HEAD when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale.
 
-By default, evaluation attempts one generation for a missing, stale, branch-not-indexed, or load-error graph. `--no-composable` / `no_composable` restores read-only behavior. A missing executable, timeout, or failed subprocess yields a structured failure and leaves SIMPLE, SECURE, and NAVIGABLE usable. The subprocess limit is 300 seconds by default; `TOPOS_DEPGRAPH_TIMEOUT` overrides it, and a non-positive value disables the limit. In contrast, a schema mismatch or an outside-root override is not retried because the same command cannot safely repair that condition.
+Graph status inspection and resolution are handled by `depgraph_status`, which checks `.gitnexus` availability, branch store selection, store open validity (`load_error`, `branch_not_indexed`, `schema_mismatch`), and graph freshness without executing `gitnexus analyze`. Freshness evaluation evaluates anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
+
+The resolve-and-generate decision is standardized across both CLI (`topos evaluate`) and MCP evaluation tools through `ensure_gitnexus_dir` and `ensure_gitnexus_dir_with_progress`. The progress-aware function invokes a status closure with phase labels (such as `"Checking dependency graph freshness"` and `"Running gitnexus analyze"`) so CLI callers can drive interactive spinners while distinguishing freshness checks from generation.
+
+By default, evaluation attempts one generation for recoverable graph states (`missing`, `stale`, `branch_not_indexed`, or `load_error`). The `--no-composable` flag / `skip` parameter restores read-only behavior and bypasses generation. If `gitnexus` is absent from `$PATH`, or if `generate_depgraph` fails, the error is handled gracefully: `cap_generation_detail` bounds child failure output to 200 bytes with an explicit elision note to avoid context window inflation, returning a structured `generation_note` while leaving SIMPLE, SECURE, and NAVIGABLE fully usable. Subprocess execution is bounded by default to 300 seconds; `TOPOS_DEPGRAPH_TIMEOUT` overrides it, and a non-positive value disables the limit. In contrast, terminal states like schema mismatches or outside-root overrides (`invalid_dir`) are not retried because subprocess generation cannot safely resolve them.
 
 ```mermaid
 flowchart TD
-    Eval["CLI or MCP evaluation"] --> Status["Inspect graph status"]
+    Eval["CLI or MCP evaluation"] --> Status["depgraph_status check"]
     Status --> Good{"Present and fresh"}
     Good -->|yes| Load["Load branch-aware MDG"]
     Good -->|no| Recover{"Missing, stale, branch miss, or load error"}
     Recover -->|yes| Tool{"GitNexus on PATH"}
-    Tool -->|yes| Generate["Run gitnexus analyze"]
+    Tool -->|yes| Generate["ensure_gitnexus_dir runs analyze"]
     Generate --> Fingerprint["Write Topos fingerprint"]
     Fingerprint --> Load
     Tool -->|no| Notice["COMPOSABLE unavailable notice"]

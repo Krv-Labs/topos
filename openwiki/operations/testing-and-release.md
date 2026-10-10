@@ -1,11 +1,8 @@
 ---
 type: operations runbook
-title: Testing, packaging, CI, and release operations
+title: Testing, Packaging, CI, and Release Operations
 description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, CI admission, and release channels.
 tags: [operations, testing, ci, release, packaging, rust]
-verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T14:12:21.181Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -37,10 +34,13 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-10T11:59:46.794Z
 ---
 
-# Testing, packaging, CI, and release operations
+# Testing, Packaging, CI, and Release Operations
 
 Topos is a Rust workspace with separate CLI and MCP packages, then ships that analyzer through native release binaries, a `topos-mcp` bin wheel and registry record, a VS Code extension, an Agent Plugins package, a skill publication workflow, and a container. Start with the narrowest check that proves the changed contract; use the full workspace suite for shared code or before merge. The [distribution guide](../integrations/distribution.md) explains what each delivered surface runs, while [agent and CLI workflows](../workflows/agent-and-cli.md) describes consumer use.
 

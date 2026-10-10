@@ -278,13 +278,20 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         Some(Ok(p)) => Some(p),
         None => None,
     };
-    let mut warnings = gitnexus_warnings(
-        resolved_override.as_deref(),
-        &project_root,
-        gitnexus_dir.as_deref(),
-        dep_graph.is_some(),
-        load_error.as_deref(),
-    );
+    // Opting out is not a missing store. The CLI prints nothing in this
+    // case; the "no .gitnexus directory" warning would be false when a
+    // graph is already on disk.
+    let mut warnings = if params.no_composable {
+        Vec::new()
+    } else {
+        gitnexus_warnings(
+            resolved_override.as_deref(),
+            &project_root,
+            gitnexus_dir.as_deref(),
+            dep_graph.is_some(),
+            load_error.as_deref(),
+        )
+    };
     if let Some(note) = gitnexus_outcome.generation_note {
         warnings.insert(0, note);
     }
@@ -1049,13 +1056,17 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     let has_more = args.params.offset + page.len() < entries.len();
     let next_offset = has_more.then_some(args.params.offset + page.len());
 
-    let mut project_warnings = gitnexus_warnings(
-        args.resolved_gitnexus_override,
-        args.project_root,
-        args.gitnexus_dir,
-        args.any_dep_graph_loaded,
-        args.last_load_error.as_deref(),
-    );
+    let mut project_warnings = if args.params.no_composable {
+        Vec::new()
+    } else {
+        gitnexus_warnings(
+            args.resolved_gitnexus_override,
+            args.project_root,
+            args.gitnexus_dir,
+            args.any_dep_graph_loaded,
+            args.last_load_error.as_deref(),
+        )
+    };
     if let Some(note) = args.generation_note {
         project_warnings.insert(0, note);
     }

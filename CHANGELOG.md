@@ -63,6 +63,10 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Fixed
 
+- MCP `no_composable` no longer scores a `.gitnexus` graph that is already
+  on disk. `topos_evaluate_file`, `topos_evaluate_project`, and
+  `topos_inspect_code` now match `topos evaluate --no-composable` and
+  `topos inspect --no-composable`: SIMPLE, SECURE, and NAVIGABLE only.
 - `topos_compare_files` parses both files in the language their suffix names,
   matching `topos compare`. It previously always parsed as Python, so Rust,
   Go, JavaScript, TypeScript, and C++ pairs failed to parse. Both

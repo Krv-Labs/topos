@@ -78,7 +78,7 @@ F̃(x) = w·F_local(x) + (1 − w)·F_lang(x),    w = n / (n + k)
 | COMPOSABLE | `mdg.fan_in` | higher is worse |
 | COMPOSABLE | `mdg.instability` (skipped when `Ca + Ce < 2`) | two-sided |
 
-Quality `a = 1 − F̃` (higher-worse) or `1 − 2·|F̃ − ½|` (two-sided). The pillar
+Quality `a = 1 − F̃_<` (higher-worse, using the strict lower CDF so the best observed value scores 1 even when most files tie there) or `1 − 2·|F̃ − ½|` (two-sided). The pillar
 advisory score `A` is the geometric mean of its `a` values (`1` when none
 apply). A reading is **flagged** as an advisory suggestion when `F̃ ≥ 0.9` and
 the value exceeds the prior median (two-sided: `|F̃ − ½| ≥ 0.45`). The global

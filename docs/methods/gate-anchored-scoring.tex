@@ -438,11 +438,14 @@ codebase's own distribution.
 \subsection{Quality, pillar advisory score, and flags}
 
 \begin{definition}
-For an advisory reading with pooled percentile $\Ft$,
+For an advisory reading at value $x$, let
+$\Ft^{<}(x) = w\,\Pr_{\mathrm{loc}}(X < x) + (1-w)\,\Pr_{\mathrm{lang}}(X < x)$
+be the pooled \emph{strict} lower CDF (the share of the pooled population
+strictly better than $x$). The advisory quality is
 \[
 a = \begin{cases}
-1 - \Ft, & \text{higher is worse},\\
-1 - 2\,\bigl|\Ft - \tfrac12\bigr|, & \text{two-sided},
+1 - \Ft^{<}(x), & \text{higher is worse},\\
+1 - 2\,\bigl|\Ft(x) - \tfrac12\bigr|, & \text{two-sided},
 \end{cases}
 \]
 and the pillar advisory score is the geometric mean
@@ -460,11 +463,14 @@ that is uniformly atypical relative to the language remains visible: relative
 percentiles alone would call its median file typical.
 
 \begin{remark}[Ties at the best value]
-Under the mid-rank definition the best attainable reading (often $0$) with tie
-mass $p_0$ receives $a = 1 - p_0/2$, not $1$. A file therefore cannot reach
-$A = 1$ through a metric on which most of its codebase is also perfect. The
-effect is bounded by the band construction below and is visible in the
-reported percentiles.
+Percentiles are reported on the mid-rank scale, which gives a tie block of mass
+$p_0$ at the best value the percentile $p_0/2$. Using that scale for quality
+would cap a perfect file at $a = 1 - p_0/2$ whenever most of its codebase is
+also perfect, which is common: 46--88\% of files have zero divergence and
+52--63\% zero fan metrics. Quality therefore uses the strict lower CDF, under
+which the best observed value has $\Ft^{<} = 0$ and $a = 1$, and a tie block
+shares the quality of its best member. Mid-rank remains the reported percentile
+and drives flags, where tie symmetry matters.
 \end{remark}
 
 \paragraph{Where the population pass runs.} Project scans rescore

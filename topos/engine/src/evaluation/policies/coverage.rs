@@ -17,11 +17,48 @@ use crate::functors::profunctors::uast::structural_test_coverage::DeclarationCov
 pub struct CoverageDecision {
     pub score: f64,
     pub achieved: bool,
+    pub verdict: CoverageVerdict,
+    /// Why the verdict is [`CoverageVerdict::Inconclusive`], if it is.
+    pub inconclusive_reason: Option<String>,
     pub threshold: f64,
     pub coverage_rate: f64,
     pub f2_score: f64,
     pub uncovered_declarations: Vec<(String, f64)>,
     pub interpretation: std::collections::HashMap<String, String>,
+}
+
+/// Coverage verdict. `Inconclusive` means the corpus is implausible
+/// (too few test declarations to score), not that coverage is low.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverageVerdict {
+    Pass,
+    Fail,
+    Inconclusive,
+}
+
+impl CoverageVerdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pass => "PASS",
+            Self::Fail => "FAIL",
+            Self::Inconclusive => "INCONCLUSIVE",
+        }
+    }
+}
+
+/// `Some(reason)` when the test side has fewer than
+/// [`COVERAGE`]`.min_test_declaration_ratio` declarations per source
+/// declaration — tests probably live outside the scanned paths, so a
+/// PASS/FAIL would be confidently wrong (#336).
+pub fn implausible_corpus(report: &DeclarationCoverageReport) -> Option<String> {
+    let (source, test) = (report.put_declaration_count, report.test_declaration_count);
+    let minimum = source as f64 * COVERAGE.min_test_declaration_ratio;
+    (source > 0 && (test as f64) < minimum).then(|| {
+        format!(
+            "found {test} test declarations for {source} source declarations; \
+             tests may live outside the scanned paths"
+        )
+    })
 }
 
 /// Threshold-classify a raw coverage report (mean recall vs
@@ -74,9 +111,19 @@ pub fn score_declaration_coverage(
         format!("F2 score is {f2_score:.3}"),
     );
 
+    let inconclusive_reason = implausible_corpus(report);
+    let achieved = inconclusive_reason.is_none() && mean_declaration_coverage >= threshold;
+    let verdict = match (&inconclusive_reason, achieved) {
+        (Some(_), _) => CoverageVerdict::Inconclusive,
+        (None, true) => CoverageVerdict::Pass,
+        (None, false) => CoverageVerdict::Fail,
+    };
+
     CoverageDecision {
         score: mean_declaration_coverage,
-        achieved: mean_declaration_coverage >= threshold,
+        achieved,
+        verdict,
+        inconclusive_reason,
         threshold,
         coverage_rate,
         f2_score,
@@ -133,12 +180,43 @@ mod tests {
         let rep = declaration_coverage(&[&put], &[], 3, true).unwrap();
         let decision = score_declaration_coverage_default(&rep);
         assert!(!decision.achieved);
+        assert_eq!(decision.verdict, CoverageVerdict::Inconclusive);
         assert_eq!(decision.coverage_rate, 0.0);
         assert_eq!(decision.f2_score, 0.0);
         assert_eq!(
             decision.uncovered_declarations.len(),
             rep.put_declaration_count
         );
+    }
+
+    #[test]
+    fn fewer_than_one_test_declaration_per_hundred_is_inconclusive() {
+        let report = |source: usize, test: usize| DeclarationCoverageReport {
+            mean_declaration_coverage: 0.2,
+            best_declaration_recall: vec![0.2; source],
+            declaration_locations: vec!["lib.rs:1".to_string(); source],
+            stmt_recall: 0.0,
+            expr_recall: 0.0,
+            mean_test_precision: 0.5,
+            declaration_path_recall_kgram: 0.0,
+            k: 3,
+            put_declaration_count: source,
+            test_declaration_count: test,
+            include_unknown: false,
+        };
+        let decision = score_declaration_coverage_default(&report(569, 2));
+        assert_eq!(decision.verdict, CoverageVerdict::Inconclusive);
+        assert!(!decision.achieved);
+        assert_eq!(
+            decision.inconclusive_reason.as_deref(),
+            Some(
+                "found 2 test declarations for 569 source declarations; \
+                 tests may live outside the scanned paths"
+            )
+        );
+        let decision = score_declaration_coverage_default(&report(100, 1));
+        assert_eq!(decision.verdict, CoverageVerdict::Fail);
+        assert_eq!(decision.inconclusive_reason, None);
     }
 
     #[test]

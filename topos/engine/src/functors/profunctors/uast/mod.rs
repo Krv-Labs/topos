@@ -1,6 +1,7 @@
 //! UAST profunctors — cross-language structural comparison.
 
 pub mod compare;
+pub mod inline_tests;
 pub mod ledger;
 pub mod structural_test_coverage;
 

@@ -552,7 +552,10 @@ fn default_coverage_threshold() -> f64 {
 pub struct CalculateCoverageInput {
     /// Paths to the program-under-test files (relative to project root).
     pub put_files: Vec<String>,
-    /// Paths to the test suite files (relative to project root).
+    /// Paths to the test suite files (relative to project root). Optional:
+    /// inline tests in `put_files` (Rust `#[cfg(test)]`, Go `Test*`,
+    /// Python `test_*`) are counted on the test side.
+    #[serde(default)]
     pub test_files: Vec<String>,
     /// Programming language (for parsing).
     #[serde(default = "default_language")]
@@ -1240,6 +1243,10 @@ pub struct CoverageResult {
     pub uncovered_declarations: Vec<String>,
     pub put_declaration_count: usize,
     pub test_declaration_count: usize,
+    /// PASS | FAIL against `coverage_threshold`, or INCONCLUSIVE when there
+    /// are fewer than 1 test declaration per 100 source declarations (the
+    /// reason is in `warnings`). Absent on error.
+    pub verdict: Option<String>,
     pub warnings: Vec<String>,
     pub error: Option<String>,
 }

@@ -7,7 +7,7 @@ use tree_sitter::Node;
 use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast, TestNodeFilter};
 use super::models::{AttributeValue, UASTNode};
 
-const CFG_TEST_MARKER: &str = "cfg(test)";
+pub(crate) const CFG_TEST_MARKER: &str = "cfg(test)";
 
 fn is_cfg_test_attribute(node: &Node, source: &[u8]) -> bool {
     node.kind() == "attribute_item"
@@ -126,6 +126,20 @@ pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> U
         source,
         file,
         Some(&CfgTestFilter),
+        Some(&extract_attributes),
+    )
+}
+
+/// Like [`map_rust_tree_to_uast`] but keeps `#[cfg(test)]` items, so
+/// structural coverage can count inline tests instead of discarding them.
+pub fn map_rust_tree_to_uast_with_tests(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
+    map_tree_sitter_to_uast(
+        root,
+        "rust",
+        map_node_kind,
+        source,
+        file,
+        None,
         Some(&extract_attributes),
     )
 }

@@ -56,9 +56,16 @@ enum Command {
     /// Compare structural distance between two files.
     Compare(compare::CompareArgs),
     /// Compare source structure with tests without executing them.
+    ///
+    /// Inline tests inside the source paths count on the test side: Rust
+    /// `#[cfg(test)]` items and `#[test]` functions; Go `*_test.go` files and
+    /// `Test*`/`Benchmark*`/`Example*`/`Fuzz*` functions; Python `test_*.py` /
+    /// `*_test.py` files, `test_*` functions, and `Test*` classes. A separate
+    /// test tree (`--tests`) is still supported. With fewer than 1 test
+    /// declaration per 100 source declarations the verdict is INCONCLUSIVE.
     #[command(
         arg_required_else_help = true,
-        after_help = "Examples:\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
+        after_help = "Examples:\n  topos coverage src/ --recursive --language rust\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
     )]
     Coverage(coverage::CoverageArgs),
     /// Build the GitNexus graph used by COMPOSABLE.

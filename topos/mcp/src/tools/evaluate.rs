@@ -339,21 +339,43 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
     let mut model = to_evaluation_result(&result, dep_graph.is_some(), opts);
-    if params.security_scan && overlay.is_none() {
-        let report = source.as_deref().and_then(|source| {
-            opt_in_security_report(
-                source,
-                detect_language(&resolved),
-                &result,
-                Some(&resolved),
-                &params.allow,
-            )
-        });
-        attach_opt_in_report(&mut model, report, params.include_security_findings);
-    }
+    run_opt_in_security_scan(
+        &mut model,
+        &params,
+        overlay.is_some(),
+        &resolved,
+        source.as_deref(),
+        &result,
+    );
     let mut md = render_evaluation_md(&model, None, params.verbose);
     append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
+}
+
+/// `security_scan`: run Sighthound although SECURE passed and attach the
+/// report-only advisory block; the verdict and scores are already built.
+/// A failed SECURE already carries the overlay's report, so it is skipped.
+fn run_opt_in_security_scan(
+    model: &mut EvaluationResult,
+    params: &EvaluateFileInput,
+    has_overlay: bool,
+    resolved: &Path,
+    source: Option<&str>,
+    result: &ClassificationResult,
+) {
+    if !params.security_scan || has_overlay {
+        return;
+    }
+    let report = source.and_then(|source| {
+        opt_in_security_report(
+            source,
+            detect_language(resolved),
+            result,
+            Some(resolved),
+            &params.allow,
+        )
+    });
+    attach_opt_in_report(model, report, params.include_security_findings);
 }
 
 fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {

@@ -63,6 +63,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Fixed
 
+- `topos_compare_files` parses each file in the language implied by its suffix,
+  matching `topos compare`. It previously always parsed as Python, so Rust,
+  Go, JavaScript, TypeScript, and C++ pairs failed to parse.
 - COMPOSABLE no longer scores files at instability 0 or 1 as 0%. The fixed
   `[0.3, 0.7]` band is gone; instability is a two-sided relative advisory,
   skipped when `Ca + Ce < 2`, and main-sequence distance is diagnostic only

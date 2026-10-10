@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6c4c567125381a93e0ea78a906fa071d82f02fb11eaddb2ee3443a142c6d585d",
+  "pageVersion": "sha256:e3be6469ae5a3a52352c111fb5ddd4ed2d15ced140778f329a389b26bc0de27a",
   "claims": [
     {
       "id": "claim_e718d9f2f5ca453d94a51d2b47f9f4d2",
@@ -186,11 +186,11 @@
     },
     {
       "id": "claim_21551ff43d0d4e5d99f43e4e14f88d82",
-      "statement": ".mcp/server.json declares io.github.Krv-Labs/topos version 0.9.0 as the stdio topos-mcp PyPI/uvx package, and its Maturin bin-wheel metadata states that installation exposes a compiled server without Python runtime dependencies or an import surface.",
+      "statement": ".mcp/server.json declares io.github.Krv-Labs/topos version 0.10.0 as the stdio topos-mcp PyPI/uvx package, and its Maturin bin-wheel metadata states that installation exposes a compiled server without Python runtime dependencies or an import surface.",
       "evidence": [
         {
           "resource": "repo://.mcp/server.json#L2-L29",
-          "version": "repo-lines-v1:sha256:9317f2485bd66ec5b3e4e830324f633c1d93ca2d65a0f6b398020abaa0f7b9cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MWMwYjVhYTlkYWU2ZDU1NzM2YjYwNGZiMzk5ZDQ2Y2M5MGExODI4OWFmZGIzNmQ4NGQzNTJkNGFiNjcyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "version": "repo-lines-v1:sha256:6f0eca5bbea02c7a6d673fed3b85d04b75e67524d750d6da0faf3d88b33b97f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MWMwYjVhYTlkYWU2ZDU1NzM2YjYwNGZiMzk5ZDQ2Y2M5MGExODI4OWFmZGIzNmQ4NGQzNTJkNGFiNjcyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNjQ4Zjc3ZmQ1YTljNjNiM2NkZDBhZjQ5ZGFhMTI5OTIyMGI3NTQxZTg4Y2ExN2VmZTFhNmExMTRiOWZmMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         },
         {
           "resource": "repo://pyproject.toml#L1-L25",
@@ -212,7 +212,7 @@
         },
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:6f88010cc99ee53900a890e10f181f8b28b8a859529442d03b6f0d874ad42a3a:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:d79becc28888e713ead8e2ffd9ca21e282a0dac6b0d1c2a9f9c55ae0780efb1c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
           "resource": "repo://scripts/check_versions.py#L15-L17",
@@ -386,7 +386,7 @@
         },
         {
           "resource": "repo://agent-plugin/plugin.json#L1-L21",
-          "version": "repo-lines-v1:sha256:7fd23af9fe9a28bcad4c57da847a123a66b83439967143a925586cf83e9ba4ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:c4c127b60ac2ddcd2283a4457897aee9b5b67fbcdee03ad9e393574952b4687b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://topos/cli/src/commands/install/artifact.rs#L31-L50",
@@ -455,10 +455,24 @@
           "version": "repo-lines-v1:sha256:53c44f915969b3750f2c5130528ae6093de25f3dec9a1ae2b56db08b22aa3f67:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYzU4OTZhODc5M2MzYmE4ZGU3ODMyMDJkYjcxYjc4OGNhZWYzMThmM2QyYmU4ZjliY2NmZjg3OTljODQyY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYWMxOGI1MDAwMzEzYmExNTg1MmY5NGMwNjliMDJmMTAyYWVlM2FhNWJhYTI3NDc0MTI0ODhiMjJlNTUyMDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3OTdlYTQzYjc4N2U2NmY1MmRmNTg5M2QwZTU3YTA1ODliZjhhM2RmODJlM2EwZTkzOTJlYTgzODFlYWYzMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2NTkwODlmMTNhNzk4MDVmNjZhNWQ0NWJkODQxMGY5MjQ5MzA4NmI4N2M3Y2NlNzcwNjIzMTI5ZDY4NDg3YTcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1e1a54cb0969485db077e1271cb7cedc",
+      "statement": "The Topos shell installer script (install.sh) downloads release binaries from GitHub Releases to a configurable directory, scans PATH to warn or prompt before overwriting non-installer binaries, records installation provenance, and manages delimited PATH entries in shell configurations.",
+      "evidence": [
+        {
+          "resource": "repo://install.sh#L208-L298",
+          "version": "repo-lines-v1:sha256:b4f7a5aef050a8ac7d3fd71ffc41ebc46a04d76f071dd64f5aad543c052d3908:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkZGJlMTk3YThhZTg4NDc4YmEyMDBiMTg2ODZkMGM1NjU2OGM4MDNiODliODIzNWZjZTUxYWI0Y2Y5MzhhNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTc2MDQyNmE4ZTNhODYwZGQxNTBlNmMxMTc4YmFhNmJmMTgyNGM1N2ZlODI3M2IwMmI0YTVjZTQ1M2FhNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3N2RkNjljMzU4YzQxYTRjYzM2N2VhYTA1ODFlYTdkM2JlMmQxNDYwYzMyOGFiOGY4NDlmZDM1YTE3ZTM2ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkMDVkODRjNDYyZThiM2Q5YzFhZjFkMTI2MmFjYmU4MjMzYzk0MTNjZGQ5MzlkNjM0ZDg0ZjM4MGM4OTNjOWQifQ"
+        },
+        {
+          "resource": "repo://install.sh#L21-L28",
+          "version": "repo-lines-v1:sha256:cb76661aac5452bc54536b870f66b59c29e263600ebc80558925bd0850221520:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQ5YzFmZDM2YjE2M2M5ZmY0NDMyMDU0NjNiYmZkOTU2OWZlYzEwMGRmZDMzMTk5ODc1NmViODZhMjY3NzBjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZiYTRiMDI3Nzk2YmJjZDdhMTI4ZjUzZGJiNGQwZGVlNjk3YTNlNzQ1NWI4ZmI2NDY4OGM5NTQyYzEyOTc5NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ1ZTVhZWRkZTJiNzBiNjAzOGQ2ZDc4M2NjODZjMDMwZWMwNzEwMDhjMTE1ODRmY2NkOGNmMTRkYTBlMmRlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2U4YzU0MDViZDg3Zjc0NGU1Y2FkNDg1N2FjMTAyZDMyZWMxODhjZTA5ZWVlYTM4ZWZiMzNiZjhjNjY3ODc3MSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T18:54:00.655Z"
+    "at": "2026-10-10T21:20:07.776Z"
   }
 }

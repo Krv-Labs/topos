@@ -1,11 +1,11 @@
 ---
 type: integration boundary guide
-title: Analysis Integrations and Distribution Surfaces
-description: Maps Topos analysis dependencies, update mechanics, and its MCP, container, package, editor, skill, plugin, and harness-registration distribution channels.
-tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
+title: Distribution and Integration Systems
+description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, and shell installers.
+tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update, maturin, pypi, installer]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T18:54:00.655Z
+    at: 2026-10-10T21:20:07.776Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -27,6 +27,8 @@ sources:
     resource: repo://extensions/vscode/src/extension.ts
   - id: openwiki-source-22f23eea30b1216d0f33ee43
     resource: repo://extensions/vscode/src/runtime.ts
+  - id: openwiki-source-03ffc32a0ca502ab67c54b25
+    resource: repo://install.sh
   - id: openwiki-source-05ccef8d4cf1698187f20464
     resource: repo://pyproject.toml
   - id: openwiki-source-cde23208842b0b3ea8e3c334
@@ -71,12 +73,12 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T18:54:00.655Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T21:20:07.776Z" }
 ---
 
-# Analysis Integrations and Distribution Surfaces
+# Distribution and Integration Systems
 
-Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers those launch contracts, artifact channels, path security controls, and update delivery mechanics. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
+Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, and update delivery mechanics across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
 
 ## External topology: GitNexus and the MDG
 
@@ -154,19 +156,59 @@ MCP filesystem containment flow: canonicalizes requests and verifies that resolv
 
 A separate resolver supports paths that may not exist yet, chiefly a graph-store override. `resolve_existing_prefix` canonicalizes every existing component; it applies a missing tail lexically, but resumes symlink resolution if `..` removes that tail. `resolve_path_within` then compares that result with the canonical root. This is why a missing leaf and paths such as `link/missing/..` cannot hide an existing symlink escape; lexical normalization alone is unsafe here.
 
-## Registry wheel, native binaries, and container image
+## Registry wheels, native binaries, Docker image, and shell installer
 
-`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.9.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.10.0`.
 
-The workspace version in `Cargo.toml` is the authoritative version root. `scripts/check_versions.py` enforces version agreement across the Cargo workspace, VS Code extension (`extensions/vscode/package.json`), Agent Plugin manifest (`agent-plugin/plugin.json`), MCP Registry manifest (`.mcp/server.json`), and package entry. The release workflow running `verify-version` invokes `check_versions.py` and compares git release tags or workflow dispatch inputs against `Cargo.toml` (normalizing leading `v` prefixes). Additionally, `check_versions.py` enforces that PyPI registry metadata in `.mcp/server.json` omits both `registryBaseUrl` and `--index-url` runtime arguments to prevent VS Code from duplicating `--index-url` options for `uv`.
+### Maturin PyPI packaging and MCP Registry manifest
+
+`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.10.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies (`dependencies = []`) or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+
+The workspace version in `Cargo.toml` (`0.10.0`) is the authoritative version root. `scripts/check_versions.py` enforces strict version agreement across:
+- Cargo workspace (`Cargo.toml`)
+- VS Code extension (`extensions/vscode/package.json`)
+- Agent Plugin manifest (`agent-plugin/plugin.json`)
+- MCP Registry manifest (`.mcp/server.json` top-level and package entries)
+
+The release workflow (`.github/workflows/release.yml`) running the `verify-version` job invokes `check_versions.py` and compares git release tags or workflow dispatch inputs against `Cargo.toml` (normalizing leading `v` prefixes). Additionally, `check_versions.py` enforces that PyPI registry metadata in `.mcp/server.json` omits both `registryBaseUrl` and `--index-url` runtime arguments to prevent VS Code from duplicating `--index-url` options for `uv`.
+
+### Native release binaries and Release CI
 
 Release CI (`.github/workflows/release.yml`) builds native `topos` binaries across target platforms (Linux amd64/arm64, macOS arm64). Before publishing, Linux builds check for unexpected dynamic linkage via `readelf`, while macOS builds verify that binaries link only system libraries via `otool`, run a `--version` smoke test, sign with Apple Developer ID certificates (enforcing hardened runtime options), run a signed library validation smoke test, and optionally notarize the archive. Staged native binaries are also packed into target-specific VSIX packages for VS Code distribution.
 
-The Dockerfile is a two-stage Glama-oriented build. A Python builder installs Rust and Maturin, then compiles a release bin wheel from `topos/mcp/Cargo.toml`. The Python-slim runtime uses Python/pip to install that wheel and adds Git, Node.js 20, and `gitnexus@1.6.8`; its `ENTRYPOINT` is `topos-mcp`. Thus Python exists in the image as the wheel-installation substrate, while the installed server itself has no Python runtime dependency. Embedded Sighthound is part of the Rust build and needs no separate executable.
+### Docker image architecture
 
-The image sets `TOPOS_MCP_FILE_ROOT=/workspace` and `WORKDIR /workspace`. Mount the repository there (or deliberately set another boundary): the mount location and this environment variable jointly define the file-access trust configuration.
+The `Dockerfile` provides a two-stage Glama-oriented container build based on `python:3.12-slim`:
+1. **Builder stage:** Installs Rust and Maturin, copying workspace sources and invoking `maturin build --release --bindings bin --manifest-path topos/mcp/Cargo.toml` to compile the standalone `topos-mcp` binary into a Python wheel under `/wheels`.
+2. **Runtime stage:** Installs the compiled wheel via `pip`, provisions Node.js 20 and `gitnexus@1.6.8` via npm so COMPOSABLE graph analysis operates inside the container, and sets `ENTRYPOINT ["topos-mcp"]`.
 
-## VS Code: host-mediated launch and artifact trust
+Python exists in the image purely as the wheel installation substrate; the server itself runs as a compiled native binary. The container image sets `TOPOS_MCP_FILE_ROOT=/workspace` and `WORKDIR /workspace`. Mount the target repository at `/workspace` to configure filesystem trust boundaries.
+
+### Shell installation script (`install.sh`)
+
+The standalone shell installer (`install.sh`) provides automated binary installation via `curl -fsSL https://docs.krv.ai/topos/install.sh | bash`. Key mechanics include:
+- **Installation Directory:** Places the native `topos` binary into `INSTALL_DIR` (default: `~/.local/bin`).
+- **Environment Controls:** Supports `TOPOS_VERSION` (default `latest`), `TOPOS_INSTALL`, `TOPOS_NO_MODIFY_PATH` (suppresses PATH modification), `TOPOS_FORCE` / `TOPOS_YES` (bypasses interactive prompts when overwriting existing non-installer binaries), and `TOPOS_SKIP_MAIN` (for testing helper functions).
+- **Preflight & Discovery:** Scans `$PATH` and standard locations (`~/.local/bin`, Homebrew prefixes) for existing `topos` executables. It classifies found binaries by installation channel (Homebrew, Python/pipx package, binary install) and prompts or warns before overwriting foreign binaries.
+- **Provenance & PATH Setup:** Writes installation provenance metadata to `~/.local/state/topos/install-provenance` (respecting `XDG_STATE_HOME`). Modifies shell startup files (`.bashrc`, `.zshrc`, etc.) enclosed by `# BEGIN TOPOS INSTALLER PATH` and `# END TOPOS INSTALLER PATH` delimiters.
+
+## Agent Plugin and VS Code surfaces
+
+### Agent Plugin manifests
+
+The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package metadata at version `0.10.0`; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos.
+
+Validation script `scripts/check_agent_plugin.py` enforces strict package boundaries:
+- Validates top-level JSON fields against Agent Plugins 1.0 schemas.
+- Forbids relative path traversal (`..`) in `cwd` or command paths.
+- Prohibits symlinks in plugin packages (requiring regular files).
+- Reserves host-supplied environment variables (`PLUGIN_ROOT`, `PLUGIN_DATA`).
+- Requires pathless or plugin-relative (`./`) command formats.
+- Mandates that packaged skill files are byte-for-byte regular file copies of canonical skill definitions.
+
+The canonical skill is an instruction distribution surface, not a credential or executable installer. Its ClawHub workflow runs on skill changes and release tags, invokes a pinned external reusable workflow, and passes only the named ClawHub secret through that interface.
+
+### VS Code extension
 
 The workspace extension activates on startup, an MCP-server request, or either Topos command. Its declared engine is VS Code `^1.105.0`, but it feature-detects `vscode.lm.registerMcpServerDefinitionProvider` and `McpStdioServerDefinition`; without both, it does not register a server and tells the user that an MCP-capable VS Code 1.120+ or compatible host is needed. Native Windows is blocked with WSL/manual-install guidance.
 
@@ -176,11 +218,9 @@ Executable resolution is ordered: `topos.executablePath`, bundled target binary,
 
 ## Plugin and skill surfaces versus CLI harness registration
 
-The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package identity and metadata; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos. The package checker constrains the manifest shape, forbids traversal and path-like command forms except plugin-relative `./`, reserves host-supplied `PLUGIN_ROOT`/`PLUGIN_DATA`, rejects all symlinks, and requires the packaged skill to be a byte-for-byte regular-file copy of the canonical skill.
+The portable Agent Plugins 1.0 package is host-owned setup, whereas **CLI-owned harness registration** is driven by `topos install`, `topos uninstall`, and `topos status`.
 
-The canonical skill is an instruction distribution surface, not a credential or executable installer. Its ClawHub workflow runs on skill changes and release tags, invokes a pinned external reusable workflow, and passes only the named ClawHub secret through that interface.
-
-This is distinct from **CLI-owned harness registration**. `topos install`, `topos uninstall`, and `topos status` write or inspect one `topos` MCP entry in selected user harness configuration files. The intended entry uses the resolved absolute `topos` command with exactly `args: ["mcp"]`; the format adapter uses `mcpServers`, `mcp_servers`, or VS Code’s `servers` and adds `type: "stdio"` only for VS Code JSONC. It does not install skills, author instruction files, or take ownership of other entries. Existing foreign/conflicting entries are reported and preserved; an owned but stale command is repairable. Uninstall removes only the owned registration and deletes an emptied configuration file only when its ownership ledger records that install created it.
+`topos install` writes or inspects one `topos` MCP entry in selected user harness configuration files. The intended entry uses the resolved absolute `topos` command with exactly `args: ["mcp"]`; the format adapter uses `mcpServers`, `mcp_servers`, or VS Code’s `servers` and adds `type: "stdio"` only for VS Code JSONC. It does not install skills, author instruction files, or take ownership of other entries. Existing foreign/conflicting entries are reported and preserved; an owned but stale command is repairable. Uninstall removes only the owned registration and deletes an emptied configuration file only when its ownership ledger records that install created it.
 
 `pi` is the narrow exception: it lacks an MCP client unless the user separately installs `pi-mcp-adapter`. If a Topos skill already exists in a known external skill directory, `topos install pi` may append that directory path to pi’s `settings.json` `skills` array; it never writes the skill content. If pi already discovers the skill or no skill is installed, it writes no reference. This preserves the ownership boundary even where a harness needs two integration artifacts.
 

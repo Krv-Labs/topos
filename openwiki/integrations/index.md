@@ -1,3 +1,3 @@
 # Files
 
-- [Analysis Integrations and Distribution Surfaces](distribution.md) - Maps Topos analysis dependencies, update mechanics, and its MCP, container, package, editor, skill, plugin, and harness-registration distribution channels.
+- [Distribution and Integration Systems](distribution.md) - Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, and shell installers.

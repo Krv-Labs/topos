@@ -5,7 +5,7 @@ description: Overview of workspace architecture, crate boundaries, program graph
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T13:18:21.510Z
+    at: 2026-10-10T21:20:07.776Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T21:20:07.776Z" }
 ---
 
 # Architecture Overview
 
-The workspace has three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server for `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
+The Cargo workspace (version 0.10.0) consists of three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI binary and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server to provide `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
 
 ## Workspace Crate Topology
 
@@ -133,7 +133,7 @@ flowchart TD
     Result --> MCP["MCP raw result plus optional SECURE overlay"]
 ```
 
-*Caption: the shared engine turns source and available representations into a raw classification; CLI renders it, while MCP may add a disclosed SECURE overlay.*
+*Caption: The shared engine turns source and available representations into a raw classification; CLI renders it, while MCP may add a disclosed SECURE overlay.*
 
 TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
 

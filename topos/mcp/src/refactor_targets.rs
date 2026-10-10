@@ -532,8 +532,7 @@ mod tests {
             line: 5,
             snippet: "os.system(cmd)".to_string(),
             callee: Some("os.system".to_string()),
-            source: None,
-            sink: None,
+            ..Default::default()
         }];
         let result = ClassificationResult::default();
         let targets = build_refactor_targets(

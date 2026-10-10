@@ -122,6 +122,33 @@ File-level MCP tools also surface `security_findings` with `kind`, `callee`,
 `line`, and `snippet` when SECURE fails.  Project scans keep this off by default
 unless `include_security_findings=true`.
 
+### Security advisory
+
+When the embedded Sighthound scanner runs (Python, JavaScript, TypeScript, Go),
+each finding also carries `mode` (`taint` | `pattern`), `severity`
+(`critical` | `high` | `medium` | `low`), `confidence` (`high` | `medium` |
+`low`), `cwe` (`CWE-<n>`), and `title`; unknown scanner levels read as `low`.
+Findings are listed most urgent first (severity, confidence, taint before
+pattern, line) and capped at 20. Rust and C++ use the CPG fallback, which sets
+only `mode`.
+
+A `security_advisory` block sits beside the findings, counted over every
+non-acknowledged finding before the cap:
+
+| Field | Meaning |
+|---|---|
+| `max_severity` | `none` \| `low` \| `medium` \| `high` \| `critical` |
+| `actionable` | severity `high`/`critical` with confidence above `low` |
+| `taint` | taint-mode findings |
+| `omitted` | findings left out by the cap |
+| `by_family` | counts over `injection`, `xss`, `deserialization`, `path`, `crypto`, `auth`, `other` (CWE first, then rule category/tags; zero keys omitted) |
+
+The advisory is reporting only: it never changes `achieved`, any score, or the
+verdict, because the scanner runs only when SECURE failed or on request. An
+absent block means the scanner did not run; a block of zeros means it ran and
+found nothing. `topos_evaluate_file` accepts `security_scan=true` to run the
+scanner even when SECURE passed (default off; project evaluation never does).
+
 ## NAVIGABLE generator (← AST scope tree)
 
 Computed from the same UAST as SIMPLE, so it needs no external input and

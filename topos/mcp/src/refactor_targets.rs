@@ -14,17 +14,18 @@
 //! however large its excess. Agents route off the first target, so an
 //! advisory metric leading the list is a wrong turn.
 //!
-//! That ordering yields to one thing only: an explicit
-//! `preferences.ranking`, which is a caller instruction rather than a
-//! default. Absent one, the gating tier leads across pillars too — see
-//! [`rank_key`].
+//! Ordering follows the gate-score ascent: a pillar the active goal still
+//! requires comes first, then `"fix"` before `"improve"`, then the pillar
+//! whose gate score is closest to passing, then the lowest desirability
+//! inside that pillar. Preference rank only breaks a tie. See [`rank_key`].
 
 use std::collections::{BTreeMap, HashMap};
 
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
-use topos_engine::evaluation::policies::gates::evaluate_gates;
+use topos_engine::core::omega::{EvaluationValue, Generator};
+use topos_engine::evaluation::policies::gates::{evaluate_gates, metric_desirability};
 use topos_engine::evaluation::security_guidance::remediation_for;
 
 use crate::schemas::{FunctionEntry, GeneratorInput, RefactorTarget, SecurityFinding};
@@ -38,8 +39,9 @@ const SECURITY_CONSTRAINTS: [&str; 1] =
 fn default_pillar_rank(pillar: &str) -> usize {
     match pillar {
         "simple" => 0,
-        "secure" => 1,
-        "composable" => 2,
+        "navigable" => 1,
+        "secure" => 2,
+        "composable" => 3,
         _ => 99,
     }
 }
@@ -51,6 +53,7 @@ pub fn build_refactor_targets(
     security_findings: &[SecurityFinding],
     locations: &BTreeMap<String, Vec<FunctionEntry>>,
     ranking: Option<&[GeneratorInput]>,
+    goal: EvaluationValue,
     max_targets: usize,
 ) -> Vec<RefactorTarget> {
     let mut candidates: Vec<RefactorTarget> = Vec::new();
@@ -63,26 +66,22 @@ pub fn build_refactor_targets(
     candidates.extend(security_targets(filepath, security_findings));
 
     let pillar_rank: HashMap<&str, usize> = match ranking {
-        Some(ranking) => ranking
+        Some(ranking) if !ranking.is_empty() => ranking
             .iter()
             .enumerate()
             .map(|(i, g)| (g.as_str(), i))
             .collect(),
-        None => HashMap::new(),
+        _ => HashMap::new(),
     };
-    // Read off the derived map rather than `ranking.is_some()`: a ranking
-    // that ranked nothing leaves every target on `default_pillar_rank`,
-    // which is the internal default the tier is meant to outrank, so it
-    // must take the no-preference branch. `topos_evaluate_file` cannot
-    // reach that shape today — `UserPreferencesInput::to_preferences`
-    // rejects anything but a full permutation before targets are built —
-    // but this function is public and the map, not the slice, is what the
-    // key actually consults.
-    let tier_first = pillar_rank.is_empty();
+    let pillar_gate = pillar_gate_scores(result, &candidates);
     candidates.sort_by(|a, b| {
-        rank_key(a, &pillar_rank, tier_first)
-            .partial_cmp(&rank_key(b, &pillar_rank, tier_first))
-            .unwrap_or(std::cmp::Ordering::Equal)
+        rank_key(a, result.lattice_element, goal, &pillar_rank, &pillar_gate).cmp(&rank_key(
+            b,
+            result.lattice_element,
+            goal,
+            &pillar_rank,
+            &pillar_gate,
+        ))
     });
     candidates.truncate(max_targets);
     candidates
@@ -277,62 +276,89 @@ fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<Refacto
         .collect()
 }
 
-/// Sort key over pillar, gating tier, excess, then position — with pillar
-/// and tier swapped depending on whether the caller ranked pillars.
+/// Sort key: in the active goal, `"fix"` before `"improve"`, closest
+/// pillar gate score first, then lowest desirability, then preference rank.
 ///
-/// The gating tier always sits *ahead* of excess so an advisory metric can
-/// never outrank a real gate failure by sheer magnitude. It used to: a
-/// whole-file `cfg.cyclomatic` of 80 (excess 65, and advisory, so it
-/// cannot fail SIMPLE) buried a genuine
-/// `ast.max_function_complexity` of 14 (excess 4), and since the agent
-/// contract routes off `targets.first()` agents were sent to rewrite the
-/// one SIMPLE metric no verdict depends on.
-///
-/// What `tier_first` decides is which of pillar and tier leads:
-///
-/// - `false` — the caller passed `preferences.ranking`, so the key is
-///   `(pillar_rank, tier, ...)`. A stated pillar order is an instruction;
-///   an agent that asked for SECURE first gets SECURE first even when a
-///   different pillar has the failing gate.
-/// - `true` — no ranking, so `pillar_rank` is only `default_pillar_rank`,
-///   an internal tie-breaker nobody asked for. The key becomes
-///   `(tier, pillar_rank, ...)` and correctness leads. Otherwise the
-///   cross-pillar version of the same bug survives: on this repo's own
-///   `formatting.rs`, an advisory `cfg.cyclomatic` of 118 outranked a
-///   gating `mdg.instability` purely because SIMPLE sorts before
-///   COMPOSABLE by default.
+/// Gate score is comparable across metrics because every gate is anchored
+/// at 0.5. Preference rank only breaks an equal score. An advisory metric
+/// cannot lead a gate failure inside the same goal: the tier sits ahead of
+/// the score.
 fn rank_key(
     target: &RefactorTarget,
+    current: EvaluationValue,
+    goal: EvaluationValue,
     pillar_rank: &HashMap<&str, usize>,
-    tier_first: bool,
-) -> (usize, usize, i64, usize, String) {
+    pillar_gate: &HashMap<String, f64>,
+) -> (usize, usize, i64, i64, usize, usize, String) {
     let pillar = target
         .failing_generators
         .first()
         .map(String::as_str)
         .unwrap_or("simple");
+    let outside = usize::from(!pillar_missing(goal, current, pillar));
+    let tier = usize::from(target.severity != "fix");
+    let desirability = target
+        .current_value
+        .and_then(|value| metric_desirability(&target.metric, value))
+        .unwrap_or(0.0);
+    let gate = pillar_gate.get(pillar).copied().unwrap_or(desirability);
     let rank = pillar_rank
         .get(pillar)
         .copied()
         .unwrap_or_else(|| default_pillar_rank(pillar));
-    // Derived from the severity string rather than a second GATE_SPECS
-    // lookup, so the label and the ordering share one decision.
-    let tier = if target.severity == "fix" { 0 } else { 1 };
-    let current = target.current_value.unwrap_or(0.0);
-    let threshold = target.threshold.unwrap_or(current);
-    let excess = ((current - threshold).abs() * 100.0) as i64;
-    let (primary, secondary) = if tier_first {
-        (tier, rank)
-    } else {
-        (rank, tier)
-    };
     (
-        primary,
-        secondary,
-        -excess,
+        outside,
+        tier,
+        -scale(gate),
+        scale(if tier == 0 { desirability } else { 0.0 }),
+        rank,
         target.line_start.unwrap_or(0),
         target.target_id.clone(),
     )
+}
+
+fn scale(value: f64) -> i64 {
+    (value * 10_000.0).round() as i64
+}
+
+fn pillar_missing(goal: EvaluationValue, current: EvaluationValue, pillar: &str) -> bool {
+    let Some(generator) = Generator::ALL
+        .into_iter()
+        .find(|generator| generator.as_str() == pillar)
+    else {
+        return false;
+    };
+    let bit = generator.value().bits();
+    goal.bits() & bit != 0 && current.bits() & bit == 0
+}
+
+/// Shared gate score per pillar: the stored `gate_scores` entry, or the
+/// minimum desirability among this pillar's `"fix"` targets when the
+/// result has no score yet.
+fn pillar_gate_scores(
+    result: &ClassificationResult,
+    targets: &[RefactorTarget],
+) -> HashMap<String, f64> {
+    let mut scores: HashMap<String, f64> = result.gate_scores.clone().into_iter().collect();
+    for target in targets.iter().filter(|target| target.severity == "fix") {
+        let Some(pillar) = target.failing_generators.first() else {
+            continue;
+        };
+        if scores.contains_key(pillar) {
+            continue;
+        }
+        let Some(desirability) = target
+            .current_value
+            .and_then(|value| metric_desirability(&target.metric, value))
+        else {
+            continue;
+        };
+        scores
+            .entry(pillar.clone())
+            .and_modify(|score| *score = score.min(desirability))
+            .or_insert(desirability);
+    }
+    scores
 }
 
 fn target_id(filepath: &str, metric: &str, symbol: Option<&str>, line: Option<usize>) -> String {
@@ -397,6 +423,7 @@ mod tests {
             &[],
             &locations,
             None,
+            EvaluationValue::Ideal,
             5,
         );
 
@@ -424,6 +451,7 @@ mod tests {
             &[],
             &locations,
             None,
+            EvaluationValue::Ideal,
             5,
         );
 
@@ -447,7 +475,15 @@ mod tests {
             ("mdg.coupling".to_string(), 6.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
+        let targets = build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &BTreeMap::new(),
+            None,
+            EvaluationValue::Ideal,
+            5,
+        );
         assert!(
             targets.is_empty(),
             "got {:?}",
@@ -476,7 +512,15 @@ mod tests {
     #[test]
     fn gating_tier_leads_when_no_pillar_preference_is_supplied() {
         let (locations, result) = cross_pillar_fixture();
-        let targets = build_refactor_targets("a.py", &result, &[], &locations, None, 5);
+        let targets = build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &locations,
+            None,
+            EvaluationValue::Ideal,
+            5,
+        );
 
         assert_eq!(
             targets.len(),
@@ -497,10 +541,10 @@ mod tests {
         assert_eq!(targets[1].severity, "improve");
     }
 
-    /// Same fixture, but the caller ranked SIMPLE first: a stated
-    /// preference outranks the gating tier.
+    /// A stated ranking no longer puts an advisory ahead of another pillar's
+    /// failed gate. Rank only breaks an equal gate score.
     #[test]
-    fn explicit_pillar_preference_outranks_the_gating_tier() {
+    fn explicit_pillar_preference_does_not_outrank_a_gate() {
         let (locations, result) = cross_pillar_fixture();
         let targets = build_refactor_targets(
             "a.py",
@@ -509,20 +553,19 @@ mod tests {
             &locations,
             Some(&[
                 GeneratorInput::Simple,
+                GeneratorInput::Navigable,
                 GeneratorInput::Secure,
                 GeneratorInput::Composable,
             ]),
+            EvaluationValue::Ideal,
             5,
         );
 
         assert_eq!(targets.len(), 2);
-        assert_eq!(
-            targets[0].metric, "cfg.cyclomatic",
-            "the caller asked for SIMPLE first, so the advisory SIMPLE target leads \
-             even though the COMPOSABLE one gates — preferences.ranking is an \
-             explicit instruction, unlike default_pillar_rank"
-        );
-        assert_eq!(targets[1].metric, "mdg.fan_out");
+        assert_eq!(targets[0].metric, "mdg.fan_out");
+        assert_eq!(targets[0].severity, "fix");
+        assert_eq!(targets[1].metric, "cfg.cyclomatic");
+        assert_eq!(targets[1].severity, "improve");
     }
 
     #[test]
@@ -543,8 +586,10 @@ mod tests {
             Some(&[
                 GeneratorInput::Secure,
                 GeneratorInput::Simple,
+                GeneratorInput::Navigable,
                 GeneratorInput::Composable,
             ]),
+            EvaluationValue::Ideal,
             5,
         );
         assert_eq!(targets.len(), 1);

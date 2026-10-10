@@ -69,6 +69,9 @@
 //! [`UserPreferences::next_step`] takes the bottom of the walk (the
 //! smallest achievable improvement); [`UserPreferences::progress`] reports
 //! fractional progress toward the aspirational target.
+//! [`UserPreferences::ascent_pillar`] is separate: among generators the
+//! active goal still requires, it names the one whose gate score is
+//! closest to passing. That is the edit. `next_step` stays the concession.
 //!
 //! # Deviation from the Python original
 //!
@@ -80,9 +83,11 @@
 //! [`UserPreferences::with_target`] return `Result<_, InvalidRanking>`, and
 //! there is no public way to name an invalid [`UserPreferences`] value.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use crate::core::omega::{verdict_from_generators, EvaluationValue, GENERATOR_COUNT};
+use crate::evaluation::policies::desirability::TAU;
 
 pub use crate::core::omega::Generator;
 
@@ -264,6 +269,52 @@ impl UserPreferences {
             return 1.0;
         }
         (self.score(current) as f64 / target_score as f64).min(1.0)
+    }
+
+    /// Whether the aspirational target still requires `generator`.
+    ///
+    /// True when the goal satisfies it and `current` does not. A narrowed
+    /// target (for example the fallback, once the caller has diverted)
+    /// drops generators the goal no longer asks for.
+    pub fn goal_requires(&self, current: EvaluationValue, generator: Generator) -> bool {
+        generator_satisfied(self.aspirational_target(), generator)
+            && !generator_satisfied(current, generator)
+    }
+
+    /// The missing pillar closest to its gate.
+    ///
+    /// Candidates are generators [`Self::goal_requires`] that have a finite
+    /// gate score strictly below [`TAU`]. The greatest score wins: that
+    /// pillar flips with the least remaining gate work. An equal score
+    /// keeps the higher-ranked generator, because this walks the ranking
+    /// most-preferred first and only replaces a strictly closer score.
+    ///
+    /// This does not change [`Self::next_step`]. A missing gate score (an
+    /// unmeasured pillar) is not a candidate.
+    pub fn ascent_pillar(
+        &self,
+        current: EvaluationValue,
+        gate_scores: &BTreeMap<String, f64>,
+    ) -> Option<Generator> {
+        let mut best: Option<(Generator, f64)> = None;
+        for &generator in &self.ranking {
+            if !self.goal_requires(current, generator) {
+                continue;
+            }
+            let Some(&score) = gate_scores.get(generator.as_str()) else {
+                continue;
+            };
+            if !score.is_finite() || score >= TAU {
+                continue;
+            }
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_score)| score > *best_score)
+            {
+                best = Some((generator, score));
+            }
+        }
+        best.map(|(generator, _)| generator)
     }
 }
 
@@ -560,5 +611,75 @@ mod tests {
         );
         assert_eq!(p.aspirational_target(), EvaluationValue::Ideal);
         assert_eq!(p.fallback_target(), EvaluationValue::SimpleNavigable);
+    }
+
+    fn gate_scores(pairs: &[(&str, f64)]) -> BTreeMap<String, f64> {
+        pairs
+            .iter()
+            .map(|(name, score)| ((*name).to_string(), *score))
+            .collect()
+    }
+
+    #[test]
+    fn ascent_picks_the_closest_failing_gate() {
+        let p = prefs(default_ranking());
+        let scores = gate_scores(&[
+            ("simple", 0.2),
+            ("navigable", 0.45),
+            ("secure", 0.1),
+            ("composable", 0.3),
+        ]);
+        assert_eq!(
+            p.ascent_pillar(EvaluationValue::Slop, &scores),
+            Some(Generator::Navigable)
+        );
+        // The concession ladder is unchanged: from SLOP the smallest
+        // preferred step is still the lowest-ranked atom.
+        assert_eq!(
+            p.next_step(EvaluationValue::Slop),
+            Some(EvaluationValue::Composable)
+        );
+    }
+
+    #[test]
+    fn ascent_tie_breaks_toward_the_higher_ranked_pillar() {
+        let p = prefs(default_ranking());
+        let scores = gate_scores(&[("simple", 0.4), ("navigable", 0.4)]);
+        assert_eq!(
+            p.ascent_pillar(EvaluationValue::Slop, &scores),
+            Some(Generator::Simple)
+        );
+    }
+
+    #[test]
+    fn ascent_stays_inside_a_narrowed_target() {
+        let p =
+            UserPreferences::with_target(default_ranking(), Some(EvaluationValue::SimpleNavigable))
+                .unwrap();
+        // COMPOSABLE is closer to its gate, but the narrowed goal does not
+        // require it. SIMPLE is the closest pillar the goal still wants.
+        let scores = gate_scores(&[
+            ("simple", 0.2),
+            ("navigable", 0.1),
+            ("composable", 0.49),
+            ("secure", 0.48),
+        ]);
+        assert_eq!(
+            p.ascent_pillar(EvaluationValue::Slop, &scores),
+            Some(Generator::Simple)
+        );
+        assert!(p.goal_requires(EvaluationValue::Slop, Generator::Simple));
+        assert!(!p.goal_requires(EvaluationValue::Slop, Generator::Composable));
+    }
+
+    #[test]
+    fn ascent_ignores_a_passing_gate_score_and_a_missing_one() {
+        let p = prefs(default_ranking());
+        let scores = gate_scores(&[("simple", 0.8)]);
+        assert_eq!(p.ascent_pillar(EvaluationValue::Slop, &scores), None);
+        assert_eq!(
+            p.ascent_pillar(EvaluationValue::Ideal, &gate_scores(&[("simple", 0.1)])),
+            None
+        );
     }
 }

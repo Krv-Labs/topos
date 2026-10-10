@@ -352,6 +352,33 @@ fn gate_for_metric(metric: &str) -> Option<&'static GateSpec> {
     GATE_SPECS.iter().find(|spec| spec.metric == metric)
 }
 
+/// Desirability of a measured value on a registered gate, with no
+/// exemption clamp. `None` when `metric` is not a gate.
+pub fn metric_desirability(metric: &str, value: f64) -> Option<f64> {
+    let spec = gate_for_metric(metric)?;
+    let d = match spec.curve {
+        Curve::LowerIsBetter => d_lower_is_better(value, spec.high.unwrap_or(f64::INFINITY)),
+        Curve::Band { ideal } => d_band(
+            value,
+            spec.low.unwrap_or(0.0),
+            ideal,
+            spec.high.unwrap_or(1.0),
+        ),
+        Curve::ZeroTolerance { scale } => d_zero_tolerance(value, scale),
+    };
+    Some(d)
+}
+
+/// The failing gate that holds `pillar` at its gate score: the minimum
+/// desirability among failures on that pillar. `None` when every measured
+/// gate on the pillar passed.
+pub fn binding_failure<'a>(gates: &'a [GateResult], pillar: &str) -> Option<&'a GateResult> {
+    gates
+        .iter()
+        .filter(|result| result.spec.pillar == pillar && !result.passed())
+        .min_by(|a, b| a.desirability().total_cmp(&b.desirability()))
+}
+
 /// Metric-key namespacing shared with the agent-contract/pillar layers.
 pub const PILLAR_METRIC_PREFIXES: &[(&str, &[&str])] = &[
     ("simple", &["cfg.", "ast."]),
@@ -490,6 +517,26 @@ mod tests {
             .unwrap();
         assert!(entropy.passed());
         assert_eq!(entropy.outcome, GateOutcome::ExemptHigh);
+    }
+
+    #[test]
+    fn binding_failure_is_the_lowest_desirability_on_the_pillar() {
+        let metrics = BTreeMap::from([
+            ("ast.max_function_complexity".to_string(), 20.0),
+            ("ast.entropy".to_string(), 0.9),
+        ]);
+        let results = evaluate_gates(&metrics, Some("simple"), false);
+        let binding = binding_failure(&results, "simple").unwrap();
+        assert_eq!(binding.spec.metric, "ast.max_function_complexity");
+        assert!(binding.desirability() < binding_failure_other(&results));
+    }
+
+    fn binding_failure_other(results: &[GateResult]) -> f64 {
+        results
+            .iter()
+            .find(|result| result.spec.metric == "ast.entropy")
+            .unwrap()
+            .desirability()
     }
 
     /// The anchoring invariant: for every registered gate, over a grid of

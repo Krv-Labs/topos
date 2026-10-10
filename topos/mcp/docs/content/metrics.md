@@ -223,18 +223,11 @@ that surface in `raw_metrics` but do not drive a generator:
 | `pdg.control_deps` | Count of CDG edges (predicate→executor). |
 | `pdg.density`      | `(data + control) / statement_count`. |
 
-## Priority weights
+## Priority
 
-The `priority` parameter shifts weights *within* each `Φᵢ` — it does not
-change the lattice structure.
-
-| Priority | `w_complexity` | `w_coupling` | `w_taint` |
-|---|---|---|---|
-| `simple`     | 0.7 | 0.3 | 0.3 |
-| `composable` | 0.3 | 0.7 | 0.3 |
-| `secure`     | 0.3 | 0.3 | 0.7 |
-
-See `topos://docs/priority` for how to pick one.
+`priority` is the head of the preference ranking. It does not shift weights
+inside a pillar score. Gate scores choose `next_pillar`; preference rank
+breaks a tie. See `topos://docs/priority`.
 
 ## Anti-gaming guardrail
 

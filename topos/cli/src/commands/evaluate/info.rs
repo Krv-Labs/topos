@@ -292,9 +292,10 @@ pub(crate) fn details_for_source(
             findings,
             &locations,
             mapped_ranking.as_ref().map(|values| values.as_slice()),
+            topos_engine::core::omega::EvaluationValue::Ideal,
             3,
         ),
-        suggestions: suggest_refactors(result, &core_findings),
+        suggestions: suggest_refactors(result, &core_findings, None),
     }
 }
 

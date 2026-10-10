@@ -141,8 +141,8 @@ How Agents Use Preferences
 When an agent evaluates a file with preferences, Topos returns a
 ``preference_walk``. The walk gives the agent a concrete sequence of targets:
 
-1. Try ``IDEAL`` first.
-2. If ``IDEAL`` stops improving, divert to ``fallback_target``.
+1. Edit ``next_pillar`` (the closest failing gate) while the goal is ``IDEAL``.
+2. If that gate score does not move, divert to ``fallback_target`` and recompute.
 3. If that still stalls, follow ``next_step`` down the preference order.
 
 For example, with:
@@ -159,9 +159,10 @@ Topos can return:
    target          = IDEAL
    fallback_target = SIMPLE_NAVIGABLE
    next_step       = COMPOSABLE_SECURE
+   next_pillar     = the missing pillar of IDEAL with the greatest gate score below 0.5
 
-``next_step`` is the smallest improvement above the current verdict that still
-respects the user's ranking.
+``next_step`` is the smallest verdict above the current one in the preference
+order (the concession). ``next_pillar`` is the edit.
 
 How to Set Preferences
 ----------------------
@@ -194,17 +195,16 @@ Preferences vs. Priority
 Preferences and priority are related, but they are not the same thing.
 
 ``priority``
-   A single emphasis label used by result metadata and guidance. Current
-   pass/fail policies use fixed raw gates and do not change achievement based
-   on priority.
+   The head of the ranking. It wins an ascent tie. Pass/fail uses fixed raw
+   gates and does not change with priority. Priority does not reweight scores.
 
 ``preferences.ranking``
-   A full target-ordering contract for agents. It decides how to rank lattice
-   verdicts, where to divert when ``IDEAL`` stalls, and what ``next_step`` means.
+   A full target-ordering contract. It ranks lattice verdicts, chooses
+   ``fallback_target``, defines ``next_step``, and breaks ties in
+   ``next_pillar``.
 
-Use preferences when you want the agent to know what kind of silver or bronze
-outcome is acceptable if gold is not reachable. Use priority when you only want
-to bias the metric scorer for a single evaluation.
+Use the ranking when the agent needs a concession order. A single priority
+only names which generator wins when two gate scores match.
 
 Related Tools
 -------------

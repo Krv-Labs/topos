@@ -588,6 +588,9 @@ pub struct PreferenceWalkInput {
     /// Optional aspirational-target override; defaults to IDEAL.
     #[serde(default)]
     pub target: Option<LatticeElement>,
+    /// Pillar gate scores in `[0, 1]`. Enables `next_pillar`.
+    #[serde(default)]
+    pub gate_scores: std::collections::BTreeMap<String, f64>,
 }
 
 /// Arguments for `topos_depgraph_status`.
@@ -722,6 +725,8 @@ pub struct PreferenceWalkResult {
     pub current: Option<LatticeElement>,
     /// Smallest improvement above `current`; null when at/beyond target.
     pub next_step: Option<LatticeElement>,
+    /// Closest failing pillar inside the target. Null without gate scores.
+    pub next_pillar: Option<GeneratorInput>,
     /// Fractional progress from SLOP to the aspirational target.
     pub progress: f64,
     /// Steps from the target down to just above `current`.
@@ -744,9 +749,12 @@ pub struct PreferenceWalk {
     /// Preference-ordered verdict path above current; empty at/beyond target.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub walk: Vec<LatticeElement>,
-    /// Immediate next verdict above current.
+    /// Immediate next verdict above current. The concession ladder, not the edit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_step: Option<LatticeElement>,
+    /// Closest failing pillar inside the target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_pillar: Option<GeneratorInput>,
     /// Progress toward target in [0, 1].
     pub progress: f64,
 }
@@ -1067,8 +1075,8 @@ pub struct EvaluationResult {
     /// (an advisory metric is never promoted here), or this tool did not
     /// compute ranked targets at all — `refactor_targets` is empty in the
     /// last two cases and non-empty in the advisory-only case, which
-    /// distinguishes them. So a low `score` with `achieved: true` and no
-    /// `binding_constraint` is a file whose only offenders are advisory.
+    /// distinguishes them. A passing pillar scores at least 50; advisories
+    /// never become this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub binding_constraint: Option<BindingConstraint>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -319,6 +319,10 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
                 .unwrap_or(&[]),
             &locations,
             params.preferences.as_ref().map(|p| p.ranking.as_slice()),
+            prefs
+                .as_ref()
+                .map(|prefs| prefs.aspirational_target())
+                .unwrap_or(topos_engine::core::omega::EvaluationValue::Ideal),
             params.refactor_targets.min(25),
         ))
     } else {

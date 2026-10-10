@@ -24,11 +24,13 @@
 //! to be actionable; a bare gate failure has neither. This is a deliberate
 //! asymmetry in the Python original, preserved here.
 
-use std::collections::HashMap;
-
 use crate::core::characteristic_morphism::ClassificationResult;
+use crate::core::omega::{EvaluationValue, Generator};
 use crate::evaluation::advisory::{AdvisoryReading, ADVISORY_METRICS};
-use crate::evaluation::policies::gates::{evaluate_gates, GateOutcome, GateResult};
+use crate::evaluation::policies::gates::{
+    binding_failure, evaluate_gates, GateOutcome, GateResult,
+};
+use crate::evaluation::preferences::{default_preferences, UserPreferences};
 use crate::evaluation::security_guidance::{remediation_for, SecurityFinding};
 
 /// One actionable, refactor-focused next step.
@@ -44,9 +46,6 @@ pub struct Suggestion {
     /// Imperative instruction.
     pub message: String,
 }
-
-/// Emission order for gate failures (SIMPLE before COMPOSABLE).
-const SUGGESTION_ORDER: &[&str] = &["ast.max_function_complexity", "ast.entropy", "mdg.fan_out"];
 
 /// Refactor operations addressing a flagged advisory metric (empty for a
 /// metric with no advisory remedy).
@@ -68,6 +67,7 @@ pub fn advisory_operations(metric: &str) -> &'static [&'static str] {
 pub fn suggest_refactors(
     result: &ClassificationResult,
     active_findings: &[SecurityFinding],
+    prefs: Option<&UserPreferences>,
 ) -> Vec<Suggestion> {
     if !result.is_parseable {
         return vec![Suggestion {
@@ -78,50 +78,142 @@ pub fn suggest_refactors(
         }];
     }
 
+    let default_prefs = default_preferences();
+    let prefs = prefs.unwrap_or(&default_prefs);
+    let current = result.lattice_element;
+
     // Same gate inputs and entrypoint exemption the scorers used, so a
     // suggestion can never fire on a gate the scorer passed.
     let gate_results = evaluate_gates(&result.raw_metrics, None, result.is_entrypoint_module);
-    let failing: HashMap<&str, &GateResult> = gate_results
+    let failing: Vec<&GateResult> = gate_results
         .iter()
         .filter(|r| !r.passed() && r.spec.pillar != "secure")
-        .map(|r| (r.spec.metric, r))
         .collect();
 
-    let mut suggestions: Vec<Suggestion> = SUGGESTION_ORDER
+    let mut ranked: Vec<RankedSuggestion> = failing
         .iter()
-        .filter_map(|metric| {
-            failing.get(metric).map(|r| Suggestion {
-                pillar: r.spec.pillar.to_string(),
-                metric: Some(metric.to_string()),
-                severity: "fix".to_string(),
-                message: gate_message(r),
-            })
+        .map(|r| {
+            ranked_fix(
+                prefs,
+                current,
+                result,
+                &gate_results,
+                r.spec.pillar,
+                r.desirability(),
+                Suggestion {
+                    pillar: r.spec.pillar.to_string(),
+                    metric: Some(r.spec.metric.to_string()),
+                    severity: "fix".to_string(),
+                    message: gate_message(r),
+                },
+            )
         })
         .collect();
 
+    let secure_binding = binding_failure(&gate_results, "secure").map(|r| r.desirability());
     for finding in active_findings {
-        suggestions.push(Suggestion {
-            pillar: "secure".to_string(),
-            metric: finding.callee.clone(),
-            severity: "fix".to_string(),
-            message: remediation_for(finding).0,
-        });
+        ranked.push(ranked_fix(
+            prefs,
+            current,
+            result,
+            &gate_results,
+            "secure",
+            secure_binding.unwrap_or(0.0),
+            Suggestion {
+                pillar: "secure".to_string(),
+                metric: finding.callee.clone(),
+                severity: "fix".to_string(),
+                message: remediation_for(finding).0,
+            },
+        ));
     }
 
     // Advisory suggestions trail every gating one: they cannot fail a
-    // pillar, and agents act on `suggestions[0]`. Emitted in
-    // `ADVISORY_METRICS` order.
+    // pillar, and agents act on `suggestions[0]`.
     for (_, metric, _) in ADVISORY_METRICS {
         if let Some(reading) = result.advisories.get(*metric).filter(|r| r.flagged) {
-            suggestions.push(Suggestion {
-                pillar: reading.pillar.to_string(),
-                metric: Some(metric.to_string()),
-                severity: "improve".to_string(),
-                message: advisory_message(metric, reading),
+            ranked.push(RankedSuggestion {
+                key: rank_key(prefs, current, reading.pillar, 1, 0, scale(reading.quality)),
+                suggestion: Suggestion {
+                    pillar: reading.pillar.to_string(),
+                    metric: Some((*metric).to_string()),
+                    severity: "improve".to_string(),
+                    message: advisory_message(metric, reading),
+                },
             });
         }
     }
-    suggestions
+
+    ranked.sort_by_key(|item| item.key);
+    ranked.into_iter().map(|item| item.suggestion).collect()
+}
+
+struct RankedSuggestion {
+    key: (usize, u8, i64, i64, usize),
+    suggestion: Suggestion,
+}
+
+fn ranked_fix(
+    prefs: &UserPreferences,
+    current: EvaluationValue,
+    result: &ClassificationResult,
+    gates: &[GateResult],
+    pillar: &str,
+    desirability: f64,
+    suggestion: Suggestion,
+) -> RankedSuggestion {
+    RankedSuggestion {
+        key: rank_key(
+            prefs,
+            current,
+            pillar,
+            0,
+            -scale(pillar_gate_score(result, gates, pillar)),
+            scale(desirability),
+        ),
+        suggestion,
+    }
+}
+
+/// `(outside goal, improve-after-fix, furthest pillar last, worst detail
+/// first, preference rank)`.
+fn rank_key(
+    prefs: &UserPreferences,
+    current: EvaluationValue,
+    pillar: &str,
+    tier: u8,
+    neg_gate_score: i64,
+    detail: i64,
+) -> (usize, u8, i64, i64, usize) {
+    let outside = match named_generator(pillar) {
+        Some(generator) if prefs.goal_requires(current, generator) => 0,
+        _ => 1,
+    };
+    let rank = prefs
+        .ranking()
+        .iter()
+        .position(|generator| generator.as_str() == pillar)
+        .unwrap_or(Generator::ALL.len());
+    (outside, tier, neg_gate_score, detail, rank)
+}
+
+fn pillar_gate_score(result: &ClassificationResult, gates: &[GateResult], pillar: &str) -> f64 {
+    if let Some(&score) = result.gate_scores.get(pillar) {
+        return score;
+    }
+    binding_failure(gates, pillar)
+        .map(|gate| gate.desirability())
+        .unwrap_or(0.0)
+}
+
+fn named_generator(pillar: &str) -> Option<Generator> {
+    Generator::ALL
+        .into_iter()
+        .find(|generator| generator.as_str() == pillar)
+}
+
+fn scale(value: f64) -> i64 {
+    (value * 10_000.0).round() as i64
 }
 
 /// Imperative prose for a failed gate, quoting the real bounds.
@@ -139,9 +231,15 @@ fn gate_message(r: &GateResult) -> String {
                 format!("Decompose dense logic into named steps (entropy {value:.2} > {threshold}).")
             }
         }
-        // mdg.fan_out
-        _ => format!(
+        "mdg.fan_out" => format!(
             "Reduce fan-out {value:.0} (> {threshold:.0}) — introduce an interface or invert the dependency."
+        ),
+        "nav.max_function_divergence" => format!(
+            "Flatten the deepest nested block (divergence {value:.1} > {threshold:.1})."
+        ),
+        _ => format!(
+            "Bring {} ({value:.2}) inside its gate ({threshold:.2}).",
+            r.spec.metric
         ),
     }
 }
@@ -235,7 +333,7 @@ mod tests {
             sink: None,
         };
 
-        let suggestions = suggest_refactors(&result, &[finding]);
+        let suggestions = suggest_refactors(&result, &[finding], None);
         let secure: Vec<&Suggestion> = suggestions
             .iter()
             .filter(|s| s.pillar == "secure")
@@ -268,7 +366,7 @@ mod tests {
             ]),
             EvaluationValue::Simple,
         );
-        assert_eq!(suggest_refactors(&result, &[]), vec![]);
+        assert_eq!(suggest_refactors(&result, &[], None), vec![]);
     }
 
     #[test]
@@ -292,7 +390,7 @@ mod tests {
             ),
         ]);
 
-        let suggestions = suggest_refactors(&result, &[]);
+        let suggestions = suggest_refactors(&result, &[], None);
         assert_eq!(suggestions.len(), 1, "only flagged readings surface");
         let cyclomatic = by_metric(&suggestions, "cfg.cyclomatic");
         assert_eq!(cyclomatic.pillar, "simple");
@@ -325,7 +423,7 @@ mod tests {
             reading("simple", 25.0, 0.99, true),
         )]);
 
-        let suggestions = suggest_refactors(&result, &[]);
+        let suggestions = suggest_refactors(&result, &[], None);
         let order: Vec<&str> = suggestions.iter().map(|s| s.severity.as_str()).collect();
         assert_eq!(order, vec!["fix", "fix", "improve"]);
         assert_eq!(
@@ -334,6 +432,68 @@ mod tests {
         );
         assert_eq!(suggestions[1].metric.as_deref(), Some("ast.entropy"));
         assert_eq!(suggestions[2].metric.as_deref(), Some("cfg.cyclomatic"));
+    }
+
+    #[test]
+    fn navigable_divergence_yields_a_fix() {
+        let result = result(
+            BTreeMap::from([("navigable".to_string(), EvaluationValue::Slop)]),
+            BTreeMap::from([("nav.max_function_divergence".to_string(), 20.0)]),
+            EvaluationValue::Slop,
+        );
+        let suggestions = suggest_refactors(&result, &[], None);
+        let divergence = by_metric(&suggestions, "nav.max_function_divergence");
+        assert_eq!(divergence.pillar, "navigable");
+        assert_eq!(divergence.severity, "fix");
+        assert!(divergence.message.contains("Flatten"));
+    }
+
+    #[test]
+    fn closer_pillar_gate_leads() {
+        let mut result = result(
+            BTreeMap::from([
+                ("simple".to_string(), EvaluationValue::Slop),
+                ("navigable".to_string(), EvaluationValue::Slop),
+            ]),
+            BTreeMap::from([
+                ("ast.max_function_complexity".to_string(), 20.0),
+                ("nav.max_function_divergence".to_string(), 12.0),
+            ]),
+            EvaluationValue::Slop,
+        );
+        result.gate_scores =
+            BTreeMap::from([("simple".to_string(), 0.1), ("navigable".to_string(), 0.4)]);
+        let suggestions = suggest_refactors(&result, &[], None);
+        assert_eq!(
+            suggestions[0].metric.as_deref(),
+            Some("nav.max_function_divergence")
+        );
+        assert_eq!(
+            suggestions[1].metric.as_deref(),
+            Some("ast.max_function_complexity")
+        );
+    }
+
+    #[test]
+    fn flagged_advisories_sort_worst_quality_first() {
+        let mut result = result(
+            BTreeMap::from([("simple".to_string(), EvaluationValue::Simple)]),
+            BTreeMap::new(),
+            EvaluationValue::Simple,
+        );
+        result.advisories = BTreeMap::from([
+            (
+                "cfg.cyclomatic".to_string(),
+                reading("simple", 25.0, 0.91, true),
+            ),
+            (
+                "cfg.nesting_depth".to_string(),
+                reading("simple", 8.0, 0.99, true),
+            ),
+        ]);
+        let suggestions = suggest_refactors(&result, &[], None);
+        assert_eq!(suggestions[0].metric.as_deref(), Some("cfg.nesting_depth"));
+        assert_eq!(suggestions[1].metric.as_deref(), Some("cfg.cyclomatic"));
     }
 
     #[test]
@@ -347,7 +507,7 @@ mod tests {
             EvaluationValue::Slop,
         );
 
-        let suggestions = suggest_refactors(&result, &[]);
+        let suggestions = suggest_refactors(&result, &[], None);
         let fan_out = by_metric(&suggestions, "mdg.fan_out");
         assert_eq!(fan_out.severity, "fix");
         assert_eq!(suggestions.len(), 1, "instability is not a gate");
@@ -369,7 +529,7 @@ mod tests {
             EvaluationValue::Ideal,
         );
 
-        assert_eq!(suggest_refactors(&result, &[]), vec![]);
+        assert_eq!(suggest_refactors(&result, &[], None), vec![]);
     }
 
     #[test]
@@ -384,7 +544,7 @@ mod tests {
             EvaluationValue::Secure,
         );
 
-        let suggestions = suggest_refactors(&result, &[]);
+        let suggestions = suggest_refactors(&result, &[], None);
         assert!(!suggestions.iter().any(|s| s.pillar == "secure"));
     }
 }

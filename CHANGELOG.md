@@ -28,6 +28,11 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ### Changed
 
+- The preference walk now names `next_pillar`: among generators the active
+  goal still requires, the one with the greatest gate score below 0.5.
+  Guidance, `binding_constraint`, suggestions, and refactor targets follow
+  that gate. `next_step` stays the smallest preferred concession. Priority
+  is only the head of the ranking (a tie-break); it does not reweight scores.
 - Pillar scores are gate-anchored: 50 sits exactly at the gate, so a pillar
   passes if and only if its score is at least 50. Gates combine with `min`;
   advisory metrics move a score only within the half its gates chose. Verdicts

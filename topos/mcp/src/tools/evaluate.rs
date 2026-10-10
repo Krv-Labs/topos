@@ -15,7 +15,9 @@ use topos_engine::evaluation::policies::composable::coupling_gate_input;
 use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::weakest_score;
 
-use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
+use crate::diagnostics::{
+    opt_in_security_report, overlay_for_file, overlay_for_source, SecurityOverlay,
+};
 use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
@@ -36,12 +38,30 @@ use crate::schemas::{
 use crate::security::{
     composable_default_root, read_resolved_utf8, resolution_note, resolve_project_path,
 };
+use crate::security_findings::SecurityReport;
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
     if let Some(overlay) = overlay {
         opts.security_findings = overlay.active_findings.clone();
+        opts.security_advisory = overlay.advisory.clone();
         opts.acknowledged_risks = overlay.acknowledged_risks.clone();
+    }
+}
+
+/// `security_scan` opt-in: attach the scanner report to the payload only,
+/// after the result (verdict, pillars, agent contract) is built, so the
+/// coverage pass can never change routing or scores.
+fn attach_opt_in_report(
+    model: &mut EvaluationResult,
+    report: Option<SecurityReport>,
+    include_findings: bool,
+) {
+    if let Some(report) = report {
+        if include_findings {
+            model.security_findings = report.findings;
+        }
+        model.security_advisory = report.advisory;
     }
 }
 
@@ -277,9 +297,10 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         warnings.push(note);
     }
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
-    let locations = match read_resolved_utf8(&resolved) {
-        Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
-        Err(_) => BTreeMap::new(),
+    let source = read_resolved_utf8(&resolved).ok();
+    let locations = match &source {
+        Some(source) => build_metric_locations(source, detect_language(&resolved), &result),
+        None => BTreeMap::new(),
     };
 
     // Targets are computed before the result model so the agent contract
@@ -317,7 +338,19 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     opts.offer_refactor_targets = targets.is_none();
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
-    let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    let mut model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    if params.security_scan && overlay.is_none() {
+        let report = source.as_deref().and_then(|source| {
+            opt_in_security_report(
+                source,
+                detect_language(&resolved),
+                &result,
+                Some(&resolved),
+                &params.allow,
+            )
+        });
+        attach_opt_in_report(&mut model, report, params.include_security_findings);
+    }
     let mut md = render_evaluation_md(&model, None, params.verbose);
     append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
@@ -527,6 +560,7 @@ fn evaluate_single_file(
         } else {
             Vec::new()
         },
+        security_advisory: overlay.as_ref().and_then(|o| o.advisory.clone()),
         acknowledged_risks: overlay
             .as_ref()
             .map(|o| o.acknowledged_risks.clone())
@@ -1368,6 +1402,7 @@ mod tests {
             raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
             warnings: Vec::new(),
             security_findings: Vec::new(),
+            security_advisory: None,
             acknowledged_risks: Vec::new(),
             raw_lattice_element: None,
             adjusted_lattice_element: None,

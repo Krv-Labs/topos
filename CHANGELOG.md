@@ -20,6 +20,11 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   and shrinkage constants from leaderboard JSONL into
   `topos/engine/src/evaluation/advisory_priors.json`; `--check` verifies the
   committed table.
+- `security_advisory` beside `security_findings` (max severity, actionable,
+  taint, omitted, CWE family histogram) plus per-finding `mode`, `severity`,
+  `confidence`, `cwe`, and `title` from Sighthound; reporting only, never
+  scored. `topos_evaluate_file` takes `security_scan=true` to scan a
+  SECURE-passing file.
 
 ### Changed
 

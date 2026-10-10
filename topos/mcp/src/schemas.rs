@@ -289,6 +289,13 @@ pub struct EvaluateFileInput {
     /// 0 = off; capped at 25).
     #[serde(default = "default_refactor_targets")]
     pub refactor_targets: usize,
+    /// Run Sighthound even if SECURE passed; report-only.
+    // Opt-in coverage pass, default off; Python/JS/TS/Go only. Adds
+    // `security_advisory` and the capped `security_findings`; never changes
+    // the verdict, pillars, or scores. The `///` line is kept short for the
+    // context-budget ratchet (`context_budget.rs`).
+    #[serde(default)]
+    pub security_scan: bool,
 }
 
 /// Ranked targets are on by default: their expensive input
@@ -754,7 +761,11 @@ pub struct PillarResult {
 }
 
 /// Actionable SECURE diagnostic for an agent.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+///
+/// The optional scanner metadata (`severity`, `confidence`, `cwe`, `title`)
+/// is present only for findings the embedded Sighthound engine produced; the
+/// CPG fallback (Rust/C++, or a disabled/failed scan) sets only `mode`.
+#[derive(Debug, Clone, Default, Serialize, JsonSchema)]
 pub struct SecurityFinding {
     /// Finding kind, e.g. dangerous_call.
     pub kind: String,
@@ -771,9 +782,31 @@ pub struct SecurityFinding {
     /// Taint sink snippet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sink: Option<String>,
+    /// Detection mode: `taint` (source-to-sink flow) or `pattern`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// Scanner severity: critical, high, medium, or low.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Scanner confidence: high, medium, or low.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
+    /// Weakness id, e.g. `CWE-78`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwe: Option<String>,
+    /// Scanner rule title (its finding type).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Advisory family (see [`SecurityAdvisory::by_family`]). Internal: it
+    /// feeds the histogram and is not serialized per finding.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub family: Option<&'static str>,
 }
 
 impl SecurityFinding {
+    /// Rebuild from the engine's lean mirror. The mirror carries no scanner
+    /// metadata, so only `mode` is recovered (from `kind`).
     pub fn from_core(f: &topos_engine::evaluation::security_guidance::SecurityFinding) -> Self {
         SecurityFinding {
             kind: f.kind.clone(),
@@ -782,6 +815,8 @@ impl SecurityFinding {
             callee: f.callee.clone(),
             source: f.source.clone(),
             sink: f.sink.clone(),
+            mode: mode_for_kind(&f.kind),
+            ..Default::default()
         }
     }
 
@@ -795,6 +830,39 @@ impl SecurityFinding {
             sink: self.sink.clone(),
         }
     }
+}
+
+/// `taint_flow` → `taint`, `dangerous_call` → `pattern`.
+pub fn mode_for_kind(kind: &str) -> Option<String> {
+    match kind {
+        "taint_flow" => Some("taint".to_string()),
+        "dangerous_call" => Some("pattern".to_string()),
+        _ => None,
+    }
+}
+
+/// Sighthound advisory summary reported beside the SECURE pillar.
+///
+/// Never an input to `achieved`, any score, or the verdict: the scanner runs
+/// only when the CPG SECURE gate failed (or on `security_scan` opt-in), so
+/// scoring on it would make scores depend on whether a scan happened.
+/// Counted over every non-acknowledged finding, before the
+/// `security_findings` display cap. Absent means the scanner did not run for
+/// this file, which is distinct from a block of zeros.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, JsonSchema)]
+pub struct SecurityAdvisory {
+    /// Highest severity seen: none, low, medium, high, or critical.
+    pub max_severity: String,
+    /// Findings with severity high/critical and confidence above low.
+    pub actionable: usize,
+    /// Taint-mode (source-to-sink) findings.
+    pub taint: usize,
+    /// Findings left out of `security_findings` by the display cap.
+    pub omitted: usize,
+    /// Count per family (injection, xss, deserialization, path, crypto,
+    /// auth, other); zero families are omitted.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub by_family: BTreeMap<String, usize>,
 }
 
 /// A disclosed security finding acknowledged by project config or input.
@@ -959,6 +1027,9 @@ pub struct EvaluationResult {
     pub agent_contract: Option<AgentContract>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory summary; absent when the scanner did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_advisory: Option<SecurityAdvisory>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     /// Canonical raw verdict before acknowledged-risk overlay.
@@ -1026,6 +1097,7 @@ impl EvaluationResult {
             warnings: Vec::new(),
             agent_contract: None,
             security_findings: Vec::new(),
+            security_advisory: None,
             acknowledged_risks: Vec::new(),
             raw_lattice_element: None,
             adjusted_lattice_element: None,
@@ -1058,6 +1130,9 @@ pub struct ProjectFileEntry {
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory summary; absent when the scanner did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_advisory: Option<SecurityAdvisory>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     #[serde(skip_serializing_if = "Option::is_none")]

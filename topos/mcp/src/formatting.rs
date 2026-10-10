@@ -21,7 +21,7 @@ use crate::evaluation::{
 use crate::schemas::{
     lattice_to_str, priority_str, AcknowledgedRisk, AgentContract, BindingConstraint,
     EvaluationResult, FunctionEntry, GeneratorInput, PillarResult, PreferenceWalk, PrioritySource,
-    RefactorTarget, SecurityFinding, Suggestion,
+    RefactorTarget, SecurityAdvisory, SecurityFinding, Suggestion,
 };
 
 /// `RefactorTarget::severity` for a metric whose failure actually costs its
@@ -559,6 +559,8 @@ pub struct EvalResultOptions<'a> {
     pub priority_source: PrioritySource,
     pub warnings: Vec<String>,
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory; reported as-is, never routed or scored.
+    pub security_advisory: Option<SecurityAdvisory>,
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     pub adjusted_verdict: Option<&'a AdjustedVerdict>,
     pub include_agent_contract: bool,
@@ -727,6 +729,7 @@ pub fn to_evaluation_result(
         } else {
             Vec::new()
         },
+        security_advisory: opts.security_advisory,
         acknowledged_risks: opts.acknowledged_risks,
         raw_lattice_element: opts.adjusted_verdict.map(|v| lattice_to_str(v.raw_element)),
         adjusted_lattice_element: opts

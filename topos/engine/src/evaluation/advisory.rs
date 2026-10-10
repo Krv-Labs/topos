@@ -61,6 +61,12 @@ pub fn assess(_language: &str, _raw: &BTreeMap<String, f64>) -> BTreeMap<String,
     BTreeMap::new()
 }
 
+/// Human-readable interpretation line for one reading (goes into
+/// `ClassificationResult.interpretation` under the metric name).
+pub fn interpret(_metric: &str, _reading: &AdvisoryReading) -> String {
+    String::new()
+}
+
 /// Geometric mean of a pillar's advisory qualities; `1.0` when it has none.
 pub fn pillar_advisory_score(pillar: &str, readings: &BTreeMap<String, AdvisoryReading>) -> f64 {
     let qualities: Vec<f64> = readings

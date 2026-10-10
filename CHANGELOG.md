@@ -16,10 +16,10 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   per-language prior), `global_percentile` (against the language prior),
   `local_weight`, `quality`, and `flagged`. `gate_scores` carries each pillar's
   gate-only score and `language` names the prior used.
-- `scripts/derive_scoring_priors.py` derives the per-language advisory priors
-  and shrinkage constants from leaderboard JSONL into
-  `topos/engine/src/evaluation/advisory_priors.json`; `--check` verifies the
-  committed table.
+- Advisory priors are a pinned snapshot in
+  `topos/engine/src/evaluation/advisory_priors.json` (one line per language).
+  The leaderboard derives the table; this repo only vendors the copy the
+  binary embeds.
 - `security_advisory` beside `security_findings` (max severity, actionable,
   taint, omitted, CWE family histogram) plus per-finding `mode`, `severity`,
   `confidence`, `cwe`, and `title` from Sighthound; reporting only, never

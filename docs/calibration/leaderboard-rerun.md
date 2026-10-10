@@ -117,69 +117,62 @@ stamped with this Topos version and eval fingerprint are skipped, so an
 interrupted run can simply be restarted. Output lands in
 `$LB/leaderboard/data/raw/structural_scores_<eco>.jsonl`.
 
-### 5. Regenerate the priors
+### 5. Copy the prior snapshot
+
+Derive the table in `$LB` from `leaderboard/data/raw/structural_scores_*.jsonl`.
+Drop rows scored by older binaries so a partial rerun cannot mix readings.
+Copy only the scorer-facing JSON over the embedded snapshot:
 
 ```bash
-cd $TOPOS
-python3 scripts/derive_scoring_priors.py \
-  --raw-dir $LB/leaderboard/data/raw \
-  --min-topos-version <this release>
+cp "$LB/advisory_priors.json" \
+  "$TOPOS/topos/engine/src/evaluation/advisory_priors.json"
 ```
 
-`--min-topos-version` drops rows scored by older binaries, so a partially
-re-evaluated corpus cannot mix old and new readings. Add
-`--evaluate-json <file>` to fold in an additional `topos evaluate` JSON export
-(for example a fresh COMPOSABLE run) when the leaderboard corpus is thin for a
-language. The script writes `topos/engine/src/evaluation/advisory_priors.json`.
+The file the engine embeds has `schema`, `provisional`, and `metrics`
+(`k`, `flag_percentile`, and one line per language: `median` plus the CDF
+`points`). Leave provenance (source paths, row counts, the generator name)
+on the leaderboard artifact. The crate does not download this file at build
+time; `include_str!` bakes in whatever is committed.
 
-### 6. Review the diff
+### 6. Review `k` and the medians
 
-```bash
-git diff --stat topos/engine/src/evaluation/advisory_priors.json
-git diff topos/engine/src/evaluation/advisory_priors.json
-```
+Each language is one line, so a diff of the CDF points is not readable.
+Review the scalars. Current snapshot:
 
-Check:
+| metric | k | medians |
+| --- | ---: | --- |
+| `cfg.cyclomatic` | 3.881 | _all 5, cpp 13, go 12, javascript 2, python 10, rust 6, typescript 4 |
+| `cfg.essential` | 3.015 | _all 2, cpp 5, go 4, javascript 2, python 2, rust 1, typescript 2 |
+| `cfg.nesting_depth` | 3.835 | _all 1, cpp 1, go 2, javascript 0, python 0.5, rust 0, typescript 0 |
+| `mdg.fan_in` | 7.377 | _all 0, python 0, rust 1, typescript 0 |
+| `mdg.instability` | 9.395 | _all 0.6, python 0.5, rust 0.5, typescript 0.75 |
 
-- every language now has COMPOSABLE tables (`mdg.fan_in`, `mdg.instability`),
-  including C++ and Go;
-- `k` values stay in the same range as before (SIMPLE metrics about 3–5,
-  divergence about 6). A `k` that jumps by an order of magnitude, or becomes
-  infinite (no between-package variance), points to a corpus problem such as one
-  package dominating a language;
-- prior medians and p90s move plausibly (for example max function complexity
-  p90 near C++ 22, PyPI 19, Cargo 8, npm 5 on the previous corpus).
+`mdg.fan_in` and `mdg.instability` are provisional (Python, Rust, TypeScript
+only) until this rerun fills C++ and Go. After the copy, check:
 
-### 7. Commit the priors
+- those two metrics gain C++ and Go tables;
+- `k` stays near the values above (SIMPLE metrics about 3–5). A jump of an
+  order of magnitude means one package is dominating a language;
+- medians move plausibly. The previous corpus put max-function-complexity p90
+  near C++ 22, PyPI 19, Cargo 8, npm 5.
 
-Record what the table was derived from:
+### 7. Commit the snapshot
+
+Name the leaderboard commit the table came from:
 
 ```bash
 git add topos/engine/src/evaluation/advisory_priors.json
-git commit -m "scoring: regenerate advisory priors
-
-Corpus: topos-leaderboard@<SHA of $LB>, Topos <version>, <file count> files.
-
-Co-Authored-By: ..."
+git commit -m "scoring: refresh advisory prior snapshot (topos-leaderboard@<SHA>)"
 ```
 
-### 8. Check the committed priors
+Rebuild and run the Rust tests. The table is embedded at compile time, so a
+stale binary will not pick up the new file. Raw metrics in the JSONL do not
+depend on the priors, but the pillar scores stored there were computed with
+the previous table. If `k` or the medians moved materially, re-evaluate (a
+new version stamp makes resume rescore every package; `--fresh` per ecosystem
+also works) before building the site.
 
-```bash
-python3 scripts/derive_scoring_priors.py --check
-```
-
-`--check` validates the committed `advisory_priors.json` and exits non-zero on
-a problem. Run the Rust test suite as well, since the table is embedded at
-build time.
-
-Raw metrics do not depend on the priors, but the pillar scores stored in the
-JSONL were computed with the table embedded in the binary that produced them.
-If the regenerated table differs materially, build Topos with the new table and
-re-evaluate (a new version stamp makes resume rescore every package; `--fresh`
-per ecosystem also works) before building the site.
-
-### 9. Rebuild the site data
+### 8. Rebuild the site data
 
 ```bash
 cd $LB
@@ -192,7 +185,7 @@ uv run topos-leaderboard-prerender
 uv run topos-leaderboard-verify --expected-versions 3
 ```
 
-### 10. Preview
+### 9. Preview
 
 ```bash
 cd leaderboard/web && npm install && npm run dev   # http://localhost:8080
@@ -201,7 +194,7 @@ cd leaderboard/web && npm install && npm run dev   # http://localhost:8080
 Check `/calibration.html` in particular: no file with a passing verdict should
 show a pillar score below 50.
 
-### 11. Publish
+### 10. Publish
 
 ```bash
 cd $LB
@@ -209,7 +202,7 @@ uv run python deploy/gcp/push_data_to_bucket.py --bucket topos-leaderboard-data
 gcloud run jobs execute topos-leaderboard-publish --region=us-central1 --wait
 ```
 
-### 12. Rewrite the calibration report
+### 11. Rewrite the calibration report
 
 `CALIBRATION_REPORT.md` in `topos-leaderboard` is written by hand.
 `uv run topos-leaderboard-report` regenerates the HTML evidence it draws on

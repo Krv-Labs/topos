@@ -5,9 +5,10 @@ Status: **ACCEPTED**. Supersedes the score-normalization parts of
 [`composable-instability-resolution.md`](composable-instability-resolution.md)
 (their gate decisions stand). Verdicts and medals are unchanged.
 
-Full derivation and proofs: [`docs/methods/gate-anchored-scoring.tex`](../methods/gate-anchored-scoring.tex).
 Operator procedure for the one-time leaderboard rerun:
 [`docs/calibration/leaderboard-rerun.md`](../calibration/leaderboard-rerun.md).
+The embedded prior table is a pinned snapshot of that run. Derivation
+belongs with the leaderboard corpus, not in this repository.
 
 ## Problem
 
@@ -169,7 +170,7 @@ question, out of scope here.
 | --- | --- |
 | gate thresholds | unchanged; re-derived only when a metric definition changes |
 | `τ = 0.5`, `2g` zero point | fixed by construction |
-| `F_lang` tables and `k` | derived once per leaderboard run by `scripts/derive_scoring_priors.py` into `topos/engine/src/evaluation/advisory_priors.json` (`--check` verifies the committed file) |
+| `F_lang` tables and `k` | derived once per leaderboard run in `topos-leaderboard`, then copied into `topos/engine/src/evaluation/advisory_priors.json`. The engine embeds that file; it does not fetch it at build time |
 | COMPOSABLE advisory priors | provisional until the leaderboard rerun |
 | score floors, advisory caps | retired |
 | medals | unchanged |

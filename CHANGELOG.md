@@ -11,6 +11,9 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ### Fixed
 
+- MCP evaluation now marks `pillars.navigable.achieved` to match the scored
+  NAVIGABLE dimension and excludes passing NAVIGABLE metrics from failure
+  interpretations.
 - `topos coverage` and `topos_calculate_coverage` count inline tests (#336):
   Rust `#[cfg(test)]` items and `#[test]` functions, Go `*_test.go` files and
   `Test*`/`Benchmark*`/`Example*`/`Fuzz*` functions, and Python `test_*.py` /

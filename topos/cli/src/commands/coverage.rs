@@ -12,11 +12,12 @@ use clap::Args;
 use console::Style;
 use topos_engine::adapters::discovery::collect_source_files;
 use topos_engine::evaluation::policies::coverage::{score_declaration_coverage, CoverageVerdict};
-use topos_engine::functors::profunctors::uast::inline_tests::parse_with_inline_tests;
+use topos_engine::functors::profunctors::uast::inline_tests::{
+    parse_coverage_root, parse_with_inline_tests,
+};
 use topos_engine::functors::profunctors::uast::structural_test_coverage::{
     declaration_coverage, extract_declarations,
 };
-use topos_engine::graphs::ast::dispatch::parse_source;
 use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 use topos_engine::graphs::uast::models::UASTNode;
 
@@ -103,9 +104,9 @@ fn parse_uast_roots(paths: &[PathBuf], language: &str) -> Result<Vec<UASTNode>, 
             let source = std::fs::read_to_string(path)
                 .map_err(|e| format!("reading {}: {e}", path.display()))?;
             let file = path.to_string_lossy().into_owned();
-            let result = parse_source(&source, language, Some(&file))
+            let result = parse_coverage_root(&source, language, Some(&file))
                 .map_err(|e| format!("parsing {}: {e}", path.display()))?;
-            Ok(result.uast_root)
+            Ok(result)
         })
         .collect()
 }

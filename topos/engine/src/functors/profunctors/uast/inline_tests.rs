@@ -16,7 +16,7 @@
 use std::path::Path;
 
 use crate::graphs::ast::dispatch::{parse_source, DispatchError};
-use crate::graphs::uast::mapper_rust::{map_rust_tree_to_uast_with_tests, CFG_TEST_MARKER};
+use crate::graphs::uast::mapper_rust::map_rust_tree_to_uast_with_tests;
 use crate::graphs::uast::models::UASTNode;
 
 const GO_TEST_PREFIXES: &[&str] = &["Test", "Benchmark", "Example", "Fuzz"];
@@ -32,19 +32,29 @@ pub fn parse_with_inline_tests(
     language: &str,
     file: Option<&str>,
 ) -> Result<(Option<UASTNode>, Vec<UASTNode>), DispatchError> {
-    let parsed = parse_source(source, language, file)?;
-    let root = if language == "rust" {
-        // The default Rust mapper discards `#[cfg(test)]` items; keep them
-        // here so they land on the test side instead of nowhere.
-        map_rust_tree_to_uast_with_tests(parsed.tree.root_node(), source.as_bytes(), file)
-    } else {
-        parsed.uast_root
-    };
+    let root = parse_coverage_root(source, language, file)?;
     if file.is_some_and(|f| is_test_file(f, language)) {
         return Ok((None, vec![root]));
     }
     let (program, tests) = split_tests(root, source, language);
     Ok((Some(program), tests))
+}
+
+/// Parse a coverage input without discarding test-only Rust items.
+/// Explicit test inputs keep the entire returned root on the test side.
+pub fn parse_coverage_root(
+    source: &str,
+    language: &str,
+    file: Option<&str>,
+) -> Result<UASTNode, DispatchError> {
+    let parsed = parse_source(source, language, file)?;
+    Ok(if language == "rust" {
+        // The default Rust mapper discards `#[cfg(test)]` items; keep them
+        // here so they land on the test side instead of nowhere.
+        map_rust_tree_to_uast_with_tests(parsed.tree.root_node(), source.as_bytes(), file)
+    } else {
+        parsed.uast_root
+    })
 }
 
 fn is_test_file(file: &str, language: &str) -> bool {
@@ -65,15 +75,6 @@ fn node_text<'s>(node: &UASTNode, source: &'s str) -> &'s str {
     source
         .get(node.span.start_byte..node.span.end_byte)
         .unwrap_or("")
-}
-
-fn is_rust_test_attribute(text: &str) -> bool {
-    if text.contains(CFG_TEST_MARKER) {
-        return true;
-    }
-    let inner = text.trim_start_matches("#[").trim_end_matches(']');
-    let path = inner.split('(').next().unwrap_or("").trim();
-    path == "test" || path.ends_with("::test")
 }
 
 /// Go/Python: a test is recognized by its declaration name alone.
@@ -112,10 +113,15 @@ fn split_tests(mut root: UASTNode, source: &str, language: &str) -> (UASTNode, V
                 is_named_test(&child, source, language)
             } else if child.native.node_kind == "attribute_item" {
                 // An attribute is a preceding sibling of the item it marks.
-                if is_rust_test_attribute(node_text(&child, source)) {
+                if child.attributes.contains_key("rustTestAttribute") {
                     pending_rust_test = true;
                     continue;
                 }
+                false
+            } else if matches!(
+                child.native.node_kind.as_str(),
+                "line_comment" | "block_comment"
+            ) {
                 false
             } else {
                 std::mem::take(&mut pending_rust_test)
@@ -162,6 +168,47 @@ mod tests {
     fn rust_non_test_attributes_stay_on_the_program_side() {
         let source = "#[inline]\nfn fast() -> i32 { 1 }\n#[cfg(not(test))]\nfn real() {}\n";
         assert_eq!(decl_counts(source, "rust", "lib.rs"), (2, 0));
+    }
+
+    #[test]
+    fn rust_attributes_allow_comments_spacing_and_other_attributes() {
+        let source = r#"
+            fn prod() {}
+            #[cfg( /* condition */ test )]
+            // module documentation
+            #[allow(dead_code)]
+            mod tests { fn helper() {} }
+            #[test]
+            /* explanation */
+            #[ignore]
+            fn checks() {}
+            #[tokio :: test(flavor = "current_thread")]
+            // async documentation
+            async fn async_checks() {}
+        "#;
+        assert_eq!(decl_counts(source, "rust", "lib.rs"), (1, 3));
+    }
+
+    #[test]
+    fn rust_attribute_strings_and_other_cfg_conditions_are_not_tests() {
+        let source = r#"
+            #[doc = "cfg(test)"]
+            fn documented() {}
+            #[cfg(not(test))]
+            fn production() {}
+            #[cfg(feature = "cfg(test)")]
+            fn feature() {}
+            #[cfg(any(test, feature = "dev"))]
+            fn shared() {}
+        "#;
+        assert_eq!(decl_counts(source, "rust", "lib.rs"), (4, 0));
+    }
+
+    #[test]
+    fn explicit_rust_tests_preserve_cfg_modules_and_helpers() {
+        let source = "#[cfg( test )]\nmod tests { #[test]\nfn checks() {} }\nfn helper() {}";
+        let root = parse_coverage_root(source, "rust", Some("tests/checks.rs")).unwrap();
+        assert_eq!(extract_declarations(&root).len(), 2);
     }
 
     #[test]

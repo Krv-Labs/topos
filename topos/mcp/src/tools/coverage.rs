@@ -4,9 +4,10 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::evaluation::policies::coverage::score_declaration_coverage;
-use topos_engine::functors::profunctors::uast::inline_tests::parse_with_inline_tests;
+use topos_engine::functors::profunctors::uast::inline_tests::{
+    parse_coverage_root, parse_with_inline_tests,
+};
 use topos_engine::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
-use topos_engine::graphs::ast::dispatch::parse_source;
 use topos_engine::graphs::uast::models::UASTNode;
 
 use crate::formatting::to_tool_result;
@@ -60,8 +61,8 @@ fn parse_inputs(params: &CalculateCoverageInput) -> Result<(Vec<UASTNode>, Vec<U
             tests.extend(inline);
         } else {
             let parsed =
-                parse_source(&source, &params.language, Some(&file)).map_err(parse_error)?;
-            tests.push(parsed.uast_root);
+                parse_coverage_root(&source, &params.language, Some(&file)).map_err(parse_error)?;
+            tests.push(parsed);
         }
     }
     Ok((put, tests))
@@ -180,6 +181,13 @@ impl ToposServer {
 
         match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
             Ok(report) => {
+                if report.put_declaration_count == 0 {
+                    let model = empty_coverage_result(
+                        "no function or method declarations found in source files; check --language and source paths".to_string(),
+                    );
+                    let md = render_coverage_md(&model);
+                    return to_tool_result(&model, md);
+                }
                 let decision = score_declaration_coverage(&report, params.coverage_threshold);
                 let model = CoverageResult {
                     mean_declaration_coverage: report.mean_declaration_coverage,

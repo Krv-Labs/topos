@@ -20,6 +20,9 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   source declarations report INCONCLUSIVE instead of a confident PASS/FAIL.
   `topos_calculate_coverage` now parses in the requested `language` (it
   always parsed as Python) and reports a `verdict` against `coverage_threshold`.
+  Explicit Rust test files retain cfg-gated modules; test attributes tolerate
+  spacing and comments without matching documentation strings. CLI and MCP
+  reject corpora with no source declarations after separating inline tests.
 
 ## [0.8.0] - 2026-10-09
 

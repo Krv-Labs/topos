@@ -176,6 +176,10 @@ source paths count as tests: Rust `#[cfg(test)]` items and `#[test]` fns; Go
 `*_test.py`, `test_*` fns, `Test*` classes. A separate test tree still works.
 `verdict` is PASS/FAIL vs. `coverage_threshold`, or **INCONCLUSIVE** below 1
 test declaration per 100 source declarations (tests likely outside the paths).
+Explicit Rust test inputs retain cfg-gated modules. Rust test attributes are
+recognized from syntax, allowing whitespace and intervening comments.
+If separating tests leaves no source declarations, coverage returns an error
+without a verdict.
 
 ## Priority weights
 

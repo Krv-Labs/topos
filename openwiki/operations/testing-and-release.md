@@ -3,6 +3,9 @@ type: operations runbook
 title: Testing, Packaging, CI, and Release Operations
 description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, CI admission, and release channels.
 tags: [operations, testing, ci, release, packaging, rust]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-10T12:26:29.610Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -34,10 +37,7 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-10T11:59:46.794Z
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T12:26:29.610Z" }
 ---
 
 # Testing, Packaging, CI, and Release Operations
@@ -117,7 +117,7 @@ The workspace package version in `Cargo.toml` is authoritative. `check_versions.
 
 `check_skill.py` validates every non-hidden folder in `skills/`: a `SKILL.md`, matching slug/name, bounded description, and—in OpenClaw/Hermes metadata—the required metadata, documentation sections, credential declaration, and Cargo-version parity. `check_agent_plugin.py` schema-closes the plugin and MCP manifests, rejects plugin symlinks and path traversal in stdio command/working-directory entries, forbids client-reserved `PLUGIN_ROOT` and `PLUGIN_DATA` environment entries, and requires the packaged `agent-plugin/skills/topos/SKILL.md` to be a regular byte-for-byte copy of the canonical skill.
 
-ClawHub publication is a separate reusable-workflow operation. It runs a dry-run for qualifying PRs and publishes skill changes on `main` or `v*` tags through a pinned `openclaw/clawhub` workflow, with `CLAWHUB_TOKEN` passed by name and OIDC enabled. A missing token does not prevent the PR dry run, but upstream publishing fails on main/tag events; fork PRs cannot receive the required OIDC token.
+ClawHub publication is a separate reusable-workflow operation (`.github/workflows/clawhub-publish.yml`). It runs a dry-run for qualifying PRs and publishes skill changes on `main` pushes targeting `skills/**` through a pinned `openclaw/clawhub` reusable workflow (`v0.23.1`), with `CLAWHUB_TOKEN` passed by name and OIDC permissions (`id-token: write`). A missing token does not prevent the PR dry run, but upstream publishing fails on main events; fork PRs cannot receive the required OIDC token.
 
 ## Installer and Homebrew checks
 
@@ -125,11 +125,11 @@ ClawHub publication is a separate reusable-workflow operation. It runs a dry-run
 
 Before installation it discovers existing executables from `PATH` and known local targets, de-duplicates resolved paths, and distinguishes Homebrew using known layouts or an explicitly declared `HOMEBREW_PREFIX`. A same-target install is upgraded in place; foreign installations yield channel-specific advice. It prompts only when stdin is a terminal: piped, CI, and agent-shell installs warn and continue rather than reading `/dev/tty` and hanging. `TOPOS_FORCE`, `TOPOS_YES`, and update mode bypass the confirmation as appropriate. PATH order remains the effective executable selection, so test coexistence behavior after changing any install channel.
 
-The packaging test checks Bash syntax, helper behavior, noninteractive/piped preflight, Homebrew-template expectations, and that install documentation does not advertise `| sh`. The formula intentionally has no Ruby `version` stanza because Homebrew derives it from the release URL. Its macOS branch declares `openssl@3`; during installation it bundles the two OpenSSL dylibs under `libexec`, rewrites their and the executable's load paths, and ad-hoc signs those files. Keep that template behavior and its behavioral `--help` test aligned with the portability checks on released binaries. Release automation substitutes version and checksums, opens or updates a tap PR, and leaves merge gated by tap CI; it never pushes the formula directly to the tap default branch.
+The packaging test checks Bash syntax, helper behavior, noninteractive/piped preflight, Homebrew-template expectations, and that install documentation does not advertise `| sh`. The formula intentionally has no Ruby `version` stanza because Homebrew derives it from the release URL. Its macOS branch declares `openssl@3`; during installation it bundles the two OpenSSL dylibs under `libexec`, rewrites their and the executable's load paths, and ad-hoc signs those files. Keep that template behavior and its behavioral `--help` test aligned with the portability checks on released binaries.
 
 ## Release runbook
 
-`Build and Release` is a build verification workflow for PRs to `main`; publication happens only for a `v*` tag or manual dispatch. A dispatch accepts a version with or without `v`, and its `pypi_only` option omits the native binary, VSIX, GitHub Release, Homebrew, and Marketplace path while still building and publishing PyPI artifacts. Verify metadata first, then use the workflow rather than manually assembling a release.
+`Build and Release` is a build verification workflow for PRs to `main`; publication happens only for a `v*` tag or manual dispatch. A dispatch accepts a version with or without `v`, and its `pypi_only` option omits the native binary, VSIX, GitHub Release, and Marketplace path while still building and publishing PyPI artifacts. Verify metadata first, then use the workflow rather than manually assembling a release.
 
 ```mermaid
 flowchart TD
@@ -137,7 +137,6 @@ flowchart TD
   Verify --> Native["Build native binaries"]
   Native --> VSIX["Stage binary and package VSIX"]
   VSIX --> GitHub["GitHub Release and checksums"]
-  GitHub --> Brew["Homebrew tap pull request"]
   VSIX --> Market["VS Code Marketplace"]
   Verify --> Wheels["Build MCP bin wheels"]
   Wheels --> PyPI["PyPI publish skip existing"]
@@ -150,10 +149,10 @@ This is the delivery dependency graph for a normal release; `pypi_only` follows 
 1. **Prepare and verify version.** Update all release-facing metadata and run `python3 scripts/check_versions.py`. For a tag or dispatch, the workflow repeats the check with `--tag`; do not create a mismatched tag.
 2. **Build portable native artifacts.** The matrix builds `topos` for Linux amd64/arm64 and macOS arm64, stages target-named files, rejects non-system macOS libraries and unexpected Linux `DT_NEEDED` entries, then runs `--version`. macOS signing and notarization are attempted only outside PRs when the named Apple secrets are configured; missing secrets cause warnings and an unsigned/unnotarized artifact rather than exposing a secret. A signed macOS binary is smoke-tested again because hardened-runtime library validation can fail only after signing.
 3. **Package the editor.** Each target VSIX downloads its matching binary artifact, stages it in `extensions/vscode/bin/topos`, checks VSIX size, and uploads the VSIX. The staging script accepts an explicit `TOPOS_BINARY_SOURCE` for tests, otherwise searches the expected `dist` artifact locations; it fails on a missing or empty binary and can require Darwin signature verification with `TOPOS_REQUIRE_DARWIN_CODESIGN=1`.
-4. **Publish native channels.** The release job downloads all binary and VSIX artifacts, computes `checksums.txt`, and creates the GitHub Release. Homebrew then fetches those published checksums, renders `packaging/homebrew/topos.rb.template`, and opens/updates a checksum-backed tap PR. Marketplace publishing requires `VSCE_PAT`, uses `--skip-duplicate`, and summarizes per-target published, duplicate-skipped, failed, or unknown-log outcomes, making a partial upload rerunnable.
+4. **Publish native channels.** The release job downloads all binary and VSIX artifacts, computes `checksums.txt`, and creates the GitHub Release using `softprops/action-gh-release@v2`. The Homebrew formula template at `packaging/homebrew/topos.rb.template` relies on these checksums when updating the formula. Marketplace publishing requires `VSCE_PAT`, uses `--skip-duplicate`, and summarizes per-target published, duplicate-skipped, failed, or unknown-log outcomes, making a partial upload rerunnable.
 5. **Publish the MCP channels.** Maturin builds `topos-mcp` wheels for manylinux amd64/arm64 and macOS arm64. The workflow unpacks each wheel to reject non-system macOS linkage or unexpected Linux `DT_NEEDED` libraries before upload. PyPI preflight classifies filenames already present and trusted publishing uses `skip-existing: true`, so only missing files are uploaded on a rerun. Finally, a checksum-verified `mcp-publisher` authenticates with GitHub OIDC, validates `.mcp/server.json`, and publishes it to the MCP Registry.
 
-Secret identifiers such as `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64`, `HOMEBREW_TAP_TOKEN`, and `VSCE_PAT` are sufficient for operations documentation. Never copy secret values into manifests, test fixtures, logs, or runbooks.
+Secret identifiers such as `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64` and `VSCE_PAT` are sufficient for operations documentation. Never copy secret values into manifests, test fixtures, logs, or runbooks.
 
 ## Documentation, badges, and OpenWiki CI automation
 

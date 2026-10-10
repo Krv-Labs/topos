@@ -5,7 +5,7 @@ description: Maps Topos analysis dependencies, update mechanics, and its MCP, co
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T11:59:46.794Z
+    at: 2026-10-10T12:26:29.610Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -71,7 +71,7 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T11:59:46.794Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T12:26:29.610Z" }
 ---
 
 # Analysis integrations and distribution surfaces
@@ -154,9 +154,9 @@ A separate resolver supports paths that may not exist yet, chiefly a graph-store
 
 `.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.9.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
 
-The workspace version in `Cargo.toml` is the version authority. `scripts/check_versions.py` checks it against the extension, Agent Plugin, registry entry, and its package entry; release CI also compares a tag after stripping an optional leading `v`. PyPI registry metadata must omit both `registryBaseUrl` and a `--index-url` runtime argument, because VS Code appends its own index option and `uv` rejects the duplicate option.
+The workspace version in `Cargo.toml` is the authoritative version root. `scripts/check_versions.py` enforces version agreement across the Cargo workspace, VS Code extension (`extensions/vscode/package.json`), Agent Plugin manifest (`agent-plugin/plugin.json`), MCP Registry manifest (`.mcp/server.json`), and package entry. The release workflow running `verify-version` invokes `check_versions.py` and compares git release tags or workflow dispatch inputs against `Cargo.toml` (normalizing leading `v` prefixes). Additionally, `check_versions.py` enforces that PyPI registry metadata in `.mcp/server.json` omits both `registryBaseUrl` and `--index-url` runtime arguments to prevent VS Code from duplicating `--index-url` options for `uv`.
 
-Release CI builds the native `topos` executable for Linux amd64/arm64 and macOS arm64. Before publishing, it checks unexpected dynamic linkage and runs `--version`; the macOS path may also sign and notarize when its secrets are available. Target-specific VSIX packages receive the corresponding staged native binary. Those checks establish portability of the native CLI, but the extension’s manifest is separately trusted for downloadable fallback artifacts.
+Release CI (`.github/workflows/release.yml`) builds native `topos` binaries across target platforms (Linux amd64/arm64, macOS arm64). Before publishing, Linux builds check for unexpected dynamic linkage via `readelf`, while macOS builds verify that binaries link only system libraries via `otool`, run a `--version` smoke test, sign with Apple Developer ID certificates (enforcing hardened runtime options), run a signed library validation smoke test, and optionally notarize the archive. Staged native binaries are also packed into target-specific VSIX packages for VS Code distribution.
 
 The Dockerfile is a two-stage Glama-oriented build. A Python builder installs Rust and Maturin, then compiles a release bin wheel from `topos/mcp/Cargo.toml`. The Python-slim runtime uses Python/pip to install that wheel and adds Git, Node.js 20, and `gitnexus@1.6.8`; its `ENTRYPOINT` is `topos-mcp`. Thus Python exists in the image as the wheel-installation substrate, while the installed server itself has no Python runtime dependency. Embedded Sighthound is part of the Rust build and needs no separate executable.
 

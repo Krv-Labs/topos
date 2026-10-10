@@ -1,5 +1,10 @@
 # File-level COMPOSABLE as outward dependency burden
 
+> **Scoring superseded.** The `fan_out ≤ 10` gate below still stands, but the
+> continuous COMPOSABLE score no longer takes a `min` over advisory readings,
+> and the instability band and main-sequence distance are no longer scored.
+> See [`gate-anchored-scoring.md`](gate-anchored-scoring.md).
+
 Status: **ACCEPTED for v0.5.0**. This is the file-scope policy. Package
 stability remains a possible later, separately scoped measure; see
 [`composable-at-module-granularity.md`](composable-at-module-granularity.md).

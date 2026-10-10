@@ -1,0 +1,850 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newtheorem{example}{Example}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ind}[1]{[\,#1\,]}
+\newcommand{\Floc}{F_{\mathrm{loc}}}
+\newcommand{\Flang}{F_{\mathrm{lang}}}
+\newcommand{\Ft}{\tilde F}
+\newcommand{\wA}{w_A}
+
+\title{Gate-Anchored Scoring for the Topos Evaluation Lattice}
+\author{Topos maintainers}
+\date{October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Topos grades each source file on four pillars (SIMPLE, COMPOSABLE, SECURE,
+NAVIGABLE). Each pillar has a binary verdict, decided by gates on raw metrics,
+and a continuous score in $[0,100]$. Until now the score was the minimum over
+linear quality curves whose caps were unrelated to the gates and which also
+included advisory metrics, so score and verdict routinely disagreed. We replace
+it with a four-layer construction: (i)~gate-anchored desirability functions
+with value exactly $\tau = 1/2$ at each gate; (ii)~Gödel ($\min$) aggregation of
+gates, which we show is the unique t-norm commuting with every $\alpha$-cut;
+(iii)~codebase-relative advisory percentiles shrunk toward a per-language prior,
+which we identify as a Dirichlet-process posterior mean and calibrate by a
+normal--normal variance ratio; and (iv)~a banded combination that lets
+advisories move a score only within the half chosen by the gates. The score
+vector then lives in a product of Gödel chains, of which the existing
+16-element verdict lattice is the $\tau$-cut. On the leaderboard corpus the
+number of passing files that score below $50$ falls from $4{,}757$ to $8$
+(SIMPLE, $30{,}686$ files) and from $302$ to $0$ (COMPOSABLE, $1{,}061$ files).
+\end{abstract}
+
+\tableofcontents
+
+%======================================================================
+\section{Notation}
+
+\begin{itemize}
+  \item $\mathcal P = \{\mathrm{SIMPLE}, \mathrm{COMPOSABLE}, \mathrm{SECURE},
+        \mathrm{NAVIGABLE}\}$ is the set of pillars; $k$ ranges over $\mathcal P$
+        only in Section~\ref{sec:lattice}, where it cannot be confused with the
+        shrinkage constant.
+  \item For a file $f$ and metric $m$, $v_m(f) \in [0,\infty)$ is the raw
+        reading.
+  \item A \emph{gated} metric $m$ of pillar $p$ has a global gate $g_m$; the
+        gate predicate $\pi_m(v) \in \{0,1\}$ is $\ind{v \le g_m}$,
+        $\ind{v \in [\ell_m, u_m]}$ or $\ind{v = 0}$ according to its kind.
+        Pillar $p$ passes iff every gate of $p$ passes.
+  \item $\tau = 1/2$ is the anchor. Scores are reported on $[0,100]$ as
+        $100 \cdot S$.
+  \item $\ind{\varphi} \in \{0,1\}$ is the Iverson bracket.
+  \item $T$ denotes a t-norm: a commutative, associative binary operation on
+        $[0,1]$, nondecreasing in each argument, with $T(x,1) = x$.
+\end{itemize}
+
+%======================================================================
+\section{The previous scoring and its failure}
+
+Each pillar $p$ had a score map $\Phi_p$ that sent every \emph{scored} metric
+(gated or advisory) through a linear quality curve $q_m(v) = \max(0, 1 - v/c_m)$
+with a cap $c_m$ unrelated to $g_m$ (for example cyclomatic cap $40$ against an
+advisory reference of $15$; max-function-complexity cap $20$ against gate $10$),
+and reported $\min_m q_m$. The verdict, in contrast, used only gated metrics.
+Two defects follow.
+
+\paragraph{Score--verdict contradiction.} Because the minimum ranges over
+advisory metrics and the caps are not anchored to gates, a passing file can
+score arbitrarily low. On the leaderboard corpus:
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+pillar & files scored & pass with score $< 50$ \\
+\midrule
+SIMPLE (leaderboard) & 30{,}686 & 4{,}757 \\
+COMPOSABLE (fresh run) & 1{,}061 & 302 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{COMPOSABLE artifacts.} The instability $I = C_e/(C_a + C_e)$ was
+scored against a fixed band $[0.3, 0.7]$ (issue \#351):
+\begin{itemize}
+  \item files at $I = 0$ or $I = 1$, the two commonest values, scored $0\%$;
+  \item main-sequence distance $D = |A + I - 1|$ only contributed when the
+        abstractness $A > 0$, which held for $62$ of $1{,}061$ files;
+  \item $41\%$ of files have $C_a + C_e < 2$ and received a fabricated
+        $I = 0.5$;
+  \item with $n = C_a + C_e$, attainable values are $\{j/n\}$, so the in-band
+        rate is an artifact of the denominator: $31\%, 44\%, 16\%, 46\%$ for
+        $n = 2, 3, 4, 5$.
+\end{itemize}
+The leaderboard calibration report described ``an extremely binary
+distribution for modularity'' and used it to justify a COMPOSABLE score floor of
+$0.80$. That distribution is the band artifact above, not a property of the
+code.
+
+%======================================================================
+\section{Gate-anchored desirability}
+
+Following Derringer and Suich~\cite{derringer1980}, each gated metric is mapped
+to a desirability $d \in [0,1]$; we additionally anchor it so that
+$d = \tau$ exactly at the gate.
+
+\begin{definition}[Lower-is-better]
+For a gate $g > 0$,
+\[
+d_g(v) =
+\begin{cases}
+1 - \dfrac{v}{2g}, & 0 \le v \le g,\\[6pt]
+\dfrac{2g - v}{2g}, & g < v < 2g,\\[6pt]
+0, & v \ge 2g.
+\end{cases}
+\]
+This applies to max function complexity, $\mathrm{fan\_out}$ and max function
+divergence, each with $g = 10$.
+\end{definition}
+
+The two linear pieces coincide ($d = 1 - v/(2g)$ on $[0, 2g]$); we keep the
+split to make the anchor visible. The map is continuous and nonincreasing, with
+$d_g(0) = 1$, $d_g(g) = \tfrac12$ and $d_g(2g) = 0$.
+
+\begin{definition}[Band]
+For a band $[\ell, u] \subset (0,1)$ with ideal $c \in (\ell, u)$ on the domain
+$[0,1]$, let $d_{\ell,c,u}$ be the piecewise-linear function through the points
+$(0,0)$, $(\ell, \tfrac12)$, $(c, 1)$, $(u, \tfrac12)$, $(1, 0)$:
+\[
+d_{\ell,c,u}(v) =
+\begin{cases}
+\dfrac{v}{2\ell}, & 0 \le v \le \ell,\\[6pt]
+\dfrac12 + \dfrac{v - \ell}{2(c - \ell)}, & \ell < v \le c,\\[6pt]
+\dfrac12 + \dfrac{u - v}{2(u - c)}, & c < v \le u,\\[6pt]
+\dfrac{1 - v}{2(1 - u)}, & u < v \le 1.
+\end{cases}
+\]
+AST entropy uses $(\ell, c, u) = (0.2, 0.5, 0.8)$.
+\end{definition}
+
+\begin{definition}[Zero tolerance]
+For count metrics (dangerous calls, taint flows),
+$d_0(v) = 1$ if $v = 0$ and $d_0(v) = \tfrac12 e^{-v/3}$ if $v > 0$.
+\end{definition}
+
+\begin{definition}[Exemption clamp]
+If a gate is exempt for file $f$ (for example the entropy entrypoint
+exemption), its desirability is replaced by $\max(d, \tau)$, and its gate
+predicate is $1$.
+\end{definition}
+
+\begin{lemma}[Anchoring]\label{lem:anchor}
+For every gated metric and every reading $v$, $d(v) \ge \tau \iff \pi(v) = 1$.
+\end{lemma}
+
+\begin{proof}
+\emph{Lower-is-better.} On $[0,g]$, $d_g(v) = 1 - v/(2g) \ge 1 - g/(2g) = \tfrac12$.
+For $v \in (g, 2g)$, $d_g(v) = (2g - v)/(2g) < g/(2g) = \tfrac12$. For
+$v \ge 2g$, $d_g(v) = 0 < \tfrac12$. Hence $d_g(v) \ge \tfrac12 \iff v \le g$.
+
+\emph{Band.} On $[0,\ell)$, $d = v/(2\ell) < \tfrac12$; at $v = \ell$, $d = \tfrac12$.
+On $(\ell, c]$, $d = \tfrac12 + (v-\ell)/(2(c-\ell)) > \tfrac12$. On $(c, u]$,
+$d = \tfrac12 + (u - v)/(2(u-c)) \ge \tfrac12$ with equality at $v = u$. On
+$(u, 1]$, $d = (1-v)/(2(1-u)) < (1-u)/(2(1-u)) = \tfrac12$. Hence
+$d \ge \tfrac12 \iff v \in [\ell, u]$.
+
+\emph{Zero tolerance.} $d_0(0) = 1 \ge \tfrac12$, and for $v > 0$,
+$d_0(v) = \tfrac12 e^{-v/3} < \tfrac12$.
+
+\emph{Exemption.} The gate passes by definition and $\max(d, \tau) \ge \tau$.
+\end{proof}
+
+%======================================================================
+\section{Aggregation within a pillar}
+
+The gate score of pillar $p$ with gated metrics $m_1, \dots, m_r$ is
+\[
+G_p = \min_{i} d_{m_i}(v_{m_i}).
+\]
+
+\begin{corollary}\label{cor:gate}
+Pillar $p$ passes iff $G_p \ge \tau$.
+\end{corollary}
+
+\begin{proof}
+$\min_i d_i \ge \tau \iff \forall i,\ d_i \ge \tau \iff \forall i,\ \pi_i = 1$
+by Lemma~\ref{lem:anchor}.
+\end{proof}
+
+Why $\min$ rather than a product or a mean? The requirement is that the
+continuous aggregate can be read at a threshold exactly as the crisp
+conjunction is.
+
+\begin{proposition}[Uniqueness of the Gödel t-norm]\label{prop:min}
+Let $T$ be a t-norm. The following are equivalent:
+\begin{enumerate}
+  \item for all $\alpha, x, y \in [0,1]$:
+        $T(x,y) \ge \alpha \iff (x \ge \alpha \text{ and } y \ge \alpha)$;
+  \item $T = \min$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(2)$\Rightarrow$(1): $\min(x,y) \ge \alpha$ iff both arguments are $\ge \alpha$.
+
+(1)$\Rightarrow$(2): For any t-norm, monotonicity and the unit give
+$T(x,y) \le T(x,1) = x$ and, by commutativity, $T(x,y) \le y$; so
+$T(x,y) \le \min(x,y)$. Now apply (1) with $\alpha = \min(x,y)$: both
+$x \ge \alpha$ and $y \ge \alpha$ hold, so $T(x,y) \ge \min(x,y)$. Hence
+$T = \min$.
+\end{proof}
+
+\begin{remark}[A single threshold]
+If (1) is required only at the one level $\alpha = \tau$, the condition is
+weaker: since $T \le \min$, it is equivalent to $T(x,y) \ge \tau$ whenever
+$x, y \ge \tau$, which by monotonicity is equivalent to $T(\tau, \tau) = \tau$,
+i.e.\ $\tau$ is an idempotent of $T$. Ordinal sums with a summand boundary at
+$\tau$ satisfy it without being $\min$. We require (1) at every $\alpha$ because
+the score is also read at levels other than $\tau$ (for example when comparing
+two passing files, or reading the medal scores of Section~\ref{sec:lattice}),
+and $\min$ is the only t-norm all of whose elements are idempotent.
+\end{remark}
+
+\begin{example}[Common aggregators fail at $\alpha = \tau$]
+\leavevmode
+\begin{itemize}
+  \item Product: $x = y = 0.6$ both pass, but $xy = 0.36 < 0.5$.
+  \item Łukasiewicz $T_L(x,y) = \max(0, x + y - 1)$: $T_L(0.6, 0.6) = 0.2 < 0.5$.
+  \item Geometric mean $\sqrt{xy}$ (not a t-norm): $x = 0.9$, $y = 0.4$ gives
+        $0.6 \ge 0.5$ although the second gate fails. The arithmetic mean fails
+        the same way.
+\end{itemize}
+Product and Łukasiewicz are Archimedean, so $T(\tau,\tau) < \tau$ for every
+$\tau \in (0,1)$ and they fail at every threshold.
+\end{example}
+
+The Gödel t-norm is the conjunction of Gödel fuzzy logic~\cite{hajek1998};
+$\min$ as a ``pessimistic'' multi-criteria aggregator also appears in
+Yager's OWA family~\cite{yager1988} as its extreme case.
+
+%======================================================================
+\section{Codebase-relative advisory metrics}
+
+Advisory metrics never gate. Fixed caps for them imported an implicit global
+threshold that the calibration never justified. Instead we read each advisory
+metric as a percentile of the codebase it lives in, stabilized by a
+per-language prior. Percentile-based benchmarking of code metrics is standard
+practice~\cite{alves2010,alves2011,oliveira2014,foucault2014}; context matters
+across projects and languages~\cite{zhang2013,gil2016}.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+pillar & advisory metric & direction \\
+\midrule
+SIMPLE & \texttt{cfg.cyclomatic} & higher is worse \\
+SIMPLE & \texttt{cfg.nesting\_depth} & higher is worse \\
+SIMPLE & \texttt{cfg.essential} & higher is worse \\
+COMPOSABLE & \texttt{mdg.fan\_in} & higher is worse \\
+COMPOSABLE & \texttt{mdg.instability} (only if $C_a + C_e \ge 2$) & two-sided \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Main-sequence distance and the instability band are removed from scoring.
+
+\subsection{Mid-rank empirical CDF}
+
+\begin{definition}
+For a finite sample $x_1, \dots, x_n$ and $x \in \R$,
+\[
+F_n^{\mathrm{mid}}(x) = \frac{\#\{j : x_j < x\} + \tfrac12 \#\{j : x_j = x\}}{n}
+= \tfrac12\bigl(F_n(x^-) + F_n(x)\bigr),
+\]
+where $F_n$ is the right-continuous ECDF. (This is the mid-distribution
+function; compare the plotting-position conventions surveyed by Hyndman and
+Fan~\cite{hyndman1996}.)
+\end{definition}
+
+Ties are the norm: $46$--$88\%$ of files have zero divergence and $52$--$63\%$
+have zero fan-in or fan-out, depending on ecosystem. The right-continuous ECDF
+would assign every zero the percentile $p_0$; the left limit would assign $0$.
+The mid-rank assigns $p_0/2$, the expected percentile under random tie-breaking,
+and is symmetric: $F^{\mathrm{mid}}$ of a sample reflected about any point
+equals one minus the original.
+
+\subsection{Partial pooling}
+
+For a file with reading $x$ in a codebase whose readings of the same metric are
+$x_1, \dots, x_n$ (the file itself included), set
+\[
+\Ft(x) = w\,\Floc(x) + (1 - w)\,\Flang(x), \qquad w = \frac{n}{n + k},
+\]
+where $\Floc$ is the mid-rank ECDF of the codebase, $\Flang$ is the mid-rank
+CDF of a per-language prior table, and $k > 0$ is a per-metric constant.
+With no population ($n = 0$) we get $\Ft = \Flang$.
+
+\begin{proposition}[Dirichlet-process posterior mean]\label{prop:dp}
+Let $P \sim \mathrm{DP}(k, \Flang)$ be a Dirichlet process with concentration
+$k$ and base distribution $\Flang$~\cite{ferguson1973}, and let
+$x_1, \dots, x_n \mid P \stackrel{\text{iid}}{\sim} P$. Then for every $x$,
+\[
+\mathbb E\bigl[\tfrac12\bigl(P(-\infty, x) + P(-\infty, x]\bigr) \bigm| x_{1:n}\bigr]
+= \frac{n}{n+k}\,\Floc(x) + \frac{k}{n+k}\,\Flang(x),
+\]
+with $\Floc$ and $\Flang$ in their mid-rank forms.
+\end{proposition}
+
+\begin{proof}
+By conjugacy~\cite{ferguson1973}, $P \mid x_{1:n} \sim \mathrm{DP}\bigl(k + n,
+\bar G\bigr)$ with
+$\bar G = \frac{k}{k+n}\Flang + \frac{1}{k+n}\sum_{j} \delta_{x_j}$. For a
+Dirichlet process $\mathrm{DP}(c, H)$ and any measurable set $B$,
+$P(B) \sim \mathrm{Beta}(cH(B), c(1 - H(B)))$, so $\mathbb E[P(B)] = H(B)$.
+Taking $B = (-\infty, x]$ and $B = (-\infty, x)$,
+\[
+\mathbb E[P(-\infty, x] \mid x_{1:n}] = \tfrac{k}{k+n}\Flang(x) + \tfrac{n}{k+n} F_n(x),
+\quad
+\mathbb E[P(-\infty, x) \mid x_{1:n}] = \tfrac{k}{k+n}\Flang(x^-) + \tfrac{n}{k+n} F_n(x^-).
+\]
+Averaging the two and using linearity of expectation gives the claim, since
+$\tfrac12(F_n(x^-) + F_n(x)) = \Floc(x)$ and likewise for $\Flang$.
+\end{proof}
+
+So $\Ft$ is the Bayes estimate, under squared error, of the codebase's own
+mid-distribution function, with the language prior acting as $k$ pseudo-files.
+
+\subsection{\texorpdfstring{Choosing $k$}{Choosing k}: normal--normal shrinkage}
+
+The DP view says what $\Ft$ is but not how large $k$ should be. We calibrate
+$k$ by matching the weight a hierarchical location model would place on a
+codebase's own data. Let $y_{ij} = \log(1 + x_{ij})$ for file $j$ of package
+$i$ within one language, and
+\[
+y_{ij} = \theta_i + e_{ij}, \quad e_{ij} \sim N(0, \sigma_w^2), \qquad
+\theta_i \sim N(\mu, \sigma_b^2),
+\]
+independently. (The design notes write $\tau^2$ for $\sigma_b^2$; we avoid that
+symbol because $\tau$ is the anchor.)
+
+\begin{proposition}\label{prop:shrink}
+Given $n$ files of package $i$ with mean $\bar y_i$,
+\[
+\mathbb E[\theta_i \mid y_{i\cdot}] = w\,\bar y_i + (1-w)\,\mu,
+\qquad w = \frac{n}{n + k}, \qquad k = \frac{\sigma_w^2}{\sigma_b^2}.
+\]
+\end{proposition}
+
+\begin{proof}
+$\bar y_i \mid \theta_i \sim N(\theta_i, \sigma_w^2/n)$ is sufficient for
+$\theta_i$. The normal prior is conjugate, and the posterior mean is the
+precision-weighted average
+\[
+\frac{(n/\sigma_w^2)\,\bar y_i + (1/\sigma_b^2)\,\mu}{n/\sigma_w^2 + 1/\sigma_b^2}
+= \frac{n}{n + \sigma_w^2/\sigma_b^2}\,\bar y_i
++ \frac{\sigma_w^2/\sigma_b^2}{n + \sigma_w^2/\sigma_b^2}\,\mu. \qedhere
+\]
+\end{proof}
+
+This is the James--Stein / empirical-Bayes weight of Efron and
+Morris~\cite{efron1975}. Using the same $k$ as the DP concentration means the
+codebase ECDF receives the weight that a package's own mean would receive in
+the location model. This is a matching choice, not a theorem about CDFs; the
+next subsection shows it has the right form for CDF estimation as well.
+
+\paragraph{Method-of-moments estimator.} Let packages $i = 1, \dots, M$ have
+$n_i \ge 2$ files, means $\bar y_i$ and within-package sample variances $s_i^2$.
+Estimate
+\[
+\hat\sigma_w^2 = \frac{\sum_i (n_i - 1) s_i^2}{\sum_i (n_i - 1)}, \qquad
+\hat\sigma_b^2 = \max\Bigl(0,\; \widehat{\mathrm{Var}}(\bar y_i)
+- \frac{1}{M}\sum_i \frac{\hat\sigma_w^2}{n_i}\Bigr),
+\]
+where $\widehat{\mathrm{Var}}(\bar y_i)$ is the sample variance of the package
+means. The subtracted term is the noise correction: since
+$\mathrm{Var}(\bar y_i) = \sigma_b^2 + \sigma_w^2/n_i$, the raw spread of
+package means overstates between-package variance by the average sampling
+variance of a mean. (In the balanced case this coincides with the one-way
+random-effects ANOVA estimator $(\mathrm{MSB} - \mathrm{MSW})/n$.) Then
+$\hat k = \hat\sigma_w^2/\hat\sigma_b^2$, with $\hat k = \infty$ (prior only)
+if $\hat\sigma_b^2 = 0$.
+
+\begin{center}
+\begin{tabular}{lr@{\qquad}lr}
+\toprule
+metric & $\hat k$ & metric & $\hat k$ \\
+\midrule
+max function complexity & 3.7 & longest path & 3.9 \\
+cyclomatic & 3.8 & entropy & 4.6 \\
+nesting depth & 3.8 & divergence & 6.4 \\
+essential & 3.1 & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+With $k \approx 4$, a 10-file repository receives $w \approx 0.71$ and a 50-file
+repository $w \approx 0.93$.
+
+\subsection{Small-sample behavior}
+
+At a fixed $x$ with true codebase CDF value $p = F(x)$, the ECDF is unbiased with
+standard error $\sqrt{p(1-p)/n}$. At the flag level $p = 0.9$ and $n = 10$ this
+is $0.095$: an unpooled local percentile would wander across the flag boundary
+by chance. Treating $\Flang$ as fixed,
+\[
+\mathrm{Var}\bigl(\Ft(x)\bigr) = w^2 \frac{p(1-p)}{n}, \qquad
+\mathrm{Bias}\bigl(\Ft(x)\bigr) = (1 - w)\bigl(\Flang(x) - p\bigr).
+\]
+With $n = 10$, $k = 4$ the standard deviation drops to $0.068$. Write
+$\Delta = \Flang(x) - p$. Minimizing the mean squared error
+$w^2 p(1-p)/n + (1-w)^2 \Delta^2$ over $w$ gives
+\[
+w^\star = \frac{\Delta^2}{\Delta^2 + p(1-p)/n} = \frac{n}{n + p(1-p)/\Delta^2},
+\]
+the same $n/(n+k)$ form with $k^\star = p(1-p)/\Delta^2$: sampling noise over
+squared between-codebase discrepancy, the CDF analog of
+$\sigma_w^2/\sigma_b^2$. As $n \to \infty$, $w \to 1$ and $\Ft$ converges to the
+codebase's own distribution.
+
+\subsection{Quality, pillar advisory score, and flags}
+
+\begin{definition}
+For an advisory reading with pooled percentile $\Ft$,
+\[
+a = \begin{cases}
+1 - \Ft, & \text{higher is worse},\\
+1 - 2\,\bigl|\Ft - \tfrac12\bigr|, & \text{two-sided},
+\end{cases}
+\]
+and the pillar advisory score is the geometric mean
+$A_p = \bigl(\prod_{m} \max(a_m, \varepsilon)\bigr)^{1/|M_p|}$ over the
+applicable advisory metrics $M_p$ of $p$, with $A_p = 1$ if $M_p = \emptyset$ and
+$\varepsilon = 10^{-3}$.
+\end{definition}
+
+A reading is \emph{flagged} (surfaced as an advisory suggestion) when
+$\Ft \ge 0.9$ and the value exceeds the prior median, or, for two-sided metrics,
+when $|\Ft - \tfrac12| \ge 0.45$. The median guard prevents flagging a value
+that is high only because the codebase is unusually clean. Every reading also
+reports the global percentile $\Flang(x)$ beside $\Ft(x)$, so that a codebase
+that is uniformly atypical relative to the language remains visible: relative
+percentiles alone would call its median file typical.
+
+\begin{remark}[Ties at the best value]
+Under the mid-rank definition the best attainable reading (often $0$) with tie
+mass $p_0$ receives $a = 1 - p_0/2$, not $1$. A file therefore cannot reach
+$A = 1$ through a metric on which most of its codebase is also perfect. The
+effect is bounded by the band construction below and is visible in the
+reported percentiles.
+\end{remark}
+
+\paragraph{Where the population pass runs.} Project scans rescore
+advisories against the scanned files: the CLI command \texttt{topos evaluate -r}
+and the MCP tool \texttt{topos\_evaluate\_project}. Single-file calls have $n = 0$ and use the
+prior only. PR recap deliberately keeps prior-only scores so before/after
+deltas compare like with like.
+
+%======================================================================
+\section{Banded pillar score}
+
+\begin{definition}
+With $\wA = 1/3$, the pillar score is
+\[
+S(G, A) =
+\begin{cases}
+\tau + (G - \tau)\,A^{\wA}, & G \ge \tau,\\
+G\,A^{\wA}, & G < \tau,
+\end{cases}
+\qquad G \in [0,1],\ A \in [\varepsilon, 1].
+\]
+\end{definition}
+
+\begin{proposition}\label{prop:band}
+For all $G \in [0,1]$ and $A \in [\varepsilon, 1]$:
+\begin{enumerate}
+  \item \emph{Identity:} $S(G, 1) = G$.
+  \item \emph{No crossing:} $S(G, A) \ge \tau \iff G \ge \tau$. Hence, with
+        Corollary~\ref{cor:gate}, a pillar passes iff $100\,S \ge 50$.
+  \item \emph{Monotonicity:} $S$ is nondecreasing in $A$ for fixed $G$, and
+        nondecreasing in $G$ for fixed $A$ (strictly increasing, since
+        $A^{\wA} > 0$).
+  \item \emph{Bounded advisory influence:} $S \le G$; if $G \ge \tau$ then
+        $S \in [\tau + (G - \tau)\varepsilon^{\wA},\, G]$, and if $G < \tau$ then
+        $S \in [G \varepsilon^{\wA},\, G]$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Write $\lambda = A^{\wA} \in [\varepsilon^{\wA}, 1]$; $\lambda$ is
+nondecreasing in $A$ and $\lambda = 1$ iff $A = 1$.
+
+(1) Both branches reduce to $G$ when $\lambda = 1$.
+
+(2) If $G \ge \tau$, then $S = \tau + (G - \tau)\lambda \ge \tau$ because
+$G - \tau \ge 0$ and $\lambda > 0$. If $G < \tau$, then
+$S = G\lambda \le G < \tau$.
+
+(3) In $A$: on the upper branch $S$ is $\tau$ plus a nonnegative multiple of
+$\lambda$; on the lower branch it is a nonnegative multiple of $\lambda$.
+In $G$: each branch is affine in $G$ with slope $\lambda > 0$. At the junction,
+$\lim_{G \to \tau^-} S = \tau\lambda \le \tau = S(\tau, A)$, so the jump at
+$G = \tau$ is upward and $S$ is strictly increasing on all of $[0,1]$.
+
+(4) $\lambda \le 1$ gives $S \le G$ on both branches (upper:
+$\tau + (G-\tau)\lambda \le \tau + (G - \tau)$). The lower bounds follow from
+$\lambda \ge \varepsilon^{\wA}$.
+\end{proof}
+
+With $\varepsilon = 10^{-3}$ and $\wA = 1/3$, $\varepsilon^{\wA} = 0.1$: advisories
+can remove at most $90\%$ of a passing pillar's margin above $\tau$, and never
+the pass itself. When $A < 1$, $S$ is discontinuous at $G = \tau$; this is the
+intended veto. The construction is the veto-plus-concordance pattern of ELECTRE
+methods~\cite{roy1991}: gates hold a veto, advisories only rank within the side
+the veto chose.
+
+%======================================================================
+\section{The continuous lattice}\label{sec:lattice}
+
+Let $L = [0,1]$ with $x \wedge y = \min(x,y)$, $x \vee y = \max(x,y)$ and Gödel
+implication $x \to y = 1$ if $x \le y$, else $y$.
+
+\begin{proposition}
+$L^{\mathcal P} = [0,1]^4$ with componentwise operations is a Gödel algebra,
+i.e.\ a prelinear Heyting algebra.
+\end{proposition}
+
+\begin{proof}
+$L$ is a bounded chain. In any bounded chain, $z \le (x \to y) \iff
+z \wedge x \le y$: if $x \le y$ both sides hold for all $z$; if $x > y$, then
+$z \wedge x \le y$ iff $z \le y$ (because $\min(z,x) \le y < x$ forces $z \le y$,
+and conversely), and $x \to y = y$. So $L$ is a Heyting algebra, and it is
+prelinear: $(x \to y) \vee (y \to x) = 1$ since one of $x \le y$, $y \le x$
+holds. Heyting algebras are defined by equations (the residuation law can be
+stated equationally), and prelinearity is an equation, so both are preserved
+by direct products with componentwise operations: the residuation law holds in
+each coordinate, and $(s \to t) \vee (t \to s)$ is $1$ in every coordinate.
+Prelinear Heyting algebras are exactly Gödel algebras~\cite{hajek1998}.
+\end{proof}
+
+Write $\Omega = \{0,1\}^{\mathcal P}$ for the 16-element verdict lattice and
+define the $\tau$-cut $c : [0,1]^4 \to \Omega$ by $c(s)_k = \ind{s_k \ge \tau}$.
+By Proposition~\ref{prop:band}, $c(S) = (p_k)_k$ is exactly the verdict vector.
+
+\begin{proposition}
+$c$ is a bounded-lattice homomorphism: $c(s \wedge t) = c(s) \wedge c(t)$,
+$c(s \vee t) = c(s) \vee c(t)$, $c(\mathbf 0) = \mathbf 0$, $c(\mathbf 1) = \mathbf 1$.
+\end{proposition}
+
+\begin{proof}
+Coordinatewise, $\ind{\min(x,y) \ge \tau} = \ind{x \ge \tau} \wedge
+\ind{y \ge \tau}$ and $\ind{\max(x,y) \ge \tau} = \ind{x \ge \tau} \vee
+\ind{y \ge \tau}$; the constants are immediate since $0 < \tau \le 1$.
+\end{proof}
+
+\begin{proposition}
+$c$ does not preserve implication or negation.
+\end{proposition}
+
+\begin{proof}
+Take one coordinate with $0 < y < x < \tau$. Then $x \to y = y < \tau$, so
+$c(x \to y) = 0$, whereas $c(x) \to c(y) = 0 \to 0 = 1$. For negation
+$\neg x = x \to 0$: if $0 < x < \tau$ then $\neg x = 0$ and $c(\neg x) = 0$, but
+$\neg c(x) = \neg 0 = 1$.
+\end{proof}
+
+Consequently, implication and negation are evaluated on the crisp generators
+$p_k$, never on the continuous scores.
+
+\paragraph{Medal scores.} Any verdict defined by a lattice polynomial in the
+$p_k$ (meets and joins only) has a continuous score given by the same
+polynomial in the $S_k$, and the cut of that score is the verdict. For a set of
+pillars $M$, the score of ``all of $M$'' is $\min_{k \in M} S_k$. The medal tiers
+count pillars: ``at least $j$ of $4$'' is $\bigvee_{|M| = j} \bigwedge_{k \in M}
+p_k$, whose continuous score is the $j$-th largest $S_k$. So the PLATINUM score
+is $\min_k S_k$, and a file is GOLD or better iff its third-largest pillar score
+is at least $50$.
+
+%======================================================================
+\section{Empirical evaluation}
+
+\paragraph{Contradictions.} A prototype of the scheme was run over the
+leaderboard corpus.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+check & files & before & after \\
+\midrule
+SIMPLE pass with score $< 50$ & 30{,}686 & 4{,}757 & 8 \\
+COMPOSABLE pass with score $< 50$ & 1{,}061 & 302 & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The eight remaining SIMPLE cases are exemption cases. With the exemption
+clamp, Lemma~\ref{lem:anchor} and Proposition~\ref{prop:band} rule out any
+contradiction in the implementation.
+
+\paragraph{Advisory shift.} On SIMPLE, $100(S - G)$ has quantiles
+$p_{05} = -13.6$, $p_{50} = 0.0$, $p_{95} = +5.1$ points.
+
+\paragraph{Where variance lives.} A variance decomposition of $\log(1 + x)$
+over 165 packages in 6 languages:
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+level & share of variance \\
+\midrule
+language & 4--10\% \\
+project within language & 7--11\% \\
+file within project & 81--90\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+After removing language, project size correlates with project means between
+$-0.03$ and $-0.29$, so no size stratum is used. Language effects are small in
+variance share but material in the tail: the ecosystem $p_{90}$ of max function
+complexity is 22 (C++), 19 (PyPI), 8 (Cargo) and 5 (npm). Hence per-language
+priors, with project-level pooling beyond that.
+
+\paragraph{Generator overlap.} $95\%$ of NAVIGABLE failures ($2{,}266$ of
+$2{,}376$) also fail SIMPLE's max-function-complexity gate.
+
+\paragraph{Corpus caveats.} The v0.5.0 leaderboard was scored with NAVIGABLE
+gate $6$ (now $10$) and contains no COMPOSABLE metrics for C++, Go, or the MCP
+cohort. COMPOSABLE advisory priors are therefore provisional until the
+leaderboard is rerun.
+
+%======================================================================
+\section{Calibration procedure}
+
+\begin{center}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.32\linewidth}>{\raggedright\arraybackslash}p{0.6\linewidth}}
+\toprule
+quantity & status \\
+\midrule
+gate thresholds $g_m$ & unchanged; re-derived only when a metric definition changes \\
+anchor $\tau = 1/2$, zero point $2g$, $e^{-v/3}$ & fixed by construction \\
+$\wA = 1/3$, $\varepsilon = 10^{-3}$ & fixed design constants \\
+$\Flang$ tables and $\hat k$ & derived once per leaderboard run by
+  \texttt{scripts/derive\_scoring\_priors.py} into
+  \texttt{advisory\_priors.json}; verified with \texttt{--check} \\
+normalized score floors & retired (pass $\iff$ score $\ge 50$) \\
+advisory caps & retired \\
+medals & unchanged \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Optionally, a one-time bootstrap confidence interval per gate percentile
+quantifies how stable the gate's corpus percentile is~\cite{foucault2014}.
+Recomputation is triggered only by a metric-definition change or a leaderboard
+rerun, not by a schedule.
+
+%======================================================================
+\section{Limitations and open questions}
+
+\begin{itemize}
+  \item \emph{$\wA$ is a judgment call.} It sets how far advisories may move a
+        score within its band. Proposition~\ref{prop:band} bounds the effect but
+        does not choose the value.
+  \item \emph{NAVIGABLE and SIMPLE overlap.} With $95\%$ of NAVIGABLE failures
+        also failing a SIMPLE gate, the generators are not empirically
+        independent on this corpus. Whether they should remain separate
+        generators is out of scope here.
+  \item \emph{Single-file calls are prior-only.} Without a population,
+        advisories are read against the language prior, so a file's score can
+        differ between a single-file call and a project scan. PR recap uses the
+        prior for comparability.
+  \item \emph{Percentiles measure typicality, not defectiveness.} Being in the
+        tail of top open-source code is evidence of atypicality; thresholds
+        derived from distributions do not by themselves predict
+        faults~\cite{lavazza2016,elemam2001}. Advisory messages say ``atypical
+        vs.\ top OSS'', never ``buggy''. Software metric distributions are
+        heavy-tailed~\cite{concas2007,ferreira2012}, which is why we work with
+        ranks and $\log(1 + x)$ rather than raw means.
+  \item \emph{Aggregation choices elsewhere.} Quality-model aggregation remains
+        an active area~\cite{mordal2013,wagner2015}; our only claim is that the
+        gate layer must use $\min$ to agree with the verdict.
+  \item \emph{Prior corpus.} The prior table inherits the leaderboard's
+        selection (popular open-source packages) and its version mix.
+        Threshold derivation from benchmarks of this kind is discussed
+        in~\cite{alves2010,ernst2018,mori2018}.
+\end{itemize}
+
+%======================================================================
+\begin{thebibliography}{99}
+
+\bibitem{alves2010}
+T.~L. Alves, C.~Ypma, and J.~Visser.
+\newblock Deriving metric thresholds from benchmark data.
+\newblock In \emph{Proc.\ ICSM}, 2010.
+\newblock \href{https://doi.org/10.1109/ICSM.2010.5609747}{doi:10.1109/ICSM.2010.5609747}.
+
+\bibitem{alves2011}
+T.~L. Alves, J.~P. Correia, and J.~Visser.
+\newblock Benchmark-based aggregation of metrics to ratings.
+\newblock In \emph{Proc.\ IWSM-Mensura}, 2011.
+\newblock \href{https://doi.org/10.1109/IWSM-MENSURA.2011.15}{doi:10.1109/IWSM-MENSURA.2011.15}.
+
+\bibitem{concas2007}
+G.~Concas, M.~Marchesi, S.~Pinna, and N.~Serra.
+\newblock Power-laws in a large object-oriented software system.
+\newblock \emph{IEEE Trans.\ Softw.\ Eng.}, 2007.
+\newblock \href{https://doi.org/10.1109/TSE.2007.1019}{doi:10.1109/TSE.2007.1019}.
+
+\bibitem{derringer1980}
+G.~Derringer and R.~Suich.
+\newblock Simultaneous optimization of several response variables.
+\newblock \emph{J.\ Quality Technology}, 12(4):214--219, 1980.
+\newblock \href{https://doi.org/10.1080/00224065.1980.11980968}{doi:10.1080/00224065.1980.11980968}.
+
+\bibitem{efron1975}
+B.~Efron and C.~Morris.
+\newblock Data analysis using {S}tein's estimator and its generalizations.
+\newblock \emph{J.\ Amer.\ Statist.\ Assoc.}, 70(350):311--319, 1975.
+
+\bibitem{elemam2001}
+K.~El~Emam, S.~Benlarbi, N.~Goel, and S.~N. Rai.
+\newblock The confounding effect of class size on the validity of
+  object-oriented metrics.
+\newblock \emph{IEEE Trans.\ Softw.\ Eng.}, 2001.
+\newblock \href{https://doi.org/10.1109/32.935855}{doi:10.1109/32.935855}.
+
+\bibitem{ernst2018}
+N.~A. Ernst.
+\newblock Bayesian hierarchical modelling for tailoring metric thresholds.
+\newblock In \emph{Proc.\ MSR}, 2018.
+\newblock \href{https://doi.org/10.1145/3196398.3196443}{doi:10.1145/3196398.3196443};
+  arXiv:1804.02443.
+
+\bibitem{ferguson1973}
+T.~S. Ferguson.
+\newblock A {B}ayesian analysis of some nonparametric problems.
+\newblock \emph{Ann.\ Statist.}, 1(2):209--230, 1973.
+
+\bibitem{ferreira2012}
+K.~A.~M. Ferreira, M.~A.~S. Bigonha, R.~S. Bigonha, L.~F.~O. Mendes, and
+  H.~C. Almeida.
+\newblock Identifying thresholds for object-oriented software metrics.
+\newblock \emph{J.\ Syst.\ Softw.}, 2012.
+\newblock \href{https://doi.org/10.1016/j.jss.2011.05.044}{doi:10.1016/j.jss.2011.05.044}.
+
+\bibitem{foucault2014}
+M.~Foucault, M.~Palyart, J.-R. Falleri, and X.~Blanc.
+\newblock Computing contextual metric thresholds.
+\newblock In \emph{Proc.\ ACM SAC}, 2014.
+\newblock \href{https://doi.org/10.1145/2554850.2554997}{doi:10.1145/2554850.2554997}.
+
+\bibitem{gil2016}
+J.~Gil and G.~Lalouche.
+\newblock When do software complexity metrics mean nothing?
+\newblock \emph{J.\ Object Technology}, 15(1), 2016.
+\newblock \href{https://doi.org/10.5381/jot.2016.15.1.a2}{doi:10.5381/jot.2016.15.1.a2}.
+
+\bibitem{hajek1998}
+P.~H{\'a}jek.
+\newblock \emph{Metamathematics of Fuzzy Logic}.
+\newblock Kluwer, 1998.
+\newblock \href{https://doi.org/10.1007/978-94-011-5300-3}{doi:10.1007/978-94-011-5300-3}.
+
+\bibitem{hyndman1996}
+R.~J. Hyndman and Y.~Fan.
+\newblock Sample quantiles in statistical packages.
+\newblock \emph{Amer.\ Statist.}, 50(4):361--365, 1996.
+
+\bibitem{iglewicz1993}
+B.~Iglewicz and D.~C. Hoaglin.
+\newblock \emph{How to Detect and Handle Outliers}.
+\newblock ASQC Quality Press, 1993.
+\newblock (Robust $z$-score; as summarized in the NIST/SEMATECH e-Handbook.)
+
+\bibitem{lavazza2016}
+L.~Lavazza and S.~Morasca.
+\newblock An empirical evaluation of distribution-based thresholds for
+  internal software measures.
+\newblock In \emph{Proc.\ PROMISE}, 2016.
+\newblock \href{https://doi.org/10.1145/2972958.2972965}{doi:10.1145/2972958.2972965}.
+
+\bibitem{mordal2013}
+K.~Mordal, N.~Anquetil, J.~Laval, A.~Serebrenik, B.~Vasilescu, and
+  S.~Ducasse.
+\newblock Software quality metrics aggregation in industry.
+\newblock \emph{J.\ Softw.: Evolution and Process}, 2013.
+\newblock \href{https://doi.org/10.1002/smr.1558}{doi:10.1002/smr.1558}.
+
+\bibitem{mori2018}
+A.~Mori, G.~Vale, M.~Viggiato, J.~Oliveira, E.~Figueiredo, E.~Cirilo,
+  P.~Jamshidi, and C.~Kastner.
+\newblock Evaluating domain-specific metric thresholds: an empirical study.
+\newblock In \emph{Proc.\ TechDebt}, 2018.
+\newblock \href{https://doi.org/10.1145/3194164.3194173}{doi:10.1145/3194164.3194173}.
+
+\bibitem{oliveira2014}
+P.~Oliveira, M.~T. Valente, and F.~P. Lima.
+\newblock Extracting relative thresholds for source code metrics.
+\newblock In \emph{Proc.\ CSMR-WCRE}, 2014.
+\newblock \href{https://doi.org/10.1109/CSMR-WCRE.2014.6747177}{doi:10.1109/CSMR-WCRE.2014.6747177}.
+
+\bibitem{roy1991}
+B.~Roy.
+\newblock The outranking approach and the foundations of {ELECTRE} methods.
+\newblock \emph{Theory and Decision}, 31:49--73, 1991.
+\newblock \href{https://doi.org/10.1007/BF00134132}{doi:10.1007/BF00134132}.
+
+\bibitem{wagner2015}
+S.~Wagner, A.~Goeb, L.~Heinemann, M.~Kl{\"a}s, C.~Lampasona, K.~Lochmann,
+  A.~Mayr, R.~Pl{\"o}sch, A.~Seidl, J.~Streit, and A.~Trendowicz.
+\newblock Operationalised product quality models and assessment: The
+  {Quamoco} approach.
+\newblock \emph{Inf.\ Softw.\ Technol.}, 2015.
+\newblock \href{https://doi.org/10.1016/j.infsof.2015.02.009}{doi:10.1016/j.infsof.2015.02.009}.
+
+\bibitem{yager1988}
+R.~R. Yager.
+\newblock On ordered weighted averaging aggregation operators in multicriteria
+  decisionmaking.
+\newblock \emph{IEEE Trans.\ Syst., Man, Cybern.}, 18(1):183--190, 1988.
+\newblock \href{https://doi.org/10.1109/21.87068}{doi:10.1109/21.87068}.
+
+\bibitem{zhang2013}
+F.~Zhang, A.~Mockus, Y.~Zou, F.~Khomh, and A.~E. Hassan.
+\newblock How does context affect the distribution of software maintainability
+  metrics?
+\newblock In \emph{Proc.\ ICSM}, 2013.
+\newblock \href{https://doi.org/10.1109/ICSM.2013.46}{doi:10.1109/ICSM.2013.46}.
+
+\end{thebibliography}
+
+\end{document}

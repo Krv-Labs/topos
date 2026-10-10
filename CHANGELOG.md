@@ -9,6 +9,45 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- `advisories` on every evaluation result: per advisory metric, `value`,
+  `relative_percentile` (against the scanned codebase, shrunk toward a
+  per-language prior), `global_percentile` (against the language prior),
+  `local_weight`, `quality`, and `flagged`. `gate_scores` carries each pillar's
+  gate-only score and `language` names the prior used.
+- `scripts/derive_scoring_priors.py` derives the per-language advisory priors
+  and shrinkage constants from leaderboard JSONL into
+  `topos/engine/src/evaluation/advisory_priors.json`; `--check` verifies the
+  committed table.
+
+### Changed
+
+- Pillar scores are gate-anchored: 50 sits exactly at the gate, so a pillar
+  passes if and only if its score is at least 50. Gates combine with `min`;
+  advisory metrics move a score only within the half its gates chose. Verdicts
+  and medals are unchanged. Scores move, most passing files upward: on the
+  leaderboard corpus, passing-but-below-50 files drop from 4,757 to 8 (SIMPLE)
+  and from 302 to 0 (COMPOSABLE). See
+  `docs/decisions/gate-anchored-scoring.md`.
+- Advisory metrics (`cfg.cyclomatic`, `cfg.nesting_depth`, `cfg.essential`,
+  `mdg.fan_in`, `mdg.instability`) are read relative to the codebase instead of
+  against fixed caps. Project scans (`topos evaluate -r`, `topos_evaluate_project`)
+  use the scanned files; single-file calls and PR recap use the language prior.
+- Normalized score floors and advisory caps are retired.
+- The leaderboard needs a one-time rerun to refresh the priors (stale
+  NAVIGABLE gate, no COMPOSABLE readings for C++, Go, or MCP); see
+  `docs/calibration/leaderboard-rerun.md`.
+
+### Fixed
+
+- COMPOSABLE no longer scores files at instability 0 or 1 as 0%. The fixed
+  `[0.3, 0.7]` band is gone; instability is a two-sided relative advisory,
+  skipped when `Ca + Ce < 2`, and main-sequence distance is diagnostic only
+  (#351).
+- A pillar can no longer pass with a score below 50 (the score/verdict
+  contradiction in #349; its GOLD-tier cyclomatic question remains open).
+
 ## [0.8.0] - 2026-10-09
 
 ### Added

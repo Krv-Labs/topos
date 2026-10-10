@@ -64,6 +64,8 @@ impl Side {
     ) -> Side {
         let language = detect_language(Path::new(path));
         let mut morphism = ProgramMorphism::with_path(source, language, path);
+        // Deliberately no `rescore_population`: prior-only advisories keep
+        // before/after scores comparable across the two trees.
         let mut result =
             classify_with_representations(&CharacteristicMorphism, &mut morphism, graph, priority);
         if !allow.is_empty() {

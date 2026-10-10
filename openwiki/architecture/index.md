@@ -1,3 +1,3 @@
 # Files
 
-- [Architecture Overview](overview.md) - Architecture overview of the Topos workspace, crate structure, categorical model representations, control flow, and diagnostic pipeline.
+- [Architecture Overview](overview.md) - Overview of workspace architecture, crate boundaries, program graph representations, evaluation engine pipelines, and diagnostic transformation.

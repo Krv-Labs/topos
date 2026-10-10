@@ -26,7 +26,7 @@ use crate::schemas::{
 
 /// `RefactorTarget::severity` for a metric whose failure actually costs its
 /// pillar's `achieved`; see `crate::refactor_targets::gate_severity`, which
-/// derives it from `GateSpec::gates_achieved`.
+/// derives it from membership in `GATE_SPECS`.
 const GATING_SEVERITY: &str = "fix";
 
 /// The first target whose metric actually gates a pillar.

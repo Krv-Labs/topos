@@ -1108,8 +1108,8 @@ pub struct ProjectEvaluationResult {
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
     pub worst_file_verdict: Option<LatticeElement>,
-    /// Files failing at least one gating gate (`GATE_SPECS` with
-    /// `gates_achieved: true`), excluding structural leaf composable zeros.
+    /// Files failing at least one gate (`GATE_SPECS`), excluding
+    /// structural leaf composable zeros.
     /// Page-global — unaffected by `offset`/`limit`. Prefer this over
     /// `worst_files` for fix order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1117,7 +1117,7 @@ pub struct ProjectEvaluationResult {
     /// **Deprecated** — always empty, kept for one release for wire
     /// compatibility. This bucket held leaf modules at `mdg.instability =
     /// 0.0` so their COMPOSABLE failures stayed out of `hard_fails`.
-    /// `mdg.instability` is now advisory (`gates_achieved: false`) and
+    /// `mdg.instability` is now advisory (not a registered gate) and
     /// cannot produce a hard fail, so there is nothing left to suppress.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub leaf_composable_zeros: Vec<WorstFileEntry>,

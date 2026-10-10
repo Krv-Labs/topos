@@ -1323,7 +1323,7 @@ mod tests {
 
     #[test]
     fn every_gating_metric_has_advice() {
-        for spec in GATE_SPECS.iter().filter(|spec| spec.gates_achieved) {
+        for spec in GATE_SPECS {
             assert!(advice_for(spec.metric).is_some(), "{}", spec.metric);
         }
     }

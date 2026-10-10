@@ -22,8 +22,12 @@
 //! 2. Groups them by generator (each representation declares its
 //!    `dimension()` ∈ [`Generator::as_str`] values).
 //! 3. Runs the matching policy translator `Φᵢ` on the collected metrics
-//!    (`simple` → `Φ_SIMPLE`, etc.).
-//! 4. Combines the Boolean truth values via
+//!    (`simple` → `Φ_SIMPLE`, etc.), yielding each pillar's verdict and
+//!    gate-anchored gate score `G`.
+//! 4. Reads the advisory metrics against the language prior
+//!    ([`crate::evaluation::advisory::assess`]) and sets each pillar score
+//!    to `band_score(G, A)`, which never crosses the verdict's side of `TAU`.
+//! 5. Combines the Boolean truth values via
 //!    [`crate::core::omega::verdict_from_generators`] into the final `Ω`
 //!    element.
 //!
@@ -50,10 +54,11 @@ use std::fmt;
 
 use crate::core::morphism::ProgramMorphism;
 use crate::core::omega::{verdict_from_generators, EvaluationValue, Generator};
-use crate::evaluation::advisory::AdvisoryReading;
+use crate::evaluation::advisory::{self, AdvisoryReading};
 use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
 use crate::evaluation::policies::composable::score_coupling;
+use crate::evaluation::policies::desirability::band_score;
 use crate::evaluation::policies::navigable::score_navigable;
 use crate::evaluation::policies::secure::score_secure;
 use crate::evaluation::policies::simple::score_simple;
@@ -68,7 +73,8 @@ pub struct ClassificationResult {
     /// Per-generator value in `Ω`: the singleton generator
     /// (SIMPLE/COMPOSABLE/SECURE/NAVIGABLE) when satisfied, SLOP otherwise.
     pub dimensions: BTreeMap<String, EvaluationValue>,
-    /// Per-generator normalized quality score in `[0.0, 1.0]`.
+    /// Per-generator pillar score `S = band_score(G, A)` in `[0.0, 1.0]`;
+    /// `S ≥ TAU` ⇔ the generator is satisfied.
     pub scores: BTreeMap<String, f64>,
     /// Overall `Ω` element — the join of the satisfied generators.
     pub lattice_element: EvaluationValue,
@@ -81,9 +87,9 @@ pub struct ClassificationResult {
     /// Whether the source is an import/export-only entrypoint module
     /// (drives gate exemptions; see [`crate::evaluation::policies::gates`]).
     pub is_entrypoint_module: bool,
-    /// Whether the source is a declarations-only "stable leaf" module
-    /// (drives the COMPOSABLE Zone-of-Pain exemption; see
-    /// [`crate::evaluation::policies::gates`]).
+    /// Whether the source is a declarations-only "stable leaf" module.
+    /// Reported for consumers; it no longer drives a gate exemption (the
+    /// main-sequence distance gate it carved out of is gone).
     pub is_stable_leaf_module: bool,
     /// Source language (UAST `lang`), keying the advisory prior table.
     pub language: String,
@@ -215,6 +221,9 @@ impl CharacteristicMorphism {
         raw_metrics.extend(secure_raw.clone());
         raw_metrics.extend(navigable_raw.clone());
 
+        let language = ast.uast_root.lang.clone();
+        let advisories = advisory::assess(&language, &raw_metrics);
+
         let mut dimensions = BTreeMap::new();
         let mut scores = BTreeMap::new();
         let mut interpretation = BTreeMap::new();
@@ -226,18 +235,19 @@ impl CharacteristicMorphism {
                 &mut scores,
                 &mut gate_scores,
                 &mut interpretation,
+                &advisories,
                 "simple",
                 EvaluationValue::Simple,
                 decision,
             );
         }
-        if let Some(decision) = score_composable_dim(&composable_raw, is_entrypoint, is_stable_leaf)
-        {
+        if let Some(decision) = score_composable_dim(&composable_raw) {
             record(
                 &mut dimensions,
                 &mut scores,
                 &mut gate_scores,
                 &mut interpretation,
+                &advisories,
                 "composable",
                 EvaluationValue::Composable,
                 decision,
@@ -249,6 +259,7 @@ impl CharacteristicMorphism {
                 &mut scores,
                 &mut gate_scores,
                 &mut interpretation,
+                &advisories,
                 "secure",
                 EvaluationValue::Secure,
                 decision,
@@ -260,6 +271,7 @@ impl CharacteristicMorphism {
                 &mut scores,
                 &mut gate_scores,
                 &mut interpretation,
+                &advisories,
                 "navigable",
                 EvaluationValue::Navigable,
                 decision,
@@ -272,6 +284,13 @@ impl CharacteristicMorphism {
             .collect();
         let lattice_element = verdict_from_generators(&satisfied);
 
+        for (metric, reading) in &advisories {
+            let line = advisory::interpret(metric, reading);
+            if !line.is_empty() {
+                interpretation.insert(metric.clone(), line);
+            }
+        }
+
         ClassificationResult {
             is_parseable: true,
             dimensions,
@@ -282,9 +301,9 @@ impl CharacteristicMorphism {
             interpretation,
             is_entrypoint_module: is_entrypoint,
             is_stable_leaf_module: is_stable_leaf,
-            language: ast.uast_root.lang.clone(),
+            language,
             gate_scores,
-            advisories: BTreeMap::new(),
+            advisories,
         }
     }
 
@@ -336,18 +355,25 @@ impl CharacteristicMorphism {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record(
     dimensions: &mut BTreeMap<String, EvaluationValue>,
     scores: &mut BTreeMap<String, f64>,
     gate_scores: &mut BTreeMap<String, f64>,
     interpretation: &mut BTreeMap<String, String>,
+    advisories: &BTreeMap<String, AdvisoryReading>,
     dim: &str,
     generator: EvaluationValue,
     decision: ScoredDecision,
 ) {
-    // SKELETON: placeholder until Φᵢ return a gate-anchored G.
-    gate_scores.insert(dim.to_string(), decision.score);
-    scores.insert(dim.to_string(), decision.score);
+    gate_scores.insert(dim.to_string(), decision.gate_score);
+    scores.insert(
+        dim.to_string(),
+        band_score(
+            decision.gate_score,
+            advisory::pillar_advisory_score(dim, advisories),
+        ),
+    );
     interpretation.extend(decision.interpretation);
     dimensions.insert(
         dim.to_string(),
@@ -371,7 +397,6 @@ fn score_simple_dim(
         return None;
     }
     Some(score_simple(
-        raw.get("cfg.cyclomatic").copied(),
         raw.get("ast.entropy").copied(),
         raw.get("ast.max_function_complexity").copied(),
         is_entrypoint_module,
@@ -379,26 +404,16 @@ fn score_simple_dim(
     ))
 }
 
-fn score_composable_dim(
-    raw: &HashMap<String, f64>,
-    is_entrypoint_module: bool,
-    is_stable_leaf_module: bool,
-) -> Option<ScoredDecision> {
+/// COMPOSABLE is reported whenever an MDG supplied any coupling reading,
+/// though only `mdg.fan_out` gates it (the others are advisory).
+fn score_composable_dim(raw: &HashMap<String, f64>) -> Option<ScoredDecision> {
     if !raw.contains_key("mdg.instability")
         && !raw.contains_key("mdg.fan_in")
         && !raw.contains_key("mdg.fan_out")
     {
         return None;
     }
-    Some(score_coupling(
-        raw.get("mdg.instability").copied(),
-        raw.get("mdg.fan_in").copied(),
-        raw.get("mdg.fan_out").copied(),
-        raw.get("mdg.abstractness").copied(),
-        raw.get("mdg.coupling").copied(),
-        is_entrypoint_module,
-        is_stable_leaf_module,
-    ))
+    Some(score_coupling(raw.get("mdg.fan_out").copied()))
 }
 
 fn score_secure_dim(raw: &HashMap<String, f64>) -> Option<ScoredDecision> {
@@ -447,6 +462,78 @@ mod tests {
         let score = result.scores.get("simple").copied().unwrap_or(0.0);
         assert!(score > 0.5, "expected SIMPLE score > 0.5, got {score}");
         assert!((0.0..=1.0).contains(&result.scores["simple"]));
+    }
+
+    /// Fixed-metric representation for driving a dimension directly.
+    struct Fixed(&'static str, Vec<(&'static str, f64)>);
+
+    impl Representation for Fixed {
+        fn name(&self) -> &str {
+            "fixed"
+        }
+        fn dimension(&self) -> &str {
+            self.0
+        }
+        fn metrics(&self) -> HashMap<String, f64> {
+            self.1.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+        }
+    }
+
+    /// Regression: the `classify.rs` shape. Under the old min-of-qualities
+    /// score, `I = 0.0` sat at the bottom of the fixed `[0.3, 0.7]` tent and
+    /// zeroed COMPOSABLE even though the verdict passed. Now the score is
+    /// `d(fan_out = 8)` with gate 10: `1 − 0.5·0.8 = 0.6`.
+    #[test]
+    fn stable_concrete_module_scores_from_its_gate() {
+        let mdg = Fixed(
+            "composable",
+            vec![
+                ("mdg.instability", 0.0),
+                ("mdg.abstractness", 0.0),
+                ("mdg.fan_out", 8.0),
+                ("mdg.fan_in", 3.0),
+                ("mdg.coupling", 3.0),
+            ],
+        );
+        let morphism = ProgramMorphism::new("def f(x):\n    return x\n", "python");
+        let result =
+            CharacteristicMorphism.classify_detailed(&morphism, &[&mdg], Priority::default());
+        assert_eq!(
+            result.dimensions.get("composable"),
+            Some(&EvaluationValue::Composable)
+        );
+        assert!((result.gate_scores["composable"] - 0.6).abs() < 1e-12);
+        assert!((result.scores["composable"] - 0.6).abs() < 1e-12);
+    }
+
+    /// Every recorded pillar: verdict ⇔ `G ≥ TAU` ⇔ `S ≥ TAU`.
+    #[test]
+    fn scores_agree_with_verdicts() {
+        use crate::evaluation::policies::desirability::TAU;
+        let sources = [
+            "def f(x):\n    return x\n",
+            "x = 1",
+            "def g(a, b):\n    if a:\n        if b:\n            return 1\n    return eval(a)\n",
+        ];
+        for fan_out in [0.0, 10.0, 11.0, 25.0] {
+            let mdg = Fixed(
+                "composable",
+                vec![("mdg.fan_out", fan_out), ("mdg.instability", 1.0)],
+            );
+            for source in sources {
+                let morphism = ProgramMorphism::new(source, "python");
+                let result = CharacteristicMorphism.classify_detailed(
+                    &morphism,
+                    &[&mdg],
+                    Priority::default(),
+                );
+                for (dim, value) in &result.dimensions {
+                    let achieved = *value != EvaluationValue::Slop;
+                    assert_eq!(achieved, result.gate_scores[dim] >= TAU, "{dim} {source}");
+                    assert_eq!(achieved, result.scores[dim] >= TAU, "{dim} {source}");
+                }
+            }
+        }
     }
 
     #[test]

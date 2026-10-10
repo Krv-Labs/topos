@@ -438,7 +438,7 @@ fn cluster_mark(cluster: &Cluster, kids: &[&Scored]) -> (ClusterMark, Vec<String
 pub(super) fn secure_findings(result: &ClassificationResult) -> usize {
     GATE_SPECS
         .iter()
-        .filter(|spec| spec.pillar == "secure" && spec.gates_achieved)
+        .filter(|spec| spec.pillar == "secure")
         .filter_map(|spec| raw(result, spec.metric))
         .sum()
 }

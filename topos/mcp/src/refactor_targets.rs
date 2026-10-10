@@ -8,10 +8,11 @@
 //! suffix-matched table the suggestion engine renders as prose).
 //!
 //! Ranking honors the same distinction the gate table makes: a metric
-//! whose failure cannot cost its pillar's `achieved` (`gates_achieved:
-//! false`) is labeled `"improve"` and sorted behind every real gate
-//! failure, however large its excess. Agents route off the first target,
-//! so an advisory metric leading the list is a wrong turn.
+//! with no registered gate (an advisory metric such as the whole-file
+//! `cfg.cyclomatic` location) cannot cost its pillar's `achieved`, so it
+//! is labeled `"improve"` and sorted behind every real gate failure,
+//! however large its excess. Agents route off the first target, so an
+//! advisory metric leading the list is a wrong turn.
 //!
 //! That ordering yields to one thing only: an explicit
 //! `preferences.ranking`, which is a caller instruction rather than a
@@ -23,7 +24,6 @@ use std::collections::{BTreeMap, HashMap};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
-use topos_engine::evaluation::policies::composable::coupling_gate_input;
 use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::security_guidance::remediation_for;
 
@@ -105,31 +105,23 @@ fn gate_pillar(metric: &str) -> &'static str {
 }
 
 /// `"fix"` when failing this metric actually costs its pillar's
-/// `achieved`, `"improve"` when the gate is advisory.
+/// `achieved`, `"improve"` when it is advisory.
 ///
-/// Four specs are advisory (`gates_achieved: false`). `cfg.cyclomatic`
-/// (issue #193) is a whole-file merged-CFG sum that scales with function
-/// count, so it is still scored and surfaced but cannot fail SIMPLE —
-/// `ast.max_function_complexity` gates that concern directly.
-/// `mdg.instability` and `mdg.main_sequence_distance` are ratios whose
-/// resolution is `1 / (Ca + Ce)`, which at file granularity is too coarse
-/// for the calibrated band to be a fair test. Labeling any of them `"fix"`
-/// sends agents to rewrite a metric no verdict depends on. Metrics with no
-/// registered spec default to gating, matching `gate_pillar`'s defensive
-/// fallback. `mdg.fan_in` measures responsibility/change-impact radius at
-/// file scope: a widely reused interface is important, not automatically
-/// non-composable, so it remains an `improve` target while `mdg.fan_out`
-/// alone gates outward dependency burden.
+/// Every registered `GATE_SPECS` entry gates its pillar; advisory metrics
+/// are not registered at all. The one advisory metric that still reaches
+/// this module is the whole-file `cfg.cyclomatic` location (issue #193): a
+/// merged-CFG sum that scales with function count, so it is surfaced but
+/// cannot fail SIMPLE — `ast.max_function_complexity` gates that concern
+/// directly. Labeling it `"fix"` sends agents to rewrite a metric no
+/// verdict depends on.
 ///
-/// This is the single `gates_achieved` → severity mapping in this module;
+/// This is the single gate → severity mapping in this module;
 /// [`rank_key`] derives its gating tier from the severity string so the
 /// label an agent reads and the order it is served in cannot diverge.
 fn gate_severity(metric: &str) -> &'static str {
     let gating = topos_engine::evaluation::policies::gates::GATE_SPECS
         .iter()
-        .find(|spec| spec.metric == metric)
-        .map(|spec| spec.gates_achieved)
-        .unwrap_or(true);
+        .any(|spec| spec.metric == metric);
     if gating {
         "fix"
     } else {
@@ -186,74 +178,51 @@ fn location_target(filepath: &str, metric: &str, entry: &FunctionEntry) -> Refac
 
 /// Targets for failing whole-file or module-context structural gates.
 fn structural_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<RefactorTarget> {
-    // Reproduce the exact gate inputs the scorers used, or a target would
-    // contradict the score this module claims to be derived from:
-    // `Φ_COMPOSABLE` replaces raw `mdg.instability` with
-    // `mdg.main_sequence_distance` whenever abstractness and a real
-    // coupling signal are present, and `distance_stable_leaf_exempt` reads
-    // the stable-leaf flag plus raw instability from the gate context.
-    // Evaluating `result.raw_metrics` verbatim would duplicate the superseded
-    // instability reading and leave the stable-leaf carve-out unreachable.
-    // `coupling_gate_input` is the shared source of that swap (it also
-    // computes `mdg.main_sequence_distance`, which is never in
-    // `raw_metrics`); keep this block in sync with its sibling caller
-    // `topos_engine::evaluation::suggestions::suggest_refactors`.
-    let instability = result.raw_metrics.get("mdg.instability").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
-    gate_metrics.remove("mdg.instability");
-    gate_metrics.extend(coupling_gate_input(
-        instability,
-        result.raw_metrics.get("mdg.fan_in").copied(),
-        result.raw_metrics.get("mdg.fan_out").copied(),
-        result.raw_metrics.get("mdg.abstractness").copied(),
-        result.raw_metrics.get("mdg.coupling").copied(),
-    ));
-    evaluate_gates(
-        &gate_metrics,
-        None,
-        result.is_entrypoint_module,
-        result.is_stable_leaf_module,
-        instability,
-    )
-    .into_iter()
-    .filter(|r| {
-        !r.passed() && matches!(r.spec.granularity, "file" | "module") && r.spec.pillar != "secure"
-    })
-    .map(|r| {
-        let scope = if r.spec.granularity == "file" {
-            "<file>"
-        } else {
-            "<module>"
-        };
-        RefactorTarget {
-            target_id: target_id(filepath, r.spec.metric, Some(scope), Some(1)),
-            kind: r.spec.granularity.to_string(),
-            filepath: filepath.to_string(),
-            symbol: Some(scope.to_string()),
-            line_start: Some(1),
-            line_end: None,
-            failing_generators: vec![r.spec.pillar.to_string()],
-            metric: r.spec.metric.to_string(),
-            current_value: Some(r.value),
-            threshold: r.threshold(),
-            severity: gate_severity(r.spec.metric).to_string(),
-            recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
-            constraints: MODULE_METRIC_CONSTRAINTS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            evidence: BTreeMap::from([(
-                "interpretation".to_string(),
-                result
-                    .interpretation
-                    .get(r.spec.metric)
-                    .cloned()
-                    .map(Value::from)
-                    .unwrap_or(Value::Null),
-            )]),
-        }
-    })
-    .collect()
+    // Same gate inputs and entrypoint exemption the scorers used, so a
+    // target can never contradict the score this module claims to be
+    // derived from.
+    evaluate_gates(&result.raw_metrics, None, result.is_entrypoint_module)
+        .into_iter()
+        .filter(|r| {
+            !r.passed()
+                && matches!(r.spec.granularity, "file" | "module")
+                && r.spec.pillar != "secure"
+        })
+        .map(|r| {
+            let scope = if r.spec.granularity == "file" {
+                "<file>"
+            } else {
+                "<module>"
+            };
+            RefactorTarget {
+                target_id: target_id(filepath, r.spec.metric, Some(scope), Some(1)),
+                kind: r.spec.granularity.to_string(),
+                filepath: filepath.to_string(),
+                symbol: Some(scope.to_string()),
+                line_start: Some(1),
+                line_end: None,
+                failing_generators: vec![r.spec.pillar.to_string()],
+                metric: r.spec.metric.to_string(),
+                current_value: Some(r.value),
+                threshold: r.threshold(),
+                severity: gate_severity(r.spec.metric).to_string(),
+                recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
+                constraints: MODULE_METRIC_CONSTRAINTS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                evidence: BTreeMap::from([(
+                    "interpretation".to_string(),
+                    result
+                        .interpretation
+                        .get(r.spec.metric)
+                        .cloned()
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                )]),
+            }
+        })
+        .collect()
 }
 
 fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<RefactorTarget> {
@@ -313,8 +282,8 @@ fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<Refacto
 ///
 /// The gating tier always sits *ahead* of excess so an advisory metric can
 /// never outrank a real gate failure by sheer magnitude. It used to: a
-/// whole-file `cfg.cyclomatic` of 80 (excess 65, and `gates_achieved:
-/// false`, so it cannot fail SIMPLE) buried a genuine
+/// whole-file `cfg.cyclomatic` of 80 (excess 65, and advisory, so it
+/// cannot fail SIMPLE) buried a genuine
 /// `ast.max_function_complexity` of 14 (excess 4), and since the agent
 /// contract routes off `targets.first()` agents were sent to rewrite the
 /// one SIMPLE metric no verdict depends on.
@@ -435,8 +404,8 @@ mod tests {
         assert_eq!(
             targets[0].metric, "ast.max_function_complexity",
             "ast.max_function_complexity (14 vs 10, excess 4) gates SIMPLE, so it must \
-             rank ahead of cfg.cyclomatic (80 vs 15, excess 65), which is advisory \
-             (gates_achieved: false, issue #193) and cannot fail the pillar. The agent \
+             rank ahead of cfg.cyclomatic (80, no gate), which is advisory \
+             (issue #193) and cannot fail the pillar. The agent \
              contract routes off targets.first(), so ordering here is the routing."
         );
         assert_eq!(targets[0].severity, "fix");
@@ -465,79 +434,25 @@ mod tests {
         assert_eq!(targets[0].failing_generators, vec!["simple"]);
     }
 
+    /// Advisory metrics are not gates: fan-in and instability, however
+    /// atypical, never become refactor targets here (they surface as
+    /// advisory suggestions instead).
     #[test]
-    fn fan_in_remains_an_actionable_file_level_advisory() {
+    fn advisory_metrics_yield_no_gate_targets() {
         let mut result = ClassificationResult::default();
-        result.raw_metrics.insert("mdg.fan_in".to_string(), 30.0);
-        result.raw_metrics.insert("mdg.fan_out".to_string(), 5.0);
-
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].metric, "mdg.fan_in");
-        assert_eq!(targets[0].kind, "file");
-        assert_eq!(targets[0].severity, "improve");
-        assert_eq!(targets[0].threshold, Some(15.0));
-    }
-
-    /// Distance mode: `Φ_COMPOSABLE` scores `mdg.main_sequence_distance` in
-    /// place of raw instability, so no target may fire on the instability
-    /// the scorer superseded.
-    #[test]
-    fn composable_targets_use_the_scorer_gate_inputs() {
-        let mut result = ClassificationResult::default();
-        // A = 0.2, I = 0.9 => D = 0.1, inside main_sequence_distance_max,
-        // even though I = 0.9 is above the raw instability_high of 0.7.
-        // Abstractness must be nonzero or the scorer keeps raw
-        // instability instead (see `coupling_gate_input`).
         result.raw_metrics.extend([
-            ("mdg.instability".to_string(), 0.9),
-            ("mdg.abstractness".to_string(), 0.2),
+            ("mdg.fan_in".to_string(), 30.0),
+            ("mdg.instability".to_string(), 0.95),
+            ("mdg.abstractness".to_string(), 0.0),
             ("mdg.coupling".to_string(), 6.0),
-            ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
         let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
         assert!(
             targets.is_empty(),
-            "evaluating raw_metrics verbatim duplicates mdg.instability, which \
-             Φ_COMPOSABLE replaced with mdg.main_sequence_distance = 0.1 (passing); \
-             got {:?}",
+            "got {:?}",
             targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
         );
-    }
-
-    /// The other direction of the same swap: distance fails while raw
-    /// instability sits in band, so the target must name the metric the
-    /// scorer actually evaluated.
-    #[test]
-    fn composable_target_names_the_metric_the_scorer_evaluated() {
-        let mut result = ClassificationResult::default();
-        // A = 1.0, I = 0.7 => D = 0.7, past main_sequence_distance_max,
-        // while I = 0.7 is exactly on the raw instability high bound (in
-        // band). A fully abstract module is a real reading — abstractness
-        // must be nonzero for the scorer to evaluate distance at all.
-        result.raw_metrics.extend([
-            ("mdg.instability".to_string(), 0.7),
-            ("mdg.abstractness".to_string(), 1.0),
-            ("mdg.coupling".to_string(), 6.0),
-            ("mdg.fan_in".to_string(), 1.0),
-            ("mdg.fan_out".to_string(), 5.0),
-        ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
-        assert_eq!(targets.len(), 1);
-        assert_eq!(
-            targets[0].metric, "mdg.main_sequence_distance",
-            "mdg.main_sequence_distance is never in raw_metrics — it only exists \
-             once coupling_gate_input derives it, so evaluating raw_metrics verbatim \
-             could never surface this failure at all"
-        );
-        // Distance is advisory (its resolution is `I`'s), so it is still
-        // named and still actionable, but it cannot fail COMPOSABLE alone.
-        assert_eq!(targets[0].severity, "improve");
-        assert_eq!(targets[0].failing_generators, vec!["composable"]);
     }
 
     /// The live-server shape observed on `topos/mcp/src/formatting.rs`: a

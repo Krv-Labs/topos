@@ -5,7 +5,7 @@ description: Maps Topos analysis dependencies, update mechanics, and its MCP, co
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T12:26:29.610Z
+    at: 2026-10-10T13:08:59.101Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml

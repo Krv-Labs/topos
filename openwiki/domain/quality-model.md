@@ -4,8 +4,8 @@ title: Four-pillar quality model and verdict semantics
 description: How Topos classifies source with the SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE pillars. Explains canonical gates, advisory scores, severity levels, diagnostic pipeline logic, preference rankings, and disclosed security acknowledgements.
 tags: [domain-model, quality, security, metrics, policies, rust]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T13:08:59.101Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
@@ -39,7 +39,7 @@ sources:
     resource: repo://topos/mcp/src/diagnostics.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:08:59.101Z" }
 ---
 
 # Four-pillar quality model and verdict semantics
@@ -55,7 +55,7 @@ The generator atoms are incomparable. Consumers that need lattice comparison mus
 | **SECURE** | `cpg.dangerous_calls == 0` and `cpg.taint_flows == 0` | When CPG observations are attached |
 | **NAVIGABLE** | `nav.max_function_divergence <= 10.0` | Every parseable source file |
 
-For system context, see the [Architecture Overview](../architecture/overview.md) and [Source Map](../source-map.md).
+For system context, see the [Architecture Overview](../architecture/overview.md).
 
 ## Classification rules and evidence states
 
@@ -81,7 +81,7 @@ SIMPLE and NAVIGABLE are normally measured for every parseable file because thei
 
 Each translator returns a `ScoredDecision` with deliberately separate outputs:
 
-- `achieved` is the AND of registered raw-metric gates marked `gates_achieved`. The classifier uses it to set a lattice bit.
+- `achieved` is the AND of registered raw-metric gates (`GateResult::passed`). The classifier uses it to set a lattice bit.
 - `score` is a normalized reporting value, usually the minimum quality among measured metrics. It does not set a lattice bit or override a gate.
 - Interpretation text and suggested operations make gate and advisory readings actionable, but neither is a verdict.
 
@@ -93,7 +93,7 @@ SIMPLE requires entropy within the inclusive `0.2..=0.8` band and maximum per-fu
 
 ### COMPOSABLE: outward dependency burden
 
-At file granularity COMPOSABLE has one decisive metric: `mdg.fan_out <= 10`. Instability, fan-in, and main-sequence distance are retained as scored and interpreted architectural diagnostics, not alternate pass routes or hard failures. When abstractness and a resolvable import-graph coupling signal exist, the scorer diagnoses `mdg.main_sequence_distance = |A + I - 1|`; otherwise it diagnoses raw instability. Neither changes the fan-out gate.
+At file granularity COMPOSABLE has one decisive metric: `mdg.fan_out <= 10`. Instability (`mdg.instability`) and fan-in (`mdg.fan_in`) are advisory metrics evaluated against codebase priors by `advisory::assess`, rather than fixed gate bands. Main-sequence distance is no longer evaluated in the file-level COMPOSABLE decision path.
 
 COMPOSABLE needs MDG input, commonly supplied by GitNexus, so no attached MDG produces an unavailable dimension rather than a negative verdict. This makes the pillar useful for project context without claiming a file passed solely because dependency evidence was unavailable.
 
@@ -125,7 +125,7 @@ SCD(fn) = Σ depth(u) · ln(1 + fanout(u))
 
 The sum ranges over nested block scopes (`IfStmt`, loops, `MatchStmt`, `TryStmt`, `WithStmt`, and nested function/method declarations). `fanout(u)` counts immediate child scopes, while a callable root starts at depth zero. Conditional expressions and short-circuit binary expressions do not create such scopes, so they are excluded rather than duplicating SIMPLE’s branch-oriented concern.
 
-A flat callable—and a file with no callable—has divergence `0.0`. The hard gate is inclusive at `10.0`; its independent normalized reporting score declines linearly to zero at the `12.0` cap. The probe also produces per-callable names and spans using the same scope walk as the maximum metric, so the worst failure can be located and targeted. Focused tests cover flat versus nested code, fanout, exact gates, supported languages, and agreement between the worst entry and gate metric.
+A flat callable—and a file with no callable—has divergence `0.0`. The hard gate is inclusive at `10.0`; its independent normalized reporting score declines linearly to zero at `20.0` (twice the gate threshold). The probe also produces per-callable names and spans using the same scope walk as the maximum metric, so the worst failure can be located and targeted. Focused tests cover flat versus nested code, fanout, exact gates, supported languages, and agreement between the worst entry and gate metric.
 
 ## User preferences, severity levels, and project roll-up
 

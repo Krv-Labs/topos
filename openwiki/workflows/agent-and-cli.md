@@ -5,7 +5,7 @@ description: Run Topos structural evaluation locally through the CLI or from an 
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T10:35:08.347Z
+    at: 2026-10-10T13:08:59.101Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -45,7 +45,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:08:59.101Z" }
 ---
 
 # CLI, MCP, and agent improvement workflows
@@ -142,6 +142,12 @@ Tool annotations communicate side effects to hosts and must change with the impl
 - `topos_inspect_code` accepts exactly one of inline `code` or `filepath`. A filepath can trigger the same graph preparation and therefore has non-read-only annotations; inline code cannot reach COMPOSABLE.
 
 Project evaluation recursively discovers all supported languages, skips unsupported files, and produces a per-dimension weakest-file floor together with language rollups and paginated file rows. `limit` defaults to 25 and is clamped to 1–500; submit `next_offset` as the next request's `offset`. Rows omit raw metrics by default, and omit security findings unless `include_security_findings` is requested.
+
+### Security diagnostic overlays and allowlist handling
+
+Security diagnostic overlays provide structured vulnerability information during evaluation. An overlay is constructed only for parseable classifications that fail dangerous-call or taint-flow metrics (`cpg.dangerous_calls > 0.0` or `cpg.taint_flows > 0.0`). Parseable files that pass SECURE metrics never trigger CPG construction, avoiding unnecessary parses in clean codebases.
+
+When an overlay applies, raw findings are passed through `apply_allowlist` against the active configuration and one-off `--allow` entries. Rather than removing allowed findings before disclosure and grade adjustment, allowlist handling partitions raw findings into `active_findings` (display-capped at `MAX_SECURITY_FINDINGS` = 20) and uncapped `acknowledged_risks`. This ensures that allowlisted risks remain disclosed in agent payloads and cap maximum achievable quality grades appropriately.
 
 ## Baseline-aware evaluate–edit–assess loop
 

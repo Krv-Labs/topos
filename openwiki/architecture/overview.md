@@ -5,7 +5,7 @@ description: Architecture overview of the Topos workspace, crate structure, cate
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T11:59:46.794Z
+    at: 2026-10-10T13:08:59.101Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml

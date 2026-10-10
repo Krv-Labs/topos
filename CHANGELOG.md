@@ -9,6 +9,21 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Fixed
+
+- `topos coverage` and `topos_calculate_coverage` count inline tests (#336):
+  Rust `#[cfg(test)]` items and `#[test]` functions, Go `*_test.go` files and
+  `Test*`/`Benchmark*`/`Example*`/`Fuzz*` functions, and Python `test_*.py` /
+  `*_test.py` files, `test_*` functions, and `Test*` classes move from the
+  source side to the test side. `--tests` / `test_files` is optional when
+  inline tests exist. Corpora with fewer than 1 test declaration per 100
+  source declarations report INCONCLUSIVE instead of a confident PASS/FAIL.
+  `topos_calculate_coverage` now parses in the requested `language` (it
+  always parsed as Python) and reports a `verdict` against `coverage_threshold`.
+  Explicit Rust test files retain cfg-gated modules; test attributes tolerate
+  spacing and comments without matching documentation strings. CLI and MCP
+  reject corpora with no source declarations after separating inline tests.
+
 ## [0.8.0] - 2026-10-09
 
 ### Added

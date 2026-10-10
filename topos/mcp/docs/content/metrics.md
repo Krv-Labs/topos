@@ -167,6 +167,20 @@ that surface in `raw_metrics` but do not drive a generator:
 | `pdg.control_deps` | Count of CDG edges (predicate→executor). |
 | `pdg.density`      | `(data + control) / statement_count`. |
 
+## Structural test coverage (outside the lattice)
+
+`topos_calculate_coverage` / `topos coverage` match each source declaration
+to its best test declaration (UAST recall + k-gram paths). Inline tests in the
+source paths count as tests: Rust `#[cfg(test)]` items and `#[test]` fns; Go
+`*_test.go` and `Test*`/`Benchmark*`/`Example*`/`Fuzz*`; Python `test_*.py`,
+`*_test.py`, `test_*` fns, `Test*` classes. A separate test tree still works.
+`verdict` is PASS/FAIL vs. `coverage_threshold`, or **INCONCLUSIVE** below 1
+test declaration per 100 source declarations (tests likely outside the paths).
+Explicit Rust test inputs retain cfg-gated modules. Rust test attributes are
+recognized from syntax, allowing whitespace and intervening comments.
+If separating tests leaves no source declarations, coverage returns an error
+without a verdict.
+
 ## Priority weights
 
 The `priority` parameter shifts weights *within* each `Φᵢ` — it does not

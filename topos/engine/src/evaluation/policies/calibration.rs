@@ -155,6 +155,9 @@ pub struct CoveragePolicyThresholds {
     pub strong_offset: f64,
     /// "partial" band = gate × this.
     pub partial_factor: f64,
+    /// Below this test:source declaration ratio the corpus is implausible
+    /// and the verdict is INCONCLUSIVE rather than PASS/FAIL (#336).
+    pub min_test_declaration_ratio: f64,
 }
 
 /// Pairwise clone detection (outside `Ω`).
@@ -167,6 +170,7 @@ pub const COVERAGE: CoveragePolicyThresholds = CoveragePolicyThresholds {
     declaration_recall: 0.5,
     strong_offset: 0.25,
     partial_factor: 0.5,
+    min_test_declaration_ratio: 0.01,
 };
 
 pub const CLONE: ClonePolicyThresholds = ClonePolicyThresholds {

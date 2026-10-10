@@ -11,9 +11,13 @@ use std::path::PathBuf;
 use clap::Args;
 use console::Style;
 use topos_engine::adapters::discovery::collect_source_files;
-use topos_engine::evaluation::policies::coverage::score_declaration_coverage;
-use topos_engine::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
-use topos_engine::graphs::ast::dispatch::parse_source;
+use topos_engine::evaluation::policies::coverage::{score_declaration_coverage, CoverageVerdict};
+use topos_engine::functors::profunctors::uast::inline_tests::{
+    parse_coverage_root, parse_with_inline_tests,
+};
+use topos_engine::functors::profunctors::uast::structural_test_coverage::{
+    declaration_coverage, extract_declarations,
+};
 use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
 use topos_engine::graphs::uast::models::UASTNode;
 
@@ -25,8 +29,9 @@ pub struct CoverageArgs {
     /// Source files or directories whose declarations should be covered.
     #[arg(required = true, value_name = "SOURCE_PATHS")]
     pub source_paths: Vec<PathBuf>,
-    /// Test file or directory (repeat for multiple test paths).
-    #[arg(long = "tests", required = true, value_name = "TEST_PATH")]
+    /// Test file or directory (repeat for multiple test paths). Optional when
+    /// tests live inline in the source paths (Rust, Go, Python).
+    #[arg(long = "tests", value_name = "TEST_PATH")]
     pub test_paths: Vec<PathBuf>,
     /// Recursively discover source and test files in directories.
     #[arg(short = 'r', long)]
@@ -99,11 +104,30 @@ fn parse_uast_roots(paths: &[PathBuf], language: &str) -> Result<Vec<UASTNode>, 
             let source = std::fs::read_to_string(path)
                 .map_err(|e| format!("reading {}: {e}", path.display()))?;
             let file = path.to_string_lossy().into_owned();
-            let result = parse_source(&source, language, Some(&file))
+            let result = parse_coverage_root(&source, language, Some(&file))
                 .map_err(|e| format!("parsing {}: {e}", path.display()))?;
-            Ok(result.uast_root)
+            Ok(result)
         })
         .collect()
+}
+
+/// Parse source files, splitting off inline tests: `(program roots, test roots)`.
+fn parse_with_inline_roots(
+    paths: &[PathBuf],
+    language: &str,
+) -> Result<(Vec<UASTNode>, Vec<UASTNode>), String> {
+    let mut program = Vec::new();
+    let mut tests = Vec::new();
+    for path in paths {
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let file = path.to_string_lossy().into_owned();
+        let (put, inline) = parse_with_inline_tests(&source, language, Some(&file))
+            .map_err(|e| format!("parsing {}: {e}", path.display()))?;
+        program.extend(put);
+        tests.extend(inline);
+    }
+    Ok((program, tests))
 }
 
 pub fn run(args: CoverageArgs) -> Result<(), String> {
@@ -125,11 +149,24 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
     };
 
     let source_files = collect_inputs(&args.source_paths, &language, args.recursive, "source")?;
-    let test_files = collect_inputs(&args.test_paths, &language, args.recursive, "test")?;
-    let put_roots = parse_uast_roots(&source_files, &language)?;
+    let (put_roots, inline_test_roots) = parse_with_inline_roots(&source_files, &language)?;
+    let inline_test_declarations: usize = inline_test_roots
+        .iter()
+        .map(|root| extract_declarations(root).len())
+        .sum();
+    // A `--tests` path that matches nothing is only an error when there are
+    // no inline tests to fall back on (#336).
+    let test_files = if args.test_paths.is_empty() {
+        Vec::new()
+    } else if inline_test_declarations > 0 {
+        let suffixes = language_file_suffixes(&language).expect("language validated above");
+        collect_source_files(&args.test_paths, suffixes, args.recursive)
+    } else {
+        collect_inputs(&args.test_paths, &language, args.recursive, "test")?
+    };
     let test_roots = parse_uast_roots(&test_files, &language)?;
     let put_refs: Vec<&UASTNode> = put_roots.iter().collect();
-    let test_refs: Vec<&UASTNode> = test_roots.iter().collect();
+    let test_refs: Vec<&UASTNode> = test_roots.iter().chain(&inline_test_roots).collect();
 
     let report = declaration_coverage(
         &put_refs,
@@ -144,20 +181,14 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
                 .to_string(),
         );
     }
-    if report.test_declaration_count == 0 {
-        return Err(
-            "no function or method declarations found in test files; check --language and test paths"
-                .to_string(),
-        );
-    }
     let decision = score_declaration_coverage(&report, args.coverage_threshold);
 
     let options = RenderOptions::stdout();
-    let pass = decision.achieved;
-    let (symbol, status, status_style) = if pass {
-        ("✓", "PASS", Style::new().green().bold())
-    } else {
-        ("X", "FAIL", Style::new().red().bold())
+    let status = decision.verdict.as_str();
+    let (symbol, status_style) = match decision.verdict {
+        CoverageVerdict::Pass => ("✓", Style::new().green().bold()),
+        CoverageVerdict::Fail => ("X", Style::new().red().bold()),
+        CoverageVerdict::Inconclusive => ("?", Style::new().yellow().bold()),
     };
     println!(
         "{}",
@@ -188,7 +219,16 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
     println!(
         "{}",
         guide_line(
-            format!("tests    {}", display_paths(&test_files)),
+            format!(
+                "tests    {}",
+                if !test_files.is_empty() {
+                    display_paths(&test_files)
+                } else if inline_test_declarations > 0 {
+                    "(inline only)".to_string()
+                } else {
+                    "(none)".to_string()
+                }
+            ),
             Style::new().dim(),
             options,
         )
@@ -205,6 +245,9 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
             options,
         )
     );
+    if let Some(reason) = &decision.inconclusive_reason {
+        println!("{}", guide_line(reason, Style::new().yellow(), options));
+    }
     println!(
         "{}",
         guide_line(
@@ -245,8 +288,10 @@ pub fn run(args: CoverageArgs) -> Result<(), String> {
         "{}",
         guide_line(
             format!(
-                "Declarations                 {} source · {} test",
-                report.put_declaration_count, report.test_declaration_count
+                "Declarations                 {} source · {} test ({} inline)",
+                report.put_declaration_count,
+                report.test_declaration_count,
+                inline_test_declarations
             ),
             Style::new(),
             options,
@@ -354,6 +399,31 @@ mod tests {
                 .len(),
             1
         );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn inline_tests_make_the_tests_path_optional() {
+        let dir = unique_tmp_dir("inline");
+        let source = dir.join("lib.rs");
+        std::fs::write(
+            &source,
+            "fn add(a: i32) -> i32 { a + 1 }\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn adds() { assert_eq!(super::add(1), 2); }\n}\n",
+        )
+        .unwrap();
+        let args = |test_paths| CoverageArgs {
+            source_paths: vec![source.clone()],
+            test_paths,
+            recursive: false,
+            language: Some("rust".to_string()),
+            kgram_length: 3,
+            include_unknown: false,
+            coverage_threshold: 0.5,
+        };
+
+        assert!(run(args(Vec::new())).is_ok());
+        // A test path that matches nothing is fine when inline tests exist.
+        assert!(run(args(vec![dir.join("missing")])).is_ok());
         std::fs::remove_dir_all(dir).unwrap();
     }
 

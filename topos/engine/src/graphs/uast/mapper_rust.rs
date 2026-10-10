@@ -7,13 +7,39 @@ use tree_sitter::Node;
 use super::mapper_common::{logical_operator_attribute, map_tree_sitter_to_uast, TestNodeFilter};
 use super::models::{AttributeValue, UASTNode};
 
-const CFG_TEST_MARKER: &str = "cfg(test)";
-
-fn is_cfg_test_attribute(node: &Node, source: &[u8]) -> bool {
-    node.kind() == "attribute_item"
-        && node
-            .utf8_text(source)
-            .is_ok_and(|text| text.contains(CFG_TEST_MARKER))
+/// Classify the attribute syntax, never text inside strings or comments.
+fn test_attribute(node: &Node, source: &[u8]) -> Option<&'static str> {
+    if node.kind() != "attribute_item" {
+        return None;
+    }
+    let attribute = node.named_child(0)?;
+    let path = attribute.named_child(0)?;
+    match path.kind() {
+        "identifier" if path.utf8_text(source).ok()? == "cfg" => {
+            let arguments = attribute.named_child(1)?;
+            if arguments.kind() != "token_tree" {
+                return None;
+            }
+            let mut cursor = arguments.walk();
+            let mut tokens = arguments
+                .named_children(&mut cursor)
+                .filter(|n| !matches!(n.kind(), "line_comment" | "block_comment"));
+            let token = tokens.next()?;
+            (token.kind() == "identifier"
+                && token.utf8_text(source).ok()? == "test"
+                && tokens.next().is_none())
+            .then_some("cfg")
+        }
+        "identifier" | "scoped_identifier" => {
+            let name = if path.kind() == "identifier" {
+                path
+            } else {
+                path.child_by_field_name("name")?
+            };
+            (name.utf8_text(source).ok()? == "test").then_some("test")
+        }
+        _ => None,
+    }
 }
 
 /// Rust's [`TestNodeFilter`]: drop `#[cfg(test)]`-annotated items.
@@ -32,10 +58,13 @@ impl TestNodeFilter for CfgTestFilter {
         let mut pending_test_attr = false;
         for sibling in named_siblings {
             if sibling.kind() == "attribute_item" {
-                if is_cfg_test_attribute(sibling, source) {
+                if test_attribute(sibling, source) == Some("cfg") {
                     pending_test_attr = true;
                     dropped.insert(sibling.id());
                 }
+                continue;
+            }
+            if matches!(sibling.kind(), "line_comment" | "block_comment") {
                 continue;
             }
             if pending_test_attr {
@@ -115,6 +144,12 @@ fn extract_type_attributes(node: &Node, _source: &[u8]) -> HashMap<String, Attri
 fn extract_attributes(node: &Node, source: &[u8]) -> HashMap<String, AttributeValue> {
     let mut attrs = extract_type_attributes(node, source);
     attrs.extend(logical_operator_attribute(node, source));
+    if let Some(kind) = test_attribute(node, source) {
+        attrs.insert(
+            "rustTestAttribute".to_string(),
+            AttributeValue::Str(kind.to_string()),
+        );
+    }
     attrs
 }
 
@@ -126,6 +161,20 @@ pub fn map_rust_tree_to_uast(root: Node, source: &[u8], file: Option<&str>) -> U
         source,
         file,
         Some(&CfgTestFilter),
+        Some(&extract_attributes),
+    )
+}
+
+/// Like [`map_rust_tree_to_uast`] but keeps `#[cfg(test)]` items, so
+/// structural coverage can count inline tests instead of discarding them.
+pub fn map_rust_tree_to_uast_with_tests(root: Node, source: &[u8], file: Option<&str>) -> UASTNode {
+    map_tree_sitter_to_uast(
+        root,
+        "rust",
+        map_node_kind,
+        source,
+        file,
+        None,
         Some(&extract_attributes),
     )
 }
@@ -159,6 +208,26 @@ mod tests {
         collect_kinds(&uast, &mut kinds);
         assert!(!kinds.contains("mod_item"));
         assert!(kinds.contains("function_item"));
+    }
+
+    #[test]
+    fn cfg_test_filter_uses_syntax_and_skips_comments() {
+        let source = r#"
+            #[doc = "cfg(test)"]
+            fn production() {}
+            #[cfg( /* condition */ test )]
+            // explanation
+            #[allow(dead_code)]
+            mod tests { fn checks() {} }
+        "#;
+        let tree = parse(source);
+        let uast = map_rust_tree_to_uast(tree.root_node(), source.as_bytes(), None);
+        let declarations =
+            crate::functors::profunctors::uast::structural_test_coverage::extract_declarations(
+                &uast,
+            );
+        assert_eq!(declarations.len(), 1);
+        assert_eq!(declarations[0].span.start_line, 3);
     }
 
     #[test]

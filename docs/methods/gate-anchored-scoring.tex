@@ -257,7 +257,7 @@ $\min$ as a ``pessimistic'' multi-criteria aggregator also appears in
 Yager's OWA family~\cite{yager1988} as its extreme case.
 
 %======================================================================
-\section{Codebase-relative advisory metrics}
+\section{Codebase-relative advisory metrics}\label{sec:advisory}
 
 Advisory metrics never gate. Fixed caps for them imported an implicit global
 threshold that the calibration never justified. Instead we read each advisory
@@ -620,6 +620,31 @@ The eight remaining SIMPLE cases are exemption cases. With the exemption
 clamp, Lemma~\ref{lem:anchor} and Proposition~\ref{prop:band} rule out any
 contradiction in the implementation.
 
+\paragraph{Implementation check.} The merged implementation was run on the
+fresh 11-repository corpus (requests, httpx, click, ripgrep, clap, zod, got,
+cobra, pulsar, ehrapy, topos; 1{,}066 files) and compared file by file with the
+pre-change build.
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+check & result \\
+\midrule
+pillar verdicts compared & 4{,}244 \\
+pillar verdicts changed & 0 \\
+score/verdict contradictions, before & 617 \\
+score/verdict contradictions, after & 0 \\
+advisory readings flagged & 413 of 4{,}877 (8.5\%) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Mean score changes are $+10.0$ (SIMPLE), $+17.8$ (COMPOSABLE), $+6.0$
+(NAVIGABLE) and $-0.3$ (SECURE) points. The SECURE decrease is confined to 14
+failing files, which the zero-tolerance curve now places below $50$. The flag
+rate is close to the $10\%$ implied by the $0.9$ percentile cut; it is lower
+because the median guard and ties at the modal value suppress flags.
+
 \paragraph{Advisory shift.} On SIMPLE, $100(S - G)$ has quantiles
 $p_{05} = -13.6$, $p_{50} = 0.0$, $p_{95} = +5.1$ points.
 
@@ -651,6 +676,36 @@ $2{,}376$) also fail SIMPLE's max-function-complexity gate.
 gate $6$ (now $10$) and contains no COMPOSABLE metrics for C++, Go, or the MCP
 cohort. COMPOSABLE advisory priors are therefore provisional until the
 leaderboard is rerun.
+
+%======================================================================
+\section{SECURE advisory reporting}
+
+The SECURE gate keeps exactly two inputs, $\texttt{cpg.dangerous\_calls}$ and
+$\texttt{cpg.taint\_flows}$, both zero-tolerance. When the embedded Sighthound
+engine scans a file (Python, JavaScript, TypeScript, Go), its findings carry
+severity, confidence, CWE, and title, which are kept on each finding and
+summarized in a report-only block beside the pillar:
+\begin{itemize}
+\item \texttt{max\_severity} $\in$ \{none, low, medium, high, critical\};
+\item \texttt{actionable}: findings with severity high or critical and
+  confidence not low;
+\item \texttt{taint}: taint-mode findings;
+\item \texttt{omitted}: allowlisted findings beyond the display cap of 20;
+\item \texttt{by\_family}: a histogram over the closed set \{injection, xss,
+  deserialization, path, crypto, auth, other\}, mapped by CWE then by tags.
+\end{itemize}
+Counts cover every allowlisted finding before the cap, and findings are shown
+in order of severity, confidence, mode (taint first), and line.
+
+These quantities deliberately do \emph{not} enter $A_{\textsc{secure}}$, $G$, or
+$S$. Sighthound runs only when the SECURE gate has already failed, or on an
+explicit opt-in (\texttt{security\_scan} on single-file evaluation). Folding
+its output into the score would make $S$ depend on whether a scan ran, breaking
+the comparability of scores across files. The codebase-relative construction of Section~\ref{sec:advisory} also does
+not apply: the readings
+are absolute severities on closed ordinal scales, not distributions over a
+codebase. An absent block means the scanner did not run, which is distinct
+from a scan that returned no findings.
 
 %======================================================================
 \section{Calibration procedure}

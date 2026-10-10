@@ -278,6 +278,30 @@ fn compare_files_parses_each_file_in_its_suffix_language() {
     assert_eq!(structured["target_valid"], true, "{structured:#?}");
 }
 
+/// `no_composable` ignores a `.gitnexus` already on disk, like
+/// `topos evaluate --no-composable`. It used to load the store anyway, so an
+/// empty one surfaced a load warning and a populated one scored COMPOSABLE.
+#[test]
+fn no_composable_ignores_an_existing_graph() {
+    let project = Project::new("no-composable");
+    std::fs::create_dir(project.dir.join(".gitnexus")).unwrap();
+    let file = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"topos_evaluate_file","arguments":{"filepath":"src/lib.rs","no_composable":true}}}"#;
+    let tree = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"topos_evaluate_project","arguments":{"path":".","no_composable":true}}}"#;
+    let responses = exchange_in(&project.dir, &[&initialize(1), file, tree]);
+
+    for id in [2, 3] {
+        let response = result(&responses, id);
+        assert_eq!(response["isError"], false, "{response:#?}");
+        let structured = &response["structuredContent"];
+        assert_eq!(structured["coupling_available"], false, "{structured:#?}");
+        let warnings = warnings_of(response);
+        assert!(
+            !warnings.to_lowercase().contains("gitnexus"),
+            "opting out is not a missing store: {warnings}"
+        );
+    }
+}
+
 fn result(responses: &[serde_json::Value], id: u64) -> &serde_json::Value {
     responses
         .iter()

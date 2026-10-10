@@ -94,13 +94,17 @@ fn classify_inspected_file(
     let (dep_graph, load_error) =
         crate::evaluation::load_dep_graph(gitnexus_dir.as_deref(), &path.to_string_lossy());
     let result = classify_morphism(morphism, priority, dep_graph.as_ref());
-    let mut warnings = gitnexus_warnings(
-        resolved_gitnexus_override,
-        project_root,
-        gitnexus_dir.as_deref(),
-        dep_graph.is_some(),
-        load_error.as_deref(),
-    );
+    let mut warnings = if no_composable {
+        Vec::new()
+    } else {
+        gitnexus_warnings(
+            resolved_gitnexus_override,
+            project_root,
+            gitnexus_dir.as_deref(),
+            dep_graph.is_some(),
+            load_error.as_deref(),
+        )
+    };
     if let Some(note) = outcome.generation_note {
         warnings.insert(0, note);
     }
@@ -429,15 +433,14 @@ mod tests {
         );
     }
 
-    /// `no_composable` skips *generation*: with no `.gitnexus` under the
-    /// project root there is nothing to resolve either, so COMPOSABLE stays
-    /// unscored and the warning says how to fix it — all without shelling
-    /// out, which is what makes this deterministic on any machine.
+    /// `no_composable` scores SIMPLE/SECURE/NAVIGABLE only, including when a
+    /// store is already on disk, and does not shell out to refresh it.
     #[test]
-    fn no_composable_skips_generation_and_leaves_coupling_unavailable() {
+    fn no_composable_ignores_an_existing_store() {
         let project_root = temp_dir("no_composable_root");
         let file = project_root.join("sample.py");
         std::fs::write(&file, "def f():\n    return 1\n").expect("write sample");
+        std::fs::create_dir(project_root.join(".gitnexus")).expect("store");
 
         let params = params_from(serde_json::json!({
             "filepath": "sample.py",
@@ -455,11 +458,8 @@ mod tests {
 
         assert!(!classified.coupling_available);
         assert!(
-            classified
-                .warnings
-                .iter()
-                .any(|w| w.contains("no .gitnexus directory found")),
-            "expected the shared gitnexus_warnings explanation, got {:?}",
+            classified.warnings.is_empty(),
+            "opt-out is not a missing store, got {:?}",
             classified.warnings
         );
 

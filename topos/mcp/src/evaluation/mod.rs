@@ -145,8 +145,9 @@ pub struct GitnexusEnsureOutcome {
 /// it first when missing or stale — the shared "ensure" decision behind
 /// both the CLI's default `topos evaluate` and the MCP evaluate tools'
 /// default behavior, so the two standardize on one "always try to score all
-/// four pillars" policy. `skip=true` reproduces the old read-only behavior
-/// (just [`resolve_gitnexus_dir`], no generation). `capture` is forwarded to
+/// four pillars" policy. `skip=true` (`no_composable`) attaches no store at
+/// all, even when `.gitnexus` is already on disk, matching
+/// `topos evaluate --no-composable`. `capture` is forwarded to
 /// `generate_depgraph`: `false` streams GitNexus's own output to the
 /// inherited stdio (the CLI, where a human is watching), `true` collects it
 /// into the result instead (MCP, over a stdio transport already carrying
@@ -176,13 +177,13 @@ pub fn ensure_gitnexus_dir_with_progress(
     capture: bool,
     progress: &mut dyn FnMut(&'static str),
 ) -> GitnexusEnsureOutcome {
-    let resolve = || resolve_gitnexus_dir(override_dir, project_root);
     if skip {
         return GitnexusEnsureOutcome {
-            gitnexus_dir: resolve(),
+            gitnexus_dir: None,
             generation_note: None,
         };
     }
+    let resolve = || resolve_gitnexus_dir(override_dir, project_root);
 
     progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
@@ -514,13 +515,12 @@ mod tests {
     }
 
     #[test]
-    fn ensure_gitnexus_dir_skip_reproduces_plain_resolve_without_shelling_out() {
-        // skip=true must behave exactly like the old read-only
-        // resolve_gitnexus_dir — no depgraph_status/gitnexus_available/
-        // generate_depgraph call at all, so this is deterministic
-        // regardless of whether gitnexus happens to be on the test
-        // machine's PATH.
+    fn ensure_gitnexus_dir_skip_ignores_an_existing_store_without_shelling_out() {
+        // `no_composable` must not score a graph that is already on disk,
+        // and must not shell out to refresh one. Deterministic whether or
+        // not `gitnexus` is on PATH.
         let project_root = temp_dir("skip_root");
+        std::fs::create_dir(project_root.join(".gitnexus")).unwrap();
         let outcome = ensure_gitnexus_dir(None, &project_root, true, false);
         assert!(outcome.gitnexus_dir.is_none());
         assert!(outcome.generation_note.is_none());

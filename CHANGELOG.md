@@ -73,6 +73,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `topos_compare_files` and `topos compare` now reject an unsupported suffix
   or a mixed-language pair instead of parsing it as Python or returning a
   meaningless distance, and a parse error names the file and language tried.
+  `topos compare` also rejects a file that parses only with error recovery,
+  as `topos_compare_files` does; it previously printed a similarity for it
+  and exited 0.
 - Suffix-based language detection is case-insensitive (`Main.RS` is Rust)
   everywhere: CLI, MCP, and the PR gate share one engine helper, and source
   discovery (`topos evaluate -r`, `topos_evaluate_project`, GitNexus

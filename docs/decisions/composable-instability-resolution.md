@@ -1,5 +1,11 @@
 # File-level instability resolution
 
+> **Scoring superseded.** The instability band and the "minimum over scored
+> readings" described below are retired. Instability is now a two-sided
+> codebase-relative advisory (skipped when `Ca + Ce < 2`, issue #351) and
+> main-sequence distance is diagnostic only. See
+> [`gate-anchored-scoring.md`](gate-anchored-scoring.md).
+
 Status: **RESOLVED and superseded as verdict policy in v0.5.0**. The current
 policy is [`file-level-composable.md`](file-level-composable.md); the possible
 package redesign is documented in

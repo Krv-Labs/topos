@@ -122,6 +122,9 @@ fn allow_secure(
     let secure = score_secure(dangerous, taint);
     let key = Generator::Secure.as_str();
     result.scores.insert(key.to_string(), secure.score);
+    result
+        .gate_scores
+        .insert(key.to_string(), secure.gate_score);
     result.interpretation.extend(secure.interpretation);
     result.dimensions.insert(
         key.to_string(),

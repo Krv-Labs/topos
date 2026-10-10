@@ -185,38 +185,33 @@ fn crossed_gate(
     if !after.is_parseable {
         return None;
     }
-    let crossings: Vec<GateCrossing> = evaluate_gates(
-        &after.raw_metrics,
-        Some(pillar),
-        after.is_entrypoint_module,
-        after.is_stable_leaf_module,
-        after.raw_metrics.get("mdg.instability").copied(),
-    )
-    .into_iter()
-    .filter(|result| result.spec.gates_achieved && !result.passed())
-    .filter_map(|result| {
-        let limit = result.threshold()?;
-        let was = before
-            .is_parseable
-            .then(|| before.raw_metrics.get(result.spec.metric).copied())
-            .flatten();
-        let below = result.value < limit;
-        let worse = was.is_none_or(|was| {
-            if below {
-                result.value < was
-            } else {
-                result.value > was
-            }
-        });
-        Some(GateCrossing {
-            metric: result.spec.metric.to_string(),
-            before: was,
-            after: result.value,
-            limit,
-            worse,
-        })
-    })
-    .collect();
+    let crossings: Vec<GateCrossing> =
+        evaluate_gates(&after.raw_metrics, Some(pillar), after.is_entrypoint_module)
+            .into_iter()
+            .filter(|result| !result.passed())
+            .filter_map(|result| {
+                let limit = result.threshold()?;
+                let was = before
+                    .is_parseable
+                    .then(|| before.raw_metrics.get(result.spec.metric).copied())
+                    .flatten();
+                let below = result.value < limit;
+                let worse = was.is_none_or(|was| {
+                    if below {
+                        result.value < was
+                    } else {
+                        result.value > was
+                    }
+                });
+                Some(GateCrossing {
+                    metric: result.spec.metric.to_string(),
+                    before: was,
+                    after: result.value,
+                    limit,
+                    worse,
+                })
+            })
+            .collect();
     let worse = crossings.iter().position(|crossing| crossing.worse);
     crossings.into_iter().nth(worse.unwrap_or(0))
 }
@@ -271,7 +266,7 @@ fn measured_verdict_excluding(
 pub(super) fn gate_limit(metric: &str) -> Option<f64> {
     GATE_SPECS
         .iter()
-        .find(|spec| spec.metric == metric && spec.gates_achieved)
+        .find(|spec| spec.metric == metric)
         .and_then(|spec| spec.high)
 }
 

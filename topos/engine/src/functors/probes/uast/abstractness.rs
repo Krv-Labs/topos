@@ -5,10 +5,11 @@
 //! abstract class) rather than concrete (struct / class / enum / union
 //! / type alias).
 //!
-//! Paired with Instability (`mdg.instability`), this drives the
-//! Distance from the Main Sequence gate (`mdg.main_sequence_distance`,
-//! [`crate::evaluation::policies::composable`]) instead of gating raw
-//! instability against a fixed band — see issue #124.
+//! Reported as a raw metric beside Instability (`mdg.instability`). It no
+//! longer feeds a gate: the main-sequence distance gate built on it
+//! inherited instability's file-level resolution limit and was removed
+//! (issue #351). Instability is now an advisory metric read relative to
+//! its codebase by [`crate::evaluation::advisory`].
 
 use std::collections::HashMap;
 

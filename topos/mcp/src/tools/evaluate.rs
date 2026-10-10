@@ -12,7 +12,6 @@ use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Genera
 use topos_engine::evaluation::advisory::{advisories_json, rescore_population};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::SIMPLE;
-use topos_engine::evaluation::policies::composable::coupling_gate_input;
 use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::weakest_score;
 
@@ -632,19 +631,7 @@ thread_local! {
 fn gate_metrics_for(result: &ClassificationResult) -> BTreeMap<String, f64> {
     #[cfg(test)]
     GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
-    let instability = result.raw_metrics.get("mdg.instability").copied();
-    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
-    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
-    gate_metrics.remove("mdg.instability");
-    gate_metrics.extend(coupling_gate_input(
-        instability,
-        fan_in,
-        fan_out,
-        result.raw_metrics.get("mdg.abstractness").copied(),
-        result.raw_metrics.get("mdg.coupling").copied(),
-    ));
-    gate_metrics
+    result.raw_metrics.clone()
 }
 
 /// Every gate-derived sort input for one row, evaluated exactly once.
@@ -668,17 +655,10 @@ impl RowKeys {
     fn new(row: &ScoredProjectRow) -> Self {
         let result = &row.result;
         let gate_metrics = gate_metrics_for(result);
-        let instability = result.raw_metrics.get("mdg.instability").copied();
-        let gate_failures = evaluate_gates(
-            &gate_metrics,
-            None,
-            result.is_entrypoint_module,
-            result.is_stable_leaf_module,
-            instability,
-        )
-        .into_iter()
-        .filter(|r| r.spec.gates_achieved && !r.passed())
-        .count();
+        let gate_failures = evaluate_gates(&gate_metrics, None, result.is_entrypoint_module)
+            .into_iter()
+            .filter(|r| !r.passed())
+            .count();
         let hard_fail = !result.is_parseable || gate_failures > 0;
         let cyclomatic = gate_metrics.get("cfg.cyclomatic").copied();
         let giant = !hard_fail && cyclomatic.is_some_and(|v| v > SIMPLE.max_cyclomatic);

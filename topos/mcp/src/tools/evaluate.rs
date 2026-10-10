@@ -528,7 +528,7 @@ fn adjusted_result(
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
         language: result.language.clone(),
-        gate_scores: result.gate_scores.clone(),
+        gate_scores: overlay.verdict.gate_scores(&result.gate_scores),
         advisories: result.advisories.clone(),
     }
 }

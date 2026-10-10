@@ -595,9 +595,13 @@ pub fn to_evaluation_result(
         Some(v) => v.adjusted_element,
         None => result.summary(),
     };
+    let gate_scores = match opts.adjusted_verdict {
+        Some(v) => v.gate_scores(&result.gate_scores),
+        None => result.gate_scores.clone(),
+    };
     let walk = opts
         .preferences
-        .map(|prefs| build_preference_walk(prefs, summary, &result.gate_scores));
+        .map(|prefs| build_preference_walk(prefs, summary, &gate_scores));
 
     let mut interpretation = result.interpretation.clone();
     if !coupling_available {
@@ -631,7 +635,7 @@ pub fn to_evaluation_result(
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
         language: result.language.clone(),
-        gate_scores: result.gate_scores.clone(),
+        gate_scores: gate_scores.clone(),
         advisories: result.advisories.clone(),
     };
 
@@ -708,6 +712,7 @@ pub fn to_evaluation_result(
             })
             .collect(),
         pillars: build_pillars(&display_result, coupling_available),
+        gate_scores,
         priority: priority_str(result.priority).to_string(),
         priority_source: opts.priority_source,
         guidance: build_guidance(

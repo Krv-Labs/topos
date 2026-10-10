@@ -33,6 +33,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   Guidance, `binding_constraint`, suggestions, and refactor targets follow
   that gate. `next_step` stays the smallest preferred concession. Priority
   is only the head of the ranking (a tie-break); it does not reweight scores.
+  Evaluation results now return `gate_scores`, and a SECURE risk
+  acknowledged in the allowlist is never named as the pillar to climb.
 - Pillar scores are gate-anchored: 50 sits exactly at the gate, so a pillar
   passes if and only if its score is at least 50. Gates combine with `min`;
   advisory metrics move a score only within the half its gates chose. Verdicts

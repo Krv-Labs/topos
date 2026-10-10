@@ -1013,6 +1013,9 @@ pub struct EvaluationResult {
     /// Per-pillar breakdown (simple, composable, secure).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub pillars: BTreeMap<String, PillarResult>,
+    /// Gate-only score `G` per pillar in [0, 1]; 0.5 is the gate.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub gate_scores: BTreeMap<String, f64>,
     pub priority: String,
     /// Whether priority was defaulted, inferred from preferences, or explicit.
     pub priority_source: PrioritySource,
@@ -1099,6 +1102,7 @@ impl EvaluationResult {
             dimensions: BTreeMap::new(),
             scores: BTreeMap::new(),
             pillars: BTreeMap::new(),
+            gate_scores: BTreeMap::new(),
             priority: priority_str(priority).to_string(),
             priority_source,
             guidance: String::new(),

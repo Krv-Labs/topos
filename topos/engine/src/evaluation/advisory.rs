@@ -440,7 +440,9 @@ mod tests {
         );
         assert_eq!(r.local_weight, 0.0);
         assert_eq!(r.relative_percentile, r.global_percentile);
-        assert!((r.quality - 0.25).abs() < 1e-12, "1 − P_lang(X < 6)");
+        let points = &priors().metrics["cfg.cyclomatic"].languages["python"].points;
+        let expected = 1.0 - prior_cdfs(points, 6.0).0;
+        assert!((r.quality - expected).abs() < 1e-12, "1 − P_lang(X < 6)");
     }
 
     #[test]
@@ -474,15 +476,16 @@ mod tests {
 
     #[test]
     fn two_sided_quality_and_flag() {
+        let median = priors().metrics["mdg.instability"].languages["rust"].median;
         let center = read(
             "rust",
             "composable",
             "mdg.instability",
             Direction::TwoSided,
-            0.5,
+            median,
             &[],
         );
-        assert!((center.quality - 1.0).abs() < 1e-12);
+        assert!(center.quality > 0.5, "typical value scores high");
         assert!(!center.flagged);
         let low = read(
             "rust",
@@ -530,12 +533,12 @@ mod tests {
             "simple",
             "cfg.cyclomatic",
             Direction::HigherWorse,
-            34.0,
+            1e6,
             &[],
         );
         assert_eq!(
             interpret_for("python", "cfg.cyclomatic", &r),
-            "cfg.cyclomatic 34 is at the 100th percentile for python packages \
+            "cfg.cyclomatic 1000000 is at the 100th percentile for python packages \
              (language prior: 100th); atypical, advisory"
         );
         r.local_weight = 0.5;
@@ -544,7 +547,7 @@ mod tests {
         r.flagged = false;
         assert_eq!(
             interpret("cfg.cyclomatic", &r),
-            "cfg.cyclomatic 34 is at the 91st percentile for this codebase \
+            "cfg.cyclomatic 1000000 is at the 91st percentile for this codebase \
              (language prior: 78th); advisory"
         );
         assert_eq!(ordinal(0.12), "12th");

@@ -268,9 +268,8 @@ pub struct EvaluateFileInput {
     /// (see `no_composable`).
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
-    /// only, exactly like a missing `.gitnexus` did before this tool
-    /// started generating it automatically.
+    /// Use no dependency graph, even an existing `.gitnexus`; score
+    /// SIMPLE/SECURE/NAVIGABLE only.
     #[serde(default)]
     pub no_composable: bool,
     /// Optional generator ranking.
@@ -330,9 +329,8 @@ pub struct EvaluateProjectInput {
     /// reported as unavailable rather than failing the whole evaluation.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
-    /// only, exactly like a missing `.gitnexus` did before this tool
-    /// started generating it automatically.
+    /// Use no dependency graph, even an existing `.gitnexus`; score
+    /// SIMPLE/SECURE/NAVIGABLE only.
     #[serde(default)]
     pub no_composable: bool,
     /// Per-file rows to return per page (1–500, default 25).
@@ -525,9 +523,8 @@ pub struct InspectCodeInput {
     /// with `filepath` — inline `code` has no module to place in the graph.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
-    /// only, exactly like a missing `.gitnexus` did before this tool
-    /// started generating it automatically.
+    /// Use no dependency graph, even an existing `.gitnexus`; score
+    /// SIMPLE/SECURE/NAVIGABLE only.
     #[serde(default)]
     pub no_composable: bool,
     /// Strict total order on the four generators; see

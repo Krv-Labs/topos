@@ -6,14 +6,22 @@ packages:
 overrides:
   serialize-javascript: "^7.0.5"
   diff: "^9.0.0"
-  # GHSA-v2hh-gcrm-f6hx / CVE-2026-16221: host confusion via backslash authority.
+  # GHSA-v2hh-gcrm-f6hx and later host-confusion / SSRF advisories.
   # Transitive via @vscode/vsce → secretlint → ajv@8 (fast-uri ^3.0.1).
-  fast-uri: "^3.1.5"
-  # Transitive via @vscode/vsce → cheerio.
-  undici: "^7.29.0"
-  # GHSA-5p4m-2wfm-xmqj: quadratic CPU consumption in !!omap resolution.
+  fast-uri: "^3.1.7"
+  # Transitive via @vscode/vsce → cheerio. Covers the 7.x undici advisories.
+  undici: "^7.29.1"
+  # GHSA-5p4m-2wfm-xmqj and GHSA-2883-xcg3-v3hh (merge-key CPU use).
   # Transitive via eslint/@vscode toolchain deps.
-  js-yaml: "^4.3.1"
+  js-yaml: "^4.3.2"
+  # GHSA-253c-mchw-3w2r: quadratic linkify. Transitive via @vscode/vsce.
+  markdown-it: "^14.3.1"
+  # GHSA-q2hr-2g5m-vwhr: quadratic brace expansion. One floor per minimatch major.
+  "brace-expansion@1": "^1.1.21"
+  "brace-expansion@2": "^2.1.7"
+  "brace-expansion@5": "^5.0.12"
+  # GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g. Transitive via @vscode/vsce → typed-rest-client.
+  qs: "^6.16.0"
 
 # Allow postinstall scripts required by the extension toolchain.
 allowBuilds:

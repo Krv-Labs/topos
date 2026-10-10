@@ -2,11 +2,10 @@
 type: workflow guide
 title: CLI, MCP, and agent improvement workflows
 description: Run Topos structural evaluation locally through the CLI or from an MCP client. This guide covers source and project resolution, optional GitNexus preparation, MCP lifecycle and trust boundaries, and baseline-aware refactor assessment.
-resource: /topos/cli/src/main.rs
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T10:35:08.347Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs

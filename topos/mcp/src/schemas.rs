@@ -948,6 +948,10 @@ pub struct EvaluationResult {
     /// Raw probe values; present only under `verbose`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub raw_metrics: BTreeMap<String, f64>,
+    /// Advisory readings: `{metric: {value, relative_percentile,
+    /// global_percentile, local_weight, flagged}}`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub advisories: BTreeMap<String, Value>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub interpretation: BTreeMap<String, String>,
     /// Source locations for failing complexity gates, keyed by metric.
@@ -1021,6 +1025,7 @@ impl EvaluationResult {
             guidance: String::new(),
             coupling_available: false,
             raw_metrics: BTreeMap::new(),
+            advisories: BTreeMap::new(),
             interpretation: BTreeMap::new(),
             metric_locations: BTreeMap::new(),
             warnings: Vec::new(),
@@ -1054,6 +1059,10 @@ pub struct ProjectFileEntry {
     /// Raw probe values; present only under `verbose`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub raw_metrics: BTreeMap<String, f64>,
+    /// Codebase-relative advisory readings (same shape as
+    /// [`EvaluationResult::advisories`]).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub advisories: BTreeMap<String, Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]

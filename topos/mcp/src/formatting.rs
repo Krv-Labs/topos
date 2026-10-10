@@ -9,6 +9,7 @@ use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::omega::EvaluationValue;
+use topos_engine::evaluation::advisory::advisories_json;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::gates::PILLAR_METRIC_PREFIXES;
 use topos_engine::evaluation::preferences::UserPreferences;
@@ -718,6 +719,7 @@ pub fn to_evaluation_result(
         guidance: build_guidance(&display_result),
         coupling_available,
         raw_metrics,
+        advisories: advisories_json(&result.advisories),
         interpretation,
         metric_locations: opts.metric_locations,
         warnings: opts.warnings.clone(),

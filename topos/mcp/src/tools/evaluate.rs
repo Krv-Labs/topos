@@ -9,6 +9,7 @@ use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
+use topos_engine::evaluation::advisory::{advisories_json, rescore_population};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::SIMPLE;
 use topos_engine::evaluation::policies::composable::coupling_gate_input;
@@ -362,6 +363,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
 
     let mut per_file_results: Vec<ClassificationResult> = Vec::new();
     let mut entries: Vec<ProjectFileEntry> = Vec::new();
+    let mut file_has_dep: Vec<bool> = Vec::new();
     let mut parse_failures = 0usize;
     let mut any_dep_graph_loaded = false;
     let mut last_load_error: Option<String> = None;
@@ -387,26 +389,33 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
             Ok((result, entry, failed, has_dep, load_error)) => {
                 if failed {
                     parse_failures += 1;
-                    *per_language_parse_failures
-                        .entry(language.clone())
-                        .or_default() += 1;
+                    *per_language_parse_failures.entry(language).or_default() += 1;
                 }
                 any_dep_graph_loaded |= has_dep;
                 if load_error.is_some() {
                     last_load_error = load_error;
                 }
-                per_file_results.push(result.clone());
-                entries.push(entry.clone());
-                per_language_results
-                    .entry(language.clone())
-                    .or_default()
-                    .push(result);
-                per_language_entries
-                    .entry(language)
-                    .or_default()
-                    .push(entry);
+                per_file_results.push(result);
+                entries.push(entry);
+                file_has_dep.push(has_dep);
             }
         }
+    }
+
+    // The project is one codebase: read advisories against it, then refresh
+    // each row from the rescored result before deriving the per-language maps.
+    rescore_population(&mut per_file_results);
+    for ((result, entry), &has_dep) in per_file_results.iter().zip(&mut entries).zip(&file_has_dep)
+    {
+        refresh_entry_scores(entry, result, has_dep);
+        per_language_results
+            .entry(entry.language.clone())
+            .or_default()
+            .push(result.clone());
+        per_language_entries
+            .entry(entry.language.clone())
+            .or_default()
+            .push(entry.clone());
     }
 
     let model = build_project_result(BuildProjectArgs {
@@ -521,6 +530,7 @@ fn evaluate_single_file(
         } else {
             BTreeMap::new()
         },
+        advisories: advisories_json(&result.advisories),
         warnings: Vec::new(),
         security_findings: if include_security_findings {
             findings
@@ -545,6 +555,22 @@ fn evaluate_single_file(
         dep_graph.is_some(),
         load_error,
     ))
+}
+
+/// Re-derive a row's score-dependent fields after the population pass
+/// changed `result.scores` / `result.advisories` (verdict fields never move).
+fn refresh_entry_scores(
+    entry: &mut ProjectFileEntry,
+    result: &ClassificationResult,
+    has_dep: bool,
+) {
+    entry.scores = result
+        .scores
+        .iter()
+        .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+        .collect();
+    entry.pillars = build_pillars(result, has_dep);
+    entry.advisories = advisories_json(&result.advisories);
 }
 
 fn validate_and_collect_project(
@@ -1366,6 +1392,7 @@ mod tests {
                 },
             )]),
             raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
+            advisories: BTreeMap::new(),
             warnings: Vec::new(),
             security_findings: Vec::new(),
             acknowledged_risks: Vec::new(),
@@ -1376,6 +1403,33 @@ mod tests {
             grade_capped: false,
             is_parseable: true,
         }
+    }
+
+    #[test]
+    fn refreshed_row_carries_population_advisories() {
+        let mut results: Vec<ClassificationResult> = [2.0, 3.0, 30.0]
+            .into_iter()
+            .map(|cc| ClassificationResult {
+                is_parseable: true,
+                language: "python".to_string(),
+                raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), cc)]),
+                gate_scores: BTreeMap::from([("simple".to_string(), 0.8)]),
+                ..Default::default()
+            })
+            .collect();
+        rescore_population(&mut results);
+        let mut row = entry("worst.py", 0.0);
+        refresh_entry_scores(&mut row, &results[2], false);
+        let reading = &row.advisories["cfg.cyclomatic"];
+        assert!(reading["local_weight"].as_f64().unwrap() > 0.0);
+        assert_eq!(
+            row.scores["simple"],
+            (results[2].scores["simple"] * 1000.0).round() / 10.0
+        );
+        assert!(
+            row.scores["simple"] >= 50.0,
+            "advisories never cross the gate"
+        );
     }
 
     fn project_params(offset: usize) -> EvaluateProjectInput {

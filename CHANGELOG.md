@@ -70,7 +70,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   or a mixed-language pair instead of parsing it as Python or returning a
   meaningless distance, and a parse error names the file and language tried.
 - Suffix-based language detection is case-insensitive (`Main.RS` is Rust)
-  everywhere: CLI, MCP, and the PR gate share one engine helper.
+  everywhere: CLI, MCP, and the PR gate share one engine helper, and source
+  discovery (`topos evaluate -r`, `topos_evaluate_project`, GitNexus
+  fingerprinting) and PR recap file selection match suffixes the same way.
 - COMPOSABLE no longer scores files at instability 0 or 1 as 0%. The fixed
   `[0.3, 0.7]` band is gone; instability is a two-sided relative advisory,
   skipped when `Ca + Ce < 2`, and main-sequence distance is diagnostic only

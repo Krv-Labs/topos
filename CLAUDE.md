@@ -22,7 +22,7 @@ Portable [Agent Plugins](https://agent-plugins.org/) 1.0 package: [`agent-plugin
 
 Validate with `python scripts/check_skill.py` and `python scripts/check_agent_plugin.py` (skill / plugin versions must match `Cargo.toml`; packaged skill must match `skills/topos/SKILL.md`).
 
-**ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`) and `v*` tags. Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
+**ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`). Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
 <!-- SKILLS:END -->
 
 <!-- OPENWIKI-POLICY:START -->

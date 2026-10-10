@@ -641,6 +641,9 @@ pub fn to_evaluation_result(
         interpretation: result.interpretation.clone(),
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
+        language: result.language.clone(),
+        gate_scores: result.gate_scores.clone(),
+        advisories: result.advisories.clone(),
     };
 
     let grade_capped = opts

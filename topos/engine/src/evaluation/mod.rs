@@ -19,6 +19,7 @@
 
 use std::collections::BTreeMap;
 
+pub mod advisory;
 pub mod file_roles;
 pub mod policies;
 pub mod preferences;

@@ -199,6 +199,7 @@ mod tests {
             interpretation: BTreeMap::new(),
             is_entrypoint_module: false,
             is_stable_leaf_module: false,
+            ..Default::default()
         }
     }
 

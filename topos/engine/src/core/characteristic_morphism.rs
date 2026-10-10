@@ -50,6 +50,7 @@ use std::fmt;
 
 use crate::core::morphism::ProgramMorphism;
 use crate::core::omega::{verdict_from_generators, EvaluationValue, Generator};
+use crate::evaluation::advisory::AdvisoryReading;
 use crate::evaluation::file_roles::{is_entrypoint_module, is_stable_leaf_module};
 use crate::evaluation::policies::base::{Priority, ScoredDecision};
 use crate::evaluation::policies::composable::score_coupling;
@@ -84,6 +85,14 @@ pub struct ClassificationResult {
     /// (drives the COMPOSABLE Zone-of-Pain exemption; see
     /// [`crate::evaluation::policies::gates`]).
     pub is_stable_leaf_module: bool,
+    /// Source language (UAST `lang`), keying the advisory prior table.
+    pub language: String,
+    /// Per-generator gate score `G = min_i d_i` in `[0, 1]`; the generator
+    /// is satisfied iff `G ≥ TAU`. `scores` is derived from this and the
+    /// advisory readings (see [`crate::evaluation::policies::desirability`]).
+    pub gate_scores: BTreeMap<String, f64>,
+    /// Codebase-relative advisory readings keyed by metric name.
+    pub advisories: BTreeMap<String, AdvisoryReading>,
 }
 
 impl Default for ClassificationResult {
@@ -98,6 +107,9 @@ impl Default for ClassificationResult {
             interpretation: BTreeMap::new(),
             is_entrypoint_module: false,
             is_stable_leaf_module: false,
+            language: String::new(),
+            gate_scores: BTreeMap::new(),
+            advisories: BTreeMap::new(),
         }
     }
 }
@@ -206,11 +218,13 @@ impl CharacteristicMorphism {
         let mut dimensions = BTreeMap::new();
         let mut scores = BTreeMap::new();
         let mut interpretation = BTreeMap::new();
+        let mut gate_scores = BTreeMap::new();
 
         if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint, source_size_bytes) {
             record(
                 &mut dimensions,
                 &mut scores,
+                &mut gate_scores,
                 &mut interpretation,
                 "simple",
                 EvaluationValue::Simple,
@@ -222,6 +236,7 @@ impl CharacteristicMorphism {
             record(
                 &mut dimensions,
                 &mut scores,
+                &mut gate_scores,
                 &mut interpretation,
                 "composable",
                 EvaluationValue::Composable,
@@ -232,6 +247,7 @@ impl CharacteristicMorphism {
             record(
                 &mut dimensions,
                 &mut scores,
+                &mut gate_scores,
                 &mut interpretation,
                 "secure",
                 EvaluationValue::Secure,
@@ -242,6 +258,7 @@ impl CharacteristicMorphism {
             record(
                 &mut dimensions,
                 &mut scores,
+                &mut gate_scores,
                 &mut interpretation,
                 "navigable",
                 EvaluationValue::Navigable,
@@ -265,6 +282,9 @@ impl CharacteristicMorphism {
             interpretation,
             is_entrypoint_module: is_entrypoint,
             is_stable_leaf_module: is_stable_leaf,
+            language: ast.uast_root.lang.clone(),
+            gate_scores,
+            advisories: BTreeMap::new(),
         }
     }
 
@@ -319,11 +339,14 @@ impl CharacteristicMorphism {
 fn record(
     dimensions: &mut BTreeMap<String, EvaluationValue>,
     scores: &mut BTreeMap<String, f64>,
+    gate_scores: &mut BTreeMap<String, f64>,
     interpretation: &mut BTreeMap<String, String>,
     dim: &str,
     generator: EvaluationValue,
     decision: ScoredDecision,
 ) {
+    // SKELETON: placeholder until Φᵢ return a gate-anchored G.
+    gate_scores.insert(dim.to_string(), decision.score);
     scores.insert(dim.to_string(), decision.score);
     interpretation.extend(decision.interpretation);
     dimensions.insert(

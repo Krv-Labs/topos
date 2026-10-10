@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-10
+
 ### Added
 
 - `advisories` on every evaluation result: per advisory metric, `value`,

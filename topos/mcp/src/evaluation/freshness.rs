@@ -119,11 +119,9 @@ fn newer_source_file(
     );
     let mut seen = 0usize;
     for path in paths {
-        let is_file = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| suffixes.contains(&format!(".{e}").as_str()))
-            .unwrap_or(false);
+        let is_file =
+            topos_engine::graphs::ast::languages::language_for_path(&path.to_string_lossy())
+                .is_some();
         if is_file {
             seen += 1;
             if seen > FRESHNESS_WALK_CAP {

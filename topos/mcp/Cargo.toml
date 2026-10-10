@@ -34,3 +34,6 @@ sighthound = { git = "https://github.com/Corgea/Sighthound", rev = "36dd5da663f8
 # `tests/lifecycle.rs` parses the JSON-RPC frames the stdio server writes back.
 # Integration tests do not inherit `[dependencies]`, hence the restatement.
 serde_json = "1.0"
+# Builds a throwaway Ladybug store for the dep-graph cache tests; pinned to
+# the engine's version so no second copy is compiled.
+lbug = "=0.17.1"

@@ -52,10 +52,12 @@ pub fn last_store_load_ms() -> u128 {
 }
 
 fn remember_load_ms(started: Instant, hit: bool) {
+    // A real open floors at 1 so a sub-millisecond read of a small store
+    // never reads as a cache hit.
     let ms = if hit {
         0
     } else {
-        started.elapsed().as_millis()
+        started.elapsed().as_millis().max(1)
     };
     LAST_LOAD_MS.with(|cell| cell.set(ms));
 }
@@ -226,26 +228,46 @@ pub fn depgraph_status(
 mod tests {
     use super::*;
 
-    /// Both tests load the real store and clear the process cache; the
-    /// lock keeps one from clearing it between the other's two calls.
+    /// Both tests share the process store and clear it; the lock keeps one
+    /// from clearing or replacing it between the other's calls.
     static CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
-    fn repo_gitnexus() -> Option<std::path::PathBuf> {
-        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(".gitnexus");
-        dir.join("lbug").exists().then_some(dir)
+    /// A two-file Ladybug store in a fresh temp dir with no `.git`, so the
+    /// flat `lbug` slot is used. The repo's own `.gitnexus` is shared with
+    /// whatever branch is checked out and with concurrent `gitnexus analyze`
+    /// runs, which made these tests fail on a store they did not own.
+    fn fixture_repo() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join(".gitnexus")).unwrap();
+        let db = lbug::Database::new(
+            root.path().join(".gitnexus/lbug"),
+            lbug::SystemConfig::default(),
+        )
+        .unwrap();
+        let conn = lbug::Connection::new(&db).unwrap();
+        for query in [
+            "CREATE NODE TABLE File(id STRING, filePath STRING, PRIMARY KEY(id))",
+            "CREATE REL TABLE CodeRelation(FROM File TO File, type STRING, \
+             confidence DOUBLE, reason STRING, step INT64)",
+            "CREATE (:File {id: 'lib', filePath: 'src/lib.rs'})",
+            "CREATE (:File {id: 'server', filePath: 'src/server.rs'})",
+            "MATCH (a:File {id: 'lib'}), (b:File {id: 'server'}) \
+             CREATE (a)-[:CodeRelation {type: 'IMPORTS', confidence: 1.0, \
+             reason: '', step: 0}]->(b)",
+        ] {
+            conn.query(query).unwrap();
+        }
+        root
     }
 
     #[test]
     fn second_file_does_not_reopen_the_store() {
         let _guard = CACHE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(dir) = repo_gitnexus() else {
-            return;
-        };
+        let repo = fixture_repo();
+        let dir = repo.path().join(".gitnexus");
         clear_caches();
-        let first = dir.join("../topos/mcp/src/lib.rs");
-        let second = dir.join("../topos/mcp/src/server.rs");
+        let first = repo.path().join("src/lib.rs");
+        let second = repo.path().join("src/server.rs");
         let (a, err) = load_dep_graph(Some(&dir), &first.to_string_lossy());
         assert!(err.is_none(), "{err:?}");
         assert!(a.is_some());
@@ -266,15 +288,14 @@ mod tests {
     #[test]
     fn status_reopens_neither_a_loaded_store_nor_a_second_file() {
         let _guard = CACHE_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let Some(dir) = repo_gitnexus() else {
-            return;
-        };
+        let repo = fixture_repo();
+        let root = repo.path();
+        let dir = root.join(".gitnexus");
         clear_caches();
         crate::evaluation::clear_freshness_cache();
-        let root = dir.parent().unwrap();
-        let _ = depgraph_status(None, root, "topos/mcp/src/lib.rs");
+        let _ = depgraph_status(None, root, "src/lib.rs");
         assert!(last_store_load_ms() > 0, "first status must open the store");
-        let status = depgraph_status(None, root, "topos/mcp/src/server.rs");
+        let status = depgraph_status(None, root, "src/server.rs");
         assert!(
             matches!(status.state, "present" | "stale"),
             "unexpected status {} ({})",
@@ -282,10 +303,7 @@ mod tests {
             status.detail.unwrap_or_default()
         );
         assert_eq!(last_store_load_ms(), 0, "second status reopened Ladybug");
-        let (graph, err) = load_dep_graph(
-            Some(&dir),
-            &dir.join("../topos/mcp/src/lib.rs").to_string_lossy(),
-        );
+        let (graph, err) = load_dep_graph(Some(&dir), &root.join("src/lib.rs").to_string_lossy());
         assert!(err.is_none() && graph.is_some(), "{err:?}");
         assert_eq!(
             last_store_load_ms(),

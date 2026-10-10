@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:97b4dcab8082218ff2bef8063b33db9e6018b2569a980be8476d1439e5e0bfeb",
+  "pageVersion": "sha256:a24735c6f561dba170bc27659261d00e10d56d2cf166e27b9065877127adad83",
   "claims": [
     {
       "id": "claim_51e019e3c33443d4885dd5c08e11ab51",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:6f88010cc99ee53900a890e10f181f8b28b8a859529442d03b6f0d874ad42a3a:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:d79becc28888e713ead8e2ffd9ca21e282a0dac6b0d1c2a9f9c55ae0780efb1c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -77,7 +77,7 @@
       "statement": "MCP protocol version support is explicitly bounded by the server rather than inherited from the rmcp default, so changing protocol support is a wire-contract change.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/server.rs#L248-L273",
+          "resource": "repo://topos/mcp/src/server.rs#L249-L274",
           "version": "repo-lines-v1:sha256:3997ad3c81d86d1382e6ea5ea01e0955ada87b87c17e7a9fa4111e259699e90d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzNDAyMzUyMzRkNjgxMDM3MTFkNzU4ODcyYTY5Y2I0YzUzNDJjMGVhOGJhNDI5MGJjZWVhNjI2MTRiNGJjM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NWJmYzA0ZDU5NmJmZWE2ZDM3NDYyNmI2YWUxZmQ3ODY2YzQxZWI0NDg3NTYyNmVmMzhmY2M1MTRiZjFiZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NmEyMmUwYTBmY2FmNTM3YTAxNDlhMmRhODhjOWViNzE3YjgwOTVkYWI0ODA4OGI4ZDI0MjIxMWZmMTNkYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYjFjYzhhYjYzNGE2ZDZiZGMxNGY3YjFlMmMxMWQyZDg0NjYyZDMyYTkzYThiZDgxYTAzMzc4NzU2ZjY1OTYifQ"
         },
         {
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_6c67b78ea8c94772a9af439a6c5d90db",
-      "statement": "The Cargo workspace package version 0.9.0 is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
+      "statement": "The Cargo workspace package version 0.10.0 is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L5-L7",
-          "version": "repo-lines-v1:sha256:dd81e2a02a3897c9ffc42ebdfc9ff9ec873930accfa30fdbf93b89ebc39a04c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
+          "version": "repo-lines-v1:sha256:77be510b7b12cb935472ea31d0ca1a35c9d6c6b83920856bb9b8b5f344793d65:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
         },
         {
           "resource": "repo://scripts/check_versions.py#L48-L80",
@@ -193,6 +193,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T11:59:46.794Z"
+    "at": "2026-10-10T21:20:07.776Z"
   }
 }

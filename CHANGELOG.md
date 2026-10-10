@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-10
+
 ### Fixed
 
 - MCP evaluation now marks `pillars.navigable.achieved` to match the scored
@@ -27,6 +29,15 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   spacing and comments without matching documentation strings. CLI and MCP
   reject corpora with no source declarations after separating inline tests.
   Rust test attributes also tolerate comments inside the attribute tokens.
+
+### Security
+
+- VS Code extension toolchain: pnpm overrides raised past every open Dependabot
+  advisory in `extensions/vscode/pnpm-lock.yaml` — `brace-expansion` (1.1.21,
+  2.1.7, 5.0.12), `fast-uri` 3.1.8, `undici` 7.30.0, `js-yaml` 4.3.2,
+  `markdown-it` 14.3.2, and `qs` 6.16.0. `braces@3.0.3` (GHSA-vfj7-8cjw-p6xm)
+  remains: no patched release exists, and it is a dev-toolchain dependency only
+  (#396).
 
 ## [0.8.0] - 2026-10-09
 

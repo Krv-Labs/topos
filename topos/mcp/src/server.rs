@@ -212,7 +212,8 @@ fn build_refactor_prompt_text(
         "Improve `{filepath}` with Topos. Priority: **{priority}**. Iteration budget: \
          **{max_iterations}**. Preference order: `{ranking_str}`.\n\n\
          Use the compact contract in `topos://docs/agent-contract`. Success means a focused \
-         structural change moves the target toward `preference_walk.next_step` or the fallback \
+          structural change edits `preference_walk.next_pillar` (the closest failing gate). \
+          `next_step` is only the concession ladder if that gate plateaus; otherwise divert to the fallback \
          target, preserves behavior, and leaves residual risks explicit.\n\n\
          Core tool calls (arguments are flat — there is no `params` wrapper):\n\n\
          `topos_evaluate_file` — measure the current verdict:\n\

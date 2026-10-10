@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use console::{Key, Term};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
-use topos_engine::evaluation::preferences::{Generator, RANKING_LEN};
+use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
 use topos_engine::evaluation::suggestions::suggest_refactors;
 use topos_mcp::diagnostics::overlay_for_file;
 use topos_mcp::metric_locations::build_metric_locations;
@@ -292,9 +292,16 @@ pub(crate) fn details_for_source(
             findings,
             &locations,
             mapped_ranking.as_ref().map(|values| values.as_slice()),
+            topos_engine::core::omega::EvaluationValue::Ideal,
             3,
         ),
-        suggestions: suggest_refactors(result, &core_findings),
+        suggestions: suggest_refactors(
+            result,
+            &core_findings,
+            ranking
+                .and_then(|values| UserPreferences::new(*values).ok())
+                .as_ref(),
+        ),
     }
 }
 

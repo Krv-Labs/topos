@@ -261,7 +261,9 @@ pub(crate) fn print_classification(result: &ClassificationResult) {
         let Some(val) = result.dimensions.get(dim) else {
             continue;
         };
-        let score = result.scores.get(dim).copied().unwrap_or(0.0) * 100.0;
+        let score = topos_engine::evaluation::policies::desirability::display_percent_whole(
+            result.scores.get(dim).copied().unwrap_or(0.0),
+        );
         println!("    {dim}: {val} [{score:.0}%]");
     }
     if !result.raw_metrics.is_empty() {

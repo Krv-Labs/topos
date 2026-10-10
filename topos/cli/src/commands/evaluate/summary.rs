@@ -7,6 +7,7 @@ use console::Style;
 use serde_json::{json, Value};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{EvaluationValue, Generator};
+use topos_engine::evaluation::advisory::advisories_json;
 use topos_engine::evaluation::preferences::RANKING_LEN;
 
 /// Pillar rows, in `Generator::ALL` order so the table cannot fall out of
@@ -518,7 +519,9 @@ pub(crate) fn failure_lines(
         let detail = if result.is_parseable {
             format!(
                 "{:>3.0}% score",
-                result.scores.get(pillar).copied().unwrap_or(0.0) * 100.0
+                topos_engine::evaluation::policies::desirability::display_percent_whole(
+                    result.scores.get(pillar).copied().unwrap_or(0.0)
+                )
             )
         } else {
             "parse failure".to_string()
@@ -593,7 +596,16 @@ pub(crate) fn json_output(
             let scores: serde_json::Map<String, Value> = result
                 .scores
                 .iter()
-                .map(|(name, score)| (name.clone(), json!((score * 1000.0).round() / 10.0)))
+                .map(|(name, score)| {
+                    (
+                        name.clone(),
+                        json!(
+                            topos_engine::evaluation::policies::desirability::display_percent(
+                                *score
+                            )
+                        ),
+                    )
+                })
                 .collect();
             let language = languages
                 .get(index)
@@ -609,6 +621,7 @@ pub(crate) fn json_output(
                 "scores": scores,
                 "priority": crate::commands::config::priority_name(result.priority),
                 "raw_metrics": result.raw_metrics,
+                "advisories": advisories_json(&result.advisories),
             })
         })
         .collect();
@@ -810,14 +823,21 @@ mod tests {
             ("mdg.fan_out".to_string(), 3.0),
             ("ast.entropy".to_string(), 0.5),
             ("cfg.cyclomatic".to_string(), 4.0),
+            ("cfg.nesting_depth".to_string(), 2.0),
         ]);
+        scored.advisories = topos_engine::evaluation::advisory::assess("rust", &scored.raw_metrics);
         let json = json_output(
             &[PathBuf::from("a.rs")],
             &[scored],
             &["rust".to_string()],
             &[],
         );
-        for field in ["dimensions", "scores", "raw_metrics"] {
+        let cyclomatic = &json["results"][0]["advisories"]["cfg.cyclomatic"];
+        assert_eq!(cyclomatic["value"], 4.0);
+        assert_eq!(cyclomatic["local_weight"], 0.0);
+        assert!(cyclomatic["flagged"].is_boolean());
+        assert!(cyclomatic["quality"].as_f64().is_some_and(|q| q > 0.0));
+        for field in ["dimensions", "scores", "raw_metrics", "advisories"] {
             let keys: Vec<&String> = json["results"][0][field]
                 .as_object()
                 .unwrap_or_else(|| panic!("`{field}` must be an object"))

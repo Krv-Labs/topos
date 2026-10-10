@@ -41,6 +41,7 @@ use topos_engine::config::{load_topos_config, ToposConfig};
 use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
+use topos_engine::evaluation::advisory::rescore_population;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
@@ -123,7 +124,11 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
     let (mut mdg, composable_warnings) = resolve_evaluate_mdg(&args);
-    let results = classify_evaluate_inputs(&inputs, &mut mdg, priority, args.json)?;
+    let mut results = classify_evaluate_inputs(&inputs, &mut mdg, priority, args.json)?;
+    // A multi-file run is one codebase: read advisories against it.
+    if results.len() > 1 {
+        rescore_population(&mut results);
+    }
 
     if let Some(pillar) = failure_pillar {
         ensure_pillar_measured(&results, pillar)?;

@@ -1,22 +1,27 @@
 //! Policy calibration — central hub for evaluation gates and scoring
 //! constants.
 //!
-//! Edit [`SIMPLE`], [`COMPOSABLE`], [`SECURE`] and [`score_floor`] when
+//! Edit [`SIMPLE`], [`COMPOSABLE`], [`SECURE`] and [`NAVIGABLE`] when
 //! updating from experimental data. All policy translators read from
-//! this module; nothing else should define pass/fail or normalization
+//! this module; nothing else should define pass/fail or desirability
 //! numbers.
 //!
 //! - **Raw-metric gates** drive `ScoredDecision.achieved` (AND
 //!   semantics). Each `Φᵢ` compares probe values against these fields;
 //!   they are the decisive pass/fail criteria for the four quality
 //!   generators in `Ω`.
-//! - **Normalization caps/scales** map raw metrics to `[0, 1]` quality
-//!   scores for reporting and multi-file aggregation. They do **not**
-//!   gate `achieved`.
+//! - **Desirability anchors** — the gate thresholds themselves, plus
+//!   `entropy_ideal` and the SECURE decay scales — shape each gated
+//!   metric's desirability so it equals `TAU` exactly at the gate (see
+//!   [`crate::evaluation::policies::desirability`] and
+//!   `docs/decisions/gate-anchored-scoring.md`).
 //! - **Score floors** are the alternate path via
-//!   `policies::base::meet_satisfied` and multi-file
-//!   `CharacteristicMorphism` meets. Live `Φᵢ` translators don't use
-//!   these for `achieved`.
+//!   `policies::base::meet_satisfied`. Because scores are gate-anchored,
+//!   every floor is `TAU`.
+//!
+//! Advisory metrics (`cfg.cyclomatic`, `mdg.instability`, `mdg.fan_in`,
+//! …) have no fixed bands here; they are read relative to their codebase
+//! by [`crate::evaluation::advisory`].
 //!
 //! Calibration provenance: PyPI corpus ECDF calibration (June 2026). See
 //! `topos-leaderboard/CALIBRATION_REPORT.md` and `calibration.json`.
@@ -24,69 +29,44 @@
 //! `CoveragePolicyThresholds`/`ClonePolicyThresholds` — auxiliary,
 //! outside `Ω` — back `policies::{clones,coverage}` (issue #145).
 
+use crate::evaluation::policies::desirability::TAU;
 use crate::evaluation::preferences::Generator;
 
-/// `Φ_SIMPLE` gates and normalization.
+/// `Φ_SIMPLE` gates and desirability anchors.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SimplePolicyThresholds {
-    // Gates (achieved)
+    /// Not a gate: `cfg.cyclomatic` is advisory (issue #193). MCP still uses
+    /// it as the cutoff for ranking "maintainability giants" and for the
+    /// whole-file cyclomatic refactor location.
     pub max_cyclomatic: f64,
+    // Gates (achieved)
     pub max_function_complexity: f64,
     pub min_entropy: f64,
     pub max_entropy: f64,
-    // Normalization (score only)
-    pub max_cyclomatic_cap: f64,
-    pub max_function_complexity_cap: f64,
+    /// Band-desirability peak for `ast.entropy`.
     pub entropy_ideal: f64,
     /// Below this many source bytes, an `ast.entropy` reading *above*
     /// `entropy_ideal` is unreliable — zlib's fixed per-stream overhead
     /// dominates the ratio (issue #152), so a tiny branch-free function can
     /// read as "denser" than a larger, genuinely branchy one. Mirrors
     /// `ENTROPY_SIZE_FLOOR_BYTES` in `functors::probes::ast::entropy`; see
-    /// `evaluation::policies::simple::quality`.
+    /// `evaluation::policies::simple::desirability`.
     pub entropy_size_floor_bytes: f64,
 }
 
-/// `Φ_COMPOSABLE` reference thresholds, gate, and normalization.
+/// `Φ_COMPOSABLE` file-level gate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ComposablePolicyThresholds {
-    // Advisory score/reference bands
-    pub instability_low: f64,
-    pub instability_high: f64,
-    pub max_fan_in: f64,
-    // File-level achieved gate
     pub max_fan_out: f64,
-    /// Entrypoint carve-out: import/export-only entrypoint modules with
-    /// zero fan-in may sit at or above this instability without
-    /// failing the gate.
-    pub entrypoint_instability_min: f64,
-    /// Distance from Martin's Main Sequence (D = |A + I - 1|), gated in
-    /// place of raw instability whenever Abstractness (`mdg.abstractness`)
-    /// is available — see `evaluation::policies::composable::score_coupling`
-    /// and issue #124. PROVISIONAL: a first-pass estimate (roughly Martin's
-    /// commonly-cited "principal zone" radius), not yet run through the
-    /// PyPI corpus ECDF calibration the other constants in this struct
-    /// received.
-    pub main_sequence_distance_max: f64,
-    /// Zone-of-Pain carve-out: a declarations-only, no-branching "stable
-    /// leaf" module (constants, error types — see
-    /// `evaluation::file_roles::is_stable_leaf_module`) may sit at or below
-    /// this instability without failing the gate, mirroring
-    /// `entrypoint_instability_min` for the low-instability extreme. Also
-    /// PROVISIONAL.
-    pub stable_leaf_instability_max: f64,
-    // Normalization (score only)
-    pub max_fan_in_cap: f64,
-    pub max_fan_out_cap: f64,
 }
 
-/// `Φ_SECURE` gates and normalization.
+/// `Φ_SECURE` gates and desirability decay.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SecurePolicyThresholds {
     // Gates (achieved) — strict zero-tolerance security
     pub max_dangerous_calls: f64,
     pub max_taint_flows: f64,
-    // Normalization (score only) — exponential decay scales
+    /// Desirability decay scales: `d = TAU·exp(−v/scale)` for `v > 0`.
     pub danger_scale: f64,
     pub taint_scale: f64,
 }
@@ -96,27 +76,17 @@ pub const SIMPLE: SimplePolicyThresholds = SimplePolicyThresholds {
     max_function_complexity: 10.0,
     min_entropy: 0.2,
     max_entropy: 0.8,
-    max_cyclomatic_cap: 40.0,
-    max_function_complexity_cap: 20.0,
     entropy_ideal: 0.5,
     entropy_size_floor_bytes: 200.0,
 };
 
 pub const COMPOSABLE: ComposablePolicyThresholds = ComposablePolicyThresholds {
-    instability_low: 0.3,
-    instability_high: 0.7,
-    max_fan_in: 15.0,
     // Fresh v0.5 file-level calibration (2026-08-07): 2,979 production files
     // from Python, Rust, TypeScript, and the polyglot MCP cohort, after
     // excluding test/example paths. A cap of 10 failed 1.2% / 3.0% / 6.3% /
     // 6.8% respectively, or 4.3% with equal ecosystem weight. This is an
     // empirical Topos policy, not a universal constant from the literature.
     max_fan_out: 10.0,
-    entrypoint_instability_min: 0.95,
-    main_sequence_distance_max: 0.5,
-    stable_leaf_instability_max: 0.05,
-    max_fan_in_cap: 40.0,
-    max_fan_out_cap: 40.0,
 };
 
 pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
@@ -126,7 +96,7 @@ pub const SECURE: SecurePolicyThresholds = SecurePolicyThresholds {
     taint_scale: 3.0,
 };
 
-/// `Φ_NAVIGABLE` gates and normalization.
+/// `Φ_NAVIGABLE` gate.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NavigablePolicyThresholds {
     /// Worst-function Semantic Compositional Divergence a file may carry.
@@ -136,15 +106,10 @@ pub struct NavigablePolicyThresholds {
     /// p95 `10.37`. Gate `10.0` yields ~5.2% failure (MCP ~5.8%, Python ~6.0%),
     /// matching the ~5.5% calibration target used for SIMPLE and SECURE.
     pub max_function_divergence: f64,
-    /// Normalization (score only): divergence at which the score floors at
-    /// zero. Set to `12.0` to align with p99 across Rust (`10.40`), Go (`13.64`),
-    /// and Python (`12.31`), ensuring linear score decay without early flooring.
-    pub divergence_cap: f64,
 }
 
 pub const NAVIGABLE: NavigablePolicyThresholds = NavigablePolicyThresholds {
     max_function_divergence: 10.0,
-    divergence_cap: 12.0,
 };
 
 /// Structural test-coverage policy (outside `Ω`).
@@ -177,15 +142,10 @@ pub const CLONE: ClonePolicyThresholds = ClonePolicyThresholds {
     max_normalized_distance: 0.1,
 };
 
-/// Score-floor alternate path (`meet_satisfied` + multi-file
-/// `CharacteristicMorphism`).
-pub fn score_floor(generator: Generator) -> f64 {
-    match generator {
-        Generator::Simple => 0.40,
-        Generator::Composable => 0.80,
-        Generator::Secure => 1.00,
-        // Matches `Generator::Simple` — both are AST-local pillars with
-        // similar score distributions on the calibration corpus.
-        Generator::Navigable => 0.40,
-    }
+/// Score-floor alternate path (`meet_satisfied`).
+///
+/// Scores are gate-anchored (`score ≥ TAU` ⇔ the pillar passed), so the
+/// floor is `TAU` for every generator.
+pub fn score_floor(_generator: Generator) -> f64 {
+    TAU
 }

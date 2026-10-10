@@ -11,23 +11,35 @@
 //! - `Φ_SIMPLE` ↦ `policies::simple::score_simple`
 //! - `Φ_COMPOSABLE` ↦ `policies::composable::score_coupling`
 //! - `Φ_SECURE` ↦ `policies::secure::score_secure`
+//! - `Φ_NAVIGABLE` ↦ `policies::navigable::score_navigable`
 //!
-//! # Decisive semantics: AND-of-raw-metric thresholds
+//! # Decisive semantics: AND-of-raw-metric gates
 //!
-//! Each `Φᵢ` owns **per-metric raw thresholds** (cyclomatic ≤ 15, zero
-//! taint flows, fan-out ≤ 10, …). `achieved` is the independent AND of
-//! those checks — *not* `score ≥ score_floor(g)`. The normalized
-//! `score` on [`ScoredDecision`] is `min(per-metric qualities)` for
-//! reporting and multi-file meets; it does not gate `achieved`.
+//! Each `Φᵢ` owns **per-metric raw gates** (max function complexity
+//! ≤ 10, zero taint flows, fan-out ≤ 10, …). `achieved` is the
+//! independent AND of those checks.
 //!
-//! [`meet_satisfied`] implements an *alternate* score-floor gate
-//! (`score ≥ score_floor(g)`) for callers that already hold normalized
-//! scores. The live `CharacteristicMorphism` path does **not** use it —
-//! it trusts `ScoredDecision.achieved` from each `Φᵢ`.
+//! # Gate-anchored scores
+//!
+//! The continuous score is derived from the same gates, so it can never
+//! contradict the verdict (see `docs/decisions/gate-anchored-scoring.md`):
+//! each gated metric has a desirability `dᵢ` anchored so `dᵢ = TAU` at its
+//! threshold, and the gate score is `G = minᵢ dᵢ`. `achieved ⇔ G ≥ TAU`.
+//! Advisory metrics never enter `G`; the characteristic morphism folds them
+//! in afterwards with
+//! [`crate::evaluation::policies::desirability::band_score`], which moves
+//! the score only within the half the verdict chose.
+//!
+//! [`meet_satisfied`] applies the score floor (`score ≥ TAU`) for callers
+//! that already hold scores. The live `CharacteristicMorphism` path trusts
+//! `ScoredDecision.achieved` from each `Φᵢ`; with gate-anchored scores the
+//! two agree.
 
 use std::collections::{BTreeMap, HashMap};
 
 use crate::evaluation::policies::calibration::score_floor;
+use crate::evaluation::policies::desirability::TAU;
+use crate::evaluation::policies::gates::GateResult;
 use crate::evaluation::preferences::Generator;
 
 /// Normalized score floor for one generator (score-floor path only).
@@ -46,7 +58,7 @@ pub fn is_satisfied(generator: Generator, score: f64) -> bool {
 ///
 /// Prefer each `Φᵢ`'s `ScoredDecision.achieved` when probe metrics are
 /// available — that path applies raw-metric gates from
-/// [`crate::evaluation::policies::calibration`].
+/// [`crate::evaluation::policies::gates`].
 pub fn meet_satisfied(scores: &HashMap<Generator, f64>) -> HashMap<Generator, bool> {
     Generator::ALL
         .into_iter()
@@ -88,16 +100,46 @@ impl Priority {
 /// Result of applying one policy translator `Φᵢ`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScoredDecision {
-    /// Conservative `min(per-metric qualities)` in `[0.0, 1.0]` for
-    /// display and multi-file aggregation. Does **not** gate `achieved`.
+    /// Pillar score `S` in `[0.0, 1.0]`. The `Φᵢ` are advisory-agnostic,
+    /// so this equals `gate_score`; the characteristic morphism applies
+    /// `band_score(G, A)` once advisories are known. `S ≥ TAU` ⇔ `achieved`.
     pub score: f64,
+    /// Gate score `G = minᵢ dᵢ` over the pillar's gated desirabilities.
+    pub gate_score: f64,
     /// True when every supplied raw metric passes that `Φᵢ`'s policy
-    /// thresholds (AND semantics). This is what
-    /// `CharacteristicMorphism` feeds into `verdict_from_generators`.
+    /// gates (AND semantics), equivalently `gate_score ≥ TAU`. This is
+    /// what `CharacteristicMorphism` feeds into `verdict_from_generators`.
     pub achieved: bool,
     /// Per-metric human-readable strings keyed by metric name (e.g.
-    /// `"cfg.cyclomatic"`).
+    /// `"ast.entropy"`).
     pub interpretation: BTreeMap<String, String>,
+}
+
+impl ScoredDecision {
+    /// Build a decision from a pillar's evaluated gates: `G = minᵢ dᵢ`,
+    /// `achieved` = every gate passed, `score = G`. No gates (nothing
+    /// measured) is a vacuous pass with score `1.0`.
+    pub fn from_gates(results: &[GateResult]) -> Self {
+        Self::from_gates_with(results, GateResult::desirability)
+    }
+
+    /// As [`Self::from_gates`], with a per-gate desirability override (the
+    /// SIMPLE tiny-file entropy floor). The override must keep
+    /// `d ≥ TAU` ⇔ `passed()`.
+    pub fn from_gates_with(results: &[GateResult], d: impl Fn(&GateResult) -> f64) -> Self {
+        let gate_score = results.iter().map(d).fold(1.0, f64::min);
+        let achieved = results.iter().all(GateResult::passed);
+        debug_assert_eq!(achieved, gate_score >= TAU, "score contradicts verdict");
+        ScoredDecision {
+            score: gate_score,
+            gate_score,
+            achieved,
+            interpretation: results
+                .iter()
+                .map(|r| (r.spec.metric.to_string(), r.interpretation()))
+                .collect(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -120,10 +162,10 @@ mod tests {
 
     #[test]
     fn meet_satisfied_uses_score_floors() {
-        let scores = HashMap::from([(Generator::Simple, 0.5), (Generator::Secure, 1.0)]);
+        let scores = HashMap::from([(Generator::Simple, 0.5), (Generator::Secure, 0.49)]);
         let satisfied = meet_satisfied(&scores);
-        assert!(satisfied[&Generator::Simple]); // floor is 0.40
-        assert!(satisfied[&Generator::Secure]); // floor is 1.00
-        assert!(!satisfied[&Generator::Composable]); // missing -> 0.0, floor is 0.80
+        assert!(satisfied[&Generator::Simple]); // floor is TAU = 0.5
+        assert!(!satisfied[&Generator::Secure]);
+        assert!(!satisfied[&Generator::Composable]); // missing -> 0.0
     }
 }

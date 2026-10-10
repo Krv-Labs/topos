@@ -48,8 +48,8 @@ logic — partial evidence across orthogonal axes.
 
 | Generator    | Translational functor (Representation) | Probes |
 |--------------|----------------------------------------|--------|
-| `SIMPLE`     | Control Flow Graph (CFG) + AST         | `cfg.cyclomatic`, `ast.entropy`, `ast.max_function_complexity` |
-| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `mdg.fan_out` gate; `mdg.instability`, `mdg.main_sequence_distance`, `mdg.fan_in` diagnostics |
+| `SIMPLE`     | Control Flow Graph (CFG) + AST         | `ast.entropy`, `ast.max_function_complexity` gates; `cfg.cyclomatic`, `cfg.nesting_depth`, `cfg.essential` relative advisories |
+| `COMPOSABLE` | Module Dependency Graph (GitNexus)     | `mdg.fan_out` gate; `mdg.fan_in`, `mdg.instability` relative advisories; `mdg.main_sequence_distance` diagnostic |
 | `SECURE`     | Code Property Graph (CPG)              | `cpg.dangerous_calls`, `cpg.taint_flows` |
 | `NAVIGABLE`  | AST scope tree                         | `nav.max_function_divergence` |
 
@@ -84,8 +84,15 @@ A `ClassificationResult` has:
 - `lattice_element` — the overall verdict (one of the 16 above).
 - `dimensions` — per-generator verdict keyed by `simple` / `composable` /
   `secure` / `navigable`.
-- `scores` — continuous [0, 100] score per generator. Diagnostic only:
-  pass/fail comes from the raw-metric gates, not the score.
+- `scores` — continuous [0, 100] score per generator, **gate-anchored**:
+  50 is exactly at the gate, so a generator is satisfied ⇔ its score ≥ 50.
+  Above 50 it measures margin past the gates; codebase-relative advisories
+  move it within its half, never across 50.
+- `gate_scores` — the gate-only score `G` per generator (min over that
+  generator's gates), before advisories.
+- `advisories` — per advisory metric: `value`, `relative_percentile`
+  (vs. this codebase, shrunk to a language prior), `global_percentile`
+  (vs. the language prior), `local_weight`, `quality`, `flagged`.
 - `coupling_available` — `false` when no usable `.gitnexus/` graph is
   attached. `COMPOSABLE` (and any verdict that includes it, including
   `IDEAL`) is **unreachable** when this is false. `topos_evaluate_file`/
@@ -101,6 +108,15 @@ A `ClassificationResult` has:
 Combining per-file verdicts is the **lattice meet** `⋀_f χ_S(f)` —
 pointwise per generator.  A generator is satisfied for the whole codebase
 iff it is satisfied for every file.
+
+## Continuous reading
+
+The score vector lives in `[0, 1]^4`, a product of Gödel chains (min, max,
+Gödel implication). The 16 verdicts are its cut at 0.5. The cut preserves
+meet and join, so the continuous score of "all of these pillars" is the
+**min** of their scores (PLATINUM's is the min of all four), and the score of
+"at least `j` pillars" is the `j`-th largest. Implication and negation do not
+survive the cut and are evaluated on the crisp verdicts only.
 
 ## Agent loop
 

@@ -170,7 +170,7 @@ fn print_json(
         .map(|(k, s)| {
             // Python emits `round(s * 100.0, 1)` (0–100, one decimal); the
             // engine stores 0–1, so scale to match for parity/machine consumers.
-            let scaled = (*s * 1000.0).round() / 10.0;
+            let scaled = topos_engine::evaluation::policies::desirability::display_percent(*s);
             let value = serde_json::Number::from_f64(scaled)
                 .map(serde_json::Value::Number)
                 .unwrap_or(serde_json::Value::Null);

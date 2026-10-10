@@ -9,13 +9,15 @@ use rmcp::model::CallToolResult;
 use rmcp::{tool, tool_router};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
+use topos_engine::evaluation::advisory::{advisories_json, rescore_population};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::SIMPLE;
-use topos_engine::evaluation::policies::composable::coupling_gate_input;
 use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::weakest_score;
 
-use crate::diagnostics::{overlay_for_file, overlay_for_source, SecurityOverlay};
+use crate::diagnostics::{
+    opt_in_security_report, overlay_for_file, overlay_for_source, SecurityOverlay,
+};
 use crate::evaluation::{
     all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
     gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
@@ -36,12 +38,30 @@ use crate::schemas::{
 use crate::security::{
     composable_default_root, read_resolved_utf8, resolution_note, resolve_project_path,
 };
+use crate::security_findings::SecurityReport;
 use crate::server::ToposServer;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
     if let Some(overlay) = overlay {
         opts.security_findings = overlay.active_findings.clone();
+        opts.security_advisory = overlay.advisory.clone();
         opts.acknowledged_risks = overlay.acknowledged_risks.clone();
+    }
+}
+
+/// `security_scan` opt-in: attach the scanner report to the payload only,
+/// after the result (verdict, pillars, agent contract) is built, so the
+/// coverage pass can never change routing or scores.
+fn attach_opt_in_report(
+    model: &mut EvaluationResult,
+    report: Option<SecurityReport>,
+    include_findings: bool,
+) {
+    if let Some(report) = report {
+        if include_findings {
+            model.security_findings = report.findings;
+        }
+        model.security_advisory = report.advisory;
     }
 }
 
@@ -277,9 +297,10 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
         warnings.push(note);
     }
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
-    let locations = match read_resolved_utf8(&resolved) {
-        Ok(source) => build_metric_locations(&source, detect_language(&resolved), &result),
-        Err(_) => BTreeMap::new(),
+    let source = read_resolved_utf8(&resolved).ok();
+    let locations = match &source {
+        Some(source) => build_metric_locations(source, detect_language(&resolved), &result),
+        None => BTreeMap::new(),
     };
 
     // Targets are computed before the result model so the agent contract
@@ -298,6 +319,10 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
                 .unwrap_or(&[]),
             &locations,
             params.preferences.as_ref().map(|p| p.ranking.as_slice()),
+            prefs
+                .as_ref()
+                .map(|prefs| prefs.aspirational_target())
+                .unwrap_or(topos_engine::core::omega::EvaluationValue::Ideal),
             params.refactor_targets.min(25),
         ))
     } else {
@@ -317,10 +342,44 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     opts.offer_refactor_targets = targets.is_none();
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
-    let model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    let mut model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    run_opt_in_security_scan(
+        &mut model,
+        &params,
+        overlay.is_some(),
+        &resolved,
+        source.as_deref(),
+        &result,
+    );
     let mut md = render_evaluation_md(&model, None, params.verbose);
     append_path_note(&mut md, path_note.as_deref());
     to_tool_result(&model, md)
+}
+
+/// `security_scan`: run Sighthound although SECURE passed and attach the
+/// report-only advisory block; the verdict and scores are already built.
+/// A failed SECURE already carries the overlay's report, so it is skipped.
+fn run_opt_in_security_scan(
+    model: &mut EvaluationResult,
+    params: &EvaluateFileInput,
+    has_overlay: bool,
+    resolved: &Path,
+    source: Option<&str>,
+    result: &ClassificationResult,
+) {
+    if !params.security_scan || has_overlay {
+        return;
+    }
+    let report = source.and_then(|source| {
+        opt_in_security_report(
+            source,
+            detect_language(resolved),
+            result,
+            Some(resolved),
+            &params.allow,
+        )
+    });
+    attach_opt_in_report(model, report, params.include_security_findings);
 }
 
 fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
@@ -362,6 +421,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
 
     let mut per_file_results: Vec<ClassificationResult> = Vec::new();
     let mut entries: Vec<ProjectFileEntry> = Vec::new();
+    let mut file_has_dep: Vec<bool> = Vec::new();
     let mut parse_failures = 0usize;
     let mut any_dep_graph_loaded = false;
     let mut last_load_error: Option<String> = None;
@@ -387,26 +447,33 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
             Ok((result, entry, failed, has_dep, load_error)) => {
                 if failed {
                     parse_failures += 1;
-                    *per_language_parse_failures
-                        .entry(language.clone())
-                        .or_default() += 1;
+                    *per_language_parse_failures.entry(language).or_default() += 1;
                 }
                 any_dep_graph_loaded |= has_dep;
                 if load_error.is_some() {
                     last_load_error = load_error;
                 }
-                per_file_results.push(result.clone());
-                entries.push(entry.clone());
-                per_language_results
-                    .entry(language.clone())
-                    .or_default()
-                    .push(result);
-                per_language_entries
-                    .entry(language)
-                    .or_default()
-                    .push(entry);
+                per_file_results.push(result);
+                entries.push(entry);
+                file_has_dep.push(has_dep);
             }
         }
+    }
+
+    // The project is one codebase: read advisories against it, then refresh
+    // each row from the rescored result before deriving the per-language maps.
+    rescore_population(&mut per_file_results);
+    for ((result, entry), &has_dep) in per_file_results.iter().zip(&mut entries).zip(&file_has_dep)
+    {
+        refresh_entry_scores(entry, result, has_dep);
+        per_language_results
+            .entry(entry.language.clone())
+            .or_default()
+            .push(result.clone());
+        per_language_entries
+            .entry(entry.language.clone())
+            .or_default()
+            .push(entry.clone());
     }
 
     let model = build_project_result(BuildProjectArgs {
@@ -460,6 +527,9 @@ fn adjusted_result(
         interpretation: result.interpretation.clone(),
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
+        language: result.language.clone(),
+        gate_scores: overlay.verdict.gate_scores(&result.gate_scores),
+        advisories: result.advisories.clone(),
     }
 }
 
@@ -510,7 +580,12 @@ fn evaluate_single_file(
         scores: result
             .scores
             .iter()
-            .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+            .map(|(dim, s)| {
+                (
+                    dim.clone(),
+                    topos_engine::evaluation::policies::desirability::display_percent(*s),
+                )
+            })
             .collect(),
         pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
         raw_metrics: if verbose {
@@ -518,12 +593,14 @@ fn evaluate_single_file(
         } else {
             BTreeMap::new()
         },
+        advisories: advisories_json(&result.advisories),
         warnings: Vec::new(),
         security_findings: if include_security_findings {
             findings
         } else {
             Vec::new()
         },
+        security_advisory: overlay.as_ref().and_then(|o| o.advisory.clone()),
         acknowledged_risks: overlay
             .as_ref()
             .map(|o| o.acknowledged_risks.clone())
@@ -542,6 +619,27 @@ fn evaluate_single_file(
         dep_graph.is_some(),
         load_error,
     ))
+}
+
+/// Re-derive a row's score-dependent fields after the population pass
+/// changed `result.scores` / `result.advisories` (verdict fields never move).
+fn refresh_entry_scores(
+    entry: &mut ProjectFileEntry,
+    result: &ClassificationResult,
+    has_dep: bool,
+) {
+    entry.scores = result
+        .scores
+        .iter()
+        .map(|(dim, s)| {
+            (
+                dim.clone(),
+                topos_engine::evaluation::policies::desirability::display_percent(*s),
+            )
+        })
+        .collect();
+    entry.pillars = build_pillars(result, has_dep);
+    entry.advisories = advisories_json(&result.advisories);
 }
 
 fn validate_and_collect_project(
@@ -573,7 +671,12 @@ fn min_scores_by_dim(results: &[ClassificationResult]) -> BTreeMap<String, f64> 
     }
     min_scores
         .into_iter()
-        .map(|(dim, s)| (dim, (s * 1000.0).round() / 10.0))
+        .map(|(dim, s)| {
+            (
+                dim,
+                topos_engine::evaluation::policies::desirability::display_percent(s),
+            )
+        })
         .collect()
 }
 
@@ -603,19 +706,7 @@ thread_local! {
 fn gate_metrics_for(result: &ClassificationResult) -> BTreeMap<String, f64> {
     #[cfg(test)]
     GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
-    let instability = result.raw_metrics.get("mdg.instability").copied();
-    let fan_in = result.raw_metrics.get("mdg.fan_in").copied();
-    let fan_out = result.raw_metrics.get("mdg.fan_out").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
-    gate_metrics.remove("mdg.instability");
-    gate_metrics.extend(coupling_gate_input(
-        instability,
-        fan_in,
-        fan_out,
-        result.raw_metrics.get("mdg.abstractness").copied(),
-        result.raw_metrics.get("mdg.coupling").copied(),
-    ));
-    gate_metrics
+    result.raw_metrics.clone()
 }
 
 /// Every gate-derived sort input for one row, evaluated exactly once.
@@ -639,17 +730,10 @@ impl RowKeys {
     fn new(row: &ScoredProjectRow) -> Self {
         let result = &row.result;
         let gate_metrics = gate_metrics_for(result);
-        let instability = result.raw_metrics.get("mdg.instability").copied();
-        let gate_failures = evaluate_gates(
-            &gate_metrics,
-            None,
-            result.is_entrypoint_module,
-            result.is_stable_leaf_module,
-            instability,
-        )
-        .into_iter()
-        .filter(|r| r.spec.gates_achieved && !r.passed())
-        .count();
+        let gate_failures = evaluate_gates(&gate_metrics, None, result.is_entrypoint_module)
+            .into_iter()
+            .filter(|r| !r.passed())
+            .count();
         let hard_fail = !result.is_parseable || gate_failures > 0;
         let cyclomatic = gate_metrics.get("cfg.cyclomatic").copied();
         let giant = !hard_fail && cyclomatic.is_some_and(|v| v > SIMPLE.max_cyclomatic);
@@ -768,8 +852,8 @@ fn classify_project_rows(
 /// depend on comparison order rather than on the data. That cannot happen,
 /// on three independent grounds:
 ///
-/// 1. **No gate metric can be `NaN` at the source.** Every entry in
-///    `GATE_SPECS` is either an integer count widened to `f64`
+/// 1. **No scored metric can be `NaN` at the source.** Every gated or
+///    advisory metric is either an integer count widened to `f64`
 ///    (`cfg.cyclomatic` = `usize as f64` in `graphs/cfg/object.rs`,
 ///    `ast.max_function_complexity`, `mdg.fan_in`/`fan_out`,
 ///    `cpg.dangerous_calls`/`taint_flows`) or a division whose zero
@@ -779,12 +863,10 @@ fn classify_project_rows(
 ///    `total == 0`). `nav.max_function_divergence` is
 ///    `Σ depth·ln(1 + fanout)` with `fanout >= 0`, so every term is a
 ///    finite `ln` of `>= 1`.
-/// 2. **The quality curves absorb `NaN` anyway.** Every per-metric quality
-///    in `evaluation::policies::{simple,composable,secure,navigable}` ends
-///    in `.min(1.0)` or `.max(0.0)`, and Rust's `f64::min`/`f64::max`
-///    return the *non*-`NaN` operand — so a hypothetical `NaN` metric
-///    yields a finite quality, and `ScoredDecision::score` stays in
-///    `[0, 1]`. `weakest_score`'s `reduce(f64::min)` inherits the same
+/// 2. **The desirability curves absorb `NaN` anyway.** Every curve in
+///    `evaluation::policies::desirability` maps `NaN` to `0.0`, and
+///    `band_score` clamps its inputs, so a hypothetical `NaN` metric yields
+///    a finite score and `ScoredDecision::score` stays in `[0, 1]`. `weakest_score`'s `reduce(f64::min)` inherits the same
 ///    property.
 /// 3. **The cyclomatic branch is unreachable with `NaN`.** It runs only
 ///    behind `is_maintainability_giant`, whose `*v > SIMPLE.max_cyclomatic`
@@ -1363,8 +1445,10 @@ mod tests {
                 },
             )]),
             raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), 3.0)]),
+            advisories: BTreeMap::new(),
             warnings: Vec::new(),
             security_findings: Vec::new(),
+            security_advisory: None,
             acknowledged_risks: Vec::new(),
             raw_lattice_element: None,
             adjusted_lattice_element: None,
@@ -1373,6 +1457,33 @@ mod tests {
             grade_capped: false,
             is_parseable: true,
         }
+    }
+
+    #[test]
+    fn refreshed_row_carries_population_advisories() {
+        let mut results: Vec<ClassificationResult> = [2.0, 3.0, 30.0]
+            .into_iter()
+            .map(|cc| ClassificationResult {
+                is_parseable: true,
+                language: "python".to_string(),
+                raw_metrics: BTreeMap::from([("cfg.cyclomatic".to_string(), cc)]),
+                gate_scores: BTreeMap::from([("simple".to_string(), 0.8)]),
+                ..Default::default()
+            })
+            .collect();
+        rescore_population(&mut results);
+        let mut row = entry("worst.py", 0.0);
+        refresh_entry_scores(&mut row, &results[2], false);
+        let reading = &row.advisories["cfg.cyclomatic"];
+        assert!(reading["local_weight"].as_f64().unwrap() > 0.0);
+        assert_eq!(
+            row.scores["simple"],
+            (results[2].scores["simple"] * 1000.0).round() / 10.0
+        );
+        assert!(
+            row.scores["simple"] >= 50.0,
+            "advisories never cross the gate"
+        );
     }
 
     fn project_params(offset: usize) -> EvaluateProjectInput {

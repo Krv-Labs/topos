@@ -92,8 +92,17 @@ pub(crate) fn render_preference_walk_md(r: &PreferenceWalkResult) -> String {
             "**Progress to target:** {:.0}%",
             r.progress * 100.0
         ));
+        if let Some(next_pillar) = r.next_pillar {
+            lines.push(format!(
+                "**Next pillar:** `{}` — closest failing gate inside the target",
+                next_pillar.as_str()
+            ));
+        }
         if let Some(next_step) = r.next_step {
-            lines.push(format!("**Immediate next step:** `{}`", next_step.as_str()));
+            lines.push(format!(
+                "**Concession step:** `{}` — smallest preferred verdict, not the edit",
+                next_step.as_str()
+            ));
         } else {
             lines.push("_Already at or beyond the aspirational target — no walk._".to_string());
         }
@@ -155,6 +164,7 @@ impl ToposServer {
                     fallback_target: LatticeElement::IDEAL,
                     current: params.current,
                     next_step: None,
+                    next_pillar: None,
                     progress: 0.0,
                     walk: Vec::new(),
                     induced_order: Vec::new(),
@@ -169,6 +179,11 @@ impl ToposServer {
         let current_value = params.current.map(str_to_lattice);
         let walk_values = prefs.relaxation_walk(current_value);
         let next_value = current_value.and_then(|c| prefs.next_step(c));
+        let next_pillar = current_value.and_then(|current| {
+            prefs
+                .ascent_pillar(current, &params.gate_scores)
+                .map(GeneratorInput::from_generator)
+        });
         let progress = current_value
             .map(|c| (prefs.progress(c) * 1000.0).round() / 1000.0)
             .unwrap_or(0.0);
@@ -183,6 +198,7 @@ impl ToposServer {
             fallback_target: lattice_to_str(prefs.fallback_target()),
             current: params.current,
             next_step: next_value.map(lattice_to_str),
+            next_pillar,
             progress,
             walk: walk_values.iter().map(|&v| to_step(&prefs, v)).collect(),
             induced_order: prefs

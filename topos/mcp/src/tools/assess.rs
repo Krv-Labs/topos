@@ -59,6 +59,7 @@ fn is_regression(status: AssessmentStatus) -> bool {
 fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
     if let Some(overlay) = overlay {
         opts.security_findings = overlay.active_findings.clone();
+        opts.security_advisory = overlay.advisory.clone();
         opts.acknowledged_risks = overlay.acknowledged_risks.clone();
     }
 }

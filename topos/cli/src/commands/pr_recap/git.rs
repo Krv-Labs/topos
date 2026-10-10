@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use topos_engine::graphs::ast::languages::all_source_suffixes;
+use topos_engine::graphs::ast::languages::language_for_path;
 
 use super::model::FileChange;
 use crate::commands::gh::git;
@@ -186,9 +186,7 @@ pub(super) fn skip_reason(entry: &DiffEntry) -> Option<String> {
     if SKIP_PREFIXES.iter().any(|prefix| path.starts_with(prefix)) {
         return Some("generated or vendor path".to_string());
     }
-    let suffixes = all_source_suffixes();
-    let supported = suffixes.iter().any(|suffix| path.ends_with(suffix));
-    if !supported {
+    if language_for_path(&path).is_none() {
         return Some("not a supported source file".to_string());
     }
     None
@@ -240,5 +238,19 @@ mod tests {
             ]
         );
         assert_eq!(diff.deleted, ["gone.py"]);
+    }
+
+    #[test]
+    fn skip_reason_matches_suffixes_case_insensitively() {
+        let entry = |path: &str| DiffEntry {
+            status: "M".to_string(),
+            path: path.to_string(),
+            old_path: None,
+        };
+        assert_eq!(skip_reason(&entry("src/Main.RS")), None);
+        assert_eq!(
+            skip_reason(&entry("README.md")).as_deref(),
+            Some("not a supported source file")
+        );
     }
 }

@@ -355,7 +355,9 @@ pub fn build_path_skip_checker(scan_root: &Path) -> PathFilter {
 
 fn has_suffix(path: &Path, suffixes: &[&str]) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
-        Some(ext) => suffixes.iter().any(|s| s.trim_start_matches('.') == ext),
+        Some(ext) => suffixes
+            .iter()
+            .any(|s| s.trim_start_matches('.').eq_ignore_ascii_case(ext)),
         None => false,
     }
 }
@@ -506,6 +508,23 @@ mod tests {
         assert!(should_skip_dir(Path::new("/proj/.venv")));
         assert!(should_skip_dir(Path::new("/proj/venv")));
         assert!(should_skip_dir(Path::new("/proj/env")));
+    }
+
+    #[test]
+    fn collect_source_files_matches_suffixes_case_insensitively() {
+        let tmp = unique_tmp_dir("suffix_case");
+        std::fs::write(tmp.join("Main.RS"), "fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("notes.txt"), "rs\n").unwrap();
+
+        let files = collect_source_files(&[tmp.as_path()], &[".rs"], true);
+        assert_eq!(
+            files
+                .iter()
+                .map(|p| p.file_name().unwrap().to_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["Main.RS"]
+        );
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

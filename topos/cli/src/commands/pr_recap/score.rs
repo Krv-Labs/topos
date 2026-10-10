@@ -64,6 +64,8 @@ impl Side {
     ) -> Side {
         let language = detect_language(Path::new(path));
         let mut morphism = ProgramMorphism::with_path(source, language, path);
+        // Deliberately no `rescore_population`: prior-only advisories keep
+        // before/after scores comparable across the two trees.
         let mut result =
             classify_with_representations(&CharacteristicMorphism, &mut morphism, graph, priority);
         if !allow.is_empty() {
@@ -120,6 +122,9 @@ fn allow_secure(
     let secure = score_secure(dangerous, taint);
     let key = Generator::Secure.as_str();
     result.scores.insert(key.to_string(), secure.score);
+    result
+        .gate_scores
+        .insert(key.to_string(), secure.gate_score);
     result.interpretation.extend(secure.interpretation);
     result.dimensions.insert(
         key.to_string(),

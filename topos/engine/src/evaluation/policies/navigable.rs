@@ -5,7 +5,7 @@
 //! ```text
 //! Φ_NAVIGABLE(metrics) → ScoredDecision
 //! achieved = (max_function_divergence ≤ gate)
-//! score    = 1 - min(divergence / cap, 1)   # reporting only
+//! G        = d(divergence)   # lower-is-better: 1 at 0, TAU at gate, 0 at 2·gate
 //! ```
 //!
 //! One gating metric, deliberately. NAVIGABLE answers a single question —
@@ -15,14 +15,12 @@
 //! GitNexus dependency graph or re-measure what `ast.entropy` already
 //! covers under SIMPLE. See `functors::probes::ast::divergence`.
 //!
-//! Gate comparisons and interpretation prose live in [`super::gates`];
-//! thresholds and normalization caps in [`super::calibration`]. Only the
-//! score-shaping quality curve remains local.
+//! Gate comparisons, the desirability curve, and interpretation prose
+//! live in [`super::gates`]; the threshold in [`super::calibration`].
 
 use std::collections::BTreeMap;
 
 use super::base::ScoredDecision;
-use super::calibration::NAVIGABLE;
 use super::gates::{evaluate_gates, interpret_metric};
 
 /// `Φ_NAVIGABLE` — score the NAVIGABLE generator from the worst
@@ -33,39 +31,7 @@ pub fn score_navigable(max_function_divergence: Option<f64>) -> ScoredDecision {
         metrics.insert("nav.max_function_divergence".to_string(), v);
     }
 
-    let results = evaluate_gates(&metrics, Some("navigable"), false, false, None);
-    if results.is_empty() {
-        // No metrics provided (unparseable input) — vacuously satisfied,
-        // matching `Φ_SIMPLE`.
-        return ScoredDecision {
-            score: 1.0,
-            achieved: true,
-            interpretation: BTreeMap::new(),
-        };
-    }
-
-    ScoredDecision {
-        score: results
-            .iter()
-            .map(|r| quality(r.value))
-            .fold(f64::INFINITY, f64::min),
-        achieved: results
-            .iter()
-            .filter(|r| r.spec.gates_achieved)
-            .all(|r| r.passed()),
-        interpretation: results
-            .iter()
-            .map(|r| (r.spec.metric.to_string(), r.interpretation()))
-            .collect(),
-    }
-}
-
-/// Normalize divergence to a `[0, 1]` quality (never gates `achieved`).
-///
-/// Linear decay to the cap: unlike entropy there is no "too little
-/// nesting" failure mode, so the curve is one-sided.
-fn quality(divergence: f64) -> f64 {
-    1.0 - (divergence / NAVIGABLE.divergence_cap).min(1.0)
+    ScoredDecision::from_gates(&evaluate_gates(&metrics, Some("navigable"), false))
 }
 
 /// Describe a raw divergence reading using NAVIGABLE policy language.
@@ -76,6 +42,8 @@ pub fn describe_divergence(divergence: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::evaluation::policies::calibration::NAVIGABLE;
+    use crate::evaluation::policies::desirability::TAU;
 
     #[test]
     fn flat_code_achieves_navigable_with_a_perfect_score() {
@@ -106,13 +74,25 @@ mod tests {
     }
 
     #[test]
-    fn score_decays_monotonically_and_floors_at_the_cap() {
-        let mid = score_navigable(Some(NAVIGABLE.divergence_cap / 2.0)).score;
-        let worse = score_navigable(Some(NAVIGABLE.divergence_cap)).score;
-        let beyond = score_navigable(Some(NAVIGABLE.divergence_cap * 10.0)).score;
-        assert!(mid > worse);
-        assert_eq!(worse, 0.0);
+    fn score_decays_monotonically_and_floors_at_twice_the_gate() {
+        let gate = NAVIGABLE.max_function_divergence;
+        let mid = score_navigable(Some(gate / 2.0)).score;
+        let at_gate = score_navigable(Some(gate)).score;
+        let floor = score_navigable(Some(2.0 * gate)).score;
+        let beyond = score_navigable(Some(gate * 10.0)).score;
+        assert!(mid > at_gate);
+        assert_eq!(at_gate, TAU);
+        assert_eq!(floor, 0.0);
         assert_eq!(beyond, 0.0, "score must floor, never go negative");
+    }
+
+    #[test]
+    fn achieved_iff_score_clears_tau() {
+        for divergence in [0.0, 4.0, 9.99, 10.0, 10.01, 15.0, 20.0, 99.0] {
+            let r = score_navigable(Some(divergence));
+            assert_eq!(r.achieved, r.gate_score >= TAU);
+            assert_eq!(r.achieved, r.score >= TAU);
+        }
     }
 
     #[test]

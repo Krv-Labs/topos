@@ -9,13 +9,19 @@
 //! the suggestion engine, and MCP refactor targets — evaluates gates
 //! through [`evaluate_gates`] so their verdicts can never diverge.
 //!
-//! Score *shaping* (normalization caps, quality curves) deliberately
-//! stays in the scorers; only the decisive pass/fail comparisons live
-//! here.
+//! Every registered spec gates its pillar. Each also carries the
+//! desirability [`Curve`] its continuous score is read off, anchored so
+//! `d = TAU` exactly at the gate threshold: `d ≥ TAU` ⇔
+//! [`GateResult::passed`], so a pillar's score can never contradict its
+//! verdict (see `docs/decisions/gate-anchored-scoring.md`). Advisory
+//! metrics (`cfg.cyclomatic`, `mdg.instability`, `mdg.fan_in`, …) are not
+//! gates and are not registered here; they are read relative to their
+//! codebase by [`crate::evaluation::advisory`].
 
 use std::collections::BTreeMap;
 
 use super::calibration::{COMPOSABLE, NAVIGABLE, SECURE, SIMPLE};
+use super::desirability::{d_band, d_lower_is_better, d_zero_tolerance, TAU};
 
 /// How a metric fared against its gate band.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,14 +55,20 @@ pub struct GateContext<'a> {
     pub value: f64,
     pub metrics: &'a BTreeMap<String, f64>,
     pub is_entrypoint_module: bool,
-    pub is_stable_leaf_module: bool,
-    /// Raw Martin instability, threaded separately from `metrics` because
-    /// `mdg.instability` is deliberately absent from the evaluated metrics map
-    /// whenever `mdg.main_sequence_distance` is active (see
-    /// `evaluation::policies::composable::score_coupling`) -- re-adding it
-    /// under its own key would duplicate the (now-advisory)
-    /// `mdg.instability` GateSpec for the same file.
-    pub instability: Option<f64>,
+}
+
+/// Shape of a gate's desirability `d ∈ [0, 1]`, anchored at the gate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Curve {
+    /// `1` at `0`, `TAU` at `high`, `0` at `2·high` (see
+    /// [`d_lower_is_better`]).
+    LowerIsBetter,
+    /// `1` at `ideal`, `TAU` at `low`/`high`, `0` at `0` and `1` (see
+    /// [`d_band`]).
+    Band { ideal: f64 },
+    /// Gate at zero: `1` at `0`, `TAU·exp(−v/scale)` above (see
+    /// [`d_zero_tolerance`]).
+    ZeroTolerance { scale: f64 },
 }
 
 /// One raw-metric gate: band, pillar, exemption, remedy, and prose.
@@ -72,15 +84,7 @@ pub struct GateSpec {
     pub exempt: Option<fn(&GateContext) -> bool>,
     pub operations_low: &'static [&'static str],
     pub operations_high: &'static [&'static str],
-    /// Whether a fail/exempt outcome on this metric drags down its
-    /// pillar's `achieved`. `false` means the metric is still scored and
-    /// surfaced (interpretation, refactor operations) but advisory only
-    /// -- see `cfg.cyclomatic` below, whose whole-file merged-CFG sum
-    /// scales with function count and shouldn't hard-fail a file for
-    /// having many small, individually-simple functions when
-    /// `ast.max_function_complexity` (a true per-function max) already
-    /// gates that concern directly (issue #193).
-    pub gates_achieved: bool,
+    pub curve: Curve,
 }
 
 /// A spec applied to a measured value.
@@ -117,6 +121,31 @@ impl GateResult {
     pub fn interpretation(&self) -> String {
         (self.spec.interpret)(self.value, self.outcome)
     }
+
+    /// Gate-anchored desirability: `d ≥ TAU` ⇔ [`Self::passed`]. An
+    /// exempted failure is clamped up to `TAU` — the gate is satisfied,
+    /// so its score must sit on the passing side.
+    pub fn desirability(&self) -> f64 {
+        let v = self.value;
+        let d = match self.spec.curve {
+            Curve::LowerIsBetter => d_lower_is_better(v, self.spec.high.unwrap_or(f64::INFINITY)),
+            Curve::Band { ideal } => d_band(
+                v,
+                self.spec.low.unwrap_or(0.0),
+                ideal,
+                self.spec.high.unwrap_or(1.0),
+            ),
+            Curve::ZeroTolerance { scale } => d_zero_tolerance(v, scale),
+        };
+        if matches!(
+            self.outcome,
+            GateOutcome::ExemptLow | GateOutcome::ExemptHigh
+        ) {
+            d.max(TAU)
+        } else {
+            d
+        }
+    }
 }
 
 // --- Exemption predicates (the scorer carve-outs, expressed once) -------
@@ -132,43 +161,7 @@ fn entropy_entrypoint_exempt(ctx: &GateContext) -> bool {
     ctx.is_entrypoint_module
 }
 
-/// Entrypoint modules with zero fan-in may sit at maximal instability.
-///
-/// `metrics.get(...) == Some(0.0)` deliberately fails when fan-in is
-/// unmeasured: an absent metric never grants the exemption (mirrors the
-/// Python original's `fan_in == 0.0` against a possibly-`None` argument).
-fn instability_entrypoint_exempt(ctx: &GateContext) -> bool {
-    ctx.is_entrypoint_module
-        && ctx.value >= COMPOSABLE.entrypoint_instability_min
-        && ctx.metrics.get("mdg.fan_in") == Some(&0.0)
-}
-
-/// Frozen, declarations-only leaf modules may sit at maximal distance from
-/// the main sequence -- Martin's accepted "Zone of Pain" exception for
-/// foundation/utility code (constants, error types) that is stable *and*
-/// concrete by design, not because it's poorly layered.
-fn distance_stable_leaf_exempt(ctx: &GateContext) -> bool {
-    ctx.is_stable_leaf_module
-        && ctx
-            .instability
-            .is_some_and(|i| i <= COMPOSABLE.stable_leaf_instability_max)
-}
-
 // --- Interpretation renderers (canonical prose) --------------------------
-
-fn interpret_cyclomatic(value: f64, outcome: GateOutcome) -> String {
-    if outcome == GateOutcome::Pass {
-        format!(
-            "cyclomatic complexity ({value:.0}) within threshold (<= {})",
-            SIMPLE.max_cyclomatic
-        )
-    } else {
-        format!(
-            "cyclomatic complexity ({value:.0}) exceeds threshold (> {})",
-            SIMPLE.max_cyclomatic
-        )
-    }
-}
 
 fn interpret_max_func(value: f64, outcome: GateOutcome) -> String {
     if outcome == GateOutcome::Pass {
@@ -202,53 +195,6 @@ fn interpret_entropy(value: f64, outcome: GateOutcome) -> String {
         GateOutcome::FailHigh => {
             format!("entropy ({value:.2}) is too high; code may be unstructured")
         }
-    }
-}
-
-fn interpret_instability(value: f64, outcome: GateOutcome) -> String {
-    let (low, high) = (COMPOSABLE.instability_low, COMPOSABLE.instability_high);
-    match outcome {
-        GateOutcome::Pass => {
-            format!("instability ({value:.2}) within balanced range [{low}, {high}]")
-        }
-        GateOutcome::FailLow => format!("instability ({value:.2}) is too low (module is too stable)"),
-        GateOutcome::ExemptHigh => format!(
-            "instability ({value:.2}) is high, but tolerated for import/export-only entrypoint modules"
-        ),
-        _ => format!("instability ({value:.2}) is too high (module depends on too many things)"),
-    }
-}
-
-fn interpret_main_sequence_distance(value: f64, outcome: GateOutcome) -> String {
-    let max_d = COMPOSABLE.main_sequence_distance_max;
-    match outcome {
-        GateOutcome::Pass => format!(
-            "main-sequence distance ({value:.2}) within tolerance (<= {max_d}) -- \
-             instability and abstractness are balanced"
-        ),
-        GateOutcome::ExemptHigh => format!(
-            "main-sequence distance ({value:.2}) is high, but tolerated for frozen, \
-             declarations-only leaf modules"
-        ),
-        _ => format!(
-            "main-sequence distance ({value:.2}) exceeds threshold (> {max_d}) -- module \
-             is too concrete-and-stable (rigid) or too abstract-and-unstable \
-             (speculative) for its role"
-        ),
-    }
-}
-
-fn interpret_fan_in(value: f64, outcome: GateOutcome) -> String {
-    if outcome == GateOutcome::Pass {
-        format!(
-            "fan-in ({value:.0}) within advisory reference (<= {})",
-            COMPOSABLE.max_fan_in
-        )
-    } else {
-        format!(
-            "fan-in ({value:.0}) exceeds advisory reference (> {})",
-            COMPOSABLE.max_fan_in
-        )
     }
 }
 
@@ -314,22 +260,6 @@ fn interpret_divergence(value: f64, outcome: GateOutcome) -> String {
 
 pub static GATE_SPECS: &[GateSpec] = &[
     GateSpec {
-        metric: "cfg.cyclomatic",
-        pillar: "simple",
-        low: None,
-        high: Some(SIMPLE.max_cyclomatic),
-        granularity: "function",
-        interpret: interpret_cyclomatic,
-        exempt: None,
-        operations_low: &[],
-        operations_high: &["extract_helper", "split_decision_logic"],
-        // Advisory only (issue #193): the whole-file merged-CFG sum
-        // scales with function count, so it shouldn't hard-fail a file
-        // for having many small, individually-simple functions.
-        // ast.max_function_complexity gates that concern directly.
-        gates_achieved: false,
-    },
-    GateSpec {
         metric: "ast.entropy",
         pillar: "simple",
         low: Some(SIMPLE.min_entropy),
@@ -339,7 +269,9 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: Some(entropy_entrypoint_exempt),
         operations_low: &["consolidate_boilerplate"],
         operations_high: &["decompose_dense_logic"],
-        gates_achieved: true,
+        curve: Curve::Band {
+            ideal: SIMPLE.entropy_ideal,
+        },
     },
     GateSpec {
         metric: "ast.max_function_complexity",
@@ -351,67 +283,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &["extract_helper", "split_decision_logic"],
-        gates_achieved: true,
-    },
-    GateSpec {
-        metric: "mdg.instability",
-        pillar: "composable",
-        low: Some(COMPOSABLE.instability_low),
-        high: Some(COMPOSABLE.instability_high),
-        granularity: "module",
-        interpret: interpret_instability,
-        exempt: Some(instability_entrypoint_exempt),
-        operations_low: &["rebalance_dependencies", "extract_boundary"],
-        operations_high: &["rebalance_dependencies", "extract_boundary"],
-        // Advisory only: `I = Ce / (Ca + Ce)` is a ratio whose resolution is
-        // `1 / (Ca + Ce)`, and at file granularity that denominator is a
-        // single digit. The attainable readings are the grid `{k/n}`, so
-        // whether the band is even *reachable* swings with `n` rather than
-        // with design quality -- 33% of the grid lands in band at `n = 2`,
-        // 50% at `n = 3`, 20% at `n = 4`. Measured over this repo's 176
-        // files, the pass rate tracked that grid density, not the code.
-        // Still scored, interpreted, and offered as a refactor target; it
-        // just cannot hard-fail a file for the arithmetic of its own
-        // denominator. Absolute fan counts have no such resolution limit,
-        // but at file scope only outward burden (`mdg.fan_out`) gates;
-        // incoming impact radius (`mdg.fan_in`) remains advisory. Gating
-        // package stability properly needs package-granularity coupling -- see
-        // docs/decisions/composable-at-module-granularity.md.
-        gates_achieved: false,
-    },
-    GateSpec {
-        metric: "mdg.main_sequence_distance",
-        pillar: "composable",
-        low: None,
-        high: Some(COMPOSABLE.main_sequence_distance_max),
-        granularity: "module",
-        interpret: interpret_main_sequence_distance,
-        exempt: Some(distance_stable_leaf_exempt),
-        operations_low: &[],
-        operations_high: &["rebalance_dependencies", "extract_boundary"],
-        // Advisory for the same reason as `mdg.instability`: `|A + I - 1|`
-        // is built on `I` and inherits its resolution limit exactly.
-        gates_achieved: false,
-    },
-    GateSpec {
-        metric: "mdg.fan_in",
-        pillar: "composable",
-        low: None,
-        high: Some(COMPOSABLE.max_fan_in),
-        granularity: "file",
-        interpret: interpret_fan_in,
-        exempt: None,
-        operations_low: &[],
-        operations_high: &["split_module"],
-        // Advisory at file scope. Incoming calls measure responsibility and
-        // change-impact radius, not dependency burden: a stable interface or
-        // shared utility can legitimately have many callers. Class/component
-        // coupling studies use incoming degree to identify high-risk or
-        // central units, but do not justify treating popularity alone as a
-        // composability failure (Basili, Briand & Melo 1996; Zimmermann &
-        // Nagappan 2008). Keep it in inspect/refactor and in the continuous
-        // score; only outward interaction burden gates the file verdict.
-        gates_achieved: false,
+        curve: Curve::LowerIsBetter,
     },
     GateSpec {
         metric: "mdg.fan_out",
@@ -429,7 +301,7 @@ pub static GATE_SPECS: &[GateSpec] = &[
         // coupling measure with class/module-level precedent (Chidamber &
         // Kemerer 1994; Henry & Kafura 1981). The numeric cap is calibrated
         // empirically by Topos, not claimed as a literature constant.
-        gates_achieved: true,
+        curve: Curve::LowerIsBetter,
     },
     GateSpec {
         metric: "cpg.dangerous_calls",
@@ -441,7 +313,9 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &[],
-        gates_achieved: true,
+        curve: Curve::ZeroTolerance {
+            scale: SECURE.danger_scale,
+        },
     },
     GateSpec {
         metric: "cpg.taint_flows",
@@ -453,7 +327,9 @@ pub static GATE_SPECS: &[GateSpec] = &[
         exempt: None,
         operations_low: &[],
         operations_high: &[],
-        gates_achieved: true,
+        curve: Curve::ZeroTolerance {
+            scale: SECURE.taint_scale,
+        },
     },
     GateSpec {
         metric: "nav.max_function_divergence",
@@ -468,12 +344,39 @@ pub static GATE_SPECS: &[GateSpec] = &[
         // into its own function — so it reuses the same operation
         // vocabulary rather than inventing a NAVIGABLE-only verb.
         operations_high: &["extract_helper", "split_decision_logic"],
-        gates_achieved: true,
+        curve: Curve::LowerIsBetter,
     },
 ];
 
 fn gate_for_metric(metric: &str) -> Option<&'static GateSpec> {
     GATE_SPECS.iter().find(|spec| spec.metric == metric)
+}
+
+/// Desirability of a measured value on a registered gate, with no
+/// exemption clamp. `None` when `metric` is not a gate.
+pub fn metric_desirability(metric: &str, value: f64) -> Option<f64> {
+    let spec = gate_for_metric(metric)?;
+    let d = match spec.curve {
+        Curve::LowerIsBetter => d_lower_is_better(value, spec.high.unwrap_or(f64::INFINITY)),
+        Curve::Band { ideal } => d_band(
+            value,
+            spec.low.unwrap_or(0.0),
+            ideal,
+            spec.high.unwrap_or(1.0),
+        ),
+        Curve::ZeroTolerance { scale } => d_zero_tolerance(value, scale),
+    };
+    Some(d)
+}
+
+/// The failing gate that holds `pillar` at its gate score: the minimum
+/// desirability among failures on that pillar. `None` when every measured
+/// gate on the pillar passed.
+pub fn binding_failure<'a>(gates: &'a [GateResult], pillar: &str) -> Option<&'a GateResult> {
+    gates
+        .iter()
+        .filter(|result| result.spec.pillar == pillar && !result.passed())
+        .min_by(|a, b| a.desirability().total_cmp(&b.desirability()))
 }
 
 /// Metric-key namespacing shared with the agent-contract/pillar layers.
@@ -499,22 +402,13 @@ pub fn evaluate_gates(
     metrics: &BTreeMap<String, f64>,
     pillar: Option<&str>,
     is_entrypoint_module: bool,
-    is_stable_leaf_module: bool,
-    instability: Option<f64>,
 ) -> Vec<GateResult> {
     GATE_SPECS
         .iter()
         .filter(|spec| pillar.is_none_or(|p| spec.pillar == p))
         .filter_map(|spec| {
             let value = *metrics.get(spec.metric)?;
-            let outcome = classify(
-                spec,
-                value,
-                metrics,
-                is_entrypoint_module,
-                is_stable_leaf_module,
-                instability,
-            );
+            let outcome = classify(spec, value, metrics, is_entrypoint_module);
             Some(GateResult {
                 spec,
                 value,
@@ -528,7 +422,7 @@ pub fn evaluate_gates(
 pub fn interpret_metric(metric: &str, value: f64) -> String {
     let spec = gate_for_metric(metric).expect("metric must have a registered GateSpec");
     let empty = BTreeMap::new();
-    let outcome = classify(spec, value, &empty, false, false, None);
+    let outcome = classify(spec, value, &empty, false);
     (spec.interpret)(value, outcome)
 }
 
@@ -537,8 +431,6 @@ fn classify(
     value: f64,
     metrics: &BTreeMap<String, f64>,
     is_entrypoint_module: bool,
-    is_stable_leaf_module: bool,
-    instability: Option<f64>,
 ) -> GateOutcome {
     // A NaN metric must fail closed: `NaN < low` and `NaN > high` are both
     // false, so without this guard NaN would silently `Pass` every gate —
@@ -562,8 +454,6 @@ fn classify(
         value,
         metrics,
         is_entrypoint_module,
-        is_stable_leaf_module,
-        instability,
     };
     match spec.exempt {
         Some(predicate) if predicate(&ctx) => exempt,
@@ -576,25 +466,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cyclomatic_within_threshold_passes() {
-        let metrics = BTreeMap::from([("cfg.cyclomatic".to_string(), 5.0)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
+    fn max_function_complexity_over_threshold_fails_with_extract_helper_operation() {
+        let metrics = BTreeMap::from([("ast.max_function_complexity".to_string(), 20.0)]);
+        let results = evaluate_gates(&metrics, Some("simple"), false);
         assert_eq!(results.len(), 1);
-        assert!(results[0].passed());
-    }
-
-    #[test]
-    fn cyclomatic_over_threshold_fails_with_extract_helper_operation() {
-        let metrics = BTreeMap::from([("cfg.cyclomatic".to_string(), 20.0)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
         assert!(!results[0].passed());
         assert!(results[0].operations().contains(&"extract_helper"));
     }
 
     #[test]
+    fn advisory_metrics_are_not_gates() {
+        let metrics = BTreeMap::from([
+            ("cfg.cyclomatic".to_string(), 99.0),
+            ("mdg.instability".to_string(), 1.0),
+            ("mdg.fan_in".to_string(), 99.0),
+        ]);
+        assert!(evaluate_gates(&metrics, None, false).is_empty());
+    }
+
+    #[test]
     fn entropy_low_is_exempt_for_entrypoint_modules() {
         let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.05)]);
-        let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
+        let results = evaluate_gates(&metrics, Some("simple"), true);
         let entropy = results
             .iter()
             .find(|r| r.spec.metric == "ast.entropy")
@@ -606,7 +499,7 @@ mod tests {
     #[test]
     fn entropy_low_fails_for_ordinary_modules() {
         let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.05)]);
-        let results = evaluate_gates(&metrics, Some("simple"), false, false, None);
+        let results = evaluate_gates(&metrics, Some("simple"), false);
         let entropy = results
             .iter()
             .find(|r| r.spec.metric == "ast.entropy")
@@ -617,7 +510,7 @@ mod tests {
     #[test]
     fn entropy_high_is_exempt_for_entrypoint_modules() {
         let metrics = BTreeMap::from([("ast.entropy".to_string(), 0.95)]);
-        let results = evaluate_gates(&metrics, Some("simple"), true, false, None);
+        let results = evaluate_gates(&metrics, Some("simple"), true);
         let entropy = results
             .iter()
             .find(|r| r.spec.metric == "ast.entropy")
@@ -627,15 +520,56 @@ mod tests {
     }
 
     #[test]
-    fn instability_exemption_requires_zero_fan_in_not_missing_fan_in() {
-        let metrics = BTreeMap::from([("mdg.instability".to_string(), 0.99)]);
-        let results = evaluate_gates(&metrics, Some("composable"), true, false, None);
-        let instability = results
+    fn binding_failure_is_the_lowest_desirability_on_the_pillar() {
+        let metrics = BTreeMap::from([
+            ("ast.max_function_complexity".to_string(), 20.0),
+            ("ast.entropy".to_string(), 0.9),
+        ]);
+        let results = evaluate_gates(&metrics, Some("simple"), false);
+        let binding = binding_failure(&results, "simple").unwrap();
+        assert_eq!(binding.spec.metric, "ast.max_function_complexity");
+        assert!(binding.desirability() < binding_failure_other(&results));
+    }
+
+    fn binding_failure_other(results: &[GateResult]) -> f64 {
+        results
             .iter()
-            .find(|r| r.spec.metric == "mdg.instability")
-            .unwrap();
-        // fan_in is absent (not 0.0) -> exemption must NOT apply.
-        assert!(!instability.passed());
+            .find(|result| result.spec.metric == "ast.entropy")
+            .unwrap()
+            .desirability()
+    }
+
+    /// The anchoring invariant: for every registered gate, over a grid of
+    /// values spanning both sides of every bound (plus `NaN`), in both
+    /// exemption contexts, `d ≥ TAU` exactly when the gate passed.
+    #[test]
+    fn desirability_crosses_tau_exactly_at_the_gate() {
+        for spec in GATE_SPECS {
+            let mut grid: Vec<f64> = (-4..=400).map(|i| f64::from(i) * 0.05).collect();
+            for bound in [spec.low, spec.high].into_iter().flatten() {
+                grid.extend([bound, bound - 1e-9, bound + 1e-9, 2.0 * bound]);
+            }
+            grid.extend([f64::NAN, f64::INFINITY, 1e9]);
+            for value in grid {
+                for entrypoint in [false, true] {
+                    let metrics = BTreeMap::from([(spec.metric.to_string(), value)]);
+                    let results = evaluate_gates(&metrics, Some(spec.pillar), entrypoint);
+                    let r = results
+                        .iter()
+                        .find(|r| r.spec.metric == spec.metric)
+                        .unwrap();
+                    let d = r.desirability();
+                    assert!((0.0..=1.0).contains(&d), "{} d({value}) = {d}", spec.metric);
+                    assert_eq!(
+                        d >= TAU,
+                        r.passed(),
+                        "{} value={value} entrypoint={entrypoint} d={d} outcome={:?}",
+                        spec.metric,
+                        r.outcome
+                    );
+                }
+            }
+        }
     }
 
     #[test]

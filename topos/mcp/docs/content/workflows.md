@@ -24,7 +24,7 @@ situational.
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |
 | `topos_assess_changeset` | Verify several edited files at once against a git ref. |
 | `topos_compare_files` / `topos_compare_code` | AST edit distance between two versions (no verdict). |
-| `topos_preference_walk` | Resolve `target` / `fallback_target` / `next_step` for a ranking, standalone. |
+| `topos_preference_walk` | Resolve `target`, `fallback_target`, `next_step`, and `next_pillar` (pass `gate_scores`) for a ranking. |
 | `topos_depgraph_status` | Read-only GitNexus diagnosis; never triggers generation. |
 | `topos_generate_depgraph` | Force a GitNexus rebuild/refresh. |
 | `topos_refactor` | Advisory hotspots. Never affects the medal. |
@@ -87,8 +87,9 @@ Outside MCP, `topos-mcp --version` prints the same report.
 
 ### 2. Plan
 
-Read the `guidance` field of the evaluation result. It's priority-aware and
-tells you which dimension to work on. If COMPOSABLE is still unreachable
+Read `guidance` and `binding_constraint`. They name the binding gate of
+`preference_walk.next_pillar`: the missing pillar of the current goal whose
+gate score is closest to 0.5. If COMPOSABLE is still unreachable
 after evaluating (see `warnings`), GitNexus is either not installed or its
 generation failed — install it (`npm install -g gitnexus`) or fix the
 reported problem, then re-evaluate. `topos_depgraph_status` gives a
@@ -165,12 +166,12 @@ Prefer the structured `agent_contract` field over parsing prose. It carries
 
 ## Escape hatches — when the loop stalls
 
-### Stall #1: Every generator score plateaus below 60%
+### Stall #1: The ascent pillar's gate score does not move
 
-Often a sign the file needs to be **split**, not refactored. Use
-`topos_inspect_code` to find the top-complexity functions; consider
-extracting them into a separate module. Re-run `topos_evaluate_project` to
-check the rollup doesn't regress as a result.
+A score below 50 is a failed gate. If that pillar's `gate_scores` value
+stays put, narrow the goal to `fallback_target` and recompute `next_pillar`.
+If the file is one function doing too many jobs, split it. Re-run
+`topos_evaluate_project` so the rollup does not regress.
 
 ### Stall #2: `SUSPICIOUS_NO_STRUCTURAL_CHANGE` repeatedly
 
@@ -191,7 +192,7 @@ Consider if the abstraction is actually an improvement or just a shuffle.
 - Library surface (many importers) → `composable`
 - File handling untrusted input → `secure`
 - File agents keep having to read and edit → `navigable`
-- Unknown / general cleanup → `secure` (default scorer emphasis)
+- Unknown / general cleanup → `simple` (default; head of the default ranking)
 
 See `topos://docs/priority` for more.
 
@@ -209,15 +210,15 @@ on Ω and produces a **two-stage** target:
    of the top-two ranked generators (🥈 **SILVER**). When PLATINUM
    plateaus, divert here.
 
-The result also returns a **`walk`** (descending verdicts from PLATINUM
-down) and a **`next_step`** (the smallest improvement above the
-current verdict). Note the walk's second element concedes only the
-lowest-ranked generator; `fallback_target` sits further down, conceding
-the bottom two.
+The result also returns a **`walk`**, **`next_pillar`** (the closest failing
+gate inside the goal), and **`next_step`** (the smallest preferred verdict
+above the current one — the concession, not the edit). The walk's second
+element concedes only the lowest-ranked generator; `fallback_target` sits
+further down and concedes the bottom two.
 
-Concretely: aim for 🏆 **PLATINUM** for the first few iterations; if the
-lattice verdict won't move, switch to `fallback_target` (🥈 **SILVER**) and
-try to satisfy only the top-two generators. See `topos://docs/preferences`.
+Edit `next_pillar` while the goal is 🏆 **PLATINUM**. If that gate score
+does not move, switch the goal to `fallback_target` and recompute. Follow
+`next_step` only after that. See `topos://docs/preferences`.
 
 ## Advisory refactoring (`topos_refactor`)
 

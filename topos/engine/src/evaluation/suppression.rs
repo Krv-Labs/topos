@@ -25,12 +25,13 @@
 //! instead. `apply_allowlist` itself is a straight, behavior-preserving
 //! port.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use crate::config::{AllowEntry, ToposConfig};
 use crate::core::characteristic_morphism::ClassificationResult;
 use crate::core::omega::{EvaluationValue, Generator};
+use crate::evaluation::policies::desirability::TAU;
 use crate::evaluation::security_guidance::SecurityFinding;
 use crate::functors::probes::cpg::danger::{dangerous_api_reachable, matches_registry};
 use crate::functors::probes::cpg::taint::taint_flow_paths;
@@ -57,6 +58,20 @@ impl AdjustedVerdict {
 
     pub fn verdict_changed(&self) -> bool {
         self.raw_secure_pass != self.adjusted_secure_pass
+    }
+
+    /// `raw` (pillar scores or gate scores) with SECURE lifted to [`TAU`]
+    /// when the adjusted gate passes. A passing pillar then never scores
+    /// below 50, and an acknowledged risk is never picked as the pillar to
+    /// climb next. The grade cap stays on the verdict, not on the score.
+    pub fn secure_lifted(&self, raw: &BTreeMap<String, f64>) -> BTreeMap<String, f64> {
+        let mut scores = raw.clone();
+        if self.adjusted_secure_pass {
+            if let Some(g) = scores.get_mut("secure") {
+                *g = g.max(TAU);
+            }
+        }
+        scores
     }
 }
 
@@ -277,5 +292,11 @@ mod tests {
 
         assert!(in_scope.adjusted_secure_pass);
         assert!(!out_scope.adjusted_secure_pass);
+        // An acknowledged risk is not a gate left to climb; an active one is.
+        // Nor does a passing pillar score below the gate.
+        for scores in [&result.gate_scores, &result.scores] {
+            assert!(in_scope.secure_lifted(scores)["secure"] >= TAU);
+            assert!(out_scope.secure_lifted(scores)["secure"] < TAU);
+        }
     }
 }

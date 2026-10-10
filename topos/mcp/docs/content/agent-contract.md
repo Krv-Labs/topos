@@ -71,52 +71,41 @@ COMPOSABLE (typically once per assess checkpoint), not after every edit.
 
 Prefer these fields over parsing prose guidance.
 
-## Reading `achieved` vs. `scores`
+## Reading `achieved`, `gate_scores`, and `scores`
 
-They answer different questions — do not substitute one for the other.
+A score below 50 means that pillar's gate failed. A score of at least 50
+means every gate on that pillar passed. `pillars.*.achieved` is that same
+cut. `gate_scores` is the gate-only value `G` (0.5 exactly at the gate).
+`scores` is `G` moved by advisory quality, and that move stays on the same
+side of 50.
 
-- `pillars.*.achieved` — the **gating conjunction**: a hard pass/fail over
-  only that pillar's gating raw metrics. This is the lattice verdict.
-- `scores.*` (same value as `pillars.*.score`) — **continuous quality**,
-  computed as the *minimum* of the per-metric quality curves. That minimum
-  includes **advisory** metrics that deliberately do not gate (notably
-  `cfg.cyclomatic`, whose whole-file sum scales with function count — see
-  `topos://docs/metrics`).
+Use `gate_scores` to choose the edit: among pillars the active goal still
+requires, work the one with the greatest `G` below 0.5. That is
+`preference_walk.next_pillar`. Use `scores` only to compare two pillars that
+are already on the same side of 50. Advisory metrics (`cfg.cyclomatic` and
+the rest) change `scores` and show up as `"improve"` targets. They do not
+change `achieved`.
 
-Consequence: `achieved: true` alongside a low or even `0.0` score is
-**normal**, not a bug. One advisory metric far out of band pins the minimum
-at `0.0` while every gating metric still passes — typical of large
-dispatch/discovery-class files made of many small, individually-simple
-functions. Such a file can still evaluate to `IDEAL`.
-
-So: **do not infer "not SIMPLE" from a low score — read `achieved`.** Use
-`scores.*` for ranking and for measuring improvement between runs, and the
-returned `refactor_targets` for the concrete spans to edit — reading each
-target's `severity` to tell the two apart (see below).
-
-`binding_constraint` answers the same question in one field: when present, it
-is the single **gating** metric currently costing a pillar its `achieved` —
-pillar, metric, measured value vs. threshold, and the span. It is the
-top-ranked `"fix"` target restated without the edit payload, so it can never
-name a different metric than `refactor_targets` does. When it is absent, no
-gating metric is out of band among the computed targets — an advisory metric
-is never promoted into it — so a low score with `achieved: true` and no
-`binding_constraint` is exactly the advisory-only case above. Tools that do
-not compute ranked targets omit the field entirely.
+`binding_constraint` is the binding gate of that pillar: the metric, value,
+threshold, and span of the top `"fix"` target. It is absent when no gating
+metric is out of band. Tools that do not compute ranked targets omit the field.
 
 ## Refactor Targets
 
 `topos_evaluate_file` returns ranked edit targets by default:
 `refactor_targets` (default `3`, `0` disables, capped at `25`) gives that many
 concrete spans with the failing metric, current value vs. threshold, and
-`recommended_operations` tokens, ordered gate failures first. Verification
-guidance lives once on `agent_contract.verification_gates`, not per target.
+`recommended_operations` tokens. Order is: pillars the active goal still
+requires, then `"fix"` before `"improve"`, then the closest gate score, then
+the lowest desirability inside that pillar. Preference rank only breaks a
+tie. Verification guidance lives once on `agent_contract.verification_gates`,
+not per target.
 
 Each target carries a `severity` that mirrors whether its metric gates:
-`"fix"` means the out-of-band metric is costing that pillar's `achieved`;
-`"improve"` means the metric is advisory (currently only `cfg.cyclomatic`)
-— worth addressing for the score, but no verdict depends on it. Prioritize
-`"fix"` targets when you must pick one.
+`"fix"` means the metric is costing that pillar's `achieved`; `"improve"`
+means the metric is advisory. Prioritize `"fix"` targets. After every
+required gate passes, `"improve"` targets raise the score inside that half
+and do not move the lattice element.
 
 These are metric-driven edit targets from the scoring pipeline. They are
 not the same as advisory `topos_refactor(target="cycles"|"dependencies"|"process")`,

@@ -7,8 +7,9 @@ use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::suppression::{apply_allowlist, AdjustedVerdict};
 
-use crate::schemas::{AcknowledgedRisk, SecurityFinding};
-use crate::security_findings::security_findings;
+use crate::schemas::{AcknowledgedRisk, SecurityAdvisory, SecurityFinding};
+use crate::security_findings::{all_security_findings, SecurityReport, MAX_SECURITY_FINDINGS};
+use crate::sighthound::sighthound_all_findings;
 
 /// Allowlist-aware security diagnostics for one evaluation.
 ///
@@ -17,7 +18,10 @@ use crate::security_findings::security_findings;
 /// preference. Payload gating (`include_security_findings`) is applied
 /// where results are shaped, e.g. `to_evaluation_result`.
 pub struct SecurityOverlay {
+    /// Top [`MAX_SECURITY_FINDINGS`] active findings, most urgent first.
     pub active_findings: Vec<SecurityFinding>,
+    /// Sighthound summary over every active finding; reporting only.
+    pub advisory: Option<SecurityAdvisory>,
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     pub verdict: AdjustedVerdict,
 }
@@ -96,20 +100,74 @@ pub(crate) fn overlay(
     // acknowledged risk buy an uncapped IDEAL grade (the grade cap in
     // `apply_allowlist` only fires when `acknowledged` is non-empty). Matches
     // the Python original's argument-less `security_findings(cpg)`.
-    let findings = security_findings(cpg.as_ref(), 20, None, file_path);
+    //
+    // The full (uncapped) list goes in, and the display cap is taken only
+    // afterwards. Two reasons: the advisory counts every active finding, and
+    // the acknowledged/active partition must see every finding. When the cap
+    // ran first, a file whose only allowlisted finding sat past position 20
+    // came back with `acknowledged` empty, so the grade cap never fired and
+    // an allowlist-bought IDEAL went uncapped. `acknowledged_risks` is
+    // therefore uncapped; only `active_findings` is cut to 20.
+    let (findings, scanned) = match cpg.as_ref() {
+        Some(cpg) => all_security_findings(cpg, None, file_path),
+        None => (Vec::new(), false),
+    };
     let core_findings: Vec<_> = findings.iter().map(|f| f.to_core()).collect();
     let verdict = apply_allowlist(result, &core_findings, &config, file_path, cpg.as_ref());
-    let active_findings = verdict
-        .active_findings
-        .iter()
-        .map(SecurityFinding::from_core)
-        .collect();
+    let report = SecurityReport::from_full(
+        with_metadata(findings, &verdict),
+        scanned,
+        MAX_SECURITY_FINDINGS,
+    );
     let acknowledged_risks = acknowledged_to_models(&verdict);
     Some(SecurityOverlay {
-        active_findings,
+        active_findings: report.findings,
+        advisory: report.advisory,
         acknowledged_risks,
         verdict,
     })
+}
+
+/// The wire findings that `apply_allowlist` kept active, with their scanner
+/// metadata intact (the engine's lean mirror drops it). The partition is an
+/// order-preserving filter, so a single forward walk matches them up.
+fn with_metadata(
+    findings: Vec<SecurityFinding>,
+    verdict: &AdjustedVerdict,
+) -> Vec<SecurityFinding> {
+    let mut active = verdict.active_findings.iter().peekable();
+    findings
+        .into_iter()
+        .filter(|f| active.next_if(|a| **a == f.to_core()).is_some())
+        .collect()
+}
+
+/// Opt-in coverage pass (`security_scan`): the Sighthound report for a file
+/// the overlay skipped because the CPG SECURE gate passed.
+///
+/// Reporting only. The verdict from `apply_allowlist` is discarded; it is
+/// used solely to drop acknowledged findings. `None` when the scanner does
+/// not apply (unparseable source, unsupported language, disabled, or a scan
+/// error).
+pub fn opt_in_security_report(
+    source: &str,
+    language: &str,
+    result: &ClassificationResult,
+    file_path: Option<&Path>,
+    allows: &[String],
+) -> Option<SecurityReport> {
+    if !result.is_parseable {
+        return None;
+    }
+    let findings = sighthound_all_findings(source, language, None, file_path)?;
+    let config = config_for(file_path, allows);
+    let core_findings: Vec<_> = findings.iter().map(|f| f.to_core()).collect();
+    let verdict = apply_allowlist(result, &core_findings, &config, file_path, None);
+    Some(SecurityReport::from_full(
+        with_metadata(findings, &verdict),
+        true,
+        MAX_SECURITY_FINDINGS,
+    ))
 }
 
 /// Apply the project/one-off allowlist over a file classification.
@@ -179,6 +237,59 @@ mod tests {
         assert!(
             overlay_for_source(broken, "python", &broken_result, None, &[]).is_none(),
             "unparseable source yields no overlay"
+        );
+    }
+
+    /// The overlay carries the advisory when Sighthound ran; the opt-in pass
+    /// reports on a SECURE-passing file, and neither applies to Rust.
+    #[test]
+    fn advisory_rides_the_overlay_and_the_opt_in_pass() {
+        let result = classify_code_string(EVAL_SRC, "python", Priority::Simple)
+            .expect("classification runs");
+        let overlay = overlay_for_source(EVAL_SRC, "python", &result, None, &[])
+            .expect("a secure-failing file produces an overlay");
+        let advisory = overlay.advisory.expect("python is scanned");
+        assert_ne!(advisory.max_severity, "none");
+        assert!(overlay.active_findings.iter().all(|f| f.severity.is_some()));
+
+        let clean = "def f(x):\n    return x + 1\n";
+        let clean_result =
+            classify_code_string(clean, "python", Priority::Simple).expect("classification runs");
+        let report = opt_in_security_report(clean, "python", &clean_result, None, &[])
+            .expect("the opt-in pass scans python");
+        assert_eq!(report.advisory.expect("scanner ran").max_severity, "none");
+
+        let rust = "fn f() {}\n";
+        let rust_result =
+            classify_code_string(rust, "rust", Priority::Simple).expect("classification runs");
+        assert!(opt_in_security_report(rust, "rust", &rust_result, None, &[]).is_none());
+    }
+
+    /// Regression: the acknowledged/active partition runs over every finding,
+    /// not the 20 shown. An allowlisted risk past the display cap must still
+    /// be acknowledged, or the grade cap cannot fire for it.
+    #[test]
+    fn allowlisted_finding_past_the_display_cap_is_still_acknowledged() {
+        let mut src = String::from("import os\n\ndef f(cmd, expr):\n");
+        for _ in 0..25 {
+            src.push_str("    os.system(cmd)\n");
+        }
+        src.push_str("    return eval(expr)\n");
+        let result =
+            classify_code_string(&src, "python", Priority::Simple).expect("classification runs");
+        let allow = vec!["eval".to_string()];
+        let overlay = overlay_for_source(&src, "python", &result, None, &allow)
+            .expect("a secure-failing file produces an overlay");
+        assert!(
+            overlay.active_findings.len() <= MAX_SECURITY_FINDINGS,
+            "the displayed list stays capped"
+        );
+        assert!(
+            overlay
+                .acknowledged_risks
+                .iter()
+                .any(|r| r.callee.as_deref() == Some("eval")),
+            "the allowlisted eval past position 20 is acknowledged"
         );
     }
 

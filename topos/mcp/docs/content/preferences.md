@@ -106,8 +106,15 @@ walk    = [IDEAL, SIMPLE_SECURE_NAVIGABLE, SIMPLE_COMPOSABLE_NAVIGABLE,
 next_step = COMPOSABLE_SECURE
 ```
 
-The `next_step` field is the *smallest* improvement that still respects
-the preference order — the safest immediate goal.
+`next_step` is the smallest verdict above the current one in the preference
+order. It is the concession ladder, not the edit.
+
+`next_pillar` is the edit. Among generators the aspirational target still
+requires, it is the one with the greatest gate score below 0.5. An equal
+score keeps the higher-ranked generator. Pass `gate_scores` to
+`topos_preference_walk` to fill it; an evaluation result fills it from the
+file. The binding metric is `binding_constraint` on that result. `guidance`
+quotes that gate.
 
 ## How to use it
 
@@ -127,26 +134,24 @@ The result includes a `preference_walk` field with:
 - `target` — aspirational (default: `IDEAL`)
 - `fallback_target` — the ideal intersection (top-2 meet)
 - `walk` — descending sequence from aspirational target down
-- `next_step` — the immediate next goal
+- `next_pillar` — closest failing gate inside `target`
+- `next_step` — smallest preferred verdict above current (the concession)
 - `progress` — fractional progress to IDEAL in `[0.0, 1.0]`
 
 ### Agent strategy
 
 ```
-iteration 1..N:    aim for `target` (IDEAL)
-if plateaued:      aim for `fallback_target` (top-2 meet by preference)
+iteration 1..N:    edit `next_pillar` while the goal is `target` (IDEAL)
+if that gate's G does not move:  narrow the goal to `fallback_target` and recompute
 if still stuck:    follow `next_step` down through atoms
 ```
 
 ## Preferences vs. Priority
 
-- `priority` (`simple` / `composable` / `secure` / `navigable`) — knob on
-  the scorers `Φᵢ`. Steers per-generator guidance. **Does not** linearize
-  Ω.
+- `priority` (`simple` / `composable` / `secure` / `navigable`) — the head
+  of the ranking. It breaks an ascent tie and, on the CLI, is lifted into
+  a full ranking. It does not reweight metrics and does not change
+  `achieved`.
 - `preferences.ranking` — strict total order. Induces a total order on
-  Ω and decides which meet is the divert-point when IDEAL is
-  unreachable.
-
-Use them together: `priority` tells the scorer which generator to
-emphasize; `preferences` tells the agent which lattice neighbor to aim for
-next.
+  Ω, decides which meet is the divert-point when IDEAL is unreachable,
+  and breaks ties in `next_pillar`.

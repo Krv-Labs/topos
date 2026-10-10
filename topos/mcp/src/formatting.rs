@@ -9,9 +9,11 @@ use rmcp::model::{CallToolResult, ContentBlock};
 use serde::Serialize;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::omega::EvaluationValue;
-use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::policies::gates::PILLAR_METRIC_PREFIXES;
-use topos_engine::evaluation::preferences::UserPreferences;
+use topos_engine::evaluation::advisory::advisories_json;
+use topos_engine::evaluation::policies::gates::{
+    binding_failure, evaluate_gates, PILLAR_METRIC_PREFIXES,
+};
+use topos_engine::evaluation::preferences::{default_preferences, UserPreferences};
 use topos_engine::evaluation::suggestions::suggest_refactors;
 use topos_engine::evaluation::suppression::AdjustedVerdict;
 
@@ -21,12 +23,12 @@ use crate::evaluation::{
 use crate::schemas::{
     lattice_to_str, priority_str, AcknowledgedRisk, AgentContract, BindingConstraint,
     EvaluationResult, FunctionEntry, GeneratorInput, PillarResult, PreferenceWalk, PrioritySource,
-    RefactorTarget, SecurityFinding, Suggestion,
+    RefactorTarget, SecurityAdvisory, SecurityFinding, Suggestion,
 };
 
 /// `RefactorTarget::severity` for a metric whose failure actually costs its
 /// pillar's `achieved`; see `crate::refactor_targets::gate_severity`, which
-/// derives it from `GateSpec::gates_achieved`.
+/// derives it from membership in `GATE_SPECS`.
 const GATING_SEVERITY: &str = "fix";
 
 /// The first target whose metric actually gates a pillar.
@@ -209,7 +211,11 @@ pub fn depgraph_unavailable_risk_flags(blocked_by: &[String]) -> Vec<String> {
 }
 
 /// Materialize a `PreferenceWalk` for the result schema.
-pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) -> PreferenceWalk {
+pub fn build_preference_walk(
+    prefs: &UserPreferences,
+    current: EvaluationValue,
+    gate_scores: &BTreeMap<String, f64>,
+) -> PreferenceWalk {
     let target = prefs.aspirational_target();
     let fallback = prefs.fallback_target();
     let walk = prefs.relaxation_walk(Some(current));
@@ -220,6 +226,9 @@ pub fn build_preference_walk(prefs: &UserPreferences, current: EvaluationValue) 
         fallback_target: lattice_to_str(fallback),
         walk: walk.into_iter().map(lattice_to_str).collect(),
         next_step: next.map(lattice_to_str),
+        next_pillar: prefs
+            .ascent_pillar(current, gate_scores)
+            .map(generator_wire),
         progress: (prefs.progress(current) * 1000.0).round() / 1000.0,
     }
 }
@@ -247,70 +256,41 @@ fn unmet_pillars(result: &ClassificationResult) -> Vec<&'static str> {
     .collect()
 }
 
-fn satisfied_tail(priority_name: &str, unmet: &[&str]) -> String {
-    if unmet.is_empty() {
-        return format!("{priority_name} satisfied. All measured pillars pass — stop.");
-    }
-    format!(
-        "{priority_name} satisfied. Still failing: {}.",
-        unmet.join(" / ")
-    )
-}
-
-/// Priority-aware next-step hint for agents.
+/// Next-edit hint: the binding gate of the ascent pillar.
 ///
-/// Names the pillars that actually failed. The old text told the agent to
-/// "add COMPOSABLE / SECURE / NAVIGABLE" whenever SIMPLE passed, including
-/// on a file whose verdict was already PLATINUM.
-pub fn build_guidance(result: &ClassificationResult) -> String {
-    let simple_ok = pillar_ok(result, "simple", EvaluationValue::Simple);
-    let composable_ok = pillar_ok(result, "composable", EvaluationValue::Composable);
-    let secure_ok = pillar_ok(result, "secure", EvaluationValue::Secure);
-    let navigable_ok = pillar_ok(result, "navigable", EvaluationValue::Navigable);
-    let unmet = unmet_pillars(result);
-
-    match result.priority {
-        Priority::Composable => {
-            if !result.dimensions.contains_key("composable") {
-                "COMPOSABLE not measured — provide a ModuleDependencyGraph (gitnexus_dir) \
-                 to score the composable generator."
-                    .into()
-            } else if !composable_ok {
-                "Balance instability (aim for 0.3–0.7) and reduce fan-in/fan-out (aim for \
-                 <= 15) to satisfy COMPOSABLE."
-                    .into()
-            } else {
-                satisfied_tail("COMPOSABLE", &unmet)
-            }
+/// The sentence quotes that gate's metric, value, and threshold. An
+/// unmeasured COMPOSABLE is named only when the ranking puts it first and
+/// no measured pillar is still failing. When every required measured pillar
+/// passes, the text says to stop.
+pub fn build_guidance(result: &ClassificationResult, prefs: &UserPreferences) -> String {
+    if !result.is_parseable {
+        return "Fix the parse error so the file can be evaluated.".to_string();
+    }
+    let current = result.lattice_element;
+    if let Some(pillar) = prefs.ascent_pillar(current, &result.gate_scores) {
+        let gates = evaluate_gates(
+            &result.raw_metrics,
+            Some(pillar.as_str()),
+            result.is_entrypoint_module,
+        );
+        if let Some(binding) = binding_failure(&gates, pillar.as_str()) {
+            return binding.interpretation();
         }
-        Priority::Simple => {
-            if !simple_ok {
-                "Reduce CFG/function cyclomatic complexity (aim for <= 15/10) and ensure \
-                 AST entropy is structured (0.2–0.8) to satisfy SIMPLE."
-                    .into()
-            } else {
-                satisfied_tail("SIMPLE", &unmet)
-            }
-        }
-        Priority::Secure => {
-            if !secure_ok {
-                "Eliminate all dangerous-API calls and source→sink taint flows to satisfy \
-                 SECURE."
-                    .into()
-            } else {
-                satisfied_tail("SECURE", &unmet)
-            }
-        }
-        Priority::Navigable => {
-            if !navigable_ok {
-                "Flatten the deepest nested block in the worst function — extract it into a \
-                 top-level helper — to satisfy NAVIGABLE."
-                    .into()
-            } else {
-                satisfied_tail("NAVIGABLE", &unmet)
-            }
+        if pillar.as_str() == "secure" {
+            return "Eliminate all dangerous-API calls and source→sink taint flows to satisfy \
+                    SECURE."
+                .to_string();
         }
     }
+    if prefs.ranking()[0].as_str() == "composable"
+        && !result.dimensions.contains_key("composable")
+        && prefs.goal_requires(current, topos_engine::core::omega::Generator::Composable)
+    {
+        return "COMPOSABLE not measured — provide a ModuleDependencyGraph (gitnexus_dir) \
+                to score the composable generator."
+            .to_string();
+    }
+    "All measured pillars required by the target pass — stop.".to_string()
 }
 
 /// Compact loop-control fields for MCP agents.
@@ -328,6 +308,7 @@ pub fn build_agent_contract(
     warnings: &[String],
     refactor_targets: Option<&[RefactorTarget]>,
     offer_refactor_targets: bool,
+    prefs: Option<&UserPreferences>,
 ) -> AgentContract {
     if !result.is_parseable {
         return agent_contract_parse_blocked();
@@ -343,7 +324,11 @@ pub fn build_agent_contract(
     });
 
     let summary = result.summary();
-    let simple_ok = result.dimensions.get("simple") == Some(&EvaluationValue::Simple);
+    let default_prefs = default_preferences();
+    let prefs = prefs.unwrap_or(&default_prefs);
+    let ascent = prefs
+        .ascent_pillar(summary, &result.gate_scores)
+        .map(|generator| generator.as_str());
     let measured_pass = unmet_pillars(result).is_empty();
     let missing_gitnexus = prelude
         .blocked_by
@@ -354,7 +339,7 @@ pub fn build_agent_contract(
         &prelude.composable,
         refactor_targets,
         summary,
-        simple_ok,
+        ascent,
         measured_pass,
         security_findings,
         missing_gitnexus,
@@ -422,7 +407,7 @@ fn next_step_for_contract(
     composable: &ComposableContractSignals,
     refactor_targets: Option<&[RefactorTarget]>,
     summary: EvaluationValue,
-    simple_ok: bool,
+    ascent_pillar: Option<&str>,
     measured_pass: bool,
     security_findings: &[SecurityFinding],
     missing_gitnexus: bool,
@@ -453,10 +438,12 @@ fn next_step_for_contract(
     if let Some(action) = &composable.next_action {
         return (composable.next_tool.clone(), vec![action.clone()]);
     }
-    if !simple_ok {
+    if let Some(pillar) = ascent_pillar {
         return (
             Some("topos_inspect_code".into()),
-            vec!["inspect weakest measured pillar, then verify a focused patch".into()],
+            vec![format!(
+                "inspect the {pillar} binding gate, then verify a focused patch"
+            )],
         );
     }
     if !security_findings.is_empty() {
@@ -513,7 +500,7 @@ pub fn build_pillars(
                 dim.to_string(),
                 PillarResult {
                     achieved,
-                    score: (score * 1000.0).round() / 10.0,
+                    score: topos_engine::evaluation::policies::desirability::display_percent(score),
                 },
             );
         }
@@ -560,6 +547,8 @@ pub struct EvalResultOptions<'a> {
     pub priority_source: PrioritySource,
     pub warnings: Vec<String>,
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory; reported as-is, never routed or scored.
+    pub security_advisory: Option<SecurityAdvisory>,
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     pub adjusted_verdict: Option<&'a AdjustedVerdict>,
     pub include_agent_contract: bool,
@@ -607,9 +596,16 @@ pub fn to_evaluation_result(
         Some(v) => v.adjusted_element,
         None => result.summary(),
     };
+    let (scores, gate_scores) = match opts.adjusted_verdict {
+        Some(v) => (
+            v.secure_lifted(&result.scores),
+            v.secure_lifted(&result.gate_scores),
+        ),
+        None => (result.scores.clone(), result.gate_scores.clone()),
+    };
     let walk = opts
         .preferences
-        .map(|prefs| build_preference_walk(prefs, summary));
+        .map(|prefs| build_preference_walk(prefs, summary, &gate_scores));
 
     let mut interpretation = result.interpretation.clone();
     if !coupling_available {
@@ -635,13 +631,16 @@ pub fn to_evaluation_result(
     let display_result = ClassificationResult {
         is_parseable: result.is_parseable,
         dimensions: dimensions.clone(),
-        scores: result.scores.clone(),
+        scores: scores.clone(),
         lattice_element: summary,
         priority: result.priority,
         raw_metrics: result.raw_metrics.clone(),
         interpretation: result.interpretation.clone(),
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
+        language: result.language.clone(),
+        gate_scores: gate_scores.clone(),
+        advisories: result.advisories.clone(),
     };
 
     let grade_capped = opts
@@ -659,6 +658,7 @@ pub fn to_evaluation_result(
             &opts.warnings,
             opts.refactor_targets.as_deref(),
             opts.offer_refactor_targets,
+            opts.preferences,
         ))
     } else {
         None
@@ -686,7 +686,7 @@ pub fn to_evaluation_result(
 
     let core_findings: Vec<topos_engine::evaluation::security_guidance::SecurityFinding> =
         opts.security_findings.iter().map(|f| f.to_core()).collect();
-    let suggestions: Vec<Suggestion> = suggest_refactors(result, &core_findings)
+    let suggestions: Vec<Suggestion> = suggest_refactors(result, &core_findings, opts.preferences)
         .into_iter()
         .map(|s| Suggestion {
             pillar: s.pillar,
@@ -705,17 +705,26 @@ pub fn to_evaluation_result(
             .iter()
             .map(|(dim, &val)| (dim.clone(), lattice_to_str(val)))
             .collect(),
-        scores: result
-            .scores
+        scores: scores
             .iter()
-            .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+            .map(|(dim, s)| {
+                (
+                    dim.clone(),
+                    topos_engine::evaluation::policies::desirability::display_percent(*s),
+                )
+            })
             .collect(),
         pillars: build_pillars(&display_result, coupling_available),
+        gate_scores,
         priority: priority_str(result.priority).to_string(),
         priority_source: opts.priority_source,
-        guidance: build_guidance(&display_result),
+        guidance: build_guidance(
+            &display_result,
+            opts.preferences.unwrap_or(&default_preferences()),
+        ),
         coupling_available,
         raw_metrics,
+        advisories: advisories_json(&result.advisories),
         interpretation,
         metric_locations: opts.metric_locations,
         warnings: opts.warnings.clone(),
@@ -725,6 +734,7 @@ pub fn to_evaluation_result(
         } else {
             Vec::new()
         },
+        security_advisory: opts.security_advisory,
         acknowledged_risks: opts.acknowledged_risks,
         raw_lattice_element: opts.adjusted_verdict.map(|v| lattice_to_str(v.raw_element)),
         adjusted_lattice_element: opts
@@ -909,8 +919,14 @@ fn push_preference_walk_section(lines: &mut Vec<String>, e: &EvaluationResult) {
         "- **Fallback (ideal intersection):** {} — divert here if IDEAL plateaus",
         pw.fallback_target.as_str()
     ));
+    if let Some(next_pillar) = pw.next_pillar {
+        lines.push(format!(
+            "- **Next pillar:** `{}` — edit this gate",
+            next_pillar.as_str()
+        ));
+    }
     if let Some(next_step) = pw.next_step {
-        lines.push(format!("- **Next step:** aim for `{}`", next_step.as_str()));
+        lines.push(format!("- **Concession step:** `{}`", next_step.as_str()));
     }
     if pw.walk.is_empty() {
         lines.push("- **Walk:** _at or beyond target — no further steps._".into());
@@ -1045,6 +1061,7 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
 mod tests {
     use super::*;
     use crate::evaluation::classify_code_string;
+    use topos_engine::evaluation::policies::base::Priority;
 
     #[test]
     fn navigable_pillar_and_interpretation_follow_the_scored_dimension() {
@@ -1072,12 +1089,55 @@ mod tests {
     }
 
     #[test]
+    fn acknowledged_secure_scores_at_the_gate_and_is_not_climbed() {
+        let result = classify_code_string(
+            "import os\ndef f(x):\n    os.system(x)\n",
+            "python",
+            Priority::Simple,
+        )
+        .unwrap();
+        assert!(result.scores["secure"] < 0.5, "raw SECURE fails its gate");
+        let secure = topos_engine::core::omega::Generator::Secure.value().bits();
+        let verdict = AdjustedVerdict {
+            raw_secure_pass: false,
+            adjusted_secure_pass: true,
+            raw_element: result.summary(),
+            adjusted_element: EvaluationValue::from_bits(result.summary().bits() | secure).unwrap(),
+            active_findings: Vec::new(),
+            acknowledged: Vec::new(),
+            grade_capped: false,
+        };
+        let prefs = default_preferences();
+        let model = to_evaluation_result(
+            &result,
+            false,
+            EvalResultOptions {
+                preferences: Some(&prefs),
+                adjusted_verdict: Some(&verdict),
+                ..Default::default()
+            },
+        );
+        let pillar = &model.pillars["secure"];
+        assert!(pillar.achieved && pillar.score >= 50.0, "{pillar:?}");
+        assert!(model.scores["secure"] >= 50.0);
+        assert!(model.gate_scores["secure"] >= 0.5);
+        assert_ne!(
+            model
+                .preference_walk
+                .unwrap()
+                .next_pillar
+                .map(|g| g.as_str()),
+            Some("secure")
+        );
+    }
+
+    #[test]
     fn passing_file_guidance_does_not_ask_for_pillars_that_passed() {
         // `def f(): return 1` is SIMPLE, SECURE, and NAVIGABLE. COMPOSABLE
         // is unmeasured without a graph, so it must not be listed as a miss.
         let result =
             classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
-        let guidance = build_guidance(&result);
+        let guidance = build_guidance(&result, &default_preferences());
         assert!(
             guidance.contains("Still failing") || guidance.contains("stop"),
             "{guidance}"
@@ -1096,7 +1156,7 @@ mod tests {
             classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
         let mut result = result;
         result.lattice_element = EvaluationValue::Ideal;
-        let contract = build_agent_contract(&result, true, &[], &[], false, &[], None, false);
+        let contract = build_agent_contract(&result, true, &[], &[], false, &[], None, false, None);
         assert!(contract.next_tool.is_none(), "{:?}", contract.next_tool);
         assert!(
             contract.next_actions.iter().any(|a| a.contains("stop")),
@@ -1123,6 +1183,7 @@ mod tests {
                 &[],
                 None,
                 false,
+                None,
             );
             assert!(contract.next_tool.is_some(), "{dim}: {contract:?}");
             assert!(
@@ -1147,6 +1208,7 @@ mod tests {
             &["missing gitnexus".into()],
             None,
             false,
+            None,
         );
         assert!(
             contract.next_tool.is_none(),
@@ -1394,6 +1456,7 @@ mod tests {
             &[],
             &locations,
             None,
+            EvaluationValue::Ideal,
             3,
         );
         let mut opts = EvalResultOptions::new();

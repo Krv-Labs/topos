@@ -289,6 +289,13 @@ pub struct EvaluateFileInput {
     /// 0 = off; capped at 25).
     #[serde(default = "default_refactor_targets")]
     pub refactor_targets: usize,
+    /// Run Sighthound even if SECURE passed; report-only.
+    // Opt-in coverage pass, default off; Python/JS/TS/Go only. Adds
+    // `security_advisory` and the capped `security_findings`; never changes
+    // the verdict, pillars, or scores. The `///` line is kept short for the
+    // context-budget ratchet (`context_budget.rs`).
+    #[serde(default)]
+    pub security_scan: bool,
 }
 
 /// Ranked targets are on by default: their expensive input
@@ -584,6 +591,9 @@ pub struct PreferenceWalkInput {
     /// Optional aspirational-target override; defaults to IDEAL.
     #[serde(default)]
     pub target: Option<LatticeElement>,
+    /// Pillar gate scores in `[0, 1]`. Enables `next_pillar`.
+    #[serde(default)]
+    pub gate_scores: std::collections::BTreeMap<String, f64>,
 }
 
 /// Arguments for `topos_depgraph_status`.
@@ -718,6 +728,8 @@ pub struct PreferenceWalkResult {
     pub current: Option<LatticeElement>,
     /// Smallest improvement above `current`; null when at/beyond target.
     pub next_step: Option<LatticeElement>,
+    /// Closest failing pillar inside the target. Null without gate scores.
+    pub next_pillar: Option<GeneratorInput>,
     /// Fractional progress from SLOP to the aspirational target.
     pub progress: f64,
     /// Steps from the target down to just above `current`.
@@ -740,9 +752,12 @@ pub struct PreferenceWalk {
     /// Preference-ordered verdict path above current; empty at/beyond target.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub walk: Vec<LatticeElement>,
-    /// Immediate next verdict above current.
+    /// Immediate next verdict above current. The concession ladder, not the edit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_step: Option<LatticeElement>,
+    /// Closest failing pillar inside the target.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_pillar: Option<GeneratorInput>,
     /// Progress toward target in [0, 1].
     pub progress: f64,
 }
@@ -757,7 +772,11 @@ pub struct PillarResult {
 }
 
 /// Actionable SECURE diagnostic for an agent.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+///
+/// The optional scanner metadata (`severity`, `confidence`, `cwe`, `title`)
+/// is present only for findings the embedded Sighthound engine produced; the
+/// CPG fallback (Rust/C++, or a disabled/failed scan) sets only `mode`.
+#[derive(Debug, Clone, Default, Serialize, JsonSchema)]
 pub struct SecurityFinding {
     /// Finding kind, e.g. dangerous_call.
     pub kind: String,
@@ -774,9 +793,31 @@ pub struct SecurityFinding {
     /// Taint sink snippet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sink: Option<String>,
+    /// Detection mode: `taint` (source-to-sink flow) or `pattern`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// Scanner severity: critical, high, medium, or low.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// Scanner confidence: high, medium, or low.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
+    /// Weakness id, e.g. `CWE-78`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwe: Option<String>,
+    /// Scanner rule title (its finding type).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Advisory family (see [`SecurityAdvisory::by_family`]). Internal: it
+    /// feeds the histogram and is not serialized per finding.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub family: Option<&'static str>,
 }
 
 impl SecurityFinding {
+    /// Rebuild from the engine's lean mirror. The mirror carries no scanner
+    /// metadata, so only `mode` is recovered (from `kind`).
     pub fn from_core(f: &topos_engine::evaluation::security_guidance::SecurityFinding) -> Self {
         SecurityFinding {
             kind: f.kind.clone(),
@@ -785,6 +826,8 @@ impl SecurityFinding {
             callee: f.callee.clone(),
             source: f.source.clone(),
             sink: f.sink.clone(),
+            mode: mode_for_kind(&f.kind),
+            ..Default::default()
         }
     }
 
@@ -798,6 +841,39 @@ impl SecurityFinding {
             sink: self.sink.clone(),
         }
     }
+}
+
+/// `taint_flow` → `taint`, `dangerous_call` → `pattern`.
+pub fn mode_for_kind(kind: &str) -> Option<String> {
+    match kind {
+        "taint_flow" => Some("taint".to_string()),
+        "dangerous_call" => Some("pattern".to_string()),
+        _ => None,
+    }
+}
+
+/// Sighthound advisory summary reported beside the SECURE pillar.
+///
+/// Never an input to `achieved`, any score, or the verdict: the scanner runs
+/// only when the CPG SECURE gate failed (or on `security_scan` opt-in), so
+/// scoring on it would make scores depend on whether a scan happened.
+/// Counted over every non-acknowledged finding, before the
+/// `security_findings` display cap. Absent means the scanner did not run for
+/// this file, which is distinct from a block of zeros.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, JsonSchema)]
+pub struct SecurityAdvisory {
+    /// Highest severity seen: none, low, medium, high, or critical.
+    pub max_severity: String,
+    /// Findings with severity high/critical and confidence above low.
+    pub actionable: usize,
+    /// Taint-mode (source-to-sink) findings.
+    pub taint: usize,
+    /// Findings left out of `security_findings` by the display cap.
+    pub omitted: usize,
+    /// Count per family (injection, xss, deserialization, path, crypto,
+    /// auth, other); zero families are omitted.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub by_family: BTreeMap<String, usize>,
 }
 
 /// A disclosed security finding acknowledged by project config or input.
@@ -940,6 +1016,9 @@ pub struct EvaluationResult {
     /// Per-pillar breakdown (simple, composable, secure).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub pillars: BTreeMap<String, PillarResult>,
+    /// Gate-only score `G` per pillar in [0, 1]; 0.5 is the gate.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub gate_scores: BTreeMap<String, f64>,
     pub priority: String,
     /// Whether priority was defaulted, inferred from preferences, or explicit.
     pub priority_source: PrioritySource,
@@ -951,6 +1030,10 @@ pub struct EvaluationResult {
     /// Raw probe values; present only under `verbose`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub raw_metrics: BTreeMap<String, f64>,
+    /// Advisory readings: `{metric: {value, relative_percentile,
+    /// global_percentile, local_weight, flagged}}`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub advisories: BTreeMap<String, Value>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub interpretation: BTreeMap<String, String>,
     /// Source locations for failing complexity gates, keyed by metric.
@@ -962,6 +1045,9 @@ pub struct EvaluationResult {
     pub agent_contract: Option<AgentContract>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory summary; absent when the scanner did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_advisory: Option<SecurityAdvisory>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     /// Canonical raw verdict before acknowledged-risk overlay.
@@ -995,8 +1081,8 @@ pub struct EvaluationResult {
     /// (an advisory metric is never promoted here), or this tool did not
     /// compute ranked targets at all — `refactor_targets` is empty in the
     /// last two cases and non-empty in the advisory-only case, which
-    /// distinguishes them. So a low `score` with `achieved: true` and no
-    /// `binding_constraint` is a file whose only offenders are advisory.
+    /// distinguishes them. A passing pillar scores at least 50; advisories
+    /// never become this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub binding_constraint: Option<BindingConstraint>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1019,16 +1105,19 @@ impl EvaluationResult {
             dimensions: BTreeMap::new(),
             scores: BTreeMap::new(),
             pillars: BTreeMap::new(),
+            gate_scores: BTreeMap::new(),
             priority: priority_str(priority).to_string(),
             priority_source,
             guidance: String::new(),
             coupling_available: false,
             raw_metrics: BTreeMap::new(),
+            advisories: BTreeMap::new(),
             interpretation: BTreeMap::new(),
             metric_locations: BTreeMap::new(),
             warnings: Vec::new(),
             agent_contract: None,
             security_findings: Vec::new(),
+            security_advisory: None,
             acknowledged_risks: Vec::new(),
             raw_lattice_element: None,
             adjusted_lattice_element: None,
@@ -1057,10 +1146,17 @@ pub struct ProjectFileEntry {
     /// Raw probe values; present only under `verbose`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub raw_metrics: BTreeMap<String, f64>,
+    /// Codebase-relative advisory readings (same shape as
+    /// [`EvaluationResult::advisories`]).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub advisories: BTreeMap<String, Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub security_findings: Vec<SecurityFinding>,
+    /// Sighthound advisory summary; absent when the scanner did not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security_advisory: Option<SecurityAdvisory>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1111,8 +1207,8 @@ pub struct ProjectEvaluationResult {
     pub language_rollups: Vec<ProjectLanguageRollup>,
     pub aggregate_explanation: String,
     pub worst_file_verdict: Option<LatticeElement>,
-    /// Files failing at least one gating gate (`GATE_SPECS` with
-    /// `gates_achieved: true`), excluding structural leaf composable zeros.
+    /// Files failing at least one gate (`GATE_SPECS`), excluding
+    /// structural leaf composable zeros.
     /// Page-global — unaffected by `offset`/`limit`. Prefer this over
     /// `worst_files` for fix order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1120,7 +1216,7 @@ pub struct ProjectEvaluationResult {
     /// **Deprecated** — always empty, kept for one release for wire
     /// compatibility. This bucket held leaf modules at `mdg.instability =
     /// 0.0` so their COMPOSABLE failures stayed out of `hard_fails`.
-    /// `mdg.instability` is now advisory (`gates_achieved: false`) and
+    /// `mdg.instability` is now advisory (not a registered gate) and
     /// cannot produce a hard fail, so there is nothing left to suppress.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub leaf_composable_zeros: Vec<WorstFileEntry>,

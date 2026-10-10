@@ -6,7 +6,7 @@
 //! now compiled in rather than discovered on `$PATH`. The local CPG probes
 //! remain the fallback for scan failures and unsupported languages.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use topos_engine::functors::probes::cpg::danger::{
@@ -16,8 +16,94 @@ use topos_engine::functors::probes::cpg::taint::taint_sources;
 use topos_engine::graphs::cpg::models::CPGEdgeKind;
 use topos_engine::graphs::cpg::object::CodePropertyGraph;
 
-use crate::schemas::SecurityFinding;
-use crate::sighthound;
+use crate::schemas::{SecurityAdvisory, SecurityFinding};
+use crate::sighthound::{self, SEVERITIES};
+
+/// Display cap for `security_findings` on MCP results.
+pub const MAX_SECURITY_FINDINGS: usize = 20;
+
+/// Capped findings plus the advisory computed over the uncapped list.
+#[derive(Debug, Default)]
+pub struct SecurityReport {
+    pub findings: Vec<SecurityFinding>,
+    /// `Some` only when Sighthound produced the findings.
+    pub advisory: Option<SecurityAdvisory>,
+}
+
+impl SecurityReport {
+    /// Cap a full (already sorted) list at `max_findings`, computing the
+    /// advisory over all of it first when `scanned` (Sighthound ran).
+    pub fn from_full(mut all: Vec<SecurityFinding>, scanned: bool, max_findings: usize) -> Self {
+        let advisory = scanned.then(|| advisory(&all, all.len().min(max_findings)));
+        all.truncate(max_findings);
+        SecurityReport {
+            findings: all,
+            advisory,
+        }
+    }
+}
+
+/// Summarize `all` findings, of which the first `shown` are displayed.
+pub fn advisory(all: &[SecurityFinding], shown: usize) -> SecurityAdvisory {
+    let max_severity = SEVERITIES
+        .iter()
+        .find(|level| all.iter().any(|f| f.severity.as_deref() == Some(**level)))
+        .copied()
+        .unwrap_or("none");
+    let mut by_family: BTreeMap<String, usize> = BTreeMap::new();
+    for f in all {
+        *by_family
+            .entry(f.family.unwrap_or("other").to_string())
+            .or_default() += 1;
+    }
+    SecurityAdvisory {
+        max_severity: max_severity.to_string(),
+        actionable: all
+            .iter()
+            .filter(|f| {
+                matches!(f.severity.as_deref(), Some("critical" | "high"))
+                    && f.confidence.as_deref() != Some("low")
+            })
+            .count(),
+        taint: all
+            .iter()
+            .filter(|f| f.mode.as_deref() == Some("taint"))
+            .count(),
+        omitted: all.len().saturating_sub(shown),
+        by_family,
+    }
+}
+
+/// Every finding for `cpg` (uncapped), and whether Sighthound produced them
+/// (`false` means the CPG-probe fallback did).
+pub fn all_security_findings(
+    cpg: &CodePropertyGraph,
+    allow: Option<&HashSet<String>>,
+    file_path: Option<&Path>,
+) -> (Vec<SecurityFinding>, bool) {
+    if let Some(findings) =
+        sighthound::sighthound_all_findings(&cpg.source, &cpg.language, allow, file_path)
+    {
+        return (findings, true);
+    }
+    let mut findings = dangerous_call_findings(cpg, usize::MAX, allow);
+    findings.extend(taint_flow_findings(cpg, usize::MAX, allow));
+    (findings, false)
+}
+
+/// Capped findings plus the Sighthound advisory (see [`SecurityReport`]).
+pub fn security_report(
+    cpg: Option<&CodePropertyGraph>,
+    max_findings: usize,
+    allow: Option<&HashSet<String>>,
+    file_path: Option<&Path>,
+) -> SecurityReport {
+    let Some(cpg) = cpg else {
+        return SecurityReport::default();
+    };
+    let (all, scanned) = all_security_findings(cpg, allow, file_path);
+    SecurityReport::from_full(all, scanned, max_findings)
+}
 
 /// Return concise dangerous-call and taint-flow diagnostics.
 ///
@@ -30,22 +116,7 @@ pub fn security_findings(
     allow: Option<&HashSet<String>>,
     file_path: Option<&Path>,
 ) -> Vec<SecurityFinding> {
-    let Some(cpg) = cpg else {
-        return Vec::new();
-    };
-
-    if let Some(findings) =
-        sighthound::sighthound_security_findings(cpg, max_findings, allow, file_path)
-    {
-        return findings;
-    }
-
-    let mut findings = dangerous_call_findings(cpg, max_findings, allow);
-    let remaining = max_findings.saturating_sub(findings.len());
-    if remaining > 0 {
-        findings.extend(taint_flow_findings(cpg, remaining, allow));
-    }
-    findings
+    security_report(cpg, max_findings, allow, file_path).findings
 }
 
 fn allow_set(allow: Option<&HashSet<String>>) -> HashSet<String> {
@@ -87,8 +158,8 @@ pub fn dangerous_call_findings(
             line: line as u32,
             snippet,
             callee: Some(callee),
-            source: None,
-            sink: None,
+            mode: Some("pattern".to_string()),
+            ..Default::default()
         });
         if findings.len() >= max_findings {
             break;
@@ -190,6 +261,8 @@ fn join_sources_to_sinks(
                 callee: (!callee.is_empty()).then_some(callee),
                 source: Some(source_snippet),
                 sink: Some(sink_snippet.clone()),
+                mode: Some("taint".to_string()),
+                ..Default::default()
             });
             if findings.len() >= max_findings {
                 return findings;
@@ -251,5 +324,20 @@ mod tests {
         let allow: HashSet<String> = HashSet::from(["os.system".to_string()]);
         let findings = dangerous_call_findings(&cpg, 20, Some(&allow));
         assert!(findings.is_empty());
+    }
+
+    /// Rust has no Sighthound rule pack: the CPG fallback reports findings
+    /// (with `mode` only) and no advisory block.
+    #[test]
+    fn unsupported_language_has_no_advisory() {
+        let src =
+            "use std::process::Command;\nfn f(c: &str) { Command::new(c).spawn().unwrap(); }\n";
+        let mut morphism = ProgramMorphism::new(src, "rust");
+        let cpg = morphism.build_cpg().expect("CPG builds").clone();
+        let report = security_report(Some(&cpg), 20, None, None);
+        assert!(report.advisory.is_none());
+        for f in &report.findings {
+            assert!(f.mode.is_some() && f.severity.is_none() && f.cwe.is_none());
+        }
     }
 }

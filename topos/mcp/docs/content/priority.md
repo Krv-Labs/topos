@@ -1,41 +1,37 @@
 # Priority Profiles
 
-The `priority` parameter is a single scorer knob. It names one quality
-generator (`simple`, `composable`, `secure`, or `navigable`) to emphasize,
-and steers the guidance the policy translators `Φᵢ` return.
+`priority` names one generator (`simple`, `composable`, `secure`, or
+`navigable`). That generator is the head of the preference ranking: it
+wins an ascent tie, and on the CLI a single `--priority` value is lifted
+into a full ranking with `focused_ranking`. The engine default is `simple`,
+the head of the default ranking.
 
-Priority does **not** define the target-relaxation walk and does **not**
-linearize the lattice. Use `preferences.ranking` when an agent needs a strict
-total order over all four generators.
+The policy translators do not reweight metrics for priority, and priority
+does not change `achieved`. The lattice walk stays the bitmask order from
+`preferences.ranking`. `next_pillar` is chosen by gate score inside that
+goal; priority only breaks a tie.
 
 ## When to use which
 
-### `secure` (default)
+### `simple` (default)
 
-Conservative default: upweights SECURE metrics (`w_taint` highest within
-each `Φᵢ`).  Use when you want a single knob without tuning — especially
-mixed or unfamiliar codebases.
-
-### `simple`
-
-Upweights the SIMPLE generator's metrics (CFG cyclomatic complexity).  Use
-when the file is a **leaf implementation** — concrete logic that few things
-depend on.  Minimizing internal branching matters more than how it composes
-or how cautiously it handles inputs.
+Leaf implementation: branch count inside the file is the tie to win. Use
+when few things depend on the file.
 
 ### `composable`
 
-Upweights the COMPOSABLE generator's dependency metrics. Use when the file is
-an **orchestrator or integration boundary** whose outward interactions deserve
-special attention. Fan-out drives the file-level verdict; fan-in and Martin
-stability readings enrich the diagnosis without hard-failing the file.
+Orchestrator or integration boundary. Fan-out is the gate; fan-in and
+instability are advisories.
+
+### `secure`
+
+The file handles untrusted input. SECURE is zero-tolerance, so a tie that
+lands here is a blocker rather than a gradient.
 
 ### `navigable`
 
-Upweights the NAVIGABLE generator (worst-function nesting divergence). Use
-when a file is one agents will keep having to read and edit — a hot path
-for automated maintenance. Note this is orthogonal to `simple`: a file can
-have low branch counts everywhere and still be deeply nested.
+A file agents keep having to read and edit. Nesting divergence is the gate.
+A file can pass SIMPLE and still fail NAVIGABLE.
 
 ## Example
 
@@ -51,10 +47,6 @@ the SECURE generator is the relevant target.
 
 ## Switching mid-loop
 
-Agents can change priority across evaluation calls. It is a hint to the scorer,
-not a contract for what tradeoff to accept. Running the same file at e.g.
-`secure` then `composable` can expose which generator is the current scoring
-bottleneck.
-
-For target tradeoffs, use `preferences.ranking`: it tells the agent which
-silver or bronze outcome to prefer if `IDEAL` stalls.
+Changing priority changes which generator wins an equal gate score, and on
+the CLI which generator the ranking concedes last. It does not change the
+numeric score. For the concession order, pass `preferences.ranking`.

@@ -8,23 +8,24 @@
 //! suffix-matched table the suggestion engine renders as prose).
 //!
 //! Ranking honors the same distinction the gate table makes: a metric
-//! whose failure cannot cost its pillar's `achieved` (`gates_achieved:
-//! false`) is labeled `"improve"` and sorted behind every real gate
-//! failure, however large its excess. Agents route off the first target,
-//! so an advisory metric leading the list is a wrong turn.
+//! with no registered gate (an advisory metric such as the whole-file
+//! `cfg.cyclomatic` location) cannot cost its pillar's `achieved`, so it
+//! is labeled `"improve"` and sorted behind every real gate failure,
+//! however large its excess. Agents route off the first target, so an
+//! advisory metric leading the list is a wrong turn.
 //!
-//! That ordering yields to one thing only: an explicit
-//! `preferences.ranking`, which is a caller instruction rather than a
-//! default. Absent one, the gating tier leads across pillars too — see
-//! [`rank_key`].
+//! Ordering follows the gate-score ascent: a pillar the active goal still
+//! requires comes first, then `"fix"` before `"improve"`, then the pillar
+//! whose gate score is closest to passing, then the lowest desirability
+//! inside that pillar. Preference rank only breaks a tie. See [`rank_key`].
 
 use std::collections::{BTreeMap, HashMap};
 
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
-use topos_engine::evaluation::policies::composable::coupling_gate_input;
-use topos_engine::evaluation::policies::gates::evaluate_gates;
+use topos_engine::core::omega::{EvaluationValue, Generator};
+use topos_engine::evaluation::policies::gates::{evaluate_gates, metric_desirability};
 use topos_engine::evaluation::security_guidance::remediation_for;
 
 use crate::schemas::{FunctionEntry, GeneratorInput, RefactorTarget, SecurityFinding};
@@ -38,8 +39,9 @@ const SECURITY_CONSTRAINTS: [&str; 1] =
 fn default_pillar_rank(pillar: &str) -> usize {
     match pillar {
         "simple" => 0,
-        "secure" => 1,
-        "composable" => 2,
+        "navigable" => 1,
+        "secure" => 2,
+        "composable" => 3,
         _ => 99,
     }
 }
@@ -51,6 +53,7 @@ pub fn build_refactor_targets(
     security_findings: &[SecurityFinding],
     locations: &BTreeMap<String, Vec<FunctionEntry>>,
     ranking: Option<&[GeneratorInput]>,
+    goal: EvaluationValue,
     max_targets: usize,
 ) -> Vec<RefactorTarget> {
     let mut candidates: Vec<RefactorTarget> = Vec::new();
@@ -63,26 +66,22 @@ pub fn build_refactor_targets(
     candidates.extend(security_targets(filepath, security_findings));
 
     let pillar_rank: HashMap<&str, usize> = match ranking {
-        Some(ranking) => ranking
+        Some(ranking) if !ranking.is_empty() => ranking
             .iter()
             .enumerate()
             .map(|(i, g)| (g.as_str(), i))
             .collect(),
-        None => HashMap::new(),
+        _ => HashMap::new(),
     };
-    // Read off the derived map rather than `ranking.is_some()`: a ranking
-    // that ranked nothing leaves every target on `default_pillar_rank`,
-    // which is the internal default the tier is meant to outrank, so it
-    // must take the no-preference branch. `topos_evaluate_file` cannot
-    // reach that shape today — `UserPreferencesInput::to_preferences`
-    // rejects anything but a full permutation before targets are built —
-    // but this function is public and the map, not the slice, is what the
-    // key actually consults.
-    let tier_first = pillar_rank.is_empty();
+    let pillar_gate = pillar_gate_scores(result, &candidates);
     candidates.sort_by(|a, b| {
-        rank_key(a, &pillar_rank, tier_first)
-            .partial_cmp(&rank_key(b, &pillar_rank, tier_first))
-            .unwrap_or(std::cmp::Ordering::Equal)
+        rank_key(a, result.lattice_element, goal, &pillar_rank, &pillar_gate).cmp(&rank_key(
+            b,
+            result.lattice_element,
+            goal,
+            &pillar_rank,
+            &pillar_gate,
+        ))
     });
     candidates.truncate(max_targets);
     candidates
@@ -105,31 +104,23 @@ fn gate_pillar(metric: &str) -> &'static str {
 }
 
 /// `"fix"` when failing this metric actually costs its pillar's
-/// `achieved`, `"improve"` when the gate is advisory.
+/// `achieved`, `"improve"` when it is advisory.
 ///
-/// Four specs are advisory (`gates_achieved: false`). `cfg.cyclomatic`
-/// (issue #193) is a whole-file merged-CFG sum that scales with function
-/// count, so it is still scored and surfaced but cannot fail SIMPLE —
-/// `ast.max_function_complexity` gates that concern directly.
-/// `mdg.instability` and `mdg.main_sequence_distance` are ratios whose
-/// resolution is `1 / (Ca + Ce)`, which at file granularity is too coarse
-/// for the calibrated band to be a fair test. Labeling any of them `"fix"`
-/// sends agents to rewrite a metric no verdict depends on. Metrics with no
-/// registered spec default to gating, matching `gate_pillar`'s defensive
-/// fallback. `mdg.fan_in` measures responsibility/change-impact radius at
-/// file scope: a widely reused interface is important, not automatically
-/// non-composable, so it remains an `improve` target while `mdg.fan_out`
-/// alone gates outward dependency burden.
+/// Every registered `GATE_SPECS` entry gates its pillar; advisory metrics
+/// are not registered at all. The one advisory metric that still reaches
+/// this module is the whole-file `cfg.cyclomatic` location (issue #193): a
+/// merged-CFG sum that scales with function count, so it is surfaced but
+/// cannot fail SIMPLE — `ast.max_function_complexity` gates that concern
+/// directly. Labeling it `"fix"` sends agents to rewrite a metric no
+/// verdict depends on.
 ///
-/// This is the single `gates_achieved` → severity mapping in this module;
+/// This is the single gate → severity mapping in this module;
 /// [`rank_key`] derives its gating tier from the severity string so the
 /// label an agent reads and the order it is served in cannot diverge.
 fn gate_severity(metric: &str) -> &'static str {
     let gating = topos_engine::evaluation::policies::gates::GATE_SPECS
         .iter()
-        .find(|spec| spec.metric == metric)
-        .map(|spec| spec.gates_achieved)
-        .unwrap_or(true);
+        .any(|spec| spec.metric == metric);
     if gating {
         "fix"
     } else {
@@ -186,74 +177,51 @@ fn location_target(filepath: &str, metric: &str, entry: &FunctionEntry) -> Refac
 
 /// Targets for failing whole-file or module-context structural gates.
 fn structural_metric_targets(filepath: &str, result: &ClassificationResult) -> Vec<RefactorTarget> {
-    // Reproduce the exact gate inputs the scorers used, or a target would
-    // contradict the score this module claims to be derived from:
-    // `Φ_COMPOSABLE` replaces raw `mdg.instability` with
-    // `mdg.main_sequence_distance` whenever abstractness and a real
-    // coupling signal are present, and `distance_stable_leaf_exempt` reads
-    // the stable-leaf flag plus raw instability from the gate context.
-    // Evaluating `result.raw_metrics` verbatim would duplicate the superseded
-    // instability reading and leave the stable-leaf carve-out unreachable.
-    // `coupling_gate_input` is the shared source of that swap (it also
-    // computes `mdg.main_sequence_distance`, which is never in
-    // `raw_metrics`); keep this block in sync with its sibling caller
-    // `topos_engine::evaluation::suggestions::suggest_refactors`.
-    let instability = result.raw_metrics.get("mdg.instability").copied();
-    let mut gate_metrics = result.raw_metrics.clone();
-    gate_metrics.remove("mdg.instability");
-    gate_metrics.extend(coupling_gate_input(
-        instability,
-        result.raw_metrics.get("mdg.fan_in").copied(),
-        result.raw_metrics.get("mdg.fan_out").copied(),
-        result.raw_metrics.get("mdg.abstractness").copied(),
-        result.raw_metrics.get("mdg.coupling").copied(),
-    ));
-    evaluate_gates(
-        &gate_metrics,
-        None,
-        result.is_entrypoint_module,
-        result.is_stable_leaf_module,
-        instability,
-    )
-    .into_iter()
-    .filter(|r| {
-        !r.passed() && matches!(r.spec.granularity, "file" | "module") && r.spec.pillar != "secure"
-    })
-    .map(|r| {
-        let scope = if r.spec.granularity == "file" {
-            "<file>"
-        } else {
-            "<module>"
-        };
-        RefactorTarget {
-            target_id: target_id(filepath, r.spec.metric, Some(scope), Some(1)),
-            kind: r.spec.granularity.to_string(),
-            filepath: filepath.to_string(),
-            symbol: Some(scope.to_string()),
-            line_start: Some(1),
-            line_end: None,
-            failing_generators: vec![r.spec.pillar.to_string()],
-            metric: r.spec.metric.to_string(),
-            current_value: Some(r.value),
-            threshold: r.threshold(),
-            severity: gate_severity(r.spec.metric).to_string(),
-            recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
-            constraints: MODULE_METRIC_CONSTRAINTS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            evidence: BTreeMap::from([(
-                "interpretation".to_string(),
-                result
-                    .interpretation
-                    .get(r.spec.metric)
-                    .cloned()
-                    .map(Value::from)
-                    .unwrap_or(Value::Null),
-            )]),
-        }
-    })
-    .collect()
+    // Same gate inputs and entrypoint exemption the scorers used, so a
+    // target can never contradict the score this module claims to be
+    // derived from.
+    evaluate_gates(&result.raw_metrics, None, result.is_entrypoint_module)
+        .into_iter()
+        .filter(|r| {
+            !r.passed()
+                && matches!(r.spec.granularity, "file" | "module")
+                && r.spec.pillar != "secure"
+        })
+        .map(|r| {
+            let scope = if r.spec.granularity == "file" {
+                "<file>"
+            } else {
+                "<module>"
+            };
+            RefactorTarget {
+                target_id: target_id(filepath, r.spec.metric, Some(scope), Some(1)),
+                kind: r.spec.granularity.to_string(),
+                filepath: filepath.to_string(),
+                symbol: Some(scope.to_string()),
+                line_start: Some(1),
+                line_end: None,
+                failing_generators: vec![r.spec.pillar.to_string()],
+                metric: r.spec.metric.to_string(),
+                current_value: Some(r.value),
+                threshold: r.threshold(),
+                severity: gate_severity(r.spec.metric).to_string(),
+                recommended_operations: r.operations().iter().map(|s| s.to_string()).collect(),
+                constraints: MODULE_METRIC_CONSTRAINTS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                evidence: BTreeMap::from([(
+                    "interpretation".to_string(),
+                    result
+                        .interpretation
+                        .get(r.spec.metric)
+                        .cloned()
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                )]),
+            }
+        })
+        .collect()
 }
 
 fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<RefactorTarget> {
@@ -308,62 +276,89 @@ fn security_targets(filepath: &str, findings: &[SecurityFinding]) -> Vec<Refacto
         .collect()
 }
 
-/// Sort key over pillar, gating tier, excess, then position — with pillar
-/// and tier swapped depending on whether the caller ranked pillars.
+/// Sort key: in the active goal, `"fix"` before `"improve"`, closest
+/// pillar gate score first, then lowest desirability, then preference rank.
 ///
-/// The gating tier always sits *ahead* of excess so an advisory metric can
-/// never outrank a real gate failure by sheer magnitude. It used to: a
-/// whole-file `cfg.cyclomatic` of 80 (excess 65, and `gates_achieved:
-/// false`, so it cannot fail SIMPLE) buried a genuine
-/// `ast.max_function_complexity` of 14 (excess 4), and since the agent
-/// contract routes off `targets.first()` agents were sent to rewrite the
-/// one SIMPLE metric no verdict depends on.
-///
-/// What `tier_first` decides is which of pillar and tier leads:
-///
-/// - `false` — the caller passed `preferences.ranking`, so the key is
-///   `(pillar_rank, tier, ...)`. A stated pillar order is an instruction;
-///   an agent that asked for SECURE first gets SECURE first even when a
-///   different pillar has the failing gate.
-/// - `true` — no ranking, so `pillar_rank` is only `default_pillar_rank`,
-///   an internal tie-breaker nobody asked for. The key becomes
-///   `(tier, pillar_rank, ...)` and correctness leads. Otherwise the
-///   cross-pillar version of the same bug survives: on this repo's own
-///   `formatting.rs`, an advisory `cfg.cyclomatic` of 118 outranked a
-///   gating `mdg.instability` purely because SIMPLE sorts before
-///   COMPOSABLE by default.
+/// Gate score is comparable across metrics because every gate is anchored
+/// at 0.5. Preference rank only breaks an equal score. An advisory metric
+/// cannot lead a gate failure inside the same goal: the tier sits ahead of
+/// the score.
 fn rank_key(
     target: &RefactorTarget,
+    current: EvaluationValue,
+    goal: EvaluationValue,
     pillar_rank: &HashMap<&str, usize>,
-    tier_first: bool,
-) -> (usize, usize, i64, usize, String) {
+    pillar_gate: &HashMap<String, f64>,
+) -> (usize, usize, i64, i64, usize, usize, String) {
     let pillar = target
         .failing_generators
         .first()
         .map(String::as_str)
         .unwrap_or("simple");
+    let outside = usize::from(!pillar_missing(goal, current, pillar));
+    let tier = usize::from(target.severity != "fix");
+    let desirability = target
+        .current_value
+        .and_then(|value| metric_desirability(&target.metric, value))
+        .unwrap_or(0.0);
+    let gate = pillar_gate.get(pillar).copied().unwrap_or(desirability);
     let rank = pillar_rank
         .get(pillar)
         .copied()
         .unwrap_or_else(|| default_pillar_rank(pillar));
-    // Derived from the severity string rather than a second GATE_SPECS
-    // lookup, so the label and the ordering share one decision.
-    let tier = if target.severity == "fix" { 0 } else { 1 };
-    let current = target.current_value.unwrap_or(0.0);
-    let threshold = target.threshold.unwrap_or(current);
-    let excess = ((current - threshold).abs() * 100.0) as i64;
-    let (primary, secondary) = if tier_first {
-        (tier, rank)
-    } else {
-        (rank, tier)
-    };
     (
-        primary,
-        secondary,
-        -excess,
+        outside,
+        tier,
+        -scale(gate),
+        scale(if tier == 0 { desirability } else { 0.0 }),
+        rank,
         target.line_start.unwrap_or(0),
         target.target_id.clone(),
     )
+}
+
+fn scale(value: f64) -> i64 {
+    (value * 10_000.0).round() as i64
+}
+
+fn pillar_missing(goal: EvaluationValue, current: EvaluationValue, pillar: &str) -> bool {
+    let Some(generator) = Generator::ALL
+        .into_iter()
+        .find(|generator| generator.as_str() == pillar)
+    else {
+        return false;
+    };
+    let bit = generator.value().bits();
+    goal.bits() & bit != 0 && current.bits() & bit == 0
+}
+
+/// Shared gate score per pillar: the stored `gate_scores` entry, or the
+/// minimum desirability among this pillar's `"fix"` targets when the
+/// result has no score yet.
+fn pillar_gate_scores(
+    result: &ClassificationResult,
+    targets: &[RefactorTarget],
+) -> HashMap<String, f64> {
+    let mut scores: HashMap<String, f64> = result.gate_scores.clone().into_iter().collect();
+    for target in targets.iter().filter(|target| target.severity == "fix") {
+        let Some(pillar) = target.failing_generators.first() else {
+            continue;
+        };
+        if scores.contains_key(pillar) {
+            continue;
+        }
+        let Some(desirability) = target
+            .current_value
+            .and_then(|value| metric_desirability(&target.metric, value))
+        else {
+            continue;
+        };
+        scores
+            .entry(pillar.clone())
+            .and_modify(|score| *score = score.min(desirability))
+            .or_insert(desirability);
+    }
+    scores
 }
 
 fn target_id(filepath: &str, metric: &str, symbol: Option<&str>, line: Option<usize>) -> String {
@@ -428,6 +423,7 @@ mod tests {
             &[],
             &locations,
             None,
+            EvaluationValue::Ideal,
             5,
         );
 
@@ -435,8 +431,8 @@ mod tests {
         assert_eq!(
             targets[0].metric, "ast.max_function_complexity",
             "ast.max_function_complexity (14 vs 10, excess 4) gates SIMPLE, so it must \
-             rank ahead of cfg.cyclomatic (80 vs 15, excess 65), which is advisory \
-             (gates_achieved: false, issue #193) and cannot fail the pillar. The agent \
+             rank ahead of cfg.cyclomatic (80, no gate), which is advisory \
+             (issue #193) and cannot fail the pillar. The agent \
              contract routes off targets.first(), so ordering here is the routing."
         );
         assert_eq!(targets[0].severity, "fix");
@@ -455,6 +451,7 @@ mod tests {
             &[],
             &locations,
             None,
+            EvaluationValue::Ideal,
             5,
         );
 
@@ -465,79 +462,33 @@ mod tests {
         assert_eq!(targets[0].failing_generators, vec!["simple"]);
     }
 
+    /// Advisory metrics are not gates: fan-in and instability, however
+    /// atypical, never become refactor targets here (they surface as
+    /// advisory suggestions instead).
     #[test]
-    fn fan_in_remains_an_actionable_file_level_advisory() {
+    fn advisory_metrics_yield_no_gate_targets() {
         let mut result = ClassificationResult::default();
-        result.raw_metrics.insert("mdg.fan_in".to_string(), 30.0);
-        result.raw_metrics.insert("mdg.fan_out".to_string(), 5.0);
-
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].metric, "mdg.fan_in");
-        assert_eq!(targets[0].kind, "file");
-        assert_eq!(targets[0].severity, "improve");
-        assert_eq!(targets[0].threshold, Some(15.0));
-    }
-
-    /// Distance mode: `Φ_COMPOSABLE` scores `mdg.main_sequence_distance` in
-    /// place of raw instability, so no target may fire on the instability
-    /// the scorer superseded.
-    #[test]
-    fn composable_targets_use_the_scorer_gate_inputs() {
-        let mut result = ClassificationResult::default();
-        // A = 0.2, I = 0.9 => D = 0.1, inside main_sequence_distance_max,
-        // even though I = 0.9 is above the raw instability_high of 0.7.
-        // Abstractness must be nonzero or the scorer keeps raw
-        // instability instead (see `coupling_gate_input`).
         result.raw_metrics.extend([
-            ("mdg.instability".to_string(), 0.9),
-            ("mdg.abstractness".to_string(), 0.2),
+            ("mdg.fan_in".to_string(), 30.0),
+            ("mdg.instability".to_string(), 0.95),
+            ("mdg.abstractness".to_string(), 0.0),
             ("mdg.coupling".to_string(), 6.0),
-            ("mdg.fan_in".to_string(), 1.0),
             ("mdg.fan_out".to_string(), 5.0),
         ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
+        let targets = build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &BTreeMap::new(),
+            None,
+            EvaluationValue::Ideal,
+            5,
+        );
         assert!(
             targets.is_empty(),
-            "evaluating raw_metrics verbatim duplicates mdg.instability, which \
-             Φ_COMPOSABLE replaced with mdg.main_sequence_distance = 0.1 (passing); \
-             got {:?}",
+            "got {:?}",
             targets.iter().map(|t| &t.metric).collect::<Vec<_>>()
         );
-    }
-
-    /// The other direction of the same swap: distance fails while raw
-    /// instability sits in band, so the target must name the metric the
-    /// scorer actually evaluated.
-    #[test]
-    fn composable_target_names_the_metric_the_scorer_evaluated() {
-        let mut result = ClassificationResult::default();
-        // A = 1.0, I = 0.7 => D = 0.7, past main_sequence_distance_max,
-        // while I = 0.7 is exactly on the raw instability high bound (in
-        // band). A fully abstract module is a real reading — abstractness
-        // must be nonzero for the scorer to evaluate distance at all.
-        result.raw_metrics.extend([
-            ("mdg.instability".to_string(), 0.7),
-            ("mdg.abstractness".to_string(), 1.0),
-            ("mdg.coupling".to_string(), 6.0),
-            ("mdg.fan_in".to_string(), 1.0),
-            ("mdg.fan_out".to_string(), 5.0),
-        ]);
-        let targets = build_refactor_targets("a.py", &result, &[], &BTreeMap::new(), None, 5);
-
-        assert_eq!(targets.len(), 1);
-        assert_eq!(
-            targets[0].metric, "mdg.main_sequence_distance",
-            "mdg.main_sequence_distance is never in raw_metrics — it only exists \
-             once coupling_gate_input derives it, so evaluating raw_metrics verbatim \
-             could never surface this failure at all"
-        );
-        // Distance is advisory (its resolution is `I`'s), so it is still
-        // named and still actionable, but it cannot fail COMPOSABLE alone.
-        assert_eq!(targets[0].severity, "improve");
-        assert_eq!(targets[0].failing_generators, vec!["composable"]);
     }
 
     /// The live-server shape observed on `topos/mcp/src/formatting.rs`: a
@@ -561,7 +512,15 @@ mod tests {
     #[test]
     fn gating_tier_leads_when_no_pillar_preference_is_supplied() {
         let (locations, result) = cross_pillar_fixture();
-        let targets = build_refactor_targets("a.py", &result, &[], &locations, None, 5);
+        let targets = build_refactor_targets(
+            "a.py",
+            &result,
+            &[],
+            &locations,
+            None,
+            EvaluationValue::Ideal,
+            5,
+        );
 
         assert_eq!(
             targets.len(),
@@ -582,10 +541,10 @@ mod tests {
         assert_eq!(targets[1].severity, "improve");
     }
 
-    /// Same fixture, but the caller ranked SIMPLE first: a stated
-    /// preference outranks the gating tier.
+    /// A stated ranking no longer puts an advisory ahead of another pillar's
+    /// failed gate. Rank only breaks an equal gate score.
     #[test]
-    fn explicit_pillar_preference_outranks_the_gating_tier() {
+    fn explicit_pillar_preference_does_not_outrank_a_gate() {
         let (locations, result) = cross_pillar_fixture();
         let targets = build_refactor_targets(
             "a.py",
@@ -594,20 +553,19 @@ mod tests {
             &locations,
             Some(&[
                 GeneratorInput::Simple,
+                GeneratorInput::Navigable,
                 GeneratorInput::Secure,
                 GeneratorInput::Composable,
             ]),
+            EvaluationValue::Ideal,
             5,
         );
 
         assert_eq!(targets.len(), 2);
-        assert_eq!(
-            targets[0].metric, "cfg.cyclomatic",
-            "the caller asked for SIMPLE first, so the advisory SIMPLE target leads \
-             even though the COMPOSABLE one gates — preferences.ranking is an \
-             explicit instruction, unlike default_pillar_rank"
-        );
-        assert_eq!(targets[1].metric, "mdg.fan_out");
+        assert_eq!(targets[0].metric, "mdg.fan_out");
+        assert_eq!(targets[0].severity, "fix");
+        assert_eq!(targets[1].metric, "cfg.cyclomatic");
+        assert_eq!(targets[1].severity, "improve");
     }
 
     #[test]
@@ -617,8 +575,7 @@ mod tests {
             line: 5,
             snippet: "os.system(cmd)".to_string(),
             callee: Some("os.system".to_string()),
-            source: None,
-            sink: None,
+            ..Default::default()
         }];
         let result = ClassificationResult::default();
         let targets = build_refactor_targets(
@@ -629,8 +586,10 @@ mod tests {
             Some(&[
                 GeneratorInput::Secure,
                 GeneratorInput::Simple,
+                GeneratorInput::Navigable,
                 GeneratorInput::Composable,
             ]),
+            EvaluationValue::Ideal,
             5,
         );
         assert_eq!(targets.len(), 1);

@@ -9,6 +9,67 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
 
 ## [Unreleased]
 
+### Added
+
+- `advisories` on every evaluation result: per advisory metric, `value`,
+  `relative_percentile` (against the scanned codebase, shrunk toward a
+  per-language prior), `global_percentile` (against the language prior),
+  `local_weight`, `quality`, and `flagged`. `gate_scores` carries each pillar's
+  gate-only score and `language` names the prior used.
+- Advisory priors are a pinned snapshot in
+  `topos/engine/src/evaluation/advisory_priors.json` (one line per language).
+  The leaderboard derives the table; this repo only vendors the copy the
+  binary embeds.
+- `security_advisory` beside `security_findings` (max severity, actionable,
+  taint, omitted, CWE family histogram) plus per-finding `mode`, `severity`,
+  `confidence`, `cwe`, and `title` from Sighthound; reporting only, never
+  scored. `topos_evaluate_file` takes `security_scan=true` to scan a
+  SECURE-passing file.
+
+### Changed
+
+- The preference walk now names `next_pillar`: among generators the active
+  goal still requires, the one with the greatest gate score below 0.5.
+  Guidance, `binding_constraint`, suggestions, and refactor targets follow
+  that gate. `next_step` stays the smallest preferred concession. Priority
+  is only the head of the ranking (a tie-break); it does not reweight scores.
+  Evaluation results (MCP and `topos evaluate --json`) now return
+  `gate_scores`. A SECURE pillar that passes only through the allowlist
+  scores at the gate (50), never below it, and is never named as the pillar
+  to climb.
+- Pillar scores are gate-anchored: 50 sits exactly at the gate, so a pillar
+  passes if and only if its score is at least 50. Gates combine with `min`;
+  advisory metrics move a score only within the half its gates chose. Verdicts
+  and medals are unchanged. Scores move, most passing files upward: on the
+  leaderboard corpus, passing-but-below-50 files drop from 4,757 to 8 (SIMPLE)
+  and from 302 to 0 (COMPOSABLE). See
+  `docs/decisions/gate-anchored-scoring.md`.
+- Advisory metrics (`cfg.cyclomatic`, `cfg.nesting_depth`, `cfg.essential`,
+  `mdg.fan_in`, `mdg.instability`) are read relative to the codebase instead of
+  against fixed caps. Project scans (`topos evaluate -r`, `topos_evaluate_project`)
+  use the scanned files; single-file calls and PR recap use the language prior.
+- Normalized score floors and advisory caps are retired.
+- The SECURE allowlist now partitions every finding, not just the first 20
+  shown. Previously the display cap ran first, so a file with more than 20
+  findings whose only acknowledged (allowlisted) risk sat past position 20
+  looked like it had no acknowledged risk and could keep IDEAL. Such a file is
+  now grade-capped like any other acknowledged-risk file (IDEAL loses its
+  SECURE bit). `acknowledged_risks` is no longer capped; active findings shown
+  stay capped at 20. This is the only case in this release where a medal can
+  change.
+- The leaderboard needs a one-time rerun to refresh the priors (stale
+  NAVIGABLE gate, no COMPOSABLE readings for C++, Go, or MCP); see
+  `docs/calibration/leaderboard-rerun.md`.
+
+### Fixed
+
+- COMPOSABLE no longer scores files at instability 0 or 1 as 0%. The fixed
+  `[0.3, 0.7]` band is gone; instability is a two-sided relative advisory,
+  skipped when `Ca + Ce < 2`, and main-sequence distance is diagnostic only
+  (#351).
+- A pillar can no longer pass with a score below 50 (the score/verdict
+  contradiction in #349; its GOLD-tier cyclomatic question remains open).
+
 ## [0.9.0] - 2026-10-10
 
 ### Fixed

@@ -10,6 +10,7 @@ pub mod calibration;
 pub mod clones;
 pub mod composable;
 pub mod coverage;
+pub mod desirability;
 pub mod gates;
 pub mod navigable;
 pub mod secure;

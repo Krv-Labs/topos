@@ -40,6 +40,14 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   against fixed caps. Project scans (`topos evaluate -r`, `topos_evaluate_project`)
   use the scanned files; single-file calls and PR recap use the language prior.
 - Normalized score floors and advisory caps are retired.
+- The SECURE allowlist now partitions every finding, not just the first 20
+  shown. Previously the display cap ran first, so a file with more than 20
+  findings whose only acknowledged (allowlisted) risk sat past position 20
+  looked like it had no acknowledged risk and could keep IDEAL. Such a file is
+  now grade-capped like any other acknowledged-risk file (IDEAL loses its
+  SECURE bit). `acknowledged_risks` is no longer capped; active findings shown
+  stay capped at 20. This is the only case in this release where a medal can
+  change.
 - The leaderboard needs a one-time rerun to refresh the priors (stale
   NAVIGABLE gate, no COMPOSABLE readings for C++, Go, or MCP); see
   `docs/calibration/leaderboard-rerun.md`.

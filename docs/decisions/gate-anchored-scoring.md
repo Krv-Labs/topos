@@ -129,6 +129,14 @@ implication and negation stay on the crisp generators.
 - Advisory wording is "atypical vs. top OSS", never "buggy": percentiles measure
   typicality, not defectiveness (Lavazza & Morasca 2016).
 - Normalized score floors (`score_floor`) and advisory caps are retired.
+- One medal change, from the SECURE reporting work rather than the scoring:
+  the allowlist used to partition only the first 20 findings, so a file whose
+  only acknowledged risk sat past position 20 escaped the grade cap and could
+  keep IDEAL. The partition now covers every finding, so the cap always fires
+  when an acknowledged risk is what makes a file IDEAL. It requires a raw
+  SECURE failure fully covered by the allowlist, all other pillars passing,
+  more than 20 scanner findings (mostly Sighthound rules the CPG gate does not
+  count), and the allowlisted one ordered after the twentieth.
 - `w_A = 1/3` is the one judgment-call constant. It bounds advisory influence:
   for a passing pillar, `S ∈ [τ + (G − τ)·ε^{1/3}, G]` with `ε = 10⁻³`, so a
   passing pillar keeps at least 10% of its margin.

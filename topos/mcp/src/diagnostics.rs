@@ -101,8 +101,13 @@ pub(crate) fn overlay(
     // `apply_allowlist` only fires when `acknowledged` is non-empty). Matches
     // the Python original's argument-less `security_findings(cpg)`.
     //
-    // The full (uncapped) list goes in so the advisory counts every active
-    // finding; the display cap is taken afterwards.
+    // The full (uncapped) list goes in, and the display cap is taken only
+    // afterwards. Two reasons: the advisory counts every active finding, and
+    // the acknowledged/active partition must see every finding. When the cap
+    // ran first, a file whose only allowlisted finding sat past position 20
+    // came back with `acknowledged` empty, so the grade cap never fired and
+    // an allowlist-bought IDEAL went uncapped. `acknowledged_risks` is
+    // therefore uncapped; only `active_findings` is cut to 20.
     let (findings, scanned) = match cpg.as_ref() {
         Some(cpg) => all_security_findings(cpg, None, file_path),
         None => (Vec::new(), false),
@@ -258,6 +263,34 @@ mod tests {
         let rust_result =
             classify_code_string(rust, "rust", Priority::Simple).expect("classification runs");
         assert!(opt_in_security_report(rust, "rust", &rust_result, None, &[]).is_none());
+    }
+
+    /// Regression: the acknowledged/active partition runs over every finding,
+    /// not the 20 shown. An allowlisted risk past the display cap must still
+    /// be acknowledged, or the grade cap cannot fire for it.
+    #[test]
+    fn allowlisted_finding_past_the_display_cap_is_still_acknowledged() {
+        let mut src = String::from("import os\n\ndef f(cmd, expr):\n");
+        for _ in 0..25 {
+            src.push_str("    os.system(cmd)\n");
+        }
+        src.push_str("    return eval(expr)\n");
+        let result =
+            classify_code_string(&src, "python", Priority::Simple).expect("classification runs");
+        let allow = vec!["eval".to_string()];
+        let overlay = overlay_for_source(&src, "python", &result, None, &allow)
+            .expect("a secure-failing file produces an overlay");
+        assert!(
+            overlay.active_findings.len() <= MAX_SECURITY_FINDINGS,
+            "the displayed list stays capped"
+        );
+        assert!(
+            overlay
+                .acknowledged_risks
+                .iter()
+                .any(|r| r.callee.as_deref() == Some("eval")),
+            "the allowlisted eval past position 20 is acknowledged"
+        );
     }
 
     #[test]

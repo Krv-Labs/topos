@@ -707,6 +707,19 @@ are absolute severities on closed ordinal scales, not distributions over a
 codebase. An absent block means the scanner did not run, which is distinct
 from a scan that returned no findings.
 
+\paragraph{Allowlist and grade cap.} Allowlisted findings are partitioned into
+acknowledged and active over the \emph{complete} finding list; only the
+displayed active list is cut to 20. The grade cap (an acknowledged risk may not
+buy the top element: if the allowlist makes a file IDEAL, the SECURE generator
+is removed from its verdict) fires only when the acknowledged set is non-empty.
+Earlier, the cap on displayed findings ran before the partition, so a file with
+more than 20 scanner findings whose only acknowledged finding fell past position
+20 had an empty acknowledged set and kept an allowlist-bought IDEAL. The change
+corrects that case and is the only verdict change in this release. It requires
+a raw SECURE failure fully covered by the allowlist, every other generator
+satisfied, more than 20 scanner findings (mostly Sighthound rules the CPG gate
+does not count), and the acknowledged finding ordered after the twentieth.
+
 %======================================================================
 \section{Calibration procedure}
 

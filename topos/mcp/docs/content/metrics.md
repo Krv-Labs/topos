@@ -149,6 +149,12 @@ absent block means the scanner did not run; a block of zeros means it ran and
 found nothing. `topos_evaluate_file` accepts `security_scan=true` to run the
 scanner even when SECURE passed (default off; project evaluation never does).
 
+**Allowlist and grade cap.** Allowlisted findings move to
+`acknowledged_risks` (never capped) and do not count toward the advisory.
+The split runs over every finding before the 20-item display cap, so an
+acknowledged risk is always seen: whenever the allowlist is what lets a file
+reach IDEAL, the grade cap removes SECURE from that medal (`grade_capped`).
+
 ## NAVIGABLE generator (← AST scope tree)
 
 Computed from the same UAST as SIMPLE, so it needs no external input and

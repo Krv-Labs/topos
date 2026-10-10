@@ -34,8 +34,25 @@ pub fn run(args: CompareArgs) -> Result<(), String> {
     let target_morph = ProgramMorphism::from_file(&args.target, language)
         .map_err(|e| format!("reading {}: {e}", args.target.display()))?;
 
+    // Same rule as `topos_compare_files`: an error-recovered tree is not a
+    // successful parse, and the message names the file and the language.
+    if !source_morph.is_valid() || !target_morph.is_valid() {
+        let failed = [
+            (!source_morph.is_valid()).then(|| args.source.display().to_string()),
+            (!target_morph.is_valid()).then(|| args.target.display().to_string()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" and ");
+        return Err(format!("Failed to parse {failed} as {language}."));
+    }
     let (Some(source_ast), Some(target_ast)) = (&source_morph.ast, &target_morph.ast) else {
-        return Err("failed to parse one or both files".to_string());
+        return Err(format!(
+            "Failed to parse {} and {} as {language}.",
+            args.source.display(),
+            args.target.display()
+        ));
     };
 
     let result = calculate_ast_distance(source_ast, target_ast);
@@ -88,4 +105,28 @@ pub fn run(args: CompareArgs) -> Result<(), String> {
     }
     println!("{}", guide('└', options));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_error_names_the_file_and_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = dir.path().join("ok.rs");
+        let broken = dir.path().join("broken.rs");
+        std::fs::write(&ok, "fn ok() {}\n").unwrap();
+        std::fs::write(&broken, "fn broken( {\n").unwrap();
+        let err = run(CompareArgs {
+            source: ok,
+            target: broken,
+            verbose: false,
+        })
+        .unwrap_err();
+        assert!(
+            err.contains("broken.rs") && err.contains("as rust"),
+            "{err}"
+        );
+    }
 }

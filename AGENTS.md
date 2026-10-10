@@ -15,61 +15,10 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
 
 <!-- OPENWIKI:END -->
 
-<!-- SKILLS:START (repo-owned; OpenWiki must not edit this block) -->
-## Agent Skills
+<!-- REPO:START (repo-owned; OpenWiki must not edit this block) -->
+## Repo rules
 
-Canonical skill at [`skills/topos/SKILL.md`](skills/topos/SKILL.md) — published to ClawHub and installable via Hermes taps.
-
-Portable [Agent Plugins](https://agent-plugins.org/) 1.0 package: [`agent-plugin/`](agent-plugin/) (`plugin.json` + skill + `mcp.json`).
-
-| Runtime | Install |
-| --- | --- |
-| OpenClaw / ClawHub | `openclaw skills install @Krv-Labs/topos` |
-| Hermes | `hermes skills tap add Krv-Labs/topos` then `hermes skills install Krv-Labs/topos/topos` |
-| Agent Plugins client | Point the client at `./agent-plugin` (requires `topos` on `PATH`) |
-| Local (dev) | `openclaw skills install ./skills/topos` |
-
-Validate with `python scripts/check_skill.py` and `python scripts/check_agent_plugin.py` (skill / plugin versions must match `Cargo.toml`; packaged skill must match `skills/topos/SKILL.md`).
-
-**ClawHub publish setup:** add repo secret `CLAWHUB_TOKEN` — create a token at [clawhub.ai](https://clawhub.ai) (`clh_...`), then GitHub → Settings → Secrets and variables → Actions. The [ClawHub Skill Publish](.github/workflows/clawhub-publish.yml) workflow dry-runs on PRs and publishes on `main` (`skills/**`). Manual fallback: `clawhub skill publish ./skills/topos --owner Krv-Labs`.
-<!-- SKILLS:END -->
-
-<!-- OPENWIKI-POLICY:START -->
-## OpenWiki CI (repo-owned policy)
-
-Canonical workflow: [`.github/workflows/openwiki.yml`](.github/workflows/openwiki.yml).
-
-### What it does
-
-Regenerates the engineering wiki under `openwiki/` from the codebase, then opens a docs PR (`openwiki/update`) with only:
-
-- `openwiki/**`
-- `AGENTS.md`
-- `CLAUDE.md`
-
-Workflow files are **never** committed by that PR.
-
-### When it runs (no cron)
-
-1. **A PR is merged / code is pushed to `main`** on non-docs paths, or
-2. **Manual** — Actions → **OpenWiki Update** → **Run workflow**
-
-`paths-ignore` covers `openwiki/**`, `AGENTS.md`, and `CLAUDE.md` so merging the auto-generated docs PR does **not** re-run OpenWiki and burn credits.
-
-### Cost / model
-
-> [!NOTE]
-> **OpenAI usage:** This workflow calls OpenAI with `OPENWIKI_MODEL_ID=gpt-5.6-terra` via the repo secret `OPENAI_API_KEY` (already configured). Each run bills the OpenAI account for a full OpenWiki regeneration. Prefer intentional runs—after meaningful code merges or a manual **Run workflow**—and avoid repeated or speculative executions. Pure `openwiki/**` / `AGENTS.md` / `CLAUDE.md` merges are ignored so the auto-docs PR does not re-trigger itself. Prefer the generated docs PR over hand-editing OpenWiki pages.
-
-### Hardening against OpenWiki CLI overwrites
-
-OpenWiki CLI rewrites `.github/workflows/openwiki-update.yml` on every `openwiki code --update` (stock daily cron template). CI:
-
-1. Uses **only** `openwiki.yml` as the committed workflow
-2. **Deletes** any regenerated `openwiki-update.yml` after the CLI runs
-3. **Excludes** `.github/workflows/**` from `create-pull-request` `add-paths`
-
-### MCP docs vs OpenWiki
-
-`topos_get_doc` / `topos://docs/*` serve six embedded topics only (`agent-contract`, `lattice`, `metrics`, `preferences`, `priority`, `workflows`). Broader engineering docs live under `openwiki/` on the filesystem — they are **not** MCP resources. Agents with workspace access should read those files directly.
-<!-- OPENWIKI-POLICY:END -->
+- Test with `cargo test --workspace`. Lint with `cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings`.
+- Use American English spelling.
+- Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for squash-merged PRs and `CHANGELOG.md` `[Unreleased]` entries.
+<!-- REPO:END -->

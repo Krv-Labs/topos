@@ -9,10 +9,8 @@ node_modules/
 
 # Agents
 .agents/*
-!.agents/AGENTS.md
 .cursor/
 .claude/
-!.claude/CLAUDE.md
 .gemini/
 !.gemini/GEMINI.md
 .antigravitycli/

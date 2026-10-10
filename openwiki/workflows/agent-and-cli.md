@@ -1,11 +1,11 @@
 ---
 type: workflow guide
-title: CLI, MCP, and agent improvement workflows
-description: Run Topos structural evaluation locally through the CLI or from an MCP client. This guide covers source and project resolution, optional GitNexus preparation, MCP lifecycle and trust boundaries, and baseline-aware refactor assessment.
+title: Agent and CLI Workflows
+description: Run Topos structural evaluation locally through the CLI or from an MCP client. This guide covers CLI entrypoints, input resolution, optional GitNexus preparation, MCP lifecycle and trust boundaries, schema options, and baseline-aware refactor workflows.
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T13:18:21.510Z
+    at: 2026-10-10T18:54:00.655Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -45,35 +45,37 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:18:21.510Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T18:54:00.655Z" }
 ---
 
-# CLI, MCP, and agent improvement workflows
+# Agent and CLI Workflows
 
-Topos provides the `topos` CLI for local work and the stdio `topos-mcp` server for MCP hosts. They expose the same quality model but have different interaction contracts: CLI output is intended for a human or shell, while MCP tool names, JSON schemas, result shapes, annotations, protocol versions, and filesystem containment are public client-facing behavior. Quality verdicts are described in the [quality model](../domain/quality-model.md); structural coverage and comparison are complementary signals, not lattice verdicts.
+Topos provides the `topos` CLI for local terminal operations and the stdio `topos-mcp` server for MCP hosts and autonomous agents. Both interfaces invoke the same underlying quality engine, but operate under different interaction and safety contracts: CLI output is formatted for terminal display or shell parsing, whereas MCP tool names, JSON schemas, result shapes, tool annotations, protocol revisions, and filesystem containment boundaries constitute public client-facing contracts. Quality verdicts are described in the [quality model](../domain/quality-model.md); structural coverage and comparison are complementary signals, not lattice verdicts.
 
 ## Select an entrypoint
 
-The root command dispatches `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. A returned command error is printed as `Error: ...` and exits with status 1; invoking `topos` with no arguments prints root help and exits 2.
+The root `topos` command dispatches twelve public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report errors as `Error: ...` and exit with status 1. Invoking `topos` with no arguments or `--help` prints help and exits with status 2 (or 0 for explicit help flags).
 
 | Entry point | Use it when |
 | --- | --- |
-| `topos evaluate PATH...` | You want local scores for files or directories, terminal summaries, or JSON. |
-| `topos inspect FILE` | You need a single file's metrics, functions, and detailed guidance. |
+| `topos evaluate PATH...` | You want local scores for files or directories, terminal summaries, or structured JSON. |
+| `topos inspect FILE` | You need a single file's metrics, functions, and detailed line-level guidance. |
 | `topos depgraph generate [PATH]` | You want to explicitly build or refresh the GitNexus graph used for COMPOSABLE. |
+| `topos pr-recap RANGE_OR_PR` | You want structural before/after summaries for a Git revision range or pull request number. |
+| `topos coverage PATH...` | You want to compare source structure against test declarations without executing test code. |
 | `topos mcp` | An MCP host launches the unified CLI executable as a stdio server. |
-| `topos-mcp` | An MCP host launches the standalone server binary; without `--help` or `--version`, it serves stdio rather than an interactive shell. |
+| `topos-mcp` | An MCP host launches the standalone server binary; without `--help` or `--version`, it serves stdio. |
 
-`topos mcp` creates a multi-thread Tokio runtime and delegates to `topos_mcp::server::serve`, the same serving implementation used by the standalone binary. Harness installation, removal, and status are separate workflows; see [harness registration](harness-registration.md).
+`topos mcp` creates a multi-thread Tokio runtime and delegates directly to `topos_mcp::server::serve`, sharing the exact same serving implementation as `topos-mcp`. Harness installation, removal, and status management are separate workflows; see [harness registration](harness-registration.md).
 
 ## Resolve CLI evaluation inputs
 
-`topos evaluate` accepts one or more files or directories. Directory discovery only descends when `-r`/`--recursive` is set. `--language` is a discovery filter, not the parser default:
+`topos evaluate` accepts one or more files or directories. Directory discovery descends into subdirectories only when `-r`/`--recursive` is set. The `--language` flag serves as a discovery filter rather than a default parser selection:
 
-- Without a filter, Topos discovers every supported suffix and detects each file's language. The identifiers are `python`, `rust`, `javascript`, `typescript`, `cpp`, and `go`.
-- `--language LANGUAGE` first validates the identifier, then restricts discovery to that language's suffixes.
-- Explicit existing files are never silently dropped. A named unsupported suffix fails without a filter; a supported file outside an active filter also fails, explaining the filter and expected suffixes. Missing paths report `path not found` separately.
-- An empty directory is successful: terminal output explains that no supported sources were found (and suggests `--recursive` when applicable), while `--json` returns an empty result document. `--failures` still fails if its requested pillar was not measured.
+- **Without a filter**: Topos recursively discovers every supported file extension and infers language per file (`python`, `rust`, `javascript`, `typescript`, `cpp`, `go`).
+- **With `--language LANGUAGE`**: Topos validates the identifier, then restricts directory discovery strictly to that language's suffixes.
+- **Explicit file targets**: Explicit existing files are never silently omitted. Passing an unsupported file type fails with an explicit error. Passing a supported file outside an active language filter also errors, explaining the mismatch and listing expected extensions. Non-existent paths report `path not found` separately.
+- **Empty directories**: An empty directory yields a success status; terminal mode explains that no supported sources were found (and suggests `--recursive` if omitted), while `--json` emits an empty evaluation result document. Adding `--failures PILLAR` fails if the target pillar was unmeasured.
 
 ```bash
 # Discover all supported languages below src/.
@@ -82,34 +84,40 @@ topos evaluate src/ -r
 # Limit directory discovery to Python.
 topos evaluate services/ -r --language python
 
-# This reports a filter mismatch instead of silently omitting the Rust file.
+# This reports a filter mismatch error instead of silently omitting the Rust file.
 topos evaluate src/main.rs --language python
 ```
 
-Output controls are intentionally separate from discovery. `--json` cannot be combined with `--info` or `--failures PILLAR`; `--verbose` provides detailed output, `--info` selects actionable detail, and `--failures` focuses one pillar. `--priority` accepts one pillar or a comma-separated ranking: its first generator sets classification priority and the ranking orders remediation targets, but it does not turn a failed gate into a pass.
+Command-line output controls operate independently of input discovery. `--json` cannot be combined with `--info` or `--failures PILLAR`. `--verbose` prints per-file classifications and raw metric scores, `--info` highlights actionable line details, and `--failures` targets files failing a designated pillar. `--priority` accepts a single pillar or a comma-separated ranking (e.g. `simple,composable,secure,navigable`): its top generator determines scoring priority and orders remediation targets, but priority selection does not convert a gate failure into a pass.
 
-`topos inspect FILE` uses detected language and project configuration, and follows the same default GitNexus policy as `evaluate`. Its text mode treats an unparseable file as a shell failure after printing a parse-failure summary; `topos inspect --json` instead emits its inspection object.
+`topos inspect FILE` determines language and project configuration automatically and follows the same GitNexus preparation policy as `evaluate`. In text mode, an unparseable target prints a parse-failure summary and exits nonzero; `topos inspect --json` emits the inspection JSON object directly.
 
-## COMPOSABLE preparation is optional
+## COMPOSABLE preparation policy
 
-COMPOSABLE depends on a GitNexus module-dependency graph (MDG); the other pillars do not. Unless `--no-composable`/`no_composable: true` is selected, CLI evaluation and inspection and the filesystem-backed MCP tools attempt to use a current `.gitnexus` store, generating or refreshing it with `gitnexus analyze --skip-agents-md` when graph state is missing, stale, branch-unindexed, or unloadable. The generation subprocess is bounded by `TOPOS_DEPGRAPH_TIMEOUT` (300 seconds by default).
+COMPOSABLE depends on a GitNexus module-dependency graph (MDG); SIMPLE, SECURE, and NAVIGABLE do not. Unless `--no-composable` or `no_composable: true` is passed, CLI commands and filesystem MCP tools invoke `ensure_gitnexus_dir` to inspect `.gitnexus` store state. If the store is `missing`, `stale`, `branch_not_indexed`, or returns `load_error`, Topos attempts to generate or refresh the store by running `gitnexus analyze --skip-agents-md`.
 
 ```bash
-# Deliberately leave COMPOSABLE unmeasured.
+# Explicitly score SIMPLE/SECURE/NAVIGABLE without COMPOSABLE.
 topos evaluate src/ -r --no-composable
 
-# Make graph preparation an explicit operation.
+# Explicitly build or refresh the graph before evaluating.
 topos depgraph generate
 topos evaluate src/ -r
 ```
 
-A missing GitNexus executable, failed generation, or unavailable graph degrades ordinary evaluation rather than aborting it: SIMPLE, SECURE, and NAVIGABLE still run and warnings explain why COMPOSABLE was not scored. `topos depgraph generate` is the explicit, stricter setup operation: it skips a current graph unless `--force` is supplied and returns an error for a schema-mismatched store rather than overwriting it.
+Subprocess execution during store generation is bounded by `TOPOS_DEPGRAPH_TIMEOUT` (300 seconds by default). If the `gitnexus` binary is missing from `$PATH`, generation fails, or a schema mismatch occurs, Topos gracefully degrades evaluation: SIMPLE, SECURE, and NAVIGABLE continue running, while a top-level warning explains why COMPOSABLE was omitted.
 
-For CLI commands, the default graph root is the Git root found from the working directory. A `--gitnexus-dir` override chooses a store and makes its parent the COMPOSABLE project root; relative overrides are resolved once before reuse so their path segment is not joined twice. MCP starts from the accessed file's detected project but climbs to the Git root for the default graph location. An in-root override that does not exist yet is a first-run `missing` state and may be generated; a resolved override outside the trusted project root, including a symlink escape, is rejected and reported as unavailable.
+`topos depgraph generate` provides the explicit, strict graph-generation entrypoint. It no-ops if a fresh graph exists (unless `--force` is supplied) and fails closed on a schema-mismatched store rather than overwriting it.
+
+### Store location and project root resolution
+
+For CLI invocations, the default graph root is the Git repository root discovered from the current working directory. Passing `--gitnexus-dir <PATH>` or `gitnexus_dir` sets the store location and establishes its parent directory as the COMPOSABLE project root (`resolve_composable_project_root`). Relative override paths are resolved against the default root exactly once (`resolve_override_for_root`) to avoid relative-path double-joining when deriving child roots.
+
+In MCP contexts, file paths determine the detected project root (searching upward for `.git`, `pyproject.toml`, or `Cargo.toml`). `resolve_mcp_composable_project_root` ensures that if an explicit `gitnexus_dir` override would place the derived project root outside the trusted `TOPOS_MCP_FILE_ROOT` boundary, the resolver falls back to the trusted file root, ensuring security checks reject an escaped store path without fingerprinting external directories. An override inside the root that has not been created yet represents a first-run `missing` state and triggers auto-generation; symlink escapes or paths outside the root fail as invalid/unavailable overrides.
 
 ## MCP lifecycle and trust boundary
 
-`ToposServer` combines evaluate, assess, compare, coverage, depgraph, documentation, inspect, preferences, and refactor routers. It advertises tools, resources, and prompts. Documentation is readable at `topos://docs/<slug>` (with `topos_get_doc` as a tool fallback), `topos://build` reports binary identity, and `topos_refactor_until_ideal` provides a refactor-loop scaffold.
+The stdio `ToposServer` aggregates evaluate, assess, compare, coverage, depgraph, documentation, inspect, preferences, and refactor tool routers. It advertises tools, resources (such as `topos://docs/<slug>` and `topos://build`), and prompts (including `topos_refactor_until_ideal`).
 
 ```mermaid
 sequenceDiagram
@@ -126,26 +134,45 @@ sequenceDiagram
     Host->>Server: tools list or tools call
     Server-->>Host: shared tool surface and result
 ```
+*MCP protocol handshake lifecycle showing initialize-era negotiation and stateless discovery supported by ToposServer.*
 
-This diagram shows the initialize-era and stateless MCP lifecycle paths served by the same `ToposServer`.
+Topos explicitly supports MCP protocol revisions from `2024-11-05` through `2026-07-28`. Initialize-era hosts send `initialize` followed by `notifications/initialized`. Protocol `2026-07-28` clients issue `server/discover` and supply client capabilities and protocol revision per request via `_meta`. Integration tests send raw stdio JSON-RPC frames to verify that both negotiation styles expose identical tool surfaces.
 
-The server pins support to `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, and `2026-07-28`. Initialize-era clients negotiate through `initialize` followed by `notifications/initialized`. A `2026-07-28` client may begin with `server/discover`; each request then carries the protocol version and client capabilities in `_meta`. The lifecycle test sends real JSON-RPC frames to the server binary and asserts both lifecycle paths expose the same tools.
+### Filesystem containment and project boundaries
 
-Filesystem tools canonicalize access before reading. `TOPOS_MCP_FILE_ROOT`, when nonempty, is a maximum boundary; otherwise callers must give an absolute path, which establishes context independently of the server's startup directory. The server requires an existing readable path and finds its nearest `.git`, `pyproject.toml`, or `Cargo.toml` ancestor. It rejects paths and project roots outside the boundary, including traversal or symlink escapes; a path without a project marker fails closed.
+Every filesystem tool canonicalizes target paths prior to reading. When `TOPOS_MCP_FILE_ROOT` is set, it imposes an absolute maximum containment boundary. Callers must supply absolute file paths or relative paths that resolve strictly within this root.
 
-### Evaluation and inspection tools
+Project context is resolved by identifying the nearest ancestor directory containing `.git`, `pyproject.toml`, or `Cargo.toml`. Paths located outside the trusted boundary, symlink escapes, or directory trees missing project markers fail closed and return path access errors.
 
-Tool annotations communicate side effects to hosts and must change with the implementation:
+## MCP evaluation and inspection tools
 
-- `topos_evaluate_code` evaluates an in-memory snippet and is read-only, idempotent, and closed-world. It cannot measure COMPOSABLE because a snippet has no module position in an MDG.
-- `topos_evaluate_file` and `topos_evaluate_project` are non-read-only, non-idempotent, open-world tools because default COMPOSABLE preparation can create or refresh `.gitnexus`; they do not edit source files. The file tool runs blocking work off the async transport and defaults to three ranked refactor targets (zero disables them).
-- `topos_inspect_code` accepts exactly one of inline `code` or `filepath`. A filepath can trigger the same graph preparation and therefore has non-read-only annotations; inline code cannot reach COMPOSABLE.
+MCP tool annotations signal side effects and execution behavior to hosts:
 
-Project evaluation recursively discovers all supported languages, skips unsupported files, and produces a per-dimension weakest-file floor together with language rollups and paginated file rows. `limit` defaults to 25 and is clamped to 1–500; submit `next_offset` as the next request's `offset`. Rows omit raw metrics by default, and omit security findings unless `include_security_findings` is requested. Security diagnostic overlays are only constructed for parseable classifications that fail dangerous-call or taint-flow metrics; allowlist handling partitions raw findings into active and acknowledged risks rather than removing allowed findings before disclosure and verdict adjustment.
+- `topos_evaluate_code`: Evaluates in-memory code snippets. Marked as read-only (`read_only_hint = true`), idempotent (`idempotent_hint = true`), and closed-world (`open_world_hint = false`). It cannot score COMPOSABLE because snippet code lacks module context.
+- `topos_evaluate_file` & `topos_evaluate_project`: Non-read-only (`read_only_hint = false`), non-idempotent (`idempotent_hint = false`), and open-world (`open_world_hint = true`) because default COMPOSABLE preparation can auto-generate or refresh `.gitnexus`. These tools do not modify source code files.
+- `topos_inspect_code`: Accepts either inline `code` or a `filepath`. Supplying a file path permits COMPOSABLE graph preparation (non-read-only annotation), whereas inline code scores without COMPOSABLE.
+
+### Project evaluation schema (`EvaluateProjectInput`)
+
+`topos_evaluate_project` accepts arguments defined by `EvaluateProjectInput`:
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path` | `String` | *(required)* | Target directory path to evaluate recursively. Must resolve inside the file root. |
+| `preferences` | `Option<UserPreferencesInput>` | `None` | Custom pillar priority ranking (defaults to SIMPLE priority). |
+| `gitnexus_dir` | `Option<String>` | `None` | Store path relative to file root (default: `<file_root>/.gitnexus`). |
+| `no_composable` | `bool` | `false` | When true, skips GitNexus graph resolution and scores SIMPLE/SECURE/NAVIGABLE only. |
+| `limit` | `usize` | `25` | Page row count limit (clamped between 1 and 500). |
+| `offset` | `usize` | `0` | Zero-based row offset for pagination; submit `next_offset` from response for next page. |
+| `verbose` | `bool` | `false` | When true, includes raw metric score details for each file row. |
+| `include_security_findings` | `bool` | `false` | When true, attaches SECURE findings to file entries. |
+| `allow` | `Vec<String>` | `[]` | List of dangerous-call patterns to acknowledge for the current evaluation run. |
+
+`topos_evaluate_project` recursively scans all supported source files, infers language per file, computes per-language rollups, identifies the weakest-file floor, and paginates sorted results using `limit` and `offset`. Security diagnostic overlays are constructed for parseable classifications failing dangerous-call or taint-flow metrics; allowlists partition findings into active and acknowledged risks without removing allowed items prior to disclosure.
 
 ## Baseline-aware evaluate–edit–assess loop
 
-Choose the baseline *before* changing a file. A committed baseline is retrieved from Git; a dirty or untracked baseline needs a snapshot. `topos_assess_improvement` is instead for two variants supplied side by side, while `topos_assess_changeset` is the multi-file Git-baseline route.
+Iterative code refactoring requires establishing a baseline *before* modifying source files. Committed baselines are read directly from Git, while dirty or untracked pre-edit states require snapshots.
 
 ```mermaid
 sequenceDiagram
@@ -176,23 +203,22 @@ sequenceDiagram
     Engine-->>Mcp: status and deltas
     Mcp-->>Agent: assessment result
 ```
+*Baseline comparison paths for committed Git refs versus untracked/dirty pre-edit refactor snapshots.*
 
-This diagram shows the two baseline-preserving routes for an in-place edit.
+1. **Initial Assessment**: Call `topos_evaluate_file` or `topos_inspect_code` on the target file to establish initial scores and obtain actionable refactor targets.
+2. **Committed Baseline (`topos_assess_worktree_change`)**: When the pre-edit source is committed in Git, make edits in place and invoke `topos_assess_worktree_change` with `filepath` and optional `baseline_ref` (default `HEAD`). The tool reads `<ref>:<path>` via Git; dash-prefixed refs are rejected to prevent flag injection.
+3. **Dirty / Untracked Baseline (`topos_begin_refactor` & `topos_assess_snapshot`)**: For uncommitted or untracked files, invoke `topos_begin_refactor` prior to editing. Topos creates a content-addressed snapshot outside the working tree (in temporary storage or `TOPOS_SNAPSHOT_DIR`). Snapshots survive server restarts, expire after 24 hours, and bind to the resolved file path. Pass the returned `snapshot_id` to `topos_assess_snapshot` after editing. Missing, expired, or path-mismatched IDs return a blocked assessment status.
+4. **Side-by-Side & Multi-File**: Use `topos_assess_improvement` for explicit side-by-side variants (accepting exactly one of `filepath`/`current_code` and `proposed_filepath`/`proposed_code`). Use `topos_assess_changeset` for multi-file Git diff assessments.
 
-1. Call `topos_evaluate_file` for an on-disk target and use its targets or `topos_inspect_code` to plan a focused change. Request a project rollup later for cross-file work.
-2. When the before-state exists at a Git ref, edit in place and call `topos_assess_worktree_change` with `filepath` and optionally `baseline_ref` (default `HEAD`). It reads `<ref>:<path>` through Git, so it cannot represent a new file or uncommitted pre-edit source; dash-prefixed refs are rejected rather than passed as Git options.
-3. For dirty or untracked before-states, call `topos_begin_refactor` before editing and retain `snapshot_id`; then call `topos_assess_snapshot` with that ID and filepath. Snapshots are content-addressed records outside the worktree (system temporary storage by default, or `TOPOS_SNAPSHOT_DIR`), survive server restart, expire after 24 hours, and bind metadata to the resolved filepath. Malformed, missing, expired, or filepath-mismatched IDs produce a blocked assessment rather than silently selecting another baseline.
-4. Use `topos_assess_improvement` only with exactly one of `filepath`/`current_code` and exactly one of `proposed_code`/`proposed_filepath`. Use `topos_assess_changeset` for a multi-file edit; it compares each file to a Git ref and aggregates before/after results.
+Assessment outcomes compute score deltas, lattice status shifts, and normalized AST edit distance for parseable code pairs. If normalized AST distance is below `0.02` while any score delta has a magnitude of at least `3.0`, Topos flags the result as `SUSPICIOUS_NO_STRUCTURAL_CHANGE` to highlight metric gaming or scoring instability.
 
-Assessments compare lattice order and score and metric deltas. If both sources parse, they also calculate normalized AST edit distance. An otherwise improving result becomes `SUSPICIOUS_NO_STRUCTURAL_CHANGE` when distance is below `0.02` and any score delta has magnitude at least `3.0`; it is a metric-gaming or scoring-instability warning, not an acceptance result.
-
-Accept an iteration only after `IMPROVEMENT` or `IMPROVEMENT_SCORE`, no suspicious outcome, review of active or acknowledged SECURE risks, a project rollup where relevant, and appropriate behavior tests, type checks, or linters. Topos supplies structural evidence and explicitly routes an improvement toward project evaluation and behavior checks; it does not execute those checks.
+Agents should accept iterations only when assessments show `IMPROVEMENT` or `IMPROVEMENT_SCORE` without suspicious flags, active SECURE risks are addressed, and domain test suites pass. Topos provides structural evaluation and routes improvements toward behavior verification; it does not execute application test suites directly.
 
 ## Safely evolve these contracts
 
-Treat MCP tool names, descriptions, schemas, annotations, result shapes, and protocol support as versioned external contracts. Add a tool through its `#[tool_router]` implementation and include that router in `ToposServer::new`; test `tools/list` as well as handler behavior. Changes to resolution must preserve containment checks even for missing leaf paths, because existing symlink prefixes can escape a lexical root.
+Changes to MCP tool definitions, descriptions, JSON schemas, tool annotations, or protocol handlers affect external host integration. When introducing a new tool, implement its router with `#[tool_router]`, register it in `ToposServer::new`, and verify tool listing and call handling in integration tests.
 
-Focused checks include:
+Run target tests during development and release verification:
 
 ```bash
 cargo test -p topos
@@ -200,4 +226,4 @@ cargo test -p topos-mcp
 cargo test -p topos-mcp --test lifecycle
 ```
 
-The CLI input tests cover mixed-language discovery, filter mismatches, missing paths, and empty directories. Snapshot tests cover content-addressed IDs and expiry; security tests cover containment and symlink traversal; the lifecycle test covers negotiation, stateless discovery, and equal tool surfaces. For broader release validation, use the [testing and release guidance](../operations/testing-and-release.md).
+CLI test suites validate multi-language discovery, discovery filters, missing paths, and empty directory behavior. Snapshot test suites verify content-addressed persistence and 24-hour expiration. Security test suites verify containment boundaries and symlink escape rejection. MCP lifecycle tests verify protocol handshakes and tool surface parity across initialize-era and stateless connection flows. See [testing and release guidance](../operations/testing-and-release.md) for operational release procedures.

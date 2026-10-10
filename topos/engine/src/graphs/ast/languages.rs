@@ -39,12 +39,37 @@ pub fn all_source_suffixes() -> Vec<&'static str> {
 }
 
 /// The supported language whose suffix `path` ends with, if any — the
-/// reverse of [`language_file_suffixes`].
+/// reverse of [`language_file_suffixes`]. Case-insensitive, so `Main.RS`
+/// is Rust.
 pub fn language_for_path(path: &str) -> Option<&'static str> {
+    let path = path.to_ascii_lowercase();
     SUPPORTED_LANGUAGES.iter().copied().find(|language| {
         language_file_suffixes(language)
             .is_some_and(|suffixes| suffixes.iter().any(|suffix| path.ends_with(suffix)))
     })
+}
+
+/// The one language two files share, for comparing them.
+///
+/// Errors when either suffix is unsupported or the two languages differ: a
+/// tree-edit distance across two grammars measures nothing.
+pub fn shared_language(source: &str, target: &str) -> Result<&'static str, String> {
+    let lookup = |path: &str| {
+        language_for_path(path).ok_or_else(|| {
+            format!(
+                "Unsupported file suffix: {path} (expected one of {})",
+                all_source_suffixes().join(", ")
+            )
+        })
+    };
+    let (source_language, target_language) = (lookup(source)?, lookup(target)?);
+    if source_language != target_language {
+        return Err(format!(
+            "Cannot compare {source} ({source_language}) with {target} ({target_language}): \
+             both files must be in the same language."
+        ));
+    }
+    Ok(source_language)
 }
 
 #[cfg(test)]
@@ -58,6 +83,20 @@ mod tests {
         assert_eq!(language_for_path("a/b.rs"), Some("rust"));
         assert_eq!(language_for_path("README.md"), None);
         assert_eq!(language_for_path("Makefile"), None);
+        assert_eq!(language_for_path("Main.RS"), Some("rust"));
+        assert_eq!(language_for_path("App.TSX"), Some("typescript"));
+    }
+
+    #[test]
+    fn shared_language_requires_one_supported_language() {
+        assert_eq!(shared_language("a.rs", "b.RS"), Ok("rust"));
+        let mixed = shared_language("a.py", "b.rs").unwrap_err();
+        assert!(
+            mixed.contains("python") && mixed.contains("rust"),
+            "{mixed}"
+        );
+        let unknown = shared_language("a.jsx", "b.jsx").unwrap_err();
+        assert!(unknown.contains("a.jsx"), "{unknown}");
     }
 
     #[test]

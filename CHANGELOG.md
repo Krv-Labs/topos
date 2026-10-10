@@ -63,6 +63,14 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Fixed
 
+- `topos_compare_files` parses both files in the language their suffix names,
+  matching `topos compare`. It previously always parsed as Python, so Rust,
+  Go, JavaScript, TypeScript, and C++ pairs failed to parse. Both
+  `topos_compare_files` and `topos compare` now reject an unsupported suffix
+  or a mixed-language pair instead of parsing it as Python or returning a
+  meaningless distance, and a parse error names the file and language tried.
+- Suffix-based language detection is case-insensitive (`Main.RS` is Rust)
+  everywhere: CLI, MCP, and the PR gate share one engine helper.
 - COMPOSABLE no longer scores files at instability 0 or 1 as 0%. The fixed
   `[0.3, 0.7]` band is gone; instability is a two-sided relative advisory,
   skipped when `Ca + Ce < 2`, and main-sequence distance is diagnostic only

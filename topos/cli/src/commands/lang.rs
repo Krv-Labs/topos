@@ -1,26 +1,19 @@
 //! Detect a `topos-core` language identifier from a file extension.
 //!
 //! Ported from `topos.mcp.evaluation.detect_language`: the CLI's
-//! `compare`/`inspect` commands take single file paths without a
+//! `inspect` command takes a single file path without a
 //! `--language` flag, so the language has to come from the file's own
 //! suffix. Falls back to `"python"` when the suffix is unrecognized,
 //! matching the Python original's default.
 
 use std::path::Path;
 
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
+use topos_engine::graphs::ast::languages::language_for_path;
 
 pub fn detect_language(path: &Path) -> String {
-    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-        return "python".to_string();
-    };
-    let dotted = format!(".{ext}");
-    for language in SUPPORTED_LANGUAGES {
-        if language_file_suffixes(language).is_some_and(|suf| suf.contains(&dotted.as_str())) {
-            return language.to_string();
-        }
-    }
-    "python".to_string()
+    language_for_path(&path.to_string_lossy())
+        .unwrap_or("python")
+        .to_string()
 }
 
 #[cfg(test)]

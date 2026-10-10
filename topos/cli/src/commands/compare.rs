@@ -9,8 +9,8 @@ use clap::Args;
 use console::Style;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
+use topos_engine::graphs::ast::languages::shared_language;
 
-use super::lang::detect_language;
 use super::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
@@ -25,11 +25,13 @@ pub struct CompareArgs {
 }
 
 pub fn run(args: CompareArgs) -> Result<(), String> {
-    let source_language = detect_language(&args.source);
-    let target_language = detect_language(&args.target);
-    let source_morph = ProgramMorphism::from_file(&args.source, source_language)
+    let language = shared_language(
+        &args.source.to_string_lossy(),
+        &args.target.to_string_lossy(),
+    )?;
+    let source_morph = ProgramMorphism::from_file(&args.source, language)
         .map_err(|e| format!("reading {}: {e}", args.source.display()))?;
-    let target_morph = ProgramMorphism::from_file(&args.target, target_language)
+    let target_morph = ProgramMorphism::from_file(&args.target, language)
         .map_err(|e| format!("reading {}: {e}", args.target.display()))?;
 
     let (Some(source_ast), Some(target_ast)) = (&source_morph.ast, &target_morph.ast) else {

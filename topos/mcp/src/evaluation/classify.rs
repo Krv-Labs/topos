@@ -6,7 +6,7 @@ use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, Classi
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::functors::probes::uast::abstractness::AbstractnessRepresentation;
-use topos_engine::graphs::ast::languages::{language_file_suffixes, SUPPORTED_LANGUAGES};
+use topos_engine::graphs::ast::languages::{language_for_path, SUPPORTED_LANGUAGES};
 use topos_engine::graphs::base::Representation;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 
@@ -66,18 +66,7 @@ pub fn classify_code_string(
 
 /// Map a file suffix to a tree-sitter language, defaulting to `python`.
 pub fn detect_language(path: &Path) -> &'static str {
-    let suffix = path
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    for lang in SUPPORTED_LANGUAGES {
-        if let Some(suffixes) = language_file_suffixes(lang) {
-            if suffixes.contains(&suffix.as_str()) {
-                return lang;
-            }
-        }
-    }
-    "python"
+    language_for_path(&path.to_string_lossy()).unwrap_or("python")
 }
 
 /// Classify a file, attaching every available representation.
@@ -115,6 +104,7 @@ mod tests {
         assert_eq!(detect_language(Path::new("a.rs")), "rust");
         assert_eq!(detect_language(Path::new("a.py")), "python");
         assert_eq!(detect_language(Path::new("a.tsx")), "typescript");
+        assert_eq!(detect_language(Path::new("Main.RS")), "rust");
         assert_eq!(detect_language(Path::new("a.unknown")), "python");
     }
 

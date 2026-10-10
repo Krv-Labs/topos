@@ -592,9 +592,7 @@ fn measured_pillars_pass(eval: &EvaluationResult) -> bool {
         return true;
     }
     // `pillars` is the wrong source. An unmeasured COMPOSABLE is inserted
-    // there with `achieved: false`, and the navigable pass value is mapped
-    // to SIMPLE, so that map never says "all measured pillars passed"
-    // unless the medal is already IDEAL. `dimensions` only contains pillars
+    // there with `achieved: false`. `dimensions` only contains pillars
     // that were scored.
     let measured: Vec<_> = eval
         .dimensions

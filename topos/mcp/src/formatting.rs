@@ -490,11 +490,12 @@ fn generator_for_dim(dim: &str) -> EvaluationValue {
     match dim {
         "composable" => EvaluationValue::Composable,
         "secure" => EvaluationValue::Secure,
+        "navigable" => EvaluationValue::Navigable,
         _ => EvaluationValue::Simple,
     }
 }
 
-/// Build the lean per-pillar (simple, composable, secure) summary.
+/// Build the lean per-pillar summary for all four generators.
 pub fn build_pillars(
     result: &ClassificationResult,
     coupling_available: bool,
@@ -1044,6 +1045,31 @@ fn push_raw_metrics_section(lines: &mut Vec<String>, e: &EvaluationResult) {
 mod tests {
     use super::*;
     use crate::evaluation::classify_code_string;
+
+    #[test]
+    fn navigable_pillar_and_interpretation_follow_the_scored_dimension() {
+        let mut result =
+            classify_code_string("def f():\n    return 1\n", "python", Priority::Simple).unwrap();
+        let interpretation = BTreeMap::from([(
+            "nav.max_function_divergence".to_string(),
+            "nesting divergence within threshold".to_string(),
+        )]);
+        assert_eq!(
+            result.dimensions.get("navigable"),
+            Some(&EvaluationValue::Navigable)
+        );
+        assert!(build_pillars(&result, false)["navigable"].achieved);
+        assert!(failing_interpretation(&result, &interpretation).is_empty());
+
+        result
+            .dimensions
+            .insert("navigable".into(), EvaluationValue::Slop);
+        assert!(!build_pillars(&result, false)["navigable"].achieved);
+        assert_eq!(
+            failing_interpretation(&result, &interpretation),
+            interpretation
+        );
+    }
 
     #[test]
     fn passing_file_guidance_does_not_ask_for_pillars_that_passed() {

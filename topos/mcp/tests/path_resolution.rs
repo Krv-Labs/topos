@@ -261,6 +261,23 @@ fn build_resource_reports_where_the_file_root_came_from() {
     );
 }
 
+/// `topos_compare_files` parses a relative Rust pair as Rust. It used to
+/// hardcode Python, so the pair failed while `topos compare` succeeded.
+#[test]
+fn compare_files_parses_each_file_in_its_suffix_language() {
+    let project = Project::new("compare");
+    std::fs::write(project.dir.join("src/other.rs"), "fn beta() -> i32 { 2 }\n").unwrap();
+    let call = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"topos_compare_files","arguments":{"source":"src/lib.rs","target":"src/other.rs"}}}"#;
+    let responses = exchange_in(&project.dir, &[&initialize(1), call]);
+
+    let response = result(&responses, 2);
+    assert_eq!(response["isError"], false, "{response:#?}");
+    let structured = &response["structuredContent"];
+    assert!(structured["error"].is_null(), "{structured:#?}");
+    assert_eq!(structured["source_valid"], true, "{structured:#?}");
+    assert_eq!(structured["target_valid"], true, "{structured:#?}");
+}
+
 fn result(responses: &[serde_json::Value], id: u64) -> &serde_json::Value {
     responses
         .iter()

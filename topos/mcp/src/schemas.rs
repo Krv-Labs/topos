@@ -525,8 +525,9 @@ pub struct InspectCodeInput {
     /// with `filepath` — inline `code` has no module to place in the graph.
     #[serde(default)]
     pub gitnexus_dir: Option<String>,
-    /// Skip GitNexus generation; score whatever `.gitnexus` is already
-    /// there, or SIMPLE/SECURE/NAVIGABLE only when there is none.
+    /// Skip GitNexus detection/generation; score SIMPLE/SECURE/NAVIGABLE
+    /// only, exactly like a missing `.gitnexus` did before this tool
+    /// started generating it automatically.
     #[serde(default)]
     pub no_composable: bool,
     /// Strict total order on the four generators; see

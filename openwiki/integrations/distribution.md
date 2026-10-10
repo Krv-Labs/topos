@@ -1,11 +1,11 @@
 ---
 type: integration boundary guide
-title: Analysis integrations and distribution surfaces
+title: Analysis Integrations and Distribution Surfaces
 description: Maps Topos analysis dependencies, update mechanics, and its MCP, container, package, editor, skill, plugin, and harness-registration distribution channels.
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T12:26:29.610Z
+    at: 2026-10-10T13:18:21.510Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -71,10 +71,10 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-10T12:26:29.610Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:18:21.510Z" }
 ---
 
-# Analysis integrations and distribution surfaces
+# Analysis Integrations and Distribution Surfaces
 
 Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers those launch contracts, artifact channels, path security controls, and update delivery mechanics. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
 

@@ -1,3 +1,3 @@
 # Files
 
-- [Four-pillar quality model and verdict semantics](quality-model.md) - How Topos classifies source with the SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE pillars. Explains canonical gates, advisory scores, severity levels, diagnostic pipeline logic, preference rankings, and disclosed security acknowledgements.
+- [Four-Pillar Quality Model and Verdict Semantics](quality-model.md) - Domain model guide for the four quality pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), Heyting algebra evaluation lattice, gate policies, calibration, and diagnostic suppression semantics.

@@ -1,11 +1,11 @@
 ---
 type: domain model
-title: Four-pillar quality model and verdict semantics
-description: How Topos classifies source with the SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE pillars. Explains canonical gates, advisory scores, severity levels, diagnostic pipeline logic, preference rankings, and disclosed security acknowledgements.
+title: Four-Pillar Quality Model and Verdict Semantics
+description: Domain model guide for the four quality pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), Heyting algebra evaluation lattice, gate policies, calibration, and diagnostic suppression semantics.
 tags: [domain-model, quality, security, metrics, policies, rust]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T13:09:16.317Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T13:18:21.510Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
@@ -15,12 +15,16 @@ sources:
     resource: repo://topos/engine/src/core/characteristic_morphism.rs
   - id: openwiki-source-195e23ac57e29d66773b4152
     resource: repo://topos/engine/src/core/omega.rs
+  - id: openwiki-source-65f248533e31febde31d40f9
+    resource: repo://topos/engine/src/evaluation/advisory.rs
   - id: openwiki-source-f1579178803426a3efb389b3
     resource: repo://topos/engine/src/evaluation/policies/base.rs
   - id: openwiki-source-a3937f767b8ba9d5a5c1a0bc
     resource: repo://topos/engine/src/evaluation/policies/calibration.rs
   - id: openwiki-source-18d7b316c44f96018cba22ec
     resource: repo://topos/engine/src/evaluation/policies/composable.rs
+  - id: openwiki-source-91e5f73e818cc0458b33933b
+    resource: repo://topos/engine/src/evaluation/policies/desirability.rs
   - id: openwiki-source-fe927feb706cdcb99e08620e
     resource: repo://topos/engine/src/evaluation/policies/gates.rs
   - id: openwiki-source-84ff6fa568804226649607a5
@@ -39,10 +43,8 @@ sources:
     resource: repo://topos/mcp/src/diagnostics.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T13:09:16.317Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T13:18:21.510Z" }
 ---
-
-# Four-pillar quality model and verdict semantics
 
 Topos expresses source quality as four independent generators: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. An `EvaluationValue` represents the subset that has passed its **canonical raw-metric gates**, producing a 16-value lattice rather than a single continuous quality scale. `IDEAL` means all four generators passed and receives **PLATINUM**; three, two, one, and zero satisfied pillars receive GOLD, SILVER, BRONZE, and SLOP respectively. Thus `SIMPLE_COMPOSABLE_SECURE` is GOLD, not `IDEAL`.
 
@@ -55,7 +57,7 @@ The generator atoms are incomparable. Consumers that need lattice comparison mus
 | **SECURE** | `cpg.dangerous_calls == 0` and `cpg.taint_flows == 0` | When CPG observations are attached |
 | **NAVIGABLE** | `nav.max_function_divergence <= 10.0` | Every parseable source file |
 
-For system context, see the [Architecture Overview](../architecture/overview.md) and [Source Map](../source-map.md).
+For system context, see the [Architecture Overview](../architecture/overview.md) and [Agent and CLI Workflows](../workflows/agent-and-cli.md).
 
 ## Classification rules and evidence states
 
@@ -72,7 +74,6 @@ flowchart TD
     Policies --> Bits["retain achieved generator bits"]
     Bits --> Verdict["EvaluationValue and medal tier"]
 ```
-
 *Classification flow: parse failure is a canonical SLOP outcome, while absent optional evidence leaves only its respective pillar unmeasured.*
 
 SIMPLE and NAVIGABLE are normally measured for every parseable file because their inputs are built locally. By contrast, if no MDG metrics are attached, `composable` is absent from `dimensions`; if neither CPG metric is present, `secure` is absent. **Unmeasured is not failed and is not passed**: it must not be presented as a substitute for a canonical gate result.
@@ -81,25 +82,25 @@ SIMPLE and NAVIGABLE are normally measured for every parseable file because thei
 
 Each translator returns a `ScoredDecision` with deliberately separate outputs:
 
-- `achieved` is the AND of registered raw-metric gates marked `gates_achieved`. The classifier uses it to set a lattice bit.
-- `score` is a normalized reporting value, usually the minimum quality among measured metrics. It does not set a lattice bit or override a gate.
+- `achieved` is the AND of registered raw-metric gates marked as passed (`GateResult::passed`). The classifier uses it to set a lattice bit.
+- `score` is a normalized reporting value derived from gate desirability, usually the minimum quality among measured metrics. It does not set a lattice bit or override a gate.
 - Interpretation text and suggested operations make gate and advisory readings actionable, but neither is a verdict.
 
 `evaluate_gates` is the shared gate registry for scorers and consumers such as suggestion and refactor paths, preventing their comparisons from drifting. Its `NaN` guard fails closed rather than allowing a non-numeric value to pass a bounded comparison. `meet_satisfied` is a separate, score-floor path for callers that possess only aggregated normalized scores; it is not the live `CharacteristicMorphism` decision path.
 
 ### SIMPLE: local structure
 
-SIMPLE requires entropy within the inclusive `0.2..=0.8` band and maximum per-function UAST complexity no greater than `10`. Import/export-only entrypoint modules can be exempted from entropy-side failure. `cfg.cyclomatic <= 15` is still scored, interpreted, and can drive refactor advice, but is advisory: the whole-file merged CFG grows with the count of otherwise-simple functions. A poor advisory score must therefore not be reported as a SIMPLE gate failure.
+SIMPLE requires entropy within the inclusive `0.2..=0.8` band and maximum per-function UAST complexity no greater than `10`. Import/export-only entrypoint modules can be exempted from entropy-side failure (`is_entrypoint_module`). Whole-file `cfg.cyclomatic` (threshold 15) is scored and surfaced as a codebase-relative advisory input rather than an achieved gate: the whole-file merged CFG grows with function count, so gating on it would penalize files containing many small, simple functions. A poor advisory score must therefore not be reported as a SIMPLE gate failure.
 
 ### COMPOSABLE: outward dependency burden
 
-At file granularity COMPOSABLE has one decisive metric: `mdg.fan_out <= 10`. Instability, fan-in, and main-sequence distance are retained as scored and interpreted architectural diagnostics, not alternate pass routes or hard failures. When abstractness and a resolvable import-graph coupling signal exist, the scorer diagnoses `mdg.main_sequence_distance = |A + I - 1|`; otherwise it diagnoses raw instability. Neither changes the fan-out gate.
+At file granularity COMPOSABLE has one decisive metric: `mdg.fan_out <= 10`. Instability (`mdg.instability`) and fan-in (`mdg.fan_in`) are evaluated as codebase-relative advisories when sufficient coupling is present (coupling $\ge 2.0$), rather than fixed-band gates or main-sequence distance. Neither changes the fan-out gate result.
 
 COMPOSABLE needs MDG input, commonly supplied by GitNexus, so no attached MDG produces an unavailable dimension rather than a negative verdict. This makes the pillar useful for project context without claiming a file passed solely because dependency evidence was unavailable.
 
 ### SECURE: strict canonical result and acknowledgement overlay
 
-SECURE is strict: any nonzero dangerous-call (`cpg.dangerous_calls`) or taint-flow (`cpg.taint_flows`) count clears the canonical SECURE bit. Its exponential score is reporting only and cannot compensate for a finding.
+SECURE is strict: any nonzero dangerous-call (`cpg.dangerous_calls`) or taint-flow (`cpg.taint_flows`) count clears the canonical SECURE bit. Its zero-tolerance desirability score is reporting-only and cannot compensate for a finding.
 
 Security acknowledgements are handled as an advisory overlay. The diagnostic pipeline in MCP (`diagnostics.rs`) executes `overlay_applies` first to check whether an overlay is required before constructing a `ProgramMorphism` or reparsing the source:
 
@@ -125,7 +126,7 @@ SCD(fn) = Σ depth(u) · ln(1 + fanout(u))
 
 The sum ranges over nested block scopes (`IfStmt`, loops, `MatchStmt`, `TryStmt`, `WithStmt`, and nested function/method declarations). `fanout(u)` counts immediate child scopes, while a callable root starts at depth zero. Conditional expressions and short-circuit binary expressions do not create such scopes, so they are excluded rather than duplicating SIMPLE’s branch-oriented concern.
 
-A flat callable—and a file with no callable—has divergence `0.0`. The hard gate is inclusive at `10.0`; its independent normalized reporting score declines linearly to zero at the `12.0` cap. The probe also produces per-callable names and spans using the same scope walk as the maximum metric, so the worst failure can be located and targeted. Focused tests cover flat versus nested code, fanout, exact gates, supported languages, and agreement between the worst entry and gate metric.
+A flat callable—and a file with no callable—has divergence `0.0`. The hard gate is inclusive at `10.0`; its independent normalized reporting score declines linearly to zero at `20.0` (twice the gate threshold). The probe also produces per-callable names and spans using the same scope walk as the maximum metric, so the worst failure can be located and targeted. Focused tests cover flat versus nested code, fanout, exact gates, supported languages, and agreement between the worst entry and gate metric.
 
 ## User preferences, severity levels, and project roll-up
 

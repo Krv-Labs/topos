@@ -174,15 +174,15 @@ mod tests {
     fn rust_attributes_allow_comments_spacing_and_other_attributes() {
         let source = r#"
             fn prod() {}
-            #[cfg( /* condition */ test )]
+            #[ /* leading */ cfg /* between */ ( /* condition */ test )]
             // module documentation
             #[allow(dead_code)]
             mod tests { fn helper() {} }
-            #[test]
+            #[ /* leading */ test /* trailing */ ]
             /* explanation */
             #[ignore]
             fn checks() {}
-            #[tokio :: test(flavor = "current_thread")]
+            #[ /* leading */ tokio :: test /* between */ (flavor = "current_thread")]
             // async documentation
             async fn async_checks() {}
         "#;

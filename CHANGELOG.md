@@ -23,6 +23,7 @@ that section. See the Git History & Release Convention in [`.agents/AGENTS.md`](
   Explicit Rust test files retain cfg-gated modules; test attributes tolerate
   spacing and comments without matching documentation strings. CLI and MCP
   reject corpora with no source declarations after separating inline tests.
+  Rust test attributes also tolerate comments inside the attribute tokens.
 
 ## [0.8.0] - 2026-10-09
 

@@ -12,11 +12,18 @@ fn test_attribute(node: &Node, source: &[u8]) -> Option<&'static str> {
     if node.kind() != "attribute_item" {
         return None;
     }
-    let attribute = node.named_child(0)?;
-    let path = attribute.named_child(0)?;
+    let mut cursor = node.walk();
+    let attribute = node
+        .named_children(&mut cursor)
+        .find(|n| n.kind() == "attribute")?;
+    let mut cursor = attribute.walk();
+    let mut parts = attribute
+        .named_children(&mut cursor)
+        .filter(|n| !matches!(n.kind(), "line_comment" | "block_comment"));
+    let path = parts.next()?;
     match path.kind() {
         "identifier" if path.utf8_text(source).ok()? == "cfg" => {
-            let arguments = attribute.named_child(1)?;
+            let arguments = parts.next()?;
             if arguments.kind() != "token_tree" {
                 return None;
             }
@@ -215,7 +222,7 @@ mod tests {
         let source = r#"
             #[doc = "cfg(test)"]
             fn production() {}
-            #[cfg( /* condition */ test )]
+            #[ /* leading */ cfg /* between */ ( /* condition */ test )]
             // explanation
             #[allow(dead_code)]
             mod tests { fn checks() {} }

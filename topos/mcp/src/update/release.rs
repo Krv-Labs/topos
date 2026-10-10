@@ -146,6 +146,11 @@ mod tests {
         assert!(is_newer("0.8.0", "0.7.9"));
         assert!(is_newer("1.0.0", "0.99.99"));
         assert!(
+            is_newer("0.10.0", "0.9.0"),
+            "a two-digit minor is numeric, not lexical"
+        );
+        assert!(!is_newer("0.9.0", "0.10.0"));
+        assert!(
             is_newer("v0.7.1", "0.7.0"),
             "tags carry a v; versions do not"
         );

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:21979fb70ef0a05d3bfe25f81a424cecd8d0bb6a038126dff0895576b18ef457",
+  "pageVersion": "sha256:d06276becb31ed34577f87087a9f2b173a76b4dc5f60887e3a2cbb0ced32d953",
   "claims": [
     {
       "id": "claim_b8167f4a6dc049f08d3b062b0c0de27d",
@@ -120,19 +120,19 @@
     },
     {
       "id": "claim_2a6777569a0f4cac92fd65d9b6736e04",
-      "statement": "Normal releases verify metadata, build Linux amd64/arm64 and macOS arm64 native binaries, package matching VSIX artifacts, create a checksummed GitHub Release, and then publish a Homebrew tap pull request and Marketplace packages; pypi_only dispatches omit this native path.",
+      "statement": "Normal releases verify metadata, build Linux amd64/arm64 and macOS arm64 native binaries, package matching VSIX artifacts, create a checksummed GitHub Release, and publish Marketplace packages, PyPI wheels, and the MCP registry record; pypi_only dispatches omit this native path.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/release.yml#L217-L311",
-          "version": "repo-lines-v1:sha256:40cc8be8273c6adebd690dd5c09ff7dba879bcd56dedece3f7051f56f52f850e:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NjYxMjY0OTM5Y2FjZjc1OWExZjJmYmY4OGFlMmM3MTMwZTE1YjU5ZmEwZGQyYjRkYWU4NzVhNDRlZTg2NmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4Njg1MmY3MmU1MTQzZDM1OWE1ODM1YzQyNmM0OTViNzM5NTYzMzE4ZTJjNGRhZDFlYmRiYTIzMzA5NTIwMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzMjFhMDJmZDc1MmFmM2E4MzFmYmIyNDFhYTUxNDQ4MGRkOGI5ZDdkNTFkNTNkMjdmOTFmMWJhMjk3NmNhNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ZjVmNTdkODg3MDM4NzU2NTI0YTRiZjU2ZGRmNmZjZWQ3MGNjNTlmMzA5Zjk2MTJiYTQ5ODZkNTEzOTIwNDcifQ"
+          "resource": "repo://.github/workflows/release.yml#L27-L312",
+          "version": "repo-lines-v1:sha256:4c1b83013bbd664eb3262d2ef7b9f8d8c5361222a5aacd18a72c3d8f4eccf492:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjg2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGMwMWEwY2QxNjFkODQ3NzUxNzFhMjkxZmQ1YTgyZDUxNjVhOTI4M2FhNjdkMmMwYmYzY2E2YTBhZDU0NmQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4ZWQ2ODQ5MTIyMTE5MDE4MmIyNjA2MzYyMTdlYmM0NTgwOGYxZmNlOWRkNjFkMDU5NWU3ZGM5Nzk5MjVkNzNhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNjFiZGRhNjEzODFiN2FiMDYxZjM4MzI2ZTExZjE3NGEzOTU5YmE5MjU4NDU3ZTBhZjdjNmEwYzY1MjgzZTY3In0"
         },
         {
-          "resource": "repo://.github/workflows/release.yml#L23-L83",
-          "version": "repo-lines-v1:sha256:fbf1e02370a46c2b468cdc6fd60c39b6baf8a27c8f8a1af3199fcd9f4e250075:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3ZDQ0MTJkN2I1YzIzOTBhYWY0MzY0MTU1NTc3MTM5MTg3YmQxYmNkZGI4ZmU0Y2Y4MzI4M2JkYzJjYWU2ZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhODQ5NWE2MDRhMzhlNmJmMGY1NmQxMTQyMjhjMjUyZWEyODFhMTY3ZmRhNjUwMjExZjUwZTRmZWY3MWRjZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiOTBkZjA2YjYzOTBiNmVkNTI4MTkwYmNjMTgzYmZhZDJkNDRhMzQ5YTQ0MjUxN2RiYmUwYjM0MzRmZmQ5ZWMifQ"
+          "resource": "repo://.github/workflows/release.yml#L313-L392",
+          "version": "repo-lines-v1:sha256:2f35733c67390ab04e4c89fce36a0758a1636005f2014e97b6dc1e0980b173cb:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2ZkOTg2MGU1MzVhNTgzOWEzYzFkYTRiYmU5MzkzODZkYjRiMDJlMTkyODM2NDRmMzE3MTBhNDg2ZWYwNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMzFhZTlmMTM1YTIzMmRhZmU3M2Y0NTJlNTZkNWI0YzkyY2RmN2EzZjU2MTA0NWU4NTI2M2U1M2QyZjM5OWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOTVjMjdmZmUwZTgwNWE3YWYxOTU3NDI0ZmU4NGNjZGYyNTU2NjU0NGUyZGVmODMxZTQ3MTYzODA1Y2JhYjcifQ"
         },
         {
-          "resource": "repo://.github/workflows/release.yml#L313-L492",
-          "version": "repo-lines-v1:sha256:9465726ac8a653f682722d7ece7056050a4d7d9e13001e9e9898e1fb530eba83:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzM2YzOWU1OWM1OTA5NWNkMGJmMDExNDQ5M2ZmZDI5YjQ4NDY4MDI0YzZlOWQ4MWQ4ZTYyMDdkMDZjNGEyNTIwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OTY5N2JkYWJjZDIzNTYyY2Q3MzEwNzAwZjNhMGM3NGNmZTQ4Y2VhYWJhNzJlNTRkMjRlNTkxNTA5YmY0Yzg1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlMTMxYWU5ZjEzNWEyMzJkYWZlNzNmNDUyZTU2ZDViNGM5MmNkZjdhM2Y1NjEwNDVlODUyNjNlNTNkMmYzOTlmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2MGEwY2I4NmQ2NDY2NjU5ZDc1MWQ5ZDMwNjQzODE5NTAzMDc1ZmU0NGViYzFmOTAyOWIwMzFjODczMzM5MWQxIn0"
+          "resource": "repo://.github/workflows/release.yml#L394-L726",
+          "version": "repo-lines-v1:sha256:95c55e18892789509b4d81d3945fd92ce417215750e83e569f0e34646aa596ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ODRjMzA5M2NkZDBiNjA3OGU5ZTUzMWI4M2FjMjUwOGNiMGEyMGRlMzhmYTY4MzJjZTA0YTQ1N2QzZDMyNDAxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjNDJhMWI0ZmU4NDJjYWI3Y2JjOWQzZDM1ZWE2Zjc2YzQ5OTM1YTUzZTAwMmRmYWU0MmFkNjQ3YjE0MjFkZDJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5YWY2ZjQzYWU0ODk4MTAxNjAyNjU5OTU4MzY3YjBjMTBkOTYyNGJlMDAwMmUyYTQzYzk2ZGJiYWI5OTBiMDQ4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -141,7 +141,7 @@
       "statement": "Release CI rejects unexpected dynamic dependencies in native binaries and MCP wheels, including checks after extracting wheel binaries, and smoke-tests the staged binary before publication; signed macOS binaries receive an additional hardened-runtime smoke test.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/release.yml#L564-L640",
+          "resource": "repo://.github/workflows/release.yml#L463-L539",
           "version": "repo-lines-v1:sha256:a44c023f6e513ff7b8f1cf7dd9366611c59449e9ba3c86a607a82a9781ba297d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3MzYzMTI4MGE2NmE3ZWVjYzUwMDM5OTc0ZjljNGE0MTEwMmUyYWU1YWM2NGI3MThiNmNmNDhlMjI3ZTMxNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNDAwOTZlM2Q2NTg2N2FiMDNjYTEzZTNjOGU2Mjc0OTU4ZjczYmQ3MzAxNTdlZGY5ZWEzZWI5MjY5MmQ2NjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyOWJkN2VjYWE3YWJlYWZjY2IxZmMzYzE5YzMzYWNhNzA4NjYxMDA4YTliM2Y2MzY2Zjc2MWQ0MDVjNGUxZDYifQ"
         },
         {
@@ -155,15 +155,15 @@
       "statement": "MCP delivery builds top-level bin wheels for Linux amd64/arm64 and macOS arm64, classifies already-published PyPI files before publishing with skip-existing enabled, then validates and publishes the MCP Registry manifest through an OIDC-authenticated mcp-publisher.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/release.yml#L494-L562",
+          "resource": "repo://.github/workflows/release.yml#L393-L461",
           "version": "repo-lines-v1:sha256:bb6fc6a2c6c5fdf00126082947b9ca8c897ac61ede592ae291859f52ff5518a3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmNmQzOWZlNmEzOGZhZTc5ZjA5NDFhYmYwMDlhZTc3OTMyMTQ1MjhjZjAzZjI3OTUzYmYxMzEzOTRkZWUxNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkMzYxYmVhNDcxOWY5MzQ2MzI3MTg5MGQyOTkzOWU3NTJjYjk3ODhiMThkNWUwOTFkMTU5NWMxZTRkZTRmNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNGJiZmQ2ZTgzNmI4ZTQ5MGI5Yjk5ZWZhYzRlMjdhODUyNTllOGNjYjYxNWM4NTQ3YTZhMWJkNDA1MTIxMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjNDQ2OTg3N2ZlYjc1ZDQyNWM2MWUzNTVlM2VkN2ZlMjljMGYxMDg3NzZlYTJkYzk5OWI5YzEwNWI0NGVmOTAifQ"
         },
         {
-          "resource": "repo://.github/workflows/release.yml#L648-L791",
+          "resource": "repo://.github/workflows/release.yml#L547-L690",
           "version": "repo-lines-v1:sha256:0009113221757f5058d09ae58eaf2beec269ce6edbb55ba4e18958314016c7b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5Zjk1NjgxMmFhMDdjNDAxZTFjZDIyMTM0NGE5YjVmZWMxNjdlNGZmMmMwNDQ4ZGI2NmRkNTFiMTk0NjViZTY3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxNjg4NzdkYTYxMTYyY2EyYTEwZDRkMzNmYTdjNTZlZDQ4ZTFhY2Y2N2M4OWM1NzcyZTFkN2UwMWRlZjU3ZTY1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3OTY4ODViMmI5NjE5ODNlMGE4OTQ0MmI0MWI0ODZjZGI0YWE3ZjMxZmFlZmNhYjNkZGIyZjgzMmNlNWIyYjRhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YTNjZjUxOTIzNTRmNzE2MTVhYzUxMDM0YjNlOTdjMjBlZGE5OTY0M2ZjYWY1YmJlNmQ0MWFkNTliZDEyMTY3In0"
         },
         {
-          "resource": "repo://.github/workflows/release.yml#L796-L826",
+          "resource": "repo://.github/workflows/release.yml#L695-L725",
           "version": "repo-lines-v1:sha256:df0397534de72b21998e2e8fa283d07a7db6336c2412754436435aa922166033:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMjhkYmFkOWE2MTkxZjgzYWU0N2QwZjY5NjllYjJmYjhhNzVlNzZmMTM1Zjg1ZDBiM2RlZDJiODljM2JlMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZjIxNGFhYzI2ODlhYjM0YmY4ZjA0ODRiNzc2OGI4NWEwZGZiOWIwZGI5YTMzODA3NWJkZTQ4ODhlNzYyNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0MmExYjRmZTg0MmNhYjdjYmM5ZDNkMzVlYTZmNzZjNDk5MzVhNTNlMDAyZGZhZTQyYWQ2NDdiMTQyMWRkMmEifQ"
         }
       ]
@@ -173,8 +173,8 @@
       "statement": "The ClawHub workflow dry-runs qualifying pull requests and delegates main/tag publication through a pinned reusable workflow with named CLAWHUB_TOKEN and OIDC permissions.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/clawhub-publish.yml#L15-L43",
-          "version": "repo-lines-v1:sha256:b45b348c0b284ddfacf6677a660167a8c98f53b009b832ab486fd9fe1baf11cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMDllMDE4OWJjYzA4NDVhYzdiODM1NjMyMzcyMTNlYTQ1NTliYTljMjMyMmI1MDYxNzBiYWJkZjA5ZDczOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZjczMGJjNGE5ZGRlZmVjMTYzZTkwODVmMzI0NmNlODcwMzUxNzg5MjQ3ZDI1ZThhNGU2OTA3ZDYxZWI1NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/clawhub-publish.yml#L15-L41",
+          "version": "repo-lines-v1:sha256:7dd11a49a0e14bf7dd73257b215ed94400815b9ce3219334ee10c83e4d79c15b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMDllMDE4OWJjYzA4NDVhYzdiODM1NjMyMzcyMTNlYTQ1NTliYTljMjMyMmI1MDYxNzBiYWJkZjA5ZDczOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZjczMGJjNGE5ZGRlZmVjMTYzZTkwODVmMzI0NmNlODcwMzUxNzg5MjQ3ZDI1ZThhNGU2OTA3ZDYxZWI1NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -227,6 +227,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T11:59:46.794Z"
+    "at": "2026-10-10T12:26:29.610Z"
   }
 }

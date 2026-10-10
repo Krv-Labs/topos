@@ -825,6 +825,7 @@ mod tests {
         assert_eq!(cyclomatic["value"], 4.0);
         assert_eq!(cyclomatic["local_weight"], 0.0);
         assert!(cyclomatic["flagged"].is_boolean());
+        assert!(cyclomatic["quality"].as_f64().is_some_and(|q| q > 0.0));
         for field in ["dimensions", "scores", "raw_metrics", "advisories"] {
             let keys: Vec<&String> = json["results"][0][field]
                 .as_object()

@@ -5,8 +5,8 @@ description: Ownership-oriented starting points for changing Topos analysis, com
 resource: /topos
 tags: [source-map, maintenance, navigation, rust]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T14:12:21.181Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T10:35:08.347Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml

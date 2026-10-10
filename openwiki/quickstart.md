@@ -4,8 +4,8 @@ title: Topos Engineering Quickstart
 description: Task-routed entry point and verification guide for maintaining the Topos Rust workspace, CLI subcommands, agent interaction policies, MCP server, and OpenWiki documentation.
 tags: [topos, maintenance, static-analysis, rust, mcp, cli]
 verified:
-  - by: openwiki/0.7.1
-    at: 2026-10-09T14:12:21.181Z
+  - by: openwiki/0.7.2
+    at: 2026-10-10T10:35:08.347Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,7 +29,7 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.1", at: "2026-10-09T14:12:21.181Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-10T10:35:08.347Z" }
 ---
 
 # Topos Engineering Quickstart
@@ -46,13 +46,12 @@ The root `Cargo.toml` defines the workspace package version (`0.8.0`) and contai
 - **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 12 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
 - **`topos-mcp`**: Stdio MCP server exposing structural quality tools, embedded documentation resources (`topos://docs/*`), and the `topos_refactor_until_ideal` prompt.
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: an unescaped angle bracket inside a label breaks rendering; rephrase the label. -->
-```text
-graph TD
+```mermaid
+flowchart TD
     subgraph Workspace ["Cargo Workspace (v0.8.0)"]
-        Engine["topos-engine<br/>(Evaluation Core & Categorical Primitives)"]
-        CLI["topos CLI<br/>(Command Dispatcher & Human UI)"]
-        MCP["topos-mcp<br/>(Stdio MCP Server)"]
+        Engine["topos-engine (Evaluation Core and Categorical Primitives)"]
+        CLI["topos CLI (Command Dispatcher and Human UI)"]
+        MCP["topos-mcp (Stdio MCP Server)"]
     end
 
     subgraph Entrypoints
@@ -68,6 +67,7 @@ graph TD
     CLI -->|dispatches to| Engine
     MCP -->|calls evaluation core| Engine
 ```
+*Topos workspace component relationships, entrypoints, and communication channels.*
 
 ## Start Safely
 

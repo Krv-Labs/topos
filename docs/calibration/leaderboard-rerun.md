@@ -119,14 +119,29 @@ interrupted run can simply be restarted. Output lands in
 
 ### 5. Copy the prior snapshot
 
-Derive the table in `$LB` from `leaderboard/data/raw/structural_scores_*.jsonl`.
-Drop rows scored by older binaries so a partial rerun cannot mix readings.
-Copy only the scorer-facing JSON over the embedded snapshot:
+Derive the table in `$LB` with `topos-leaderboard-build-priors` (Krv-Labs/topos-leaderboard#17).
+It reads `leaderboard/data/raw/structural_scores_*.jsonl`, drops rows scored by
+binaries older than `--min-topos-version` (default `0.5.0`) so a partial rerun
+cannot mix readings, and writes the scorer-facing snapshot plus a provenance
+sidecar (`advisory_priors.provenance.json`: sources, row counts, per-language
+`n`, generation time, leaderboard SHA). Copy only the snapshot:
 
 ```bash
-cp "$LB/advisory_priors.json" \
+cd "$LB" && uv run topos-leaderboard-build-priors
+cp "$LB/leaderboard/data/advisory_priors.json" \
   "$TOPOS/topos/engine/src/evaluation/advisory_priors.json"
 ```
+
+Extra corpora can be pooled with `--evaluate-json GROUP=FILE` (repeatable;
+`topos evaluate -r --json` output). `--check` exits non-zero when the
+snapshot is stale.
+
+The snapshot vendored with v0.10.0 pooled the v0.5.0 leaderboard rows with 11
+`topos evaluate --json` runs (clap, click, cobra, ehrapy, got, httpx, pulsar,
+requests, ripgrep, zod, and Topos itself), which supplied the only `mdg.*`
+readings. The rerun replaces it from leaderboard rows alone, now that
+GitNexus records `mdg.*` for every ecosystem; expect small shifts in `k`
+(on the order of ±0.1) and in a few medians.
 
 The file the engine embeds has `schema`, `provisional`, and `metrics`
 (`k`, `flag_percentile`, and one line per language: `median` plus the CDF

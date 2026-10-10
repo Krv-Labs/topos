@@ -521,7 +521,12 @@ fn evaluate_single_file(
         scores: result
             .scores
             .iter()
-            .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+            .map(|(dim, s)| {
+                (
+                    dim.clone(),
+                    topos_engine::evaluation::policies::desirability::display_percent(*s),
+                )
+            })
             .collect(),
         pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
         raw_metrics: if verbose {
@@ -566,7 +571,12 @@ fn refresh_entry_scores(
     entry.scores = result
         .scores
         .iter()
-        .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+        .map(|(dim, s)| {
+            (
+                dim.clone(),
+                topos_engine::evaluation::policies::desirability::display_percent(*s),
+            )
+        })
         .collect();
     entry.pillars = build_pillars(result, has_dep);
     entry.advisories = advisories_json(&result.advisories);
@@ -601,7 +611,12 @@ fn min_scores_by_dim(results: &[ClassificationResult]) -> BTreeMap<String, f64> 
     }
     min_scores
         .into_iter()
-        .map(|(dim, s)| (dim, (s * 1000.0).round() / 10.0))
+        .map(|(dim, s)| {
+            (
+                dim,
+                topos_engine::evaluation::policies::desirability::display_percent(s),
+            )
+        })
         .collect()
 }
 
@@ -777,8 +792,8 @@ fn classify_project_rows(
 /// depend on comparison order rather than on the data. That cannot happen,
 /// on three independent grounds:
 ///
-/// 1. **No gate metric can be `NaN` at the source.** Every entry in
-///    `GATE_SPECS` is either an integer count widened to `f64`
+/// 1. **No scored metric can be `NaN` at the source.** Every gated or
+///    advisory metric is either an integer count widened to `f64`
 ///    (`cfg.cyclomatic` = `usize as f64` in `graphs/cfg/object.rs`,
 ///    `ast.max_function_complexity`, `mdg.fan_in`/`fan_out`,
 ///    `cpg.dangerous_calls`/`taint_flows`) or a division whose zero
@@ -788,12 +803,10 @@ fn classify_project_rows(
 ///    `total == 0`). `nav.max_function_divergence` is
 ///    `Σ depth·ln(1 + fanout)` with `fanout >= 0`, so every term is a
 ///    finite `ln` of `>= 1`.
-/// 2. **The quality curves absorb `NaN` anyway.** Every per-metric quality
-///    in `evaluation::policies::{simple,composable,secure,navigable}` ends
-///    in `.min(1.0)` or `.max(0.0)`, and Rust's `f64::min`/`f64::max`
-///    return the *non*-`NaN` operand — so a hypothetical `NaN` metric
-///    yields a finite quality, and `ScoredDecision::score` stays in
-///    `[0, 1]`. `weakest_score`'s `reduce(f64::min)` inherits the same
+/// 2. **The desirability curves absorb `NaN` anyway.** Every curve in
+///    `evaluation::policies::desirability` maps `NaN` to `0.0`, and
+///    `band_score` clamps its inputs, so a hypothetical `NaN` metric yields
+///    a finite score and `ScoredDecision::score` stays in `[0, 1]`. `weakest_score`'s `reduce(f64::min)` inherits the same
 ///    property.
 /// 3. **The cyclomatic branch is unreachable with `NaN`.** It runs only
 ///    behind `is_maintainability_giant`, whose `*v > SIMPLE.max_cyclomatic`

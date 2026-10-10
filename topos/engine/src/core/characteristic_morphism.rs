@@ -136,7 +136,9 @@ impl fmt::Display for ClassificationResult {
         let mut dims: Vec<_> = self.dimensions.iter().collect();
         dims.sort_by_key(|(dim, _)| dim.as_str());
         for (dim, val) in dims {
-            let score_pct = self.scores.get(dim).copied().unwrap_or(0.0) * 100.0;
+            let score_pct = crate::evaluation::policies::desirability::display_percent_whole(
+                self.scores.get(dim).copied().unwrap_or(0.0),
+            );
             writeln!(f, "  {dim}: {val}  [{score_pct:.0}%]")?;
         }
         let mut metrics: Vec<_> = self.raw_metrics.iter().collect();
@@ -503,7 +505,10 @@ mod tests {
             Some(&EvaluationValue::Composable)
         );
         assert!((result.gate_scores["composable"] - 0.6).abs() < 1e-12);
-        assert!((result.scores["composable"] - 0.6).abs() < 1e-12);
+        // Advisories (fan-in, two-sided instability) may only move the score
+        // within the passing half, never above its gate score.
+        let score = result.scores["composable"];
+        assert!((0.5..=0.6 + 1e-12).contains(&score), "score {score}");
     }
 
     /// Every recorded pillar: verdict ⇔ `G ≥ TAU` ⇔ `S ≥ TAU`.

@@ -274,7 +274,7 @@ fn rounded_score(result: &ClassificationResult, pillar: &str) -> Option<f64> {
     result
         .scores
         .get(pillar)
-        .map(|score| (score * 1000.0).round() / 10.0)
+        .map(|score| topos_engine::evaluation::policies::desirability::display_percent(*score))
 }
 
 pub(super) fn complexity_relocated(

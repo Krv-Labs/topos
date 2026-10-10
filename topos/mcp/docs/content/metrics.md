@@ -55,9 +55,10 @@ but never fails `achieved`. **Diagnostic** — reported in `raw_metrics` only.
 merged-CFG* sum, so it scales with function count: a file of many small,
 individually-simple functions would hard-fail on it for no real
 complexity reason. `ast.max_function_complexity` — a true per-function
-max — gates that concern directly. (Source of truth:
-`GateSpec::gates_achieved` in
-`topos/engine/src/evaluation/policies/gates.rs`.)
+max — gates that concern directly. (Source of truth: the gated metrics
+are exactly the entries of `GATE_SPECS` in
+`topos/engine/src/evaluation/policies/gates.rs`; advisory metrics are
+`ADVISORY_METRICS` in `topos/engine/src/evaluation/advisory.rs`.)
 
 **`achieved`** is the AND of exactly two raw gates — `ast.entropy` in band
 (or entrypoint-exempt, which clamps its desirability to 0.5) **and**

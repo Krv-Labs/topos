@@ -81,9 +81,39 @@ pub fn d_zero_tolerance(v: f64, scale: f64) -> f64 {
     }
 }
 
+/// A `[0, 1]` score as a one-decimal percentage that never rounds across
+/// the gate: a failing `0.4996` shows as `49.9`, not `50.0`.
+pub fn display_percent(score: f64) -> f64 {
+    let pct = (score * 1000.0).round() / 10.0;
+    if score < TAU {
+        pct.min(TAU * 100.0 - 0.1)
+    } else {
+        pct
+    }
+}
+
+/// Whole-number variant of [`display_percent`] for `NN%` labels.
+pub fn display_percent_whole(score: f64) -> f64 {
+    let pct = (score * 100.0).round();
+    if score < TAU {
+        pct.min(TAU * 100.0 - 1.0)
+    } else {
+        pct
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_never_rounds_a_failure_to_the_gate() {
+        assert_eq!(display_percent(0.49958), 49.9);
+        assert_eq!(display_percent(0.5), 50.0);
+        assert_eq!(display_percent(0.73456), 73.5);
+        assert_eq!(display_percent_whole(0.4996), 49.0);
+        assert_eq!(display_percent_whole(0.5), 50.0);
+    }
 
     #[test]
     fn lower_is_better_anchors() {

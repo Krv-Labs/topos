@@ -519,7 +519,9 @@ pub(crate) fn failure_lines(
         let detail = if result.is_parseable {
             format!(
                 "{:>3.0}% score",
-                result.scores.get(pillar).copied().unwrap_or(0.0) * 100.0
+                topos_engine::evaluation::policies::desirability::display_percent_whole(
+                    result.scores.get(pillar).copied().unwrap_or(0.0)
+                )
             )
         } else {
             "parse failure".to_string()
@@ -594,7 +596,16 @@ pub(crate) fn json_output(
             let scores: serde_json::Map<String, Value> = result
                 .scores
                 .iter()
-                .map(|(name, score)| (name.clone(), json!((score * 1000.0).round() / 10.0)))
+                .map(|(name, score)| {
+                    (
+                        name.clone(),
+                        json!(
+                            topos_engine::evaluation::policies::desirability::display_percent(
+                                *score
+                            )
+                        ),
+                    )
+                })
                 .collect();
             let language = languages
                 .get(index)

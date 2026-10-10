@@ -513,7 +513,7 @@ pub fn build_pillars(
                 dim.to_string(),
                 PillarResult {
                     achieved,
-                    score: (score * 1000.0).round() / 10.0,
+                    score: topos_engine::evaluation::policies::desirability::display_percent(score),
                 },
             );
         }
@@ -711,7 +711,12 @@ pub fn to_evaluation_result(
         scores: result
             .scores
             .iter()
-            .map(|(dim, s)| (dim.clone(), (s * 1000.0).round() / 10.0))
+            .map(|(dim, s)| {
+                (
+                    dim.clone(),
+                    topos_engine::evaluation::policies::desirability::display_percent(*s),
+                )
+            })
             .collect(),
         pillars: build_pillars(&display_result, coupling_available),
         priority: priority_str(result.priority).to_string(),

@@ -596,9 +596,12 @@ pub fn to_evaluation_result(
         Some(v) => v.adjusted_element,
         None => result.summary(),
     };
-    let gate_scores = match opts.adjusted_verdict {
-        Some(v) => v.gate_scores(&result.gate_scores),
-        None => result.gate_scores.clone(),
+    let (scores, gate_scores) = match opts.adjusted_verdict {
+        Some(v) => (
+            v.secure_lifted(&result.scores),
+            v.secure_lifted(&result.gate_scores),
+        ),
+        None => (result.scores.clone(), result.gate_scores.clone()),
     };
     let walk = opts
         .preferences
@@ -628,7 +631,7 @@ pub fn to_evaluation_result(
     let display_result = ClassificationResult {
         is_parseable: result.is_parseable,
         dimensions: dimensions.clone(),
-        scores: result.scores.clone(),
+        scores: scores.clone(),
         lattice_element: summary,
         priority: result.priority,
         raw_metrics: result.raw_metrics.clone(),
@@ -702,8 +705,7 @@ pub fn to_evaluation_result(
             .iter()
             .map(|(dim, &val)| (dim.clone(), lattice_to_str(val)))
             .collect(),
-        scores: result
-            .scores
+        scores: scores
             .iter()
             .map(|(dim, s)| {
                 (
@@ -1083,6 +1085,49 @@ mod tests {
         assert_eq!(
             failing_interpretation(&result, &interpretation),
             interpretation
+        );
+    }
+
+    #[test]
+    fn acknowledged_secure_scores_at_the_gate_and_is_not_climbed() {
+        let result = classify_code_string(
+            "import os\ndef f(x):\n    os.system(x)\n",
+            "python",
+            Priority::Simple,
+        )
+        .unwrap();
+        assert!(result.scores["secure"] < 0.5, "raw SECURE fails its gate");
+        let secure = topos_engine::core::omega::Generator::Secure.value().bits();
+        let verdict = AdjustedVerdict {
+            raw_secure_pass: false,
+            adjusted_secure_pass: true,
+            raw_element: result.summary(),
+            adjusted_element: EvaluationValue::from_bits(result.summary().bits() | secure).unwrap(),
+            active_findings: Vec::new(),
+            acknowledged: Vec::new(),
+            grade_capped: false,
+        };
+        let prefs = default_preferences();
+        let model = to_evaluation_result(
+            &result,
+            false,
+            EvalResultOptions {
+                preferences: Some(&prefs),
+                adjusted_verdict: Some(&verdict),
+                ..Default::default()
+            },
+        );
+        let pillar = &model.pillars["secure"];
+        assert!(pillar.achieved && pillar.score >= 50.0, "{pillar:?}");
+        assert!(model.scores["secure"] >= 50.0);
+        assert!(model.gate_scores["secure"] >= 0.5);
+        assert_ne!(
+            model
+                .preference_walk
+                .unwrap()
+                .next_pillar
+                .map(|g| g.as_str()),
+            Some("secure")
         );
     }
 

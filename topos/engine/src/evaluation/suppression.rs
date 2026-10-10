@@ -60,10 +60,11 @@ impl AdjustedVerdict {
         self.raw_secure_pass != self.adjusted_secure_pass
     }
 
-    /// `raw` with the SECURE gate score lifted to [`TAU`] when the adjusted
-    /// gate passes, so an acknowledged risk is never picked as the pillar
-    /// to climb next. The grade cap stays on the verdict, not on `G`.
-    pub fn gate_scores(&self, raw: &BTreeMap<String, f64>) -> BTreeMap<String, f64> {
+    /// `raw` (pillar scores or gate scores) with SECURE lifted to [`TAU`]
+    /// when the adjusted gate passes. A passing pillar then never scores
+    /// below 50, and an acknowledged risk is never picked as the pillar to
+    /// climb next. The grade cap stays on the verdict, not on the score.
+    pub fn secure_lifted(&self, raw: &BTreeMap<String, f64>) -> BTreeMap<String, f64> {
         let mut scores = raw.clone();
         if self.adjusted_secure_pass {
             if let Some(g) = scores.get_mut("secure") {
@@ -292,7 +293,10 @@ mod tests {
         assert!(in_scope.adjusted_secure_pass);
         assert!(!out_scope.adjusted_secure_pass);
         // An acknowledged risk is not a gate left to climb; an active one is.
-        assert!(in_scope.gate_scores(&result.gate_scores)["secure"] >= TAU);
-        assert!(out_scope.gate_scores(&result.gate_scores)["secure"] < TAU);
+        // Nor does a passing pillar score below the gate.
+        for scores in [&result.gate_scores, &result.scores] {
+            assert!(in_scope.secure_lifted(scores)["secure"] >= TAU);
+            assert!(out_scope.secure_lifted(scores)["secure"] < TAU);
+        }
     }
 }

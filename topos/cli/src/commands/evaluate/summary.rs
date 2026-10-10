@@ -619,6 +619,7 @@ pub(crate) fn json_output(
                 "lattice_symbol": result.summary().symbol(),
                 "dimensions": dimensions,
                 "scores": scores,
+                "gate_scores": result.gate_scores,
                 "priority": crate::commands::config::priority_name(result.priority),
                 "raw_metrics": result.raw_metrics,
                 "advisories": advisories_json(&result.advisories),
@@ -819,6 +820,7 @@ mod tests {
             ("secure".to_string(), 0.9),
             ("navigable".to_string(), 0.7),
         ]);
+        scored.gate_scores = scored.scores.clone();
         scored.raw_metrics = BTreeMap::from([
             ("mdg.fan_out".to_string(), 3.0),
             ("ast.entropy".to_string(), 0.5),
@@ -837,7 +839,13 @@ mod tests {
         assert_eq!(cyclomatic["local_weight"], 0.0);
         assert!(cyclomatic["flagged"].is_boolean());
         assert!(cyclomatic["quality"].as_f64().is_some_and(|q| q > 0.0));
-        for field in ["dimensions", "scores", "raw_metrics", "advisories"] {
+        for field in [
+            "dimensions",
+            "scores",
+            "gate_scores",
+            "raw_metrics",
+            "advisories",
+        ] {
             let keys: Vec<&String> = json["results"][0][field]
                 .as_object()
                 .unwrap_or_else(|| panic!("`{field}` must be an object"))

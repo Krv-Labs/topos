@@ -520,7 +520,7 @@ fn adjusted_result(
     ClassificationResult {
         is_parseable: result.is_parseable,
         dimensions,
-        scores: result.scores.clone(),
+        scores: overlay.verdict.secure_lifted(&result.scores),
         lattice_element: overlay.verdict.adjusted_element,
         priority: result.priority,
         raw_metrics: result.raw_metrics.clone(),
@@ -528,7 +528,7 @@ fn adjusted_result(
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
         language: result.language.clone(),
-        gate_scores: overlay.verdict.gate_scores(&result.gate_scores),
+        gate_scores: overlay.verdict.secure_lifted(&result.gate_scores),
         advisories: result.advisories.clone(),
     }
 }
@@ -577,7 +577,7 @@ fn evaluate_single_file(
             .to_string(),
         language: detect_language(path).to_string(),
         lattice_element: lattice_to_str(result_for_rollup.summary()),
-        scores: result
+        scores: result_for_rollup
             .scores
             .iter()
             .map(|(dim, s)| {
@@ -1797,9 +1797,9 @@ mod tests {
         );
     }
 
-    /// #232: an active security overlay must only flip `achieved`/lattice,
-    /// never the numeric score — `entry.scores` and `entry.pillars` are
-    /// two different channels for the same raw classification.
+    /// #232: `entry.scores` and `entry.pillars` must report the same SECURE
+    /// score. Scores are gate-anchored, so an overlay that flips SECURE to
+    /// a pass lifts its score to the gate (50) in both channels.
     #[test]
     fn project_row_scores_and_pillars_agree_under_security_overlay() {
         let path = write_temp_source("overlay_secure", "def f(expr):\n    return eval(expr)\n");
@@ -1824,15 +1824,16 @@ mod tests {
 
         assert_eq!(
             raw_score, pillar.score,
-            "entry.scores and pillars must report the same (raw) secure score"
-        );
-        assert!(
-            raw_score > 0.0 && raw_score < 100.0,
-            "fixture must produce a non-trivial raw score, not 0/100 by coincidence: {raw_score}"
+            "entry.scores and pillars must report the same secure score"
         );
         assert!(
             pillar.achieved,
             "the allowlisted eval call must still achieve SECURE via the overlay verdict"
+        );
+        assert!(
+            pillar.score >= 50.0,
+            "a passing pillar never scores below the gate: {}",
+            pillar.score
         );
     }
 }

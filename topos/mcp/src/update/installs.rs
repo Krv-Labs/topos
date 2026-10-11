@@ -213,6 +213,26 @@ fn same_file(a: &Path, b: &Path) -> bool {
 mod tests {
     use super::*;
 
+    /// Write an executable script that this process never holds open for
+    /// writing. A sibling test that forks while a write fd is open hands the
+    /// child a copy until it execs, and executing the script in that window
+    /// fails with ETXTBSY on Linux, so the probe sees no version. `cp` creates
+    /// the file in its own process instead.
+    #[cfg(unix)]
+    fn write_script(path: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt as _;
+        let staging = path.with_extension("staging");
+        std::fs::write(&staging, body).unwrap();
+        let copied = std::process::Command::new("cp")
+            .arg(&staging)
+            .arg(path)
+            .status()
+            .unwrap();
+        assert!(copied.success(), "cp {staging:?} {path:?}");
+        std::fs::remove_file(&staging).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     /// clap prints `<bin name> <version>`; the parser must survive a
     /// customized bin name and reject an error line.
     #[test]
@@ -236,17 +256,22 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_stuck_version_probe_is_bounded() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("topos");
-        std::fs::write(&path, "#!/bin/sh\nexec sleep 2\n").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        write_script(&path, "#!/bin/sh\nexec sleep 2\n");
         let start = std::time::Instant::now();
         assert_eq!(
             probe_version_with_timeout(&path, std::time::Duration::from_millis(100)),
             None
         );
-        assert!(start.elapsed() < std::time::Duration::from_secs(1));
+        let elapsed = start.elapsed();
+        // A spawn failure also returns `None`, immediately; waiting out the
+        // timeout proves the script ran and the bound is what stopped it.
+        assert!(
+            elapsed >= std::time::Duration::from_millis(100),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
     }
 
     #[cfg(unix)]
@@ -291,11 +316,7 @@ mod tests {
         std::fs::create_dir_all(root.join("real")).unwrap();
         std::fs::create_dir_all(root.join("link")).unwrap();
         let target = root.join("real").join(EXE_NAME);
-        std::fs::write(&target, "#!/bin/sh\necho 'topos 9.9.9'\n").unwrap();
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        write_script(&target, "#!/bin/sh\necho 'topos 9.9.9'\n");
         let link = root.join("link").join(EXE_NAME);
         std::os::unix::fs::symlink(&target, &link).unwrap();
 

@@ -10,7 +10,7 @@ Below, `$TOPOS` is this checkout and `$LB` is the `topos-leaderboard` checkout.
 
 ## Why a rerun is needed
 
-The advisory priors (`topos/engine/src/evaluation/advisory_priors.json`) are
+The advisory priors (`topos/engine/src/evaluation/policies/advisory_priors.json`) are
 per-language percentile tables plus a shrinkage constant `k` per metric. They
 were first derived from the v0.5.0 leaderboard JSONL, which is stale in three
 ways:
@@ -87,7 +87,7 @@ file (or any package you know is small):
 for eco in pypi:top100_pypi cargo:top100_cargo npm:top100_npm \
            cpp:top50_cpp go:top50_go mcp:top50_mcp; do
   name=${eco%%:*}; list=${eco#*:}
-  pkg=$(head -1 benchmarks/$list.txt)
+  pkg=$(grep -v '^#' benchmarks/$list.txt | grep . | head -1)
   uv run topos-leaderboard-eval -y --ecosystem $name --package "$pkg" \
     --versions-per-package 1
 done
@@ -129,7 +129,7 @@ sidecar (`advisory_priors.provenance.json`: sources, row counts, per-language
 ```bash
 cd "$LB" && uv run topos-leaderboard-build-priors
 cp "$LB/leaderboard/data/advisory_priors.json" \
-  "$TOPOS/topos/engine/src/evaluation/advisory_priors.json"
+  "$TOPOS/topos/engine/src/evaluation/policies/advisory_priors.json"
 ```
 
 Extra corpora can be pooled with `--evaluate-json GROUP=FILE` (repeatable;
@@ -176,7 +176,7 @@ only) until this rerun fills C++ and Go. After the copy, check:
 Name the leaderboard commit the table came from:
 
 ```bash
-git add topos/engine/src/evaluation/advisory_priors.json
+git add topos/engine/src/evaluation/policies/advisory_priors.json
 git commit -m "scoring: refresh advisory prior snapshot (topos-leaderboard@<SHA>)"
 ```
 

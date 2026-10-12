@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-12
+
 ### Changed
 
 - Advisory priors regenerated from the Topos v0.10.0 leaderboard rerun with

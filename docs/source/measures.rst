@@ -12,20 +12,23 @@ Measures
 
 Evaluates the internal quality of the code by analyzing the Control Flow Graph (CFG) and Abstract Syntax Tree (AST). The SIMPLE pillar always runs and maps to the ``SIMPLE`` badge outcome.
 
+* **Max Function Complexity** (``ast.max_function_complexity``)
+  The highest McCabe complexity of any single function. **Gate:** ``<= 10``.
+
 * **Cyclomatic Complexity** (``cfg.cyclomatic``)
-  Measures the number of linearly independent paths through the code. Branches, loops, and conditionals increase complexity. Higher values negatively impact the SIMPLE score.
+  Measures the number of linearly independent paths through the whole file. *Advisory*, read relative to the codebase (see :ref:`scoring`): it is a whole-file sum that grows with function count, so ``ast.max_function_complexity`` gates the per-function concern instead.
 
 * **Essential Complexity** (``cfg.essential``)
-  Counts "structured" vs. unstructured control flow. Complex nested conditions reduce this metric.
+  Counts unstructured control flow that cannot be reduced to single-entry, single-exit blocks. *Advisory*, codebase-relative.
 
 * **Nesting Depth** (``cfg.nesting_depth``)
-  Maximum nesting level of control structures. Deeper nesting is harder to reason about.
+  Maximum nesting level of control structures. Deeper nesting is harder to reason about. *Advisory*, codebase-relative.
 
 * **Longest Path** (``cfg.longest_path``)
   Longest acyclic execution path through the CFG. Long paths correlate with high cognitive load.
 
 * **Entropy** (``ast.entropy``)
-  A Kolmogorov-complexity proxy using compression ratios. It measures how predictable the code is. Very low entropy suggests excessive boilerplate; very high entropy signals chaotic or highly unusual structure (often seen in hallucinated code). The healthy range sits around 0.5.
+  A Kolmogorov-complexity proxy using compression ratios. It measures how predictable the code is. Very low entropy suggests excessive boilerplate; very high entropy signals chaotic or highly unusual structure (often seen in hallucinated code). The healthy range sits around 0.5. **Gate:** ``0.2 <= entropy <= 0.8``.
 
 2. The COMPOSABLE Pillar (Outward Dependency Burden)
 -----------------------------------------------------
@@ -33,20 +36,24 @@ Evaluates the internal quality of the code by analyzing the Control Flow Graph (
 Evaluates how much external behavior a file coordinates by analyzing the dependency graph. *(Requires GitNexus)* The COMPOSABLE pillar maps to the ``COMPOSABLE`` badge outcome.
 
 * **Coupling** (``mdg.coupling``)
-  The total number of afferent (incoming) and efferent (outgoing) dependencies. High total coupling negatively impacts the COMPOSABLE score.
+  The total number of afferent (incoming) and efferent (outgoing) dependencies. Reported for diagnosis.
 
 * **Instability** (``mdg.instability``)
   Calculated as ``Efferent / (Afferent + Efferent)``.
 
   - Near 0: The module is a rigid dependency for many others and is hard to change safely.
-  - Near 1: The module is highly unstable because it depends on many other parts of the system.
-  - A balanced range (0.3 – 0.7) helps achieve a higher COMPOSABLE score.
+  - Near 1: The module depends on many other parts of the system.
+
+  *Advisory*, codebase-relative. There is no fixed "good" band: a file is
+  compared with the rest of its codebase and the language prior. Only files
+  with ``coupling >= 2`` get a reading, because below that the ratio carries
+  no information.
 
 * **Fan-out** (``mdg.fan_out``)
-  Counts distinct external symbols called by the file. This is the v0.5 file-level gate: ``fan_out <= 10``.
+  Counts distinct external symbols called by the file. **Gate:** ``fan_out <= 10``.
 
 * **Fan-in** (``mdg.fan_in``)
-  Counts incoming call edges. It remains scored and actionable as a responsibility/change-impact signal, but is advisory because a stable interface or shared utility can legitimately have many callers.
+  Counts incoming call edges. *Advisory*, codebase-relative: a responsibility and change-impact signal, never a gate, because a stable interface or shared utility can legitimately have many callers.
 
 * **Dependency Depth** (``mdg.dep_depth``)
   The longest dependency chain from this module. Shallow chains are easier to understand and refactor.
@@ -114,100 +121,90 @@ failure becomes an actionable refactor target: extract the deepest nested
 block into a top-level helper.
 
 .. note::
-   The NAVIGABLE threshold is calibrated from a balanced 6,390-file
-   multi-ecosystem leaderboard corpus. The achieved gate is ``10.0`` (p95
-   ``10.37``, ~5.2% failure rate). The score cap is ``12.0`` (spans p99 across
-   Rust ``10.40``, Go ``13.64``, and Python ``12.31``). Topos's 176 Rust
-   sources remain a reference ECDF (p95
-   ``5.65``, p99 ``8.62``, max ``12.19``).
+   The NAVIGABLE gate is calibrated from a balanced 6,390-file
+   multi-ecosystem leaderboard corpus: ``max_function_divergence <= 10.0``
+   (p95 ``10.37``, ~5.2% failure rate, matching the ~5.5% target used for
+   SIMPLE and SECURE).
 
-Scoring and Manager Priorities
-------------------------------
+.. _scoring:
 
-Topos produces a continuous normalized score ``[0.0, 1.0]`` for each pillar.
-A pillar is **achieved** when its independent raw gate or gates pass. Score
-floors are used by aggregate morphism paths and continuous scores preserve
-advisory detail; they are not the live file-level verdict rule.
+How Scores Work
+---------------
+
+.. versionchanged:: 0.10.0
+   Scores are gate-anchored and advisory metrics are read relative to the
+   codebase. Score floors and fixed advisory bands are retired, and priority
+   no longer reweights scores.
+
+Each pillar gets a score from 0 to 100 that is **anchored at its gates**:
+**50 is exactly at the gate, and a pillar passes if and only if its score is
+at least 50.** A score and its verdict can never disagree.
+
+1. **Gated metrics** map to a desirability ``d`` in ``[0, 1]`` with
+   ``d = 0.5`` exactly at the gate. Lower-is-better gates fall linearly from
+   1 at zero, to 0.5 at the gate, to 0 at twice the gate. The entropy band is
+   1 at 0.5 and 0.5 at its edges. Zero-tolerance counts (SECURE) are 1 at zero
+   and below 0.5 otherwise.
+2. The pillar's **gate score** ``G`` (reported as ``gate_scores``) is the
+   *minimum* over its gates, so the worst gate decides.
+3. **Advisory metrics** (cyclomatic, essential and nesting complexity,
+   fan-in, instability) never fail a pillar. Each is read as a percentile
+   among the files in the same scan, shrunk toward a per-language prior
+   derived from top open-source packages:
+
+   .. math::
+
+      \tilde F(x) = w \, F_{\text{local}}(x) + (1 - w) \, F_{\text{lang}}(x),
+      \qquad w = \frac{n}{n + k}
+
+   where :math:`n` is the number of files in the scan and :math:`k` is a
+   per-metric shrinkage constant from the prior table. The geometric mean
+   :math:`A` of the advisory qualities moves the score only **within the half
+   its gates chose**: :math:`S = 50 + (G - 50)\,A^{1/3}` when passing and
+   :math:`S = G\,A^{1/3}` when failing.
+
+Each reading in the ``advisories`` field reports ``value``,
+``relative_percentile``, ``global_percentile`` (against the language prior),
+``local_weight``, ``quality``, and ``flagged``. A flagged advisory means
+"atypical for this codebase and for top open-source code", not "buggy".
+Project scans (``topos evaluate -r``, ``topos_evaluate_project``) use the
+scanned files as the population; single-file calls read advisories against
+the language prior alone. A language without its own prior table uses the
+pooled ``_all`` prior.
 
 .. list-table::
-   :widths: 20 20 60
+   :widths: 20 80
    :header-rows: 1
 
    * - Pillar
-     - Threshold
-     - Raw Requirement (Policy Φᵢ)
+     - Gates (all must pass; ``achieved`` is their AND)
    * - **SIMPLE**
-     - ``0.40``
-     - ``max_func <= 10`` AND ``entropy in [0.2, 0.8]``; cyclomatic is advisory
+     - ``ast.max_function_complexity <= 10`` AND ``0.2 <= ast.entropy <= 0.8``
    * - **COMPOSABLE**
-     - ``0.80``
-     - ``fan_out <= 10``; fan-in and stability readings remain advisory
+     - ``mdg.fan_out <= 10``
    * - **SECURE**
-     - ``1.00``
-     - Zero ``dangerous_calls`` AND zero ``taint_flows``
+     - ``cpg.dangerous_calls = 0`` AND ``cpg.taint_flows = 0``
    * - **NAVIGABLE**
-     - ``0.40``
-     - ``max_function_divergence <= 10.0``
+     - ``nav.max_function_divergence <= 10.0``
 
-Scores are reported as percentages (0–100%) in all CLI and MCP output.
-Note that while the thresholds are used for score-floor aggregation, the
-authoritative achievement of a pillar is determined by the independent
-AND of the raw metric requirements defined in each generator's policy.
+Scores are reported as percentages in all CLI and MCP output.
 
-The weights (``w_*``) for each pillar's internal components are controlled by the **Priority** (part of the **Preference Ranking**):
+**Priority** (``--priority``) only orders the pillars. It names the pillar to
+work on next and breaks ties; it does not change what is measured or how
+scores are computed. See :doc:`preferences`.
 
+Calibration
+~~~~~~~~~~~
 
-.. list-table::
-   :widths: 15 15 15 15 40
-   :header-rows: 1
-
-   * - Priority
-     - ``simple``
-     - ``composable``
-     - ``secure``
-     - Effect
-   * - ``simple``
-     - 0.7
-     - 0.15
-     - 0.15
-     - Upweights SIMPLE; rewards low-complexity code
-   * - ``composable``
-     - 0.15
-     - 0.7
-     - 0.15
-     - Upweights COMPOSABLE; rewards tightly-bounded modules
-   * - ``secure``
-     - 0.15
-     - 0.15
-     - 0.7
-     - Upweights SECURE; rewards low-risk data flows
-
-Changing the priority does not change what is measured — it changes the weights
-within each generator's scoring function.
-
-Calibration against real corpora
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The thresholds above are not arbitrary. They are tuned so that the medal tiers
-track how mature, widely-trusted Python libraries actually score. Below, three
-reference codebases — ``requests``, ``numpy``, and ``pandas`` — measured pillar
-by pillar and by the resulting medal mix.
-
-.. raw:: html
-
-   <figure class="topos-figure">
-     <img class="only-light" src="_static/figures/topos-library-profiles.svg" alt="Average SIMPLE, COMPOSABLE, and SECURE scores for the requests, numpy, and pandas libraries." />
-     <img class="only-dark" src="_static/figures/topos-library-profiles-dark.svg" alt="" aria-hidden="true" />
-     <figcaption>Average pillar scores per library. Security clears its bar consistently; simplicity is the pillar most codebases leave on the table.</figcaption>
-   </figure>
-
-.. raw:: html
-
-   <figure class="topos-figure">
-     <img class="only-light" src="_static/figures/topos-medal-mix.svg" alt="Distribution of GOLD, SILVER, BRONZE, and SLOP medals across files in each reference library." />
-     <img class="only-dark" src="_static/figures/topos-medal-mix-dark.svg" alt="" aria-hidden="true" />
-     <figcaption>The per-file medal distribution that those thresholds produce.</figcaption>
-   </figure>
+The gates live in one place,
+``topos/engine/src/evaluation/policies/calibration.rs``, which records the
+corpus behind each value: SIMPLE, COMPOSABLE and SECURE were calibrated on
+top PyPI packages, and NAVIGABLE on a balanced six-ecosystem leaderboard
+corpus. The advisory priors sit beside them in
+``policies/advisory_priors.json``. That file is a pinned snapshot generated
+from the Topos leaderboard (top packages across PyPI, Cargo, npm, Go and MCP
+servers) and embedded in the binary, so scores are reproducible and work
+offline. Topos never downloads it at run time.
 
 Verdicts
 --------

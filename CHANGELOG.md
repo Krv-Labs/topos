@@ -27,6 +27,12 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 - `docs/calibration/leaderboard-rerun.md`: the smoke-test loop picked each
   cohort file's comment header as the package name.
+- Docs site *Measures* page (`docs/source/measures.rst`) described
+  pre-0.10 scoring: score floors, per-priority score weights, a fixed
+  instability band, and a NAVIGABLE score cap. It now explains gate-anchored
+  scores, `gate_scores`, codebase-relative advisories, and where calibration
+  lives, and drops two figures that still plotted the three-pillar corpus.
+  The MCP metrics doc no longer quotes a stale shrinkage `k` range.
 
 ## [0.10.0] - 2026-10-10
 

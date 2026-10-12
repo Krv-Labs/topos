@@ -20,7 +20,8 @@ gate, and the pillar passes ⇔ score ≥ 50**. Score and verdict cannot disagre
 2. The pillar's gate score `G` (`gate_scores`) is the **min** over its gates.
 3. *Advisory* metrics are read **relative to the codebase**: a percentile of
    the files in the same scan, shrunk toward a per-language prior from top
-   open-source packages (`w = n / (n + k)`, `k ≈ 3–6`). Each reading in
+   open-source packages (`w = n / (n + k)`, with a per-metric `k` from the
+   prior table; about 2–13 in the current snapshot). Each reading in
    `advisories` reports `value`, `relative_percentile`, `global_percentile`
    (language prior), `local_weight`, `quality`, and `flagged`. Their geometric
    mean `A` only moves the score **within its half**:

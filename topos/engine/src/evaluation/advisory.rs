@@ -10,7 +10,8 @@
 //!
 //! `F_local` and `F_lang` are mid-rank empirical CDFs (ties share one value),
 //! `F_lang` and `k` come from the embedded prior table
-//! (`advisory_priors.json`), a snapshot copied from a leaderboard run.
+//! (`policies/advisory_priors.json`, beside the gates in
+//! `policies/calibration.rs`), a snapshot copied from a leaderboard run.
 //! With no population (`n = 0`) the reading is the language-prior percentile.
 //!
 //! Percentiles and flags use the mid-rank `F̃`. HigherWorse *quality* uses the
@@ -103,7 +104,7 @@ fn default_flag_percentile() -> f64 {
 fn priors() -> &'static PriorTable {
     static TABLE: OnceLock<PriorTable> = OnceLock::new();
     TABLE.get_or_init(|| {
-        serde_json::from_str(include_str!("advisory_priors.json"))
+        serde_json::from_str(include_str!("policies/advisory_priors.json"))
             .expect("embedded advisory_priors.json is valid")
     })
 }

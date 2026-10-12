@@ -9,6 +9,25 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Changed
+
+- Advisory priors regenerated from the Topos v0.10.0 leaderboard rerun with
+  GitNexus (topos-leaderboard@7f1f905), from leaderboard rows only: no ad-hoc
+  corpora, so `provisional` is now empty and `mdg.fan_in` / `mdg.instability`
+  have Go, JavaScript, Python, Rust, and TypeScript tables. C++ rows are not
+  in this snapshot yet; C++ files read the pooled `_all` prior until they
+  land. Advisory percentiles and scores shift (shrinkage `k`: cyclomatic
+  3.88 → 2.57, essential 3.02 → 1.94, nesting 3.84 → 2.83, fan-in
+  7.38 → 5.09, instability 9.40 → 13.45); verdicts and medals are unchanged.
+- The priors snapshot moved to `topos/engine/src/evaluation/policies/advisory_priors.json`,
+  beside the gates in `policies/calibration.rs`, whose provenance notes now
+  name each source.
+
+### Fixed
+
+- `docs/calibration/leaderboard-rerun.md`: the smoke-test loop picked each
+  cohort file's comment header as the package name.
+
 ## [0.10.0] - 2026-10-10
 
 ### Added

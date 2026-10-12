@@ -21,10 +21,19 @@
 //!
 //! Advisory metrics (`cfg.cyclomatic`, `mdg.instability`, `mdg.fan_in`,
 //! …) have no fixed bands here; they are read relative to their codebase
-//! by [`crate::evaluation::advisory`].
+//! by [`crate::evaluation::advisory`] against the per-language priors in
+//! `advisory_priors.json` (this directory). That table is generated, not
+//! hand-edited: `topos-leaderboard-build-priors` derives it from leaderboard
+//! rows and it is copied here verbatim (`docs/calibration/leaderboard-rerun.md`).
 //!
-//! Calibration provenance: PyPI corpus ECDF calibration (June 2026). See
-//! `topos-leaderboard/CALIBRATION_REPORT.md` and `calibration.json`.
+//! Calibration provenance:
+//! - SIMPLE / COMPOSABLE / SECURE gates: PyPI corpus ECDF calibration
+//!   (June 2026); NAVIGABLE: balanced six-ecosystem leaderboard corpus
+//!   (2026-08-07, see [`NAVIGABLE`]). See `topos-leaderboard/CALIBRATION_REPORT.md`.
+//! - Advisory priors: leaderboard rerun with Topos v0.10.0 and GitNexus,
+//!   leaderboard rows only (topos-leaderboard@7f1f905, 2026-10-12: PyPI,
+//!   Cargo, npm, Go, MCP; C++ pending, so C++ reads the `_all` prior); per-language `n` and
+//!   sources are in `topos-leaderboard/leaderboard/data/advisory_priors.provenance.json`.
 //!
 //! `CoveragePolicyThresholds`/`ClonePolicyThresholds` — auxiliary,
 //! outside `Ω` — back `policies::{clones,coverage}` (issue #145).

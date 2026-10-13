@@ -1,6 +1,6 @@
 //! Coverage tool — structural test coverage (UAST).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
@@ -11,21 +11,14 @@ use topos_engine::evaluation::policies::coverage::score_declaration_coverage;
 use topos_engine::functors::profunctors::uast::inline_tests::{
     parse_coverage_root, parse_with_inline_tests,
 };
-use topos_engine::functors::profunctors::uast::structural_test_coverage::{
-    declaration_coverage, DeclarationCoverageReport,
-};
+use topos_engine::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
 use topos_engine::graphs::uast::models::UASTNode;
 
-use crate::execution::EvalCancelled;
+use crate::execution::{is_cancelled, EvalCancelled};
 use crate::formatting::to_tool_result;
 use crate::schemas::{CalculateCoverageInput, CoverageResult};
 use crate::security::resolve_within_root;
 use crate::server::ToposServer;
-
-#[inline]
-fn coverage_cancelled(cancel_flag: Option<&AtomicBool>) -> bool {
-    cancel_flag.is_some_and(|f| f.fetch_or(false, Ordering::Relaxed))
-}
 
 fn empty_coverage_result(error: String) -> CoverageResult {
     CoverageResult {
@@ -111,7 +104,7 @@ fn parse_inputs_with_cancel(
         .map(|path| (path, "PUT"))
         .chain(params.test_files.iter().map(|path| (path, "Test")));
     for (path, label) in inputs {
-        if coverage_cancelled(cancel_flag) {
+        if is_cancelled(cancel_flag) {
             return Err(EvalCancelled);
         }
         if let Err(err) =
@@ -119,6 +112,11 @@ fn parse_inputs_with_cancel(
         {
             return Ok(Err(err));
         }
+    }
+    if put.is_empty() {
+        return Ok(Err(
+            "No valid PUT roots found (parsing failed or files empty).".to_string(),
+        ));
     }
     Ok(Ok((put, tests)))
 }
@@ -192,37 +190,6 @@ pub(crate) fn render_coverage_md(r: &CoverageResult) -> String {
     lines.join("\n")
 }
 
-fn coverage_result_from_report(
-    report: DeclarationCoverageReport,
-    coverage_threshold: f64,
-) -> CallToolResult {
-    if report.put_declaration_count == 0 {
-        return error_tool_result(
-            "no function or method declarations found in source files; check --language and source paths"
-                .to_string(),
-        );
-    }
-    let decision = score_declaration_coverage(&report, coverage_threshold);
-    let model = CoverageResult {
-        mean_declaration_coverage: report.mean_declaration_coverage,
-        best_declaration_recall: report.best_declaration_recall.clone(),
-        declaration_locations: report.declaration_locations.clone(),
-        stmt_recall: report.stmt_recall,
-        expr_recall: report.expr_recall,
-        mean_test_precision: report.mean_test_precision,
-        f2_score: report.f2_score(),
-        declaration_path_recall_kgram: report.declaration_path_recall_kgram,
-        uncovered_declarations: report.uncovered_declarations(),
-        put_declaration_count: report.put_declaration_count,
-        test_declaration_count: report.test_declaration_count,
-        verdict: Some(decision.verdict.as_str().to_string()),
-        warnings: decision.inconclusive_reason.into_iter().collect(),
-        error: None,
-    };
-    let md = render_coverage_md(&model);
-    to_tool_result(&model, md)
-}
-
 fn calculate_coverage_with_cancel(
     params: &CalculateCoverageInput,
     cancel_flag: Option<&AtomicBool>,
@@ -231,33 +198,42 @@ fn calculate_coverage_with_cancel(
         Ok(roots) => roots,
         Err(error) => return Ok(error_tool_result(error)),
     };
-    if coverage_cancelled(cancel_flag) {
-        return Err(EvalCancelled);
-    }
-    if put_nodes.is_empty() {
-        return Ok(error_tool_result(
-            "No valid PUT roots found (parsing failed or files empty).".to_string(),
-        ));
-    }
-
     let put_roots: Vec<&UASTNode> = put_nodes.iter().collect();
     let test_roots: Vec<&UASTNode> = test_nodes.iter().collect();
-    let report =
-        match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
-            Ok(report) => report,
-            Err(exc) => {
-                return Ok(error_tool_result(format!(
-                    "Coverage calculation failed: {exc:?}"
-                )))
+
+    match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
+        Ok(report) if report.put_declaration_count == 0 => Ok(error_tool_result(
+            "no function or method declarations found in source files; check --language and source paths"
+                .to_string(),
+        )),
+        Ok(report) => {
+            if is_cancelled(cancel_flag) {
+                return Err(EvalCancelled);
             }
-        };
-    if coverage_cancelled(cancel_flag) {
-        return Err(EvalCancelled);
+            let decision = score_declaration_coverage(&report, params.coverage_threshold);
+            let model = CoverageResult {
+                mean_declaration_coverage: report.mean_declaration_coverage,
+                best_declaration_recall: report.best_declaration_recall.clone(),
+                declaration_locations: report.declaration_locations.clone(),
+                stmt_recall: report.stmt_recall,
+                expr_recall: report.expr_recall,
+                mean_test_precision: report.mean_test_precision,
+                f2_score: report.f2_score(),
+                declaration_path_recall_kgram: report.declaration_path_recall_kgram,
+                uncovered_declarations: report.uncovered_declarations(),
+                put_declaration_count: report.put_declaration_count,
+                test_declaration_count: report.test_declaration_count,
+                verdict: Some(decision.verdict.as_str().to_string()),
+                warnings: decision.inconclusive_reason.into_iter().collect(),
+                error: None,
+            };
+            let md = render_coverage_md(&model);
+            Ok(to_tool_result(&model, md))
+        }
+        Err(exc) => Ok(error_tool_result(format!(
+            "Coverage calculation failed: {exc:?}"
+        ))),
     }
-    Ok(coverage_result_from_report(
-        report,
-        params.coverage_threshold,
-    ))
 }
 
 #[tool_router(router = coverage_router, vis = "pub(crate)")]

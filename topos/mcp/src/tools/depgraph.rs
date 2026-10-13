@@ -5,78 +5,25 @@
 //! `topos_generate_depgraph` performs the side-effecting regeneration
 //! behind an approval-gated annotation.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResponse, CallToolResult, ErrorData as McpError};
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router, RoleServer};
-use topos_engine::adapters::gitnexus::{
-    generate_depgraph, generate_depgraph_with_cancel, gitnexus_available, resolve_timeout,
-    CANCELLED_RC, DEFAULT_ANALYZE_TIMEOUT_S,
-};
 
 use crate::evaluation::{
-    cap_generation_detail, clear_caches, clear_freshness_cache, depgraph_status, graph_build_lock,
-    resolve_mcp_composable_project_root, resolve_override_for_root, DepgraphStatus,
+    cap_generation_detail, depgraph_analyze_timeout, resolve_depgraph_target,
+    run_locked_depgraph_generation, DepgraphStatus, LockedGenerateOutcome,
 };
-use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
+use crate::execution::{EvalCancelled, StatusReporter};
 use crate::formatting::{depgraph_unavailable_risk_flags, finish_agent_contract, to_tool_result};
 use crate::schemas::{
     DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
     GenerateDepgraphResult,
 };
-use crate::security::{
-    composable_default_root, resolve_file_root, resolve_path_within, resolve_project_path,
-};
 use crate::server::ToposServer;
-
-/// Choose the analyze root for `topos_generate_depgraph`.
-///
-/// Explicit `directory` wins. When omitted, derive from `gitnexus_dir` the
-/// same way `topos_depgraph_status` does so status → generate stay aligned.
-fn resolve_depgraph_directory(directory: Option<&str>) -> Result<(PathBuf, PathBuf), String> {
-    match directory {
-        Some(dir) => resolve_project_path(dir),
-        None => {
-            let root = resolve_file_root()?;
-            Ok((root.clone(), root))
-        }
-    }
-}
-
-fn resolve_generate_project_root(
-    directory: Option<&Path>,
-    gitnexus_dir: Option<&str>,
-    file_root: &Path,
-) -> PathBuf {
-    match directory {
-        Some(dir) => dir.to_path_buf(),
-        None => resolve_mcp_composable_project_root(gitnexus_dir, file_root),
-    }
-}
-
-/// Choose the `gitnexus_dir` override to pass to [`depgraph_status`]
-/// alongside the root [`resolve_generate_project_root`] just derived.
-///
-/// Only when that root was itself derived from `gitnexus_dir` (no explicit
-/// `directory`) has it already absorbed a relative override's subdirectory
-/// — rejoining the raw override against it would then double that
-/// subdirectory, so resolve it to an absolute path first in that case. An
-/// explicit `directory` is independent of `gitnexus_dir`, so the raw
-/// (still relative-to-`directory`) override is correct as-is there.
-fn resolve_generate_status_override(
-    directory: Option<&Path>,
-    gitnexus_dir: Option<&str>,
-    file_root: &Path,
-) -> Option<String> {
-    match directory {
-        Some(_) => gitnexus_dir.map(str::to_string),
-        None => resolve_override_for_root(gitnexus_dir, file_root),
-    }
-}
 
 fn parse_state(state: &str) -> DepgraphState {
     match state {
@@ -332,11 +279,8 @@ impl ToposServer {
         context: RequestContext<RoleServer>,
         Parameters(params): Parameters<DepgraphStatusInput>,
     ) -> Result<CallToolResult, McpError> {
-        self.executor()
-            .run_inline(&context, move |cancel_flag| {
-                if is_cancelled(Some(cancel_flag)) {
-                    return Err(EvalCancelled);
-                }
+        self.executor
+            .run_inline(&context, move |_cancel_flag| {
                 Ok(depgraph_status_sync(params))
             })
             .await
@@ -362,47 +306,22 @@ impl ToposServer {
         context: RequestContext<RoleServer>,
         Parameters(params): Parameters<GenerateDepgraphInput>,
     ) -> Result<CallToolResponse, McpError> {
-        let (resolved_directory, detected_project) =
-            match resolve_depgraph_directory(params.directory.as_deref()) {
-                Ok(context) => context,
-                Err(err) => {
-                    let model = generate_error(err);
-                    let md = render_generate_md(&model);
-                    return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
-                }
-            };
-        let composable_root = composable_default_root(&detected_project);
-        if let Some(dir) = &params.gitnexus_dir {
-            if let Err(err) = resolve_path_within(dir, &composable_root) {
+        let (target, pre_status) = match resolve_depgraph_target(
+            params.directory.as_deref(),
+            params.gitnexus_dir.as_deref(),
+            true,
+            !params.force,
+        ) {
+            Ok(resolved) => resolved,
+            Err(err) => {
                 let model = generate_error(err);
                 let md = render_generate_md(&model);
                 return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
             }
-        }
-        if !resolved_directory.is_dir() {
-            let model =
-                generate_error(format!("Not a directory: {}", resolved_directory.display()));
-            let md = render_generate_md(&model);
-            return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
-        }
-        let target_dir = resolve_generate_project_root(
-            Some(&resolved_directory),
-            params.gitnexus_dir.as_deref(),
-            &composable_root,
-        );
-        let status_override = resolve_generate_status_override(
-            Some(&resolved_directory),
-            params.gitnexus_dir.as_deref(),
-            &composable_root,
-        );
+        };
 
         let mut state_before = None;
-        if !params.force {
-            let status = depgraph_status(
-                status_override.as_deref(),
-                &target_dir,
-                &target_dir.to_string_lossy(),
-            );
+        if let Some(status) = pre_status {
             let state = parse_state(status.state);
             state_before = Some(state);
             if state == DepgraphState::Present {
@@ -417,27 +336,25 @@ impl ToposServer {
             }
         }
 
-        if !gitnexus_available() {
-            let result = generate_depgraph(&target_dir, true, None);
-            let model = generation_failed(result.returncode, &result.message, state_before);
-            let md = render_generate_md(&model);
-            return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
-        }
-
-        let timeout_s = resolve_timeout(None).unwrap_or(DEFAULT_ANALYZE_TIMEOUT_S);
-        let timeout = Duration::from_secs_f64(timeout_s.max(1.0));
+        let timeout = match depgraph_analyze_timeout(&target.target_dir) {
+            Ok(timeout) => timeout,
+            Err(result) => {
+                let model = generation_failed(result.returncode, &result.message, state_before);
+                let md = render_generate_md(&model);
+                return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
+            }
+        };
         let force = params.force;
 
-        self.executor()
-            .run_task_or_inline(
-                self.task_manager(),
+        self.executor
+            .run_task(
                 &context,
                 timeout,
                 "Generating GitNexus dependency graph",
                 move |cancel_flag, reporter| {
                     generate_depgraph_blocking(
-                        &target_dir,
-                        status_override.as_deref(),
+                        &target.target_dir,
+                        target.status_override.as_deref(),
                         force,
                         state_before,
                         Some(cancel_flag),
@@ -450,39 +367,20 @@ impl ToposServer {
 }
 
 pub(crate) fn depgraph_status_sync(params: DepgraphStatusInput) -> CallToolResult {
-    let (_directory, detected_project) =
-        match resolve_depgraph_directory(params.directory.as_deref()) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = status_error(err);
-                let md = render_status_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
-    let composable_root = composable_default_root(&detected_project);
-    let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+    let (_target, status) = match resolve_depgraph_target(
+        params.directory.as_deref(),
         params.gitnexus_dir.as_deref(),
-        &composable_root,
-    );
-    if let Some(dir) = &params.gitnexus_dir {
-        if let Err(err) = resolve_path_within(dir, &composable_root) {
+        false,
+        true,
+    ) {
+        Ok(resolved) => resolved,
+        Err(err) => {
             let model = status_error(err);
             let md = render_status_md(&model);
             return to_tool_result(&model, md);
         }
-    }
-    // Resolved to an absolute path against `file_root` — must be used
-    // below instead of `params.gitnexus_dir`, since `project_root` above
-    // already absorbed a relative override's subdirectory; rejoining the
-    // original relative string against it a second time would double
-    // that subdirectory.
-    let resolved_override =
-        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-    let status = depgraph_status(
-        resolved_override.as_deref(),
-        &project_root,
-        &project_root.to_string_lossy(),
-    );
+    };
+    let status = status.expect("include_status=true");
     let model = status_to_result(&status);
     let md = render_status_md(&model);
     to_tool_result(&model, md)
@@ -546,47 +444,27 @@ fn generate_depgraph_blocking(
     cancel_flag: Option<&AtomicBool>,
     status_reporter: Option<&StatusReporter>,
 ) -> Result<CallToolResult, EvalCancelled> {
-    let lock = graph_build_lock(target_dir);
-    let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    if is_cancelled(cancel_flag) {
-        return Err(EvalCancelled);
-    }
-
-    if !force {
-        let status = depgraph_status(status_override, target_dir, &target_dir.to_string_lossy());
-        if parse_state(status.state) == DepgraphState::Present {
-            let model = already_current_result(status.gitnexus_dir, state_before);
-            let md = render_generate_md(&model);
-            return Ok(to_tool_result(&model, md));
+    let model = match run_locked_depgraph_generation(
+        target_dir,
+        status_override,
+        force,
+        cancel_flag,
+        status_reporter,
+    )? {
+        LockedGenerateOutcome::AlreadyCurrent { gitnexus_dir } => {
+            already_current_result(gitnexus_dir, state_before)
         }
-    }
-
-    if let Some(r) = status_reporter {
-        r.report("Running gitnexus analyze");
-    }
-
-    let result = generate_depgraph_with_cancel(target_dir, true, None, cancel_flag);
-    clear_caches();
-    clear_freshness_cache();
-
-    if result.returncode == CANCELLED_RC || is_cancelled(cancel_flag) {
-        return Err(EvalCancelled);
-    }
-
-    if !result.ok {
-        let model = generation_failed(result.returncode, &result.message, state_before);
-        let md = render_generate_md(&model);
-        return Ok(to_tool_result(&model, md));
-    }
-
-    let model = generation_succeeded(
-        result
-            .gitnexus_path
-            .map(|p| p.to_string_lossy().to_string()),
-        &result.message,
-        state_before,
-    );
+        LockedGenerateOutcome::Generated(result) if !result.ok => {
+            generation_failed(result.returncode, &result.message, state_before)
+        }
+        LockedGenerateOutcome::Generated(result) => generation_succeeded(
+            result
+                .gitnexus_path
+                .map(|p| p.to_string_lossy().to_string()),
+            &result.message,
+            state_before,
+        ),
+    };
     let md = render_generate_md(&model);
     Ok(to_tool_result(&model, md))
 }
@@ -716,69 +594,5 @@ mod tests {
             let (_, _, blocked) = state_guidance(state);
             assert_eq!(blocked, code, "{state:?}");
         }
-    }
-
-    #[test]
-    fn resolve_generate_project_root_derives_from_gitnexus_dir_like_status() {
-        // Callers pass a canonical file_root (resolve_file_root does); do the
-        // same here so macOS /tmp -> /private/tmp does not fake an escape.
-        let file_root =
-            std::env::temp_dir().join(format!("topos_generate_root_{}", std::process::id()));
-        std::fs::create_dir_all(&file_root).unwrap();
-        let file_root = file_root.canonicalize().unwrap();
-        let nested = file_root.join("nested");
-        std::fs::create_dir_all(nested.join(".gitnexus")).unwrap();
-        let store = nested.join(".gitnexus");
-
-        let derived =
-            resolve_generate_project_root(None, Some(store.to_str().unwrap()), &file_root);
-        assert_eq!(derived, nested.canonicalize().unwrap());
-
-        let explicit = resolve_generate_project_root(
-            Some(file_root.as_path()),
-            Some(store.to_str().unwrap()),
-            &file_root,
-        );
-        assert_eq!(explicit, file_root);
-
-        std::fs::remove_dir_all(&file_root).ok();
-    }
-
-    #[test]
-    fn resolve_generate_status_override_matches_the_root_it_pairs_with() {
-        // Regression: `depgraph_status` re-joins a *relative* override
-        // against whatever root it's given. When `directory` is omitted,
-        // `resolve_generate_project_root` derives a root from a relative
-        // `gitnexus_dir` with a subdirectory (e.g. `repo/.gitnexus`) — so
-        // the override paired with it must already be resolved to an
-        // absolute path, or the subdirectory doubles
-        // (`repo/.gitnexus` -> `repo/repo/.gitnexus`).
-        let file_root = std::env::temp_dir().join(format!(
-            "topos_generate_status_override_{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(file_root.join("repo/.gitnexus")).unwrap();
-        let file_root = file_root.canonicalize().unwrap();
-        let raw_override = "repo/.gitnexus";
-
-        let derived_override =
-            resolve_generate_status_override(None, Some(raw_override), &file_root);
-        assert_eq!(
-            derived_override.as_deref(),
-            file_root.join("repo/.gitnexus").to_str(),
-            "must resolve to the real store, not double the subdirectory"
-        );
-
-        // An explicit `directory` is independent of `gitnexus_dir` — pass
-        // the raw override through unresolved, still relative to that
-        // directory.
-        let explicit_override = resolve_generate_status_override(
-            Some(file_root.as_path()),
-            Some(raw_override),
-            &file_root,
-        );
-        assert_eq!(explicit_override.as_deref(), Some(raw_override));
-
-        std::fs::remove_dir_all(&file_root).ok();
     }
 }

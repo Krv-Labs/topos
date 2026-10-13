@@ -122,6 +122,7 @@ pub struct ExecutionCoordinator {
     active_ops: Arc<Mutex<HashMap<u64, Arc<AtomicBool>>>>,
     next_op_id: Arc<AtomicU64>,
     idle_notify: Arc<Notify>,
+    task_manager: TaskManager,
 }
 
 struct ActiveOpGuard {
@@ -157,12 +158,20 @@ impl ExecutionCoordinator {
         Self::with_max_concurrency(default_concurrency_limit())
     }
 
+    pub fn with_task_manager(task_manager: TaskManager) -> Self {
+        Self {
+            task_manager,
+            ..Self::new()
+        }
+    }
+
     pub fn with_max_concurrency(max_concurrency: usize) -> Self {
         Self {
             semaphore: Arc::new(Semaphore::new(max_concurrency.max(1))),
             active_ops: Arc::new(Mutex::new(HashMap::new())),
             next_op_id: Arc::new(AtomicU64::new(1)),
             idle_notify: Arc::new(Notify::new()),
+            task_manager: TaskManager::new(),
         }
     }
 
@@ -244,6 +253,9 @@ impl ExecutionCoordinator {
         let mut handle = tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let _active = active_guard;
+            if worker_flag.load(Ordering::Relaxed) {
+                return Err(EvalCancelled);
+            }
             work(&worker_flag)
         });
 
@@ -265,6 +277,24 @@ impl ExecutionCoordinator {
                 }
             }
         }
+    }
+
+    /// Same as [`Self::run_task_or_inline`], using the coordinator's embedded
+    /// server-scoped [`TaskManager`].
+    pub async fn run_task<F>(
+        &self,
+        context: &RequestContext<RoleServer>,
+        timeout: Duration,
+        initial_status: &'static str,
+        work: F,
+    ) -> Result<CallToolResponse, McpError>
+    where
+        F: FnOnce(&AtomicBool, &StatusReporter) -> Result<CallToolResult, EvalCancelled>
+            + Send
+            + 'static,
+    {
+        self.run_task_or_inline(&self.task_manager, context, timeout, initial_status, work)
+            .await
     }
 
     /// Run a heavy tool body either as a background SEP-2663 task (when the

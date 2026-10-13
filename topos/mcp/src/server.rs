@@ -87,7 +87,7 @@ const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 pub struct ToposServer {
     tool_router: ToolRouter<ToposServer>,
     task_manager: TaskManager,
-    executor: ExecutionCoordinator,
+    pub(crate) executor: ExecutionCoordinator,
 }
 
 impl Default for ToposServer {
@@ -107,10 +107,12 @@ impl ToposServer {
             + Self::inspect_router()
             + Self::preferences_router()
             + Self::refactor_router();
+        let task_manager = TaskManager::new();
+        let executor = ExecutionCoordinator::with_task_manager(task_manager.clone());
         ToposServer {
             tool_router,
-            task_manager: TaskManager::new(),
-            executor: ExecutionCoordinator::new(),
+            task_manager,
+            executor,
         }
     }
 

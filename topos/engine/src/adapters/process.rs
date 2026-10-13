@@ -111,6 +111,28 @@ fn kill_child_process_group(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
+fn readers_finished(
+    stdout: &Option<std::thread::JoinHandle<String>>,
+    stderr: &Option<std::thread::JoinHandle<String>>,
+) -> bool {
+    stdout.as_ref().is_none_or(|r| r.is_finished())
+        && stderr.as_ref().is_none_or(|r| r.is_finished())
+}
+
+fn check_deadline_or_cancel(
+    start: Instant,
+    timeout: Option<Duration>,
+    cancel_flag: Option<&AtomicBool>,
+) -> Option<RunError> {
+    if cancel_flag.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Some(RunError::Cancelled);
+    }
+    if timeout.is_some_and(|limit| start.elapsed() >= limit) {
+        return Some(RunError::TimedOut);
+    }
+    None
+}
+
 /// Run `cmd` in `cwd` like [`run_with_timeout`], additionally polling
 /// `cancel_flag` every [`POLL_INTERVAL`] and killing the entire process group
 /// immediately when set.
@@ -136,34 +158,18 @@ pub fn run_with_timeout_and_cancel(
         if exited.is_none() {
             exited = child.try_wait().map_err(RunError::Io)?;
         }
-        let drained = stdout_reader.as_ref().is_none_or(|r| r.is_finished())
-            && stderr_reader.as_ref().is_none_or(|r| r.is_finished());
-        match exited {
-            Some(status) if drained => {
-                return Ok(RunOutput {
-                    status_code: status.code(),
-                    stdout: stdout_reader.map(join_reader).unwrap_or_default(),
-                    stderr: stderr_reader.map(join_reader).unwrap_or_default(),
-                });
-            }
-            _ => {
-                let cancelled = cancel_flag.is_some_and(|flag| flag.load(Ordering::Relaxed));
-                let timed_out = timeout.is_some_and(|limit| start.elapsed() >= limit);
-                if cancelled || timed_out {
-                    kill_child_process_group(&mut child);
-                    // Do not wait for EOF from descendants that detached from
-                    // the process group. The readers finish when their pipes close.
-                    drop(stdout_reader);
-                    drop(stderr_reader);
-                    return Err(if cancelled {
-                        RunError::Cancelled
-                    } else {
-                        RunError::TimedOut
-                    });
-                }
-                std::thread::sleep(POLL_INTERVAL);
-            }
+        if let Some(status) = exited.filter(|_| readers_finished(&stdout_reader, &stderr_reader)) {
+            return Ok(RunOutput {
+                status_code: status.code(),
+                stdout: stdout_reader.map(join_reader).unwrap_or_default(),
+                stderr: stderr_reader.map(join_reader).unwrap_or_default(),
+            });
         }
+        if let Some(err) = check_deadline_or_cancel(start, timeout, cancel_flag) {
+            kill_child_process_group(&mut child);
+            return Err(err);
+        }
+        std::thread::sleep(POLL_INTERVAL);
     }
 }
 

@@ -9,6 +9,28 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- Pin `rmcp` to `~3.5.1` and add SEP-2663 background task support (`tasks/get`,
+  `tasks/update`, `tasks/cancel`) for `topos_generate_depgraph`,
+  `topos_evaluate_project`, `topos_assess_changeset`, and
+  `topos_calculate_coverage` when clients declare
+  `io.modelcontextprotocol/tasks` on MCP `2026-07-28+`. Fast-path argument and
+  path validation failures return `resultType: "complete"` immediately without
+  allocating a background task.
+- Add SEP-2549 explicit caching hints (`ttlMs: 86400000`,
+  `cacheScope: "public"`) on static discovery and documentation surfaces
+  (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`,
+  and `topos://docs/*`), and (`ttlMs: 0`, `cacheScope: "private"`) on the
+  runtime-specific `topos://build` resource.
+
+### Fixed
+
+- Offload blocking MCP tool handlers to bounded `spawn_blocking` workers
+  (`2..=4` concurrency semaphore with operation-owned permits), serialize
+  concurrent `.gitnexus` builds per project root, and propagate cooperative
+  cancellation and stdio EOF teardown to child process groups.
+
 ## [0.10.2] - 2026-10-14
 
 ### Changed

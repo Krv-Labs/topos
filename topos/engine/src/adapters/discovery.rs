@@ -364,15 +364,21 @@ fn has_suffix(path: &Path, suffixes: &[&str]) -> bool {
 
 /// Split one directory's already-sorted children into matching files and
 /// subdirectories to recurse into, applying the skip/ignore filters once.
+/// Returns `None` if `cancel_flag` is set during the scan.
 fn scan_dir_children(
     entries: Vec<PathBuf>,
     suffixes: &[&str],
     ignored: &impl Fn(&Path) -> bool,
     is_top_level: bool,
-) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<(Vec<PathBuf>, Vec<PathBuf>)> {
+    use std::sync::atomic::Ordering;
     let mut files = Vec::new();
     let mut subdirs = Vec::new();
     for entry in entries {
+        if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+            return None;
+        }
         if entry.is_dir() {
             if should_skip_dir_context(&entry, is_top_level) || ignored(&entry) {
                 continue;
@@ -386,7 +392,7 @@ fn scan_dir_children(
             files.push(entry);
         }
     }
-    (files, subdirs)
+    Some((files, subdirs))
 }
 
 /// Collect source files under `root`, pruning venvs and ignored directories.
@@ -404,6 +410,24 @@ pub fn iter_source_files(
     is_ignored: Option<&PathFilter>,
     include_dirs: bool,
 ) -> Vec<PathBuf> {
+    iter_source_files_with_cancel(root, suffixes, recursive, is_ignored, include_dirs, None)
+        .unwrap_or_default()
+}
+
+/// Like [`iter_source_files`], but aborts and returns `None` if `cancel_flag`
+/// is set during the directory walk.
+pub fn iter_source_files_with_cancel(
+    root: &Path,
+    suffixes: &[&str],
+    recursive: bool,
+    is_ignored: Option<&PathFilter>,
+    include_dirs: bool,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<Vec<PathBuf>> {
+    use std::sync::atomic::Ordering;
+    if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+        return None;
+    }
     let ignored = |p: &Path| is_ignored.is_some_and(|f| f(p));
     let mut out = Vec::new();
 
@@ -414,10 +438,10 @@ pub fn iter_source_files(
         if has_suffix(root, suffixes) {
             out.push(root.to_path_buf());
         }
-        return out;
+        return Some(out);
     }
     if !root.is_dir() {
-        return out;
+        return Some(out);
     }
 
     // `ROOT_ONLY_SKIP_DIR_NAMES` (build/dist/coverage/...) are repo-top-level
@@ -430,6 +454,9 @@ pub fn iter_source_files(
     let apply_root_only_at_scan_top = git_root.is_none() || root_is_repo_top;
     let mut stack = vec![root.to_path_buf()];
     while let Some(current) = stack.pop() {
+        if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+            return None;
+        }
         let Ok(read_dir) = std::fs::read_dir(&current) else {
             continue;
         };
@@ -437,7 +464,8 @@ pub fn iter_source_files(
         entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
         let is_top_level = current == root && apply_root_only_at_scan_top;
-        let (files, subdirs) = scan_dir_children(entries, suffixes, &ignored, is_top_level);
+        let (files, subdirs) =
+            scan_dir_children(entries, suffixes, &ignored, is_top_level, cancel_flag)?;
         out.extend(files);
         if include_dirs {
             out.push(current);
@@ -446,7 +474,7 @@ pub fn iter_source_files(
             stack.extend(subdirs);
         }
     }
-    out
+    Some(out)
 }
 
 /// Collect source files from explicit paths (files or directories).
@@ -455,9 +483,24 @@ pub fn collect_source_files<P: AsRef<Path>>(
     suffixes: &[&str],
     recursive: bool,
 ) -> Vec<PathBuf> {
+    collect_source_files_with_cancel(paths, suffixes, recursive, None).unwrap_or_default()
+}
+
+/// Like [`collect_source_files`], but aborts and returns `None` if
+/// `cancel_flag` is set during discovery.
+pub fn collect_source_files_with_cancel<P: AsRef<Path>>(
+    paths: &[P],
+    suffixes: &[&str],
+    recursive: bool,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+) -> Option<Vec<PathBuf>> {
+    use std::sync::atomic::Ordering;
     let mut files: BTreeSet<PathBuf> = BTreeSet::new();
 
     for path_arg in paths {
+        if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+            return None;
+        }
         let path = path_arg.as_ref();
         if path.is_file() {
             // Explicit file: suffix match alone wins (overrides builtin,
@@ -474,16 +517,18 @@ pub fn collect_source_files<P: AsRef<Path>>(
         }
 
         let is_ignored = build_path_skip_checker(path);
-        files.extend(iter_source_files(
+        let found = iter_source_files_with_cancel(
             path,
             suffixes,
             recursive,
             Some(&is_ignored),
             false,
-        ));
+            cancel_flag,
+        )?;
+        files.extend(found);
     }
 
-    files.into_iter().collect()
+    Some(files.into_iter().collect())
 }
 
 #[cfg(test)]

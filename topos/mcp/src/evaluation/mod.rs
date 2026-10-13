@@ -22,11 +22,32 @@ pub use freshness::clear_freshness_cache;
 pub use freshness::{all_source_suffixes, graph_freshness};
 pub use gitref::{git_head_mtime, git_head_sha, gitnexus_mtime};
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, LazyLock, Mutex};
 
-use topos_engine::adapters::gitnexus::{generate_depgraph, gitnexus_available};
+use topos_engine::adapters::gitnexus::{
+    generate_depgraph_with_cancel, gitnexus_available, CANCELLED_RC,
+};
 
+use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
 use crate::security::resolve_existing_prefix;
+
+static GRAPH_BUILD_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Return the per-target-directory mutex serializing concurrent `gitnexus analyze`
+/// builds against the same project/store root.
+pub fn graph_build_lock(target_dir: &Path) -> Arc<Mutex<()>> {
+    let key = target_dir
+        .canonicalize()
+        .unwrap_or_else(|_| target_dir.to_path_buf());
+    let mut map = GRAPH_BUILD_LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Arc::clone(map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))))
+}
 
 /// Stable prefixes shared by the producer (this module) and the
 /// agent-contract consumer (`formatting::composable_contract_signals`) so an
@@ -167,6 +188,42 @@ pub fn ensure_gitnexus_dir(
     ensure_gitnexus_dir_with_progress(override_dir, project_root, skip, capture, &mut |_| {})
 }
 
+fn state_needs_rebuild(state: &str) -> bool {
+    matches!(
+        state,
+        "missing" | "stale" | "branch_not_indexed" | "load_error"
+    )
+}
+
+fn rebuild_gitnexus_locked(
+    override_dir: Option<&str>,
+    project_root: &Path,
+    capture: bool,
+    cancel_flag: Option<&AtomicBool>,
+    progress: &mut dyn FnMut(&'static str),
+) -> Result<Option<String>, EvalCancelled> {
+    let lock = graph_build_lock(project_root);
+    let _guard = lock.lock().unwrap_or_else(|p| p.into_inner());
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let rechecked = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    if !state_needs_rebuild(rechecked.state) {
+        return Ok(None);
+    }
+    progress("Running gitnexus analyze");
+    let result = generate_depgraph_with_cancel(project_root, capture, None, cancel_flag);
+    clear_caches();
+    clear_freshness_cache();
+    if result.returncode == CANCELLED_RC || is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    Ok((!result.ok).then(|| generation_failure_note(&result.message)))
+}
+
 /// Same as [`ensure_gitnexus_dir`], invoking `progress` with stable phase
 /// labels so CLI spinners can distinguish freshness checks from
 /// `gitnexus analyze`.
@@ -177,57 +234,86 @@ pub fn ensure_gitnexus_dir_with_progress(
     capture: bool,
     progress: &mut dyn FnMut(&'static str),
 ) -> GitnexusEnsureOutcome {
-    if skip {
-        return GitnexusEnsureOutcome {
+    ensure_gitnexus_dir_inner(override_dir, project_root, skip, capture, None, progress).unwrap_or(
+        GitnexusEnsureOutcome {
             gitnexus_dir: None,
             generation_note: None,
-        };
-    }
-    let resolve = || resolve_gitnexus_dir(override_dir, project_root);
+        },
+    )
+}
 
+/// Cancellation-aware and lock-serialized variant of [`ensure_gitnexus_dir`]
+/// for MCP tool workers.
+///
+/// Propagates [`EvalCancelled`] as a distinct error rather than converting an
+/// aborted `gitnexus analyze` subprocess into a non-fatal `generation_note`.
+pub fn ensure_gitnexus_dir_with_cancel(
+    override_dir: Option<&str>,
+    project_root: &Path,
+    skip: bool,
+    capture: bool,
+    cancel_flag: Option<&AtomicBool>,
+    status_reporter: Option<&StatusReporter>,
+) -> Result<GitnexusEnsureOutcome, EvalCancelled> {
+    let mut progress = |msg: &'static str| {
+        if let Some(reporter) = status_reporter {
+            reporter.report(msg);
+        }
+    };
+    ensure_gitnexus_dir_inner(
+        override_dir,
+        project_root,
+        skip,
+        capture,
+        cancel_flag,
+        &mut progress,
+    )
+}
+
+fn ensure_gitnexus_dir_inner(
+    override_dir: Option<&str>,
+    project_root: &Path,
+    skip: bool,
+    capture: bool,
+    cancel_flag: Option<&AtomicBool>,
+    progress: &mut dyn FnMut(&'static str),
+) -> Result<GitnexusEnsureOutcome, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    if skip {
+        return Ok(GitnexusEnsureOutcome {
+            gitnexus_dir: None,
+            generation_note: None,
+        });
+    }
     progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
-    if !matches!(
-        status.state,
-        "missing" | "stale" | "branch_not_indexed" | "load_error"
-    ) {
-        // present, or a problem generating won't fix (invalid_dir for an
-        // outside-root override, schema_mismatch) — let gitnexus_warnings
-        // explain it from the resolved state. In-root not-yet-created
-        // overrides are `missing`, not `invalid_dir` (#287).
-        //
-        // `branch_not_indexed` and `load_error` *are* fixable by generating:
-        // branch-scoped stores mean a freshly checked-out branch has no store
-        // until `gitnexus analyze` indexes it, and the common load failure is
-        // a half-written store left by an interrupted analyze. Treating both
-        // as terminal left COMPOSABLE silently dead until the user re-ran
-        // GitNexus by hand. One analyze is attempted per call, so a store
-        // that genuinely cannot be rebuilt still stops after
-        // `generation_note` explains why.
-        return GitnexusEnsureOutcome {
-            gitnexus_dir: resolve(),
-            generation_note: None,
-        };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
     }
-
+    if !state_needs_rebuild(status.state) {
+        return Ok(GitnexusEnsureOutcome {
+            gitnexus_dir: resolve_gitnexus_dir(override_dir, project_root),
+            generation_note: None,
+        });
+    }
     if !gitnexus_available() {
-        return GitnexusEnsureOutcome {
-            gitnexus_dir: resolve(),
+        return Ok(GitnexusEnsureOutcome {
+            gitnexus_dir: resolve_gitnexus_dir(override_dir, project_root),
             generation_note: Some(
                 "GitNexus not found on $PATH — COMPOSABLE not scored. Install it with \
                  `npm install -g gitnexus` to enable COMPOSABLE."
                     .to_string(),
             ),
-        };
+        });
     }
-
-    progress("Running gitnexus analyze");
-    let result = generate_depgraph(project_root, capture, None);
-    let generation_note = (!result.ok).then(|| generation_failure_note(&result.message));
-    GitnexusEnsureOutcome {
-        gitnexus_dir: resolve(),
+    let generation_note =
+        rebuild_gitnexus_locked(override_dir, project_root, capture, cancel_flag, progress)?;
+    Ok(GitnexusEnsureOutcome {
+        gitnexus_dir: resolve_gitnexus_dir(override_dir, project_root),
         generation_note,
-    }
+    })
 }
 
 /// Upper bound, in bytes, on how much GitNexus child output is echoed into an

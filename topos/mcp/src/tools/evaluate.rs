@@ -3,10 +3,13 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::model::{CallToolResponse, CallToolResult, ErrorData as McpError};
+use rmcp::service::RequestContext;
+use rmcp::{tool, tool_router, RoleServer};
 use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
 use topos_engine::evaluation::advisory::{advisories_json, rescore_population};
@@ -19,9 +22,11 @@ use crate::diagnostics::{
     opt_in_security_report, overlay_for_file, overlay_for_source, SecurityOverlay,
 };
 use crate::evaluation::{
-    all_source_suffixes, classify_code_string, classify_file, detect_language, ensure_gitnexus_dir,
-    gitnexus_warnings, resolve_mcp_composable_project_root, resolve_override_for_root,
+    all_source_suffixes, classify_code_string, classify_file, detect_language,
+    ensure_gitnexus_dir_with_cancel, gitnexus_warnings, resolve_mcp_composable_project_root,
+    resolve_override_for_root,
 };
+use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
 use crate::formatting::append_path_note;
 use crate::formatting::{
     agent_contract_prelude, build_pillars, error_md, finish_agent_contract, render_evaluation_md,
@@ -96,36 +101,19 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_evaluate_code(
+    pub async fn topos_evaluate_code(
         &self,
+        context: RequestContext<RoleServer>,
         Parameters(params): Parameters<EvaluateCodeInput>,
-    ) -> CallToolResult {
-        let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-        let result = match classify_code_string(&params.code, &params.language, priority) {
-            Ok(result) => result,
-            Err(exc) => {
-                return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
-            }
-        };
-        let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
-            Some(Err(exc)) => {
-                return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
-            }
-            Some(Ok(p)) => Some(p),
-            None => None,
-        };
-        let overlay =
-            overlay_for_source(&params.code, &params.language, &result, None, &params.allow);
-        let mut opts = EvalResultOptions::new();
-        opts.preferences = prefs.as_ref();
-        opts.priority_source = priority_source;
-        opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
-        overlay_opts(overlay.as_ref(), &mut opts);
-        opts.verbose = params.verbose;
-        opts.metric_locations = build_metric_locations(&params.code, &params.language, &result);
-        let model = to_evaluation_result(&result, false, opts);
-        let md = render_evaluation_md(&model, None, params.verbose);
-        to_tool_result(&model, md)
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                if is_cancelled(Some(cancel_flag)) {
+                    return Err(EvalCancelled);
+                }
+                Ok(evaluate_code_sync(params))
+            })
+            .await
     }
 
     /// Score a file on disk on the SIMPLE / COMPOSABLE / SECURE / NAVIGABLE
@@ -155,20 +143,17 @@ impl ToposServer {
     )]
     pub async fn topos_evaluate_file(
         &self,
+        context: RequestContext<RoleServer>,
         Parameters(params): Parameters<EvaluateFileInput>,
-    ) -> CallToolResult {
+    ) -> Result<CallToolResult, McpError> {
         // Generation can shell out to `gitnexus analyze` (bounded by
         // TOPOS_DEPGRAPH_TIMEOUT, default 300s); offload so a slow/first-time
         // run cannot stall the transport, matching topos_evaluate_project.
-        match tokio::task::spawn_blocking(move || evaluate_file_sync(params)).await {
-            Ok(tool_result) => tool_result,
-            Err(join_err) => err_eval(
-                "Evaluation failed",
-                Priority::Simple,
-                PrioritySource::Default,
-                format!("file evaluation panicked: {join_err}"),
-            ),
-        }
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                evaluate_file_sync_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Recursively score every supported source file in a directory on the
@@ -203,46 +188,99 @@ impl ToposServer {
     )]
     pub async fn topos_evaluate_project(
         &self,
+        context: RequestContext<RoleServer>,
         Parameters(params): Parameters<EvaluateProjectInput>,
-    ) -> CallToolResult {
-        // The walk + per-file classification is CPU-bound; run it off the
-        // async executor so a large project cannot stall the transport.
-        let result = tokio::task::spawn_blocking(move || evaluate_project_sync(params)).await;
-        match result {
-            Ok(tool_result) => tool_result,
-            Err(join_err) => {
-                let (priority, priority_source) = (Priority::Simple, PrioritySource::Default);
-                err_eval(
-                    "Evaluation failed",
-                    priority,
-                    priority_source,
-                    format!("project evaluation panicked: {join_err}"),
-                )
+    ) -> Result<CallToolResponse, McpError> {
+        let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+        if let Some(Err(exc)) = params.preferences.as_ref().map(|p| p.to_preferences()) {
+            let model = empty_project_result(&params, priority, priority_source, Some(exc));
+            let md = render_project_md(&model);
+            return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
+        }
+        match resolve_project_path(&params.path) {
+            Ok((resolved_root, _)) => {
+                if !resolved_root.is_dir() {
+                    let msg = format!("Path is not a directory: {}", resolved_root.display());
+                    let model = empty_project_result(&params, priority, priority_source, Some(msg));
+                    let md = render_project_md(&model);
+                    return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
+                }
+            }
+            Err(msg) => {
+                let model = empty_project_result(&params, priority, priority_source, Some(msg));
+                let md = render_project_md(&model);
+                return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
             }
         }
+
+        // The walk + per-file classification is CPU-bound; run it off the
+        // async executor so a large project cannot stall the transport.
+        self.executor()
+            .run_task_or_inline(
+                self.task_manager(),
+                &context,
+                Duration::from_secs(300),
+                "Evaluating project",
+                move |cancel_flag, reporter| {
+                    evaluate_project_sync_with_cancel(params, Some(cancel_flag), Some(reporter))
+                },
+            )
+            .await
     }
 }
 
-fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
+pub(crate) fn evaluate_code_sync(params: EvaluateCodeInput) -> CallToolResult {
+    let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+    let result = match classify_code_string(&params.code, &params.language, priority) {
+        Ok(result) => result,
+        Err(exc) => return err_eval("Evaluation failed", Priority::Simple, priority_source, exc),
+    };
+    let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
+        Some(Err(exc)) => {
+            return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
+        }
+        Some(Ok(p)) => Some(p),
+        None => None,
+    };
+    let overlay = overlay_for_source(&params.code, &params.language, &result, None, &params.allow);
+    let mut opts = EvalResultOptions::new();
+    opts.preferences = prefs.as_ref();
+    opts.priority_source = priority_source;
+    opts.adjusted_verdict = overlay.as_ref().map(|o| &o.verdict);
+    overlay_opts(overlay.as_ref(), &mut opts);
+    opts.verbose = params.verbose;
+    opts.metric_locations = build_metric_locations(&params.code, &params.language, &result);
+    let model = to_evaluation_result(&result, false, opts);
+    let md = render_evaluation_md(&model, None, params.verbose);
+    to_tool_result(&model, md)
+}
+
+pub(crate) fn evaluate_file_sync_with_cancel(
+    params: EvaluateFileInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
     let (resolved, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
-            return err_eval(
+            return Ok(err_eval(
                 "Access denied / path error",
                 Priority::Simple,
                 priority_source,
                 err,
-            )
+            ))
         }
     };
     if !resolved.is_file() {
-        return err_eval(
+        return Ok(err_eval(
             "Not a file",
             Priority::Simple,
             priority_source,
             format!("Path is not a file: {}", resolved.display()),
-        );
+        ));
     }
 
     let composable_root = composable_default_root(&detected_project);
@@ -255,25 +293,45 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     // subdirectory.
     let resolved_override =
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-    let gitnexus_outcome = ensure_gitnexus_dir(
+    let gitnexus_outcome = ensure_gitnexus_dir_with_cancel(
         resolved_override.as_deref(),
         &project_root,
         params.no_composable,
         /* capture = */ true,
-    );
+        cancel_flag,
+        None,
+    )?;
     let gitnexus_dir = gitnexus_outcome.gitnexus_dir;
+
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
 
     let (result, dep_graph, load_error) =
         match classify_file(&resolved, priority, gitnexus_dir.as_deref()) {
             Ok(triple) => triple,
             Err(exc) => {
-                return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
+                return Ok(err_eval(
+                    "Evaluation failed",
+                    Priority::Simple,
+                    priority_source,
+                    exc,
+                ))
             }
         };
 
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+
     let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
         Some(Err(exc)) => {
-            return err_eval("Evaluation failed", Priority::Simple, priority_source, exc)
+            return Ok(err_eval(
+                "Evaluation failed",
+                Priority::Simple,
+                priority_source,
+                exc,
+            ))
         }
         Some(Ok(p)) => Some(p),
         None => None,
@@ -360,7 +418,7 @@ fn evaluate_file_sync(params: EvaluateFileInput) -> CallToolResult {
     );
     let mut md = render_evaluation_md(&model, None, params.verbose);
     append_path_note(&mut md, path_note.as_deref());
-    to_tool_result(&model, md)
+    Ok(to_tool_result(&model, md))
 }
 
 /// `security_scan`: run Sighthound although SECURE passed and attach the
@@ -389,15 +447,28 @@ fn run_opt_in_security_scan(
     attach_opt_in_report(model, report, params.include_security_findings);
 }
 
-fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
+pub(crate) fn evaluate_project_sync_with_cancel(
+    params: EvaluateProjectInput,
+    cancel_flag: Option<&AtomicBool>,
+    status_reporter: Option<&StatusReporter>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
 
-    let (resolved_root, source_files) = match validate_and_collect_project(&params) {
+    if let Some(Err(exc)) = params.preferences.as_ref().map(|p| p.to_preferences()) {
+        let model = empty_project_result(&params, priority, priority_source, Some(exc));
+        let md = render_project_md(&model);
+        return Ok(to_tool_result(&model, md));
+    }
+
+    let (resolved_root, source_files) = match validate_and_collect_project(&params, cancel_flag)? {
         Ok(pair) => pair,
         Err(msg) => {
             let model = empty_project_result(&params, priority, priority_source, Some(msg));
             let md = render_project_md(&model);
-            return to_tool_result(&model, md);
+            return Ok(to_tool_result(&model, md));
         }
     };
 
@@ -406,23 +477,25 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
             let md = render_project_md(&model);
-            return to_tool_result(&model, md);
+            return Ok(to_tool_result(&model, md));
         }
     };
     let composable_root = composable_default_root(&detected_project);
     let project_root =
         resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
-    // See the matching comment in evaluate_file_sync: must use the resolved
-    // override below, not `params.gitnexus_dir`, since a relative override's
-    // subdirectory is already baked into `project_root` above.
+    // See the matching comment in evaluate_file_sync_with_cancel: must use the
+    // resolved override below, not `params.gitnexus_dir`, since a relative
+    // override's subdirectory is already baked into `project_root` above.
     let resolved_override =
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-    let gitnexus_outcome = ensure_gitnexus_dir(
+    let gitnexus_outcome = ensure_gitnexus_dir_with_cancel(
         resolved_override.as_deref(),
         &project_root,
         params.no_composable,
         /* capture = */ true,
-    );
+        cancel_flag,
+        status_reporter,
+    )?;
     let gitnexus_dir = gitnexus_outcome.gitnexus_dir;
     let coupling_available = gitnexus_dir.is_some();
 
@@ -436,7 +509,14 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
     let mut per_language_entries: HashMap<String, Vec<ProjectFileEntry>> = HashMap::new();
     let mut per_language_parse_failures: HashMap<String, usize> = HashMap::new();
 
-    for path in &source_files {
+    let total_files = source_files.len();
+    for (idx, path) in source_files.iter().enumerate() {
+        if is_cancelled(cancel_flag) {
+            return Err(EvalCancelled);
+        }
+        if let Some(r) = status_reporter {
+            r.report(format!("Evaluating file {}/{}", idx + 1, total_files));
+        }
         let language = detect_language(path).to_string();
         match evaluate_single_file(
             path,
@@ -465,6 +545,10 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
                 file_has_dep.push(has_dep);
             }
         }
+    }
+
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
     }
 
     // The project is one codebase: read advisories against it, then refresh
@@ -504,7 +588,7 @@ fn evaluate_project_sync(params: EvaluateProjectInput) -> CallToolResult {
         generation_note: gitnexus_outcome.generation_note,
     });
     let md = render_project_md(&model);
-    to_tool_result(&model, md)
+    Ok(to_tool_result(&model, md))
 }
 
 fn adjusted_result(
@@ -651,21 +735,30 @@ fn refresh_entry_scores(
 
 fn validate_and_collect_project(
     params: &EvaluateProjectInput,
-) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let (resolved_root, _) = resolve_project_path(&params.path)?;
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<Result<(PathBuf, Vec<PathBuf>), String>, EvalCancelled> {
+    let (resolved_root, _) = match resolve_project_path(&params.path) {
+        Ok(pair) => pair,
+        Err(err) => return Ok(Err(err)),
+    };
     if !resolved_root.is_dir() {
-        return Err(format!(
+        return Ok(Err(format!(
             "Path is not a directory: {}",
             resolved_root.display()
-        ));
+        )));
     }
     let suffixes = all_source_suffixes();
-    let source_files =
-        topos_engine::adapters::discovery::collect_source_files(&[&resolved_root], &suffixes, true);
+    let source_files = topos_engine::adapters::discovery::collect_source_files_with_cancel(
+        &[&resolved_root],
+        &suffixes,
+        true,
+        cancel_flag,
+    )
+    .ok_or(EvalCancelled)?;
     if source_files.is_empty() {
-        return Err("No supported source files found.".to_string());
+        return Ok(Err("No supported source files found.".to_string()));
     }
-    Ok((resolved_root, source_files))
+    Ok(Ok((resolved_root, source_files)))
 }
 
 fn min_scores_by_dim(results: &[ClassificationResult]) -> BTreeMap<String, f64> {

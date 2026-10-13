@@ -3,10 +3,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{tool, tool_router, ErrorData as McpError};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
@@ -15,9 +17,10 @@ use topos_engine::functors::probes::ast::complexity::calculate_function_complexi
 use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
 
 use crate::evaluation::{
-    classify_morphism, detect_language, ensure_gitnexus_dir, gitnexus_warnings,
+    classify_morphism, detect_language, ensure_gitnexus_dir_with_cancel, gitnexus_warnings,
     resolve_mcp_composable_project_root, resolve_override_for_root,
 };
+use crate::execution::{is_cancelled, EvalCancelled};
 use crate::formatting::{
     append_path_note, render_evaluation_md, to_evaluation_result, to_tool_result, EvalResultOptions,
 };
@@ -70,29 +73,38 @@ struct InspectClassification {
 }
 
 /// Classify a file the way `topos_evaluate_file` does — same
-/// [`ensure_gitnexus_dir`] resolve-or-generate decision, same
+/// [`ensure_gitnexus_dir_with_cancel`] resolve-or-generate decision, same
 /// [`classify_morphism`] attachment, same [`gitnexus_warnings`] explanation — so
 /// the two tools cannot report different medals for the same source
 /// (issue #216: inspect used to skip the MDG entirely and read one medal
 /// lower).
-fn classify_inspected_file(
+fn classify_inspected_file_with_cancel(
     resolved_gitnexus_override: Option<&str>,
     no_composable: bool,
     project_root: &Path,
     path: &Path,
     priority: Priority,
     morphism: &mut ProgramMorphism,
-) -> InspectClassification {
-    let outcome = ensure_gitnexus_dir(
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<InspectClassification, EvalCancelled> {
+    let outcome = ensure_gitnexus_dir_with_cancel(
         resolved_gitnexus_override,
         project_root,
         no_composable,
         /* capture = */ true,
-    );
+        cancel_flag,
+        None,
+    )?;
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let gitnexus_dir = outcome.gitnexus_dir;
 
     let (dep_graph, load_error) =
         crate::evaluation::load_dep_graph(gitnexus_dir.as_deref(), &path.to_string_lossy());
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let result = classify_morphism(morphism, priority, dep_graph.as_ref());
     let mut warnings = if no_composable {
         Vec::new()
@@ -108,33 +120,61 @@ fn classify_inspected_file(
     if let Some(note) = outcome.generation_note {
         warnings.insert(0, note);
     }
-    InspectClassification {
+    Ok(InspectClassification {
         result,
         coupling_available: dep_graph.is_some(),
         warnings,
-    }
+    })
+}
+
+#[cfg(test)]
+fn classify_inspected_file(
+    resolved_gitnexus_override: Option<&str>,
+    no_composable: bool,
+    project_root: &Path,
+    path: &Path,
+    priority: Priority,
+    morphism: &mut ProgramMorphism,
+) -> InspectClassification {
+    classify_inspected_file_with_cancel(
+        resolved_gitnexus_override,
+        no_composable,
+        project_root,
+        path,
+        priority,
+        morphism,
+        None,
+    )
+    .expect("uncancelled inspection")
 }
 
 /// Classify whichever subject was loaded: a file (COMPOSABLE reachable) or
 /// an inline `code` string (it isn't).
-fn classify_inspection(
+fn classify_inspection_with_cancel(
     params: &InspectCodeInput,
     loaded: &LoadedSource,
     priority: Priority,
     morphism: &mut ProgramMorphism,
-) -> Result<InspectClassification, String> {
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<Result<InspectClassification, String>, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     // An inline string has no module for the dependency graph to key on, so
     // COMPOSABLE is out of reach exactly as in `topos_evaluate_code`.
     // Returning before `ensure_gitnexus_dir` also keeps a pure string call
     // from shelling out to `gitnexus analyze` for a graph nothing would read.
     let Some(path) = loaded.file_path.as_deref() else {
-        return Ok(InspectClassification {
+        return Ok(Ok(InspectClassification {
             result: classify_morphism(morphism, priority, None),
             coupling_available: false,
             warnings: Vec::new(),
-        });
+        }));
     };
-    let (_resolved, detected_project) = resolve_project_path(&path.to_string_lossy())?;
+    let (_resolved, detected_project) = match resolve_project_path(&path.to_string_lossy()) {
+        Ok(res) => res,
+        Err(err) => return Ok(Err(err)),
+    };
     let composable_root = composable_default_root(&detected_project);
     let project_root =
         resolve_mcp_composable_project_root(params.gitnexus_dir.as_deref(), &composable_root);
@@ -145,14 +185,26 @@ fn classify_inspection(
     // subdirectory.
     let resolved_override =
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-    Ok(classify_inspected_file(
+    Ok(Ok(classify_inspected_file_with_cancel(
         resolved_override.as_deref(),
         params.no_composable,
         &project_root,
         path,
         priority,
         morphism,
-    ))
+        cancel_flag,
+    )?))
+}
+
+#[cfg(test)]
+fn classify_inspection(
+    params: &InspectCodeInput,
+    loaded: &LoadedSource,
+    priority: Priority,
+    morphism: &mut ProgramMorphism,
+) -> Result<InspectClassification, String> {
+    classify_inspection_with_cancel(params, loaded, priority, morphism, None)
+        .expect("uncancelled inspection")
 }
 
 fn inspection_language(params: &InspectCodeInput, file_path: Option<&PathBuf>) -> String {
@@ -258,46 +310,63 @@ impl ToposServer {
     pub async fn topos_inspect_code(
         &self,
         Parameters(params): Parameters<InspectCodeInput>,
-    ) -> CallToolResult {
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
         // Generation can shell out to `gitnexus analyze` (bounded by
-        // TOPOS_DEPGRAPH_TIMEOUT, default 300s); offload so a slow/first-time
-        // run cannot stall the transport, matching topos_evaluate_file.
-        match tokio::task::spawn_blocking(move || inspect_code_sync(params)).await {
-            Ok(tool_result) => tool_result,
-            Err(join_err) => err_inspection(
-                Priority::Simple,
-                PrioritySource::Default,
-                format!("inspection panicked: {join_err}"),
-            ),
-        }
+        // TOPOS_DEPGRAPH_TIMEOUT, default 300s); offload via the bounded
+        // ExecutionCoordinator so a slow/first-time run cannot stall the
+        // transport and respects peer cancellation.
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                inspect_code_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 }
 
-fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
+fn inspect_code_with_cancel(
+    params: InspectCodeInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
 
     let loaded = match load_source(&params) {
         Ok(loaded) => loaded,
-        Err(msg) => return err_inspection(priority, priority_source, msg),
+        Err(msg) => return Ok(err_inspection(priority, priority_source, msg)),
     };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let language = inspection_language(&params, loaded.file_path.as_ref());
 
     if !topos_engine::graphs::ast::languages::SUPPORTED_LANGUAGES.contains(&language.as_str()) {
-        return err_inspection(
+        return Ok(err_inspection(
             priority,
             priority_source,
             format!("Unsupported language '{language}'"),
-        );
+        ));
     }
     // Use the loaded bytes for every consumer, retaining the path for TSX grammar selection.
     let mut morphism = match loaded.file_path.as_ref() {
         Some(path) => ProgramMorphism::with_path(&loaded.source, &language, path),
         None => ProgramMorphism::new(&loaded.source, &language),
     };
-    let classified = match classify_inspection(&params, &loaded, priority, &mut morphism) {
+    let classified = match classify_inspection_with_cancel(
+        &params,
+        &loaded,
+        priority,
+        &mut morphism,
+        cancel_flag,
+    )? {
         Ok(classified) => classified,
-        Err(exc) => return err_inspection(priority, priority_source, exc),
+        Err(exc) => return Ok(err_inspection(priority, priority_source, exc)),
     };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let mut classified = classified;
     // `load_source` accepts either `code` or `filepath`; only the latter can
     // have been resolved from a relative path, so that is the only case where
@@ -312,7 +381,7 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     let result = classified.result;
 
     let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
-        Some(Err(exc)) => return err_inspection(priority, priority_source, exc),
+        Some(Err(exc)) => return Ok(err_inspection(priority, priority_source, exc)),
         Some(Ok(p)) => Some(p),
         None => None,
     };
@@ -366,7 +435,12 @@ fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
     };
     let mut md = render_inspection_md(&model, params.verbose);
     append_path_note(&mut md, path_note.as_deref());
-    to_tool_result(&model, md)
+    Ok(to_tool_result(&model, md))
+}
+
+#[cfg(test)]
+fn inspect_code_sync(params: InspectCodeInput) -> CallToolResult {
+    inspect_code_with_cancel(params, None).expect("uncancelled inspection")
 }
 
 #[cfg(test)]

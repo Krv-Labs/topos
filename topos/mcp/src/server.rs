@@ -11,21 +11,35 @@
 
 use std::borrow::Cow;
 use std::future::Future;
+use std::time::Duration;
 
 use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    GetPromptRequestParams, GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
-    ListResourcesResult, PaginatedRequestParams, Prompt, PromptArgument, PromptMessage,
-    ProtocolVersion, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
-    ResourceContents, Role, ServerCapabilities, ServerInfo,
+    CacheScope, CallToolRequestParams, CallToolResponse, CancelTaskParams, GetPromptRequestParams,
+    GetPromptResponse, GetPromptResult, GetTaskParams, GetTaskResult, Implementation,
+    ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequestParams, Prompt, PromptArgument, PromptMessage, ProtocolVersion,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceContents, Role, ServerCapabilities, ServerConfig, Tool, UpdateTaskParams,
 };
 use rmcp::service::RequestContext;
+use rmcp::task_manager::TaskManager;
 use rmcp::{ErrorData as McpError, RoleServer};
 
 use topos_engine::core::omega::Generator;
 
 use crate::docs::{doc_content_for_slug, DOC_SLUGS};
+use crate::execution::ExecutionCoordinator;
+
+/// 24-hour TTL (`86_400_000` ms) advertised on static discovery/documentation
+/// surfaces (`tools/list`, `prompts/list`, `resources/list`,
+/// `resources/templates/list`, and `topos://docs/*`).
+pub const STATIC_CACHE_TTL_MS: u64 = 86_400_000;
+
+/// Grace period for draining in-flight `spawn_blocking` workers on stdio EOF.
+const SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(2);
 
 const SERVER_INSTRUCTIONS: &str = "Topos evaluates structural code quality on a diamond lattice. \
 For agent loops, load the compact contract with `topos_get_doc(topic=\"agent-contract\")` or \
@@ -66,12 +80,14 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[ProtocolVersion] = &[
 
 const REFACTOR_PROMPT_NAME: &str = "topos_refactor_until_ideal";
 
-/// The Topos MCP server handler. Holds the combined [`ToolRouter`]; all
-/// state the tools need (file root, snapshot store, dep-graph cache) is
-/// process-global, so this struct itself is empty.
+/// The Topos MCP server handler. Holds the combined [`ToolRouter`], the
+/// server-scoped [`TaskManager`] (process-local in-memory SEP-2663 tasks), and
+/// the bounded [`ExecutionCoordinator`].
 #[derive(Clone)]
 pub struct ToposServer {
     tool_router: ToolRouter<ToposServer>,
+    task_manager: TaskManager,
+    executor: ExecutionCoordinator,
 }
 
 impl Default for ToposServer {
@@ -91,7 +107,11 @@ impl ToposServer {
             + Self::inspect_router()
             + Self::preferences_router()
             + Self::refactor_router();
-        ToposServer { tool_router }
+        ToposServer {
+            tool_router,
+            task_manager: TaskManager::new(),
+            executor: ExecutionCoordinator::new(),
+        }
     }
 
     /// MCP tool definitions as shipped over the wire (`tools/list`).
@@ -100,6 +120,21 @@ impl ToposServer {
     /// + inputSchema + annotations stay under the Python-era ceilings.
     pub fn list_tool_defs(&self) -> Vec<rmcp::model::Tool> {
         self.tool_router.list_all()
+    }
+
+    pub(crate) fn task_manager(&self) -> &TaskManager {
+        &self.task_manager
+    }
+
+    pub(crate) fn executor(&self) -> &ExecutionCoordinator {
+        &self.executor
+    }
+
+    /// Signal all in-flight operations to cancel, abort tracked background
+    /// tasks, and wait up to `grace` for blocking workers to exit.
+    pub async fn shutdown(&self, grace: Duration) {
+        self.task_manager.shutdown();
+        self.executor.shutdown_and_wait(grace).await;
     }
 }
 
@@ -246,14 +281,14 @@ pub(crate) fn refactor_prompt_text_for_test() -> String {
     build_refactor_prompt_text("src/a.rs", "secure", 5, None)
 }
 
-#[rmcp::tool_handler(router = self.tool_router)]
 impl ServerHandler for ToposServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
                 .enable_prompts()
+                .enable_tasks()
                 .build(),
         )
         .with_protocol_version(ProtocolVersion::default())
@@ -274,12 +309,49 @@ impl ServerHandler for ToposServer {
         Cow::Borrowed(SUPPORTED_PROTOCOL_VERSIONS)
     }
 
+    fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListToolsResult::with_all_items(
+            self.tool_router.list_all(),
+        )
+        .with_ttl_ms(STATIC_CACHE_TTL_MS)
+        .with_cache_scope(CacheScope::Public)))
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        let tcc = ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.tool_router.get(name).cloned()
+    }
+
     fn list_resources(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
-        std::future::ready(Ok(ListResourcesResult::with_all_items(doc_resources())))
+        std::future::ready(Ok(ListResourcesResult::with_all_items(doc_resources())
+            .with_ttl_ms(STATIC_CACHE_TTL_MS)
+            .with_cache_scope(CacheScope::Public)))
+    }
+
+    fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListResourceTemplatesResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(ListResourceTemplatesResult::default()
+            .with_ttl_ms(STATIC_CACHE_TTL_MS)
+            .with_cache_scope(CacheScope::Public)))
     }
 
     fn read_resource(
@@ -288,10 +360,17 @@ impl ServerHandler for ToposServer {
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ReadResourceResponse, McpError>> + Send + '_ {
         let result = if request.uri == BUILD_URI {
-            Some(ReadResourceResult::new(vec![ResourceContents::text(
-                crate::build_info::render(),
-                request.uri.clone(),
-            )]))
+            // `topos://build` is runtime/process-specific (`rebuilt_since_start`
+            // stats the binary on disk on each read), so explicitly mark it
+            // uncacheable (`ttlMs = 0`, `cacheScope = "private"`).
+            Some(
+                ReadResourceResult::new(vec![ResourceContents::text(
+                    crate::build_info::render(),
+                    request.uri.clone(),
+                )])
+                .with_ttl_ms(0)
+                .with_cache_scope(CacheScope::Private),
+            )
         } else {
             match request.uri.strip_prefix("topos://docs/") {
                 Some(slug) => doc_content_for_slug(slug).map(|content| {
@@ -299,6 +378,8 @@ impl ServerHandler for ToposServer {
                         content,
                         request.uri.clone(),
                     )])
+                    .with_ttl_ms(STATIC_CACHE_TTL_MS)
+                    .with_cache_scope(CacheScope::Public)
                 }),
                 None => None,
             }
@@ -315,7 +396,9 @@ impl ServerHandler for ToposServer {
     ) -> impl Future<Output = Result<ListPromptsResult, McpError>> + Send + '_ {
         std::future::ready(Ok(ListPromptsResult::with_all_items(vec![
             refactor_prompt_definition(),
-        ])))
+        ])
+        .with_ttl_ms(STATIC_CACHE_TTL_MS)
+        .with_cache_scope(CacheScope::Public)))
     }
 
     fn get_prompt(
@@ -363,6 +446,37 @@ impl ServerHandler for ToposServer {
         };
         std::future::ready(result)
     }
+
+    fn get_task(
+        &self,
+        request: GetTaskParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<GetTaskResult, McpError>> + Send + '_ {
+        let res = self
+            .task_manager
+            .get_task(&request.task_id)
+            .map(GetTaskResult::new);
+        std::future::ready(res)
+    }
+
+    fn update_task(
+        &self,
+        request: UpdateTaskParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<(), McpError>> + Send + '_ {
+        std::future::ready(
+            self.task_manager
+                .update_task(&request.task_id, request.input_responses),
+        )
+    }
+
+    fn cancel_task(
+        &self,
+        request: CancelTaskParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<(), McpError>> + Send + '_ {
+        std::future::ready(self.task_manager.cancel_task(&request.task_id))
+    }
 }
 
 /// Serve the Topos MCP server over stdio until the client disconnects.
@@ -373,7 +487,13 @@ pub async fn serve() -> anyhow::Result<()> {
     // Capture the identity snapshot before serving so `started_at` is process
     // start, not whenever the first client happens to ask.
     let _ = crate::build_info::identity();
-    let service = ToposServer::new().serve(stdio()).await?;
-    service.waiting().await?;
+    let server = ToposServer::new();
+    let service = server.clone().serve(stdio()).await?;
+    let wait_res = service.waiting().await;
+    // Stdio EOF / server teardown: signal all active inline and background
+    // operations, abort tracked tasks, and drain spawn_blocking workers up to
+    // the bounded grace window so child subprocesses never outlive the session.
+    server.shutdown(SHUTDOWN_GRACE_PERIOD).await;
+    wait_res?;
     Ok(())
 }

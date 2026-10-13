@@ -1,8 +1,12 @@
 //! Coverage tool — structural test coverage (UAST).
 
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
+
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::model::{CallToolResponse, CallToolResult};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{tool, tool_router, ErrorData as McpError};
 use topos_engine::evaluation::policies::coverage::score_declaration_coverage;
 use topos_engine::functors::profunctors::uast::inline_tests::{
     parse_coverage_root, parse_with_inline_tests,
@@ -10,6 +14,7 @@ use topos_engine::functors::profunctors::uast::inline_tests::{
 use topos_engine::functors::profunctors::uast::structural_test_coverage::declaration_coverage;
 use topos_engine::graphs::uast::models::UASTNode;
 
+use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
 use crate::formatting::to_tool_result;
 use crate::schemas::{CalculateCoverageInput, CoverageResult};
 use crate::security::resolve_within_root;
@@ -34,12 +39,33 @@ fn empty_coverage_result(error: String) -> CoverageResult {
     }
 }
 
+fn validate_coverage_inputs(params: &CalculateCoverageInput) -> Result<(), String> {
+    if params.put_files.is_empty() {
+        return Err("No valid PUT roots found (parsing failed or files empty).".to_string());
+    }
+    let inputs = params
+        .put_files
+        .iter()
+        .map(|path| (path, "PUT"))
+        .chain(params.test_files.iter().map(|path| (path, "Test")));
+    for (path, label) in inputs {
+        resolve_within_root(path).map_err(|err| format!("{label} file error: {err} for {path}"))?;
+    }
+    Ok(())
+}
+
+type ParsedCoverageRoots = Result<(Vec<UASTNode>, Vec<UASTNode>), String>;
+
 /// Parse every input in `params.language` into `(put_roots, test_roots)`.
 ///
 /// Inline tests inside the PUT files (Rust `#[cfg(test)]`, Go `Test*`,
 /// Python `test_*`, …) are split off onto the test side (#336), so
 /// `test_files` may be empty when tests live next to the code.
-fn parse_inputs(params: &CalculateCoverageInput) -> Result<(Vec<UASTNode>, Vec<UASTNode>), String> {
+fn parse_inputs_with_cancel(
+    params: &CalculateCoverageInput,
+    cancel_flag: Option<&AtomicBool>,
+    status_reporter: Option<&StatusReporter>,
+) -> Result<ParsedCoverageRoots, EvalCancelled> {
     let mut put = Vec::new();
     let mut tests = Vec::new();
     let inputs = params
@@ -48,24 +74,46 @@ fn parse_inputs(params: &CalculateCoverageInput) -> Result<(Vec<UASTNode>, Vec<U
         .map(|path| (path, "PUT"))
         .chain(params.test_files.iter().map(|path| (path, "Test")));
     for (path, label) in inputs {
-        let resolved = resolve_within_root(path)
-            .map_err(|err| format!("{label} file error: {err} for {path}"))?;
-        let source = std::fs::read_to_string(&resolved)
-            .map_err(|exc| format!("Failed to read {label} file {path}: {exc}"))?;
+        if is_cancelled(cancel_flag) {
+            return Err(EvalCancelled);
+        }
+        if let Some(reporter) = status_reporter {
+            reporter.report(format!("Parsing {label} file {path}"));
+        }
+        let resolved = match resolve_within_root(path) {
+            Ok(resolved) => resolved,
+            Err(err) => return Ok(Err(format!("{label} file error: {err} for {path}"))),
+        };
+        let source = match std::fs::read_to_string(&resolved) {
+            Ok(source) => source,
+            Err(exc) => return Ok(Err(format!("Failed to read {label} file {path}: {exc}"))),
+        };
+        if is_cancelled(cancel_flag) {
+            return Err(EvalCancelled);
+        }
         let file = resolved.to_string_lossy();
         let parse_error = |exc| format!("Failed to parse {label} file {path}: {exc}");
         if label == "PUT" {
-            let (program, inline) = parse_with_inline_tests(&source, &params.language, Some(&file))
-                .map_err(parse_error)?;
+            let (program, inline) =
+                match parse_with_inline_tests(&source, &params.language, Some(&file))
+                    .map_err(parse_error)
+                {
+                    Ok(parsed) => parsed,
+                    Err(err) => return Ok(Err(err)),
+                };
             put.extend(program);
             tests.extend(inline);
         } else {
-            let parsed =
-                parse_coverage_root(&source, &params.language, Some(&file)).map_err(parse_error)?;
+            let parsed = match parse_coverage_root(&source, &params.language, Some(&file))
+                .map_err(parse_error)
+            {
+                Ok(parsed) => parsed,
+                Err(err) => return Ok(Err(err)),
+            };
             tests.push(parsed);
         }
     }
-    Ok((put, tests))
+    Ok(Ok((put, tests)))
 }
 
 fn render_uncovered(r: &CoverageResult) -> Vec<String> {
@@ -137,6 +185,78 @@ pub(crate) fn render_coverage_md(r: &CoverageResult) -> String {
     lines.join("\n")
 }
 
+fn calculate_coverage_with_cancel(
+    params: &CalculateCoverageInput,
+    cancel_flag: Option<&AtomicBool>,
+    status_reporter: Option<&StatusReporter>,
+) -> Result<CallToolResult, EvalCancelled> {
+    let (put_nodes, test_nodes) =
+        match parse_inputs_with_cancel(params, cancel_flag, status_reporter)? {
+            Ok(roots) => roots,
+            Err(error) => {
+                let model = empty_coverage_result(error);
+                let md = render_coverage_md(&model);
+                return Ok(to_tool_result(&model, md));
+            }
+        };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let put_roots: Vec<&UASTNode> = put_nodes.iter().collect();
+    let test_roots: Vec<&UASTNode> = test_nodes.iter().collect();
+
+    if put_roots.is_empty() {
+        let model = empty_coverage_result(
+            "No valid PUT roots found (parsing failed or files empty).".to_string(),
+        );
+        let md = render_coverage_md(&model);
+        return Ok(to_tool_result(&model, md));
+    }
+
+    if let Some(reporter) = status_reporter {
+        reporter.report("Matching declarations and calculating k-gram path recall");
+    }
+
+    match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
+        Ok(report) => {
+            if is_cancelled(cancel_flag) {
+                return Err(EvalCancelled);
+            }
+            if report.put_declaration_count == 0 {
+                let model = empty_coverage_result(
+                    "no function or method declarations found in source files; check --language and source paths".to_string(),
+                );
+                let md = render_coverage_md(&model);
+                return Ok(to_tool_result(&model, md));
+            }
+            let decision = score_declaration_coverage(&report, params.coverage_threshold);
+            let model = CoverageResult {
+                mean_declaration_coverage: report.mean_declaration_coverage,
+                best_declaration_recall: report.best_declaration_recall.clone(),
+                declaration_locations: report.declaration_locations.clone(),
+                stmt_recall: report.stmt_recall,
+                expr_recall: report.expr_recall,
+                mean_test_precision: report.mean_test_precision,
+                f2_score: report.f2_score(),
+                declaration_path_recall_kgram: report.declaration_path_recall_kgram,
+                uncovered_declarations: report.uncovered_declarations(),
+                put_declaration_count: report.put_declaration_count,
+                test_declaration_count: report.test_declaration_count,
+                verdict: Some(decision.verdict.as_str().to_string()),
+                warnings: decision.inconclusive_reason.into_iter().collect(),
+                error: None,
+            };
+            let md = render_coverage_md(&model);
+            Ok(to_tool_result(&model, md))
+        }
+        Err(exc) => {
+            let model = empty_coverage_result(format!("Coverage calculation failed: {exc:?}"));
+            let md = render_coverage_md(&model);
+            Ok(to_tool_result(&model, md))
+        }
+    }
+}
+
 #[tool_router(router = coverage_router, vis = "pub(crate)")]
 impl ToposServer {
     /// Measure how well a test suite exercises its program-under-test, via
@@ -156,63 +276,26 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_calculate_coverage(
+    pub async fn topos_calculate_coverage(
         &self,
         Parameters(params): Parameters<CalculateCoverageInput>,
-    ) -> CallToolResult {
-        let (put_nodes, test_nodes) = match parse_inputs(&params) {
-            Ok(roots) => roots,
-            Err(error) => {
-                let model = empty_coverage_result(error);
-                let md = render_coverage_md(&model);
-                return to_tool_result(&model, md);
-            }
-        };
-        let put_roots: Vec<&UASTNode> = put_nodes.iter().collect();
-        let test_roots: Vec<&UASTNode> = test_nodes.iter().collect();
-
-        if put_roots.is_empty() {
-            let model = empty_coverage_result(
-                "No valid PUT roots found (parsing failed or files empty).".to_string(),
-            );
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        if let Err(error) = validate_coverage_inputs(&params) {
+            let model = empty_coverage_result(error);
             let md = render_coverage_md(&model);
-            return to_tool_result(&model, md);
+            return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
         }
-
-        match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
-            Ok(report) => {
-                if report.put_declaration_count == 0 {
-                    let model = empty_coverage_result(
-                        "no function or method declarations found in source files; check --language and source paths".to_string(),
-                    );
-                    let md = render_coverage_md(&model);
-                    return to_tool_result(&model, md);
-                }
-                let decision = score_declaration_coverage(&report, params.coverage_threshold);
-                let model = CoverageResult {
-                    mean_declaration_coverage: report.mean_declaration_coverage,
-                    best_declaration_recall: report.best_declaration_recall.clone(),
-                    declaration_locations: report.declaration_locations.clone(),
-                    stmt_recall: report.stmt_recall,
-                    expr_recall: report.expr_recall,
-                    mean_test_precision: report.mean_test_precision,
-                    f2_score: report.f2_score(),
-                    declaration_path_recall_kgram: report.declaration_path_recall_kgram,
-                    uncovered_declarations: report.uncovered_declarations(),
-                    put_declaration_count: report.put_declaration_count,
-                    test_declaration_count: report.test_declaration_count,
-                    verdict: Some(decision.verdict.as_str().to_string()),
-                    warnings: decision.inconclusive_reason.into_iter().collect(),
-                    error: None,
-                };
-                let md = render_coverage_md(&model);
-                to_tool_result(&model, md)
-            }
-            Err(exc) => {
-                let model = empty_coverage_result(format!("Coverage calculation failed: {exc:?}"));
-                let md = render_coverage_md(&model);
-                to_tool_result(&model, md)
-            }
-        }
+        self.executor()
+            .run_task_or_inline(
+                self.task_manager(),
+                &context,
+                Duration::from_secs(300),
+                "Calculating structural and k-gram coverage",
+                move |cancel_flag, reporter| {
+                    calculate_coverage_with_cancel(&params, Some(cancel_flag), Some(reporter))
+                },
+            )
+            .await
     }
 }

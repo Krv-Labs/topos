@@ -23,8 +23,8 @@ use crate::security::resolve_within_root;
 use crate::server::ToposServer;
 
 #[inline]
-fn cancelled(cancel_flag: Option<&AtomicBool>) -> bool {
-    cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed))
+fn coverage_cancelled(cancel_flag: Option<&AtomicBool>) -> bool {
+    cancel_flag.is_some_and(|f| f.fetch_or(false, Ordering::Relaxed))
 }
 
 fn empty_coverage_result(error: String) -> CoverageResult {
@@ -111,7 +111,7 @@ fn parse_inputs_with_cancel(
         .map(|path| (path, "PUT"))
         .chain(params.test_files.iter().map(|path| (path, "Test")));
     for (path, label) in inputs {
-        if cancelled(cancel_flag) {
+        if coverage_cancelled(cancel_flag) {
             return Err(EvalCancelled);
         }
         if let Err(err) =
@@ -231,7 +231,7 @@ fn calculate_coverage_with_cancel(
         Ok(roots) => roots,
         Err(error) => return Ok(error_tool_result(error)),
     };
-    if cancelled(cancel_flag) {
+    if coverage_cancelled(cancel_flag) {
         return Err(EvalCancelled);
     }
     if put_nodes.is_empty() {
@@ -251,7 +251,7 @@ fn calculate_coverage_with_cancel(
                 )))
             }
         };
-    if cancelled(cancel_flag) {
+    if coverage_cancelled(cancel_flag) {
         return Err(EvalCancelled);
     }
     Ok(coverage_result_from_report(

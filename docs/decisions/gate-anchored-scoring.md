@@ -171,7 +171,7 @@ question, out of scope here.
 | gate thresholds | unchanged; re-derived only when a metric definition changes |
 | `τ = 0.5`, `2g` zero point | fixed by construction |
 | `F_lang` tables and `k` | derived once per leaderboard run in `topos-leaderboard`, then copied into `topos/engine/src/evaluation/policies/advisory_priors.json`. The engine embeds that file; it does not fetch it at build time |
-| COMPOSABLE advisory priors | from leaderboard rows since the v0.10.0 rerun (topos-leaderboard@7f1f905); C++ rows pending |
+| COMPOSABLE advisory priors | from leaderboard rows since the v0.10.0 rerun (topos-leaderboard@5032d5a), only where the dependency graph built; no C++ table until GitNexus indexes large C++ repos |
 | score floors, advisory caps | retired |
 | medals | unchanged |
 

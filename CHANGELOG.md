@@ -9,6 +9,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Changed
+
+- Advisory priors now include C++ (topos-leaderboard@5032d5a, 41 of 50 C++
+  repositories at three versions): `cfg.cyclomatic`, `cfg.essential`, and
+  `cfg.nesting_depth` gain C++ tables again (cyclomatic median 13), and their
+  shrinkage `k` moves (cyclomatic 2.57 → 2.76, essential 1.94 → 2.34,
+  nesting 2.83 → 3.39). `mdg.fan_in` and `mdg.instability` are unchanged in
+  substance. Their rows now count only where the dependency graph built, so
+  C++ still reads the pooled `_all` prior for those: GitNexus could not index
+  most large C++ repositories in the rerun.
+
 ## [0.10.1] - 2026-10-12
 
 ### Changed

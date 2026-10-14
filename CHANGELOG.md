@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-14
+
 ### Changed
 
 - Advisory priors now include C++ (topos-leaderboard@5032d5a, 41 of 50 C++

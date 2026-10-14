@@ -15,6 +15,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
@@ -60,11 +61,13 @@ pub struct RunOutput {
     pub stderr: String,
 }
 
-/// Why [`run_with_timeout`] didn't return a [`RunOutput`].
+/// Why [`run_with_timeout`] or [`run_with_timeout_and_cancel`] didn't return a [`RunOutput`].
 #[derive(Debug)]
 pub enum RunError {
     /// The process outlived `timeout` and was killed.
     TimedOut,
+    /// The operation was cancelled via `cancel_flag` and the process group was killed.
+    Cancelled,
     /// The command could not be spawned, or waiting on it failed.
     Io(std::io::Error),
 }
@@ -73,11 +76,15 @@ pub enum RunError {
 /// (otherwise they're inherited from this process, for a live CLI stream),
 /// killing it if it outlives `timeout` (`None` disables the deadline).
 pub fn run_with_timeout(
-    mut cmd: Command,
+    cmd: Command,
     cwd: Option<&Path>,
     capture: bool,
     timeout: Option<Duration>,
 ) -> Result<RunOutput, RunError> {
+    run_with_timeout_and_cancel(cmd, cwd, capture, timeout, None)
+}
+
+fn configure_command(cmd: &mut Command, cwd: Option<&Path>, capture: bool) {
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
@@ -88,6 +95,58 @@ pub fn run_with_timeout(
     } else {
         cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
     }
+}
+
+fn kill_child_process_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let pid = child.id() as i32;
+        unsafe {
+            // Stop the entire process group so descendants that ignore
+            // TERM or hold capture pipes open are terminated too.
+            libc::kill(-pid, libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn readers_finished(
+    stdout: &Option<std::thread::JoinHandle<String>>,
+    stderr: &Option<std::thread::JoinHandle<String>>,
+) -> bool {
+    stdout.as_ref().is_none_or(|r| r.is_finished())
+        && stderr.as_ref().is_none_or(|r| r.is_finished())
+}
+
+fn check_deadline_or_cancel(
+    start: Instant,
+    timeout: Option<Duration>,
+    cancel_flag: Option<&AtomicBool>,
+) -> Option<RunError> {
+    if cancel_flag.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Some(RunError::Cancelled);
+    }
+    if timeout.is_some_and(|limit| start.elapsed() >= limit) {
+        return Some(RunError::TimedOut);
+    }
+    None
+}
+
+/// Run `cmd` in `cwd` like [`run_with_timeout`], additionally polling
+/// `cancel_flag` every [`POLL_INTERVAL`] and killing the entire process group
+/// immediately when set.
+pub fn run_with_timeout_and_cancel(
+    mut cmd: Command,
+    cwd: Option<&Path>,
+    capture: bool,
+    timeout: Option<Duration>,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<RunOutput, RunError> {
+    if cancel_flag.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err(RunError::Cancelled);
+    }
+    configure_command(&mut cmd, cwd, capture);
 
     let mut child = cmd.spawn().map_err(RunError::Io)?;
     let stdout_reader = capture.then(|| spawn_reader(child.stdout.take()));
@@ -99,38 +158,18 @@ pub fn run_with_timeout(
         if exited.is_none() {
             exited = child.try_wait().map_err(RunError::Io)?;
         }
-        let drained = stdout_reader.as_ref().is_none_or(|r| r.is_finished())
-            && stderr_reader.as_ref().is_none_or(|r| r.is_finished());
-        match exited {
-            Some(status) if drained => {
-                return Ok(RunOutput {
-                    status_code: status.code(),
-                    stdout: stdout_reader.map(join_reader).unwrap_or_default(),
-                    stderr: stderr_reader.map(join_reader).unwrap_or_default(),
-                });
-            }
-            _ => {
-                if timeout.is_some_and(|limit| start.elapsed() >= limit) {
-                    #[cfg(unix)]
-                    {
-                        let pid = child.id() as i32;
-                        unsafe {
-                            // A deadline must also stop descendants that ignore TERM
-                            // and keep our capture pipes open.
-                            libc::kill(-pid, libc::SIGKILL);
-                        }
-                    }
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    // Do not wait for EOF from descendants that detached from
-                    // the process group. The readers finish when their pipes close.
-                    drop(stdout_reader);
-                    drop(stderr_reader);
-                    return Err(RunError::TimedOut);
-                }
-                std::thread::sleep(POLL_INTERVAL);
-            }
+        if let Some(status) = exited.filter(|_| readers_finished(&stdout_reader, &stderr_reader)) {
+            return Ok(RunOutput {
+                status_code: status.code(),
+                stdout: stdout_reader.map(join_reader).unwrap_or_default(),
+                stderr: stderr_reader.map(join_reader).unwrap_or_default(),
+            });
         }
+        if let Some(err) = check_deadline_or_cancel(start, timeout, cancel_flag) {
+            kill_child_process_group(&mut child);
+            return Err(err);
+        }
+        std::thread::sleep(POLL_INTERVAL);
     }
 }
 
@@ -222,5 +261,28 @@ mod tests {
         assert_eq!(timeout_duration(0.0), None);
         assert_eq!(timeout_duration(1e300), None); // overflows Duration
         assert_eq!(timeout_duration(2.5), Some(Duration::from_secs_f64(2.5)));
+    }
+
+    #[test]
+    fn kills_a_process_when_cancel_flag_is_set() {
+        use std::sync::Arc;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_setter = Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(60));
+            cancel_setter.store(true, Ordering::Relaxed);
+        });
+        let mut cmd = Command::new("sleep");
+        cmd.arg("5");
+        let start = Instant::now();
+        let result = run_with_timeout_and_cancel(
+            cmd,
+            None,
+            true,
+            Some(Duration::from_secs(10)),
+            Some(&cancel),
+        );
+        assert!(matches!(result, Err(RunError::Cancelled)));
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 }

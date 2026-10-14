@@ -21,7 +21,7 @@
 //! parsing path in this crate. See this issue's report for the full
 //! redundancy analysis.
 
-mod process;
+pub mod process;
 
 pub mod discovery;
 pub mod gitnexus;

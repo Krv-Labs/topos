@@ -11,9 +11,12 @@
 //! All three are purely advisory — none of this feeds
 //! SIMPLE/COMPOSABLE/SECURE/NAVIGABLE scoring.
 
+use std::sync::atomic::AtomicBool;
+
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{tool, tool_router, ErrorData as McpError};
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::functors::probes::cfg::homology::calculate_cycle_basis;
 use topos_engine::functors::probes::mdg::curvature::calculate_mdg_curvature;
@@ -24,6 +27,7 @@ use crate::evaluation::{
     detect_language, load_dep_graph, resolve_gitnexus_dir, resolve_mcp_composable_project_root,
     resolve_override_for_root,
 };
+use crate::execution::{is_cancelled, EvalCancelled};
 use crate::formatting::to_tool_result;
 use crate::refactor_hotspots::render_hotspots_md;
 use crate::schemas::{RefactorHotspot, RefactorInput, RefactorResult, RefactorTargetKind};
@@ -44,32 +48,47 @@ fn err_result(target: RefactorTargetKind, filepath: &str, error: String) -> Refa
     }
 }
 
-fn refactor_cycles(params: &RefactorInput) -> (RefactorResult, String) {
+fn refactor_cycles(
+    params: &RefactorInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<(RefactorResult, String), EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let resolved = match resolve_within_root(&params.filepath) {
         Ok(path) => path,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Cycles, &params.filepath, err);
-            return (model, render_hotspots_md("Cycle hotspots", &[]));
+            return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
         }
     };
     let source = match read_safe_utf8_file(&resolved.to_string_lossy()) {
         Ok(source) => source,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Cycles, &params.filepath, err);
-            return (model, render_hotspots_md("Cycle hotspots", &[]));
+            return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
         }
     };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
 
     let language = detect_language(&resolved);
     let mut morphism = ProgramMorphism::new(&source, language);
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let Some(cfg) = morphism.build_cfg().cloned() else {
         let model = err_result(
             RefactorTargetKind::Cycles,
             &params.filepath,
             "Could not build a control-flow graph.".to_string(),
         );
-        return (model, render_hotspots_md("Cycle hotspots", &[]));
+        return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
     };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
 
     let result = calculate_cycle_basis(&cfg);
     let mut ranked = result.cycles.clone();
@@ -102,7 +121,7 @@ fn refactor_cycles(params: &RefactorInput) -> (RefactorResult, String) {
         hotspots,
         error: None,
     };
-    (model, md)
+    Ok((model, md))
 }
 
 fn span(cycle: &topos_engine::functors::probes::cfg::homology::SourceCycle) -> usize {
@@ -112,12 +131,18 @@ fn span(cycle: &topos_engine::functors::probes::cfg::homology::SourceCycle) -> u
     }
 }
 
-fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
+fn refactor_dependencies(
+    params: &RefactorInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<(RefactorResult, String), EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Dependencies, &params.filepath, err);
-            return (model, render_hotspots_md("Dependency hotspots", &[]));
+            return Ok((model, render_hotspots_md("Dependency hotspots", &[])));
         }
     };
     let composable_root = composable_default_root(&detected_project);
@@ -127,6 +152,9 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let Some(mdg) = mdg else {
         let model = RefactorResult {
             target: "dependencies".to_string(),
@@ -137,7 +165,7 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
             hotspots: Vec::new(),
             error: None,
         };
-        return (model, render_hotspots_md("Dependency hotspots", &[]));
+        return Ok((model, render_hotspots_md("Dependency hotspots", &[])));
     };
 
     let Some(file_id) = mdg.file_node_id().map(str::to_string) else {
@@ -150,7 +178,7 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
             hotspots: Vec::new(),
             error: None,
         };
-        return (model, render_hotspots_md("Dependency hotspots", &[]));
+        return Ok((model, render_hotspots_md("Dependency hotspots", &[])));
     };
 
     let curvature = calculate_mdg_curvature(&mdg, &file_id, "IMPORTS");
@@ -186,15 +214,21 @@ fn refactor_dependencies(params: &RefactorInput) -> (RefactorResult, String) {
         hotspots,
         error: None,
     };
-    (model, md)
+    Ok((model, md))
 }
 
-fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
+fn refactor_process(
+    params: &RefactorInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<(RefactorResult, String), EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
             let model = err_result(RefactorTargetKind::Process, &params.filepath, err);
-            return (model, render_hotspots_md("Process choke points", &[]));
+            return Ok((model, render_hotspots_md("Process choke points", &[])));
         }
     };
     let composable_root = composable_default_root(&detected_project);
@@ -204,6 +238,9 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
         resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
     let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
     let (mdg, _) = load_dep_graph(gitnexus_dir.as_deref(), &params.filepath);
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let Some(mdg) = mdg else {
         let model = RefactorResult {
             target: "process".to_string(),
@@ -214,7 +251,7 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
             hotspots: Vec::new(),
             error: None,
         };
-        return (model, render_hotspots_md("Process choke points", &[]));
+        return Ok((model, render_hotspots_md("Process choke points", &[])));
     };
 
     let Some(file_id) = mdg.file_node_id().map(str::to_string) else {
@@ -227,10 +264,13 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
             hotspots: Vec::new(),
             error: None,
         };
-        return (model, render_hotspots_md("Process choke points", &[]));
+        return Ok((model, render_hotspots_md("Process choke points", &[])));
     };
 
     let process_graph = ProcessGraph::from_mdg(&mdg, params.filepath.clone());
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let touching = process_graph.paths_touching_file(&file_id);
     let subgraph = ProcessGraph::from_paths(params.filepath.clone(), touching);
     let curvature = calculate_process_curvature(&subgraph, None);
@@ -267,7 +307,19 @@ fn refactor_process(params: &RefactorInput) -> (RefactorResult, String) {
         hotspots,
         error: None,
     };
-    (model, md)
+    Ok((model, md))
+}
+
+fn refactor_with_cancel(
+    params: &RefactorInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    let (model, md) = match params.target {
+        RefactorTargetKind::Cycles => refactor_cycles(params, cancel_flag)?,
+        RefactorTargetKind::Dependencies => refactor_dependencies(params, cancel_flag)?,
+        RefactorTargetKind::Process => refactor_process(params, cancel_flag)?,
+    };
+    Ok(to_tool_result(&model, md))
 }
 
 #[tool_router(router = refactor_router, vis = "pub(crate)")]
@@ -291,12 +343,15 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_refactor(&self, Parameters(params): Parameters<RefactorInput>) -> CallToolResult {
-        let (model, md) = match params.target {
-            RefactorTargetKind::Cycles => refactor_cycles(&params),
-            RefactorTargetKind::Dependencies => refactor_dependencies(&params),
-            RefactorTargetKind::Process => refactor_process(&params),
-        };
-        to_tool_result(&model, md)
+    pub async fn topos_refactor(
+        &self,
+        Parameters(params): Parameters<RefactorInput>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                refactor_with_cancel(&params, Some(cancel_flag))
+            })
+            .await
     }
 }

@@ -1,12 +1,16 @@
 //! Structural comparison tools: AST edit distance between two programs.
 
+use std::sync::atomic::AtomicBool;
+
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::{tool, tool_router, ErrorData as McpError};
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 use topos_engine::graphs::ast::languages::shared_language;
 
+use crate::execution::{is_cancelled, EvalCancelled};
 use crate::formatting::to_tool_result;
 use crate::schemas::{CompareCodeInput, CompareFilesInput, ComparisonResult};
 use crate::security::read_safe_utf8_file;
@@ -53,15 +57,25 @@ pub(crate) fn render_comparison_md(r: &ComparisonResult) -> String {
 
 /// Compare two bodies in one `language`; `source_label`/`target_label` name
 /// them in a parse error ("source"/"target" for snippets, paths for files).
-fn compare_texts(
+fn compare_texts_with_cancel(
     source_label: &str,
     source_code: &str,
     target_label: &str,
     target_code: &str,
     language: &str,
-) -> ComparisonResult {
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<ComparisonResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let src = ProgramMorphism::new(source_code, language);
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let tgt = ProgramMorphism::new(target_code, language);
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
     let (src_valid, tgt_valid) = (src.is_valid(), tgt.is_valid());
 
     // `is_valid` implies the AST exists, so this is the single failure branch.
@@ -73,15 +87,15 @@ fn compare_texts(
             .filter(|(valid, _)| !valid)
             .map(|(_, label)| label)
             .collect();
-        return failed_comparison(
+        return Ok(failed_comparison(
             format!("Failed to parse {} as {language}.", failed.join(" and ")),
             src_valid,
             tgt_valid,
-        );
+        ));
     };
 
     let result = calculate_ast_distance(src_ast, tgt_ast);
-    ComparisonResult {
+    Ok(ComparisonResult {
         raw_distance: result.raw_distance as f64,
         normalized_distance: result.normalized_distance,
         similarity: 1.0 - result.normalized_distance,
@@ -94,7 +108,7 @@ fn compare_texts(
         target_valid: true,
         warnings: Vec::new(),
         error: None,
-    }
+    })
 }
 
 fn finish_comparison(model: ComparisonResult) -> CallToolResult {
@@ -102,30 +116,92 @@ fn finish_comparison(model: ComparisonResult) -> CallToolResult {
     to_tool_result(&model, md)
 }
 
-fn compare_code_impl(params: &CompareCodeInput) -> CallToolResult {
-    finish_comparison(compare_texts(
+fn compare_code_with_cancel(
+    params: &CompareCodeInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    Ok(finish_comparison(compare_texts_with_cancel(
         "source",
         &params.source_code,
         "target",
         &params.target_code,
         &params.language,
-    ))
+        cancel_flag,
+    )?))
 }
 
 /// Compare two file bodies in the language both paths' suffixes name.
 ///
 /// An unsupported suffix or a mixed-language pair is an error rather than a
 /// silent Python parse or a distance across two grammars.
+fn compare_file_texts_with_cancel(
+    source_path: &str,
+    source_code: &str,
+    target_path: &str,
+    target_code: &str,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<ComparisonResult, EvalCancelled> {
+    match shared_language(source_path, target_path) {
+        Ok(language) => compare_texts_with_cancel(
+            source_path,
+            source_code,
+            target_path,
+            target_code,
+            language,
+            cancel_flag,
+        ),
+        Err(err) => Ok(failed_comparison(err, false, false)),
+    }
+}
+
+#[cfg(test)]
 fn compare_file_texts(
     source_path: &str,
     source_code: &str,
     target_path: &str,
     target_code: &str,
 ) -> ComparisonResult {
-    match shared_language(source_path, target_path) {
-        Ok(language) => compare_texts(source_path, source_code, target_path, target_code, language),
-        Err(err) => failed_comparison(err, false, false),
+    compare_file_texts_with_cancel(source_path, source_code, target_path, target_code, None)
+        .expect("uncancelled comparison")
+}
+
+fn compare_files_with_cancel(
+    params: &CompareFilesInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
     }
+    let source_text = match read_safe_utf8_file(&params.source) {
+        Ok(text) => text,
+        Err(err) => {
+            return Ok(finish_comparison(failed_comparison(
+                format!("Source file error: {err}"),
+                false,
+                false,
+            )));
+        }
+    };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let target_text = match read_safe_utf8_file(&params.target) {
+        Ok(text) => text,
+        Err(err) => {
+            return Ok(finish_comparison(failed_comparison(
+                format!("Target file error: {err}"),
+                true,
+                false,
+            )));
+        }
+    };
+    Ok(finish_comparison(compare_file_texts_with_cancel(
+        &params.source,
+        &source_text,
+        &params.target,
+        &target_text,
+        cancel_flag,
+    )?))
 }
 
 #[tool_router(router = compare_router, vis = "pub(crate)")]
@@ -151,11 +227,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_compare_code(
+    pub async fn topos_compare_code(
         &self,
         Parameters(params): Parameters<CompareCodeInput>,
-    ) -> CallToolResult {
-        compare_code_impl(&params)
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                compare_code_with_cancel(&params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Compute the AST (tree-edit) distance between two source files on
@@ -177,36 +258,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_compare_files(
+    pub async fn topos_compare_files(
         &self,
         Parameters(params): Parameters<CompareFilesInput>,
-    ) -> CallToolResult {
-        let source_text = match read_safe_utf8_file(&params.source) {
-            Ok(text) => text,
-            Err(err) => {
-                return finish_comparison(failed_comparison(
-                    format!("Source file error: {err}"),
-                    false,
-                    false,
-                ));
-            }
-        };
-        let target_text = match read_safe_utf8_file(&params.target) {
-            Ok(text) => text,
-            Err(err) => {
-                return finish_comparison(failed_comparison(
-                    format!("Target file error: {err}"),
-                    true,
-                    false,
-                ));
-            }
-        };
-        finish_comparison(compare_file_texts(
-            &params.source,
-            &source_text,
-            &params.target,
-            &target_text,
-        ))
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                compare_files_with_cancel(&params, Some(cancel_flag))
+            })
+            .await
     }
 }
 

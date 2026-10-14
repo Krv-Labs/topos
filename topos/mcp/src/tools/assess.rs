@@ -7,12 +7,16 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::CallToolResult;
-use rmcp::{tool, tool_router};
+use rmcp::model::{CallToolResponse, CallToolResult};
+use rmcp::service::RequestContext;
+use rmcp::{tool, tool_router, ErrorData as McpError, RoleServer};
 use serde_json::Value;
 use topos_engine::adapters::discovery::find_git_root;
+use topos_engine::adapters::process::{run_with_timeout_and_cancel, RunError};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
@@ -24,6 +28,7 @@ use crate::evaluation::{
     classify_morphism, detect_language, gitnexus_warnings, load_dep_graph, resolve_gitnexus_dir,
     resolve_override_for_root,
 };
+use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
 use crate::formatting::{
     agent_contract_prelude, finish_agent_contract, to_evaluation_result, to_tool_result,
     AgentContractPreludeInput, EvalResultOptions,
@@ -855,50 +860,77 @@ fn is_safe_git_ref(git_ref: &str) -> bool {
     !git_ref.starts_with('-')
 }
 
-/// Read `<ref>:<rel_path>` from git. Returns `Ok(source)` or
-/// `Err(blocked_by_code)`.
-fn git_show(repo_root: &Path, git_ref: &str, rel_path: &str) -> Result<String, &'static str> {
+/// Read `<ref>:<rel_path>` from git. Returns `Ok(Ok(source))` or
+/// `Ok(Err(blocked_by_code))`, or `Err(EvalCancelled)` if cancelled.
+fn git_show_with_cancel(
+    repo_root: &Path,
+    git_ref: &str,
+    rel_path: &str,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<Result<String, &'static str>, EvalCancelled> {
     if !is_safe_git_ref(git_ref) {
-        return Err("invalid_baseline_ref");
+        return Ok(Err("invalid_baseline_ref"));
     }
-    let output = Command::new("git")
-        .arg("-C")
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
         .arg(repo_root)
         // `--end-of-options` stops option parsing without git's plain `--`
         // side effect of reinterpreting the following `ref:path` object as a
         // bare pathspec (which silently matches nothing instead of showing
         // the blob). Defense in depth on top of the `-` rejection above.
-        .args(["show", "--end-of-options", &format!("{git_ref}:{rel_path}")])
-        .output();
+        .args(["show", "--end-of-options", &format!("{git_ref}:{rel_path}")]);
+    let output =
+        run_with_timeout_and_cancel(cmd, None, true, Some(Duration::from_secs(30)), cancel_flag);
     match output {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err("git_unavailable"),
-        Err(_) => Err("baseline_ref_not_found"),
-        Ok(out) if !out.status.success() => Err("baseline_ref_not_found"),
-        Ok(out) => Ok(String::from_utf8_lossy(&out.stdout).to_string()),
+        Err(RunError::Cancelled) => Err(EvalCancelled),
+        Err(RunError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(Err("git_unavailable"))
+        }
+        Err(_) => Ok(Err("baseline_ref_not_found")),
+        Ok(out) if out.status_code != Some(0) => Ok(Err("baseline_ref_not_found")),
+        Ok(out) => Ok(Ok(out.stdout)),
+    }
+}
+
+/// Read `<ref>:<rel_path>` from git. Returns `Ok(source)` or
+/// `Err(blocked_by_code)`.
+#[cfg(test)]
+fn git_show(repo_root: &Path, git_ref: &str, rel_path: &str) -> Result<String, &'static str> {
+    git_show_with_cancel(repo_root, git_ref, rel_path, None).expect("cannot cancel without flag")
+}
+
+/// Whether `git_ref` resolves to a commit in `repo_root`. Returns `Ok(true)`
+/// when git cannot run so the caller falls through to per-file handling.
+fn ref_exists_with_cancel(
+    repo_root: &Path,
+    git_ref: &str,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<bool, EvalCancelled> {
+    if !is_safe_git_ref(git_ref) {
+        return Ok(false);
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo_root).args([
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        &format!("{git_ref}^{{commit}}"),
+    ]);
+    let output =
+        run_with_timeout_and_cancel(cmd, None, true, Some(Duration::from_secs(10)), cancel_flag);
+    match output {
+        Err(RunError::Cancelled) => Err(EvalCancelled),
+        Ok(out) => Ok(out.status_code == Some(0)),
+        Err(_) => Ok(true),
     }
 }
 
 /// Whether `git_ref` resolves to a commit in `repo_root`. Returns `true`
 /// when git cannot run so the caller falls through to per-file handling.
+#[cfg(test)]
 fn ref_exists(repo_root: &Path, git_ref: &str) -> bool {
-    if !is_safe_git_ref(git_ref) {
-        return false;
-    }
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo_root)
-        .args([
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            "--end-of-options",
-            &format!("{git_ref}^{{commit}}"),
-        ])
-        .output();
-    match output {
-        Ok(out) => out.status.success(),
-        Err(_) => true,
-    }
+    ref_exists_with_cancel(repo_root, git_ref, None).unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -1168,57 +1200,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_assess_improvement(
+    pub async fn topos_assess_improvement(
         &self,
         Parameters(params): Parameters<AssessImprovementInput>,
-    ) -> CallToolResult {
-        let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-        if let Err(msg) = params.validate() {
-            let model = err_assessment(priority, priority_source, msg, "assessment_error");
-            return to_tool_result(&model, render_assessment_md(&model));
-        }
-        let baseline = match load_baseline(&params) {
-            Ok(b) => b,
-            Err(exc) => {
-                let model = err_assessment(priority, priority_source, exc, "assessment_error");
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let proposed_src = match load_proposed_source(&params) {
-            Ok(src) => src,
-            Err(exc) => {
-                let model = err_assessment(priority, priority_source, exc, "assessment_error");
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
-            Some(Err(exc)) => {
-                let model = err_assessment(priority, priority_source, exc, "assessment_error");
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-            Some(Ok(p)) => Some(p),
-            None => None,
-        };
-        let file_path = params
-            .filepath
-            .as_ref()
-            .and_then(|f| resolve_within_root(f).ok());
-
-        let model = assess_core(AssessCoreArgs {
-            baseline_src: baseline.source,
-            proposed_src,
-            language: params.language.clone(),
-            priority,
-            priority_source,
-            prefs: prefs.as_ref(),
-            dep_graph: baseline.dep_graph.as_ref(),
-            coupling_for_proposed: baseline.coupling,
-            file_path,
-            allow: params.allow.clone(),
-            include_security_findings: params.include_security_findings,
-            warnings: baseline.warnings,
-        });
-        to_tool_result(&model, render_assessment_md(&model))
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                assess_improvement_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Assess an in-place edit against a git revision — the common refactor
@@ -1242,63 +1233,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_assess_worktree_change(
+    pub async fn topos_assess_worktree_change(
         &self,
         Parameters(params): Parameters<AssessWorktreeChangeInput>,
-    ) -> CallToolResult {
-        let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-        let resolved = match resolve_within_root(&params.filepath) {
-            Ok(path) => path,
-            Err(err) => {
-                let model = err_assessment(priority, priority_source, err, "assessment_error");
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let Some(git_root) = find_git_root(&resolved) else {
-            let model = err_assessment(
-                priority,
-                priority_source,
-                format!("Not inside a git repository: {}", resolved.display()),
-                "not_a_git_repo",
-            );
-            return to_tool_result(&model, render_assessment_md(&model));
-        };
-        let rel_path = resolved
-            .strip_prefix(&git_root)
-            .unwrap_or(&resolved)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let baseline_src = match git_show(&git_root, &params.baseline_ref, &rel_path) {
-            Ok(src) => src,
-            Err(code) => {
-                let model = err_assessment(
-                    priority,
-                    priority_source,
-                    format!(
-                        "Could not read `{rel_path}` at ref `{}`.",
-                        params.baseline_ref
-                    ),
-                    code,
-                );
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let prefs = params
-            .preferences
-            .as_ref()
-            .and_then(|p| p.to_preferences().ok());
-        let model = assess_edit_in_place(
-            baseline_src,
-            &resolved,
-            params.gitnexus_dir.as_deref(),
-            priority,
-            priority_source,
-            prefs.as_ref(),
-            params.allow.clone(),
-            params.include_security_findings,
-            Vec::new(),
-        );
-        to_tool_result(&model, render_assessment_md(&model))
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                assess_worktree_change_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Persist the file's current source as a baseline snapshot before you
@@ -1317,105 +1261,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_begin_refactor(
+    pub async fn topos_begin_refactor(
         &self,
         Parameters(params): Parameters<BeginRefactorInput>,
-    ) -> CallToolResult {
-        let resolved = match resolve_within_root(&params.filepath) {
-            Ok(path) => path,
-            Err(err) => {
-                let model = err_snapshot(&params.filepath, err);
-                return to_tool_result(&model, render_snapshot_md(&model));
-            }
-        };
-        if !resolved.is_file() {
-            let model = err_snapshot(
-                &params.filepath,
-                format!("Path is not a file: {}", resolved.display()),
-            );
-            return to_tool_result(&model, render_snapshot_md(&model));
-        }
-        let baseline_src = match read_safe_utf8_file(&params.filepath) {
-            Ok(src) => src,
-            Err(err) => {
-                let model = err_snapshot(&params.filepath, err);
-                return to_tool_result(&model, render_snapshot_md(&model));
-            }
-        };
-        let (priority, _) = resolve_priority(params.preferences.as_ref());
-        let mut meta: HashMap<String, Value> = HashMap::new();
-        meta.insert(
-            "filepath".to_string(),
-            Value::from(resolved.to_string_lossy().to_string()),
-        );
-        meta.insert("priority".to_string(), Value::from(priority_str(priority)));
-        meta.insert(
-            "ranking".to_string(),
-            params
-                .preferences
-                .as_ref()
-                .map(|p| {
-                    Value::from(
-                        p.ranking
-                            .iter()
-                            .map(|g| Value::from(g.as_str()))
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .unwrap_or(Value::Null),
-        );
-        meta.insert(
-            "target".to_string(),
-            params
-                .preferences
-                .as_ref()
-                .and_then(|p| p.target)
-                .map(|t| Value::from(t.as_str()))
-                .unwrap_or(Value::Null),
-        );
-        meta.insert(
-            "gitnexus_dir".to_string(),
-            params
-                .gitnexus_dir
-                .clone()
-                .map(Value::from)
-                .unwrap_or(Value::Null),
-        );
-        let created_at = snapshot_now();
-        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = err_snapshot(&params.filepath, err);
-                return to_tool_result(&model, render_snapshot_md(&model));
-            }
-        };
-        let snapshot_id = match write_snapshot(&project_root, &baseline_src, meta, created_at) {
-            Ok(id) => id,
-            Err(err) => {
-                let model = err_snapshot(&params.filepath, err.to_string());
-                return to_tool_result(&model, render_snapshot_md(&model));
-            }
-        };
-        let model = SnapshotResult {
-            snapshot_id: snapshot_id.clone(),
-            filepath: resolved.to_string_lossy().to_string(),
-            baseline_hash: sha256_hex(&baseline_src),
-            created_at,
-            warnings: Vec::new(),
-            agent_contract: Some(AgentContract {
-                next_tool: Some("topos_assess_snapshot".to_string()),
-                next_actions: vec![
-                    "edit the file in place, then call topos_assess_snapshot with this \
-                     snapshot_id"
-                        .to_string(),
-                ],
-                blocked_by: Vec::new(),
-                verification_gates: Vec::new(),
-                risk_flags: Vec::new(),
-            }),
-            error: None,
-        };
-        to_tool_result(&model, render_snapshot_md(&model))
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                begin_refactor_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Assess the current file against a baseline captured by
@@ -1435,70 +1290,16 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_assess_snapshot(
+    pub async fn topos_assess_snapshot(
         &self,
         Parameters(params): Parameters<AssessSnapshotInput>,
-    ) -> CallToolResult {
-        let resolved = match resolve_within_root(&params.filepath) {
-            Ok(path) => path,
-            Err(err) => {
-                let model = err_assessment(
-                    Priority::Simple,
-                    PrioritySource::Default,
-                    err,
-                    "assessment_error",
-                );
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = err_assessment(
-                    Priority::Simple,
-                    PrioritySource::Default,
-                    err,
-                    "assessment_error",
-                );
-                return to_tool_result(&model, render_assessment_md(&model));
-            }
-        };
-        let load = read_snapshot(&project_root, &params.snapshot_id, snapshot_now());
-        let (Some(baseline_src), Some(meta)) = (load.baseline_src, load.meta) else {
-            let model = err_assessment(
-                Priority::Simple,
-                PrioritySource::Default,
-                format!("Snapshot `{}` is unavailable.", params.snapshot_id),
-                load.blocked_by.unwrap_or("snapshot_not_found"),
-            );
-            return to_tool_result(&model, render_assessment_md(&model));
-        };
-        if meta.get("filepath").and_then(Value::as_str) != Some(&resolved.to_string_lossy()) {
-            let model = err_assessment(
-                Priority::Simple,
-                PrioritySource::Default,
-                format!(
-                    "Snapshot was taken from `{}`, not `{}`.",
-                    meta.get("filepath").and_then(Value::as_str).unwrap_or(""),
-                    resolved.display()
-                ),
-                "snapshot_stale",
-            );
-            return to_tool_result(&model, render_assessment_md(&model));
-        }
-        let (priority, priority_source, prefs) = priority_from_meta(&meta);
-        let model = assess_edit_in_place(
-            baseline_src,
-            &resolved,
-            meta.get("gitnexus_dir").and_then(Value::as_str),
-            priority,
-            priority_source,
-            prefs.as_ref(),
-            params.allow.clone(),
-            params.include_security_findings,
-            Vec::new(),
-        );
-        to_tool_result(&model, render_assessment_md(&model))
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.executor()
+            .run_inline(&context, move |cancel_flag| {
+                assess_snapshot_with_cancel(params, Some(cancel_flag))
+            })
+            .await
     }
 
     /// Assess a multi-file changeset against a git baseline and roll the
@@ -1518,15 +1319,12 @@ impl ToposServer {
             open_world_hint = false
         )
     )]
-    pub fn topos_assess_changeset(
+    pub async fn topos_assess_changeset(
         &self,
         Parameters(params): Parameters<AssessChangesetInput>,
-    ) -> CallToolResult {
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
         let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
-        let prefs = params
-            .preferences
-            .as_ref()
-            .and_then(|p| p.to_preferences().ok());
         let Some(first_path) = params.files.first() else {
             let model = changeset_error(
                 priority,
@@ -1534,98 +1332,454 @@ impl ToposServer {
                 &params.baseline_ref,
                 "Provide at least one file.".to_string(),
             );
-            return to_tool_result(&model, render_changeset_md(&model));
+            return Ok(CallToolResponse::Complete(to_tool_result(
+                &model,
+                render_changeset_md(&model),
+            )));
         };
-        let (_resolved_path, detected_project) = match resolve_project_path(first_path) {
-            Ok(context) => context,
-            Err(err) => {
-                let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
-                return to_tool_result(&model, render_changeset_md(&model));
-            }
-        };
-        let composable_root = composable_default_root(&detected_project);
-        let project_root = crate::evaluation::resolve_mcp_composable_project_root(
-            params.gitnexus_dir.as_deref(),
-            &composable_root,
-        );
-        // Resolved to an absolute path against `file_root` — must be used
-        // below instead of `params.gitnexus_dir`, since `project_root` above
-        // already absorbed a relative override's subdirectory; rejoining the
-        // original relative string against it a second time would double
-        // that subdirectory.
-        let resolved_override =
-            resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
-        let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
-
-        let mut entries: Vec<ChangesetFileEntry> = Vec::new();
-        let mut before_evals: Vec<EvaluationResult> = Vec::new();
-        let mut after_evals: Vec<EvaluationResult> = Vec::new();
-        let mut any_coupling = false;
-
-        for filepath in &params.files {
-            match resolve_project_path(filepath) {
-                Ok((_path, root)) if root == detected_project => {}
-                Ok(_) => {
-                    let model = changeset_error(
-                        priority,
-                        priority_source,
-                        &params.baseline_ref,
-                        "All changeset files must belong to one project.".to_string(),
-                    );
-                    return to_tool_result(&model, render_changeset_md(&model));
-                }
-                Err(err) => {
-                    let model =
-                        changeset_error(priority, priority_source, &params.baseline_ref, err);
-                    return to_tool_result(&model, render_changeset_md(&model));
-                }
-            }
-            match assess_one_changeset_file(
-                filepath,
-                &params,
+        if let Err(err) = resolve_project_path(first_path) {
+            let model = changeset_error(priority, priority_source, &params.baseline_ref, err);
+            return Ok(CallToolResponse::Complete(to_tool_result(
+                &model,
+                render_changeset_md(&model),
+            )));
+        }
+        if params.baseline_ref.trim().is_empty() || !is_safe_git_ref(&params.baseline_ref) {
+            let model = changeset_error(
                 priority,
                 priority_source,
-                prefs.as_ref(),
-                &project_root,
-                gitnexus_dir.as_deref(),
-            ) {
-                Err(fatal) => {
-                    let model =
-                        changeset_error(priority, priority_source, &params.baseline_ref, fatal);
-                    return to_tool_result(&model, render_changeset_md(&model));
-                }
-                Ok(outcome) => {
-                    entries.push(outcome.entry);
-                    any_coupling |= outcome.coupling;
-                    if let Some(base) = outcome.baseline_eval {
-                        before_evals.push(base);
-                    }
-                    if let Some(cur) = outcome.current_eval {
-                        after_evals.push(cur);
-                    }
-                }
-            }
+                &params.baseline_ref,
+                format!("baseline ref not found: {}", params.baseline_ref),
+            );
+            return Ok(CallToolResponse::Complete(to_tool_result(
+                &model,
+                render_changeset_md(&model),
+            )));
         }
+        self.executor()
+            .run_task_or_inline(
+                self.task_manager(),
+                &context,
+                Duration::from_secs(300),
+                "Assessing changeset",
+                move |cancel_flag, reporter| {
+                    assess_changeset_with_cancel(params, Some(cancel_flag), Some(reporter))
+                },
+            )
+            .await
+    }
+}
 
-        let load_error_placeholder = None;
-        let warnings = gitnexus_warnings(
-            resolved_override.as_deref(),
-            &project_root,
-            gitnexus_dir.as_deref(),
-            any_coupling,
-            load_error_placeholder,
+fn assess_improvement_with_cancel(
+    params: AssessImprovementInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+    if let Err(msg) = params.validate() {
+        let model = err_assessment(priority, priority_source, msg, "assessment_error");
+        return Ok(to_tool_result(&model, render_assessment_md(&model)));
+    }
+    let baseline = match load_baseline(&params) {
+        Ok(b) => b,
+        Err(exc) => {
+            let model = err_assessment(priority, priority_source, exc, "assessment_error");
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+    };
+    let proposed_src = match load_proposed_source(&params) {
+        Ok(src) => src,
+        Err(exc) => {
+            let model = err_assessment(priority, priority_source, exc, "assessment_error");
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+    };
+    let prefs = match params.preferences.as_ref().map(|p| p.to_preferences()) {
+        Some(Err(exc)) => {
+            let model = err_assessment(priority, priority_source, exc, "assessment_error");
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+        Some(Ok(p)) => Some(p),
+        None => None,
+    };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let file_path = params
+        .filepath
+        .as_ref()
+        .and_then(|f| resolve_within_root(f).ok());
+
+    let model = assess_core(AssessCoreArgs {
+        baseline_src: baseline.source,
+        proposed_src,
+        language: params.language.clone(),
+        priority,
+        priority_source,
+        prefs: prefs.as_ref(),
+        dep_graph: baseline.dep_graph.as_ref(),
+        coupling_for_proposed: baseline.coupling,
+        file_path,
+        allow: params.allow.clone(),
+        include_security_findings: params.include_security_findings,
+        warnings: baseline.warnings,
+    });
+    Ok(to_tool_result(&model, render_assessment_md(&model)))
+}
+
+fn assess_worktree_change_with_cancel(
+    params: AssessWorktreeChangeInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+    let resolved = match resolve_within_root(&params.filepath) {
+        Ok(path) => path,
+        Err(err) => {
+            let model = err_assessment(priority, priority_source, err, "assessment_error");
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+    };
+    let Some(git_root) = find_git_root(&resolved) else {
+        let model = err_assessment(
+            priority,
+            priority_source,
+            format!("Not inside a git repository: {}", resolved.display()),
+            "not_a_git_repo",
         );
-        let model = build_changeset_result(
+        return Ok(to_tool_result(&model, render_assessment_md(&model)));
+    };
+    let rel_path = resolved
+        .strip_prefix(&git_root)
+        .unwrap_or(&resolved)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let baseline_src =
+        match git_show_with_cancel(&git_root, &params.baseline_ref, &rel_path, cancel_flag)? {
+            Ok(src) => src,
+            Err(code) => {
+                let model = err_assessment(
+                    priority,
+                    priority_source,
+                    format!(
+                        "Could not read `{rel_path}` at ref `{}`.",
+                        params.baseline_ref
+                    ),
+                    code,
+                );
+                return Ok(to_tool_result(&model, render_assessment_md(&model)));
+            }
+        };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let prefs = params
+        .preferences
+        .as_ref()
+        .and_then(|p| p.to_preferences().ok());
+    let model = assess_edit_in_place(
+        baseline_src,
+        &resolved,
+        params.gitnexus_dir.as_deref(),
+        priority,
+        priority_source,
+        prefs.as_ref(),
+        params.allow.clone(),
+        params.include_security_findings,
+        Vec::new(),
+    );
+    Ok(to_tool_result(&model, render_assessment_md(&model)))
+}
+
+fn begin_refactor_with_cancel(
+    params: BeginRefactorInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let resolved = match resolve_within_root(&params.filepath) {
+        Ok(path) => path,
+        Err(err) => {
+            let model = err_snapshot(&params.filepath, err);
+            return Ok(to_tool_result(&model, render_snapshot_md(&model)));
+        }
+    };
+    if !resolved.is_file() {
+        let model = err_snapshot(
+            &params.filepath,
+            format!("Path is not a file: {}", resolved.display()),
+        );
+        return Ok(to_tool_result(&model, render_snapshot_md(&model)));
+    }
+    let baseline_src = match read_safe_utf8_file(&params.filepath) {
+        Ok(src) => src,
+        Err(err) => {
+            let model = err_snapshot(&params.filepath, err);
+            return Ok(to_tool_result(&model, render_snapshot_md(&model)));
+        }
+    };
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let (priority, _) = resolve_priority(params.preferences.as_ref());
+    let mut meta: HashMap<String, Value> = HashMap::new();
+    meta.insert(
+        "filepath".to_string(),
+        Value::from(resolved.to_string_lossy().to_string()),
+    );
+    meta.insert("priority".to_string(), Value::from(priority_str(priority)));
+    meta.insert(
+        "ranking".to_string(),
+        params
+            .preferences
+            .as_ref()
+            .map(|p| {
+                Value::from(
+                    p.ranking
+                        .iter()
+                        .map(|g| Value::from(g.as_str()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or(Value::Null),
+    );
+    meta.insert(
+        "target".to_string(),
+        params
+            .preferences
+            .as_ref()
+            .and_then(|p| p.target)
+            .map(|t| Value::from(t.as_str()))
+            .unwrap_or(Value::Null),
+    );
+    meta.insert(
+        "gitnexus_dir".to_string(),
+        params
+            .gitnexus_dir
+            .clone()
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
+    let created_at = snapshot_now();
+    let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
+        Err(err) => {
+            let model = err_snapshot(&params.filepath, err);
+            return Ok(to_tool_result(&model, render_snapshot_md(&model)));
+        }
+    };
+    let snapshot_id = match write_snapshot(&project_root, &baseline_src, meta, created_at) {
+        Ok(id) => id,
+        Err(err) => {
+            let model = err_snapshot(&params.filepath, err.to_string());
+            return Ok(to_tool_result(&model, render_snapshot_md(&model)));
+        }
+    };
+    let model = SnapshotResult {
+        snapshot_id: snapshot_id.clone(),
+        filepath: resolved.to_string_lossy().to_string(),
+        baseline_hash: sha256_hex(&baseline_src),
+        created_at,
+        warnings: Vec::new(),
+        agent_contract: Some(AgentContract {
+            next_tool: Some("topos_assess_snapshot".to_string()),
+            next_actions: vec![
+                "edit the file in place, then call topos_assess_snapshot with this \
+                 snapshot_id"
+                    .to_string(),
+            ],
+            blocked_by: Vec::new(),
+            verification_gates: Vec::new(),
+            risk_flags: Vec::new(),
+        }),
+        error: None,
+    };
+    Ok(to_tool_result(&model, render_snapshot_md(&model)))
+}
+
+fn assess_snapshot_with_cancel(
+    params: AssessSnapshotInput,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let resolved = match resolve_within_root(&params.filepath) {
+        Ok(path) => path,
+        Err(err) => {
+            let model = err_assessment(
+                Priority::Simple,
+                PrioritySource::Default,
+                err,
+                "assessment_error",
+            );
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+    };
+    let (_resolved_path, project_root) = match resolve_project_path(&params.filepath) {
+        Ok(context) => context,
+        Err(err) => {
+            let model = err_assessment(
+                Priority::Simple,
+                PrioritySource::Default,
+                err,
+                "assessment_error",
+            );
+            return Ok(to_tool_result(&model, render_assessment_md(&model)));
+        }
+    };
+    let load = read_snapshot(&project_root, &params.snapshot_id, snapshot_now());
+    let (Some(baseline_src), Some(meta)) = (load.baseline_src, load.meta) else {
+        let model = err_assessment(
+            Priority::Simple,
+            PrioritySource::Default,
+            format!("Snapshot `{}` is unavailable.", params.snapshot_id),
+            load.blocked_by.unwrap_or("snapshot_not_found"),
+        );
+        return Ok(to_tool_result(&model, render_assessment_md(&model)));
+    };
+    if meta.get("filepath").and_then(Value::as_str) != Some(&resolved.to_string_lossy()) {
+        let model = err_assessment(
+            Priority::Simple,
+            PrioritySource::Default,
+            format!(
+                "Snapshot was taken from `{}`, not `{}`.",
+                meta.get("filepath").and_then(Value::as_str).unwrap_or(""),
+                resolved.display()
+            ),
+            "snapshot_stale",
+        );
+        return Ok(to_tool_result(&model, render_assessment_md(&model)));
+    }
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let (priority, priority_source, prefs) = priority_from_meta(&meta);
+    let model = assess_edit_in_place(
+        baseline_src,
+        &resolved,
+        meta.get("gitnexus_dir").and_then(Value::as_str),
+        priority,
+        priority_source,
+        prefs.as_ref(),
+        params.allow.clone(),
+        params.include_security_findings,
+        Vec::new(),
+    );
+    Ok(to_tool_result(&model, render_assessment_md(&model)))
+}
+
+fn ensure_same_project(filepath: &str, expected_project: &Path) -> Result<(), String> {
+    match resolve_project_path(filepath) {
+        Ok((_path, root)) if root == expected_project => Ok(()),
+        Ok(_) => Err("All changeset files must belong to one project.".to_string()),
+        Err(err) => Err(err),
+    }
+}
+
+fn assess_changeset_with_cancel(
+    params: AssessChangesetInput,
+    cancel_flag: Option<&AtomicBool>,
+    reporter: Option<&StatusReporter>,
+) -> Result<CallToolResult, EvalCancelled> {
+    if is_cancelled(cancel_flag) {
+        return Err(EvalCancelled);
+    }
+    let (priority, priority_source) = resolve_priority(params.preferences.as_ref());
+    let prefs = params
+        .preferences
+        .as_ref()
+        .and_then(|p| p.to_preferences().ok());
+    let make_err = |msg: String| {
+        let model = changeset_error(priority, priority_source, &params.baseline_ref, msg);
+        to_tool_result(&model, render_changeset_md(&model))
+    };
+    let Some(first_path) = params.files.first() else {
+        return Ok(make_err("Provide at least one file.".to_string()));
+    };
+    let (_resolved_path, detected_project) = match resolve_project_path(first_path) {
+        Ok(context) => context,
+        Err(err) => return Ok(make_err(err)),
+    };
+    let composable_root = composable_default_root(&detected_project);
+    let project_root = crate::evaluation::resolve_mcp_composable_project_root(
+        params.gitnexus_dir.as_deref(),
+        &composable_root,
+    );
+    let resolved_override =
+        resolve_override_for_root(params.gitnexus_dir.as_deref(), &composable_root);
+    let gitnexus_dir = resolve_gitnexus_dir(resolved_override.as_deref(), &project_root);
+
+    let mut entries: Vec<ChangesetFileEntry> = Vec::new();
+    let mut before_evals: Vec<EvaluationResult> = Vec::new();
+    let mut after_evals: Vec<EvaluationResult> = Vec::new();
+    let mut any_coupling = false;
+    let total = params.files.len();
+
+    for (idx, filepath) in params.files.iter().enumerate() {
+        if is_cancelled(cancel_flag) {
+            return Err(EvalCancelled);
+        }
+        if let Some(r) = reporter {
+            r.report(format!("Assessing file {}/{total}: {filepath}", idx + 1));
+        }
+        if let Err(err) = ensure_same_project(filepath, &detected_project) {
+            return Ok(make_err(err));
+        }
+        match assess_one_changeset_file(
+            filepath,
             &params,
             priority,
             priority_source,
-            entries,
-            &before_evals,
-            &after_evals,
-            any_coupling,
-            warnings,
-        );
-        to_tool_result(&model, render_changeset_md(&model))
+            prefs.as_ref(),
+            &project_root,
+            gitnexus_dir.as_deref(),
+            cancel_flag,
+        ) {
+            Ok(outcome) => {
+                entries.push(outcome.entry);
+                any_coupling |= outcome.coupling;
+                before_evals.extend(outcome.baseline_eval);
+                after_evals.extend(outcome.current_eval);
+            }
+            Err(ChangesetFileError::Cancelled) => return Err(EvalCancelled),
+            Err(ChangesetFileError::Fatal(fatal)) => return Ok(make_err(fatal)),
+        }
+    }
+
+    let warnings = gitnexus_warnings(
+        resolved_override.as_deref(),
+        &project_root,
+        gitnexus_dir.as_deref(),
+        any_coupling,
+        None,
+    );
+    let model = build_changeset_result(
+        &params,
+        priority,
+        priority_source,
+        entries,
+        &before_evals,
+        &after_evals,
+        any_coupling,
+        warnings,
+    );
+    Ok(to_tool_result(&model, render_changeset_md(&model)))
+}
+
+enum ChangesetFileError {
+    Fatal(String),
+    Cancelled,
+}
+
+impl From<EvalCancelled> for ChangesetFileError {
+    fn from(_: EvalCancelled) -> Self {
+        Self::Cancelled
     }
 }
 
@@ -1666,7 +1820,8 @@ fn assess_one_changeset_file(
     prefs: Option<&topos_engine::evaluation::preferences::UserPreferences>,
     project_root: &Path,
     gitnexus_dir: Option<&Path>,
-) -> Result<ChangesetFileOutcome, String> {
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<ChangesetFileOutcome, ChangesetFileError> {
     let resolved = match resolve_within_root(filepath) {
         Ok(path) => path,
         Err(err) => return Ok(file_error(filepath, err, "path_error")),
@@ -1678,23 +1833,34 @@ fn assess_one_changeset_file(
             "not_a_git_repo",
         ));
     };
-    if !ref_exists(&git_root, &params.baseline_ref) {
-        return Err(format!("baseline ref not found: {}", params.baseline_ref));
+    if !ref_exists_with_cancel(&git_root, &params.baseline_ref, cancel_flag)? {
+        return Err(ChangesetFileError::Fatal(format!(
+            "baseline ref not found: {}",
+            params.baseline_ref
+        )));
     }
     let rel_path = resolved
         .strip_prefix(&git_root)
         .unwrap_or(&resolved)
         .to_string_lossy()
         .replace('\\', "/");
-    let (baseline_src, is_new) = match git_show(&git_root, &params.baseline_ref, &rel_path) {
-        Ok(src) => (src, false),
-        Err("git_unavailable") => return Err("git is not available.".to_string()),
-        Err(_) => (String::new(), true),
-    };
+    let (baseline_src, is_new) =
+        match git_show_with_cancel(&git_root, &params.baseline_ref, &rel_path, cancel_flag)? {
+            Ok(src) => (src, false),
+            Err("git_unavailable") => {
+                return Err(ChangesetFileError::Fatal(
+                    "git is not available.".to_string(),
+                ))
+            }
+            Err(_) => (String::new(), true),
+        };
     let current_src = match read_safe_utf8_file(filepath) {
         Ok(src) => src,
         Err(err) => return Ok(file_error(filepath, err, "file_not_found")),
     };
+    if is_cancelled(cancel_flag) {
+        return Err(ChangesetFileError::Cancelled);
+    }
     let (dep_graph, load_error) = load_dep_graph(gitnexus_dir, &resolved.to_string_lossy());
     let warnings = gitnexus_warnings(
         params.gitnexus_dir.as_deref(),

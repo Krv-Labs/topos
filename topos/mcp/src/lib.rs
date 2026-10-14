@@ -8,6 +8,7 @@ pub mod build_info;
 pub mod diagnostics;
 pub mod docs;
 pub mod evaluation;
+pub mod execution;
 pub mod formatting;
 pub mod metric_locations;
 pub mod paths;

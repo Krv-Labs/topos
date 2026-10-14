@@ -9,11 +9,17 @@
 //!    GitNexus.
 //! 4. Call `CharacteristicMorphism::classify_detailed`.
 
+mod build;
 mod classify;
 mod depgraph;
 mod freshness;
 mod gitref;
 
+pub use build::{
+    depgraph_analyze_timeout, ensure_gitnexus_dir, ensure_gitnexus_dir_with_cancel,
+    ensure_gitnexus_dir_with_progress, graph_build_lock, run_locked_depgraph_generation,
+    GitnexusEnsureOutcome, LockedGenerateOutcome,
+};
 pub use classify::{classify_code_string, classify_file, classify_morphism, detect_language};
 pub use depgraph::{
     clear_caches, depgraph_status, last_store_load_ms, load_dep_graph, DepgraphStatus,
@@ -24,9 +30,10 @@ pub use gitref::{git_head_mtime, git_head_sha, gitnexus_mtime};
 
 use std::path::{Path, PathBuf};
 
-use topos_engine::adapters::gitnexus::{generate_depgraph, gitnexus_available};
-
-use crate::security::resolve_existing_prefix;
+use crate::security::{
+    composable_default_root, resolve_existing_prefix, resolve_file_root, resolve_path_within,
+    resolve_project_path,
+};
 
 /// Stable prefixes shared by the producer (this module) and the
 /// agent-contract consumer (`formatting::composable_contract_signals`) so an
@@ -128,106 +135,80 @@ pub fn resolve_gitnexus_dir(override_dir: Option<&str>, project_root: &Path) -> 
     default.exists().then_some(default)
 }
 
-/// Outcome of [`ensure_gitnexus_dir`]: the dir to attach (if any), plus a
-/// note describing a generation attempt — `Some` only when generation was
-/// attempted and didn't result in a usable graph (not found on `$PATH`, or
-/// the `gitnexus analyze` run itself failed). `None` in every other case
-/// (already present/fresh, skipped, or generation succeeded), since
-/// [`gitnexus_warnings`] already explains any remaining unavailability
-/// (invalid override, schema mismatch, branch not indexed, ...) from the
-/// resulting `gitnexus_dir` state.
-pub struct GitnexusEnsureOutcome {
-    pub gitnexus_dir: Option<PathBuf>,
-    pub generation_note: Option<String>,
+/// Resolved target root and status override for `topos_depgraph_status` and
+/// `topos_generate_depgraph`.
+pub(crate) struct DepgraphTarget {
+    pub target_dir: PathBuf,
+    pub status_override: Option<String>,
 }
 
-/// Resolve the gitnexus dir to attach for COMPOSABLE, generating/refreshing
-/// it first when missing or stale — the shared "ensure" decision behind
-/// both the CLI's default `topos evaluate` and the MCP evaluate tools'
-/// default behavior, so the two standardize on one "always try to score all
-/// four pillars" policy. `skip=true` (`no_composable`) attaches no store at
-/// all, even when `.gitnexus` is already on disk, matching
-/// `topos evaluate --no-composable`. `capture` is forwarded to
-/// `generate_depgraph`: `false` streams GitNexus's own output to the
-/// inherited stdio (the CLI, where a human is watching), `true` collects it
-/// into the result instead (MCP, over a stdio transport already carrying
-/// the protocol).
-///
-/// Never blocks indefinitely: `generate_depgraph` bounds the `gitnexus
-/// analyze` subprocess with `TOPOS_DEPGRAPH_TIMEOUT` (default 300s).
-/// Callers running this synchronously on an async runtime should offload it
-/// (e.g. `tokio::task::spawn_blocking`) so a slow/first-time generation on a
-/// large repo cannot stall the transport.
-pub fn ensure_gitnexus_dir(
-    override_dir: Option<&str>,
-    project_root: &Path,
-    skip: bool,
-    capture: bool,
-) -> GitnexusEnsureOutcome {
-    ensure_gitnexus_dir_with_progress(override_dir, project_root, skip, capture, &mut |_| {})
+fn resolve_depgraph_directory(directory: Option<&str>) -> Result<(PathBuf, PathBuf), String> {
+    match directory {
+        Some(dir) => resolve_project_path(dir),
+        None => {
+            let root = resolve_file_root()?;
+            Ok((root.clone(), root))
+        }
+    }
 }
 
-/// Same as [`ensure_gitnexus_dir`], invoking `progress` with stable phase
-/// labels so CLI spinners can distinguish freshness checks from
-/// `gitnexus analyze`.
-pub fn ensure_gitnexus_dir_with_progress(
-    override_dir: Option<&str>,
-    project_root: &Path,
-    skip: bool,
-    capture: bool,
-    progress: &mut dyn FnMut(&'static str),
-) -> GitnexusEnsureOutcome {
-    if skip {
-        return GitnexusEnsureOutcome {
-            gitnexus_dir: None,
-            generation_note: None,
-        };
+pub(crate) fn resolve_generate_project_root(
+    directory: Option<&Path>,
+    gitnexus_dir: Option<&str>,
+    file_root: &Path,
+) -> PathBuf {
+    match directory {
+        Some(dir) => dir.to_path_buf(),
+        None => resolve_mcp_composable_project_root(gitnexus_dir, file_root),
     }
-    let resolve = || resolve_gitnexus_dir(override_dir, project_root);
+}
 
-    progress("Checking dependency graph freshness");
-    let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
-    if !matches!(
-        status.state,
-        "missing" | "stale" | "branch_not_indexed" | "load_error"
-    ) {
-        // present, or a problem generating won't fix (invalid_dir for an
-        // outside-root override, schema_mismatch) — let gitnexus_warnings
-        // explain it from the resolved state. In-root not-yet-created
-        // overrides are `missing`, not `invalid_dir` (#287).
-        //
-        // `branch_not_indexed` and `load_error` *are* fixable by generating:
-        // branch-scoped stores mean a freshly checked-out branch has no store
-        // until `gitnexus analyze` indexes it, and the common load failure is
-        // a half-written store left by an interrupted analyze. Treating both
-        // as terminal left COMPOSABLE silently dead until the user re-ran
-        // GitNexus by hand. One analyze is attempted per call, so a store
-        // that genuinely cannot be rebuilt still stops after
-        // `generation_note` explains why.
-        return GitnexusEnsureOutcome {
-            gitnexus_dir: resolve(),
-            generation_note: None,
-        };
+/// Choose the `gitnexus_dir` override to pass to [`depgraph_status`]
+/// alongside the root [`resolve_generate_project_root`] just derived.
+pub(crate) fn resolve_generate_status_override(
+    directory: Option<&Path>,
+    gitnexus_dir: Option<&str>,
+    file_root: &Path,
+) -> Option<String> {
+    match directory {
+        Some(_) => gitnexus_dir.map(str::to_string),
+        None => resolve_override_for_root(gitnexus_dir, file_root),
     }
+}
 
-    if !gitnexus_available() {
-        return GitnexusEnsureOutcome {
-            gitnexus_dir: resolve(),
-            generation_note: Some(
-                "GitNexus not found on $PATH — COMPOSABLE not scored. Install it with \
-                 `npm install -g gitnexus` to enable COMPOSABLE."
-                    .to_string(),
-            ),
-        };
+/// Validate `directory` and `gitnexus_dir` for depgraph MCP tools and
+/// optionally inspect the current [`DepgraphStatus`].
+pub(crate) fn resolve_depgraph_target(
+    directory: Option<&str>,
+    gitnexus_dir: Option<&str>,
+    for_generate: bool,
+    include_status: bool,
+) -> Result<(DepgraphTarget, Option<DepgraphStatus>), String> {
+    let (resolved_directory, detected_project) = resolve_depgraph_directory(directory)?;
+    let composable_root = composable_default_root(&detected_project);
+    if let Some(dir) = gitnexus_dir {
+        resolve_path_within(dir, &composable_root)?;
     }
-
-    progress("Running gitnexus analyze");
-    let result = generate_depgraph(project_root, capture, None);
-    let generation_note = (!result.ok).then(|| generation_failure_note(&result.message));
-    GitnexusEnsureOutcome {
-        gitnexus_dir: resolve(),
-        generation_note,
+    if for_generate && !resolved_directory.is_dir() {
+        return Err(format!("Not a directory: {}", resolved_directory.display()));
     }
+    let dir_opt = for_generate.then_some(resolved_directory.as_path());
+    let target_dir = resolve_generate_project_root(dir_opt, gitnexus_dir, &composable_root);
+    let status_override = resolve_generate_status_override(dir_opt, gitnexus_dir, &composable_root);
+    let status = include_status.then(|| {
+        depgraph_status(
+            status_override.as_deref(),
+            &target_dir,
+            &target_dir.to_string_lossy(),
+        )
+    });
+    Ok((
+        DepgraphTarget {
+            target_dir,
+            status_override,
+        },
+        status,
+    ))
 }
 
 /// Upper bound, in bytes, on how much GitNexus child output is echoed into an
@@ -253,7 +234,7 @@ const GENERATION_DETAIL_CAP: usize = 200;
 /// appear inside child stderr, but a *generation* failure is not a graph-state
 /// signal — any marker matched out of a stack trace was incidental coupling.
 /// The elision suffix is deliberately worded to contain none of the markers.
-fn generation_failure_note(message: &str) -> String {
+pub(super) fn generation_failure_note(message: &str) -> String {
     format!(
         "GitNexus generation failed ({}) — COMPOSABLE not scored.",
         cap_generation_detail(message)
@@ -399,7 +380,6 @@ pub fn gitnexus_warnings(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use topos_engine::adapters::gitnexus::gitnexus_available;
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -515,49 +495,6 @@ mod tests {
     }
 
     #[test]
-    fn ensure_gitnexus_dir_skip_ignores_an_existing_store_without_shelling_out() {
-        // `no_composable` must not score a graph that is already on disk,
-        // and must not shell out to refresh one. Deterministic whether or
-        // not `gitnexus` is on PATH.
-        let project_root = temp_dir("skip_root");
-        std::fs::create_dir(project_root.join(".gitnexus")).unwrap();
-        let outcome = ensure_gitnexus_dir(None, &project_root, true, false);
-        assert!(outcome.gitnexus_dir.is_none());
-        assert!(outcome.generation_note.is_none());
-        std::fs::remove_dir_all(&project_root).ok();
-    }
-
-    #[test]
-    fn ensure_gitnexus_dir_returns_none_for_override_outside_project_root_without_shelling_out() {
-        // An override outside project_root is rejected by
-        // resolve_gitnexus_dir/depgraph_status before any availability
-        // check or subprocess call — deterministic either way.
-        let project_root = temp_dir("invalid_root");
-        let outside = temp_dir("invalid_outside");
-
-        let outcome = ensure_gitnexus_dir(
-            Some(&outside.to_string_lossy()),
-            &project_root,
-            false,
-            false,
-        );
-        assert!(outcome.gitnexus_dir.is_none());
-        // invalid_dir is a state generation can't fix, so no generation
-        // is attempted and no generation_note is set — gitnexus_warnings
-        // (fed by depgraph_status separately) is what explains it.
-        assert!(outcome.generation_note.is_none());
-        let status = depgraph_status(
-            Some(&outside.to_string_lossy()),
-            &project_root,
-            &project_root.to_string_lossy(),
-        );
-        assert_eq!(status.state, "invalid_dir");
-
-        std::fs::remove_dir_all(&project_root).ok();
-        std::fs::remove_dir_all(&outside).ok();
-    }
-
-    #[test]
     fn in_root_missing_override_classifies_as_missing_not_invalid() {
         // #287: `--gitnexus-dir <repo>/.gitnexus` before the store exists must
         // not be `invalid_dir` — that short-circuits ensure and silently
@@ -597,20 +534,48 @@ mod tests {
     }
 
     #[test]
-    fn ensure_gitnexus_dir_degrades_gracefully_when_gitnexus_missing_from_path() {
-        if gitnexus_available() {
-            // Dev boxes may have GitNexus installed; skip rather than
-            // shell out to the real binary from a unit test.
-            return;
-        }
-        let project_root = temp_dir("missing_no_gitnexus");
-        let outcome = ensure_gitnexus_dir(None, &project_root, false, true);
-        assert!(outcome.gitnexus_dir.is_none());
-        assert!(outcome
-            .generation_note
-            .as_deref()
-            .is_some_and(|n| n.contains("not found on $PATH")));
-        std::fs::remove_dir_all(&project_root).ok();
+    fn resolve_generate_project_root_derives_from_gitnexus_dir_like_status() {
+        let file_root = temp_dir("generate_root").canonicalize().unwrap();
+        let nested = file_root.join("nested");
+        std::fs::create_dir_all(nested.join(".gitnexus")).unwrap();
+        let store = nested.join(".gitnexus");
+
+        let derived =
+            resolve_generate_project_root(None, Some(store.to_str().unwrap()), &file_root);
+        assert_eq!(derived, nested.canonicalize().unwrap());
+
+        let explicit = resolve_generate_project_root(
+            Some(file_root.as_path()),
+            Some(store.to_str().unwrap()),
+            &file_root,
+        );
+        assert_eq!(explicit, file_root);
+
+        std::fs::remove_dir_all(&file_root).ok();
+    }
+
+    #[test]
+    fn resolve_generate_status_override_matches_the_root_it_pairs_with() {
+        let file_root = temp_dir("generate_status_override").canonicalize().unwrap();
+        std::fs::create_dir_all(file_root.join("repo/.gitnexus")).unwrap();
+        let raw_override = "repo/.gitnexus";
+
+        let derived_override =
+            resolve_generate_status_override(None, Some(raw_override), &file_root);
+        assert_eq!(
+            derived_override.as_deref(),
+            file_root.join("repo/.gitnexus").to_str(),
+            "must resolve to the real store, not double the subdirectory"
+        );
+
+        let explicit_override = resolve_generate_status_override(
+            Some(file_root.as_path()),
+            Some(raw_override),
+            &file_root,
+        );
+        assert_eq!(explicit_override.as_deref(), Some(raw_override));
+
+        std::fs::remove_dir_all(&file_root).ok();
     }
 
     /// Marker the cap appends; tests split on it instead of re-spelling the

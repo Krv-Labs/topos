@@ -114,6 +114,12 @@ fn discover_lifecycle_needs_no_initialize() {
             "{capability} capability missing from discover: {discover:#?}"
         );
     }
+    assert!(
+        discover["capabilities"]["extensions"]
+            .get("io.modelcontextprotocol/tasks")
+            .is_some(),
+        "io.modelcontextprotocol/tasks extension capability missing from discover: {discover:#?}"
+    );
 
     // Same tool surface as the initialize path: discovery is a lifecycle
     // change, not a different server.
@@ -130,30 +136,26 @@ fn discover_lifecycle_needs_no_initialize() {
         .contains("Topos Agent Contract"));
 }
 
-/// Every revision in `SUPPORTED_PROTOCOL_VERSIONS` negotiates as itself.
-///
-/// rmcp 3.1.0 rewired `initialize` negotiation to check the handler's supported
-/// list where rmcp 2.2 checked the SDK's `KNOWN_VERSIONS`, so narrowing that
-/// list silently stops the server agreeing to the revisions it drops: the
-/// handshake does not fail, it answers with a *different* version, and per the
-/// MCP lifecycle spec a client that does not support the reply should
-/// disconnect. This pins the echo for each revision so that regression cannot
-/// land again unnoticed.
+/// Every handshake revision in `SUPPORTED_PROTOCOL_VERSIONS` negotiates as
+/// itself over `initialize`, while `2026-07-28` (`ProtocolVersion::NO_INITIALIZE`)
+/// replaced `initialize` with `server/discover` + per-request `_meta` and
+/// therefore answers a legacy `initialize` call with the newest handshake
+/// revision (`2025-11-25`).
 #[test]
 fn initialize_negotiates_every_supported_revision() {
     // Hoisted: the reference surface is the same for every revision, so spawning
     // it once per iteration would double the child processes for nothing.
     let reference_tools = tool_names(&initialize_era_tools_list());
-    for version in [
-        "2024-11-05",
-        "2025-03-26",
-        "2025-06-18",
-        "2025-11-25",
-        "2026-07-28",
+    for (requested, expected_negotiated) in [
+        ("2024-11-05", "2024-11-05"),
+        ("2025-03-26", "2025-03-26"),
+        ("2025-06-18", "2025-06-18"),
+        ("2025-11-25", "2025-11-25"),
+        ("2026-07-28", "2025-11-25"),
     ] {
         let responses = exchange(&[
             &format!(
-                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{version}","capabilities":{{}},"clientInfo":{{"name":"lifecycle-test","version":"0.0.1"}}}}}}"#
+                r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{requested}","capabilities":{{}},"clientInfo":{{"name":"lifecycle-test","version":"0.0.1"}}}}}}"#
             ),
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
             r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
@@ -161,16 +163,43 @@ fn initialize_negotiates_every_supported_revision() {
 
         let init = result_for_id(&responses, 1);
         assert_eq!(
-            init["protocolVersion"], version,
-            "server answered initialize with a version the client did not request: {init:#?}"
+            init["protocolVersion"], expected_negotiated,
+            "unexpected negotiated version for requested {requested}: {init:#?}"
         );
         // A revision is only genuinely supported if the session then works.
         assert_eq!(
             tool_names(result_for_id(&responses, 2)),
             reference_tools,
-            "tool surface differs under negotiated {version}"
+            "tool surface differs under requested {requested}"
         );
     }
+}
+
+/// SEP-2549 explicit caching hints: static discovery/doc surfaces advertise a
+/// 24h public TTL, while runtime-specific `topos://build` advertises `ttlMs: 0`
+/// and `cacheScope: "private"`.
+#[test]
+fn sep2549_caching_hints_on_static_and_dynamic_surfaces() {
+    let responses = exchange(&[
+        r#"{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"prompts/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"resources/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"resources/templates/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+        r#"{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"topos://docs/lattice","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+        r#"{"jsonrpc":"2.0","id":6,"method":"resources/read","params":{"uri":"topos://build","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}"#,
+    ]);
+
+    for id in 1..=5 {
+        let res = result_for_id(&responses, id);
+        assert_eq!(res["resultType"], "complete");
+        assert_eq!(res["ttlMs"], 86_400_000);
+        assert_eq!(res["cacheScope"], "public");
+    }
+
+    let build_res = result_for_id(&responses, 6);
+    assert_eq!(build_res["resultType"], "complete");
+    assert_eq!(build_res["ttlMs"], 0);
+    assert_eq!(build_res["cacheScope"], "private");
 }
 
 fn tool_names(list_result: &serde_json::Value) -> Vec<String> {

@@ -8,10 +8,11 @@ description = "Topos MCP server: SIMPLE/COMPOSABLE/SECURE/NAVIGABLE structural c
 
 [dependencies]
 topos-engine = { path = "../engine" }
-# Bounded to 3.1.x: rmcp changed `initialize` version negotiation in a *minor*
-# release (3.1.0), so a looser `"3"` lets protocol behavior move with no diff.
-rmcp = { version = "3.1", features = ["server", "transport-io", "macros"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+# Bounded to ~3.5.1: rmcp changed `initialize` version negotiation and added
+# SEP-2549 / SEP-2663 task & caching APIs in 3.5.x; pinning patch-level prevents
+# silent protocol drift across minor bumps.
+rmcp = { version = "~3.5.1", features = ["server", "transport-io", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "sync", "time"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 schemars = "1"

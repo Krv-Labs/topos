@@ -30,13 +30,16 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::Blake2bVar;
 
-use super::discovery::{build_path_skip_checker, iter_source_files};
-use super::process::{command_on_path, run_with_timeout, timeout_duration, RunError};
+use super::discovery::{build_path_skip_checker, iter_source_files_with_cancel};
+use super::process::{
+    command_on_path, run_with_timeout, run_with_timeout_and_cancel, timeout_duration, RunError,
+};
 
 pub(crate) const GITNEXUS_CMD: &str = "gitnexus";
 
@@ -62,12 +65,15 @@ pub const DEFAULT_ANALYZE_TIMEOUT_S: f64 = 300.0;
 const TIMEOUT_RC: i32 = 124; // conventional "timed out" exit code
 const EXEC_ERROR_RC: i32 = 126; // command found but could not be executed
 const NOT_FOUND_RC: i32 = 127;
+/// Return code used when `gitnexus analyze` (or its pre-flight fingerprinting)
+/// was cancelled via a cooperative `cancel_flag`.
+pub const CANCELLED_RC: i32 = 130;
 
 /// Resolve the effective subprocess timeout in seconds.
 ///
 /// `None` (the default) falls back to `TOPOS_DEPGRAPH_TIMEOUT` or
 /// [`DEFAULT_ANALYZE_TIMEOUT_S`]. A non-positive value disables the timeout.
-fn resolve_timeout(timeout: Option<f64>) -> Option<f64> {
+pub fn resolve_timeout(timeout: Option<f64>) -> Option<f64> {
     if let Some(t) = timeout {
         return if t > 0.0 { Some(t) } else { None };
     }
@@ -220,11 +226,24 @@ pub struct SourceFingerprint {
 /// `.toposignore`) so editing an ignored file (fixtures, `*.min.*`, …)
 /// neither changes the fingerprint nor marks COMPOSABLE stale.
 pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
+    source_fingerprint_with_cancel(root, None).expect("uncancelled source_fingerprint cannot fail")
+}
+
+/// Like [`source_fingerprint`], but aborts and returns `None` if `cancel_flag`
+/// is set during file discovery or content hashing.
+pub fn source_fingerprint_with_cancel(
+    root: &Path,
+    cancel_flag: Option<&AtomicBool>,
+) -> Option<SourceFingerprint> {
+    if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+        return None;
+    }
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let suffixes = crate::graphs::ast::languages::all_source_suffixes();
     let checker = build_path_skip_checker(&root);
 
-    let mut files = iter_source_files(&root, &suffixes, true, Some(&checker), false);
+    let mut files =
+        iter_source_files_with_cancel(&root, &suffixes, true, Some(&checker), false, cancel_flag)?;
     files.sort_by(|a, b| {
         a.strip_prefix(&root)
             .unwrap_or(a)
@@ -234,6 +253,9 @@ pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
     let mut hasher = Blake2bVar::new(32).expect("32 is a valid BLAKE2b-var digest size");
     let mut count = 0usize;
     for path in &files {
+        if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+            return None;
+        }
         let Ok(rel) = path.strip_prefix(&root) else {
             continue;
         };
@@ -256,10 +278,10 @@ pub fn source_fingerprint(root: &Path) -> SourceFingerprint {
         .expect("digest buffer matches the requested output size");
     let content_hash = digest.iter().map(|b| format!("{b:02x}")).collect();
 
-    SourceFingerprint {
+    Some(SourceFingerprint {
         content_hash,
         file_count: count,
-    }
+    })
 }
 
 /// Current HEAD commit SHA, or `None` when there is no resolvable commit.
@@ -321,15 +343,31 @@ pub fn generate_depgraph(
     capture: bool,
     timeout: Option<f64>,
 ) -> DepgraphGenerationResult {
+    generate_depgraph_with_cancel(target_dir, capture, timeout, None)
+}
+
+/// Like [`generate_depgraph`], but honours a cooperative `cancel_flag`,
+/// killing the `gitnexus analyze` subprocess group if cancelled and returning
+/// `returncode == CANCELLED_RC`.
+pub fn generate_depgraph_with_cancel(
+    target_dir: &Path,
+    capture: bool,
+    timeout: Option<f64>,
+    cancel_flag: Option<&AtomicBool>,
+) -> DepgraphGenerationResult {
+    if cancel_flag.is_some_and(|f| f.load(Ordering::Relaxed)) {
+        return cancelled_result();
+    }
     if !gitnexus_available() {
         return not_found_result();
     }
-    run_analyze(
+    run_analyze_with_cancel(
         target_dir,
         GITNEXUS_CMD,
         &["analyze", "--skip-agents-md"],
         capture,
         timeout,
+        cancel_flag,
     )
 }
 
@@ -346,10 +384,20 @@ fn not_found_result() -> DepgraphGenerationResult {
     }
 }
 
+fn cancelled_result() -> DepgraphGenerationResult {
+    DepgraphGenerationResult {
+        ok: false,
+        returncode: CANCELLED_RC,
+        gitnexus_path: None,
+        message: "gitnexus analyze was cancelled.".to_string(),
+    }
+}
+
 /// The part of [`generate_depgraph`] after the availability check —
 /// pulled out so tests can point it at a stand-in command (and args)
 /// instead of the real `gitnexus` binary (which the test environment
 /// won't have installed).
+#[cfg(test)]
 fn run_analyze(
     target_dir: &Path,
     cmd_name: &str,
@@ -357,15 +405,35 @@ fn run_analyze(
     capture: bool,
     timeout: Option<f64>,
 ) -> DepgraphGenerationResult {
+    run_analyze_with_cancel(target_dir, cmd_name, args, capture, timeout, None)
+}
+
+fn run_analyze_with_cancel(
+    target_dir: &Path,
+    cmd_name: &str,
+    args: &[&str],
+    capture: bool,
+    timeout: Option<f64>,
+    cancel_flag: Option<&AtomicBool>,
+) -> DepgraphGenerationResult {
     let start_time = SystemTime::now();
-    let source_snapshot = source_fingerprint(target_dir);
+    let Some(source_snapshot) = source_fingerprint_with_cancel(target_dir, cancel_flag) else {
+        return cancelled_result();
+    };
     let effective_timeout = resolve_timeout(timeout);
     let duration_timeout = effective_timeout.and_then(timeout_duration);
 
     let mut cmd = Command::new(cmd_name);
     cmd.args(args);
 
-    match run_with_timeout(cmd, Some(target_dir), capture, duration_timeout) {
+    match run_with_timeout_and_cancel(
+        cmd,
+        Some(target_dir),
+        capture,
+        duration_timeout,
+        cancel_flag,
+    ) {
+        Err(RunError::Cancelled) => cancelled_result(),
         Err(RunError::TimedOut) => timed_out_result(effective_timeout),
         Err(RunError::Io(exc)) => io_error_result(&exc),
         Ok(output) if output.status_code.unwrap_or(-1) != 0 => failed_result(&output, capture),

@@ -48,6 +48,17 @@ fn err_result(target: RefactorTargetKind, filepath: &str, error: String) -> Refa
     }
 }
 
+fn err_response(
+    target: RefactorTargetKind,
+    title: &str,
+    filepath: &str,
+    error: String,
+) -> (RefactorResult, String) {
+    let md = format!("## {title}\n\n> ⚠️ **Error:** {error}");
+    let model = err_result(target, filepath, error);
+    (model, md)
+}
+
 fn refactor_cycles(
     params: &RefactorInput,
     cancel_flag: Option<&AtomicBool>,
@@ -58,15 +69,23 @@ fn refactor_cycles(
     let resolved = match resolve_within_root(&params.filepath) {
         Ok(path) => path,
         Err(err) => {
-            let model = err_result(RefactorTargetKind::Cycles, &params.filepath, err);
-            return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
+            return Ok(err_response(
+                RefactorTargetKind::Cycles,
+                "Cycle hotspots",
+                &params.filepath,
+                err,
+            ));
         }
     };
     let source = match read_safe_utf8_file(&resolved.to_string_lossy()) {
         Ok(source) => source,
         Err(err) => {
-            let model = err_result(RefactorTargetKind::Cycles, &params.filepath, err);
-            return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
+            return Ok(err_response(
+                RefactorTargetKind::Cycles,
+                "Cycle hotspots",
+                &params.filepath,
+                err,
+            ));
         }
     };
     if is_cancelled(cancel_flag) {
@@ -79,21 +98,22 @@ fn refactor_cycles(
         return Err(EvalCancelled);
     }
     let Some(cfg) = morphism.build_cfg().cloned() else {
-        let model = err_result(
+        return Ok(err_response(
             RefactorTargetKind::Cycles,
+            "Cycle hotspots",
             &params.filepath,
             "Could not build a control-flow graph.".to_string(),
-        );
-        return Ok((model, render_hotspots_md("Cycle hotspots", &[])));
+        ));
     };
     if is_cancelled(cancel_flag) {
         return Err(EvalCancelled);
     }
 
+    let limit = params.limit.clamp(1, 50);
     let result = calculate_cycle_basis(&cfg);
     let mut ranked = result.cycles.clone();
     ranked.sort_by_key(|b| std::cmp::Reverse(span(b)));
-    ranked.truncate(params.limit);
+    ranked.truncate(limit);
 
     let hotspots: Vec<RefactorHotspot> = ranked
         .iter()
@@ -141,8 +161,12 @@ fn refactor_dependencies(
     let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
-            let model = err_result(RefactorTargetKind::Dependencies, &params.filepath, err);
-            return Ok((model, render_hotspots_md("Dependency hotspots", &[])));
+            return Ok(err_response(
+                RefactorTargetKind::Dependencies,
+                "Dependency hotspots",
+                &params.filepath,
+                err,
+            ));
         }
     };
     let composable_root = composable_default_root(&detected_project);
@@ -181,11 +205,12 @@ fn refactor_dependencies(
         return Ok((model, render_hotspots_md("Dependency hotspots", &[])));
     };
 
+    let limit = params.limit.clamp(1, 50);
     let curvature = calculate_mdg_curvature(&mdg, &file_id, "IMPORTS");
     let hotspots: Vec<RefactorHotspot> = curvature
         .edges
         .iter()
-        .take(params.limit)
+        .take(limit)
         .map(|(src, dst, score)| RefactorHotspot {
             kind: "dependency_edge".to_string(),
             label: format!("{src} -> {dst}"),
@@ -227,8 +252,12 @@ fn refactor_process(
     let (_path, detected_project) = match resolve_project_path(&params.filepath) {
         Ok(context) => context,
         Err(err) => {
-            let model = err_result(RefactorTargetKind::Process, &params.filepath, err);
-            return Ok((model, render_hotspots_md("Process choke points", &[])));
+            return Ok(err_response(
+                RefactorTargetKind::Process,
+                "Process choke points",
+                &params.filepath,
+                err,
+            ));
         }
     };
     let composable_root = composable_default_root(&detected_project);
@@ -275,10 +304,11 @@ fn refactor_process(
     let subgraph = ProcessGraph::from_paths(params.filepath.clone(), touching);
     let curvature = calculate_process_curvature(&subgraph, None);
 
+    let limit = params.limit.clamp(1, 50);
     let hotspots: Vec<RefactorHotspot> = curvature
         .edges
         .iter()
-        .take(params.limit)
+        .take(limit)
         .map(|(src, dst, score)| RefactorHotspot {
             kind: "process_transition".to_string(),
             label: format!("{src} -> {dst}"),

@@ -114,6 +114,34 @@ mod tests {
         );
     }
 
+    fn assert_portable_property(tool_name: &str, prop_name: &str, prop_schema: &serde_json::Value) {
+        assert!(
+            !prop_schema.get("type").is_some_and(|v| v.is_array()),
+            "tool `{tool_name}` property `{prop_name}` uses a non-portable type array: {prop_schema}",
+        );
+        let desc = prop_schema
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        assert!(
+            !desc.trim().is_empty(),
+            "tool `{tool_name}` property `{prop_name}` is missing a description",
+        );
+    }
+
+    #[test]
+    fn tool_input_schemas_use_anyof_for_nullables_and_document_all_properties() {
+        for tool in ToposServer::new().list_tool_defs() {
+            let schema = serde_json::to_value(&tool.input_schema).expect("serialize input_schema");
+            let Some(props) = schema.get("properties").and_then(|p| p.as_object()) else {
+                continue;
+            };
+            for (prop_name, prop_schema) in props {
+                assert_portable_property(&tool.name, prop_name, prop_schema);
+            }
+        }
+    }
+
     #[test]
     #[ignore = "convenience: cargo test -p topos-mcp dump_tool_surface -- --ignored --nocapture"]
     fn dump_tool_surface() {

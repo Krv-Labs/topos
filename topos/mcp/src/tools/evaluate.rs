@@ -138,7 +138,7 @@ impl ToposServer {
             read_only_hint = false,
             destructive_hint = false,
             idempotent_hint = false,
-            open_world_hint = true
+            open_world_hint = false
         )
     )]
     pub async fn topos_evaluate_file(
@@ -183,7 +183,7 @@ impl ToposServer {
             read_only_hint = false,
             destructive_hint = false,
             idempotent_hint = false,
-            open_world_hint = true
+            open_world_hint = false
         )
     )]
     pub async fn topos_evaluate_project(
@@ -340,7 +340,10 @@ pub(crate) fn evaluate_file_sync_with_cancel(
     // case; the "no .gitnexus directory" warning would be false when a
     // graph is already on disk.
     let mut warnings = if params.no_composable {
-        Vec::new()
+        resolved_override
+            .as_deref()
+            .and_then(|raw| crate::evaluation::check_override_warning(raw, &project_root))
+            .unwrap_or_default()
     } else {
         gitnexus_warnings(
             resolved_override.as_deref(),
@@ -1484,6 +1487,10 @@ fn render_project_entry(entry: &ProjectFileEntry, verbose: bool) -> Vec<String> 
 
 pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
     let mut lines = vec![format!("# Project Evaluation — {}", r.root), String::new()];
+    if let Some(error) = &r.error {
+        lines.push(format!("> ⚠️ **Error:** {error}"));
+        lines.push(String::new());
+    }
     lines.push(format!(
         "**Overall:** {}",
         r.aggregate_floor_verdict.as_str()

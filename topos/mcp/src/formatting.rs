@@ -770,6 +770,14 @@ pub fn append_path_note(markdown: &mut String, note: Option<&str>) {
 /// Return a dual-channel tool result: markdown for the LLM plus the model's
 /// JSON dump as `structured_content` for programmatic clients.
 pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResult {
+    let structured = serde_json::to_value(model).ok();
+    let has_structured_error = structured
+        .as_ref()
+        .and_then(|v| v.get("error"))
+        .is_some_and(|e| !e.is_null() && e.as_str() != Some(""));
+    let has_markdown_error =
+        markdown.starts_with("**Error:**") || markdown.contains("\n> ⚠️ **Error:**");
+
     // Every tool funnels through here, so this is the one place a
     // server-level condition can reach an agent mid-loop. The banner is
     // emitted *only* when the binary on disk has outrun this process, so a
@@ -791,8 +799,12 @@ pub fn to_tool_result<T: Serialize>(model: &T, markdown: String) -> CallToolResu
         Some(banner) => format!("{banner}\n\n{markdown}"),
         None => markdown,
     };
-    let mut result = CallToolResult::success(vec![ContentBlock::text(markdown)]);
-    result.structured_content = serde_json::to_value(model).ok();
+    let mut result = if has_structured_error || has_markdown_error {
+        CallToolResult::error(vec![ContentBlock::text(markdown)])
+    } else {
+        CallToolResult::success(vec![ContentBlock::text(markdown)])
+    };
+    result.structured_content = structured;
     result
 }
 
@@ -1508,5 +1520,31 @@ mod tests {
             assert!(contract.blocked_by.contains(&"parse_failures".to_string()));
             assert!(contract.risk_flags.contains(&"parse_failures".to_string()));
         }
+    }
+
+    #[test]
+    fn to_tool_result_signals_is_error_only_when_error_populated() {
+        // Normal evaluation (even with failing pillars / low score) has error: None -> is_error == Some(false)
+        let body: String = (0..11)
+            .map(|i| format!("    if x == {i}:\n        return {i}\n"))
+            .collect();
+        let normal_model = model_for_source(&format!("def f(x):\n{body}    return -1\n"));
+        assert!(normal_model.error.is_none());
+        let normal_md = render_evaluation_md(&normal_model, None, false);
+        let normal_res = to_tool_result(&normal_model, normal_md);
+        assert_eq!(normal_res.is_error, Some(false));
+        assert!(normal_res.structured_content.is_some());
+
+        // Error result has error: Some(...) -> is_error == Some(true)
+        let err_model = EvaluationResult::error_result(
+            "Evaluation failed",
+            Priority::Simple,
+            PrioritySource::Default,
+            "Unsupported language: cobol".to_string(),
+        );
+        assert!(err_model.error.is_some());
+        let err_res = to_tool_result(&err_model, error_md(&err_model));
+        assert_eq!(err_res.is_error, Some(true));
+        assert!(err_res.structured_content.is_some());
     }
 }

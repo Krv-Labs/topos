@@ -17,8 +17,18 @@ use topos_engine::graphs::uast::models::UASTNode;
 use crate::execution::{is_cancelled, EvalCancelled};
 use crate::formatting::to_tool_result;
 use crate::schemas::{CalculateCoverageInput, CoverageResult};
-use crate::security::resolve_within_root;
+use crate::security::{read_safe_utf8_file, resolve_within_root};
 use crate::server::ToposServer;
+
+const DEFAULT_MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
+
+fn max_source_bytes() -> usize {
+    std::env::var("TOPOS_MCP_MAX_SOURCE_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_SOURCE_BYTES)
+}
 
 fn empty_coverage_result(error: String) -> CoverageResult {
     CoverageResult {
@@ -69,8 +79,15 @@ fn parse_one_coverage_input(
 ) -> Result<(), String> {
     let resolved =
         resolve_within_root(path).map_err(|err| format!("{label} file error: {err} for {path}"))?;
-    let source = std::fs::read_to_string(&resolved)
+    let source = read_safe_utf8_file(path)
         .map_err(|exc| format!("Failed to read {label} file {path}: {exc}"))?;
+    let max_bytes = max_source_bytes();
+    if source.len() > max_bytes {
+        return Err(format!(
+            "{label} file {path} ({} bytes) exceeds the maximum allowed source size ({max_bytes} bytes, TOPOS_MCP_MAX_SOURCE_BYTES)",
+            source.len()
+        ));
+    }
     let file = resolved.to_string_lossy();
     let parse_error = |exc| format!("Failed to parse {label} file {path}: {exc}");
     if label == "PUT" {
@@ -201,7 +218,8 @@ fn calculate_coverage_with_cancel(
     let put_roots: Vec<&UASTNode> = put_nodes.iter().collect();
     let test_roots: Vec<&UASTNode> = test_nodes.iter().collect();
 
-    match declaration_coverage(&put_roots, &test_roots, params.k, params.include_unknown) {
+    let k = params.k.clamp(1, 16);
+    match declaration_coverage(&put_roots, &test_roots, k, params.include_unknown) {
         Ok(report) if report.put_declaration_count == 0 => Ok(error_tool_result(
             "no function or method declarations found in source files; check --language and source paths"
                 .to_string(),

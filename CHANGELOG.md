@@ -23,9 +23,28 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   (`tools/list`, `prompts/list`, `resources/list`, `resources/templates/list`,
   and `topos://docs/*`), and (`ttlMs: 0`, `cacheScope: "private"`) on the
   runtime-specific `topos://build` resource.
+- Expose `topos://docs/{topic}` in `resources/templates/list` and document all
+  tool input properties across the 17 MCP tools.
 
 ### Fixed
 
+- Emit portable `anyOf: [{"type": "string"}, {"type": "null"}]` schemas instead
+  of Draft 2020-12 `type: ["string", "null"]` arrays for all nullable MCP tool
+  input fields so single-`type` JSON Schema and OpenAPI 3.0 clients (such as
+  Gemini function declarations) accept every Topos tool without warnings.
+- Signal `isError: true` in `CallToolResult` whenever a tool returns an input
+  validation, path resolution, or execution error (`error` populated in
+  `structuredContent`), while keeping normal code-quality gate failures at
+  `isError: false`.
+- Mark incomplete changeset assessments as tool errors and render per-file
+  failures, including oversized baselines, alongside successful file results.
+- Enforce `TOPOS_MCP_MAX_SOURCE_BYTES` (default 2 MiB) on
+  `topos_calculate_coverage` file reads and `git show` baseline blobs in
+  `topos_assess_changeset`, normalize non-existent relative `gitnexus_dir`
+  overrides with `resolve_existing_prefix` to block parent-traversal escapes,
+  clamp `k`/`top_n_functions`/`limit` bounds, validate required `filepath` and
+  `priority` arguments in `prompts/get`, and set `openWorldHint: false` on
+  filesystem-bounded tools.
 - Offload blocking MCP tool handlers to bounded `spawn_blocking` workers
   (`2..=4` concurrency semaphore with operation-owned permits), serialize
   concurrent `.gitnexus` builds per project root, and propagate cooperative

@@ -298,7 +298,7 @@ impl ToposServer {
             read_only_hint = false,
             destructive_hint = false,
             idempotent_hint = false,
-            open_world_hint = true
+            open_world_hint = false
         )
     )]
     pub async fn topos_generate_depgraph(

@@ -279,10 +279,12 @@ pub(crate) fn check_override_warning(
     } else {
         project_root.join(path)
     };
-    // Prefer canonicalize so symlink escapes are caught; fall back to the
-    // joined path when the store does not exist yet (first-run override).
-    let resolved = joined.canonicalize().unwrap_or(joined);
-    if !resolved.starts_with(project_root) {
+    // Resolve symlinks and `..` components on the existing prefix so a
+    // non-existent store path with parent traversal cannot lexically appear
+    // inside `project_root`.
+    let resolved = resolve_existing_prefix(&joined);
+    let canon_root = resolve_existing_prefix(project_root);
+    if !resolved.starts_with(&canon_root) {
         return Some(vec![format!(
             "{} — override must be inside TOPOS_MCP_FILE_ROOT. Got: {}",
             INVALID_GITNEXUS_MARKERS[0],
@@ -741,5 +743,16 @@ mod tests {
     fn generic_load_warning_keeps_the_underlying_error() {
         let warnings = dep_graph_load_warning(Some("dlopen failed for extension: fts"));
         assert!(warnings[0].contains("dlopen failed for extension: fts"));
+    }
+
+    #[test]
+    fn check_override_warning_rejects_nonexistent_parent_traversal_escape() {
+        let project_root = temp_dir("parent_traversal_root");
+        let warn = check_override_warning("../outside_nonexistent/.gitnexus", &project_root);
+        assert!(
+            warn.is_some(),
+            "parent-traversal override escaping project_root must be rejected even when missing"
+        );
+        std::fs::remove_dir_all(&project_root).ok();
     }
 }

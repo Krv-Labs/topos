@@ -235,6 +235,17 @@ fn default_baseline_ref() -> String {
     "HEAD".to_string()
 }
 
+/// Rewrite `Option<String>` `type: ["string", "null"]` into portable `anyOf`.
+fn nullable_to_any_of(schema: &mut schemars::Schema) {
+    if let Some(obj) = schema.as_object_mut() {
+        obj.remove("type");
+        obj.insert(
+            "anyOf".to_string(),
+            serde_json::json!([{"type": "string"}, {"type": "null"}]),
+        );
+    }
+}
+
 /// Arguments for `topos_evaluate_code`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -261,12 +272,10 @@ pub struct EvaluateCodeInput {
 pub struct EvaluateFileInput {
     /// Source file path. Prefer an absolute path.
     pub filepath: String,
-    /// `.gitnexus` store under the MCP file root (default:
-    /// `<file root>/.gitnexus`). Freshness and regeneration always use the
-    /// file root as the project root; this only selects the store path
-    /// inside it. If missing or stale, this tool generates/refreshes first
-    /// (see `no_composable`).
+    /// `.gitnexus` store under the file root (default: `<file root>/.gitnexus`);
+    /// generated/refreshed when missing or stale (see `no_composable`).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Use no dependency graph, even an existing `.gitnexus`; score
     /// SIMPLE/SECURE/NAVIGABLE only.
@@ -316,18 +325,15 @@ pub struct EvaluateProjectInput {
     /// Directory to evaluate, walked recursively. Prefer an absolute path. Must
     /// resolve inside the trusted file root. Languages are autodetected.
     pub path: String,
-    /// Optional ranking of simple/composable/secure (best first). The
-    /// top-ranked generator sets scorer priority; omit to default to
-    /// SIMPLE priority.
+    /// Optional ranking of simple/composable/secure/navigable (best first).
+    /// Top-ranked sets scorer priority (default SIMPLE).
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
-    /// `.gitnexus` store under the MCP file root (default:
-    /// `<file root>/.gitnexus`). Freshness and regeneration always use the
-    /// file root as the project root; this only selects the store path
-    /// inside it. If missing or stale, this tool generates/refreshes first
-    /// (see `no_composable`). If generation isn't possible, COMPOSABLE is
-    /// reported as unavailable rather than failing the whole evaluation.
+    /// `.gitnexus` store under the file root (default: `<file root>/.gitnexus`);
+    /// generated/refreshed when missing or stale (see `no_composable`), or
+    /// COMPOSABLE is reported unavailable if generation fails.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Use no dependency graph, even an existing `.gitnexus`; score
     /// SIMPLE/SECURE/NAVIGABLE only.
@@ -369,11 +375,9 @@ pub struct CompareCodeInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CompareFilesInput {
-    /// Baseline file path.
-    /// Source path. Prefer absolute.
+    /// Baseline file path (prefer absolute).
     pub source: String,
-    /// Comparison file path.
-    /// Target path. Prefer absolute.
+    /// Comparison file path (prefer absolute).
     pub target: String,
 }
 
@@ -383,24 +387,29 @@ pub struct CompareFilesInput {
 pub struct AssessImprovementInput {
     /// Proposed source.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub proposed_code: Option<String>,
     /// Proposed file path.
-    /// Proposed path for `filepath`.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub proposed_filepath: Option<String>,
     /// Baseline file path for side-by-side assessment.
-    /// Path of the file being assessed.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub filepath: Option<String>,
     /// Inline baseline source; COMPOSABLE is unavailable.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub current_code: Option<String>,
+    /// Language for inline code.
     #[serde(default = "default_language")]
     pub language: String,
     /// Optional generator ranking.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
+    /// .gitnexus directory.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Include SECURE findings.
     #[serde(default = "default_true")]
@@ -436,6 +445,7 @@ pub struct BeginRefactorInput {
     pub preferences: Option<UserPreferencesInput>,
     /// .gitnexus directory.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
 }
 
@@ -467,7 +477,9 @@ pub struct AssessWorktreeChangeInput {
     /// Optional generator ranking.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
+    /// .gitnexus directory.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Include SECURE findings.
     #[serde(default = "default_true")]
@@ -489,8 +501,11 @@ pub struct AssessChangesetInput {
     /// Optional generator ranking.
     #[serde(default)]
     pub preferences: Option<UserPreferencesInput>,
+    /// .gitnexus directory.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
+    /// Include SECURE findings.
     #[serde(default = "default_true")]
     pub include_security_findings: bool,
     /// One-off acknowledged dangerous-call patterns.
@@ -506,22 +521,22 @@ fn default_top_n_functions() -> usize {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InspectCodeInput {
+    /// Inline source code.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub code: Option<String>,
-    /// Path to the source file inside the project root. Prefer this for
-    /// large files.
-    /// Path of the file being assessed.
+    /// Source file path inside the project root (prefer for large files).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub filepath: Option<String>,
     /// Language for inline `code`; ignored for `filepath`, which is
     /// autodetected from the file extension.
     #[serde(default = "default_language")]
     pub language: String,
-    /// `.gitnexus` store under the MCP file root (default:
-    /// `<file root>/.gitnexus`). Freshness/regeneration use the file root
-    /// as the project root; this only selects the store path. Only used
-    /// with `filepath` — inline `code` has no module to place in the graph.
+    /// `.gitnexus` store under the file root (default: `<file root>/.gitnexus`);
+    /// only used with `filepath`.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Use no dependency graph, even an existing `.gitnexus`; score
     /// SIMPLE/SECURE/NAVIGABLE only.
@@ -580,7 +595,7 @@ pub struct CalculateCoverageInput {
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PreferenceWalkInput {
-    /// Permutation of {simple, composable, secure}, most-preferred first.
+    /// Permutation of {simple, composable, secure, navigable}, most-preferred first.
     pub ranking: Vec<GeneratorInput>,
     /// Optional current verdict; truncates the walk to steps strictly above
     /// it and sets `next_step`. Defaults to the full walk.
@@ -600,10 +615,12 @@ pub struct PreferenceWalkInput {
 pub struct DepgraphStatusInput {
     /// Repo root to inspect (default: MCP file root / process project root).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub directory: Option<String>,
     /// `.gitnexus` store under the project root (default:
     /// `<project root>/.gitnexus`).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
 }
 
@@ -613,9 +630,11 @@ pub struct DepgraphStatusInput {
 pub struct GenerateDepgraphInput {
     /// Repo root to analyze (default: MCP file root / process project root).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub directory: Option<String>,
     /// `.gitnexus` store under the project root.
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Regenerate even when current.
     #[serde(default)]
@@ -637,6 +656,7 @@ pub struct RefactorInput {
     pub filepath: String,
     /// Override `.gitnexus` directory (`dependencies` / `process` targets).
     #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
     pub gitnexus_dir: Option<String>,
     /// Maximum hotspots to return (default 5).
     #[serde(default = "default_refactor_limit")]

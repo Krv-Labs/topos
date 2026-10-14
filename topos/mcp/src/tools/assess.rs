@@ -860,6 +860,16 @@ fn is_safe_git_ref(git_ref: &str) -> bool {
     !git_ref.starts_with('-')
 }
 
+const DEFAULT_MAX_SOURCE_BYTES: usize = 2 * 1024 * 1024;
+
+fn max_source_bytes() -> usize {
+    std::env::var("TOPOS_MCP_MAX_SOURCE_BYTES")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_MAX_SOURCE_BYTES)
+}
+
 /// Read `<ref>:<rel_path>` from git. Returns `Ok(Ok(source))` or
 /// `Ok(Err(blocked_by_code))`, or `Err(EvalCancelled)` if cancelled.
 fn git_show_with_cancel(
@@ -888,6 +898,7 @@ fn git_show_with_cancel(
         }
         Err(_) => Ok(Err("baseline_ref_not_found")),
         Ok(out) if out.status_code != Some(0) => Ok(Err("baseline_ref_not_found")),
+        Ok(out) if out.stdout.len() > max_source_bytes() => Ok(Err("baseline_blob_too_large")),
         Ok(out) => Ok(Ok(out.stdout)),
     }
 }
@@ -1850,6 +1861,17 @@ fn assess_one_changeset_file(
             Err("git_unavailable") => {
                 return Err(ChangesetFileError::Fatal(
                     "git is not available.".to_string(),
+                ))
+            }
+            Err(code @ "baseline_blob_too_large") => {
+                return Ok(file_error(
+                    filepath,
+                    format!(
+                        "Baseline `{rel_path}` at ref `{}` exceeds the maximum allowed source size ({} bytes, TOPOS_MCP_MAX_SOURCE_BYTES).",
+                        params.baseline_ref,
+                        max_source_bytes()
+                    ),
+                    code,
                 ))
             }
             Err(_) => (String::new(), true),

@@ -304,7 +304,7 @@ impl ToposServer {
             read_only_hint = false,
             destructive_hint = false,
             idempotent_hint = false,
-            open_world_hint = true
+            open_world_hint = false
         )
     )]
     pub async fn topos_inspect_code(
@@ -413,9 +413,10 @@ fn inspect_code_with_cancel(
         }
     }
 
+    let top_n = params.top_n_functions.min(100);
     let mut top_entries = all_funcs.clone();
     top_entries.sort_by_key(|e| std::cmp::Reverse(e.complexity));
-    top_entries.truncate(params.top_n_functions);
+    top_entries.truncate(top_n);
     let top_funcs: BTreeMap<String, i64> = top_entries
         .iter()
         .map(|e| (e.name.clone(), e.complexity))

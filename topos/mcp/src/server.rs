@@ -22,7 +22,8 @@ use rmcp::model::{
     ListPromptsResult, ListResourceTemplatesResult, ListResourcesResult, ListToolsResult,
     PaginatedRequestParams, Prompt, PromptArgument, PromptMessage, ProtocolVersion,
     ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
-    ResourceContents, Role, ServerCapabilities, ServerConfig, Tool, UpdateTaskParams,
+    ResourceContents, ResourceTemplate, Role, ServerCapabilities, ServerConfig, Tool,
+    UpdateTaskParams,
 };
 use rmcp::service::RequestContext;
 use rmcp::task_manager::TaskManager;
@@ -351,9 +352,11 @@ impl ServerHandler for ToposServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourceTemplatesResult, McpError>> + Send + '_ {
-        std::future::ready(Ok(ListResourceTemplatesResult::default()
-            .with_ttl_ms(STATIC_CACHE_TTL_MS)
-            .with_cache_scope(CacheScope::Public)))
+        std::future::ready(Ok(ListResourceTemplatesResult::with_all_items(
+            doc_resource_templates(),
+        )
+        .with_ttl_ms(STATIC_CACHE_TTL_MS)
+        .with_cache_scope(CacheScope::Public)))
     }
 
     fn read_resource(
@@ -408,45 +411,7 @@ impl ServerHandler for ToposServer {
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<GetPromptResponse, McpError>> + Send + '_ {
-        let result = if request.name == REFACTOR_PROMPT_NAME {
-            let args = request.arguments.unwrap_or_default();
-            let filepath = args
-                .get("filepath")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let priority = args
-                .get("priority")
-                .and_then(|v| v.as_str())
-                .unwrap_or("secure")
-                .to_string();
-            let max_iterations = args
-                .get("max_iterations")
-                .and_then(|v| v.as_i64())
-                .or_else(|| {
-                    args.get("max_iterations")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse().ok())
-                })
-                .unwrap_or(5);
-            let preferences = args
-                .get("preferences")
-                .and_then(|v| v.as_str())
-                .map(str::to_string);
-            let text = build_refactor_prompt_text(
-                &filepath,
-                &priority,
-                max_iterations,
-                preferences.as_deref(),
-            );
-            Ok(GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)]).into())
-        } else {
-            Err(McpError::invalid_params(
-                format!("Unknown prompt: {}", request.name),
-                None,
-            ))
-        };
-        std::future::ready(result)
+        std::future::ready(resolve_prompt(request))
     }
 
     fn get_task(
@@ -481,6 +446,70 @@ impl ServerHandler for ToposServer {
     }
 }
 
+fn doc_resource_templates() -> Vec<ResourceTemplate> {
+    vec![
+        ResourceTemplate::new("topos://docs/{topic}", "topos_docs_by_topic")
+            .with_mime_type("text/markdown")
+            .with_description(
+                "Topos reference documentation by topic slug (agent-contract, lattice, metrics, priority, preferences, workflows).",
+            ),
+    ]
+}
+
+fn resolve_prompt(request: GetPromptRequestParams) -> Result<GetPromptResponse, McpError> {
+    if request.name != REFACTOR_PROMPT_NAME {
+        return Err(McpError::invalid_params(
+            format!("Unknown prompt: {}", request.name),
+            None,
+        ));
+    }
+    let args = request.arguments.unwrap_or_default();
+    let Some(filepath) = args
+        .get("filepath")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+    else {
+        return Err(McpError::invalid_params(
+            "Missing required prompt argument: 'filepath'",
+            None,
+        ));
+    };
+    let priority = match args.get("priority") {
+        None => "secure".to_string(),
+        Some(v) => {
+            let p = v.as_str().map(str::trim).unwrap_or("");
+            if matches!(p, "simple" | "composable" | "secure" | "navigable") {
+                p.to_string()
+            } else {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "Invalid 'priority' argument '{p}': expected one of simple, composable, secure, navigable."
+                    ),
+                    None,
+                ));
+            }
+        }
+    };
+    let max_iterations = args
+        .get("max_iterations")
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            args.get("max_iterations")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+        })
+        .unwrap_or(5);
+    let preferences = args
+        .get("preferences")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let text =
+        build_refactor_prompt_text(&filepath, &priority, max_iterations, preferences.as_deref());
+    Ok(GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)]).into())
+}
+
 /// Serve the Topos MCP server over stdio until the client disconnects.
 pub async fn serve() -> anyhow::Result<()> {
     use rmcp::transport::io::stdio;
@@ -498,4 +527,70 @@ pub async fn serve() -> anyhow::Result<()> {
     server.shutdown(SHUTDOWN_GRACE_PERIOD).await;
     wait_res?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_templates_expose_parameterized_docs_uri() {
+        let templates = doc_resource_templates();
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].uri_template, "topos://docs/{topic}");
+        assert_eq!(templates[0].name, "topos_docs_by_topic");
+        assert_eq!(templates[0].mime_type.as_deref(), Some("text/markdown"));
+    }
+
+    #[test]
+    fn get_prompt_validates_required_filepath_and_optional_priority() {
+        let missing_filepath = GetPromptRequestParams::new(REFACTOR_PROMPT_NAME);
+        let err = resolve_prompt(missing_filepath).expect_err("missing filepath must fail");
+        assert!(
+            err.message
+                .contains("Missing required prompt argument: 'filepath'"),
+            "unexpected error: {}",
+            err.message
+        );
+
+        let mut blank_args = serde_json::Map::new();
+        blank_args.insert("filepath".into(), serde_json::Value::String("   ".into()));
+        let err = resolve_prompt(
+            GetPromptRequestParams::new(REFACTOR_PROMPT_NAME).with_arguments(blank_args),
+        )
+        .expect_err("blank filepath must fail");
+        assert!(err
+            .message
+            .contains("Missing required prompt argument: 'filepath'"));
+
+        let mut bad_priority = serde_json::Map::new();
+        bad_priority.insert(
+            "filepath".into(),
+            serde_json::Value::String("src/lib.rs".into()),
+        );
+        bad_priority.insert("priority".into(), serde_json::Value::String("fast".into()));
+        let err = resolve_prompt(
+            GetPromptRequestParams::new(REFACTOR_PROMPT_NAME).with_arguments(bad_priority),
+        )
+        .expect_err("invalid priority must fail");
+        assert!(
+            err.message.contains("Invalid 'priority' argument 'fast'"),
+            "unexpected error: {}",
+            err.message
+        );
+
+        let mut valid_args = serde_json::Map::new();
+        valid_args.insert(
+            "filepath".into(),
+            serde_json::Value::String("src/lib.rs".into()),
+        );
+        valid_args.insert(
+            "priority".into(),
+            serde_json::Value::String("navigable".into()),
+        );
+        let ok = resolve_prompt(
+            GetPromptRequestParams::new(REFACTOR_PROMPT_NAME).with_arguments(valid_args),
+        );
+        assert!(ok.is_ok(), "valid prompt arguments must succeed");
+    }
 }

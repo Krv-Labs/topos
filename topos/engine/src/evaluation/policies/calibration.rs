@@ -31,8 +31,11 @@
 //!   (June 2026); NAVIGABLE: balanced six-ecosystem leaderboard corpus
 //!   (2026-08-07, see [`NAVIGABLE`]). See `topos-leaderboard/CALIBRATION_REPORT.md`.
 //! - Advisory priors: leaderboard rerun with Topos v0.10.0 and GitNexus,
-//!   leaderboard rows only (topos-leaderboard@7f1f905, 2026-10-12: PyPI,
-//!   Cargo, npm, Go, MCP; C++ pending, so C++ reads the `_all` prior); per-language `n` and
+//!   leaderboard rows only (topos-leaderboard@5032d5a, 2026-10-14: PyPI,
+//!   Cargo, npm, Go, MCP, C++). `mdg.*` rows count only where the dependency
+//!   graph built, so C++ has no `mdg.fan_in` / `mdg.instability` table yet
+//!   (GitNexus cannot index large C++ repos) and reads the `_all` prior for
+//!   those; per-language `n` and
 //!   sources are in `topos-leaderboard/leaderboard/data/advisory_priors.provenance.json`.
 //!
 //! `CoveragePolicyThresholds`/`ClonePolicyThresholds` — auxiliary,

@@ -36,6 +36,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   validation, path resolution, or execution error (`error` populated in
   `structuredContent`), while keeping normal code-quality gate failures at
   `isError: false`.
+- Mark incomplete changeset assessments as tool errors and render per-file
+  failures, including oversized baselines, alongside successful file results.
 - Enforce `TOPOS_MCP_MAX_SOURCE_BYTES` (default 2 MiB) on
   `topos_calculate_coverage` file reads and `git show` baseline blobs in
   `topos_assess_changeset`, normalize non-existent relative `gitnexus_dir`

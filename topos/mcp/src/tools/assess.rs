@@ -1125,16 +1125,33 @@ fn err_snapshot(filepath: &str, msg: String) -> SnapshotResult {
     }
 }
 
+fn render_changeset_file_row(e: &ChangesetFileEntry) -> String {
+    let before = e.baseline_verdict.map(|v| v.as_str()).unwrap_or("—");
+    let after = e.current_verdict.map(|v| v.as_str()).unwrap_or("—");
+    let reloc = if e.complexity_relocated_within_file {
+        "yes"
+    } else {
+        ""
+    };
+    let status = if e.error.is_some() {
+        "ERROR"
+    } else {
+        e.status.as_str()
+    };
+    let safe = e.filepath.replace('|', "\\|");
+    format!("| `{safe}` | {status} | {before} | {after} | {reloc} |")
+}
+
 pub(crate) fn render_changeset_md(r: &ChangesetResult) -> String {
-    if let Some(err) = &r.error {
-        return format!("**Error:** {err}");
-    }
     let mut lines = vec![format!(
         "**Changeset vs `{}`** — {} → {}",
         r.baseline_ref,
         r.aggregate_before.as_str(),
         r.aggregate_after.as_str()
     )];
+    if let Some(err) = &r.error {
+        lines.insert(0, format!("**Error:** {err}\n"));
+    }
     if r.project_regression {
         lines.push("> Project rollup REGRESSED.".to_string());
     }
@@ -1142,20 +1159,12 @@ pub(crate) fn render_changeset_md(r: &ChangesetResult) -> String {
     lines.push("## Files".to_string());
     lines.push("| File | Status | Before | After | Relocated |".to_string());
     lines.push("| --- | --- | --- | --- | --- |".to_string());
-    for e in &r.files {
-        let before = e.baseline_verdict.map(|v| v.as_str()).unwrap_or("—");
-        let after = e.current_verdict.map(|v| v.as_str()).unwrap_or("—");
-        let reloc = if e.complexity_relocated_within_file {
-            "yes"
-        } else {
-            ""
-        };
-        let safe = e.filepath.replace('|', "\\|");
-        lines.push(format!(
-            "| `{safe}` | {} | {before} | {after} | {reloc} |",
-            e.status.as_str()
-        ));
-    }
+    lines.extend(r.files.iter().map(render_changeset_file_row));
+    lines.extend(r.files.iter().filter_map(|e| {
+        e.error
+            .as_ref()
+            .map(|error| format!("\n**Error in `{}`:** {error}", e.filepath))
+    }));
     if !r.complexity_relocated_files.is_empty() {
         lines.push(String::new());
         lines.push(format!(
@@ -1952,12 +1961,27 @@ fn build_changeset_result(
         .map(|e| e.filepath.clone())
         .collect();
 
-    let contract = changeset_contract(
+    let mut contract = changeset_contract(
         project_regression,
         &relocated_files,
         coupling_available,
         &warnings,
     );
+    let failed_files = entries.iter().filter(|e| e.error.is_some()).count();
+    let error = (failed_files > 0).then(|| {
+        contract.blocked_by.push("incomplete_changeset".to_string());
+        contract.risk_flags.push("incomplete_changeset".to_string());
+        contract.next_tool = None;
+        contract.next_actions.insert(
+            0,
+            "Resolve the per-file assessment errors, then retry topos_assess_changeset."
+                .to_string(),
+        );
+        format!(
+            "Could not assess {failed_files} of {} changeset files; see per-file errors.",
+            entries.len()
+        )
+    });
 
     ChangesetResult {
         baseline_ref: params.baseline_ref.clone(),
@@ -1975,7 +1999,7 @@ fn build_changeset_result(
         priority_source,
         warnings,
         agent_contract: Some(contract),
-        error: None,
+        error,
     }
 }
 
@@ -2109,6 +2133,46 @@ mod tests {
             .output()
             .unwrap();
         String::from_utf8(out.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn oversized_changeset_baseline_signals_error_and_preserves_successful_files() {
+        let repo = tempfile::tempdir().unwrap();
+        let oversized = repo.path().join("large.rs");
+        let valid = repo.path().join("valid.rs");
+        std::fs::write(&oversized, " ".repeat(max_source_bytes() + 1)).unwrap();
+        std::fs::write(&valid, "pub fn f() {}\n").unwrap();
+        init_repo(repo.path());
+        std::fs::write(&oversized, "pub fn f() {}\n").unwrap();
+
+        for files in [vec![&oversized], vec![&oversized, &valid]] {
+            let params: AssessChangesetInput = serde_json::from_value(serde_json::json!({
+                "files": files,
+                "baseline_ref": "HEAD"
+            }))
+            .unwrap();
+            let result = assess_changeset_with_cancel(params, None, None).unwrap();
+            assert_eq!(result.is_error, Some(true));
+            let structured = result.structured_content.as_ref().unwrap();
+            assert!(structured["error"]
+                .as_str()
+                .unwrap()
+                .contains("Could not assess 1"));
+            assert_eq!(structured["files"].as_array().unwrap().len(), files.len());
+            assert_eq!(
+                structured["files"][0]["blocked_by"],
+                "baseline_blob_too_large"
+            );
+            if files.len() == 2 {
+                assert!(structured["files"][1]["error"].is_null());
+                assert!(structured["files"][1]["current_verdict"].as_str().is_some());
+            }
+            let markdown = result.content[0].as_text().unwrap();
+            assert!(markdown.text.contains("| ERROR |"));
+            assert!(markdown
+                .text
+                .contains("exceeds the maximum allowed source size"));
+        }
     }
 
     #[test]

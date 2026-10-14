@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard, TryLockError};
 use std::time::Duration;
 
 use topos_engine::adapters::gitnexus::{
@@ -42,6 +42,35 @@ pub fn graph_build_lock(target_dir: &Path) -> Arc<Mutex<()>> {
     Arc::clone(map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))))
 }
 
+/// Wait for a graph build without retaining a canceled worker behind its owner.
+fn acquire_build_lock<'a>(
+    lock: &'a Mutex<()>,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<MutexGuard<'a, ()>, EvalCancelled> {
+    let Some(cancel_flag) = cancel_flag else {
+        return Ok(lock.lock().unwrap_or_else(|p| p.into_inner()));
+    };
+    loop {
+        if cancelled(Some(cancel_flag)) {
+            return Err(EvalCancelled);
+        }
+        match lock.try_lock() {
+            Ok(guard) => return Ok(guard),
+            Err(TryLockError::Poisoned(p)) => return Ok(p.into_inner()),
+            Err(TryLockError::WouldBlock) => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+}
+
+fn analyze_execution_timeout(timeout_s: Option<f64>) -> Duration {
+    timeout_s
+        .filter(|s| s.is_finite())
+        .and_then(|s| Duration::try_from_secs_f64(s.max(1.0)).ok())
+        .unwrap_or_else(|| Duration::from_secs_f64(DEFAULT_ANALYZE_TIMEOUT_S))
+}
+
 /// Outcome of a serialized `topos_generate_depgraph` execution.
 pub enum LockedGenerateOutcome {
     /// Another concurrent caller already refreshed the graph while we waited
@@ -57,8 +86,7 @@ pub fn depgraph_analyze_timeout(target_dir: &Path) -> Result<Duration, DepgraphG
     if !gitnexus_available() {
         return Err(generate_depgraph_with_cancel(target_dir, true, None, None));
     }
-    let timeout_s = resolve_timeout(None).unwrap_or(DEFAULT_ANALYZE_TIMEOUT_S);
-    Ok(Duration::from_secs_f64(timeout_s.max(1.0)))
+    Ok(analyze_execution_timeout(resolve_timeout(None)))
 }
 
 /// Acquire the per-target-directory build lock, re-check freshness when `!force`,
@@ -71,7 +99,7 @@ pub fn run_locked_depgraph_generation(
     status_reporter: Option<&StatusReporter>,
 ) -> Result<LockedGenerateOutcome, EvalCancelled> {
     let lock = graph_build_lock(target_dir);
-    let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = acquire_build_lock(&lock, cancel_flag)?;
 
     if cancelled(cancel_flag) {
         return Err(EvalCancelled);
@@ -143,7 +171,7 @@ fn rebuild_gitnexus_locked(
     progress: &mut dyn FnMut(&'static str),
 ) -> Result<Option<String>, EvalCancelled> {
     let lock = graph_build_lock(project_root);
-    let _guard = lock.lock().unwrap_or_else(|p| p.into_inner());
+    let _guard = acquire_build_lock(&lock, cancel_flag)?;
     if cancelled(cancel_flag) {
         return Err(EvalCancelled);
     }
@@ -259,6 +287,42 @@ fn ensure_gitnexus_dir_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn canceled_build_waiter_exits_while_owner_still_holds_lock() {
+        let lock = Arc::new(Mutex::new(()));
+        let owner = lock.lock().unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let worker_lock = Arc::clone(&lock);
+        let worker_cancel = Arc::clone(&cancel);
+        let worker = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = acquire_build_lock(&worker_lock, Some(&worker_cancel));
+            done_tx.send(result.is_err()).unwrap();
+        });
+        started_rx.recv().unwrap();
+        cancel.store(true, Ordering::SeqCst);
+        let result = done_rx.recv_timeout(Duration::from_secs(1));
+        // Release the owner even on failure, so a broken waiter cannot hang the test.
+        drop(owner);
+        worker.join().unwrap();
+        assert_eq!(result, Ok(true));
+    }
+
+    #[test]
+    fn analyze_timeout_handles_nonfinite_and_overflowing_values() {
+        let default = Duration::from_secs_f64(DEFAULT_ANALYZE_TIMEOUT_S);
+        for value in [None, Some(f64::INFINITY), Some(f64::NAN), Some(1e300)] {
+            assert_eq!(analyze_execution_timeout(value), default);
+        }
+        assert_eq!(analyze_execution_timeout(Some(0.5)), Duration::from_secs(1));
+        assert_eq!(
+            analyze_execution_timeout(Some(2.5)),
+            Duration::from_millis(2500)
+        );
+    }
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

@@ -30,6 +30,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   (`2..=4` concurrency semaphore with operation-owned permits), serialize
   concurrent `.gitnexus` builds per project root, and propagate cooperative
   cancellation and stdio EOF teardown to child process groups.
+- Release canceled graph-build waiters before the active build finishes, and
+  handle infinite or overflowing dependency-graph timeouts without panicking.
 
 ## [0.10.2] - 2026-10-14
 

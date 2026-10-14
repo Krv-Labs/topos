@@ -1,3 +1,3 @@
 # Files
 
-- [Architecture Overview](overview.md) - Overview of workspace architecture, crate boundaries, program graph representations, evaluation engine pipelines, and diagnostic transformation.
+- [Workspace Architecture Overview](overview.md) - Details the multi-crate workspace design (topos-engine, topos CLI, topos-mcp), categorical primitives, graph structures (AST/CFG/PDG/CPG/MDG), and tool execution pipeline.

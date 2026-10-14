@@ -5,7 +5,7 @@ description: Overview of workspace architecture, crate boundaries, program graph
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-12T08:41:56.875Z
+    at: 2026-10-14T05:42:57.973Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-12T08:41:56.875Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-14T05:42:57.973Z" }
 ---
 
 # Architecture Overview
 
-The Cargo workspace (version 0.10.1) consists of three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI binary and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server to provide `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
+The Cargo workspace (version 0.10.2) consists of three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI binary and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server to provide `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
 
 ## Workspace Crate Topology
 
@@ -184,6 +184,22 @@ MCP has equivalent classification helpers. `classify_code_string` rejects an exp
 `ClassificationResult` is the engine's canonical raw evidence: parseability, per-pillar gate result, normalized display score, raw metrics, and metric interpretations. It is computed against the full dangerous-API registry, so neither a CLI nor an MCP allowlist changes that engine result. CLI presentation selects terminal or JSON views of that result; for a multi-file terminal summary it additionally displays average/minimum scores, but uses `combine_dimensions` rather than those scores to determine pillar status.
 
 MCP is the explicit exception at the presentation boundary. Only after a parseable raw result fails SECURE does it construct a CPG/finding list and apply configured or one-off acknowledgements. The overlay partitions findings into active and acknowledged, recomputes the SECURE bit using allowlisted counts, and returns the raw and adjusted lattice/SECURE fields together. An acknowledgement is therefore disclosure, not deletion: if it would otherwise yield `IDEAL`, the adjusted view clears SECURE and marks the grade capped. Clean or unparseable input produces no overlay.
+
+```mermaid
+flowchart TD
+    RawResult["ClassificationResult (Raw Engine Output)"] --> Guard{"Parseable and SECURE failed?"}
+    Guard -->|no| RawOnly["Return raw result without overlay"]
+    Guard -->|yes| BuildCPG["Build CPG & extract raw security findings"]
+    BuildCPG --> Config["Load .topos.toml & merge one-off CLI/MCP allows"]
+    Config --> Partition["Partition findings: Active vs Acknowledged"]
+    Partition --> Recount["Recompute adjusted SECURE counts from CPG"]
+    Recount --> GradeCap{"Adjusted SECURE pass but raw element == IDEAL?"}
+    GradeCap -->|yes| Demote["Cap grade: set grade_capped = true"]
+    GradeCap -->|no| Emit
+    Demote --> Emit["Emit AdjustedVerdict (raw + adjusted elements & risks)"]
+```
+
+*Caption: Diagnostic transformation flow applying the allowlist overlay to compute an adjusted SECURE verdict without altering canonical raw engine evidence.*
 
 See [agent and CLI workflows](../workflows/agent-and-cli.md) for interface contracts, [distribution](../integrations/distribution.md) for GitNexus context, and [testing and release operations](../operations/testing-and-release.md) for the broader validation workflow.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:841f28083f679eb054ea46edfe7291f3d7b604fbf3268f6f2c6f52e5b7283a6d",
+  "pageVersion": "sha256:dc6f6d01b4b19664df92ec57e9c53b3684c18f84012c0f243ec92e6b24436e6a",
   "claims": [
     {
       "id": "claim_51e019e3c33443d4885dd5c08e11ab51",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:b80b24453daba3237ec1195c6ff8ca262327ae99c912b96bb607a94d4ac8644b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:618766652741de41235138663380bee247f475d3f6f712e382534974f2061acf:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_6c67b78ea8c94772a9af439a6c5d90db",
-      "statement": "The Cargo workspace package version 0.10.1 is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
+      "statement": "The Cargo workspace package version (0.10.2) is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L5-L7",
-          "version": "repo-lines-v1:sha256:fb1ef1886bb040cd18b9f55bcfe0e04489a1d00d637993a0eaf7565749793519:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
+          "version": "repo-lines-v1:sha256:4ea5172cbe0ca3f9a81f96542c28aa719e3885b71fac1be5d0cf1ffae3c050d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
         },
         {
           "resource": "repo://scripts/check_versions.py#L48-L80",
@@ -193,6 +193,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-12T08:41:56.875Z"
+    "at": "2026-10-14T05:42:57.973Z"
   }
 }

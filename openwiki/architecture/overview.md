@@ -1,11 +1,11 @@
 ---
 type: architecture overview
-title: Architecture Overview
-description: Overview of workspace architecture, crate boundaries, program graph representations, evaluation engine pipelines, and diagnostic transformation.
+title: Workspace Architecture Overview
+description: Details the multi-crate workspace design (topos-engine, topos CLI, topos-mcp), categorical primitives, graph structures (AST/CFG/PDG/CPG/MDG), and tool execution pipeline.
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:42:57.973Z
+    at: 2026-10-14T07:23:23.942Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-14T05:42:57.973Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-14T07:23:23.942Z" }
 ---
 
-# Architecture Overview
+# Workspace Architecture Overview
 
-The Cargo workspace (version 0.10.2) consists of three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI binary and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server to provide `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
+The Cargo workspace (version 0.11.0) consists of three Rust crates (`topos-engine` at `topos/engine`, `topos` at `topos/cli`, and `topos-mcp` at `topos/mcp`): `topos-engine` is the shared, transport-free analysis engine, while `topos` is the CLI binary and `topos-mcp` is the stdio MCP server. Both consumer crates depend on the engine; the CLI also embeds the MCP server to provide `topos mcp`. The engine owns parsing, normalized program representations, measurements, policy translation, and the raw four-pillar verdict. Consumer layers own source discovery, GitNexus availability/generation, request/path handling, configuration application, and output contracts.
 
 ## Workspace Crate Topology
 
@@ -72,8 +72,8 @@ flowchart TD
     end
 
     subgraph MCP["topos-mcp (MCP server)"]
-        MCPServer["ServerHandler & Tool Router"]
-        MCPDiag["Diagnostics & Allowlist Overlay"]
+        MCPServer["ServerHandler and Tool Router"]
+        MCPDiag["Diagnostics and Allowlist Overlay"]
         MCPDep["Depgraph Cache Store"]
     end
 
@@ -127,7 +127,7 @@ flowchart TD
         CFG --> Classifier
         CPG --> Classifier
         Attach["MDG for COMPOSABLE"] --> Classifier["CharacteristicMorphism and policy gates"]
-        Classifier --> Result["ClassificationResult and Ω verdict"]
+        Classifier --> Result["ClassificationResult and Omega verdict"]
     end
     Result --> CLI["CLI rendering and JSON"]
     Result --> MCP["MCP raw result plus optional SECURE overlay"]
@@ -189,14 +189,14 @@ MCP is the explicit exception at the presentation boundary. Only after a parseab
 flowchart TD
     RawResult["ClassificationResult (Raw Engine Output)"] --> Guard{"Parseable and SECURE failed?"}
     Guard -->|no| RawOnly["Return raw result without overlay"]
-    Guard -->|yes| BuildCPG["Build CPG & extract raw security findings"]
-    BuildCPG --> Config["Load .topos.toml & merge one-off CLI/MCP allows"]
+    Guard -->|yes| BuildCPG["Build CPG and extract raw security findings"]
+    BuildCPG --> Config["Load .topos.toml and merge one-off CLI/MCP allows"]
     Config --> Partition["Partition findings: Active vs Acknowledged"]
     Partition --> Recount["Recompute adjusted SECURE counts from CPG"]
     Recount --> GradeCap{"Adjusted SECURE pass but raw element == IDEAL?"}
     GradeCap -->|yes| Demote["Cap grade: set grade_capped = true"]
     GradeCap -->|no| Emit
-    Demote --> Emit["Emit AdjustedVerdict (raw + adjusted elements & risks)"]
+    Demote --> Emit["Emit AdjustedVerdict (raw + adjusted elements and risks)"]
 ```
 
 *Caption: Diagnostic transformation flow applying the allowlist overlay to compute an adjusted SECURE verdict without altering canonical raw engine evidence.*

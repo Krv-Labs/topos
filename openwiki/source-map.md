@@ -5,7 +5,7 @@ description: Ownership-oriented starting points for changing Topos analysis, com
 tags: [source-map, maintenance, navigation, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:42:57.973Z
+    at: 2026-10-14T07:23:23.942Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -33,6 +33,8 @@ sources:
     resource: repo://topos/engine/src/config.rs
   - id: openwiki-source-a82b053b744f5ffc408af82c
     resource: repo://topos/engine/src/lib.rs
+  - id: openwiki-source-ca5302a9c887c6fd31583237
+    resource: repo://topos/mcp/src/evaluation/mod.rs
   - id: openwiki-source-9bf1d8e64277056e6ccedf90
     resource: repo://topos/mcp/src/main.rs
   - id: openwiki-source-416dcb63c9e3e0c0c2cb0eed
@@ -43,12 +45,12 @@ sources:
     resource: repo://topos/mcp/src/tools/depgraph.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-14T05:42:57.973Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-14T07:23:23.942Z" }
 ---
 
 # Topos maintenance source map
 
-Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.10.2`).
+Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.11.0`).
 
 ```mermaid
 flowchart TD

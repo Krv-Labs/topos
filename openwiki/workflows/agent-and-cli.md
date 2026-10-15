@@ -5,7 +5,7 @@ description: Run Topos structural evaluation locally through the CLI or from an 
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T07:23:23.942Z
+    at: 2026-10-15T10:04:26.953Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,7 +47,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-14T07:23:23.942Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-15T10:04:26.953Z" }
 ---
 
 # Agent and CLI Workflows
@@ -119,7 +119,7 @@ In MCP contexts, file paths determine the detected project root (searching upwar
 
 ## MCP lifecycle and trust boundary
 
-The stdio `ToposServer` aggregates nine tool routers (`evaluate`, `assess`, `compare`, `coverage`, `depgraph`, `docs`, `inspect`, `preferences`, and `refactor`). It advertises tools, resources (such as `topos://docs/<slug>` and `topos://build`), and prompts (including `topos_refactor_until_ideal`).
+The stdio `ToposServer` aggregates ten tool routers (`evaluate`, `assess`, `compare`, `coverage`, `depgraph`, `docs`, `inspect`, `preferences`, `pr_recap`, and `refactor`). It advertises tools, resources (such as `topos://docs/<slug>` and `topos://build`), prompts (including `topos_refactor_until_ideal`), and task capabilities.
 
 ```mermaid
 sequenceDiagram
@@ -136,6 +136,7 @@ sequenceDiagram
     Host->>Server: tools list or tools call
     Server-->>Host: shared tool surface and result
 ```
+*MCP protocol initialization and discovery lifecycles for initialize-era and stateless connection flows.*
 
 Topos explicitly supports MCP protocol revisions from `2024-11-05` through `2026-07-28`. Initialize-era hosts send `initialize` followed by `notifications/initialized`. Protocol `2026-07-28` clients issue `server/discover` and supply client capabilities and protocol revision per request via `_meta`. Integration tests in `topos/mcp/tests/lifecycle.rs` send raw stdio JSON-RPC frames to verify that both negotiation styles expose identical tool surfaces.
 
@@ -204,6 +205,7 @@ sequenceDiagram
     Engine-->>Mcp: status and deltas
     Mcp-->>Agent: assessment result
 ```
+*Baseline comparison workflows using Git refs or content-addressed snapshot storage during iterative refactoring.*
 
 1. **Initial Assessment**: Call `topos_evaluate_file` or `topos_inspect_code` on the target file to establish initial scores and obtain actionable refactor targets.
 2. **Committed Baseline (`topos_assess_worktree_change`)**: When the pre-edit source is committed in Git, make edits in place and invoke `topos_assess_worktree_change` with `filepath` and optional `baseline_ref` (default `HEAD`). The tool reads `<ref>:<path>` via Git; dash-prefixed refs are rejected before invoking Git to prevent flag injection.

@@ -5,7 +5,7 @@ description: Task-routed entry point and verification guide for maintaining the 
 tags: [topos, maintenance, static-analysis, rust, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T07:23:23.942Z
+    at: 2026-10-15T10:04:26.953Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,7 +29,7 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-14T07:23:23.942Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-15T10:04:26.953Z" }
 ---
 
 # Topos Engineering Quickstart
@@ -40,15 +40,15 @@ Source code and tests are authoritative. Use this quickstart to route maintenanc
 
 ## Workspace Architecture
 
-The root `Cargo.toml` defines the workspace package version (`0.11.0`) and contains three member crates:
+The root `Cargo.toml` defines the workspace package version (`0.12.0`) and contains three member crates:
 
 - **`topos-engine`**: Pure-Rust evaluation core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics/functors (`functors`), quality translators (`evaluation`), and adapters (`adapters`).
 - **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 12 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
-- **`topos-mcp`**: Stdio MCP server exposing structural quality tools, embedded documentation resources (`topos://docs/*`), and the `topos_refactor_until_ideal` prompt.
+- **`topos-mcp`**: Stdio MCP server combining evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, pr-recap, and refactor tool routers, embedded documentation resources (`topos://docs/*`), build identity resource (`topos://build`), and the `topos_refactor_until_ideal` prompt.
 
 ```mermaid
 flowchart TD
-    subgraph Workspace ["Cargo Workspace (v0.11.0)"]
+    subgraph Workspace ["Cargo Workspace (v0.12.0)"]
         Engine["topos-engine (Evaluation Core and Categorical Primitives)"]
         CLI["topos CLI (Command Dispatcher and Human UI)"]
         MCP["topos-mcp (Stdio MCP Server)"]
@@ -96,7 +96,26 @@ python3 scripts/check_agent_plugin.py
 
 ## Route the Task
 
-Use the following task routing map to locate relevant documentation, starting source directories, and focused verification commands across the entire OpenWiki suite:
+When undertaking maintenance tasks across the Topos workspace, use the routing map and diagram below to identify target documentation, starting source directories, and focused verification proof commands.
+
+<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: an unescaped angle bracket inside a label breaks rendering; rephrase the label. -->
+```text
+flowchart TD
+    Start["Maintenance Task or Symptom"] --> Choice{"Which area is affected?"}
+    
+    Choice -->|"Engine & Categorical Core"| EngineTask["Engine Domain & Metrics<br/>(topos/engine/src/)"]
+    Choice -->|"CLI Subcommands & Terminal UI"| CLITask["CLI Commands & Dispatch<br/>(topos/cli/src/)"]
+    Choice -->|"MCP Server & JSON-RPC"| MCPTask["MCP Routers & Lifecycle<br/>(topos/mcp/src/)"]
+    Choice -->|"Harnesses & Registration"| InstallTask["Harness Registration & Setup<br/>(topos/cli/src/commands/install/)"]
+    Choice -->|"Release, Versioning & CI"| ReleaseTask["Distribution & CI Workflows<br/>(scripts/, .github/workflows/)"]
+
+    EngineTask --> EngineProof["cargo test -p topos-engine <filter>"]
+    CLITask --> CLIProof["cargo test -p topos <filter>"]
+    MCPTask --> MCPProof["cargo test -p topos-mcp --test lifecycle"]
+    InstallTask --> InstallProof["cargo test -p topos --test install_e2e"]
+    ReleaseTask --> ReleaseProof["python3 scripts/check_versions.py"]
+```
+*Task routing flowchart linking system layers to primary source paths and focused verification commands.*
 
 | Task or Symptom | Read First | Start Location | Focused Proof |
 | --- | --- | --- | --- |

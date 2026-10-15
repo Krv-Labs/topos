@@ -1,7 +1,7 @@
 ---
 name: topos
 description: Evaluate and improve code with Topos. Use for complexity reduction, security checks, refactor verification, and PLATINUM/GOLD goals.
-version: "0.11.0"
+version: "0.12.0"
 homepage: https://docs.krv.ai/topos/
 metadata:
   openclaw:
@@ -144,6 +144,7 @@ Without `--gitnexus-dir`, COMPOSABLE uses process **cwd** (CLI) or the project d
 | `topos_begin_refactor` / `topos_assess_snapshot` | Snapshot flow for untracked baselines |
 | `topos_assess_improvement` | Side-by-side variant comparison |
 | `topos_assess_changeset` | Assess several edited files at once against a git baseline |
+| `topos_pr_recap` | Judge a PR or commit range against `[pr_recap]` gates (`topos.pr_recap.v3`) |
 | `topos_generate_depgraph` / `topos_depgraph_status` | Force-refresh, or read-only diagnose, the GitNexus graph |
 | `topos_calculate_coverage` | Structural test coverage (separate from lattice) |
 | `topos_evaluate_code` | Score a source string when there is no file on disk |

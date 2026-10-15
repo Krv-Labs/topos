@@ -9,14 +9,18 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-15
+
 ### Added
 
-- Add `topos_pr_recap` MCP tool (`PrRecapInput`) and share the `topos.pr_recap.v3`
-  structural PR / commit-range recap engine between `topos-mcp` and `topos` CLI (#439).
+- Add `topos_pr_recap` MCP tool (`PrRecapInput`), share the `topos.pr_recap.v3`
+  structural PR / commit-range recap engine between `topos-mcp` and `topos` CLI,
+  and document the 18th MCP tool across MCP workflows, Sphinx docs, and agent
+  skill references (#443, #447).
 
 ### Fixed
 
-- Prevent `topos pr-recap` and `topos compare` from exhausting memory on large or bundled files (#440) by computing AST sequence edit distance in `O(n)` space using two-row Wagner-Fischer DP with interned node kinds, common-affix trimming, and a cell-budgeted Ukkonen diagonal band; deduplicating CFG/PDG/CPG graph construction and clones during classification; skipping nested build/vendor/bundle paths (`dist/`, `node_modules/`, `*.min.*`, `*.bundle.*`, etc.) while preserving `src/dist/`; and updating the `pr-recap` progress bar before scoring each file.
+- Prevent `topos pr-recap` and `topos compare` from exhausting memory on large or bundled files (#440, #441) by computing AST sequence edit distance in `O(n)` space using two-row Wagner-Fischer DP with interned node kinds, common-affix trimming, and a cell-budgeted Ukkonen diagonal band; deduplicating CFG/PDG/CPG graph construction and clones during classification; skipping nested build/vendor/bundle paths (`dist/`, `node_modules/`, `*.min.*`, `*.bundle.*`, etc.) while preserving `src/dist/`; and updating the `pr-recap` progress bar before scoring each file.
 
 ## [0.11.0] - 2026-10-14
 

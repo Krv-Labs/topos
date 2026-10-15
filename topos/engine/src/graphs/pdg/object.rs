@@ -76,9 +76,17 @@ impl ProgramDependenceGraph {
         Self::from_cfg(ControlFlowGraph::from_uast(uast_root), source)
     }
 
-    /// Construct DDG ∪ CDG from an already-built [`ControlFlowGraph`],
-    /// avoiding a redundant CFG build when the caller already has one.
+    /// Construct DDG ∪ CDG taking ownership of an already-built [`ControlFlowGraph`].
     pub fn from_cfg(cfg: ControlFlowGraph, source: &str) -> Self {
+        let mut pdg = Self::from_cfg_ref(&cfg, source);
+        pdg.cfg = Some(cfg);
+        pdg
+    }
+
+    /// Construct DDG ∪ CDG by borrowing an already-built [`ControlFlowGraph`],
+    /// avoiding both a redundant CFG build and a deep clone of its basic blocks
+    /// when the caller (`ProgramMorphism`, `build_cpg`) already caches the CFG.
+    pub fn from_cfg_ref(cfg: &ControlFlowGraph, source: &str) -> Self {
         // `cfg.blocks` is a `HashMap`, whose iteration order carries no
         // relationship to program order (unlike Python's insertion-ordered
         // `dict`) -- block ids are assigned sequentially by the builder, so
@@ -92,15 +100,15 @@ impl ProgramDependenceGraph {
         }
 
         let mut edges = Vec::new();
-        for procedure_statements in statements_by_procedure(&cfg) {
+        for procedure_statements in statements_by_procedure(cfg) {
             edges.extend(compute_data_dependence(&procedure_statements, source));
         }
-        edges.extend(compute_control_dependence(&cfg));
+        edges.extend(compute_control_dependence(cfg));
 
         ProgramDependenceGraph {
             statements,
             edges,
-            cfg: Some(cfg),
+            cfg: None,
         }
     }
 }

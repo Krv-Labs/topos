@@ -161,8 +161,8 @@ impl ProgramMorphism {
     pub fn build_pdg(&mut self) -> Option<&ProgramDependenceGraph> {
         if self.pdg.is_none() {
             self.build_cfg()?;
-            let cfg = self.cfg.as_ref()?.clone();
-            let pdg = ProgramDependenceGraph::from_cfg(cfg, &self.source);
+            let cfg = self.cfg.as_ref()?;
+            let pdg = ProgramDependenceGraph::from_cfg_ref(cfg, &self.source);
             self.pdg = Some(pdg);
         }
         self.pdg.as_ref()

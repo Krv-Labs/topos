@@ -20,7 +20,7 @@ use crate::graphs::uast::models::{node_key, UASTNode};
 /// Return `(nodes, edges)` for the CPG, building the CFG and PDG afresh.
 pub fn build_cpg(uast_root: &UASTNode, source: &str) -> (HashMap<String, CPGNode>, Vec<CPGEdge>) {
     let cfg = ControlFlowGraph::from_uast(uast_root);
-    let pdg = ProgramDependenceGraph::from_cfg(cfg.clone(), source);
+    let pdg = ProgramDependenceGraph::from_cfg_ref(&cfg, source);
     build_cpg_from_parts(uast_root, &cfg, &pdg)
 }
 

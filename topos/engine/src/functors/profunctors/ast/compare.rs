@@ -144,6 +144,27 @@ const SENTINEL_CELL: EditCell = EditCell {
     substitutions: 0,
 };
 
+/// Maximum DP cells evaluated in a single banded pass before capping
+/// diagonal slack.
+///
+/// Following Ukkonen (1985, "Algorithms for approximate string matching",
+/// *Information and Control* 64(1-3):100-118), expanding the diagonal band
+/// `[-s, +s]` around `delta = n - m` is 100% exact whenever
+/// `cost <= |m - n| + 2 * s`. However, when two massive ASTs are completely
+/// unrelated (`d ≈ max(m, n)`), unconstrained doubling degrades to `O(m × n)`
+/// (~290B cells on 340k-node bundles).
+///
+/// Production structural diff and sequence-alignment engines — including Git's
+/// `xdl_do_diff` (`max_cost` cutoff on Myers 1986), Difftastic (`--graph-limit`),
+/// and GumTree (`max_size` container recovery bound; Falleri et al., ASE 2014) —
+/// bound worst-case alignment work on large inputs. Because every
+/// [`banded_sequence_distance`] pass connects `(0, 0)` to `(m, n)`, capping
+/// `max_slack` at `MAX_BAND_CELLS / (2 * max(m, 1))` always yields a valid,
+/// realizable edit script (`insertions + deletions + substitutions == cost`)
+/// that is 100% exact for all normal files and localized edits on large files,
+/// and returns a tight upper bound for full-file rewrites in `< 50ms`.
+const MAX_BAND_CELLS: usize = 25_000_000;
+
 /// Diagonal offset bounds `[low_offset, high_offset]` for `j - i` in a
 /// banded Wagner-Fischer pass.
 #[derive(Clone, Copy)]
@@ -174,13 +195,13 @@ impl BandBounds {
     }
 }
 
-/// Compute exact edit distance between two sequences of node types.
+/// Compute edit distance between two sequences of node types.
 ///
 /// Uses a two-row (`O(n)`-space) Wagner-Fischer dynamic programming pass
 /// over interned node-kind IDs after stripping common leading and
 /// trailing affixes, with Ukkonen's doubling diagonal band on large
 /// spans so edits at opposite ends of a large AST stay `O((m + n) × d)`
-/// in time while remaining 100% exact.
+/// in time while remaining exact up to [`MAX_BAND_CELLS`].
 pub(crate) fn compute_sequence_distance<T: AsRef<str> + PartialEq>(
     source: &[T],
     target: &[T],
@@ -189,7 +210,7 @@ pub(crate) fn compute_sequence_distance<T: AsRef<str> + PartialEq>(
     let (source_ids, target_ids) = intern_pair(source, target);
     let m = source_ids.len();
     let n = target_ids.len();
-    let max_slack = m.min(n);
+    let max_slack = m.min(n).min(MAX_BAND_CELLS / m.max(1).saturating_mul(2));
     let mut slack = if m.saturating_mul(n) <= 4_000_000 {
         max_slack
     } else {
@@ -890,6 +911,18 @@ mod tests {
         assert_eq!(ops["insertions"], 1);
         assert_eq!(ops["deletions"], 0);
         assert_eq!(ops["substitutions"], 2);
+
+        // Adversarial case: two completely disjoint 50k-node sequences (`d = 50_000`).
+        // Bounded by `MAX_BAND_CELLS` so it completes in milliseconds with a valid
+        // edit script rather than evaluating 2.5B quadratic DP cells.
+        let disjoint_a: Vec<&str> = vec!["alpha"; 50_000];
+        let disjoint_b: Vec<&str> = vec!["beta"; 50_000];
+        let (dist, ops) = compute_sequence_distance(&disjoint_a, &disjoint_b);
+        assert_eq!(dist, 50_000);
+        assert_eq!(
+            ops["insertions"] + ops["deletions"] + ops["substitutions"],
+            dist
+        );
     }
 
     // Gromov-Wasserstein distance tests

@@ -11,47 +11,13 @@
 
 use std::path::Path;
 
+pub(super) use topos_mcp::pr_recap::{prepare, unmeasured, CouplingPlan};
+
 use super::model::{CouplingReason, CouplingStatus};
 use super::view::{seconds, short_rev};
 use super::PrRecapArgs;
-use crate::commands::depgraph::{
-    build_estimate_ms, last_build_ms, pr_store_state, prepare_pr_stores, PrStores, StoreState,
-};
-use crate::commands::gh::resolve_commit;
+use crate::commands::depgraph::StoreState;
 use crate::commands::interaction::{ask, Asker, Interaction, Question};
-
-/// What this run can do about coupling graphs, before anything is built.
-pub(super) enum CouplingPlan {
-    /// No graphs this run, and why.
-    Unavailable(CouplingStatus),
-    /// Both graphs are built at these commits.
-    Ready(PrStores),
-    /// The graphs need building.
-    NeedsBuild {
-        pr: u64,
-        base_sha: String,
-        head_sha: String,
-        state: StoreState,
-        estimate_ms: Option<u64>,
-    },
-}
-
-impl CouplingPlan {
-    /// Whether [`prepare`] will build anything, the one slow case.
-    pub(super) fn needs_build(&self) -> bool {
-        matches!(self, CouplingPlan::NeedsBuild { .. })
-    }
-}
-
-/// A status with no graphs behind it.
-pub(super) fn unmeasured(reason: CouplingReason, note: impl Into<String>) -> CouplingStatus {
-    CouplingStatus {
-        measured: false,
-        note: note.into(),
-        reason,
-        estimate_ms: None,
-    }
-}
 
 /// Read what is already built for `base`/`head`. Fast: plain file reads and
 /// two `git rev-parse` calls, never gitnexus. `gitnexus_available` is
@@ -65,44 +31,14 @@ pub(super) fn plan_coupling(
     args: &PrRecapArgs,
     gitnexus_available: bool,
 ) -> CouplingPlan {
-    if args.no_coupling {
-        return CouplingPlan::Unavailable(unmeasured(CouplingReason::Flag, "--no-coupling"));
-    }
-    let Some(pr) = args.pr else {
-        return CouplingPlan::Unavailable(unmeasured(
-            CouplingReason::NoPr,
-            "pass a pull request number to measure COMPOSABLE",
-        ));
-    };
-    let (Ok(base_sha), Ok(head_sha)) = (resolve_commit(root, base), resolve_commit(root, head))
-    else {
-        return CouplingPlan::Unavailable(unmeasured(
-            CouplingReason::Error,
-            format!("could not resolve {base}...{head}"),
-        ));
-    };
-    let stores = match PrStores::locate(root, pr) {
-        Ok(stores) => stores,
-        Err(error) => return CouplingPlan::Unavailable(unmeasured(CouplingReason::Error, error)),
-    };
-    let state = pr_store_state(&stores, &base_sha, &head_sha);
-    if state == StoreState::Ready {
-        return CouplingPlan::Ready(stores);
-    }
-    if !gitnexus_available {
-        return CouplingPlan::Unavailable(unmeasured(
-            CouplingReason::GitnexusMissing,
-            "gitnexus not installed (npm install -g gitnexus)",
-        ));
-    }
-    let history = stores.parent.parent().and_then(last_build_ms);
-    CouplingPlan::NeedsBuild {
-        pr,
-        base_sha,
-        head_sha,
-        state,
-        estimate_ms: build_estimate_ms(state, history),
-    }
+    topos_mcp::pr_recap::plan_coupling(
+        root,
+        base,
+        head,
+        args.pr,
+        args.no_coupling,
+        gitnexus_available,
+    )
 }
 
 /// Decide a [`CouplingPlan::NeedsBuild`]: ask when `interaction` allows,
@@ -146,45 +82,6 @@ pub(super) fn settle(
     }))
 }
 
-/// Carry out a settled plan: build the graphs a [`CouplingPlan::NeedsBuild`]
-/// still wants, and say where the graphs came from or why there are none.
-/// `on_side_done` runs once per side built, from that side's thread.
-pub(super) fn prepare(
-    root: &Path,
-    plan: CouplingPlan,
-    on_side_done: &(dyn Fn() + Sync),
-) -> (Option<PrStores>, CouplingStatus) {
-    match plan {
-        CouplingPlan::Unavailable(status) => (None, status),
-        CouplingPlan::Ready(stores) => {
-            let status = CouplingStatus {
-                measured: true,
-                note: format!("reused from {}", stores.parent.display()),
-                reason: CouplingReason::Cached,
-                estimate_ms: None,
-            };
-            (Some(stores), status)
-        }
-        CouplingPlan::NeedsBuild {
-            pr,
-            base_sha,
-            head_sha,
-            ..
-        } => match prepare_pr_stores(root, pr, &base_sha, &head_sha, on_side_done) {
-            Ok(stores) => {
-                let status = CouplingStatus {
-                    measured: true,
-                    note: format!("built from {}", stores.parent.display()),
-                    reason: CouplingReason::Built,
-                    estimate_ms: None,
-                };
-                (Some(stores), status)
-            }
-            Err(error) => (None, unmeasured(CouplingReason::Error, error)),
-        },
-    }
-}
-
 /// The build question. The yes hint says what each graph costs from
 /// `state`; `--yes` and `--no-coupling` answering it ahead of time is left
 /// to `--help`.
@@ -222,7 +119,8 @@ mod tests {
     use clap::Parser;
 
     use super::*;
-    use crate::commands::depgraph::write_commits;
+    use crate::commands::depgraph::{write_commits, PrStores};
+    use crate::commands::gh::resolve_commit;
     use crate::commands::pr_recap::tests::{commit_all, write_files, write_repo};
 
     #[derive(Parser)]

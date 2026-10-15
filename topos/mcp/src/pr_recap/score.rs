@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use topos_engine::config::ToposConfig;
-use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, ClassificationResult};
+use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::core::object::ProgramObject;
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
@@ -19,34 +19,33 @@ use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
 use topos_engine::functors::profunctors::uast::ledger::{snapshot_functions, FunctionSnapshot};
 use topos_engine::graphs::cpg::object::CodePropertyGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
-use topos_mcp::schemas::SecurityFinding;
-use topos_mcp::security_findings::dangerous_call_findings;
 
 use super::git::{file_change, show_file, DiffEntry};
 use super::hotspots::file_hotspots;
 use super::model::*;
 use super::verdict::{complexity_relocated, measured_verdict, medal, pillar_deltas, raw};
-use crate::commands::classify::classify_with_representations;
-use crate::commands::lang::detect_language;
+use crate::evaluation::{classify_morphism, detect_language};
+use crate::schemas::SecurityFinding;
+use crate::security_findings::dangerous_call_findings;
 
 /// One scored file with the intermediate state the later passes need.
-pub(super) struct Scored {
-    pub(super) recap: FileRecap,
-    pub(super) before: ClassificationResult,
-    pub(super) after: ClassificationResult,
-    pub(super) after_src: String,
-    pub(super) before_snapshots: Option<Vec<FunctionSnapshot>>,
-    pub(super) after_snapshots: Option<Vec<FunctionSnapshot>>,
-    pub(super) distance: Option<f64>,
+pub struct Scored {
+    pub recap: FileRecap,
+    pub before: ClassificationResult,
+    pub after: ClassificationResult,
+    pub after_src: String,
+    pub before_snapshots: Option<Vec<FunctionSnapshot>>,
+    pub after_snapshots: Option<Vec<FunctionSnapshot>>,
+    pub distance: Option<f64>,
 }
 
 /// One revision of one file, parsed once. Classification caches the
 /// control-flow, dependence and property graphs on the morphism, so the
 /// distance, the function walk, the hotspots and the security findings
 /// all read that same parse.
-pub(super) struct Side {
+pub struct Side {
     morphism: ProgramMorphism,
-    pub(super) result: ClassificationResult,
+    pub result: ClassificationResult,
     /// The `.topos.toml` allowlist patterns covering this path.
     allow: HashSet<String>,
 }
@@ -66,8 +65,7 @@ impl Side {
         let mut morphism = ProgramMorphism::with_path(source, language, path);
         // Deliberately no `rescore_population`: prior-only advisories keep
         // before/after scores comparable across the two trees.
-        let mut result =
-            classify_with_representations(&CharacteristicMorphism, &mut morphism, graph, priority);
+        let mut result = classify_morphism(&mut morphism, priority, graph);
         if !allow.is_empty() {
             if let Some(cpg) = morphism.build_cpg() {
                 allow_secure(&mut result, cpg, &allow);
@@ -80,19 +78,19 @@ impl Side {
         }
     }
 
-    pub(super) fn source(&self) -> &str {
+    pub fn source(&self) -> &str {
         &self.morphism.source
     }
 
     /// The syntax tree, only when the source parsed cleanly.
-    pub(super) fn ast(&self) -> Option<&ProgramObject> {
+    pub fn ast(&self) -> Option<&ProgramObject> {
         self.morphism
             .ast
             .as_ref()
             .filter(|_| self.morphism.is_valid())
     }
 
-    pub(super) fn dangerous_calls(&mut self) -> Vec<SecurityFinding> {
+    pub fn dangerous_calls(&mut self) -> Vec<SecurityFinding> {
         let allow = (!self.allow.is_empty()).then_some(&self.allow);
         self.morphism
             .build_cpg()
@@ -180,19 +178,19 @@ fn function_ref(entry: &FunctionComplexityEntry) -> FunctionRef {
 }
 
 /// What every file in one recap is scored against.
-pub(super) struct Scoring<'a> {
-    pub(super) repo: &'a Path,
-    pub(super) base: &'a str,
-    pub(super) head: &'a str,
-    pub(super) base_graph: Option<&'a ModuleDependencyGraph>,
-    pub(super) head_graph: Option<&'a ModuleDependencyGraph>,
-    pub(super) priority: Priority,
+pub struct Scoring<'a> {
+    pub repo: &'a Path,
+    pub base: &'a str,
+    pub head: &'a str,
+    pub base_graph: Option<&'a ModuleDependencyGraph>,
+    pub head_graph: Option<&'a ModuleDependencyGraph>,
+    pub priority: Priority,
     /// The project config, for its allowlist.
-    pub(super) config: &'a ToposConfig,
+    pub config: &'a ToposConfig,
 }
 
 impl Scoring<'_> {
-    pub(super) fn score_file(&self, entry: &DiffEntry) -> Result<Scored, String> {
+    pub fn score_file(&self, entry: &DiffEntry) -> Result<Scored, String> {
         let path = entry.path.clone();
         let change = file_change(&entry.status);
         let is_new = change == FileChange::Added;
@@ -329,9 +327,9 @@ fn structural_distance(before: &Side, after: &Side) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::gh::git;
     use super::super::tests::{commit_all, write_files, write_repo};
     use super::*;
-    use crate::commands::gh::git;
 
     /// Aimed at the new path, the base graph finds no File node and reads
     /// zero coupling; a pure `git mv` then looks like coupling changed.

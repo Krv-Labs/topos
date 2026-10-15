@@ -21,7 +21,7 @@ use super::verdict::raw;
 /// split fallback.
 const IMPORT_PREFIXES: &[&str] = &["import", "from", "use", "#include", "require("];
 
-pub(super) fn changed_list(entries: &[DiffEntry], deleted: &[String]) -> Vec<ChangedFile> {
+pub fn changed_list(entries: &[DiffEntry], deleted: &[String]) -> Vec<ChangedFile> {
     let mut changed: Vec<ChangedFile> = entries
         .iter()
         .map(|entry| ChangedFile {
@@ -55,7 +55,7 @@ struct Seed<'a> {
 /// evidence (graph `moved_in`, or a `Moved*` match landing in it), so a
 /// brand-new module the parent merely started calling renders as a plain
 /// NEW row instead of a bogus `! SPLIT`.
-pub(super) fn build_clusters(
+pub fn build_clusters(
     scored: &mut [Scored],
     report: &[SplitCluster],
     measured: bool,
@@ -435,7 +435,7 @@ fn cluster_mark(cluster: &Cluster, kids: &[&Scored]) -> (ClusterMark, Vec<String
 }
 
 /// Dangerous calls plus taint flows: every metric that gates SECURE.
-pub(super) fn secure_findings(result: &ClassificationResult) -> usize {
+pub fn secure_findings(result: &ClassificationResult) -> usize {
     GATE_SPECS
         .iter()
         .filter(|spec| spec.pillar == "secure")

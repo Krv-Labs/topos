@@ -24,7 +24,7 @@ use topos_engine::graphs::mdg::split::SymbolMove;
 use super::clusters::secure_findings;
 use super::git::{show_file, skip_reason, DiffEntry};
 use super::score::Scored;
-use crate::commands::lang::detect_language;
+use crate::evaluation::detect_language;
 
 /// A file that only received moved code may still add this much new
 /// logic and have its loss read as the move's: the glue a move needs (an
@@ -34,7 +34,7 @@ use crate::commands::lang::detect_language;
 /// before_total`), and added lines the moved code does not account for
 /// (`moved_lines * 100 >= (100 - MAX_NEW_LOGIC_PERCENT) * lines_added`),
 /// which catches top-level code no function snapshot sees.
-pub(super) const MAX_NEW_LOGIC_PERCENT: usize = 10;
+pub const MAX_NEW_LOGIC_PERCENT: usize = 10;
 
 /// Past this many before × after comparisons the ledger is not built and
 /// nothing is read as a move. The last rung of [`match_functions`] is a
@@ -45,9 +45,9 @@ const MAX_MATCH_PAIRS: usize = 100_000;
 
 /// Why a regression is read as the move's, and where the code came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct MoveCause {
+pub struct MoveCause {
     /// The file the code moved from, when one is known.
-    pub(super) from: Option<String>,
+    pub from: Option<String>,
 }
 
 /// One function at head that the ledger traced to a different address.
@@ -99,7 +99,7 @@ struct FileTotals {
 
 /// Every move in the range, indexed by the file the code landed in.
 #[derive(Debug, Default)]
-pub(super) struct RangeMoves {
+pub struct RangeMoves {
     arrivals: HashMap<String, Vec<Arrival>>,
     totals: HashMap<String, FileTotals>,
     /// Graph moves into existing files, when coupling was measured.
@@ -114,7 +114,7 @@ impl RangeMoves {
     /// file's added lines come from its recap.
     /// `moved_between_existing` is the split report's, empty without
     /// coupling.
-    pub(super) fn build(
+    pub fn build(
         repo: &std::path::Path,
         base: &str,
         scored: &[Scored],
@@ -236,7 +236,7 @@ impl RangeMoves {
     ///
     /// SECURE is never excused when the range as a whole gained SECURE
     /// findings: moving a dangerous call is fine, adding one is not.
-    pub(super) fn caused(
+    pub fn caused(
         &self,
         file: &str,
         pillar: &str,
@@ -376,7 +376,7 @@ fn deleted_snapshots(
         .filter_map(|path| {
             let source = show_file(repo, base, path).ok()?;
             let language = detect_language(std::path::Path::new(path));
-            let parsed = parse_source(&source, &language, Some(path)).ok()?;
+            let parsed = parse_source(&source, language, Some(path)).ok()?;
             Some(snapshot_functions(&parsed.uast_root, &source, path))
         })
         .flatten()

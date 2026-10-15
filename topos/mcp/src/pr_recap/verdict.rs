@@ -13,7 +13,7 @@ use super::score::Scored;
 /// Below this, a score dip is noise (0.1 on the displayed 0–100 scale).
 const SCORE_REGRESSION_FLOOR: f64 = 0.001;
 
-pub(super) fn finish_statuses(scored: &mut [Scored], clusters: &[Cluster], lattice: &Omega) {
+pub fn finish_statuses(scored: &mut [Scored], clusters: &[Cluster], lattice: &Omega) {
     // A split parent's raw fan-out rises simply because it now imports the
     // files it was carved into. That is not a coupling regression.
     let routed: Vec<&str> = clusters
@@ -23,11 +23,16 @@ pub(super) fn finish_statuses(scored: &mut [Scored], clusters: &[Cluster], latti
         .collect();
     for file in scored.iter_mut() {
         let drop_composable = routed.contains(&file.recap.path.as_str());
-        let deltas = score_deltas(&file.before, &file.after, drop_composable);
+        // AST edit distance only sees this file's syntax tree, while COMPOSABLE
+        // scores its place in the module graph (which a rename or a sibling
+        // split can move without touching the tree).
+        let tree_deltas = score_deltas(&file.before, &file.after, true);
         let cosmetic = file
             .distance
             .is_some_and(|distance| distance < STRUCTURAL_CHANGE_THRESHOLD)
-            && deltas.iter().any(|d| d.abs() >= MEANINGFUL_SCORE_DELTA);
+            && tree_deltas
+                .iter()
+                .any(|d| d.abs() >= MEANINGFUL_SCORE_DELTA);
         file.recap.cosmetic = !file.recap.is_new() && cosmetic;
         if drop_composable {
             file.recap
@@ -142,7 +147,7 @@ fn score_deltas(
         .collect()
 }
 
-pub(super) fn pillar_deltas(
+pub fn pillar_deltas(
     before: &ClassificationResult,
     after: &ClassificationResult,
     is_new: bool,
@@ -242,7 +247,7 @@ fn pillar_passed(result: &ClassificationResult, generator: Generator) -> bool {
 ///
 /// Without a dependency graph, COMPOSABLE is not a pass and not a fail.
 /// Counting it as failed would turn every file into a fake regression.
-pub(super) fn measured_verdict(result: &ClassificationResult) -> EvaluationValue {
+pub fn measured_verdict(result: &ClassificationResult) -> EvaluationValue {
     measured_verdict_excluding(result, false)
 }
 
@@ -263,7 +268,7 @@ fn measured_verdict_excluding(
 
 /// The upper bound of a gate that can fail its pillar, straight from the
 /// engine's registry so this cannot drift from what `evaluate` enforces.
-pub(super) fn gate_limit(metric: &str) -> Option<f64> {
+pub fn gate_limit(metric: &str) -> Option<f64> {
     GATE_SPECS
         .iter()
         .find(|spec| spec.metric == metric)
@@ -277,29 +282,22 @@ fn rounded_score(result: &ClassificationResult, pillar: &str) -> Option<f64> {
         .map(|score| topos_engine::evaluation::policies::desirability::display_percent(*score))
 }
 
-pub(super) fn complexity_relocated(
-    before: &ClassificationResult,
-    after: &ClassificationResult,
-) -> bool {
+pub fn complexity_relocated(before: &ClassificationResult, after: &ClassificationResult) -> bool {
     let func = metric_delta(before, after, "ast.max_function_complexity");
     let file = metric_delta(before, after, "cfg.cyclomatic");
     func < 0.0 && file > 0.0
 }
 
-pub(super) fn metric_delta(
-    before: &ClassificationResult,
-    after: &ClassificationResult,
-    key: &str,
-) -> f64 {
+pub fn metric_delta(before: &ClassificationResult, after: &ClassificationResult, key: &str) -> f64 {
     after.raw_metrics.get(key).copied().unwrap_or(0.0)
         - before.raw_metrics.get(key).copied().unwrap_or(0.0)
 }
 
-pub(super) fn raw(result: &ClassificationResult, key: &str) -> Option<usize> {
+pub fn raw(result: &ClassificationResult, key: &str) -> Option<usize> {
     result.raw_metrics.get(key).map(|value| *value as usize)
 }
 
-pub(super) fn medal(value: EvaluationValue) -> Medal {
+pub fn medal(value: EvaluationValue) -> Medal {
     Medal {
         symbol: value.symbol().to_string(),
         tier: value.medal_tier().to_string(),
@@ -313,7 +311,7 @@ pub(super) fn medal(value: EvaluationValue) -> Medal {
 /// Both sides cover the same existing files. Added files have no before
 /// side; counting them only at head would move the mean without any file
 /// getting better (see [`added_rollup`]).
-pub(super) fn project_rollup(files: &[FileRecap]) -> Option<ProjectRollup> {
+pub fn project_rollup(files: &[FileRecap]) -> Option<ProjectRollup> {
     let existing: Vec<&FileRecap> = files.iter().filter(|file| !file.is_new()).collect();
     if existing.is_empty() {
         return None;
@@ -383,7 +381,7 @@ pub(super) fn project_rollup(files: &[FileRecap]) -> Option<ProjectRollup> {
 
 /// The added files on their own, at head: same achievement rule as
 /// [`project_rollup`], no before side.
-pub(super) fn added_rollup(files: &[FileRecap]) -> Option<AddedRollup> {
+pub fn added_rollup(files: &[FileRecap]) -> Option<AddedRollup> {
     let added: Vec<&FileRecap> = files.iter().filter(|file| file.is_new()).collect();
     if added.is_empty() {
         return None;
@@ -437,7 +435,7 @@ fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// Which way the structure moved, and what happened, in one line. The
 /// reason is the recap's when no gate raised a finding.
-pub(super) fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
+pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
     if files.is_empty() {
         let reason = if base == head {
             // `base` is the merge-base, so this also covers a head that is
@@ -630,5 +628,78 @@ mod tests {
         // Advisory gates cannot fail a pillar, so they cannot be the lost one.
         assert_eq!(gate_limit("mdg.instability"), None);
         assert_eq!(gate_limit("cfg.cyclomatic"), None);
+    }
+
+    #[test]
+    fn composable_move_without_tree_change_is_not_cosmetic() {
+        fn side(simple: f64, composable: f64) -> ClassificationResult {
+            let mut result = ClassificationResult {
+                is_parseable: true,
+                ..Default::default()
+            };
+            for generator in Generator::ALL {
+                let key = generator.as_str().to_string();
+                result.dimensions.insert(key.clone(), generator.value());
+                result.scores.insert(key, 0.8);
+            }
+            result.scores.insert("simple".to_string(), simple);
+            result.scores.insert("composable".to_string(), composable);
+            result.raw_metrics.insert("mdg.fan_out".to_string(), 1.0);
+            result.raw_metrics.insert("cfg.cyclomatic".to_string(), 1.0);
+            result
+                .raw_metrics
+                .insert("cpg.dangerous_calls".to_string(), 0.0);
+            result
+                .raw_metrics
+                .insert("nav.max_function_divergence".to_string(), 0.0);
+            result
+        }
+        let scored = |before: ClassificationResult, after: ClassificationResult| Scored {
+            recap: FileRecap {
+                path: "src/moved.rs".to_string(),
+                change: FileChange::Renamed,
+                status: Headline::LateralMove,
+                severity: None,
+                lines_before: 100,
+                lines_after: 100,
+                lines_added: 1,
+                lines_removed: 1,
+                medal_before: None,
+                medal_after: None,
+                pillars: BTreeMap::new(),
+                structural_distance: Some(0.001),
+                cosmetic: false,
+                complexity_relocated_within_file: false,
+                worst_function_before: None,
+                worst_function_after: None,
+                decisions_before: None,
+                decisions_after: None,
+                fan_in_before: None,
+                fan_in_after: None,
+                fan_out_before: None,
+                fan_out_after: None,
+                cluster: None,
+                hotspots: Vec::new(),
+            },
+            before,
+            after,
+            after_src: String::new(),
+            before_snapshots: None,
+            after_snapshots: None,
+            distance: Some(0.001),
+        };
+        let lattice = Omega::default();
+        let mut files = vec![
+            scored(side(0.8, 0.5), side(0.8, 0.7)),
+            scored(side(0.5, 0.8), side(0.7, 0.8)),
+        ];
+        finish_statuses(&mut files, &[], &lattice);
+        assert!(!files[0].recap.cosmetic);
+        assert_eq!(files[0].recap.status, Headline::ImprovementScore);
+        assert!(files[1].recap.cosmetic);
+        assert_eq!(
+            files[1].recap.status,
+            Headline::SuspiciousNoStructuralChange
+        );
     }
 }

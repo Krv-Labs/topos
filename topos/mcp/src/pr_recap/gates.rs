@@ -17,7 +17,7 @@
 
 mod coupling;
 
-pub(crate) use coupling::capped_fan_in_paths;
+pub use coupling::capped_fan_in_paths;
 
 use std::cmp::Ordering;
 use std::path::Path;
@@ -32,7 +32,7 @@ use super::model::{
 };
 use super::moves::{MoveCause, RangeMoves};
 
-pub(crate) use self::coupling::Coupling;
+pub use self::coupling::Coupling;
 
 /// Sort points per SECURE finding a split added, so one new finding
 /// outranks a few points of score drop or added complexity.
@@ -41,7 +41,7 @@ const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
 /// Whether the change is ready to merge under the configured gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub(crate) enum Readiness {
+pub enum Readiness {
     Ready,
     NeedsAttention,
     Blocked,
@@ -59,7 +59,7 @@ impl Readiness {
     }
 
     /// The word a card prints.
-    pub(crate) fn word(self) -> &'static str {
+    pub fn word(self) -> &'static str {
         match self {
             Readiness::Ready => "READY",
             Readiness::NeedsAttention => "NEEDS ATTENTION",
@@ -67,7 +67,7 @@ impl Readiness {
         }
     }
 
-    pub(crate) fn mark(self) -> char {
+    pub fn mark(self) -> char {
         match self {
             Readiness::Ready => '✓',
             Readiness::NeedsAttention => '!',
@@ -77,7 +77,7 @@ impl Readiness {
 
     /// 1 fails the check: always when blocked, and when the change needs
     /// attention under `fail_on = "warn"`.
-    pub(crate) fn exit_code(self, fail_on: FailOn) -> i32 {
+    pub fn exit_code(self, fail_on: FailOn) -> i32 {
         match (self, fail_on) {
             (Readiness::Blocked, _) | (Readiness::NeedsAttention, FailOn::Warn) => 1,
             _ => 0,
@@ -87,42 +87,42 @@ impl Readiness {
 
 /// One thing a gate caught, with where to look and what to do about it.
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct Finding {
+pub struct Finding {
     #[serde(serialize_with = "gate_key")]
-    pub(crate) gate: GateId,
+    pub gate: GateId,
     #[serde(serialize_with = "severity_name")]
-    pub(crate) severity: Severity,
+    pub severity: Severity,
     /// The file, or the split parent; empty for a range-wide finding.
-    pub(crate) path: String,
-    pub(crate) line: Option<usize>,
-    pub(crate) function: Option<String>,
-    pub(crate) pillar: Option<String>,
-    pub(crate) metric: Option<String>,
+    pub path: String,
+    pub line: Option<usize>,
+    pub function: Option<String>,
+    pub pillar: Option<String>,
+    pub metric: Option<String>,
     /// The metric's values and its bound for a gate finding; the displayed
     /// pillar scores for a score drop; finding counts or decisions for a
     /// split.
-    pub(crate) before: Option<f64>,
-    pub(crate) after: Option<f64>,
-    pub(crate) limit: Option<f64>,
-    pub(crate) fix: String,
+    pub before: Option<f64>,
+    pub after: Option<f64>,
+    pub limit: Option<f64>,
+    pub fix: String,
     /// The pillar was already failing at base; this change made it worse.
-    pub(crate) inherited: bool,
+    pub inherited: bool,
     /// False only for a score drop below the `[pr_recap.score_drop]`
     /// thresholds, or explained by moved code, which is capped at info.
-    pub(crate) material: bool,
+    pub material: bool,
     /// The file the code behind this finding moved from, when the range's
     /// moves explain it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) moved_from: Option<String>,
+    pub moved_from: Option<String>,
     /// Set when a `[[pr_recap.waive]]` entry covers the finding: it keeps
     /// its severity but no longer counts toward the readiness.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) waived: Option<Waived>,
+    pub waived: Option<Waived>,
     /// Paths behind a coupling finding: the cycle walked from its cut, the
     /// new dependents, or the most depended-on files the change reaches.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) related: Vec<String>,
-    pub(crate) text: String,
+    pub related: Vec<String>,
+    pub text: String,
     /// How big the finding is, in points, so every gate sorts on one
     /// scale: a pillar finding's score drop plus how far its metric sits
     /// past the limit, a score drop's points,
@@ -163,7 +163,7 @@ impl Finding {
     }
 
     /// Counts toward the readiness and the exit code.
-    pub(crate) fn counts(&self) -> bool {
+    pub fn counts(&self) -> bool {
         self.waived.is_none()
     }
 
@@ -174,12 +174,12 @@ impl Finding {
 
 /// Why a finding does not count: the waiver that covers it.
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct Waived {
-    pub(crate) reason: String,
+pub struct Waived {
+    pub reason: String,
     /// The file the waiver is written in.
-    pub(crate) source: String,
+    pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) expires: Option<String>,
+    pub expires: Option<String>,
 }
 
 /// Apply the gates in `cfg` to the scored files, the split clusters and
@@ -190,7 +190,7 @@ pub(crate) struct Waived {
 /// Findings are sorted most important first: severity, then SECURE, then
 /// magnitude, then path and line. The readiness is the first one's
 /// severity; with none left, the change is ready.
-pub(crate) fn evaluate(
+pub fn evaluate(
     files: &[FileRecap],
     clusters: &[Cluster],
     incomplete: usize,
@@ -229,7 +229,7 @@ pub(crate) fn evaluate(
 }
 
 /// The worst severity among the findings that count.
-pub(crate) fn readiness(findings: &[Finding]) -> Readiness {
+pub fn readiness(findings: &[Finding]) -> Readiness {
     Readiness::from_worst(
         findings
             .iter()
@@ -246,7 +246,7 @@ pub(crate) fn readiness(findings: &[Finding]) -> Readiness {
 /// path. Call this
 /// after [`evaluate`], so an `off` gate's findings are already gone and a
 /// moved regression is matched under `moved_pillar`.
-pub(crate) fn waive(
+pub fn waive(
     findings: &mut [Finding],
     list: &[Waiver],
     today: &str,
@@ -663,7 +663,7 @@ fn measured(crossed: &GateCrossing) -> String {
 }
 
 /// Up to two decimals, trailing zeros dropped: `14`, `7.5`, `0.35`.
-pub(super) fn number(value: f64) -> String {
+pub fn number(value: f64) -> String {
     let text = format!("{value:.2}");
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
@@ -675,7 +675,7 @@ fn tenths(value: f64) -> f64 {
 
 /// What to do about a gating metric, shared with the hotspots: one entry
 /// per metric that gates a pillar in the engine's registry.
-pub(super) fn advice_for(metric: &str) -> Option<&'static str> {
+pub fn advice_for(metric: &str) -> Option<&'static str> {
     Some(match metric {
         "ast.max_function_complexity" => {
             "Extract a decision or a helper so this function clears the gate."
@@ -756,7 +756,7 @@ fn relative_to(path: &Path, root: &Path) -> String {
 }
 
 /// The worst severity among the findings at `path` that count.
-pub(super) fn worst_at(findings: &[Finding], path: &str) -> Option<Severity> {
+pub fn worst_at(findings: &[Finding], path: &str) -> Option<Severity> {
     findings
         .iter()
         .filter(|finding| finding.path == path && finding.counts())
@@ -765,7 +765,7 @@ pub(super) fn worst_at(findings: &[Finding], path: &str) -> Option<Severity> {
 }
 
 /// The JSON `gate` block: which rules produced the verdict.
-pub(super) fn summary(cfg: &PrGateConfig, source: Option<&Path>) -> GateSummary {
+pub fn summary(cfg: &PrGateConfig, source: Option<&Path>) -> GateSummary {
     GateSummary {
         preset: cfg.preset.as_str(),
         fail_on: cfg.fail_on.as_str(),
@@ -783,7 +783,7 @@ fn severity_name<S: Serializer>(severity: &Severity, serializer: S) -> Result<S:
     serializer.serialize_str(severity.as_str())
 }
 
-pub(super) fn optional_severity_name<S: Serializer>(
+pub fn optional_severity_name<S: Serializer>(
     severity: &Option<Severity>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {

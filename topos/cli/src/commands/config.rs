@@ -10,9 +10,7 @@ use topos_engine::config::{
     find_config_file, load_topos_config, PrGateConfig, PrGatePreset, ToposConfig, PRESET_COMMENT,
 };
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::evaluation::preferences::{
-    default_preferences, Generator, UserPreferences, RANKING_LEN,
-};
+use topos_engine::evaluation::preferences::{default_preferences, Generator, RANKING_LEN};
 
 use super::menu::{self, SelectOption, SelectStep, StepLayout};
 use super::render::{guide, guide_line, paint, print_lines, RenderOptions};
@@ -554,67 +552,11 @@ fn config_path(cwd: &Path) -> PathBuf {
     find_config_file(cwd).unwrap_or_else(|| cwd.join(".topos.toml"))
 }
 
-pub(crate) fn parse_priority(value: &str) -> Result<Priority, String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "simple" => Ok(Priority::Simple),
-        "composable" => Ok(Priority::Composable),
-        "secure" => Ok(Priority::Secure),
-        "navigable" => Ok(Priority::Navigable),
-        _ => Err(format!(
-            "invalid priority '{value}' (expected simple, composable, secure, or navigable)"
-        )),
-    }
-}
-
-pub(crate) fn parse_ranking(value: &str) -> Result<[Generator; RANKING_LEN], String> {
-    let parsed: Vec<Generator> = value
-        .split(',')
-        .map(|part| {
-            let name = part.trim().to_ascii_lowercase();
-            Generator::ALL
-                .into_iter()
-                .find(|g| g.as_str() == name)
-                .ok_or_else(|| format!("invalid preference '{name}'"))
-        })
-        .collect::<Result<_, _>>()?;
-    let ranking: [Generator; RANKING_LEN] = parsed.try_into().map_err(|values: Vec<_>| {
-        format!(
-            "preferences require all {RANKING_LEN} pillars exactly once (got {})",
-            values.len()
-        )
-    })?;
-    UserPreferences::new(ranking)
-        .map(|prefs| prefs.ranking())
-        .map_err(|e| e.to_string())
-}
-
-/// One `--priority` value: either a single pillar, or a full ranking
-/// (comma-separated, most important first).
-pub(crate) enum PriorityInput {
-    Single(Priority),
-    Ranking([Generator; RANKING_LEN]),
-}
-
-pub(crate) fn parse_priority_input(value: &str) -> Result<PriorityInput, String> {
-    if value.contains(',') {
-        parse_ranking(value).map(PriorityInput::Ranking)
-    } else {
-        parse_priority(value).map(PriorityInput::Single)
-    }
-}
-
-pub(crate) fn priority_for_generator(generator: Generator) -> Priority {
-    match generator {
-        Generator::Simple => Priority::Simple,
-        Generator::Composable => Priority::Composable,
-        Generator::Secure => Priority::Secure,
-        Generator::Navigable => Priority::Navigable,
-    }
-}
-
-pub(crate) fn priority_name(priority: Priority) -> &'static str {
-    priority.top_generator().as_str()
-}
+#[cfg(test)]
+use topos_mcp::pr_recap::parse_ranking;
+pub(crate) use topos_mcp::pr_recap::{
+    parse_priority, parse_priority_input, priority_for_generator, priority_name, PriorityInput,
+};
 
 fn generator_for_priority(priority: Priority) -> Generator {
     priority.top_generator()

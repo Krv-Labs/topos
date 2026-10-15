@@ -30,19 +30,19 @@ const TOP_DEPENDENTS: usize = 5;
 /// The two file graphs of a measured range, with what changed between
 /// them.
 #[derive(Debug, Default)]
-pub(crate) struct Coupling {
-    pub(crate) base: FileGraph,
-    pub(crate) head: FileGraph,
+pub struct Coupling {
+    pub base: FileGraph,
+    pub head: FileGraph,
     /// Head path → base path, for renamed files only.
-    pub(crate) head_to_base: HashMap<String, String>,
+    pub head_to_base: HashMap<String, String>,
     /// Head paths of every changed source file, scored or not.
-    pub(crate) changed: BTreeSet<String>,
+    pub changed: BTreeSet<String>,
     /// Base paths of the deleted files.
-    pub(crate) deleted: BTreeSet<String>,
+    pub deleted: BTreeSet<String>,
     /// Changed files `--max-files` left unscored, scored afterward only
     /// because their fan-in already clears the thresholds. [`fan_in_finding`]
     /// reads them; the other gates do not.
-    pub(crate) fan_in_files: Vec<FileRecap>,
+    pub fan_in_files: Vec<FileRecap>,
 }
 
 impl Coupling {
@@ -132,7 +132,7 @@ fn cycle_finding(cycle: CycleDelta) -> Finding {
 /// `cfg`, so the caller can score SIMPLE for them. Added files and paths
 /// already in `scored` are left out: an added file has no base to grow
 /// from, and a scored file is judged from its [`FileRecap`].
-pub(crate) fn capped_fan_in_paths(
+pub fn capped_fan_in_paths(
     coupling: &Coupling,
     scored: &BTreeSet<String>,
     added: &BTreeSet<String>,

@@ -6,8 +6,8 @@ use std::path::Path;
 
 use topos_engine::graphs::ast::languages::language_for_path;
 
+use super::gh::git;
 use super::model::FileChange;
-use crate::commands::gh::git;
 
 /// Unambiguous non-source directory names skipped at any depth in a diff.
 ///
@@ -35,21 +35,21 @@ const SKIP_DIRS: &[&str] = &[
 /// Ambiguous build/report directory names skipped at the repository root.
 const SKIP_ROOT_DIRS: &[&str] = &["build", "builds", "out", "coverage", "dist"];
 
-pub(super) struct DiffEntry {
-    pub(super) status: String,
-    pub(super) path: String,
+pub struct DiffEntry {
+    pub status: String,
+    pub path: String,
     /// Pre-rename path, set only for `R*` entries. The base revision only
     /// has the old path, so callers reading the base side must use this
     /// instead of `path`.
-    pub(super) old_path: Option<String>,
+    pub old_path: Option<String>,
 }
 
-pub(super) struct Diff {
-    pub(super) entries: Vec<DiffEntry>,
-    pub(super) deleted: Vec<String>,
+pub struct Diff {
+    pub entries: Vec<DiffEntry>,
+    pub deleted: Vec<String>,
 }
 
-pub(super) fn worktree_files(repo: &Path, base: &str) -> Result<Diff, String> {
+pub fn worktree_files(repo: &Path, base: &str) -> Result<Diff, String> {
     let output = git(
         repo,
         &[
@@ -80,7 +80,7 @@ pub(super) fn worktree_files(repo: &Path, base: &str) -> Result<Diff, String> {
 
 /// Lines added plus removed per head path, from `git diff --numstat`.
 /// `head` is `None` for the working tree. Binary files count as zero.
-pub(super) fn churn(
+pub fn churn(
     repo: &Path,
     base: &str,
     head: Option<&str>,
@@ -123,7 +123,7 @@ fn parse_numstat(output: &str) -> BTreeMap<String, usize> {
 
 /// Keep the `max_files` entries with the most churn (ties: smaller path),
 /// in their original order; return the rest, most churn first.
-pub(super) fn cap_by_churn(
+pub fn cap_by_churn(
     entries: Vec<DiffEntry>,
     max_files: usize,
     churn: impl Fn(&str) -> usize,
@@ -153,7 +153,7 @@ pub(super) fn cap_by_churn(
     )
 }
 
-pub(super) fn changed_files(repo: &Path, base: &str, head: &str) -> Result<Diff, String> {
+pub fn changed_files(repo: &Path, base: &str, head: &str) -> Result<Diff, String> {
     let output = git(
         repo,
         &[
@@ -198,7 +198,7 @@ fn parse_name_status(output: &str) -> Diff {
     Diff { entries, deleted }
 }
 
-pub(super) fn skip_reason(entry: &DiffEntry) -> Option<String> {
+pub fn skip_reason(entry: &DiffEntry) -> Option<String> {
     let path = entry.path.replace('\\', "/");
     if is_generated_or_vendor_path(&path) {
         return Some("generated or vendor path".to_string());
@@ -241,7 +241,7 @@ fn is_dist_output_dir(dirs: &[&str]) -> bool {
         .any(|(i, &dir)| dir == "dist" && (i == 0 || dirs[i - 1] != "src"))
 }
 
-pub(super) fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, String> {
+pub fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, String> {
     git(
         repo,
         &["show", "--end-of-options", &format!("{rev}:{path}")],
@@ -249,7 +249,7 @@ pub(super) fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, St
     .map_err(|_| format!("could not read {path} at {rev}"))
 }
 
-pub(super) fn file_change(status: &str) -> FileChange {
+pub fn file_change(status: &str) -> FileChange {
     match status.chars().next() {
         Some('A') => FileChange::Added,
         Some('R') => FileChange::Renamed,

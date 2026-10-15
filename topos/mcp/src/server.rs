@@ -107,6 +107,7 @@ impl ToposServer {
             + Self::docs_router()
             + Self::inspect_router()
             + Self::preferences_router()
+            + Self::pr_recap_router()
             + Self::refactor_router();
         let task_manager = TaskManager::new();
         let executor = ExecutionCoordinator::with_task_manager(task_manager.clone());

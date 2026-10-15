@@ -1,11 +1,11 @@
 //! Where to look: the functions and calls that pushed a metric over its
 //! gate, in one canonical order.
 
+use crate::schemas::SecurityFinding;
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::evaluation::security_guidance::remediation_for;
 use topos_engine::functors::probes::ast::complexity::FunctionComplexityEntry;
 use topos_engine::functors::probes::ast::divergence::calculate_function_divergence_entries;
-use topos_mcp::schemas::SecurityFinding;
 
 use super::gates::advice_for;
 use super::model::{FileRecap, Hotspot};
@@ -18,7 +18,7 @@ use super::verdict::{gate_limit, metric_delta};
 /// complexity, nesting divergence, fan-out), then by file. Each file's
 /// own list is already in metric order, so a stable sort keeps the files
 /// in place.
-pub(super) fn top_hotspots(files: &[FileRecap], cap: usize) -> (Vec<Hotspot>, usize) {
+pub fn top_hotspots(files: &[FileRecap], cap: usize) -> (Vec<Hotspot>, usize) {
     let mut ranked: Vec<&Hotspot> = files.iter().flat_map(|f| f.hotspots.iter()).collect();
     ranked.sort_by_key(|spot| hotspot_rank(&spot.metric));
     let total = ranked.len();
@@ -37,7 +37,7 @@ fn hotspot_rank(metric: &str) -> u8 {
 
 const DANGEROUS_CALLS: &str = "cpg.dangerous_calls";
 
-pub(super) const FUNCTION_COMPLEXITY: &str = "ast.max_function_complexity";
+pub const FUNCTION_COMPLEXITY: &str = "ast.max_function_complexity";
 
 const FUNCTION_DIVERGENCE: &str = "nav.max_function_divergence";
 
@@ -48,7 +48,7 @@ const FAN_OUT: &str = "mdg.fan_out";
 /// call that put it there. An added file is compared against nothing: its
 /// before side is empty and scores no metric, so anything over a gate at
 /// head is a hotspot.
-pub(super) fn file_hotspots(
+pub fn file_hotspots(
     path: &str,
     worst: Option<&FunctionComplexityEntry>,
     before: &mut Side,

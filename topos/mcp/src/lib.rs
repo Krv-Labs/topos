@@ -12,6 +12,7 @@ pub mod execution;
 pub mod formatting;
 pub mod metric_locations;
 pub mod paths;
+pub mod pr_recap;
 pub mod refactor_hotspots;
 pub mod refactor_targets;
 pub mod schemas;

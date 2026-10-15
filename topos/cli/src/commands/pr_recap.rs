@@ -7,55 +7,32 @@
 //! decided here, from the lattice, the UAST ledger, the two coupling graphs
 //! and the gate policy — a formatter can never invent one.
 
-mod clusters;
 mod coupling;
 #[cfg(test)]
 mod fixtures;
-mod gates;
-mod git;
 mod github;
-mod hotspots;
-mod model;
-mod moves;
 mod progress;
 mod render;
-mod score;
-mod verdict;
 mod view;
 
-use std::collections::{BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, Severity,
-    ToposConfig,
-};
-use topos_engine::core::omega::Omega;
-use topos_engine::evaluation::policies::base::Priority;
+use topos_engine::config::{find_config_file, load_topos_config, PrGateConfig, PrGatePreset};
 use topos_engine::evaluation::waivers::today_utc;
-use topos_engine::graphs::mdg::file_graph::FileGraph;
-use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
-use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
-
-use self::clusters::{build_clusters, changed_list};
-use self::coupling::{plan_coupling, prepare, settle};
-use self::git::{
-    cap_by_churn, changed_files, churn, file_change, skip_reason, worktree_files, DiffEntry,
+pub(crate) use topos_mcp::pr_recap::{
+    build_recap, gates, head_commit, model, resolve_priority, resolve_range, Judging,
+    ScoreProgress, DEFAULT_FILE_CAP,
 };
-use self::hotspots::top_hotspots;
-use self::model::*;
-use self::moves::RangeMoves;
+#[cfg(test)]
+use {self::model::*, std::path::Path, topos_mcp::pr_recap::moves};
+
+use self::coupling::{plan_coupling, prepare, settle};
 use self::progress::{print_card, GraphProgress, ScoringBar, Transient};
-use self::score::Scoring;
-use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
-use super::config::{parse_priority_input, priority_for_generator, priority_name, PriorityInput};
-use crate::commands::depgraph::{gitnexus_available, PrStores};
-use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
+use crate::commands::depgraph::gitnexus_available;
+use crate::commands::gh::{git_root, merge_base};
 use crate::commands::interaction::{self, PromptEnv, Streams, TermAsker};
 use crate::commands::render::RenderOptions;
-
-const DEFAULT_FILE_CAP: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum RecapFormat {
@@ -304,38 +281,12 @@ pub struct PrRecapArgs {
     pub preset: Option<GatePreset>,
 }
 
-/// The gate policy for one run: `--preset` replaces the project's
-/// `[pr_recap]` with a built-in preset, and `--strict` then fails on warn
-/// as well. With neither, the project's table (itself recommended when
-/// absent) applies as is. A preset replaces the whole table, its
-/// `[[pr_recap.waive]]` entries included: `--preset` answers "what would
-/// this preset say", with nothing waived.
 fn resolve_gate_policy(
     strict: bool,
     preset: Option<GatePreset>,
     file: &PrGateConfig,
 ) -> PrGateConfig {
-    let mut policy = match preset {
-        Some(preset) => PrGateConfig::for_preset(preset.preset()),
-        None => file.clone(),
-    };
-    if strict {
-        policy.fail_on = FailOn::Warn;
-    }
-    policy
-}
-
-/// Everything a recap is judged by: the pillar emphasis, the project
-/// config (for its allowlist), the resolved gate policy with the file it
-/// came from, and the date its waivers are checked against.
-struct Judging {
-    priority: Priority,
-    topos: ToposConfig,
-    gate: PrGateConfig,
-    source: Option<PathBuf>,
-    /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
-    /// nothing.
-    today: String,
+    topos_mcp::pr_recap::resolve_gate_policy(strict, preset.map(GatePreset::preset), file)
 }
 
 /// Which card to print. The card is the same on a terminal and in a
@@ -345,50 +296,6 @@ fn resolve_format(compact: bool, format: Option<RecapFormat>) -> RecapFormat {
     match format {
         Some(RecapFormat::Github) if !compact => RecapFormat::Github,
         _ => RecapFormat::Card,
-    }
-}
-
-// --- Range resolution --------------------------------------------------
-
-fn resolve_range(
-    repo: &Path,
-    pr: Option<u64>,
-    base: Option<String>,
-    head: Option<String>,
-) -> Result<(String, String, Option<PullRequest>), String> {
-    match (pr, base, head) {
-        // HEAD against HEAD is always empty. With nothing to go on, review
-        // what `git diff` would show: the uncommitted edits.
-        (None, None, None) => Ok(("HEAD".to_string(), ":worktree".to_string(), None)),
-        (None, None, Some(head)) => Ok(("HEAD".to_string(), head, None)),
-        (None, Some(base), head) => Ok((base, head.unwrap_or_else(|| "HEAD".to_string()), None)),
-        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
-            Err("pass a pull request number or --base/--head, not both".to_string())
-        }
-        (Some(number), None, None) => {
-            let review = pull_request(repo, number)?;
-            ensure_commit(repo, &review.base_sha)?;
-            ensure_commit(repo, &review.head_sha)?;
-            Ok((
-                review.base_sha,
-                review.head_sha,
-                Some(PullRequest {
-                    number: review.number,
-                    head_ref: review.head_ref,
-                    base_ref: review.base_ref,
-                }),
-            ))
-        }
-    }
-}
-
-/// The commit `head` stands on: `:worktree` edits sit on top of HEAD, so
-/// the change forks from there.
-fn head_commit(head: &str) -> &str {
-    if head == ":worktree" {
-        "HEAD"
-    } else {
-        head
     }
 }
 
@@ -408,22 +315,6 @@ pub fn run(args: PrRecapArgs) -> Result<(), String> {
             std::process::exit(2);
         }
     }
-}
-
-/// The scorer emphasis: `--priority`, else the project's configured one,
-/// else SECURE, which is what this command always used before it read the
-/// project config.
-fn resolve_priority(raw: Option<&str>, config: &ToposConfig) -> Result<Priority, String> {
-    let Some(raw) = raw else {
-        if config.priority.is_none() && config.preferences.is_none() {
-            return Ok(Priority::Secure);
-        }
-        return Ok(config.effective_priority());
-    };
-    Ok(match parse_priority_input(raw)? {
-        PriorityInput::Single(priority) => priority,
-        PriorityInput::Ranking(ranking) => priority_for_generator(ranking[0]),
-    })
 }
 
 /// Print the recap and hand back its exit code.
@@ -511,301 +402,10 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     Ok(recap.exit_code)
 }
 
-// --- Document assembly -------------------------------------------------
-
-/// Hears Pass A as it goes, so `run_recap` can draw a bar without
-/// `build_recap` knowing about terminals. `()` hears nothing.
-trait ScoreProgress {
-    /// Scoring is about to start on `total` files.
-    fn start(&mut self, total: usize);
-    /// The file at `path` is about to be scored.
-    fn scoring(&mut self, path: &str);
-    /// The current file has been scored.
-    fn scored(&mut self);
-}
-
-impl ScoreProgress for () {
-    fn start(&mut self, _: usize) {}
-    fn scoring(&mut self, _: &str) {}
-    fn scored(&mut self) {}
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_recap(
-    repo: &Path,
-    base: &str,
-    head: &str,
-    max_files: usize,
-    stores: Option<&PrStores>,
-    coupling: CouplingStatus,
-    judging: &Judging,
-    progress: &mut dyn ScoreProgress,
-) -> Result<PrRecap, String> {
-    let repo = git_root(repo)?;
-    let worktree = head == ":worktree";
-    // The file list, the before-sources and the base store all come from
-    // this one commit. Idempotent when the caller already passed it.
-    let base_sha = merge_base(&repo, base, head_commit(head))?;
-    let head_sha = if worktree {
-        "worktree".to_string()
-    } else {
-        resolve_commit(&repo, head)?
-    };
-    let diff = if worktree {
-        worktree_files(&repo, &base_sha)?
-    } else {
-        changed_files(&repo, &base_sha, &head_sha)?
-    };
-
-    // Renames and the changed source files, before the cap trims the
-    // list: the coupling gates see the whole range.
-    let head_to_base: HashMap<String, String> = diff
-        .entries
-        .iter()
-        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
-        .collect();
-    let mut changed_sources = BTreeSet::new();
-    let mut skipped = Vec::new();
-    let mut scoreable = Vec::new();
-    for entry in diff.entries {
-        match skip_reason(&entry) {
-            Some(reason) => skipped.push(SkippedFile {
-                path: entry.path,
-                reason,
-            }),
-            None => {
-                changed_sources.insert(entry.path.clone());
-                scoreable.push(entry);
-            }
-        }
-    }
-    let capped = scoreable.len().saturating_sub(max_files);
-    let mut capped_entries = Vec::new();
-    if capped > 0 {
-        // Git lists paths alphabetically; dropping that tail would skip
-        // whatever sorts last, however much of the change it carries.
-        let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
-        let (kept, dropped) = cap_by_churn(scoreable, max_files, |path| {
-            churn
-                .get(path)
-                .copied()
-                // Untracked files are not in `git diff`: all their lines are new.
-                .or_else(|| {
-                    worktree
-                        .then(|| std::fs::read_to_string(repo.join(path)).ok())
-                        .flatten()
-                        .map(|source| source.lines().count())
-                })
-                .unwrap_or(0)
-        });
-        scoreable = kept;
-        capped_entries = dropped;
-        for entry in &capped_entries {
-            skipped.push(SkippedFile {
-                path: entry.path.clone(),
-                reason: format!("over the {max_files}-file scoring cap"),
-            });
-        }
-    }
-
-    // One load per store, not one per file: the graph is the whole repo.
-    let base_graph = stores.and_then(|stores| load_graph(&stores.base));
-    let head_graph = stores.and_then(|stores| load_graph(&stores.head));
-    let measured = coupling.measured && base_graph.is_some() && head_graph.is_some();
-
-    // Pass A — score every file on its own.
-    let scoring = Scoring {
-        repo: &repo,
-        base: &base_sha,
-        head: &head_sha,
-        base_graph: base_graph.as_ref().filter(|_| measured),
-        head_graph: head_graph.as_ref().filter(|_| measured),
-        priority: judging.priority,
-        config: &judging.topos,
-    };
-    progress.start(scoreable.len());
-    let mut scored = scoreable
-        .iter()
-        .map(|entry| {
-            progress.scoring(&entry.path);
-            let file = scoring.score_file(entry);
-            progress.scored();
-            file
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Pass B — group the split parents with their children.
-    let changed = changed_list(&scoreable, &diff.deleted);
-    let report = if measured {
-        detect_splits(
-            base_graph.as_ref().expect("measured implies a base graph"),
-            head_graph.as_ref().expect("measured implies a head graph"),
-            &changed,
-        )
-    } else {
-        SplitReport::default()
-    };
-    let clusters = build_clusters(
-        &mut scored,
-        &report.clusters,
-        measured,
-        head_graph.as_ref().filter(|_| measured),
-    );
-    // Every move in the range, split or not, so a regression that only
-    // changed address is not charged to the file it landed in.
-    let moves = RangeMoves::build(
-        &repo,
-        &base_sha,
-        &scored,
-        &diff.deleted,
-        &report.moved_between_existing,
-    );
-
-    // Pass C — per-file verdicts, now that cluster fan-out is known.
-    let lattice = Omega::default();
-    finish_statuses(&mut scored, &clusters, &lattice);
-
-    let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
-    // Pass D — the configured gates decide readiness.
-    let (direction, described) = direction_for(&files, &base_sha, &head_sha);
-    let mut coupling_graphs = base_graph
-        .as_ref()
-        .zip(head_graph.as_ref())
-        .filter(|_| measured)
-        .map(|(base, head)| gates::Coupling {
-            base: FileGraph::build(base),
-            head: FileGraph::build(head),
-            head_to_base,
-            changed: changed_sources,
-            deleted: diff.deleted.iter().cloned().collect(),
-            fan_in_files: Vec::new(),
-        });
-    if let Some(graphs) = &mut coupling_graphs {
-        score_capped_for_fan_in(
-            graphs,
-            &files,
-            &capped_entries,
-            &clusters,
-            &scoring,
-            &judging.gate,
-        )?;
-    }
-    let (_, mut findings) = gates::evaluate(
-        &files,
-        &clusters,
-        capped,
-        &judging.gate,
-        &moves,
-        coupling_graphs.as_ref(),
-    );
-    let waivers = gates::waive(
-        &mut findings,
-        &judging.gate.waivers,
-        &judging.today,
-        judging.source.as_deref(),
-        &repo,
-    );
-    let readiness = gates::readiness(&findings);
-    for file in &mut files {
-        file.severity = gates::worst_at(&findings, &file.path);
-    }
-    // Waived findings sort last, so the first one that counts leads.
-    let lead = findings.iter().find(|finding| finding.counts());
-    let mut reason = lead.map_or(described, |finding| finding.text.clone());
-    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
-    if capped > 0 && !incomplete_leads {
-        reason.push_str(&format!(
-            " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
-             unscored (raise --max-files).",
-            if capped == 1 { "" } else { "s" }
-        ));
-    }
-    let (hotspots, hotspots_total) = top_hotspots(&files, judging.gate.max_hotspots as usize);
-    let project = project_rollup(&files);
-    let added = added_rollup(&files);
-    let scope = Scope {
-        files_scored: files.len(),
-        files_new: files.iter().filter(|file| file.is_new()).count(),
-        lines_added: files.iter().map(|file| file.lines_added).sum(),
-        lines_removed: files.iter().map(|file| file.lines_removed).sum(),
-        files_skipped: skipped.len(),
-        files_deleted: diff.deleted.len(),
-        files_capped: capped,
-        coupling,
-    };
-    let exit_code = readiness.exit_code(judging.gate.fail_on);
-    Ok(PrRecap {
-        schema: SCHEMA,
-        base: base_sha,
-        head: head_sha,
-        priority: priority_name(judging.priority),
-        review: None,
-        gate: gates::summary(&judging.gate, judging.source.as_deref()),
-        readiness,
-        exit_code,
-        check: if exit_code == 1 { "fail" } else { "pass" },
-        reason,
-        findings,
-        waivers,
-        direction,
-        incomplete: capped > 0,
-        scope,
-        project,
-        added,
-        clusters,
-        files,
-        skipped,
-        deleted: diff.deleted,
-        hotspots,
-        hotspots_total,
-        non_claim: "Structural direction is not proof that tests or behavior still pass.",
-    })
-}
-
-/// Score capped files whose fan-in already clears the thresholds, so
-/// `fan_in_growth` can see whether they fail SIMPLE. They stay out of
-/// `files`: the cap still limits every other gate and the file table.
-fn score_capped_for_fan_in(
-    coupling: &mut gates::Coupling,
-    files: &[FileRecap],
-    capped: &[DiffEntry],
-    clusters: &[Cluster],
-    scoring: &Scoring,
-    cfg: &PrGateConfig,
-) -> Result<(), String> {
-    if cfg.severity(GateId::FanInGrowth) == Severity::Off {
-        return Ok(());
-    }
-    let scored: BTreeSet<String> = files.iter().map(|file| file.path.clone()).collect();
-    let mut added: BTreeSet<String> = files
-        .iter()
-        .filter(|file| file.is_new())
-        .map(|file| file.path.clone())
-        .collect();
-    for entry in capped {
-        if file_change(&entry.status) == FileChange::Added {
-            added.insert(entry.path.clone());
-        }
-    }
-    let want: BTreeSet<String> =
-        gates::capped_fan_in_paths(coupling, &scored, &added, clusters, cfg)
-            .into_iter()
-            .collect();
-    for entry in capped {
-        if want.contains(&entry.path) {
-            coupling.fan_in_files.push(scoring.score_file(entry)?.recap);
-        }
-    }
-    Ok(())
-}
-
-fn load_graph(store: &Path) -> Option<ModuleDependencyGraph> {
-    ModuleDependencyGraph::from_lbug_path(&store.join(".gitnexus").join("lbug"), "").ok()
-}
-
 #[cfg(test)]
 mod tests {
-    use topos_engine::config::Severity;
+    use topos_engine::config::{FailOn, GateId, Severity, ToposConfig};
+    use topos_engine::evaluation::policies::base::Priority;
 
     use super::*;
     use crate::commands::gh::git;

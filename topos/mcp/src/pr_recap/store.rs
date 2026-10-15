@@ -10,30 +10,30 @@
 //! quick enough to run before deciding whether to ask about a build.
 
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
-use topos_engine::adapters::gitnexus::GITNEXUS_FINGERPRINT_FILE;
+use topos_engine::adapters::gitnexus::{generate_depgraph, GITNEXUS_FINGERPRINT_FILE};
 
-use crate::commands::gh::git_common_dir;
+use super::gh::{git, git_common_dir, resolve_commit};
 
 /// Paths to the worktrees (and their shared parent) backing a PR's coupling
 /// graphs.
-pub(crate) struct PrStores {
-    pub(crate) parent: PathBuf,
-    pub(crate) base: PathBuf,
-    pub(crate) head: PathBuf,
+pub struct PrStores {
+    pub parent: PathBuf,
+    pub base: PathBuf,
+    pub head: PathBuf,
 }
 
 impl PrStores {
     /// Pull request `pr`'s stores for the repository at `repo_root`, in the
     /// `.git` directory its worktrees share.
-    pub(crate) fn locate(repo_root: &Path, pr: u64) -> Result<Self, String> {
+    pub fn locate(repo_root: &Path, pr: u64) -> Result<Self, String> {
         Ok(Self::at(
             git_common_dir(repo_root)?.join(format!("topos-pr-{pr}")),
         ))
     }
 
-    pub(crate) fn at(parent: PathBuf) -> Self {
+    pub fn at(parent: PathBuf) -> Self {
         Self {
             base: parent.join("base"),
             head: parent.join("head"),
@@ -41,14 +41,14 @@ impl PrStores {
         }
     }
 
-    pub(crate) fn commits_path(&self) -> PathBuf {
+    pub fn commits_path(&self) -> PathBuf {
         self.parent.join("commits")
     }
 }
 
 /// How much of a build the stores already hold for one base/head pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StoreState {
+pub enum StoreState {
     /// Both graphs are built at these commits: nothing to do.
     Ready,
     /// The base graph is built at this base; the head needs building.
@@ -60,7 +60,7 @@ pub(crate) enum StoreState {
 }
 
 impl StoreState {
-    pub(crate) fn one_side_reusable(self) -> bool {
+    pub fn one_side_reusable(self) -> bool {
         matches!(self, StoreState::BaseReusable | StoreState::HeadReusable)
     }
 }
@@ -90,7 +90,7 @@ fn read_commits(path: &Path) -> Option<Commits> {
 
 /// Record that the graphs on disk were built from `base_sha`/`head_sha`,
 /// in `elapsed_ms`.
-pub(crate) fn write_commits(
+pub fn write_commits(
     stores: &PrStores,
     base_sha: &str,
     head_sha: &str,
@@ -106,7 +106,7 @@ pub(crate) fn write_commits(
 /// built only when `commits` names its commit and its graph is on disk;
 /// `commits` is removed before any rebuild, so it never names a graph
 /// that is half built.
-pub(crate) fn pr_store_state(stores: &PrStores, base_sha: &str, head_sha: &str) -> StoreState {
+pub fn pr_store_state(stores: &PrStores, base_sha: &str, head_sha: &str) -> StoreState {
     let Some(recorded) = read_commits(&stores.commits_path()) else {
         return StoreState::Cold;
     };
@@ -127,7 +127,7 @@ pub(crate) fn pr_store_state(stores: &PrStores, base_sha: &str, head_sha: &str) 
 /// longest graph a fingerprint records, ×1.3 for the second side and the
 /// checkout. Fingerprints are only the fallback: a gitnexus run that finds
 /// its index current returns in about a second and rewrites them.
-pub(crate) fn last_build_ms(store_root: &Path) -> Option<u64> {
+pub fn last_build_ms(store_root: &Path) -> Option<u64> {
     let stores: Vec<PrStores> = std::fs::read_dir(store_root)
         .ok()?
         .flatten()
@@ -167,7 +167,7 @@ fn fingerprint_ms(side: &Path) -> Option<u64> {
 
 /// The wait to quote for a build from `state`, rounded to 5 s, or `None`
 /// with no history to go on. A reusable side makes it about 0.8× as long.
-pub(crate) fn build_estimate_ms(state: StoreState, last_build_ms: Option<u64>) -> Option<u64> {
+pub fn build_estimate_ms(state: StoreState, last_build_ms: Option<u64>) -> Option<u64> {
     let ms = last_build_ms?;
     let ms = if state.one_side_reusable() {
         ms * 4 / 5
@@ -175,6 +175,107 @@ pub(crate) fn build_estimate_ms(state: StoreState, last_build_ms: Option<u64>) -
         ms
     };
     Some(((ms + 2_500) / 5_000).max(1) * 5_000)
+}
+
+/// Check out `base_sha` and `head_sha` into `<git-common-dir>/topos-pr-<pr>/`
+/// and build a `.gitnexus/` graph in each, in parallel.
+///
+/// If `commits` already names `base_sha` and `head_sha` and both `.gitnexus/`
+/// directories exist, returns immediately. Otherwise `commits` is removed
+/// before either worktree is touched so an interrupted build can never leave
+/// a stale record claiming the new commits are indexed; it is rewritten only
+/// after both graphs succeed, naming the exact commits those graphs were built
+/// from. `on_side_done` runs from each side's build thread as that side
+/// finishes, in whichever order they finish. Never prints. Errors are
+/// `String`.
+pub fn prepare_pr_stores(
+    repo_root: &Path,
+    pr: u64,
+    base_sha: &str,
+    head_sha: &str,
+    on_side_done: &(dyn Fn() + Sync),
+) -> Result<PrStores, String> {
+    let stores = PrStores::locate(repo_root, pr)?;
+    if pr_store_state(&stores, base_sha, head_sha) == StoreState::Ready {
+        return Ok(stores);
+    }
+
+    let started = Instant::now();
+    match std::fs::remove_file(stores.commits_path()) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("clearing graph commits: {e}")),
+    }
+    std::fs::create_dir_all(&stores.parent)
+        .map_err(|e| format!("creating graph worktrees: {e}"))?;
+    ensure_worktree(repo_root, &stores.base, base_sha)?;
+    ensure_worktree(repo_root, &stores.head, head_sha)?;
+
+    let (base_result, head_result) = std::thread::scope(|scope| {
+        let [base_job, head_job] = [&stores.base, &stores.head].map(|path| {
+            scope.spawn(move || {
+                let result = generate_depgraph(path, true, None);
+                on_side_done();
+                result
+            })
+        });
+        (base_job.join(), head_job.join())
+    });
+    let base_result = base_result.map_err(|_| "base graph generation failed".to_string())?;
+    let head_result = head_result.map_err(|_| "head graph generation failed".to_string())?;
+    if !base_result.ok {
+        return Err(format!("base graph: {}", base_result.message));
+    }
+    if !head_result.ok {
+        return Err(format!("head graph: {}", head_result.message));
+    }
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    write_commits(&stores, base_sha, head_sha, elapsed_ms)
+        .map_err(|e| format!("recording graph commits: {e}"))?;
+
+    Ok(stores)
+}
+
+/// Check out `sha`, detached, at `path`: a worktree of `repo` that topos
+/// owns. A worktree already on `sha` is left alone, graph included. One on
+/// another commit is forced onto `sha` and stripped of every untracked and
+/// ignored file — the old `.gitnexus/` with them — so the next graph can
+/// only reflect `sha`. A directory git no longer tracks as a worktree (or a
+/// registration whose directory was deleted) is rebuilt from scratch.
+pub fn ensure_worktree(repo: &Path, path: &Path, sha: &str) -> Result<(), String> {
+    let wanted = resolve_commit(repo, sha)?;
+    if path.join(".git").exists() {
+        if let Ok(current) = git(path, &["rev-parse", "HEAD"]) {
+            if current.trim() == wanted {
+                return Ok(());
+            }
+            git(
+                path,
+                &["checkout", "--quiet", "--force", "--detach", &wanted],
+            )
+            .map_err(|e| format!("could not check out {sha}: {e}"))?;
+            git(path, &["clean", "-ffdxq"])?;
+            return Ok(());
+        }
+    }
+    if path.exists() {
+        std::fs::remove_dir_all(path)
+            .map_err(|e| format!("removing broken worktree {}: {e}", path.display()))?;
+    }
+    // Forget a registration whose directory is gone, or `add` refuses the path.
+    git(repo, &["worktree", "prune"])?;
+    git(
+        repo,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            &path.display().to_string(),
+            &wanted,
+        ],
+    )
+    .map(|_| ())
+    .map_err(|e| format!("could not check out {sha}: {e}"))
 }
 
 #[cfg(test)]
@@ -308,5 +409,131 @@ mod tests {
             Some(5_000),
             "never quotes 0 s"
         );
+    }
+
+    /// A repo with two commits touching `src/a.py`; returns the shas too.
+    fn two_commit_repo() -> (tempfile::TempDir, PathBuf, String, String) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path().to_path_buf();
+        git(&repo, &["init", "-q"]).expect("init");
+        git(&repo, &["config", "user.email", "depgraph@example.com"]).unwrap();
+        git(&repo, &["config", "user.name", "Depgraph"]).unwrap();
+        let commit = |body: &str, message: &str| {
+            std::fs::create_dir_all(repo.join("src")).unwrap();
+            std::fs::write(repo.join("src/a.py"), body).unwrap();
+            git(&repo, &["add", "."]).unwrap();
+            git(&repo, &["commit", "-qm", message]).unwrap();
+            resolve_commit(&repo, "HEAD").unwrap()
+        };
+        let first = commit("x = 1\n", "first");
+        let second = commit("x = 2\n", "second");
+        (dir, repo, first, second)
+    }
+
+    fn head_of(path: &Path) -> String {
+        resolve_commit(path, "HEAD").unwrap()
+    }
+
+    #[test]
+    fn ensure_worktree_moves_a_stale_checkout_and_drops_its_graph() {
+        let (_keep, repo, first, second) = two_commit_repo();
+        let tree = repo.join(".git/topos-pr-1/head");
+        ensure_worktree(&repo, &tree, &first).unwrap();
+        assert_eq!(head_of(&tree), first);
+        std::fs::create_dir_all(tree.join(".gitnexus")).unwrap();
+        std::fs::write(tree.join("src/stray.py"), "y = 1\n").unwrap();
+        std::fs::write(tree.join("src/a.py"), "x = 99\n").unwrap();
+
+        ensure_worktree(&repo, &tree, &second).unwrap();
+
+        assert_eq!(head_of(&tree), second);
+        assert_eq!(
+            std::fs::read_to_string(tree.join("src/a.py")).unwrap(),
+            "x = 2\n"
+        );
+        assert!(!tree.join("src/stray.py").exists());
+        assert!(!tree.join(".gitnexus").exists());
+    }
+
+    #[test]
+    fn ensure_worktree_keeps_the_graph_of_a_current_checkout() {
+        let (_keep, repo, first, _) = two_commit_repo();
+        let tree = repo.join(".git/topos-pr-1/base");
+        ensure_worktree(&repo, &tree, &first).unwrap();
+        std::fs::create_dir_all(tree.join(".gitnexus")).unwrap();
+
+        ensure_worktree(&repo, &tree, &first).unwrap();
+
+        assert_eq!(head_of(&tree), first);
+        assert!(tree.join(".gitnexus").exists());
+    }
+
+    #[test]
+    fn ensure_worktree_recovers_a_deleted_worktree_directory() {
+        let (_keep, repo, first, second) = two_commit_repo();
+        let tree = repo.join(".git/topos-pr-1/head");
+        ensure_worktree(&repo, &tree, &first).unwrap();
+        std::fs::remove_dir_all(&tree).unwrap();
+
+        ensure_worktree(&repo, &tree, &second).unwrap();
+
+        assert_eq!(head_of(&tree), second);
+    }
+
+    #[test]
+    fn ensure_worktree_replaces_a_directory_git_does_not_know() {
+        let (_keep, repo, first, _) = two_commit_repo();
+        let tree = repo.join(".git/topos-pr-1/base");
+        std::fs::create_dir_all(&tree).unwrap();
+        std::fs::write(tree.join("leftover.py"), "z = 1\n").unwrap();
+
+        ensure_worktree(&repo, &tree, &first).unwrap();
+
+        assert_eq!(head_of(&tree), first);
+        assert!(!tree.join("leftover.py").exists());
+    }
+
+    #[test]
+    fn prepare_pr_stores_forgets_old_commits_before_rebuilding() {
+        let (_keep, repo, first, second) = two_commit_repo();
+        let parent = repo.join(".git/topos-pr-1");
+        std::fs::create_dir_all(&parent).unwrap();
+        std::fs::write(parent.join("commits"), format!("{first}\n{first}\n")).unwrap();
+
+        // An unresolvable head fails before any graph is built; the stale
+        // record must already be gone so no later run trusts it.
+        let err = prepare_pr_stores(&repo, 1, &second, "0000000", &|| {}).err();
+
+        assert!(err.is_some_and(|e| e.contains("could not resolve")));
+        assert!(!parent.join("commits").exists());
+    }
+
+    /// Run from a linked worktree, whose `.git` is a file, the stores land
+    /// in the main repository's `.git` directory and check out there.
+    #[test]
+    fn a_linked_worktree_keeps_its_stores_in_the_common_dir() {
+        let (_keep, repo, first, _) = two_commit_repo();
+        let elsewhere = tempfile::tempdir().expect("tempdir");
+        let linked = elsewhere.path().join("linked");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &linked.display().to_string(),
+            ],
+        )
+        .unwrap();
+
+        let stores = PrStores::locate(&linked, 1).unwrap();
+        let canonical = |path: &Path| std::fs::canonicalize(path).unwrap();
+        assert_eq!(
+            canonical(stores.parent.parent().unwrap()),
+            canonical(&repo.join(".git"))
+        );
+        ensure_worktree(&linked, &stores.base, &first).unwrap();
+        assert_eq!(head_of(&stores.base), first);
     }
 }

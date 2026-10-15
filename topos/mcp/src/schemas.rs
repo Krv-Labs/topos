@@ -246,6 +246,19 @@ fn nullable_to_any_of(schema: &mut schemars::Schema) {
     }
 }
 
+/// Rewrite `Option<u64>` into portable `anyOf`.
+fn nullable_uint_to_any_of(schema: &mut schemars::Schema) {
+    if let Some(object) = schema.as_object_mut() {
+        object.remove("type");
+        object.remove("format");
+        object.remove("minimum");
+        object.insert(
+            "anyOf".to_string(),
+            serde_json::json!([{"type": "integer", "minimum": 0}, {"type": "null"}]),
+        );
+    }
+}
+
 /// Arguments for `topos_evaluate_code`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -511,6 +524,49 @@ pub struct AssessChangesetInput {
     /// One-off acknowledged dangerous-call patterns.
     #[serde(default)]
     pub allow: Vec<String>,
+}
+
+fn default_pr_recap_max_files() -> usize {
+    crate::pr_recap::DEFAULT_FILE_CAP
+}
+
+/// Arguments for `topos_pr_recap`.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PrRecapInput {
+    /// Repository directory (default: MCP file root).
+    #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
+    pub directory: Option<String>,
+    /// Pull request number (mutually exclusive with `base`/`head`).
+    #[serde(default)]
+    #[schemars(transform = nullable_uint_to_any_of)]
+    pub pr: Option<u64>,
+    /// Base commit ref (default `HEAD`).
+    #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
+    pub base: Option<String>,
+    /// Head commit ref or `:worktree` (default `:worktree` or `HEAD`).
+    #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
+    pub head: Option<String>,
+    /// Max scored files by churn (default 40).
+    #[serde(default = "default_pr_recap_max_files")]
+    pub max_files: usize,
+    /// Skip coupling graph preparation.
+    #[serde(default)]
+    pub no_coupling: bool,
+    /// Priority pillar or comma-separated ranking.
+    #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
+    pub priority: Option<String>,
+    /// Fail readiness check on `warn` as well as `block`.
+    #[serde(default)]
+    pub strict: bool,
+    /// Built-in gate preset (`relaxed`, `recommended`, or `strict`).
+    #[serde(default)]
+    #[schemars(transform = nullable_to_any_of)]
+    pub preset: Option<String>,
 }
 
 fn default_top_n_functions() -> usize {

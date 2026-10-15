@@ -16,8 +16,9 @@ mod tests {
     /// Ratcheted **down** when Graphify was removed (issue #325): dropping
     /// `topos_generate_graphify_graph` and the `graphify` refactor target
     /// took the surface from 18 tools / 39_584 chars to 17 tools / 38_668.
-    /// Ceilings keep the same ~2% headroom convention as the Python
-    /// baseline they inherit from.
+    /// Adding `topos_pr_recap` (issue #439) brought the surface back to 18
+    /// tools / 41_291 chars. Ceilings keep the same ~2% headroom convention
+    /// as the Python baseline they inherit from.
     ///
     /// The previous re-baseline was the NAVIGABLE pillar (v0.5.0), where
     /// `LatticeElement` went from 8 variants to 16 and `GeneratorInput`
@@ -26,7 +27,7 @@ mod tests {
     /// moved the measured surface to 39_665. Treat any further increase as
     /// a regression to investigate rather than a number to raise again;
     /// every removal ratchets this down.
-    const TOTAL_CEILING_CHARS: usize = 40_450;
+    const TOTAL_CEILING_CHARS: usize = 42_100;
     const PER_TOOL_CEILING_CHARS: usize = 5_000;
 
     fn approx_tokens(chars: usize) -> usize {

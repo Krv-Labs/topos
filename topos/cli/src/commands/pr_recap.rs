@@ -518,13 +518,16 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
 trait ScoreProgress {
     /// Scoring is about to start on `total` files.
     fn start(&mut self, total: usize);
-    /// The file at `path` has been scored.
-    fn scored(&mut self, path: &str);
+    /// The file at `path` is about to be scored.
+    fn scoring(&mut self, path: &str);
+    /// The current file has been scored.
+    fn scored(&mut self);
 }
 
 impl ScoreProgress for () {
     fn start(&mut self, _: usize) {}
-    fn scored(&mut self, _: &str) {}
+    fn scoring(&mut self, _: &str) {}
+    fn scored(&mut self) {}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -624,8 +627,9 @@ fn build_recap(
     let mut scored = scoreable
         .iter()
         .map(|entry| {
+            progress.scoring(&entry.path);
             let file = scoring.score_file(entry);
-            progress.scored(&entry.path);
+            progress.scored();
             file
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -970,15 +974,19 @@ mod tests {
     #[derive(Default)]
     struct Heard {
         total: Option<usize>,
-        scored: Vec<String>,
+        scoring: Vec<String>,
+        scored: usize,
     }
 
     impl ScoreProgress for Heard {
         fn start(&mut self, total: usize) {
             self.total = Some(total);
         }
-        fn scored(&mut self, path: &str) {
-            self.scored.push(path.to_string());
+        fn scoring(&mut self, path: &str) {
+            self.scoring.push(path.to_string());
+        }
+        fn scored(&mut self) {
+            self.scored += 1;
         }
     }
 
@@ -1002,10 +1010,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(heard.total, Some(2), "the capped file is never scored");
+        assert_eq!(heard.scored, 2);
         let mut files: Vec<String> = recap.files.iter().map(|f| f.path.clone()).collect();
         files.sort();
-        heard.scored.sort();
-        assert_eq!(heard.scored, files);
+        heard.scoring.sort();
+        assert_eq!(heard.scoring, files);
     }
 
     #[test]

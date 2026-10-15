@@ -248,7 +248,7 @@ impl ScoreProgress for ScoringBar {
         self.running = Some(Running { bar, stop, reveal });
     }
 
-    fn scored(&mut self, path: &str) {
+    fn scoring(&mut self, path: &str) {
         let Some(running) = &self.running else {
             return;
         };
@@ -256,6 +256,12 @@ impl ScoreProgress for ScoringBar {
             .file_name()
             .map_or_else(|| path.to_string(), |name| name.to_string_lossy().into());
         running.bar.set_message(name);
+    }
+
+    fn scored(&mut self) {
+        let Some(running) = &self.running else {
+            return;
+        };
         running.bar.inc(1);
         if running.bar.length() == Some(running.bar.position()) {
             self.finish();

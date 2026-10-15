@@ -160,8 +160,9 @@ impl ProgramMorphism {
     /// Build (and cache) the academic Program Dependence Graph.
     pub fn build_pdg(&mut self) -> Option<&ProgramDependenceGraph> {
         if self.pdg.is_none() {
-            let pdg =
-                ProgramDependenceGraph::from_uast(&self.ast.as_ref()?.uast_root, &self.source);
+            self.build_cfg()?;
+            let cfg = self.cfg.as_ref()?;
+            let pdg = ProgramDependenceGraph::from_cfg_ref(cfg, &self.source);
             self.pdg = Some(pdg);
         }
         self.pdg.as_ref()
@@ -170,10 +171,28 @@ impl ProgramMorphism {
     /// Build (and cache) the Code Property Graph.
     pub fn build_cpg(&mut self) -> Option<&CodePropertyGraph> {
         if self.cpg.is_none() {
+            self.build_pdg()?;
             let ast = self.ast.as_ref()?;
-            let cpg = CodePropertyGraph::from_uast(&ast.uast_root, self.source.clone());
+            let cfg = self.cfg.as_ref()?;
+            let pdg = self.pdg.as_ref()?;
+            let cpg = CodePropertyGraph::from_parts(&ast.uast_root, self.source.clone(), cfg, pdg);
             self.cpg = Some(cpg);
         }
+        self.cpg.as_ref()
+    }
+
+    /// Shared reference to the cached Control Flow Graph, if built.
+    pub fn cfg(&self) -> Option<&ControlFlowGraph> {
+        self.cfg.as_ref()
+    }
+
+    /// Shared reference to the cached Program Dependence Graph, if built.
+    pub fn pdg(&self) -> Option<&ProgramDependenceGraph> {
+        self.pdg.as_ref()
+    }
+
+    /// Shared reference to the cached Code Property Graph, if built.
+    pub fn cpg(&self) -> Option<&CodePropertyGraph> {
         self.cpg.as_ref()
     }
 

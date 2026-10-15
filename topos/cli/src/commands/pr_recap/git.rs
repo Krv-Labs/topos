@@ -9,14 +9,31 @@ use topos_engine::graphs::ast::languages::language_for_path;
 use super::model::FileChange;
 use crate::commands::gh::git;
 
-const SKIP_PREFIXES: &[&str] = &[
-    "openwiki/",
-    "target/",
-    "node_modules/",
-    "dist/",
-    "vendor/",
-    ".git/",
+/// Unambiguous non-source directory names skipped at any depth in a diff.
+///
+/// Aligned with [`topos_engine::adapters::discovery`]'s `ALWAYS_SKIP_DIR_NAMES`
+/// and `BUILTIN_IGNORE_DIR_NAMES`, plus `openwiki` (generated repo wiki).
+/// Note that `"dist"` is intentionally handled separately in [`is_dist_output_dir`]
+/// rather than listed here unconditionally so hand-written source modules such as
+/// `src/dist/mod.rs` are not falsely skipped (matching `discovery.rs`'s
+/// `ROOT_ONLY_SKIP_DIR_NAMES` rationale and GitHub Linguist / `go-enry`
+/// generated-path conventions).
+const SKIP_DIRS: &[&str] = &[
+    "openwiki",
+    "target",
+    "node_modules",
+    "vendor",
+    ".git",
+    ".gitnexus",
+    ".next",
+    ".turbo",
+    ".venv",
+    "venv",
+    "__pycache__",
 ];
+
+/// Ambiguous build/report directory names skipped at the repository root.
+const SKIP_ROOT_DIRS: &[&str] = &["build", "builds", "out", "coverage", "dist"];
 
 pub(super) struct DiffEntry {
     pub(super) status: String,
@@ -183,13 +200,45 @@ fn parse_name_status(output: &str) -> Diff {
 
 pub(super) fn skip_reason(entry: &DiffEntry) -> Option<String> {
     let path = entry.path.replace('\\', "/");
-    if SKIP_PREFIXES.iter().any(|prefix| path.starts_with(prefix)) {
+    if is_generated_or_vendor_path(&path) {
         return Some("generated or vendor path".to_string());
     }
     if language_for_path(&path).is_none() {
         return Some("not a supported source file".to_string());
     }
     None
+}
+
+/// Classify whether a git-relative path points to generated build output,
+/// vendored third-party code, or minified/bundled artifacts.
+///
+/// Follows GitHub Linguist (`generated.rb`) and `go-enry` path heuristics
+/// alongside [`topos_engine::adapters::discovery`]:
+/// - Root build/report directories (`SKIP_ROOT_DIRS`) and unambiguous
+///   cache/vendor directories at any depth (`SKIP_DIRS`) are skipped.
+/// - Nested `dist/` directories (e.g. `packages/web/dist/app.js` or
+///   `builds/local-plugin/agent-smith/runtime/dist/server.js`) are skipped
+///   unless directly inside a `src/` tree (preserving source modules like
+///   `src/dist/mod.rs` or `crates/core/src/dist/worker.rs`).
+/// - Minified and bundled filenames (`*.min.*`, `*.bundle.*`) are skipped.
+fn is_generated_or_vendor_path(path: &str) -> bool {
+    let mut parts = path.split('/');
+    let file_name = parts.next_back().unwrap_or(path);
+    let dirs: Vec<&str> = parts.collect();
+    let root_skipped = dirs
+        .first()
+        .is_some_and(|root| SKIP_ROOT_DIRS.contains(root));
+    root_skipped
+        || dirs.iter().any(|dir| SKIP_DIRS.contains(dir))
+        || is_dist_output_dir(&dirs)
+        || file_name.contains(".min.")
+        || file_name.contains(".bundle.")
+}
+
+fn is_dist_output_dir(dirs: &[&str]) -> bool {
+    dirs.iter()
+        .enumerate()
+        .any(|(i, &dir)| dir == "dist" && (i == 0 || dirs[i - 1] != "src"))
 }
 
 pub(super) fn show_file(repo: &Path, rev: &str, path: &str) -> Result<String, String> {
@@ -252,5 +301,33 @@ mod tests {
             skip_reason(&entry("README.md")).as_deref(),
             Some("not a supported source file")
         );
+    }
+
+    #[test]
+    fn skip_reason_catches_nested_dist_root_builds_and_minified_files() {
+        let entry = |path: &str| DiffEntry {
+            status: "M".to_string(),
+            path: path.to_string(),
+            old_path: None,
+        };
+        for skipped in [
+            "dist/bundle.js",
+            "packages/web/dist/server.js",
+            "builds/local-plugin/agent-smith/runtime/dist/server.js",
+            "builds/local-plugin/agent-smith/hooks/views.tsx",
+            "packages/web/node_modules/pkg/index.js",
+            "src/app.min.js",
+            "src/app.bundle.js",
+        ] {
+            assert_eq!(
+                skip_reason(&entry(skipped)).as_deref(),
+                Some("generated or vendor path"),
+                "{skipped} should be skipped"
+            );
+        }
+        assert_eq!(skip_reason(&entry("src/build/mod.rs")), None);
+        assert_eq!(skip_reason(&entry("src/dist/mod.rs")), None);
+        assert_eq!(skip_reason(&entry("crates/core/src/dist/worker.rs")), None);
+        assert_eq!(skip_reason(&entry("src/dist.rs")), None);
     }
 }

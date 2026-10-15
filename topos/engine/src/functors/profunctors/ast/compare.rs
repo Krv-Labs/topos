@@ -108,8 +108,8 @@ pub fn calculate_ast_distance(source: &ProgramObject, target: &ProgramObject) ->
     let source_nodes = source.traverse();
     let target_nodes = target.traverse();
 
-    let source_types: Vec<String> = source_nodes.iter().map(|n| n.kind().to_string()).collect();
-    let target_types: Vec<String> = target_nodes.iter().map(|n| n.kind().to_string()).collect();
+    let source_types: Vec<&str> = source_nodes.iter().map(|n| n.kind()).collect();
+    let target_types: Vec<&str> = target_nodes.iter().map(|n| n.kind()).collect();
 
     let (distance, operations) = compute_sequence_distance(&source_types, &target_types);
 
@@ -123,120 +123,260 @@ pub fn calculate_ast_distance(source: &ProgramObject, target: &ProgramObject) ->
     }
 }
 
+/// Cumulative Levenshtein cost and operation counts at one DP cell.
+///
+/// Carrying the operation breakdown forward in two rows (`prev` and
+/// `curr`) computes the exact same result as backtracing a full
+/// `(m + 1) × (n + 1)` matrix, in `O(n)` memory instead of `O(m × n)`.
+#[derive(Clone, Copy, Default)]
+struct EditCell {
+    cost: u32,
+    insertions: u32,
+    deletions: u32,
+    substitutions: u32,
+}
+
+/// Sentinel DP cell for positions outside the active Ukkonen band.
+const SENTINEL_CELL: EditCell = EditCell {
+    cost: u32::MAX / 2,
+    insertions: 0,
+    deletions: 0,
+    substitutions: 0,
+};
+
+/// Maximum DP cells evaluated in a single banded pass before capping
+/// diagonal slack.
+///
+/// Following Ukkonen (1985, "Algorithms for approximate string matching",
+/// *Information and Control* 64(1-3):100-118), expanding the diagonal band
+/// `[-s, +s]` around `delta = n - m` is 100% exact whenever
+/// `cost <= |m - n| + 2 * s`. However, when two massive ASTs are completely
+/// unrelated (`d ≈ max(m, n)`), unconstrained doubling degrades to `O(m × n)`
+/// (~290B cells on 340k-node bundles).
+///
+/// Production structural diff and sequence-alignment engines — including Git's
+/// `xdl_do_diff` (`max_cost` cutoff on Myers 1986), Difftastic (`--graph-limit`),
+/// and GumTree (`max_size` container recovery bound; Falleri et al., ASE 2014) —
+/// bound worst-case alignment work on large inputs. Because every
+/// [`banded_sequence_distance`] pass connects `(0, 0)` to `(m, n)`, capping
+/// `max_slack` at `MAX_BAND_CELLS / (2 * max(m, 1))` always yields a valid,
+/// realizable edit script (`insertions + deletions + substitutions == cost`)
+/// that is 100% exact for all normal files and localized edits on large files,
+/// and returns a tight upper bound for full-file rewrites in `< 50ms`.
+const MAX_BAND_CELLS: usize = 25_000_000;
+
+/// Diagonal offset bounds `[low_offset, high_offset]` for `j - i` in a
+/// banded Wagner-Fischer pass.
+#[derive(Clone, Copy)]
+struct BandBounds {
+    low_offset: isize,
+    high_offset: isize,
+    n: usize,
+}
+
+impl BandBounds {
+    fn new(m: usize, n: usize, slack: usize) -> Self {
+        let delta = n as isize - m as isize;
+        let slack = slack as isize;
+        Self {
+            low_offset: delta.min(0) - slack,
+            high_offset: delta.max(0) + slack,
+            n,
+        }
+    }
+
+    #[inline]
+    fn row_range(self, row: usize) -> (usize, usize) {
+        let row = row as isize;
+        let n = self.n as isize;
+        let j_min = (row + self.low_offset).clamp(0, n) as usize;
+        let j_max = (row + self.high_offset).clamp(0, n) as usize;
+        (j_min, j_max)
+    }
+}
+
 /// Compute edit distance between two sequences of node types.
 ///
-/// Uses the Wagner-Fischer algorithm (dynamic programming). Relocated
-/// verbatim from `crates/topos-pyo3/src/profunctors.rs`'s
-/// `compute_sequence_distance` — see this module's "Deviation from the
-/// Python original" note.
-pub(crate) fn compute_sequence_distance(
-    source: &[String],
-    target: &[String],
+/// Uses a two-row (`O(n)`-space) Wagner-Fischer dynamic programming pass
+/// over interned node-kind IDs after stripping common leading and
+/// trailing affixes, with Ukkonen's doubling diagonal band on large
+/// spans so edits at opposite ends of a large AST stay `O((m + n) × d)`
+/// in time while remaining exact up to [`MAX_BAND_CELLS`].
+pub(crate) fn compute_sequence_distance<T: AsRef<str> + PartialEq>(
+    source: &[T],
+    target: &[T],
 ) -> (usize, HashMap<String, usize>) {
-    let m = source.len();
-    let n = target.len();
-
-    let mut dp = vec![vec![0; n + 1]; m + 1];
-
-    for (i, row) in dp.iter_mut().enumerate() {
-        row[0] = i;
-    }
-    for (j, cell) in dp[0].iter_mut().enumerate() {
-        *cell = j;
-    }
-
-    for i in 1..=m {
-        for j in 1..=n {
-            if source[i - 1] == target[j - 1] {
-                dp[i][j] = dp[i - 1][j - 1];
-            } else {
-                dp[i][j] = 1 + dp[i - 1][j].min(dp[i][j - 1]).min(dp[i - 1][j - 1]);
-            }
-        }
-    }
-
-    let operations = count_edit_operations(&dp, source, target, m, n);
-
-    (dp[m][n], operations)
-}
-
-/// One step of the Wagner-Fischer backtrace at cell `(i, j)`.
-enum EditStep {
-    Match,
-    Substitute,
-    Insert,
-    Delete,
-    Unreachable,
-}
-
-/// Classify which edit produced `dp[i][j]`, by re-deriving which
-/// predecessor cell the fill step at `(i, j)` must have used.
-fn classify_edit_step(
-    dp: &[Vec<usize>],
-    source: &[String],
-    target: &[String],
-    i: usize,
-    j: usize,
-) -> EditStep {
-    if i > 0 && j > 0 && source[i - 1] == target[j - 1] {
-        EditStep::Match
-    } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
-        EditStep::Substitute
-    } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
-        EditStep::Insert
-    } else if i > 0 && dp[i][j] == dp[i - 1][j] + 1 {
-        EditStep::Delete
+    let (source, target) = trim_common_affixes(source, target);
+    let (source_ids, target_ids) = intern_pair(source, target);
+    let m = source_ids.len();
+    let n = target_ids.len();
+    let max_slack = m.min(n).min(MAX_BAND_CELLS / m.max(1).saturating_mul(2));
+    let mut slack = if m.saturating_mul(n) <= 4_000_000 {
+        max_slack
     } else {
-        EditStep::Unreachable
+        64.min(max_slack)
+    };
+
+    let final_cell = loop {
+        let cell = banded_sequence_distance(&source_ids, &target_ids, slack);
+        let max_valid_cost = m.abs_diff(n) + 2 * slack;
+        if (cell.cost as usize) <= max_valid_cost || slack >= max_slack {
+            break cell;
+        }
+        slack = slack.saturating_mul(4).min(max_slack);
+    };
+
+    (
+        final_cell.cost as usize,
+        edit_operations_map(
+            final_cell.insertions as usize,
+            final_cell.deletions as usize,
+            final_cell.substitutions as usize,
+        ),
+    )
+}
+
+fn banded_sequence_distance(source_ids: &[u32], target_ids: &[u32], slack: usize) -> EditCell {
+    let m = source_ids.len();
+    let n = target_ids.len();
+    let band = BandBounds::new(m, n, slack);
+    let mut prev = vec![SENTINEL_CELL; n + 1];
+    let mut curr = vec![SENTINEL_CELL; n + 1];
+
+    let (_, row0_max) = band.row_range(0);
+    for (j, cell) in prev.iter_mut().enumerate().take(row0_max + 1) {
+        *cell = EditCell {
+            cost: j as u32,
+            insertions: j as u32,
+            deletions: 0,
+            substitutions: 0,
+        };
+    }
+
+    for (i, &src_id) in source_ids.iter().enumerate() {
+        fill_band_row(i + 1, src_id, target_ids, band, &prev, &mut curr);
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+fn fill_band_row(
+    row: usize,
+    src_id: u32,
+    target_ids: &[u32],
+    band: BandBounds,
+    prev: &[EditCell],
+    curr: &mut [EditCell],
+) {
+    let (j_min, j_max) = band.row_range(row);
+    if j_min == 0 {
+        let row_cost = row as u32;
+        curr[0] = EditCell {
+            cost: row_cost,
+            insertions: 0,
+            deletions: row_cost,
+            substitutions: 0,
+        };
+    } else {
+        curr[j_min - 1] = SENTINEL_CELL;
+    }
+
+    for j in j_min.max(1)..=j_max {
+        curr[j] = if src_id == target_ids[j - 1] {
+            prev[j - 1]
+        } else {
+            step_cell(prev[j - 1], curr[j - 1], prev[j])
+        };
+    }
+
+    if j_max < band.n {
+        curr[j_max + 1] = SENTINEL_CELL;
     }
 }
 
-/// Backtrace the Wagner-Fischer DP table and tally edit operations.
-fn count_edit_operations(
-    dp: &[Vec<usize>],
-    source: &[String],
-    target: &[String],
-    m: usize,
-    n: usize,
-) -> HashMap<String, usize> {
-    let mut insertions = 0;
-    let mut deletions = 0;
-    let mut substitutions = 0;
-
-    let mut i = m;
-    let mut j = n;
-    while i > 0 || j > 0 {
-        match classify_edit_step(dp, source, target, i, j) {
-            EditStep::Match => {
-                i -= 1;
-                j -= 1;
-            }
-            EditStep::Substitute => {
-                substitutions += 1;
-                i -= 1;
-                j -= 1;
-            }
-            EditStep::Insert => {
-                insertions += 1;
-                j -= 1;
-            }
-            EditStep::Delete => {
-                deletions += 1;
-                i -= 1;
-            }
-            EditStep::Unreachable => {
-                // Should not happen with Wagner-Fischer.
-                i = i.saturating_sub(1);
-                j = j.saturating_sub(1);
-            }
+/// Pick the minimum-cost predecessor at a mismatch cell `(i, j)`,
+/// breaking ties in the order `Substitute` (`diag`) → `Insert` (`left`)
+/// → `Delete` (`up`) to match standard Wagner-Fischer backtrace order.
+#[inline]
+fn step_cell(diag: EditCell, left: EditCell, up: EditCell) -> EditCell {
+    if diag.cost <= left.cost && diag.cost <= up.cost {
+        EditCell {
+            cost: diag.cost + 1,
+            substitutions: diag.substitutions + 1,
+            ..diag
+        }
+    } else if left.cost <= up.cost {
+        EditCell {
+            cost: left.cost + 1,
+            insertions: left.insertions + 1,
+            ..left
+        }
+    } else {
+        EditCell {
+            cost: up.cost + 1,
+            deletions: up.deletions + 1,
+            ..up
         }
     }
+}
 
-    let mut operations = HashMap::new();
-    operations.insert("insertions".to_string(), insertions);
-    operations.insert("deletions".to_string(), deletions);
-    operations.insert("substitutions".to_string(), substitutions);
-    operations
+/// Intern node-kind strings from `source` and `target` into compact integer
+/// IDs so the `O(m × n)` inner DP loop compares `u32` values rather than
+/// heap strings.
+fn intern_pair<'a, T: AsRef<str>>(source: &'a [T], target: &'a [T]) -> (Vec<u32>, Vec<u32>) {
+    let mut table: HashMap<&'a str, u32> = HashMap::new();
+    let src = intern_slice(source, &mut table);
+    let tgt = intern_slice(target, &mut table);
+    (src, tgt)
+}
+
+fn intern_slice<'a, T: AsRef<str>>(items: &'a [T], table: &mut HashMap<&'a str, u32>) -> Vec<u32> {
+    items
+        .iter()
+        .map(|item| {
+            let key = item.as_ref();
+            let next_id = table.len() as u32;
+            *table.entry(key).or_insert(next_id)
+        })
+        .collect()
+}
+
+/// Strip matching leading and trailing elements before building the DP
+/// rows. Matching identical endpoints is always optimal under unit
+/// Levenshtein costs, so the edit distance and operation counts are
+/// unchanged while localized edits in large ASTs shrink to just the
+/// changed span.
+fn trim_common_affixes<'a, T: PartialEq>(source: &'a [T], target: &'a [T]) -> (&'a [T], &'a [T]) {
+    let prefix = source
+        .iter()
+        .zip(target.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let source = &source[prefix..];
+    let target = &target[prefix..];
+    let suffix = source
+        .iter()
+        .rev()
+        .zip(target.iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    (
+        &source[..source.len() - suffix],
+        &target[..target.len() - suffix],
+    )
+}
+
+fn edit_operations_map(
+    insertions: usize,
+    deletions: usize,
+    substitutions: usize,
+) -> HashMap<String, usize> {
+    HashMap::from([
+        ("insertions".to_string(), insertions),
+        ("deletions".to_string(), deletions),
+        ("substitutions".to_string(), substitutions),
+    ])
 }
 
 /// Compute structural similarity between two programs.
@@ -691,6 +831,98 @@ mod tests {
         let a = ProgramMorphism::new("x = 1", "python");
         let b = ProgramMorphism::new("x = 1", "python");
         assert_eq!(structural_distance(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn two_row_sequence_distance_matches_reference_matrix_backtrace() {
+        fn reference_matrix(source: &[&str], target: &[&str]) -> (usize, HashMap<String, usize>) {
+            let m = source.len();
+            let n = target.len();
+            let mut dp = vec![vec![0usize; n + 1]; m + 1];
+            for (i, row) in dp.iter_mut().enumerate() {
+                row[0] = i;
+            }
+            for (j, cell) in dp[0].iter_mut().enumerate() {
+                *cell = j;
+            }
+            for i in 1..=m {
+                for j in 1..=n {
+                    dp[i][j] = if source[i - 1] == target[j - 1] {
+                        dp[i - 1][j - 1]
+                    } else {
+                        1 + dp[i - 1][j].min(dp[i][j - 1]).min(dp[i - 1][j - 1])
+                    };
+                }
+            }
+            let (mut ins, mut del, mut sub) = (0, 0, 0);
+            let (mut i, mut j) = (m, n);
+            while i > 0 || j > 0 {
+                if i > 0 && j > 0 && source[i - 1] == target[j - 1] {
+                    i -= 1;
+                    j -= 1;
+                } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
+                    sub += 1;
+                    i -= 1;
+                    j -= 1;
+                } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
+                    ins += 1;
+                    j -= 1;
+                } else {
+                    del += 1;
+                    i -= 1;
+                }
+            }
+            (dp[m][n], edit_operations_map(ins, del, sub))
+        }
+
+        let cases: &[(&[&str], &[&str])] = &[
+            (&[], &[]),
+            (&["a"], &[]),
+            (&[], &["a"]),
+            (&["a", "b", "c"], &["a", "b", "c"]),
+            (&["a", "b", "c", "d"], &["a", "x", "b", "c", "d"]),
+            (&["a", "b", "x", "y", "c"], &["a", "z", "c"]),
+            (
+                &["fn", "id", "block", "ret"],
+                &["fn", "id", "if", "block", "ret", "lit"],
+            ),
+            (&["a", "a", "b", "a"], &["a", "b", "a", "a"]),
+        ];
+        for &(src, tgt) in cases {
+            assert_eq!(
+                compute_sequence_distance(src, tgt),
+                reference_matrix(src, tgt),
+                "mismatch for {src:?} vs {tgt:?}"
+            );
+        }
+
+        // Large sequence with edits at both endpoints (affix trimming strips 0 nodes)
+        // plus one insertion in the middle: exact distance is 3 (2 substitutions + 1 insertion).
+        let mut a: Vec<String> = (0..50_000).map(|i| format!("n{}", i % 11)).collect();
+        let mut b = a.clone();
+        a[0] = "start_a".to_string();
+        b[0] = "start_b".to_string();
+        let last = a.len() - 1;
+        a[last] = "end_a".to_string();
+        b[last] = "end_b".to_string();
+        b.insert(25_000, "middle_insert".to_string());
+        let (dist, ops) = compute_sequence_distance(&a, &b);
+        assert_eq!(dist, 3);
+        assert_eq!(ops["insertions"], 1);
+        assert_eq!(ops["deletions"], 0);
+        assert_eq!(ops["substitutions"], 2);
+
+        // Adversarial case: two completely disjoint 50k-node sequences (`d = 50_000`).
+        // Bounded by `MAX_BAND_CELLS` so it completes in milliseconds with a valid
+        // edit script rather than evaluating 2.5B quadratic DP cells.
+        let disjoint_a: Vec<&str> = vec!["alpha"; 50_000];
+        let disjoint_b: Vec<&str> = vec!["beta"; 50_000];
+        let (dist, ops) = compute_sequence_distance(&disjoint_a, &disjoint_b);
+        assert_eq!(dist, 50_000);
+        assert_eq!(
+            ops["insertions"] + ops["deletions"] + ops["substitutions"],
+            dist
+        );
     }
 
     // Gromov-Wasserstein distance tests

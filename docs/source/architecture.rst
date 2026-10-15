@@ -35,14 +35,14 @@ The three crates
        depends on anything installed outside the Rust toolchain.
    * - ``topos``
      - The CLI binary: ``install`` / ``uninstall`` / ``status`` / ``config`` /
-       ``evaluate`` / ``inspect`` / ``compare`` / ``coverage`` / ``depgraph`` /
-       ``mcp``. Calls straight into ``topos-engine``; no logic is
-       duplicated with ``topos-mcp``.
+       ``evaluate`` / ``inspect`` / ``compare`` / ``coverage`` / ``pr-recap`` /
+       ``depgraph`` / ``mcp``. Calls straight into ``topos-engine`` and the
+       shared ``pr_recap`` engine in ``topos-mcp``; no logic is duplicated.
    * - ``topos-mcp``
      - The MCP server (the ``topos-mcp`` binary, and also what ``topos mcp``
        launches in-process). One ``#[tool_router]`` module per tool family
        (evaluate, assess, compare, coverage, depgraph, docs,
-       inspect, preferences, refactor — seventeen tools total, see
+       inspect, pr_recap, preferences, refactor — eighteen tools total, see
        :doc:`agents`). Embeds the `Sighthound <https://github.com/Corgea/Sighthound>`_
        SAST engine as a compiled-in library dependency (not a subprocess) for
        supplementary security findings.

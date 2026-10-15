@@ -292,8 +292,9 @@ pr-recap
 
 Structural before/after for a git range or a pull request, judged by the
 project's PR gates: ``READY``, ``NEEDS ATTENTION``, or ``BLOCKED``, and the
-one finding that decided it. Deterministic and reproducible from ``--json``;
-there is no LLM in the loop.
+one finding that decided it. Deterministic and reproducible from ``--json``
+(and exposed to MCP agents via ``topos_pr_recap``); there is no LLM in the
+loop.
 
 .. code-block:: bash
 

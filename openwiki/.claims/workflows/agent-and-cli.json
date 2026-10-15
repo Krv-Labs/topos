@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cb8a188f4ba19d97c40306bd050f025358a6ebf5ad8f66297c2fa7df0d8bde8d",
+  "pageVersion": "sha256:2c8949a6ac19af491489e7abb358a901d588c8ae6f76344070035c497ec10c00",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -75,7 +75,7 @@
       "statement": "`topos depgraph generate` is a CLI wrapper around dependency-graph generation that no-ops for a current graph unless forced and refuses a schema-mismatched store; the MCP status tool is read-only while generation is the side-effecting counterpart.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/depgraph/generate.rs#L28-L82",
+          "resource": "repo://topos/cli/src/commands/depgraph/generate.rs#L27-L81",
           "version": "repo-lines-v1:sha256:d3bf9be6a4a95821787bcbb460f9fe2da843dd28a5c6f99a2a136a767d634b62:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMDk2YTIxNmIxMzMwZTAxOTA5M2E3ZGUxYWNiODk1YTQ1MDc5MjAxYTRkMGJkMWJiODI5MjI4MDFjYzg3OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNjI5MTgzMTIzMmM1YWMzMDljNjg3MmVkMmE4Njk3Zjc5ZTFhMGUxY2Q0NDYzZDc1ODY0ZWY3MjY0ZjJkODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YWVlNDJhYzllOWQ4ZjMyY2VjZjgwMzhlZDUyOGI2ZTA4MjFmMTE1MTMxNTJjOGMzZWRjYTg3ODI4OTU5MDUifQ"
         },
         {
@@ -86,23 +86,23 @@
     },
     {
       "id": "claim_e00814323eb340ad9b170c7f255e414e",
-      "statement": "The stdio server combines evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, and refactor routers, and advertises tool, resource, and prompt capabilities including documentation resources, a build resource, and the `topos_refactor_until_ideal` prompt.",
+      "statement": "The stdio server combines evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, pr_recap, and refactor routers, and advertises tool, resource, prompt, and task capabilities including documentation resources, a build resource, and the `topos_refactor_until_ideal` prompt.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/server.rs#L101-L118",
-          "version": "repo-lines-v1:sha256:a53c5448ddd78d81db9e1a659eed530cc38cb4e31613f785316522c957fb4265:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMzdkODYyODc1OWMzODdhNjI5Y2VkOWQ3MTU4M2VhOWM2NjlkNzE4OWE0MDA3MTNlODExMTQ3Mzc4ZGEyZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2Y2MyNTJjYzg5M2M2ZDYzYWZlYTBmYTBiZTYwZTkyYTQ0ZjdkOGU1NWUwZDAzNGFiNjg2Zjk5ZjFlNjAyYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNjkxMzgyNDQ2MDk4Njk4N2MwMjRmYWRmODkxYTdkMmUzNDdmMzczZTgwNTg0OTcyNTU5N2Q4MTViMWI2MzIifQ"
+          "resource": "repo://topos/mcp/src/server.rs#L101-L120",
+          "version": "repo-lines-v1:sha256:f96bfc24e9efd41f6d374bef105da1323c867523f6970892da6dc12cc43d2e13:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMzdkODYyODc1OWMzODdhNjI5Y2VkOWQ3MTU4M2VhOWM2NjlkNzE4OWE0MDA3MTNlODExMTQ3Mzc4ZGEyZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2Y2MyNTJjYzg5M2M2ZDYzYWZlYTBmYTBiZTYwZTkyYTQ0ZjdkOGU1NWUwZDAzNGFiNjg2Zjk5ZjFlNjAyYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzYjhhNDBjOTFhYWRmNTgwYzcyMDJlNzQwNjdjNDkzMDFhMTcwZDhjNTA0MjU0NDhkYTk0ZDcyOTI3MjU0Y2MifQ"
         },
         {
           "resource": "repo://topos/mcp/src/server.rs#L146-L171",
-          "version": "repo-lines-v1:sha256:8babbc9ac7cbb75311abbc2b3bf3a78a58ec3044793af8e148b0bb2f8cdb16af:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwNzY0YTkwMmRiNzgyYzkxZjA1NDZkZjdiZTkzZjVkNTEwMWNjOTRlNDhlOWQ0NDQ0Yjk3Yzc5MDc1NDUzODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhYWY2NTU3NTM2OTJlMGQ4Njg1YjUwYmUwM2Y1MmE1NGE3ZjdjMDE3ZmQzOWFhODllODUwNTQ4M2FmODI4YTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwMDA2YjUxMDliZTdhNmY3ZjRhZjhjYzA3NGJjNzRhNzE2NTI3MDc3MTI5Y2NiYzhlMWVmZjU4OGE2MWRhYmUifQ"
+          "version": "repo-lines-v1:sha256:f1e84eb462113ab208e5a30b36027a2b598b9f0a4c5aa268a0994668f81e4147:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MWQzZTcxN2ZmNTZhMDQzZTY3NGUwYWNlNmFhMzQ0YWY5YTVhOGY4NGQ4Yzk3OTZjOGQxOGIxNjFkZGM2ZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwZTFmOTk0NGVjZWEzNzc2MWU1MDc0MDk1YzNiMGUxYWIyMDAxNzI0MzM4MmUxYzc5YTRmN2U1OGQxZDBiY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0NDAwNzM2ZTg4NmQxYjIwYTE4MTI1ZDMzY2FjZTEwNDYyZmU5OGNlZmZhODI5NmY2NmJlMjk5NTZjYjFjNjIifQ"
         },
         {
           "resource": "repo://topos/mcp/src/server.rs#L199-L222",
-          "version": "repo-lines-v1:sha256:16acf8c9eb141988b6936b975531fd31927ad7f48e6d9073a24f2ba6e71e2f28:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhMGU5YzNhODIzZGIyNzE4ODZkNjc1Y2VkOGMyOTBkMjkxMDRlNzYyOTRhMGM5NWY4MTdkMWEwYTZjMTc1NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxMDMyNGI2NGM4MDAwMjgyOWEwMTRkMTBhZjg3ZGI0OTZkN2I2MTcxYzg4NDJmZTY0YjBlZTUwMzQ2ZTM4ZmYifQ"
+          "version": "repo-lines-v1:sha256:e064bf9adb66180da2738bcb1f386bedaa33f9f2aef73c459ab4d5761007914e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4MWI3OTQ2ZTAyNmVjODc3YWJjNjAxZWM5MWFlZjFlZDFjYjBkNzYxZjQ3MmNiODM4MDQ1ZjM4MWQzYTQ2ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2OWEwNzNiYTRjYzI1M2E3MDczOTg0NjQ2NjNjYmQ5ZDJhMmYxYTY3YzdmMjBmYjg4OTk1NTk2ZmVlYWZhYTIifQ"
         },
         {
           "resource": "repo://topos/mcp/src/server.rs#L288-L308",
-          "version": "repo-lines-v1:sha256:d23567284722d2687bec1ab83a9101af380f202023217fcb54bc093622c469bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZGFmYTM2ZWRkZjkxMDM0YzZhOWM3ODU5OWNlMzI3YWU4ODc4ODNhNzk5MWM0NTVjY2FjN2E4MDg3Y2MzNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMzE4OTMyMmFiNDc5Yjk4Y2JjMGE5YTI4M2VkMzBhZGEyNzI0MTAwNjk4ZWM4MTkwYmQ1NzZmZjc4OWM5ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhODM0MWUxNTg2NzU4NmYxYTIxZmEwZGYwZjhlZDlhZTZlNzhhOTU5ZGY4NTc3YTVmMWY4MDBlZjZhZDY2ZTIifQ"
+          "version": "repo-lines-v1:sha256:d690d8c4fc19b4dbd1a179cebb6153b180e2f9008be2a845af6e0c0c3fed5421:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmZGRkZGEzYWUxZmNlMjdlYjEzOTc0ZWNhZjQxNjc0MzIwOWEyYmY1OGE0MTYxNjBkZWNkMjkyOWExMTk1ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NmEyMmUwYTBmY2FmNTM3YTAxNDlhMmRhODhjOWViNzE3YjgwOTVkYWI0ODA4OGI4ZDI0MjIxMWZmMTNkYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3ZDFhZjcyYjdjNjc3YjBkODkxZTA4NDBjMzJkMWQ0ZThhMjNlZTZkNDg2ZTFkY2IyYzYwYTExOTFhYmRiNWEifQ"
         }
       ]
     },
@@ -263,7 +263,7 @@
       "statement": "`topos_evaluate_project` recursively discovers all supported source files, detects a language per file, returns per-language rollups and a weakest-file floor, and paginates the sorted file rows using bounded `limit` and `offset` values.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/schemas.rs#L322-L359",
+          "resource": "repo://topos/mcp/src/schemas.rs#L335-L372",
           "version": "repo-lines-v1:sha256:b85219569f73bbbef63e112b2de36530d4520ba57ae93c7c323bf5670eae8c70:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMjE5NmRjYWFjNjE0MTE3ZDFiYWJjYTI1OTNhOTI5ZDUyNTI4ZjIzNTVjYzk3YTY2ZWEzZmY5Y2NjODQ5NGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4M2Q2YTU0ZTY1ODYyNmQ4MTk3YTI2OGMwYTlkOWI1MzgxODA0YTU1OTM4ZTc0YjRkNzVmOTM1OTE1MTQ2YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZDgxMzU2Yzc3Y2JhZjQxNDQ2MGU3MWFhYmZlMzZjMjk4MjM0MDk2OTY2MWQwZTI4ZjZmNmJkZTAxNDRjMjEifQ"
         },
         {
@@ -327,6 +327,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T07:23:23.942Z"
+    "at": "2026-10-15T10:04:26.953Z"
   }
 }

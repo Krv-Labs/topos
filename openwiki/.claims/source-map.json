@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:030ea7e9bd31811a890ba4121cfd2e5b734afb29a586ee40bc89fea6451b034b",
+  "pageVersion": "sha256:52829f68984205ce9aebcb253ac1df5336ac3f460cb56f08a1b4be49d141e15a",
   "claims": [
     {
       "id": "claim_e4c0eafe313c458291568721ef6e14b0",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:c5475cc9a022afea7ace71dd30566896ad8e57f02e02dfe5273725bb2a0e8040:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:e3d4ef28cf0d5febceafbbcab8722cb50347b28bc36653d07877be81249870b2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -106,18 +106,18 @@
     },
     {
       "id": "claim_f2ce5a636c7d4cd9941e33e26793533b",
-      "statement": "The MCP server combines the tool routers for evaluation, assessment, comparison, coverage, dependency graphs, documentation, inspection, preferences, and refactoring, while serving static documentation resources and the refactor prompt directly; it pins its supported MCP protocol revisions explicitly.",
+      "statement": "The MCP server combines the tool routers for evaluation, assessment, comparison, coverage, dependency graphs, documentation, inspection, preferences, PR recaps, and refactoring, while serving static documentation resources and the refactor prompt directly; it pins its supported MCP protocol revisions explicitly.",
       "evidence": [
         {
           "resource": "repo://topos/mcp/src/server.rs#L1-L11",
           "version": "repo-lines-v1:sha256:523676ac7c2368dd35ebd75ba67c179078052d2a297ab367e893155f638625aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkM2JlOTQ1NDRiODA3MmViODFlNzYyOWEwY2VlNDkyODJkZWI0YjRkMTI1ZjE2MTBjZjk0ZWJkMzljZTczNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1MWMxZTUwYjU5MmNkYjI5YmFlNzg4N2VjNDY3ODYxMDQ1N2EzOTYwZmYyYzAyYmNmZmI4YjFmMzkwZDc0YzcifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/server.rs#L101-L118",
-          "version": "repo-lines-v1:sha256:a53c5448ddd78d81db9e1a659eed530cc38cb4e31613f785316522c957fb4265:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMzdkODYyODc1OWMzODdhNjI5Y2VkOWQ3MTU4M2VhOWM2NjlkNzE4OWE0MDA3MTNlODExMTQ3Mzc4ZGEyZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2Y2MyNTJjYzg5M2M2ZDYzYWZlYTBmYTBiZTYwZTkyYTQ0ZjdkOGU1NWUwZDAzNGFiNjg2Zjk5ZjFlNjAyYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNjkxMzgyNDQ2MDk4Njk4N2MwMjRmYWRmODkxYTdkMmUzNDdmMzczZTgwNTg0OTcyNTU5N2Q4MTViMWI2MzIifQ"
+          "resource": "repo://topos/mcp/src/server.rs#L101-L119",
+          "version": "repo-lines-v1:sha256:f05fea41d825df36342301bf2cfb93a1a5d93a7b822ae312a2ab51edabeb54ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMzdkODYyODc1OWMzODdhNjI5Y2VkOWQ3MTU4M2VhOWM2NjlkNzE4OWE0MDA3MTNlODExMTQ3Mzc4ZGEyZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2Y2MyNTJjYzg5M2M2ZDYzYWZlYTBmYTBiZTYwZTkyYTQ0ZjdkOGU1NWUwZDAzNGFiNjg2Zjk5ZjFlNjAyYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNjkxMzgyNDQ2MDk4Njk4N2MwMjRmYWRmODkxYTdkMmUzNDdmMzczZTgwNTg0OTcyNTU5N2Q4MTViMWI2MzIifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/server.rs#L224-L278",
+          "resource": "repo://topos/mcp/src/server.rs#L225-L279",
           "version": "repo-lines-v1:sha256:b940325f8188a618fdc7545f6d230c90390ed6cfd0cb29b9410e3e174fefcf51:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3ODQ5OWUwMjUzYzA3NDgxMmMyNjEwZTcwMmVkYWY3Nzc4MGI4NDBmOTNkY2QxM2JjYjEwNWNhYmJlMTA2N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NmY4Y2IwODNmYTgwMGE0ZGNkMjk2OTcyMmQ3YjkyNjg2YWRkOWViZTM2NTU0OTJmYTY3MmIxYTdjZWQyNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNmZiMTc4OGZjMWM4NzdjMTZkODU1ZDY0NTUxODI2NDljYTBjYmZiNWU3ZmVkYWZiMDE1YWI0NGJmMWE4NWYifQ"
         },
         {
@@ -253,6 +253,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T07:23:23.942Z"
+    "at": "2026-10-15T10:04:26.953Z"
   }
 }

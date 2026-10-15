@@ -331,7 +331,7 @@ Default Ranking: ``(SIMPLE, NAVIGABLE, SECURE, COMPOSABLE)``
 MCP Tools
 ---------
 
-Topos registers seventeen MCP tools, all implemented directly in ``topos-mcp``
+Topos registers eighteen MCP tools, all implemented directly in ``topos-mcp``
 (a compiled Rust binary — see :doc:`installation`). Every tool takes a **flat
 arguments object** — the named inputs sit at the top level, with no ``params``
 wrapper. Sending ``{"params": {...}}`` is rejected as an unknown field.
@@ -422,6 +422,13 @@ Refactor & Iterate
    (``aggregate_before`` / ``aggregate_after``), and flags
    ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
    blocked, call ``topos_generate_depgraph`` first, then re-assess.
+
+``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 40, "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
+   Structural pull-request or commit-range recap (``topos.pr_recap.v3``) judged
+   against the project's ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or
+   ``BLOCKED``). Pass either ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs.
+   ``:worktree`` when omitted). Returns gate readiness, findings, split clusters,
+   per-file before/after medals, and project rollups.
 
 ``topos_preference_walk({"ranking": ..., "target": ..., "current": ...})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should

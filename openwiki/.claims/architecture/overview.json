@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:542bd6f19ab066a1b59c035ade5f13fd2de3080fe104420991ff979f86f5c068",
+  "pageVersion": "sha256:bc532dc430e02f5f7dfb19fc37bebbbfdcb12807b8f16ddf85dae6d1dcabab32",
   "claims": [
     {
       "id": "claim_cd9f76f376044be39aaf30a4f8bc6b6c",
@@ -22,11 +22,11 @@
     },
     {
       "id": "claim_8741b206445b46a68909ef646da5d736",
-      "statement": "`ProgramMorphism` immediately attempts parsing on construction and owns the source, language, optional path, parsed AST, and lazily cached CFG, PDG, and CPG; an unsupported language has no AST and an invalid tree-sitter parse is not valid source.",
+      "statement": "`ProgramMorphism` immediately attempts parsing on construction and owns the source, language, optional path, parsed AST, attached representations, and lazily cached CFG, PDG, and CPG; an unsupported language has no AST and an invalid tree-sitter parse is not valid source.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/morphism.rs#L47-L183",
-          "version": "repo-lines-v1:sha256:9823f1c8b657f49384e2d293aa8fb2ec2f6a381952abb85dfc0c4b801d6b2b03:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MDU0NDM0NTlkM2UwMzliMGU2NTJhYzQ1NGY2YTljMGYyNTY3YjI2ZTcwYzgxM2Q3MTYzZmRjNzU4NGIzNDNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YmEyOGE5MzQ1NDMwNjQyNjRkYWI5ZTVmZGZkZDhlODhjZDE4ODY4N2QzMGNkYzA5MWQ3YmEwOGFhNDY4ZDM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxOGQzOGMyZDBjMzY3NDg2MzFlNTRkMzkxNDJhNjU5NWRhMTJhNWNmZDE5M2MxOWVmMmNkZmNjNmQzY2JjZmJmIn0"
+          "resource": "repo://topos/engine/src/core/morphism.rs#L47-L197",
+          "version": "repo-lines-v1:sha256:4ed11db590f723c2561f6c7db78cdf9bb8f870cb0a1653e8ecf5a3aa4844da27:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MDU0NDM0NTlkM2UwMzliMGU2NTJhYzQ1NGY2YTljMGYyNTY3YjI2ZTcwYzgxM2Q3MTYzZmRjNzU4NGIzNDNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YmEyOGE5MzQ1NDMwNjQyNjRkYWI5ZTVmZGZkZDhlODhjZDE4ODY4N2QzMGNkYzA5MWQ3YmEwOGFhNDY4ZDM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OGZhZTM4ZGZmNTY2NDhiZDMzODczMDNiMjU3OWY0ZTQyOWI0ZGFkNmFjN2U0MDBmOTA1ZjBjOGE1YjUzNzVjIn0"
         },
         {
           "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L138-L187",
@@ -57,12 +57,12 @@
       "statement": "The normal CLI and MCP classification assembly builds CFG, PDG, CPG, and an abstractness representation, optionally adds an MDG, and delegates the shared verdict to `CharacteristicMorphism::classify_detailed`.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/classify.rs#L15-L48",
-          "version": "repo-lines-v1:sha256:8e04705e583874fc7d9e3e3428fea4a38780e7622f1485739c56aa8c0a9e2d0e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMWZhODJiM2FiOWY4NzQzOTMwMmZmNWIwM2IzMTJmMTQ0NDZkMGQ4NWQyNTc0M2Q5YTdkNGUyMjI0ZTM1NTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0M2VmMjMxYzc2OWQ2ZDM2MmI1ZjI2YWZmN2E2NWUyYzMwNTc0ZjcxZmQxZDY2YzVlZDE3OGRiYjM3MWRmMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNmNlMWFlMjFkODMwMThlZmQxMTBjMzA1MDNhMDczN2M5MTFhNjc1NDVmMGUzNTE1Mjk0OTkyMzNiYzI0MmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://topos/cli/src/commands/classify.rs#L15-L46",
+          "version": "repo-lines-v1:sha256:fb9de576040837edc4d0a686f1a92e1dfdd5af79db809c7f0e32e69147c3f8f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMWZhODJiM2FiOWY4NzQzOTMwMmZmNWIwM2IzMTJmMTQ0NDZkMGQ4NWQyNTc0M2Q5YTdkNGUyMjI0ZTM1NTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0M2VmMjMxYzc2OWQ2ZDM2MmI1ZjI2YWZmN2E2NWUyYzMwNTc0ZjcxZmQxZDY2YzVlZDE3OGRiYjM3MWRmMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNmNlMWFlMjFkODMwMThlZmQxMTBjMzA1MDNhMDczN2M5MTFhNjc1NDVmMGUzNTE1Mjk0OTkyMzNiYzI0MmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/evaluation/classify.rs#L15-L46",
-          "version": "repo-lines-v1:sha256:e89956b9fcfdb043ec5e85e997241f37b6506b83547781e7a05daf01c262f654:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NTA1MTU1NzhkMTBhNjU0OTJhMGQwYmU3NzA1ZmI5ZmE0N2ZmZWI1NDUzODRkNDhiMmYxOGVhNjdiYTg1MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MTdkMmI4MGZjZmQxY2JmOGVlYzkzY2FjOGFhYjUwN2FjYTliMTQ4OTY5ZmVkZWJlN2ZiNzE3MzBlM2ViYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MGMxM2I3NThjYjNmYmQxYzI2NjM3N2RkMGJmMjUyMzQ1OTNmMjAzYTFkMTNlNDNjN2VmZjBkNTZiNGQ0YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYTVjNGY1NjJlMTY4Nzg3MDM3NTQ5MWE5MzYxNTNhNTEwN2QxMDA0YTFkNzNiZDlmNjkxNjAzMGRmMzYwN2MifQ"
+          "resource": "repo://topos/mcp/src/evaluation/classify.rs#L15-L44",
+          "version": "repo-lines-v1:sha256:e9fcb8517a874733408da9b325e08dc639399d72fe018acdaf3ca7f7f6fb2967:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NTA1MTU1NzhkMTBhNjU0OTJhMGQwYmU3NzA1ZmI5ZmE0N2ZmZWI1NDUzODRkNDhiMmYxOGVhNjdiYTg1MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MTdkMmI4MGZjZmQxY2JmOGVlYzkzY2FjOGFhYjUwN2FjYTliMTQ4OTY5ZmVkZWJlN2ZiNzE3MzBlM2ViYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MGMxM2I3NThjYjNmYmQxYzI2NjM3N2RkMGJmMjUyMzQ1OTNmMjAzYTFkMTNlNDNjN2VmZjBkNTZiNGQ0YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYTVjNGY1NjJlMTY4Nzg3MDM3NTQ5MWE5MzYxNTNhNTEwN2QxMDA0YTFkNzNiZDlmNjkxNjAzMGRmMzYwN2MifQ"
         }
       ]
     },
@@ -133,16 +133,16 @@
       "statement": "The CPG combines UAST AST edges, CFG edges projected onto statements, and PDG data/control-dependence edges; PDG reaching definitions are a deliberately coarse textual-order approximation without alias analysis, SSA, or flow sensitivity.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L1-L34",
-          "version": "repo-lines-v1:sha256:cb5421e358704dba867303ee1c87fa5a39ba10d8fcdf3640e1dfc42463862590:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMjgzZDA3YWZiNDc2YTRjM2FiZWUwZjFkZWM2ODg0YzVkNTQyYjg4YjM2MGI5MTAzOGE0Yjg2NTIzMjY0ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4OGFhN2MzNDcyMjFkZmQ4YWE1YzlhMjAwMzI5N2NiZjhiNTMxMTE3NGY1NTMzNWQ1YWE2MTc0YjUwZmQyODAifQ"
+          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L1-L42",
+          "version": "repo-lines-v1:sha256:b4c38c36d6611a6de9b5ee91ab5bc9389ec2a2428872a0c3f989da8cdef97023:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMjgzZDA3YWZiNDc2YTRjM2FiZWUwZjFkZWM2ODg0YzVkNTQyYjg4YjM2MGI5MTAzOGE0Yjg2NTIzMjY0ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4OGFhN2MzNDcyMjFkZmQ4YWE1YzlhMjAwMzI5N2NiZjhiNTMxMTE3NGY1NTMzNWQ1YWE2MTc0YjUwZmQyODAifQ"
         },
         {
-          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L93-L137",
-          "version": "repo-lines-v1:sha256:0a0e27b2cbae0cb404c6c44b12c5ff4b71eb9fabb995f4255a4c2fef755c9059:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyZTFiNGY1ZWY1MDNiMzI5YmI2NTgyYjk5OWMwZDZkMDE5MjIwMWU3MjhkYzMwYjE3MzUyNTUyYjg5NTIxOTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYTAxZGEzYjY3NzFiMjQwNDU2MTNhMmVmNjM5MTQzYjA4NjIwNjlmNzNjZmVlNWYzNGY4OTZhZTg0MjVjZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlYjQxYjY3YWI4MjA0YjIxMWE2NzFjM2I1NDdlZWFkNWFlYTc5NWY1NDIzMWVmMDQ3MmNmMjYyMGVjNmNmMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://topos/engine/src/graphs/cpg/builder.rs#L102-L146",
+          "version": "repo-lines-v1:sha256:ce36f79ce80fa5a8bcf42ceddc693c89450f39306001b91f114ef49ee45c3adc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYWNlNzIwNWRmZTY1YzY3Yjc4ODE5NjIwMzQ1MjU0MTJjYmZlOGU5NGIxZWRkYTQ5OTRiYjYxNWMzN2RjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxMDg2YjU1MDVlYzQ5ODU2MjFhNDE4NTczZWMzOGVmMjcyMzJlMzFmY2I3NDAyMDI2OTE1ZGYxMzRiYTk3MDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
         },
         {
-          "resource": "repo://topos/engine/src/graphs/pdg/object.rs#L137-L171",
-          "version": "repo-lines-v1:sha256:b0ec952e4376370a41b329ef3813948d008c621656842ac6f27f92ce9fd41693:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NjEyZGVmNTczNWI5Njg1ZGIzOGI5Y2I0MGFkMGI2ZWY3ZDE2YTc1YTk1ZmEyZDdkMmQzMTZkMjAxNWQ4MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYjUzM2E2Njc3MWRiNmQyMjU1MjhjMGE2NzBmNGYwODQwZTUyOWY4YWUyMGMzZjZjZjAxNDA2NGUwMTAxNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2NjIxN2UyN2RkYmY3MzRlYWFmY2Y0OTQwZjA3YWUxMGRkZWQ2YjQ1NjJiMjhlMzI1OGEyYmIwYTM4MGVjZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzZjliNDJiYjBhNzBiNTUxYWE5NTJiZDAxNmUwOWUzODdhNDc5YTQyNmVjYmU3MWIwMWIzMGY0MWYwNzM4YTcifQ"
+          "resource": "repo://topos/engine/src/graphs/pdg/object.rs#L150-L185",
+          "version": "repo-lines-v1:sha256:459f0781e1636c0121acd68208bf465950865c32475f96158afef8ad10d8e9a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NjEyZGVmNTczNWI5Njg1ZGIzOGI5Y2I0MGFkMGI2ZWY3ZDE2YTc1YTk1ZmEyZDdkMmQzMTZkMjAxNWQ4MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2NjIxN2UyN2RkYmY3MzRlYWFmY2Y0OTQwZjA3YWUxMGRkZWQ2YjQ1NjJiMjhlMzI1OGEyYmIwYTM4MGVjZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyZWIwZDExOGJjOWQyZmU1NTFhODI3MDMwZTM2ZTE5ODVkZjBiZDk5NTRkYjdlZjc0MTZjMDYyNDE3Yjc1ZmIifQ"
         }
       ]
     },
@@ -253,6 +253,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T07:23:23.942Z"
+    "at": "2026-10-15T08:50:12.762Z"
   }
 }

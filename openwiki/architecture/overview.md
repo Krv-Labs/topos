@@ -5,7 +5,7 @@ description: Details the multi-crate workspace design (topos-engine, topos CLI, 
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T07:23:23.942Z
+    at: 2026-10-15T08:50:12.762Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,7 +55,7 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-14T07:23:23.942Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-15T08:50:12.762Z" }
 ---
 
 # Workspace Architecture Overview
@@ -98,7 +98,7 @@ flowchart TD
 
 ## From source to verdict
 
-`ProgramMorphism` owns the original source text, language, optional file path, parsed program object, and lazily cached CFG, PDG, and CPG. Construction immediately attempts parsing. The only parser route is tree-sitter: it selects grammars for Python, Rust, JavaScript, TypeScript (TSX for a `.tsx` file path), C++, and Go, then maps the concrete tree into a language-neutral UAST in the same parse operation. A tree-sitter error node makes the morphism invalid even though an AST object was produced; unsupported languages have no AST.
+`ProgramMorphism` owns the original source text, language, optional file path (`filepath`), parsed program object (`ast: Option<ProgramObject>`), optional attached representations, and lazily cached CFG, PDG, and CPG (accessed via `cfg()`, `pdg()`, and `cpg()` getters or `build_cfg()`, `build_pdg()`, and `build_cpg()` builders). Construction (`new`, `with_path`, `from_file`) immediately attempts parsing. The only parser route is tree-sitter: it selects grammars for Python, Rust, JavaScript, TypeScript (selecting the TSX grammar for a `.tsx` file path), C++, and Go, then maps the concrete tree into a language-neutral UAST in the same parse operation. A tree-sitter error node makes the morphism invalid (`is_valid()` returns `false`) even though an AST object was produced; unsupported languages have no AST.
 
 Before parsing TypeScript, dispatch recognizes dynamic `import` expressions at the start of generic type arguments, such as `load<typeof import("...")>()`. It substitutes that type-argument content with `any` and spaces **without changing its byte length**, avoiding the grammar's less-than interpretation while retaining offsets. The parser therefore sees the sanitized buffer, but UAST mapping receives the original source bytes and stores the original source in `ParseResult`; UAST spans and source-derived readings remain coordinates in the caller's text.
 
@@ -135,7 +135,7 @@ flowchart TD
 
 *Caption: The shared engine turns source and available representations into a raw classification; CLI renders it, while MCP may add a disclosed SECURE overlay.*
 
-TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. CLI and MCP build the representations required for their operation and both pass them to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
+TypeScript sanitation changes only the parser input, while the UAST and subsequent graph readings retain original-source coordinates. In both CLI (`classify_with_representations`) and MCP (`classify_morphism`), classification representation assembly triggers `build_cpg()` on the morphism, constructs an `AbstractnessRepresentation`, and builds a vector of representation references (`cfg`, `pdg`, `cpg`, `abstractness`, and optional `mdg`) before delegating the verdict calculation to `CharacteristicMorphism::classify_detailed`; there is no separate scoring implementation.
 
 ### Representation assembly
 
@@ -148,7 +148,7 @@ TypeScript sanitation changes only the parser input, while the UAST and subseque
 | CPG | One file | Combines AST, projected CFG, DDG, and CDG edges and emits dangerous-call and taint-flow counts for SECURE. |
 | MDG | Cross-file repository topology | A GitNexus-derived module graph emits coupling metrics for COMPOSABLE. |
 
-`ProgramMorphism` caches each derived graph once, but CPG construction independently builds a CFG and PDG from the UAST. The CPG projects block-level CFG edges between the last source statement and first target statement, and retains AST, CFG, DDG, and CDG as labeled edge families. PDG data dependence is intentionally a textual-order reaching-definition approximation, without alias analysis, SSA, or flow sensitivity; its security-facing results should be described as structural diagnostics rather than full semantic proof.
+`ProgramMorphism` caches each derived graph once, but CPG construction (`build_cpg` / `build_cpg_from_parts`) independently combines AST edges, projected CFG statement edges, and PDG dependence edges. The CPG projects block-level CFG edges between the last source statement and first target statement, and retains AST, CFG, DDG, and CDG as labeled edge families. PDG data dependence (`compute_data_dependence`) is intentionally an intra-procedural textual-order reaching-definition approximation, without alias analysis, SSA, or flow sensitivity; its security-facing results should be described as structural diagnostics rather than full semantic proof.
 
 ## Classification semantics
 

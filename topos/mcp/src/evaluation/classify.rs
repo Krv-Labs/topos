@@ -18,22 +18,20 @@ pub fn classify_morphism(
     priority: Priority,
     dep_graph: Option<&ModuleDependencyGraph>,
 ) -> ClassificationResult {
-    let cfg = morphism.build_cfg().cloned();
-    let pdg = morphism.build_pdg().cloned();
-    let cpg = morphism.build_cpg().cloned();
+    let _ = morphism.build_cpg();
     let abstractness = morphism
         .ast
         .as_ref()
         .map(|ast| AbstractnessRepresentation::new(&ast.uast_root));
 
     let mut representations: Vec<&dyn Representation> = Vec::new();
-    if let Some(cfg) = &cfg {
+    if let Some(cfg) = morphism.cfg() {
         representations.push(cfg);
     }
-    if let Some(pdg) = &pdg {
+    if let Some(pdg) = morphism.pdg() {
         representations.push(pdg);
     }
-    if let Some(cpg) = &cpg {
+    if let Some(cpg) = morphism.cpg() {
         representations.push(cpg);
     }
     if let Some(abstractness) = &abstractness {

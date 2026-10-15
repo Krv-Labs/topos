@@ -3,11 +3,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::builder::build_cpg;
+use super::builder::{build_cpg, build_cpg_from_parts};
 use super::models::{CPGEdge, CPGNode};
 use crate::functors::probes::cpg::danger::dangerous_api_reachable;
 use crate::functors::probes::cpg::taint::taint_flow_paths;
 use crate::graphs::base::Representation;
+use crate::graphs::cfg::object::ControlFlowGraph;
+use crate::graphs::pdg::object::ProgramDependenceGraph;
 use crate::graphs::uast::models::UASTNode;
 
 /// A Code Property Graph (Yamaguchi et al., arxiv:1909.03496).
@@ -27,6 +29,24 @@ impl CodePropertyGraph {
     pub fn from_uast(uast_root: &UASTNode, source: impl Into<String>) -> Self {
         let source = source.into();
         let (nodes, edges) = build_cpg(uast_root, &source);
+        CodePropertyGraph {
+            nodes,
+            edges,
+            language: uast_root.lang.clone(),
+            source,
+        }
+    }
+
+    /// Construct a CPG reusing an already-built [`ControlFlowGraph`] and
+    /// [`ProgramDependenceGraph`].
+    pub fn from_parts(
+        uast_root: &UASTNode,
+        source: impl Into<String>,
+        cfg: &ControlFlowGraph,
+        pdg: &ProgramDependenceGraph,
+    ) -> Self {
+        let source = source.into();
+        let (nodes, edges) = build_cpg_from_parts(uast_root, cfg, pdg);
         CodePropertyGraph {
             nodes,
             edges,

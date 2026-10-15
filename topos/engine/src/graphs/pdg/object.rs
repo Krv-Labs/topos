@@ -73,7 +73,12 @@ impl ProgramDependenceGraph {
     /// (see the `dataflow` module) instead of falling back to each
     /// occurrence's own node id.
     pub fn from_uast(uast_root: &UASTNode, source: &str) -> Self {
-        let cfg = ControlFlowGraph::from_uast(uast_root);
+        Self::from_cfg(ControlFlowGraph::from_uast(uast_root), source)
+    }
+
+    /// Construct DDG ∪ CDG from an already-built [`ControlFlowGraph`],
+    /// avoiding a redundant CFG build when the caller already has one.
+    pub fn from_cfg(cfg: ControlFlowGraph, source: &str) -> Self {
         // `cfg.blocks` is a `HashMap`, whose iteration order carries no
         // relationship to program order (unlike Python's insertion-ordered
         // `dict`) -- block ids are assigned sequentially by the builder, so
@@ -144,11 +149,11 @@ impl Representation for ProgramDependenceGraph {
 ///
 /// This is intentionally coarse — no alias analysis, no SSA, no flow
 /// sensitivity. Sufficient for the security probes in v1.
-fn compute_data_dependence(statements: &[UASTNode], source: &str) -> Vec<DependenceEdge> {
+fn compute_data_dependence(statements: &[&UASTNode], source: &str) -> Vec<DependenceEdge> {
     let mut edges = Vec::new();
     let mut last_def: HashMap<String, String> = HashMap::new();
 
-    for stmt in statements {
+    for &stmt in statements {
         let (defs, uses) = defs_and_uses(stmt, source);
         let stmt_id = node_key(stmt);
         for var in &uses {
@@ -178,7 +183,7 @@ fn compute_data_dependence(statements: &[UASTNode], source: &str) -> Vec<Depende
 /// when needed). Data dependence is intra-procedural, so each group
 /// gets its own reaching-definitions map instead of sharing
 /// file-global variable names.
-fn statements_by_procedure(cfg: &ControlFlowGraph) -> Vec<Vec<UASTNode>> {
+fn statements_by_procedure(cfg: &ControlFlowGraph) -> Vec<Vec<&UASTNode>> {
     let procedure_entries: Vec<usize> = cfg
         .edges
         .iter()
@@ -191,7 +196,7 @@ fn statements_by_procedure(cfg: &ControlFlowGraph) -> Vec<Vec<UASTNode>> {
         block_ids.sort();
         let all = block_ids
             .into_iter()
-            .flat_map(|id| cfg.blocks[id].statements.iter().cloned())
+            .flat_map(|id| cfg.blocks[id].statements.iter())
             .collect();
         return vec![all];
     }
@@ -206,7 +211,7 @@ fn statements_by_procedure(cfg: &ControlFlowGraph) -> Vec<Vec<UASTNode>> {
             let mut group = Vec::new();
             for block_id in &sorted_block_ids {
                 if reachable.contains(block_id) {
-                    group.extend(cfg.blocks[block_id].statements.iter().cloned());
+                    group.extend(cfg.blocks[block_id].statements.iter());
                 }
             }
             group

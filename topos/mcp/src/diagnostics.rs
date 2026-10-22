@@ -6,7 +6,9 @@ use topos_engine::config::{load_topos_config, merge_cli_allows, ToposConfig};
 use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::suppression::{apply_allowlist, AdjustedVerdict};
+use topos_engine::graphs::cpg::object::CodePropertyGraph;
 
+use crate::evaluation::{security_evidence_needed, SourceAnalysis};
 use crate::schemas::{AcknowledgedRisk, SecurityAdvisory, SecurityFinding};
 use crate::security_findings::{all_security_findings, SecurityReport, MAX_SECURITY_FINDINGS};
 use crate::sighthound::sighthound_all_findings;
@@ -24,21 +26,6 @@ pub struct SecurityOverlay {
     pub advisory: Option<SecurityAdvisory>,
     pub acknowledged_risks: Vec<AcknowledgedRisk>,
     pub verdict: AdjustedVerdict,
-}
-
-fn secure_failed(result: &ClassificationResult) -> bool {
-    result
-        .raw_metrics
-        .get("cpg.dangerous_calls")
-        .copied()
-        .unwrap_or(0.0)
-        > 0.0
-        || result
-            .raw_metrics
-            .get("cpg.taint_flows")
-            .copied()
-            .unwrap_or(0.0)
-            > 0.0
 }
 
 fn config_for(path: Option<&Path>, allows: &[String]) -> ToposConfig {
@@ -76,7 +63,7 @@ fn acknowledged_to_models(verdict: &AdjustedVerdict) -> Vec<AcknowledgedRisk> {
 /// `from_file`, a second read of a file `classify_file` already read — was
 /// discarded unused. Keep the guard ahead of the parse.
 fn overlay_applies(result: &ClassificationResult) -> bool {
-    result.is_parseable && secure_failed(result)
+    security_evidence_needed(result)
 }
 
 pub(crate) fn overlay(
@@ -112,20 +99,77 @@ pub(crate) fn overlay(
         Some(cpg) => all_security_findings(cpg, None, file_path),
         None => (Vec::new(), false),
     };
+    Some(overlay_with_evidence(
+        cpg.as_ref(),
+        findings,
+        scanned,
+        result,
+        file_path,
+        config,
+    ))
+}
+
+/// Apply the current config/allowlist to precomputed CPG + raw findings.
+///
+/// Shared by the live overlay path and [`overlay_from_analysis`], so cached
+/// evidence never reparses the source or rebuilds the CPG.
+fn overlay_with_evidence(
+    cpg: Option<&CodePropertyGraph>,
+    findings: Vec<SecurityFinding>,
+    scanned: bool,
+    result: &ClassificationResult,
+    file_path: Option<&Path>,
+    config: ToposConfig,
+) -> SecurityOverlay {
     let core_findings: Vec<_> = findings.iter().map(|f| f.to_core()).collect();
-    let verdict = apply_allowlist(result, &core_findings, &config, file_path, cpg.as_ref());
+    let verdict = apply_allowlist(result, &core_findings, &config, file_path, cpg);
     let report = SecurityReport::from_full(
         with_metadata(findings, &verdict),
         scanned,
         MAX_SECURITY_FINDINGS,
     );
     let acknowledged_risks = acknowledged_to_models(&verdict);
-    Some(SecurityOverlay {
+    SecurityOverlay {
         active_findings: report.findings,
         advisory: report.advisory,
         acknowledged_risks,
         verdict,
-    })
+    }
+}
+
+/// Overlay a cached source analysis onto a *fresh* graph-aware
+/// classification.
+///
+/// Uses the analysis's cached CPG, then scans the current `file_path` and
+/// applies the current `.topos.toml` and one-off `allows` on every call.
+/// Findings are deliberately not cached: Sighthound reads the file at
+/// `file_path`, so they are not a pure function of the source bytes. The
+/// verdict itself is never cached.
+pub(crate) fn overlay_from_analysis(
+    analysis: &SourceAnalysis,
+    result: &ClassificationResult,
+    file_path: Option<&Path>,
+    allows: &[String],
+) -> Option<SecurityOverlay> {
+    if !overlay_applies(result) {
+        return None;
+    }
+    let evidence = analysis.security.as_ref()?;
+    debug_assert_eq!(
+        evidence.cpg.source.as_str(),
+        analysis.source.as_str(),
+        "cached security evidence must belong to the analyzed source"
+    );
+    let (findings, scanned) = all_security_findings(&evidence.cpg, None, file_path);
+    let config = config_for(file_path, allows);
+    Some(overlay_with_evidence(
+        Some(&evidence.cpg),
+        findings,
+        scanned,
+        result,
+        file_path,
+        config,
+    ))
 }
 
 /// The wire findings that `apply_allowlist` kept active, with their scanner

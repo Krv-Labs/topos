@@ -111,9 +111,27 @@ pub fn calculate_ast_distance(source: &ProgramObject, target: &ProgramObject) ->
     let source_types: Vec<&str> = source_nodes.iter().map(|n| n.kind()).collect();
     let target_types: Vec<&str> = target_nodes.iter().map(|n| n.kind()).collect();
 
-    let (distance, operations) = compute_sequence_distance(&source_types, &target_types);
+    distance_from_sequences(&source_types, &target_types)
+}
 
-    let max_size = source_nodes.len().max(target_nodes.len()).max(1) as f64;
+/// Compute the same tree edit distance from pre-collected DFS node-kind
+/// sequences.
+///
+/// Cache-friendly entry point for repeated assessments: both ASTs are
+/// traversed once when their analysis is built, and later comparisons reuse
+/// the owned kind sequences. Normalization still divides by the larger
+/// sequence length, exactly as [`calculate_ast_distance`] does.
+pub fn calculate_ast_distance_from_kinds(source: &[String], target: &[String]) -> DistanceResult {
+    distance_from_sequences(source, target)
+}
+
+fn distance_from_sequences<T: AsRef<str> + PartialEq>(
+    source: &[T],
+    target: &[T],
+) -> DistanceResult {
+    let (distance, operations) = compute_sequence_distance(source, target);
+
+    let max_size = source.len().max(target.len()).max(1) as f64;
     let normalized = (distance as f64 / max_size).min(1.0);
 
     DistanceResult {
@@ -799,6 +817,22 @@ mod tests {
 
         let sim = calculate_similarity(&ast1, &ast1);
         assert_eq!(sim, 1.0);
+    }
+
+    #[test]
+    fn distance_from_kinds_matches_the_ast_entry_point() {
+        let ast1 = build("x = 1");
+        let ast2 = build("def foo():\n    return x + 1");
+        let kinds = |ast: &ProgramObject| -> Vec<String> {
+            ast.traverse()
+                .iter()
+                .map(|node| node.kind().to_string())
+                .collect()
+        };
+
+        let expected = calculate_ast_distance(&ast1, &ast2);
+        let actual = calculate_ast_distance_from_kinds(&kinds(&ast1), &kinds(&ast2));
+        assert_eq!(actual, expected);
     }
 
     #[test]

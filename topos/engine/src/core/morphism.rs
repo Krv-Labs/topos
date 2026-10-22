@@ -196,6 +196,16 @@ impl ProgramMorphism {
         self.cpg.as_ref()
     }
 
+    /// Move the already-built Code Property Graph out of this morphism.
+    ///
+    /// Analysis pipelines that retain the CPG (for security evidence) can
+    /// take ownership instead of cloning the whole graph. Returns `None`
+    /// when [`Self::build_cpg`] has not built one, and leaves the morphism
+    /// without a CPG so a later `build_cpg` would rebuild it.
+    pub fn take_cpg(&mut self) -> Option<CodePropertyGraph> {
+        self.cpg.take()
+    }
+
     /// Whether the morphism represents syntactically valid code.
     pub fn is_valid(&self) -> bool {
         self.ast.as_ref().is_some_and(|ast| ast.is_valid())
@@ -294,6 +304,17 @@ mod tests {
         let src = "const el = <Foo />;\nexport function f(a: boolean) { return a ? 1 : 0 }\n";
         assert!(!ProgramMorphism::new(src, "typescript").is_valid());
         assert!(ProgramMorphism::with_path(src, "typescript", "Widget.tsx").is_valid());
+    }
+
+    #[test]
+    fn take_cpg_moves_the_built_graph_out() {
+        let mut morphism = ProgramMorphism::new("def f(x):\n    return x\n", "python");
+        assert!(morphism.take_cpg().is_none());
+        assert!(morphism.build_cpg().is_some());
+        let taken = morphism.take_cpg().expect("the built CPG moves out");
+        assert!(!taken.nodes.is_empty());
+        assert!(morphism.cpg().is_none());
+        assert!(morphism.take_cpg().is_none());
     }
 
     #[test]

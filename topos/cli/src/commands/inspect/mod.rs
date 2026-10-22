@@ -92,7 +92,12 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         }
     };
     if let Some(g) = mdg.as_mut() {
-        g.target_file = args.path.to_string_lossy().into_owned();
+        g.target_file = args
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| args.path.clone())
+            .to_string_lossy()
+            .into_owned();
     }
     let result = classify_with_representations(&classifier, &mut morphism, mdg.as_ref(), priority);
     if mdg.is_some() && !result.dimensions.contains_key("composable") {

@@ -49,21 +49,11 @@ const MAX_NOTES: usize = 10;
 const MAX_FILE_ROWS: usize = 40;
 
 pub(super) fn render_github(recap: &PrRecap) -> String {
-    render_github_inner(recap, true)
-}
-
-pub(super) fn render_markdown(recap: &PrRecap) -> String {
-    render_github_inner(recap, false)
-}
-
-fn render_github_inner(recap: &PrRecap, with_marker: bool) -> String {
     let view = RecapView::new(recap);
     let items = view.items();
     let mut head = String::new();
-    if with_marker {
-        head.push_str(STICKY_MARKER);
-        head.push('\n');
-    }
+    head.push_str(STICKY_MARKER);
+    head.push('\n');
     let _ = writeln!(head, "{}\n", title(&view));
     let _ = writeln!(head, "<sub>{}</sub>\n", meta(&view));
     let _ = writeln!(head, "**Why:** {}.\n", headline(recap, &items));
@@ -93,6 +83,14 @@ fn render_github_inner(recap: &PrRecap, with_marker: bool) -> String {
     let _ = writeln!(tail, "{}", footer(&view));
 
     assemble(&head, &recap.clusters, details, &tail)
+}
+
+pub(super) fn render_markdown(recap: &PrRecap) -> String {
+    // Apply the same length budget before removing the marker so both formats
+    // retain exactly the same details, including at the truncation boundary.
+    let mut body = render_github(recap);
+    body.drain(..STICKY_MARKER.len() + 1);
+    body
 }
 
 /// Drop cluster details from the smallest cluster upward until the body
@@ -1062,6 +1060,7 @@ mod tests {
             fixture_losses(),
             needs_attention(),
             fixture_coupling(),
+            fixture_many_clusters(40),
         ] {
             let sticky = render_github(&recap);
             let plain = render_markdown(&recap);
@@ -1072,5 +1071,21 @@ mod tests {
                 Some(plain.as_str())
             );
         }
+    }
+
+    #[test]
+    fn markerless_output_keeps_the_same_cluster_details_at_the_length_limit() {
+        let mut recap = fixture_many_clusters(1);
+        let padding = MAX_CHARS + 1 - render_github(&recap).chars().count();
+        recap.clusters[0].symbols_moved[0]
+            .name
+            .push_str(&"x".repeat(padding));
+
+        let sticky = render_github(&recap);
+        assert!(sticky.contains("cluster details omitted for length"));
+        assert_eq!(
+            sticky.strip_prefix(&format!("{STICKY_MARKER}\n")),
+            Some(render_markdown(&recap).as_str())
+        );
     }
 }

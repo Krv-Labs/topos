@@ -236,7 +236,11 @@ fn classify_evaluate_inputs(
         let mut morphism = ProgramMorphism::from_file(file, input.language.clone())
             .map_err(|e| format!("reading {}: {e}", file.display()))?;
         if let Some(graph) = mdg.as_mut() {
-            graph.target_file = file.to_string_lossy().into_owned();
+            graph.target_file = file
+                .canonicalize()
+                .unwrap_or_else(|_| file.to_path_buf())
+                .to_string_lossy()
+                .into_owned();
         }
         results.push(classify_with_representations(
             &classifier,

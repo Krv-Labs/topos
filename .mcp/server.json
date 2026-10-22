@@ -15,12 +15,12 @@
     "url": "https://github.com/Krv-Labs/topos",
     "source": "github"
   },
-  "version": "0.12.0",
+  "version": "0.13.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "topos-mcp",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

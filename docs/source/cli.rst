@@ -560,7 +560,12 @@ listed as skipped and the recap is marked incomplete.
    Structural direction is not proof that tests or behavior still pass.
    ``pr-recap`` is a deterministic structural debt ledger and pre-review
    coaching aid, not a semantic correctness check or a binary AI-slop
-   classifier.
+   classifier. Its 16 gates and three presets (``relaxed``, ``recommended``,
+   ``strict``) are calibrated on 1,609 pull requests across 10 open-source
+   repositories so ``recommended`` stays within a :math:`\le 5\%`
+   warning/block false-positive rate on merged first-time contributors; see
+   the `PR Recap calibration report <https://topos.krv.ai/pr-recap.html>`_
+   and `full lab notes <https://github.com/Krv-Labs/topos-leaderboard/blob/main/docs/graphs-for-pr-filtering.md>`_.
 
 Other commands
 ===============

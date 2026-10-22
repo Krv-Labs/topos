@@ -276,6 +276,7 @@ pub struct FanInGrowthThreshold {
 pub enum FailOn {
     Block,
     Warn,
+    Never,
 }
 
 impl FailOn {
@@ -283,11 +284,12 @@ impl FailOn {
         match self {
             FailOn::Block => "block",
             FailOn::Warn => "warn",
+            FailOn::Never => "never",
         }
     }
 
     pub fn parse(value: &str) -> Option<FailOn> {
-        [FailOn::Block, FailOn::Warn]
+        [FailOn::Block, FailOn::Warn, FailOn::Never]
             .into_iter()
             .find(|f| f.as_str() == value)
     }
@@ -520,7 +522,7 @@ impl PrGateConfig {
         push(
             "",
             "fail_on",
-            "block | warn; warn also fails the check on NEEDS ATTENTION",
+            "block | warn | never; warn fails on NEEDS ATTENTION, never is advisory (exit 0)",
         );
         push(
             "",
@@ -691,7 +693,7 @@ impl PrGateConfig {
                 "preset" => {}
                 "fail_on" => match value.as_str().and_then(FailOn::parse) {
                     Some(fail_on) => config.fail_on = fail_on,
-                    None => warnings.push(invalid("fail_on", value, "block or warn")),
+                    None => warnings.push(invalid("fail_on", value, "block, warn or never")),
                 },
                 "max_hotspots" => match count(value) {
                     Some(n) => config.max_hotspots = n,
@@ -914,7 +916,7 @@ mod tests {
     #[test]
     fn bad_keys_are_dropped_and_reported_without_losing_the_rest() {
         let config = parse(
-            "[pr_recap]\npreset = \"lenient\"\nfail_on = \"never\"\ncolour = 1\n[pr_recap.gates]\npilar_lost = \"off\"\ncosmetic = \"loud\"\nsuspicious = \"info\"\n[pr_recap.score_drop]\nmin_points = -3\n",
+            "[pr_recap]\npreset = \"lenient\"\nfail_on = \"loud\"\ncolour = 1\n[pr_recap.gates]\npilar_lost = \"off\"\ncosmetic = \"loud\"\nsuspicious = \"info\"\n[pr_recap.score_drop]\nmin_points = -3\n",
         );
         assert_eq!(config.preset, PrGatePreset::Recommended);
         assert_eq!(config.fail_on, FailOn::Block);
@@ -932,6 +934,15 @@ mod tests {
         ] {
             assert!(joined.contains(needle), "missing {needle}: {joined}");
         }
+    }
+
+    #[test]
+    fn fail_on_never_parses_as_an_explicit_override() {
+        let config = parse("[pr_recap]\nfail_on = \"never\"\n");
+        assert_eq!(config.fail_on, FailOn::Never);
+        assert!(config.warnings.is_empty(), "{:?}", config.warnings);
+        let changed: Vec<String> = config.overrides().iter().map(Setting::path).collect();
+        assert_eq!(changed, ["fail_on"]);
     }
 
     #[test]

@@ -345,14 +345,23 @@ loop.
        after the card, in ``inspect``'s grammar.
    * - ``--strict``
      - Fail the check on ``NEEDS ATTENTION`` too (``fail_on = "warn"``).
+   * - ``--advisory``
+     - Never fail the check (``fail_on = "never"``); exit ``0`` even when
+       ``BLOCKED``.
+   * - ``--fail-on [block|warn|never]``
+     - Which findings fail the check (exit ``1``). Mutually exclusive with
+       ``--strict`` and ``--advisory``.
    * - ``--preset PRESET``
      - Gate with a built-in preset (``relaxed``, ``recommended``, ``strict``)
        for this run, ignoring the project's ``[pr_recap]``, its waivers
        included.
-   * - ``--format [card|github]``
+   * - ``--format [card|github|markdown]``
      - Which card to print. ``card`` is the default, on a terminal and in a
        pipe alike; piped output drops the color. ``github`` renders the
-       Markdown sticky-comment format.
+       Markdown sticky-comment format; ``markdown`` renders the same Markdown
+       without the hidden sticky marker, for embedding in another comment.
+   * - ``--no-marker``
+     - Omit the hidden sticky marker from ``--format github`` output.
    * - ``--no-coupling``
      - Skip coupling-store preparation; COMPOSABLE is reported as not measured.
    * - ``--priority VALUE``
@@ -520,14 +529,18 @@ request comment, headed ``### X Blocked · Topos structural review of #359``.
 It lists **Blocking** and **Needs attention** items, collapses info findings
 in ``<details>``, shows the changed files with the same MEDAL and CHANGE
 columns, and puts the gate line in the footer. A hidden marker on the first
-line lets a later run edit the comment instead of adding another.
+line lets a later run edit the comment instead of adding another; pass
+``--format markdown`` or ``--format github --no-marker`` to omit the marker
+when embedding the section inside another comment.
 
 **Exit codes**
 
-- ``0`` — ``READY``, or ``NEEDS ATTENTION`` under ``fail_on = "block"`` (the
-  recommended and relaxed presets).
-- ``1`` — ``BLOCKED``, or ``NEEDS ATTENTION`` under ``fail_on = "warn"``
-  (``--strict``, or the strict preset).
+- ``0`` — ``READY``, ``NEEDS ATTENTION`` under ``fail_on = "block"`` (the
+  recommended and relaxed presets), or any verdict under ``fail_on = "never"``
+  (``--advisory`` or ``--fail-on never``).
+- ``1`` — ``BLOCKED`` (unless ``fail_on = "never"``), or ``NEEDS ATTENTION``
+  under ``fail_on = "warn"`` (``--strict``, ``--fail-on warn``, or the strict
+  preset).
 - ``2`` — ``pr-recap`` could not produce a verdict (bad range, repository not
   found, ``gh`` failure, etc.).
 

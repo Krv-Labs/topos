@@ -4,13 +4,32 @@
 //! Split out of `evaluate.rs` — this is GitNexus/MDG resolution
 //! infrastructure, not `evaluate`-command orchestration.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use topos_engine::adapters::gitnexus::{
     current_git_branch, gitnexus_compat_warning, resolve_lbug_store,
 };
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_mcp::evaluation::{ensure_gitnexus_dir_with_progress, gitnexus_warnings};
+
+/// Derive the default COMPOSABLE project root from the evaluated `target` path
+/// (or `cwd` if `target` cannot be resolved), walking up to the containing git
+/// root so `topos evaluate /path/to/repo -r` invoked from another directory
+/// resolves `/path/to/repo/.gitnexus` rather than `<cwd>/.gitnexus`.
+pub(crate) fn target_composable_root(target: &Path, cwd: &Path) -> PathBuf {
+    let anchor = if target.is_absolute() {
+        target.to_path_buf()
+    } else {
+        cwd.join(target)
+    };
+    let canonical = anchor.canonicalize().unwrap_or(anchor);
+    let dir = if canonical.is_dir() {
+        canonical.as_path()
+    } else {
+        canonical.parent().unwrap_or(canonical.as_path())
+    };
+    topos_mcp::security::composable_default_root(dir)
+}
 
 /// Result of a CLI COMPOSABLE resolve-or-generate attempt.
 ///
@@ -137,6 +156,23 @@ pub(crate) fn resolve_composable_mdg(
     }
 
     match ModuleDependencyGraph::from_lbug_path(&lbug_path, project_root.to_string_lossy()) {
+        Ok(graph) if graph.nodes_of_label("File").is_empty() => {
+            let load_error = format!(
+                "dependency graph at {} contains no indexed File nodes",
+                lbug_path.display()
+            );
+            warnings.extend(gitnexus_warnings(
+                gitnexus_dir_override,
+                project_root,
+                Some(&gitnexus_dir),
+                false,
+                Some(&load_error),
+            ));
+            ComposableResolve {
+                mdg: None,
+                warnings,
+            }
+        }
         Ok(graph) => {
             // Freshness is advisory even when the graph loads — surface it the
             // same way MCP does so CLI/MCP do not disagree on stale stores.
@@ -308,5 +344,30 @@ mod tests {
                 && src.contains("&mut on_phase"),
             "inspect must capture GitNexus output so it cannot corrupt the CLI renderer"
         );
+    }
+
+    #[test]
+    fn target_composable_root_prefers_target_git_root_over_cwd() {
+        let home = temp_dir("target_root_home");
+        let caller_repo = home.join("caller");
+        let target_repo = home.join("target");
+        let target_sub = target_repo.join("src");
+        std::fs::create_dir_all(caller_repo.join(".git")).unwrap();
+        std::fs::create_dir_all(target_repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&target_sub).unwrap();
+        let target_file = target_sub.join("lib.rs");
+        std::fs::write(&target_file, "pub fn f() {}\n").unwrap();
+
+        let target_canon = target_repo.canonicalize().unwrap();
+        assert_eq!(
+            target_composable_root(&target_file, &caller_repo),
+            target_canon
+        );
+        assert_eq!(
+            target_composable_root(&target_sub, &caller_repo),
+            target_canon
+        );
+
+        std::fs::remove_dir_all(&home).ok();
     }
 }

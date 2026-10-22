@@ -85,6 +85,14 @@ pub(super) fn render_github(recap: &PrRecap) -> String {
     assemble(&head, &recap.clusters, details, &tail)
 }
 
+pub(super) fn render_markdown(recap: &PrRecap) -> String {
+    // Apply the same length budget before removing the marker so both formats
+    // retain exactly the same details, including at the truncation boundary.
+    let mut body = render_github(recap);
+    body.drain(..STICKY_MARKER.len() + 1);
+    body
+}
+
 /// Drop cluster details from the smallest cluster upward until the body
 /// fits, then say how many were dropped rather than truncating mid-table.
 fn assemble(head: &str, clusters: &[Cluster], details: Vec<String>, tail: &str) -> String {
@@ -611,7 +619,7 @@ fn footer(view: &RecapView<'_>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_github, MAX_CHARS, STICKY_MARKER};
+    use super::{render_github, render_markdown, MAX_CHARS, STICKY_MARKER};
     use crate::commands::pr_recap::fixtures::{
         fixture_coupling, fixture_lateral_loss, fixture_losses, fixture_many_clusters,
         fixture_mixed, fixture_plain, fixture_pr5, LATERAL_LOSS,
@@ -1040,5 +1048,44 @@ mod tests {
             "{card:#?}"
         );
         assert!(card.contains(&"│  1 waived".to_string()), "{card:#?}");
+    }
+
+    #[test]
+    fn render_markdown_omits_sticky_marker() {
+        for recap in [
+            fixture_pr5(),
+            fixture_plain(),
+            fixture_lateral_loss(),
+            fixture_mixed(),
+            fixture_losses(),
+            needs_attention(),
+            fixture_coupling(),
+            fixture_many_clusters(40),
+        ] {
+            let sticky = render_github(&recap);
+            let plain = render_markdown(&recap);
+            assert!(plain.starts_with("### "), "{plain}");
+            assert!(!plain.contains("topos-pr-recap"), "{plain}");
+            assert_eq!(
+                sticky.strip_prefix(&format!("{STICKY_MARKER}\n")),
+                Some(plain.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn markerless_output_keeps_the_same_cluster_details_at_the_length_limit() {
+        let mut recap = fixture_many_clusters(1);
+        let padding = MAX_CHARS + 1 - render_github(&recap).chars().count();
+        recap.clusters[0].symbols_moved[0]
+            .name
+            .push_str(&"x".repeat(padding));
+
+        let sticky = render_github(&recap);
+        assert!(sticky.contains("cluster details omitted for length"));
+        assert_eq!(
+            sticky.strip_prefix(&format!("{STICKY_MARKER}\n")),
+            Some(render_markdown(&recap).as_str())
+        );
     }
 }

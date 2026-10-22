@@ -78,12 +78,22 @@ pub fn resolve_gate_policy(
     preset: Option<PrGatePreset>,
     file: &PrGateConfig,
 ) -> PrGateConfig {
+    resolve_gate_policy_with_fail_on(strict.then_some(FailOn::Warn), preset, file)
+}
+
+/// The gate policy for one run with an optional `fail_on` override
+/// (`--fail-on`, `--strict`, or `--advisory`).
+pub fn resolve_gate_policy_with_fail_on(
+    fail_on: Option<FailOn>,
+    preset: Option<PrGatePreset>,
+    file: &PrGateConfig,
+) -> PrGateConfig {
     let mut policy = match preset {
         Some(preset) => PrGateConfig::for_preset(preset),
         None => file.clone(),
     };
-    if strict {
-        policy.fail_on = FailOn::Warn;
+    if let Some(fail_on) = fail_on {
+        policy.fail_on = fail_on;
     }
     policy
 }

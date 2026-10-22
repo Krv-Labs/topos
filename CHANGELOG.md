@@ -11,6 +11,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Added
 
+- Add `decisions_before` and `decisions_after` (`Σ cfg.cyclomatic`) to `ProjectRollup` and `decisions` to `AddedRollup` in `topos.pr_recap.v3` (`null` when any file in the rollup lacks a measurement on that side), and clarify in `non_claim`, CLI `--help`, Sphinx docs, and agent skills that `topos pr-recap` is a deterministic structural debt ledger and pre-review coaching aid rather than a semantic correctness check or binary AI-slop classifier (#452).
 - Add `--format markdown` and `--no-marker` to `topos pr-recap` so GitHub-flavored markdown recaps can be embedded inside another bot's comment without the sticky `<!-- topos-pr-recap:v2 -->` marker (#449).
 - Add `--advisory` and `--fail-on [block|warn|never]` (`pr_gate.fail_on = "never"` in `topos.toml`) to `topos pr-recap` so CI workflows can render the full gate verdict while exiting `0`, and document `pr-recap` exit codes (`0` passed/advisory, `1` gate failed, `2` input/runtime error) (#448).
 

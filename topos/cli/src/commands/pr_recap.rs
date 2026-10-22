@@ -89,11 +89,14 @@ impl GatePreset {
 /// flag list. `-h` stays short: it shows only the flag one-liners.
 pub const LONG_HELP: &str = r#"What it does:
   Scores the files your change touched at the base commit and at the head commit,
-  then reports the structural difference between the two. It is deterministic and
-  reads only your code: no LLM, no network call, no model judgment. The medal is
-  Topos's lattice verdict over the pillars below. Structure moving in the right
-  direction is not proof that behavior is unchanged or that the tests still pass;
-  read it as a review aid, not as a green check.
+  then reports the structural difference between the two as a structural debt
+  ledger and pre-review coaching aid. It is deterministic and reads only your
+  code: no LLM, no network call, no model judgment. The medal is Topos's lattice
+  verdict over the pillars below. Structure moving in the right direction is not
+  proof that behavior is unchanged or that the tests still pass, and gate
+  verdicts do not classify semantic correctness or authorship ("AI slop"); read
+  it as a pre-review structural balance sheet and refactoring guide, not as a
+  replacement for tests or human review.
 
 Pillars:
   SIMPLE      per-function complexity and the control-flow gates.
@@ -906,11 +909,71 @@ mod tests {
         let recap = recap(&repo, "HEAD~1", "HEAD", 40);
         let project = recap.project.expect("one existing file");
         assert_eq!((project.files_before, project.files_after), (1, 1));
+        assert!(project.decisions_before.is_some_and(|count| count > 0));
+        assert_eq!(project.decisions_before, project.decisions_after);
         let simple = &project.pillars["simple"];
         assert_eq!((simple.files_before, simple.files_after), (1, 1));
         assert_eq!(simple.failing_after, 1);
         assert_eq!(simple.before_score, simple.after_score);
-        assert_eq!(recap.added.expect("one new file").files, 1);
+        let added = recap.added.expect("one new file");
+        assert_eq!(added.files, 1);
+        assert!(added.decisions.is_some_and(|count| count > 0));
+    }
+
+    #[test]
+    fn rollup_decisions_preserve_missing_measurements_on_each_side() {
+        let valid = "def pick(x):\n    if x:\n        return 1\n    return 0\n";
+        let invalid = "def pick(x):\n    if x\n        return 1\n    return 0\n";
+        for (before, after, expected_before, expected_after) in [
+            (valid, invalid, Some(3), None),
+            (invalid, valid, None, Some(3)),
+        ] {
+            let (_keep, repo) = write_repo(&[
+                ("src/a.py", before),
+                ("src/b.py", "def stable():\n    return 1\n"),
+            ]);
+            write_files(
+                &repo,
+                &[
+                    ("src/a.py", after),
+                    ("src/b.py", "def stable():\n    return 2\n"),
+                ],
+            );
+            commit_all(&repo, "change both files");
+            let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+            let project = recap.project.as_ref().unwrap();
+            assert_eq!(project.files_before, 2);
+            assert_eq!(project.decisions_before, expected_before);
+            assert_eq!(project.decisions_after, expected_after);
+            let json = serde_json::to_value(&recap).unwrap();
+            assert_eq!(
+                json["project"]["decisions_before"],
+                serde_json::json!(expected_before)
+            );
+            assert_eq!(
+                json["project"]["decisions_after"],
+                serde_json::json!(expected_after)
+            );
+        }
+    }
+
+    #[test]
+    fn added_decisions_are_unknown_when_any_added_file_does_not_parse() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        write_files(
+            &repo,
+            &[
+                ("src/a.py", "def broken(:\n"),
+                ("src/b.py", "def ready():\n    return 1\n"),
+            ],
+        );
+        commit_all(&repo, "add invalid and valid files");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        let added = recap.added.as_ref().unwrap();
+        assert_eq!(added.files, 2);
+        assert_eq!(added.decisions, None);
+        let json = serde_json::to_value(&recap).unwrap();
+        assert!(json["added"]["decisions"].is_null());
     }
 
     #[test]

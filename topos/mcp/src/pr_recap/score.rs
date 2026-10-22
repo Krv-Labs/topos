@@ -284,12 +284,11 @@ impl Scoring<'_> {
     }
 }
 
-/// A clone of the repository graph aimed at one file. Cloning is far
-/// cheaper than re-reading the store for every path.
+/// The same repository graph aimed at one file. The topology is shared
+/// through an `Arc`; only the target path changes, so retargeting does not
+/// copy the nodes or edges.
 fn targeted(graph: Option<&ModuleDependencyGraph>, path: &str) -> Option<ModuleDependencyGraph> {
-    let mut graph = graph?.clone();
-    graph.target_file = path.to_string();
-    Some(graph)
+    graph.map(|graph| graph.for_target(path))
 }
 
 fn decisions(result: &ClassificationResult) -> Option<usize> {

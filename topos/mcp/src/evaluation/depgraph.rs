@@ -287,7 +287,7 @@ mod tests {
         let warm = b.expect("warm graph");
         assert_eq!(last_store_load_ms(), 0, "second file reopened Ladybug");
         assert!(
-            warm.file_node_id().is_some() || warm.nodes.values().any(|n| n.label == "File"),
+            warm.file_node_id().is_some() || warm.nodes().values().any(|n| n.label == "File"),
             "retargeted graph has no file nodes"
         );
         clear_caches();

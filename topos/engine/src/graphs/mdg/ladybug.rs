@@ -256,6 +256,6 @@ mod tests {
             return;
         }
         let graph = ModuleDependencyGraph::from_ladybug_native(store, "lib.rs").unwrap();
-        assert!(!graph.nodes.is_empty());
+        assert!(!graph.nodes().is_empty());
     }
 }

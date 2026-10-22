@@ -9,6 +9,12 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Changed
+
+- Share one loaded dependency-graph topology across target views instead of
+  copying every node and relationship per file, cutting MCP evaluation and
+  PR-recap retargeting time and memory on large repositories.
+
 ## [0.13.0] - 2026-10-22
 
 ### Added

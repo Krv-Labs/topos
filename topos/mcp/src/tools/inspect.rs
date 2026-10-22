@@ -348,6 +348,19 @@ fn inspect_code_with_cancel(
         Ok(loaded) => loaded,
         Err(msg) => return Ok(err_inspection(priority, priority_source, msg)),
     };
+    let _cache_lease = match loaded.file_path.as_deref() {
+        Some(path) => match crate::cache::lease_managed_path(path) {
+            Ok(lease) => lease,
+            Err(error) => {
+                return Ok(err_inspection(
+                    priority,
+                    priority_source,
+                    format!("could not lease the managed PR cache: {error}"),
+                ))
+            }
+        },
+        None => None,
+    };
     if is_cancelled(cancel_flag) {
         return Err(EvalCancelled);
     }

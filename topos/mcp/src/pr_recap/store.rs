@@ -19,8 +19,8 @@ use super::gh::{git, git_common_dir, resolve_commit};
 use crate::cache::{
     admin_gitdir_matches, checkout_blockers, ensure_marker_for_build, registration_admin_dir,
     registration_for, remove_disposable_graph, remove_stale_registration, repo_for_common,
-    validate_store_marker, worktree_registrations, LeaseError, PrLease, RepositoryLock,
-    StoreIdentity,
+    target_graph_blockers, validate_store_marker, worktree_registrations, LeaseError, PrLease,
+    RepositoryLock, StoreIdentity,
 };
 
 /// Paths to the worktrees (and their shared parent) backing a PR's coupling
@@ -344,6 +344,7 @@ pub fn prepare_pr_stores_with_cancel(
 /// exact path. Existing unregistered content is reported, never deleted.
 pub fn ensure_worktree(repo: &Path, path: &Path, sha: &str) -> Result<(), String> {
     let wanted = resolve_commit(repo, sha)?;
+    target_graph_blockers(repo, &wanted)?;
     let identity = store_side(repo, path)?;
     validate_store_marker(&identity.common_dir, identity.pr, &identity.parent)?;
     let repo_root = repo_for_common(&identity.common_dir);

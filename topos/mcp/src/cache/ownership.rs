@@ -540,9 +540,79 @@ fn assess_content_at(
     report
 }
 
+fn tracked_graph_blockers(worktree: &Path) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(worktree)
+        .args(["ls-files", "-z", "--", ".gitnexus"])
+        .output()
+        .map_err(|error| {
+            format!(
+                "listing tracked graph files in {}: {error}",
+                worktree.display()
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "git ls-files in {}: {}",
+            worktree.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    if output.stdout.is_empty() {
+        return Ok(());
+    }
+    let mut paths: Vec<String> = output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| String::from_utf8_lossy(path).into_owned())
+        .collect();
+    paths.sort();
+    Err(format!(
+        "{} has tracked content under .gitnexus/: {}",
+        worktree.display(),
+        paths.join(", ")
+    ))
+}
+
+/// Reject a target commit whose tree tracks `.gitnexus/` content. Checking the
+/// current index is not enough: a forced checkout could bring tracked graph
+/// files into the worktree immediately before graph cleanup.
+pub fn target_graph_blockers(repo: &Path, sha: &str) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-tree", "-r", "--name-only", "-z", sha, "--", ".gitnexus"])
+        .output()
+        .map_err(|error| format!("listing tracked graph files in {sha}: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git ls-tree {sha} in {}: {}",
+            repo.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    if output.stdout.is_empty() {
+        return Ok(());
+    }
+    let mut paths: Vec<String> = output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| String::from_utf8_lossy(path).into_owned())
+        .collect();
+    paths.sort();
+    Err(format!(
+        "{sha} tracks content under .gitnexus/: {}",
+        paths.join(", ")
+    ))
+}
+
 /// Paths in `worktree` that Git would lose on a forced checkout. `.gitnexus/`
-/// is deliberately ignored: it is regenerated, never user content.
+/// is deliberately ignored only when it is generated and untracked.
 pub fn checkout_blockers(worktree: &Path) -> Result<(), String> {
+    tracked_graph_blockers(worktree)?;
     let graph = worktree.join(".gitnexus");
     match std::fs::symlink_metadata(&graph) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
@@ -903,5 +973,25 @@ mod tests {
         let error = checkout_blockers(&repo).unwrap_err();
         assert!(error.contains("not a generated graph directory"), "{error}");
         assert!(repo.join(".gitnexus").exists());
+    }
+
+    #[test]
+    fn tracked_graph_content_is_not_disposable() {
+        let (_keep, repo, base, _) = repo();
+        std::fs::create_dir_all(repo.join(".gitnexus")).unwrap();
+        std::fs::write(repo.join(".gitnexus/note.txt"), "tracked").unwrap();
+        git(&repo, &["add", ".gitnexus/note.txt"]);
+        git(&repo, &["commit", "-qm", "track graph note"]);
+        let tracked = git(&repo, &["rev-parse", "HEAD"]);
+
+        let error = target_graph_blockers(&repo, &tracked).unwrap_err();
+        assert!(error.contains("tracks content under .gitnexus"), "{error}");
+        assert!(target_graph_blockers(&repo, &base).is_ok());
+        let error = checkout_blockers(&repo).unwrap_err();
+        assert!(error.contains("tracked content under .gitnexus"), "{error}");
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".gitnexus/note.txt")).unwrap(),
+            "tracked"
+        );
     }
 }

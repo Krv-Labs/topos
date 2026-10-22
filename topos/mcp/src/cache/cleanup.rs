@@ -700,7 +700,18 @@ fn prune_candidate(
             return (entry, flags);
         }
     };
-    let Some(newest) = newest_activity(&identity, candidate.record.as_ref()) else {
+    // The candidate snapshot was taken before the lease. A worker may have
+    // touched the store while it held the lease, so reload usage from the
+    // inventory before the final age decision.
+    let record = match reload_pr_record(inventory, &identity, diagnostics) {
+        Ok(record) => record,
+        Err(error) => {
+            flags.unsafe_skipped = true;
+            entry.reason = Some(error);
+            return (entry, flags);
+        }
+    };
+    let Some(newest) = newest_activity(&identity, record.as_ref()) else {
         entry.reason = Some("no usable timestamp".to_string());
         return (entry, flags);
     };
@@ -1027,6 +1038,34 @@ fn entry_for(
     }
 }
 
+fn reload_pr_record(
+    inventory: Option<&Inventory>,
+    identity: &StoreIdentity,
+    diagnostics: &mut Vec<String>,
+) -> Result<Option<CacheRecord>, String> {
+    let Some(inventory) = inventory else {
+        return Ok(None);
+    };
+    let (records, notes) = inventory.records();
+    diagnostics.extend(notes.iter().cloned());
+    let found = records.into_iter().find(|record| {
+        record.kind() == Some(CacheKind::Pr)
+            && record.pr == Some(identity.pr)
+            && record
+                .common_git_dir
+                .as_deref()
+                .is_some_and(|common| git::normalize_path(Path::new(common)) == identity.common_dir)
+    });
+    if found.is_none() && !notes.is_empty() {
+        return Err(format!(
+            "could not reload the cache inventory record for PR {}: {}",
+            identity.pr,
+            notes.join("; ")
+        ));
+    }
+    Ok(found)
+}
+
 fn newest_activity(identity: &StoreIdentity, record: Option<&CacheRecord>) -> Option<SystemTime> {
     let mut newest: Option<SystemTime> = None;
     let metadata_paths = [
@@ -1157,8 +1196,10 @@ fn estimate_bytes(path: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::lease::lease_managed_path;
     use crate::cache::now;
     use std::process::Command;
+    use std::sync::Arc;
 
     fn git(repo: &Path, args: &[&str]) -> String {
         let output = Command::new("git")
@@ -1727,6 +1768,103 @@ mod tests {
             .find(|entry| entry.pr == Some(14))
             .unwrap();
         assert_eq!(entry.action, "removed", "{:?}", report.entries);
+        assert!(!identity.parent.exists());
+    }
+
+    #[test]
+    fn prune_reloads_usage_after_taking_the_lease() {
+        let (_keep, repo, base, head) = repo();
+        let identity = store(&repo, 17, &base, &head);
+        age_store(&identity, Duration::from_secs(5 * 24 * 60 * 60));
+        let inventory = inventory(&repo);
+        record(&inventory, &repo, &identity);
+        let (records, _) = inventory.records();
+        let stale = records
+            .into_iter()
+            .find(|record| record.pr == Some(17))
+            .unwrap();
+        let candidate = Candidate {
+            common: identity.common_dir.clone(),
+            pr: 17,
+            path: identity.parent.clone(),
+            record: Some(stale),
+        };
+
+        // The store was used after the candidate snapshot but before prune
+        // took the lease. The fresh last_used must keep it alive.
+        inventory
+            .upsert(super::super::inventory::RecordUpdate {
+                kind: CacheKind::Pr,
+                managed: true,
+                project_root: canonical_string(&repo),
+                common_git_dir: Some(canonical_string(&identity.common_dir)),
+                path: canonical_string(&identity.parent),
+                pr: Some(17),
+                last_built: Some(now()),
+                last_used: Some(now()),
+                last_seen: Some(now()),
+                compatibility: None,
+            })
+            .unwrap();
+        let mut diagnostics = Vec::new();
+        let (entry, flags) = prune_candidate(
+            candidate,
+            &PruneOptions {
+                older_than: Duration::from_secs(60),
+                global: false,
+                dry_run: false,
+            },
+            Some(&inventory),
+            &mut diagnostics,
+        );
+
+        assert!(!flags.unsafe_skipped);
+        assert_eq!(entry.action, "skipped", "{entry:?}");
+        assert!(entry.reason.as_deref().unwrap().contains("younger"));
+        assert!(identity.parent.exists());
+    }
+
+    #[test]
+    fn an_operation_lease_blocks_cleanup_and_is_shared() {
+        let (_keep, repo, base, head) = repo();
+        let identity = store(&repo, 18, &base, &head);
+        let inventory = inventory(&repo);
+        let first = lease_managed_path(&identity.base)
+            .unwrap()
+            .expect("PR side must be a managed path");
+        let second = lease_managed_path(&identity.head)
+            .unwrap()
+            .expect("PR side must be a managed path");
+        assert!(Arc::ptr_eq(&first, &second));
+
+        let report = clean_at(
+            &repo,
+            &inventory,
+            CleanOptions {
+                pr: Some(18),
+                all_prs: false,
+                global: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(report.totals.busy, 1, "{:?}", report.entries);
+        assert!(identity.parent.exists());
+
+        drop(first);
+        drop(second);
+        let report = clean_at(
+            &repo,
+            &inventory,
+            CleanOptions {
+                pr: Some(18),
+                all_prs: false,
+                global: false,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(report.entries[0].action, "removed", "{:?}", report.entries);
         assert!(!identity.parent.exists());
     }
 

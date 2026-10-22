@@ -33,7 +33,10 @@ pub use inventory::{
     cache_index_dir, now, CacheCompatibility, CacheKind, CacheRecord, Inventory, RecordUpdate,
     INDEX_SCHEMA,
 };
-pub use lease::{lease_path, worktree_lock_path, LeaseError, PrLease, RepositoryLock};
+pub use lease::{
+    lease_managed_path, lease_path, worktree_lock_path, LeaseError, OperationLease, PrLease,
+    RepositoryLock,
+};
 pub use marker::{
     delete_marker_path, marker_path, read_delete_marker, read_marker, validate_delete_marker,
     validate_marker, write_delete_marker, write_marker, PrStoreDeleteMarker, PrStoreMarker,
@@ -42,8 +45,8 @@ pub use marker::{
 pub use ownership::{
     adopt_legacy, assess_content, checkout_blockers, ensure_marker_for_build, identity,
     legacy_store, read_commits, registration_for, remove_disposable_graph,
-    remove_stale_registration, repo_for_common, validate_store_marker, ContentReport, LegacyStore,
-    StoreIdentity, KNOWN_ENTRIES,
+    remove_stale_registration, repo_for_common, target_graph_blockers, validate_store_marker,
+    ContentReport, LegacyStore, StoreIdentity, KNOWN_ENTRIES,
 };
 pub use registration::{graph_used, pr_built, pr_used};
 pub use status::{status, StatusEntry, StatusReport};

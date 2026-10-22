@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, LazyLock, Mutex};
+use std::sync::{Arc, Condvar, LazyLock, Mutex, Weak};
 use std::time::Duration;
 
 use super::git;
@@ -53,6 +53,72 @@ static PR_MUTEXES: LazyLock<Mutex<HashMap<String, Arc<ProcessLock>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static REPO_MUTEXES: LazyLock<Mutex<HashMap<String, Arc<ProcessLock>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// A lease held by a Topos operation that reads or writes a managed PR path.
+///
+/// Multiple parts of one operation can ask for the same path lease; they share
+/// this handle, so nested graph work does not deadlock against itself. Cleanup
+/// uses [`PrLease::try_acquire`] and therefore still sees the process/file
+/// lease as busy.
+#[derive(Debug)]
+pub struct OperationLease {
+    _lease: PrLease,
+}
+
+static OPERATION_LEASES: LazyLock<Mutex<HashMap<String, Weak<OperationLease>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The managed PR slot containing `path`, if any.
+fn managed_pr_for_path(path: &Path) -> Option<(PathBuf, u64)> {
+    let start = if path.is_dir() {
+        path
+    } else {
+        path.parent().unwrap_or(path)
+    };
+    let common = git::normalize_path(&git::git_common_dir(start).ok()?);
+    let normalized = git::normalize_path(path);
+    for ancestor in normalized.ancestors() {
+        let Some(name) = ancestor.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(pr) = name
+            .strip_prefix("topos-pr-")
+            .and_then(|number| number.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        if ancestor
+            .parent()
+            .is_some_and(|parent| git::normalize_path(parent) == common)
+        {
+            return Some((common, pr));
+        }
+    }
+    None
+}
+
+/// Take the shared operation lease for a path inside a managed PR store.
+///
+/// Returns `None` for ordinary project paths. Holding the returned value for
+/// the duration of an operation prevents cleanup from removing the store while
+/// Topos is reading or generating it. Repeated calls for the same slot return
+/// the same shared handle until every caller drops it.
+pub fn lease_managed_path(path: &Path) -> Result<Option<Arc<OperationLease>>, LeaseError> {
+    let Some((common, pr)) = managed_pr_for_path(path) else {
+        return Ok(None);
+    };
+    let key = format!("{}\0{pr}", common.to_string_lossy());
+    let mut leases = OPERATION_LEASES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(existing) = leases.get(&key).and_then(Weak::upgrade) {
+        return Ok(Some(existing));
+    }
+    let lease = PrLease::try_acquire(&common, pr)?;
+    let lease = Arc::new(OperationLease { _lease: lease });
+    leases.insert(key, Arc::downgrade(&lease));
+    Ok(Some(lease))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeaseError {
@@ -96,6 +162,25 @@ fn try_process_lock(
     *locked = true;
     drop(locked);
     Ok(ProcessGuard { lock })
+}
+
+fn process_is_busy(
+    map: &'static LazyLock<Mutex<HashMap<String, Arc<ProcessLock>>>>,
+    key: &str,
+) -> bool {
+    let Some(lock) = map
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(key)
+        .cloned()
+    else {
+        return false;
+    };
+    let busy = *lock
+        .locked
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    busy
 }
 
 fn wait_process_lock(
@@ -261,6 +346,53 @@ impl PrLease {
         self.pr
     }
 
+    /// Nonblocking, read-only probe used by status.
+    ///
+    /// Returns `true` when this process or another one holds the lease. It
+    /// never creates the lease file, so a status observation stays read-only.
+    pub fn probe(common_dir: &Path, pr: u64) -> Result<bool, LeaseError> {
+        let common_dir = git::normalize_path(common_dir);
+        let key = format!("{}\0{pr}", common_dir.to_string_lossy());
+        if process_is_busy(&PR_MUTEXES, &key) {
+            return Ok(true);
+        }
+        let path = lease_path(&common_dir, pr);
+        match std::fs::symlink_metadata(&path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(LeaseError::Io(format!(
+                    "reading PR lease {}: {error}",
+                    path.display()
+                )))
+            }
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(LeaseError::Io(format!(
+                    "PR lease {} is not a regular file",
+                    path.display()
+                )))
+            }
+            Ok(_) => {}
+        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| {
+                LeaseError::Io(format!("opening PR lease {}: {error}", path.display()))
+            })?;
+        match file.try_lock() {
+            Ok(()) => {
+                let _ = file.unlock();
+                Ok(false)
+            }
+            Err(std::fs::TryLockError::WouldBlock) => Ok(true),
+            Err(std::fs::TryLockError::Error(error)) => Err(LeaseError::Io(format!(
+                "probing PR lease {}: {error}",
+                path.display()
+            ))),
+        }
+    }
+
     pub fn common_dir(&self) -> &Path {
         &self.common_dir
     }
@@ -319,6 +451,18 @@ mod tests {
         drop(first);
         drop(other);
         assert!(PrLease::try_acquire(&common, 1).is_ok());
+    }
+
+    #[test]
+    fn probe_reports_a_held_lease_without_creating_one() {
+        let dir = common();
+        let common = dir.path().join(".git");
+        assert!(!PrLease::probe(&common, 5).unwrap());
+        assert!(!lease_path(&common, 5).exists());
+        let held = PrLease::try_acquire(&common, 5).unwrap();
+        assert!(PrLease::probe(&common, 5).unwrap());
+        drop(held);
+        assert!(!PrLease::probe(&common, 5).unwrap());
     }
 
     #[test]

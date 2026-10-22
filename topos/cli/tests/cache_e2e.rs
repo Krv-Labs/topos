@@ -523,6 +523,39 @@ fn clean_removes_a_managed_store_registrations_and_inventory() {
 }
 
 #[test]
+fn status_reports_an_active_pr_lease() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    add_pr_store(&main, 31, &sha);
+
+    let lease = fs::File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lease_path(&main, 31))
+        .unwrap();
+    lease
+        .try_lock()
+        .unwrap_or_else(|error| panic!("taking test lease: {error}"));
+
+    let (code, stdout, stderr) = topos(&home, &index, &["cache", "status", "--json"], &main);
+
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["state"], "in-use", "{stdout}");
+    assert!(value["entries"][0]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|line| line.as_str().is_some_and(|line| line.contains("lease"))));
+}
+
+#[test]
 fn clean_refuses_user_content_and_keeps_the_store_retryable() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
@@ -549,6 +582,39 @@ fn clean_refuses_user_content_and_keeps_the_store_retryable() {
         "mine\n"
     );
     assert!(git(&main, &["worktree", "list", "--porcelain"]).contains(store.to_str().unwrap()));
+}
+
+#[test]
+fn clean_refuses_tracked_gitnexus_content() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    repo(&main);
+    fs::create_dir_all(main.join(".gitnexus")).unwrap();
+    fs::write(main.join(".gitnexus/note.txt"), "tracked\n").unwrap();
+    git(&main, &["add", ".gitnexus/note.txt"]);
+    git(&main, &["commit", "-qm", "track graph note"]);
+    let sha = git(&main, &["rev-parse", "HEAD"]);
+    let store = add_pr_store(&main, 19, &sha);
+    fs::write(store.join("base/.gitnexus/note.txt"), "edited\n").unwrap();
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "19", "--yes", "--json"],
+        &main,
+    );
+
+    assert_eq!(code, 1, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "skipped", "{stdout}");
+    assert!(store.exists(), "tracked graph content authorized deletion");
+    assert_eq!(
+        fs::read_to_string(store.join("base/.gitnexus/note.txt")).unwrap(),
+        "edited\n"
+    );
 }
 
 #[test]

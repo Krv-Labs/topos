@@ -40,6 +40,8 @@ pub struct InspectArgs {
 }
 
 pub fn run(args: InspectArgs) -> Result<(), String> {
+    let _cache_lease = topos_mcp::cache::lease_managed_path(&args.path)
+        .map_err(|error| format!("could not lease the managed PR cache: {error}"))?;
     let language = detect_language(&args.path);
     let config = load_topos_config(&args.path);
     let priority = config.effective_priority();

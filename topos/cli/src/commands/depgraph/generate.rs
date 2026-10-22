@@ -32,6 +32,8 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
     if !target_dir.is_dir() {
         return Err(format!("Not a directory: {}", target_dir.display()));
     }
+    let _cache_lease = topos_mcp::cache::lease_managed_path(&target_dir)
+        .map_err(|error| format!("could not lease the managed PR cache: {error}"))?;
 
     let target_file = target_dir.to_string_lossy().to_string();
 

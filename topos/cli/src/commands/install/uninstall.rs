@@ -9,6 +9,13 @@
 //! Nothing outside a Topos-owned MCP entry is ever removed. Prose instruction
 //! blocks, `@import` lines and skill files are reported by
 //! [`super::residue`] and left exactly where they are.
+//!
+//! "No trace" applies to **harness installation state**, not to shared cache
+//! bookkeeping. The cross-repository inventory under `state_dir()/cache-index`
+//! outlives any one harness registration, and repository leases and locks live
+//! in each repository's Git common directory, which uninstall never enters.
+//! [`clean_up`] keeps the state directory whenever retained cache bookkeeping
+//! is still inside it and says so in the report.
 
 use std::path::{Path, PathBuf};
 
@@ -246,11 +253,46 @@ fn is_empty_config(path: &Path) -> bool {
     }
 }
 
+/// Bookkeeping inside [`state::state_dir`] that belongs to the shared cache
+/// rather than to a harness installation.
+///
+/// The inventory spans repositories and must outlive whichever harnesses
+/// happen to be registered when uninstall runs. Add a name here when another
+/// piece of shared cache bookkeeping joins it.
+const RETAINED_STATE: &[&str] = &["cache-index"];
+
+/// Retained cache bookkeeping that currently exists under the state directory.
+fn retained_state(home: &Path) -> Vec<PathBuf> {
+    let state_dir = state::state_dir(home);
+    RETAINED_STATE
+        .iter()
+        .map(|name| state_dir.join(name))
+        .filter(|path| path.exists())
+        .collect()
+}
+
+/// Drop the shared state directory and retained bookkeeping from a
+/// created-directory pruning list.
+///
+/// The ledger deliberately does not record the directories its own writes
+/// created, but a path recorded by an older build — or a future write that
+/// forgets that rule — must not be able to take the shared inventory down with
+/// it. Descendants of a retained path are filtered too, so pruning cannot empty
+/// the inventory one subdirectory at a time.
+fn prune_candidates(dirs: Vec<PathBuf>, home: &Path, retained: &[PathBuf]) -> Vec<PathBuf> {
+    let state_dir = state::state_dir(home);
+    dirs.into_iter()
+        .filter(|dir| dir != &state_dir)
+        .filter(|dir| !retained.iter().any(|kept| dir.starts_with(kept)))
+        .collect()
+}
+
 /// Everything after the entries themselves, in the one order that works.
 ///
 /// `install.json` lives inside a directory that is itself a prune candidate, so
 /// the directory list has to be read before the state file is deleted, and the
-/// state directory pruned after it.
+/// state directory pruned after it. When shared cache bookkeeping remains, the
+/// state directory is kept instead and the report names what was retained.
 fn clean_up(
     home: &Path,
     selected: &[String],
@@ -270,7 +312,8 @@ fn clean_up(
     if !uninstalled_everything(home) {
         return;
     }
-    let dirs = state::created_dirs(home);
+    let retained = retained_state(home);
+    let dirs = prune_candidates(state::created_dirs(home), home, &retained);
     let pruned = prune_dirs(&dirs, false);
     // Read existence *before* removing the ledger: the guard below must
     // reflect "there was state here", not "there is state here now".
@@ -283,7 +326,22 @@ fn clean_up(
     if had_state {
         topos_mcp::update::notice::remove_cache(home);
     }
-    prune_dirs(&[state::state_dir(home)], false);
+    // Re-observe after removing our own files: the state directory is only
+    // ours to prune when no shared cache bookkeeping remains in it.
+    let retained = retained_state(home);
+    if retained.is_empty() {
+        prune_dirs(&[state::state_dir(home)], false);
+    } else {
+        for path in retained {
+            report::note(
+                &format!(
+                    "retained shared cache bookkeeping at {} (not harness installation state)",
+                    display_path(home, &path)
+                ),
+                opts,
+            );
+        }
+    }
     for dir in pruned {
         report::detail(
             &report::removed(opts),
@@ -382,6 +440,27 @@ mod tests {
             !summary.to_ascii_lowercase().contains("dry run"),
             "{summary}"
         );
+    }
+
+    #[test]
+    fn created_directory_pruning_spares_the_shared_state_and_inventory() {
+        let home = tmp_dir("uninstall-protected-state");
+        let state_dir = state::state_dir(&home);
+        let inventory = state_dir.join("cache-index");
+        let user_dir = home.join(".cursor");
+
+        let candidates = prune_candidates(
+            vec![
+                state_dir.clone(),
+                inventory.join("entries"),
+                user_dir.clone(),
+            ],
+            &home,
+            std::slice::from_ref(&inventory),
+        );
+
+        assert_eq!(candidates, vec![user_dir]);
+        fs::remove_dir_all(home).ok();
     }
 
     #[test]

@@ -37,6 +37,7 @@ Quick reference
    topos coverage src/logic.py --tests tests/test_logic.py
    topos depgraph generate
    topos cache status
+   topos cache clean --pr 123 --dry-run
    topos mcp
 
 Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
@@ -610,6 +611,12 @@ With no ids in a terminal, both commands open a multi-select checklist.
 ``topos uninstall`` always previews what it will remove and asks first;
 ``topos install status`` is an alias for ``topos status``.
 
+Uninstall removes harness installation state only. It keeps the shared cache
+inventory under ``state_dir()/cache-index`` and reports it as retained, and it
+never enters a repository's Git common directory, so cache leases, locks, and
+worktree registrations stay with that repository. Use ``topos cache clean`` or
+``topos cache prune`` when generated data should be removed.
+
 **Example**
 
 .. code-block:: bash
@@ -729,15 +736,18 @@ summary points back to this command.
 cache
 -----
 
-Inspect the cross-repository inventory of generated data, or discover existing
-PR stores and graph directories under explicit paths. The inventory is a hint:
-status validates markers, commit records, and worktree registrations on disk
-before calling anything managed.
+Inspect the cross-repository inventory of generated data, discover existing PR
+stores and graph directories under explicit paths, and clean up managed PR
+stores. Status is read-only; discovery registers what it finds unless
+``--dry-run`` is passed. Neither adopts a legacy store or authorizes deletion,
+and every cleanup target is revalidated on disk before anything is removed.
 
 .. code-block:: bash
 
    topos cache status [--global] [--sizes] [--json]
    topos cache discover PATH... [--dry-run] [--json]
+   topos cache clean (--pr N | --all-prs) [--global] [--dry-run] [--json] [--yes]
+   topos cache prune --older-than DURATION [--global] [--dry-run] [--json] [--yes]
 
 .. list-table::
    :header-rows: 1
@@ -745,16 +755,29 @@ before calling anything managed.
 
    * - Option
      - Behavior
-   * - ``--global`` (``status``)
-     - Include every known location, not only the current repository. This is
-       a known-location view, not an exhaustive crawl.
+   * - ``--global``
+     - Include every known location, not only the current repository. For
+       ``clean`` and ``prune``, also consider stores recorded in the shared
+       inventory. This is a known-location view, not an exhaustive crawl.
    * - ``--sizes`` (``status``)
      - Recursively estimate bytes in managed directories. Hardlinks,
-       copy-on-write storage, and Git's shared object database mean this is
-       **not** guaranteed reclaimable disk space.
+       copy-on-write storage, and Git's shared object database mean these are
+       **estimates, not guaranteed reclaimable disk space**.
+   * - ``--pr N`` / ``--all-prs`` (``clean``)
+     - Required, mutually exclusive. Clean one pull request's managed store,
+       or every managed PR store in scope.
+   * - ``--older-than DURATION`` (``prune``)
+     - Required. Remove managed stores older than this threshold, for example
+       ``24h``, ``7d``, or ``4w``. Shorter values are raised to the 24-hour
+       minimum grace.
    * - ``--dry-run`` (``discover``)
      - Report what would be registered without writing inventory. Discovery
        never creates ownership markers.
+   * - ``--dry-run`` (``clean`` / ``prune``)
+     - Report what would be removed without changing anything.
+   * - ``--yes``
+     - Skip the confirmation prompt. ``--json`` cannot prompt, so an applying
+       run needs ``--yes``; otherwise preview with ``--dry-run``.
    * - ``--json``
      - Emit the stable ``topos.cache.v1`` document.
 
@@ -762,11 +785,25 @@ PR stores live beside a repository's shared Git directory as
 ``topos-pr-<N>/{base,head}``. Linked worktrees share those PR stores but can
 have separate per-worktree ``.gitnexus`` graphs; those graphs are reported as
 distinct locations. Status labels a marker-free store ``legacy-ambiguous`` and
-does not adopt it.
+does not adopt it. ``clean`` may adopt such a store only after full validation
+of its layout, commit record, worktree registrations, and contents, and never
+as part of a read-only command; ``prune`` never adopts one.
+
+``clean`` is targeted, lease-protected, and idempotent. It refuses a store that
+a concurrent worker holds and reports it as busy, revalidates ownership markers,
+worktree registrations, and contents, and leaves a partial failure retryable:
+rerun the same command after resolving the reported condition. ``prune`` is
+explicit age-based cleanup with a 24-hour minimum grace; no command runs cleanup
+in the background, and there is no garbage-collection daemon. Neither command
+deletes agent snapshots, GitNexus snapshots or registry entries, or an ordinary
+project ``.gitnexus`` graph; those belong to their owners, and GitNexus
+invalidates its own graphs. Only managed PR stores are in scope.
 
 The inventory lives under ``state_dir()/cache-index`` and can be redirected
 with ``TOPOS_CACHE_INDEX_DIR``. That override affects bookkeeping only; the
 operational leases and worktree registrations stay with the repository.
+``topos uninstall`` preserves the inventory, and every other repository-scoped
+lease or lock, because neither is harness installation state.
 
 mcp
 ---

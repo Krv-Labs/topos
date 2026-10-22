@@ -1,16 +1,22 @@
-//! `topos cache` — inspect the cross-repository inventory.
+//! `topos cache` — inspect, discover, and clean managed cache data.
 //!
 //! Status and discovery are deliberately read-only by default. Discovery can
 //! refresh `last_seen` unless `--dry-run` is passed; neither command adopts a
-//! legacy PR store or authorizes deletion.
+//! legacy PR store or authorizes deletion. Cleanup is explicit and
+//! lease-protected, and every target is revalidated on disk before removal.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
-use clap::{Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand};
 use console::Style;
-use topos_mcp::cache::{self, CacheEntryView, DiscoverReport, StatusReport};
+use topos_mcp::cache::{
+    self, CacheEntryView, CleanOptions, DiscoverReport, MaintenanceReport, PruneOptions,
+    StatusReport,
+};
 
 use super::install::report;
+use super::menu;
 use super::render::{guide, paint, RenderOptions};
 
 #[derive(Args)]
@@ -25,6 +31,10 @@ pub enum CacheAction {
     Status(CacheStatusArgs),
     /// Discover existing PR and graph stores under one or more paths.
     Discover(CacheDiscoverArgs),
+    /// Clean managed PR stores for one pull request or all known ones.
+    Clean(CacheCleanArgs),
+    /// Remove old managed PR stores after an explicit age threshold.
+    Prune(CachePruneArgs),
 }
 
 #[derive(Args)]
@@ -53,10 +63,58 @@ pub struct CacheDiscoverArgs {
     pub json: bool,
 }
 
+#[derive(Args)]
+#[command(group(
+    ArgGroup::new("target")
+        .required(true)
+        .args(["pr", "all_prs"])
+))]
+pub struct CacheCleanArgs {
+    /// Clean this pull request's managed store.
+    #[arg(long)]
+    pub pr: Option<u64>,
+    /// Clean every managed PR store in scope.
+    #[arg(long)]
+    pub all_prs: bool,
+    /// Also look up targets in the shared inventory, not only this repository.
+    #[arg(long)]
+    pub global: bool,
+    /// Show what would be removed without changing anything.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Emit the stable `topos.cache.v1` JSON document.
+    #[arg(long)]
+    pub json: bool,
+    /// Skip the confirmation prompt.
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+}
+
+#[derive(Args)]
+pub struct CachePruneArgs {
+    /// Minimum age of a managed store, for example `7d`, `24h`, or `90m`.
+    #[arg(long, value_name = "DURATION")]
+    pub older_than: String,
+    /// Also consider stores recorded in the shared inventory.
+    #[arg(long)]
+    pub global: bool,
+    /// Show what would be removed without changing anything.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Emit the stable `topos.cache.v1` JSON document.
+    #[arg(long)]
+    pub json: bool,
+    /// Skip the confirmation prompt.
+    #[arg(long, short = 'y')]
+    pub yes: bool,
+}
+
 pub fn run(args: CacheArgs) -> Result<(), String> {
     match args.action {
         CacheAction::Status(args) => run_status(args),
         CacheAction::Discover(args) => run_discover(args),
+        CacheAction::Clean(args) => run_clean(args),
+        CacheAction::Prune(args) => run_prune(args),
     }
 }
 
@@ -76,6 +134,227 @@ fn run_discover(args: CacheDiscoverArgs) -> Result<(), String> {
     }
     print_discover_human(&report);
     Ok(())
+}
+
+fn run_clean(args: CacheCleanArgs) -> Result<(), String> {
+    let report = if args.dry_run || args.yes {
+        cache::clean(clean_options(&args, args.dry_run))?
+    } else {
+        confirm_destructive(args.json)?;
+        let preview = cache::clean(clean_options(&args, true))?;
+        if preview.entries.is_empty() {
+            emit_maintenance(&preview, args.json)?;
+            return Ok(());
+        }
+        print_maintenance_human(&preview);
+        let plan = maintenance_plan(&preview);
+        if !menu::run_confirm("Clean these cache stores?", &plan)? {
+            println!("Cancelled.");
+            return Ok(());
+        }
+        cache::clean(clean_options(&args, false))?
+    };
+    emit_maintenance(&report, args.json)?;
+    check_completion(&report)
+}
+
+fn run_prune(args: CachePruneArgs) -> Result<(), String> {
+    let older_than: Duration = cache::cleanup::parse_duration(&args.older_than)?;
+    let options = |dry_run| PruneOptions {
+        older_than,
+        global: args.global,
+        dry_run,
+    };
+    let report = if args.dry_run || args.yes {
+        cache::prune(options(args.dry_run))?
+    } else {
+        confirm_destructive(args.json)?;
+        let preview = cache::prune(options(true))?;
+        if preview.entries.is_empty() {
+            emit_maintenance(&preview, args.json)?;
+            return Ok(());
+        }
+        print_maintenance_human(&preview);
+        let plan = maintenance_plan(&preview);
+        if !menu::run_confirm("Prune these cache stores?", &plan)? {
+            println!("Cancelled.");
+            return Ok(());
+        }
+        cache::prune(options(false))?
+    };
+    emit_maintenance(&report, args.json)?;
+    check_completion(&report)
+}
+
+fn clean_options(args: &CacheCleanArgs, dry_run: bool) -> CleanOptions {
+    CleanOptions {
+        pr: args.pr,
+        all_prs: args.all_prs,
+        global: args.global,
+        dry_run,
+    }
+}
+
+fn confirm_destructive(json: bool) -> Result<(), String> {
+    if json {
+        return Err(
+            "--json cannot prompt; pass --yes to apply, or --dry-run to preview".to_string(),
+        );
+    }
+    let streams = super::interaction::Streams::detect();
+    if streams.stdin && streams.stdout && streams.stderr {
+        return Ok(());
+    }
+    Err("stdin, stdout, and stderr must be terminals to confirm — \
+         re-run with --yes to apply, or --dry-run to preview"
+        .to_string())
+}
+
+fn emit_maintenance(report: &MaintenanceReport, json: bool) -> Result<(), String> {
+    if json {
+        return print_json(report);
+    }
+    print_maintenance_human(report);
+    Ok(())
+}
+
+fn maintenance_plan(report: &MaintenanceReport) -> Vec<String> {
+    report
+        .entries
+        .iter()
+        .map(|entry| {
+            let mut line = format!(
+                "{} — {} · {}",
+                maintenance_title(&entry.kind, entry.pr),
+                entry.action,
+                entry.path
+            );
+            if let Some(reason) = &entry.reason {
+                line.push_str(" · ");
+                line.push_str(reason);
+            }
+            line
+        })
+        .collect()
+}
+
+fn check_completion(report: &MaintenanceReport) -> Result<(), String> {
+    let incomplete = report.totals.partial > 0
+        || report.totals.busy > 0
+        || report.totals.unsafe_skipped > 0
+        || (report.command == "clean" && report.totals.skipped > 0);
+    if !incomplete {
+        return Ok(());
+    }
+    Err(format!(
+        "cache cleanup did not remove every eligible store \
+         ({} skipped, {} partial, {} busy, {} unsafe); \
+         resolve the reported conditions and retry",
+        report.totals.skipped,
+        report.totals.partial,
+        report.totals.busy,
+        report.totals.unsafe_skipped,
+    ))
+}
+
+fn print_maintenance_human(report: &MaintenanceReport) {
+    let opts = RenderOptions::stdout();
+    let title = if report.command == "prune" {
+        "Topos Cache Prune"
+    } else {
+        "Topos Cache Clean"
+    };
+    report::header(title, report.dry_run, opts);
+    if report.entries.is_empty() {
+        report::detail(
+            &paint("○", Style::new().dim(), opts),
+            "no eligible cache stores",
+        );
+    }
+    for entry in &report.entries {
+        println!(
+            "{}  {}  {}",
+            guide('│', opts),
+            paint(
+                maintenance_title(&entry.kind, entry.pr),
+                Style::new().bold(),
+                opts
+            ),
+            paint(&entry.action, maintenance_style(&entry.action), opts)
+        );
+        println!(
+            "{}    {}",
+            guide('│', opts),
+            paint(&entry.path, Style::new().dim(), opts)
+        );
+        let mut facts = Vec::new();
+        if let Some(reason) = &entry.reason {
+            facts.push(reason.clone());
+        }
+        if let Some(bytes) = entry.estimated_bytes {
+            facts.push(format!("~{}", human_bytes(bytes)));
+        }
+        if !facts.is_empty() {
+            println!(
+                "{}    {}",
+                guide('│', opts),
+                paint(facts.join(" · "), Style::new().dim(), opts)
+            );
+        }
+    }
+    for diagnostic in &report.diagnostics {
+        report::note(diagnostic, opts);
+    }
+    let would_remove = report
+        .entries
+        .iter()
+        .filter(|entry| entry.action == "would-remove")
+        .count();
+    let removed = if report.dry_run {
+        format!("{would_remove} would remove")
+    } else {
+        format!("{} removed", report.totals.removed)
+    };
+    let mut footer = format!(
+        "{} candidate{} · {removed} · {} skipped · {} partial",
+        report.totals.candidates,
+        if report.totals.candidates == 1 {
+            ""
+        } else {
+            "s"
+        },
+        report.totals.skipped,
+        report.totals.partial,
+    );
+    if report.totals.busy > 0 {
+        footer.push_str(&format!(" · {} busy", report.totals.busy));
+    }
+    if report.totals.unsafe_skipped > 0 {
+        footer.push_str(&format!(" · {} unsafe", report.totals.unsafe_skipped));
+    }
+    if report.totals.estimated_bytes > 0 {
+        footer.push_str(&format!(
+            " · ~{} estimated in managed directories",
+            human_bytes(report.totals.estimated_bytes)
+        ));
+    }
+    report::footer(&footer, opts);
+}
+
+fn maintenance_title(kind: &str, pr: Option<u64>) -> String {
+    match (kind, pr) {
+        ("pr", Some(pr)) => format!("PR #{pr}"),
+        (kind, _) => kind.to_string(),
+    }
+}
+
+fn maintenance_style(action: &str) -> Style {
+    match action {
+        "removed" | "would-remove" => Style::new().green(),
+        "partial" => Style::new().red(),
+        "skipped" => Style::new().yellow(),
+        _ => Style::new().dim(),
+    }
 }
 
 fn print_json<T: serde::Serialize>(value: &T) -> Result<(), String> {

@@ -355,9 +355,14 @@ recurse into directory recording. Clearing the last harness does *not* delete it
 1. remove entries
 2. purge `.topos.backup` files (only with `--purge-backups`)
 3. read `createdDirs`
-4. prune them
+4. prune them, filtering the state directory and any retained cache path
 5. delete `install.json`
-6. prune the state directory last
+6. prune the state directory last — unless shared cache bookkeeping remains, in
+   which case report the retained path instead
+
+The shared cache inventory under `state_dir()/cache-index` outlives any harness
+registration, so it is not harness installation state and uninstall never
+deletes or empties it. See [`cache-cleanup.md`](cache-cleanup.md).
 
 ## Detect and warn: residue
 

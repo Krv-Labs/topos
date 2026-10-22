@@ -17,6 +17,7 @@ pub mod verdict;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
@@ -51,9 +52,11 @@ pub use self::model::*;
 use self::moves::RangeMoves;
 use self::score::Scoring;
 use self::store::{
-    build_estimate_ms, last_build_ms, pr_store_state, prepare_pr_stores, PrStores, StoreState,
+    build_estimate_ms, last_build_ms, pr_store_state, prepare_pr_stores_with_cancel, PrStores,
+    StoreState,
 };
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
+use crate::cache::{ensure_marker_for_build, PrLease};
 
 pub const DEFAULT_FILE_CAP: usize = 40;
 
@@ -219,8 +222,13 @@ pub fn head_commit(head: &str) -> &str {
 pub enum CouplingPlan {
     /// No graphs this run, and why.
     Unavailable(CouplingStatus),
-    /// Both graphs are built at these commits.
-    Ready(PrStores),
+    /// Both graphs appear built at these commits. The lease is acquired and
+    /// the state re-checked before this plan is trusted.
+    Ready {
+        stores: PrStores,
+        base_sha: String,
+        head_sha: String,
+    },
     /// The graphs need building.
     NeedsBuild {
         pr: u64,
@@ -280,7 +288,11 @@ pub fn plan_coupling(
     };
     let state = pr_store_state(&stores, &base_sha, &head_sha);
     if state == StoreState::Ready {
-        return CouplingPlan::Ready(stores);
+        return CouplingPlan::Ready {
+            stores,
+            base_sha,
+            head_sha,
+        };
     }
     if !gitnexus_available {
         return CouplingPlan::Unavailable(unmeasured(
@@ -305,48 +317,113 @@ pub fn prepare(
     plan: CouplingPlan,
     on_side_done: &(dyn Fn() + Sync),
 ) -> (Option<PrStores>, CouplingStatus) {
+    prepare_with_cancel(root, plan, on_side_done, None)
+}
+
+/// Lease-aware [`prepare`]. A cached store is leased and re-checked before it
+/// is trusted; if its state changed while waiting, the lease is dropped and
+/// the store rebuilt. The returned [`PrStores`] keeps the lease through recap
+/// scoring and releases it only when dropped.
+pub fn prepare_with_cancel(
+    root: &Path,
+    plan: CouplingPlan,
+    on_side_done: &(dyn Fn() + Sync),
+    cancel: Option<&AtomicBool>,
+) -> (Option<PrStores>, CouplingStatus) {
     match plan {
         CouplingPlan::Unavailable(status) => (None, status),
-        CouplingPlan::Ready(stores) => {
-            crate::cache::pr_used(root, stores_pr_number(&stores), &stores.parent);
-            let status = CouplingStatus {
-                measured: true,
-                note: format!("reused from {}", stores.parent.display()),
-                reason: CouplingReason::Cached,
-                estimate_ms: None,
+        CouplingPlan::Ready {
+            stores,
+            base_sha,
+            head_sha,
+        } => {
+            let Some(pr) = stores.pr() else {
+                return (
+                    None,
+                    unmeasured(
+                        CouplingReason::Error,
+                        "PR store is not named topos-pr-<N>".to_string(),
+                    ),
+                );
             };
-            (Some(stores), status)
+            let Some(common) = stores.common_dir() else {
+                return (
+                    None,
+                    unmeasured(
+                        CouplingReason::Error,
+                        "PR store is not inside a Git common directory".to_string(),
+                    ),
+                );
+            };
+            match PrLease::acquire_with_cancel(&common, pr, cancel) {
+                Ok(lease) => {
+                    let leased = stores.with_lease(lease);
+                    if let Err(error) = ensure_marker_for_build(&common, root, pr, &leased.parent) {
+                        return (None, unmeasured(CouplingReason::Error, error));
+                    }
+                    if pr_store_state(&leased, &base_sha, &head_sha) == StoreState::Ready {
+                        crate::cache::pr_used(root, pr, &leased.parent);
+                        let status = CouplingStatus {
+                            measured: true,
+                            note: format!("reused from {}", leased.parent.display()),
+                            reason: CouplingReason::Cached,
+                            estimate_ms: None,
+                        };
+                        return (Some(leased), status);
+                    }
+                    drop(leased);
+                }
+                Err(error) => {
+                    return (
+                        None,
+                        unmeasured(
+                            CouplingReason::Error,
+                            format!("could not lease PR {pr}: {error}"),
+                        ),
+                    );
+                }
+            }
+            finish_build(root, pr, &base_sha, &head_sha, on_side_done, cancel)
         }
         CouplingPlan::NeedsBuild {
             pr,
             base_sha,
             head_sha,
             ..
-        } => match prepare_pr_stores(root, pr, &base_sha, &head_sha, on_side_done) {
-            Ok(stores) => {
-                crate::cache::pr_built(root, pr, &stores.parent);
-                let status = CouplingStatus {
-                    measured: true,
-                    note: format!("built from {}", stores.parent.display()),
-                    reason: CouplingReason::Built,
-                    estimate_ms: None,
-                };
-                (Some(stores), status)
-            }
-            Err(error) => (None, unmeasured(CouplingReason::Error, error)),
-        },
+        } => finish_build(root, pr, &base_sha, &head_sha, on_side_done, cancel),
     }
 }
 
-/// PR number encoded in a `topos-pr-<N>` parent path.
-fn stores_pr_number(stores: &PrStores) -> u64 {
-    stores
-        .parent
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_prefix("topos-pr-"))
-        .and_then(|number| number.parse().ok())
-        .unwrap_or(0)
+fn finish_build(
+    root: &Path,
+    pr: u64,
+    base_sha: &str,
+    head_sha: &str,
+    on_side_done: &(dyn Fn() + Sync),
+    cancel: Option<&AtomicBool>,
+) -> (Option<PrStores>, CouplingStatus) {
+    match prepare_pr_stores_with_cancel(root, pr, base_sha, head_sha, on_side_done, cancel) {
+        Ok(stores) => {
+            if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+                return (
+                    None,
+                    unmeasured(
+                        CouplingReason::Error,
+                        "cancelled while preparing the PR cache".to_string(),
+                    ),
+                );
+            }
+            crate::cache::pr_built(root, pr, &stores.parent);
+            let status = CouplingStatus {
+                measured: true,
+                note: format!("built from {}", stores.parent.display()),
+                reason: CouplingReason::Built,
+                estimate_ms: None,
+            };
+            (Some(stores), status)
+        }
+        Err(error) => (None, unmeasured(CouplingReason::Error, error)),
+    }
 }
 
 /// Hears Pass A as it goes, so `run_recap` can draw a bar without
@@ -632,8 +709,8 @@ fn parse_preset(raw: &str) -> Result<PrGatePreset, String> {
     }
 }
 
-pub(crate) fn pr_recap_sync(params: PrRecapInput) -> CallToolResult {
-    match run_pr_recap(params) {
+fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) -> CallToolResult {
+    match run_pr_recap(params, cancel) {
         Ok(recap) => {
             let markdown = format!(
                 "**PR Recap ({})**: `{}` ({:?}) — {}\nScored {} file(s) (`{}...{}`).",
@@ -654,7 +731,7 @@ pub(crate) fn pr_recap_sync(params: PrRecapInput) -> CallToolResult {
     }
 }
 
-fn run_pr_recap(params: PrRecapInput) -> Result<PrRecap, String> {
+fn run_pr_recap(params: PrRecapInput, cancel: Option<&AtomicBool>) -> Result<PrRecap, String> {
     let project_root = match params.directory.as_deref() {
         Some(directory) => {
             let (resolved, project) = resolve_project_path(directory)?;
@@ -685,7 +762,7 @@ fn run_pr_recap(params: PrRecapInput) -> Result<PrRecap, String> {
         params.no_coupling,
         gitnexus_available(),
     );
-    let (stores, coupling) = prepare(&root, plan, &|| {});
+    let (stores, coupling) = prepare_with_cancel(&root, plan, &|| {}, cancel);
     let mut recap = build_recap(
         &root,
         &base,
@@ -723,7 +800,9 @@ impl ToposServer {
                 &context,
                 Duration::from_secs(300),
                 "Building PR structural recap",
-                move |_cancel_flag, _reporter| Ok(pr_recap_sync(params)),
+                move |cancel_flag, _reporter| {
+                    Ok(pr_recap_sync_with_cancel(params, Some(cancel_flag)))
+                },
             )
             .await
     }
@@ -806,33 +885,39 @@ pub(super) mod tests {
         let (_temp_dir, repo) = write_repo(&[("a.py", &branchy("solve"))]);
         write_files(&repo, &[("a.py", "def solve(x):\n    return x\n")]);
         let repo_path = repo.to_str().expect("utf-8 repo path").to_string();
-        let response = pr_recap_sync(PrRecapInput {
-            directory: Some(repo_path.clone()),
-            pr: None,
-            base: Some("HEAD".to_string()),
-            head: Some(":worktree".to_string()),
-            max_files: DEFAULT_FILE_CAP,
-            no_coupling: true,
-            priority: Some("simple".to_string()),
-            strict: false,
-            preset: Some("recommended".to_string()),
-        });
+        let response = pr_recap_sync_with_cancel(
+            PrRecapInput {
+                directory: Some(repo_path.clone()),
+                pr: None,
+                base: Some("HEAD".to_string()),
+                head: Some(":worktree".to_string()),
+                max_files: DEFAULT_FILE_CAP,
+                no_coupling: true,
+                priority: Some("simple".to_string()),
+                strict: false,
+                preset: Some("recommended".to_string()),
+            },
+            None,
+        );
         let structured = response.structured_content.expect("structured_content");
         assert_eq!(structured["schema"], SCHEMA);
         assert_eq!(structured["check"], "pass");
         assert_eq!(structured["scope"]["files_scored"], 1);
 
-        let invalid_response = pr_recap_sync(PrRecapInput {
-            directory: Some(repo_path),
-            pr: Some(1),
-            base: Some("HEAD".to_string()),
-            head: None,
-            max_files: DEFAULT_FILE_CAP,
-            no_coupling: true,
-            priority: None,
-            strict: false,
-            preset: None,
-        });
+        let invalid_response = pr_recap_sync_with_cancel(
+            PrRecapInput {
+                directory: Some(repo_path),
+                pr: Some(1),
+                base: Some("HEAD".to_string()),
+                head: None,
+                max_files: DEFAULT_FILE_CAP,
+                no_coupling: true,
+                priority: None,
+                strict: false,
+                preset: None,
+            },
+            None,
+        );
         let error = invalid_response.structured_content.expect("error payload");
         assert!(error["error"].as_str().unwrap_or("").contains("not both"));
     }

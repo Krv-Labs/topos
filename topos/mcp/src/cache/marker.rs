@@ -15,6 +15,7 @@ use super::inventory::{atomic_write, now};
 pub const MARKER_FILE: &str = "topos-cache.json";
 pub const DELETE_MARKER_FILE: &str = "topos-delete.json";
 pub const MARKER_SCHEMA: &str = "topos.pr_store.v1";
+pub const DELETE_MARKER_SCHEMA: &str = "topos.pr_store_delete.v1";
 pub const MARKER_LAYOUT: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,6 +28,18 @@ pub struct PrStoreMarker {
     pub created_at: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generator: Option<String>,
+}
+
+/// Written before a managed store is destructively touched, so an interrupted
+/// deletion is recognizably incomplete rather than a foreign directory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PrStoreDeleteMarker {
+    pub schema: String,
+    pub layout: u32,
+    pub pr: u64,
+    pub common_git_dir: String,
+    pub project_root: String,
+    pub started_at: f64,
 }
 
 pub fn marker_path(parent: &Path) -> PathBuf {
@@ -72,16 +85,7 @@ pub fn validate_marker(
             marker.pr
         ));
     }
-    let claimed = normalize_path(Path::new(&marker.common_git_dir));
-    let expected = normalize_path(common_git_dir);
-    if claimed != expected {
-        return Err(format!(
-            "marker common directory {} does not match {}",
-            claimed.display(),
-            expected.display()
-        ));
-    }
-    Ok(())
+    validate_common_dir(&marker.common_git_dir, common_git_dir)
 }
 
 /// Atomically create or replace the marker. Callers must validate any
@@ -108,6 +112,89 @@ pub fn write_marker(
         .map_err(|error| format!("serializing PR store marker: {error}"))?;
     atomic_write(&marker_path(parent), &bytes)?;
     Ok(marker)
+}
+
+pub fn delete_marker_path(parent: &Path) -> PathBuf {
+    parent.join(DELETE_MARKER_FILE)
+}
+
+pub fn read_delete_marker(parent: &Path) -> Result<Option<PrStoreDeleteMarker>, String> {
+    let path = delete_marker_path(parent);
+    let metadata = match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("reading {}: {error}", path.display())),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!("{} is not a regular file", path.display()));
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("reading {}: {error}", path.display()))?;
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|error| format!("malformed {}: {error}", path.display()))
+}
+
+pub fn validate_delete_marker(
+    marker: &PrStoreDeleteMarker,
+    common_git_dir: &Path,
+    pr: u64,
+) -> Result<(), String> {
+    if marker.schema != DELETE_MARKER_SCHEMA {
+        return Err(format!(
+            "unsupported delete marker schema '{}'",
+            marker.schema
+        ));
+    }
+    if marker.layout != MARKER_LAYOUT {
+        return Err(format!(
+            "unsupported delete marker layout {} (expected {MARKER_LAYOUT})",
+            marker.layout
+        ));
+    }
+    if marker.pr != pr {
+        return Err(format!(
+            "delete marker names PR {} but the directory is PR {pr}",
+            marker.pr
+        ));
+    }
+    validate_common_dir(&marker.common_git_dir, common_git_dir)
+}
+
+/// Atomically create or replace the deletion marker.
+pub fn write_delete_marker(
+    parent: &Path,
+    common_git_dir: &Path,
+    project_root: &Path,
+    pr: u64,
+) -> Result<PrStoreDeleteMarker, String> {
+    let marker = PrStoreDeleteMarker {
+        schema: DELETE_MARKER_SCHEMA.to_string(),
+        layout: MARKER_LAYOUT,
+        pr,
+        common_git_dir: normalize_path(common_git_dir)
+            .to_string_lossy()
+            .into_owned(),
+        project_root: normalize_path(project_root).to_string_lossy().into_owned(),
+        started_at: now(),
+    };
+    let bytes = serde_json::to_vec_pretty(&marker)
+        .map_err(|error| format!("serializing PR store delete marker: {error}"))?;
+    atomic_write(&delete_marker_path(parent), &bytes)?;
+    Ok(marker)
+}
+
+fn validate_common_dir(claimed: &str, common_git_dir: &Path) -> Result<(), String> {
+    let claimed = normalize_path(Path::new(claimed));
+    let expected = normalize_path(common_git_dir);
+    if claimed != expected {
+        return Err(format!(
+            "marker common directory {} does not match {}",
+            claimed.display(),
+            expected.display()
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

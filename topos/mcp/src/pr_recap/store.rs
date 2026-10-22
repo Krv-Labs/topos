@@ -10,18 +10,31 @@
 //! quick enough to run before deciding whether to ask about a build.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Instant, SystemTime};
 
-use topos_engine::adapters::gitnexus::{generate_depgraph, GITNEXUS_FINGERPRINT_FILE};
+use topos_engine::adapters::gitnexus::{generate_depgraph_with_cancel, GITNEXUS_FINGERPRINT_FILE};
 
 use super::gh::{git, git_common_dir, resolve_commit};
+use crate::cache::{
+    admin_gitdir_matches, checkout_blockers, ensure_marker_for_build, registration_admin_dir,
+    registration_for, remove_disposable_graph, remove_stale_registration, repo_for_common,
+    validate_store_marker, worktree_registrations, LeaseError, PrLease, RepositoryLock,
+    StoreIdentity,
+};
 
 /// Paths to the worktrees (and their shared parent) backing a PR's coupling
 /// graphs.
+///
+/// A store produced by [`prepare_pr_stores`] owns its PR lease until this value
+/// drops. [`PrStores::at`] is deliberately lease-free for tests and for
+/// read-only callers that only inspect paths.
+#[derive(Debug)]
 pub struct PrStores {
     pub parent: PathBuf,
     pub base: PathBuf,
     pub head: PathBuf,
+    lease: Option<PrLease>,
 }
 
 impl PrStores {
@@ -38,11 +51,54 @@ impl PrStores {
             base: parent.join("base"),
             head: parent.join("head"),
             parent,
+            lease: None,
         }
     }
 
     pub fn commits_path(&self) -> PathBuf {
         self.parent.join("commits")
+    }
+
+    /// The common Git directory this store belongs to, when the parent is a
+    /// `topos-pr-<N>` slot.
+    pub fn common_dir(&self) -> Option<PathBuf> {
+        self.parent.parent().map(Path::to_path_buf)
+    }
+
+    pub fn pr(&self) -> Option<u64> {
+        self.parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("topos-pr-"))
+            .and_then(|number| number.parse().ok())
+    }
+
+    pub fn lease(&self) -> Option<&PrLease> {
+        self.lease.as_ref()
+    }
+
+    pub fn is_leased(&self) -> bool {
+        self.lease.is_some()
+    }
+
+    pub(crate) fn with_lease(mut self, lease: PrLease) -> Self {
+        self.lease = Some(lease);
+        self
+    }
+
+    fn acquire_lease(self, cancel: Option<&AtomicBool>) -> Result<Self, LeaseError> {
+        let Some(common) = self.common_dir() else {
+            return Err(LeaseError::Io(
+                "PR store is not inside a Git common directory".to_string(),
+            ));
+        };
+        let Some(pr) = self.pr() else {
+            return Err(LeaseError::Io(
+                "PR store is not named topos-pr-<N>".to_string(),
+            ));
+        };
+        let lease = PrLease::acquire_with_cancel(&common, pr, cancel)?;
+        Ok(self.with_lease(lease))
     }
 }
 
@@ -195,26 +251,65 @@ pub fn prepare_pr_stores(
     head_sha: &str,
     on_side_done: &(dyn Fn() + Sync),
 ) -> Result<PrStores, String> {
+    prepare_pr_stores_with_cancel(repo_root, pr, base_sha, head_sha, on_side_done, None)
+}
+
+/// [`prepare_pr_stores`] that can abandon a wait for the PR lease, and that
+/// passes cancellation into both graph builds. Once the lease is owned it is
+/// held through the returned [`PrStores`] and released only when that value
+/// drops.
+pub fn prepare_pr_stores_with_cancel(
+    repo_root: &Path,
+    pr: u64,
+    base_sha: &str,
+    head_sha: &str,
+    on_side_done: &(dyn Fn() + Sync),
+    cancel: Option<&AtomicBool>,
+) -> Result<PrStores, String> {
     let stores = PrStores::locate(repo_root, pr)?;
+    let stores = stores.acquire_lease(cancel).map_err(|error| match error {
+        LeaseError::Cancelled => "cancelled while waiting for the PR cache lease".to_string(),
+        error => format!("could not lease PR {pr}: {error}"),
+    })?;
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err("cancelled before preparing the PR cache".to_string());
+    }
+    let common = stores
+        .common_dir()
+        .ok_or_else(|| "PR store is not inside a Git common directory".to_string())?;
+    // Validate or establish ownership before trusting even a store whose
+    // commits and both graphs already look ready. A Ready directory that is
+    // foreign, redirected, or a partial legacy store must not be reused.
+    ensure_marker_for_build(&common, repo_root, pr, &stores.parent)?;
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err("cancelled before preparing the PR cache".to_string());
+    }
     if pr_store_state(&stores, base_sha, head_sha) == StoreState::Ready {
         return Ok(stores);
     }
 
     let started = Instant::now();
-    match std::fs::remove_file(stores.commits_path()) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("clearing graph commits: {e}")),
+    match std::fs::symlink_metadata(stores.commits_path()) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("reading graph commits: {error}")),
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+            return Err("graph commits is not a regular file".to_string());
+        }
+        Ok(_) => std::fs::remove_file(stores.commits_path())
+            .map_err(|error| format!("clearing graph commits: {error}"))?,
     }
     std::fs::create_dir_all(&stores.parent)
         .map_err(|e| format!("creating graph worktrees: {e}"))?;
     ensure_worktree(repo_root, &stores.base, base_sha)?;
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err("cancelled before preparing the PR cache".to_string());
+    }
     ensure_worktree(repo_root, &stores.head, head_sha)?;
 
     let (base_result, head_result) = std::thread::scope(|scope| {
         let [base_job, head_job] = [&stores.base, &stores.head].map(|path| {
             scope.spawn(move || {
-                let result = generate_depgraph(path, true, None);
+                let result = generate_depgraph_with_cancel(path, true, None, cancel);
                 on_side_done();
                 result
             })
@@ -223,6 +318,9 @@ pub fn prepare_pr_stores(
     });
     let base_result = base_result.map_err(|_| "base graph generation failed".to_string())?;
     let head_result = head_result.map_err(|_| "head graph generation failed".to_string())?;
+    if cancel.is_some_and(|flag| flag.load(Ordering::Relaxed)) {
+        return Err("cancelled while building the PR graphs".to_string());
+    }
     if !base_result.ok {
         return Err(format!("base graph: {}", base_result.message));
     }
@@ -236,34 +334,98 @@ pub fn prepare_pr_stores(
     Ok(stores)
 }
 
-/// Check out `sha`, detached, at `path`: a worktree of `repo` that topos
-/// owns. A worktree already on `sha` is left alone, graph included. One on
-/// another commit is forced onto `sha` and stripped of every untracked and
-/// ignored file — the old `.gitnexus/` with them — so the next graph can
-/// only reflect `sha`. A directory git no longer tracks as a worktree (or a
-/// registration whose directory was deleted) is rebuilt from scratch.
+/// Check out `sha`, detached, at one side of a marked store.
+///
+/// A checkout already at `sha` is left untouched, graph included. A checkout
+/// on another commit is forced only after `git status` proves there is no
+/// content outside `.gitnexus/`; that generated directory alone is removed.
+/// A missing directory is recreated with `git worktree add --detach`. A stale
+/// registration is forgotten only when its `worktrees/<id>/gitdir` names this
+/// exact path. Existing unregistered content is reported, never deleted.
 pub fn ensure_worktree(repo: &Path, path: &Path, sha: &str) -> Result<(), String> {
     let wanted = resolve_commit(repo, sha)?;
-    if path.join(".git").exists() {
-        if let Ok(current) = git(path, &["rev-parse", "HEAD"]) {
-            if current.trim() == wanted {
-                return Ok(());
-            }
-            git(
-                path,
-                &["checkout", "--quiet", "--force", "--detach", &wanted],
-            )
-            .map_err(|e| format!("could not check out {sha}: {e}"))?;
-            git(path, &["clean", "-ffdxq"])?;
-            return Ok(());
+    let identity = store_side(repo, path)?;
+    validate_store_marker(&identity.common_dir, identity.pr, &identity.parent)?;
+    let repo_root = repo_for_common(&identity.common_dir);
+
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Some(metadata),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("reading {}: {error}", path.display())),
+    };
+    if let Some(metadata) = &metadata {
+        if metadata.file_type().is_symlink() {
+            return Err(format!(
+                "{} is a symlink; refusing to touch it",
+                path.display()
+            ));
+        }
+        if !metadata.is_dir() {
+            return Err(format!("{} is not a directory", path.display()));
         }
     }
-    if path.exists() {
-        std::fs::remove_dir_all(path)
-            .map_err(|e| format!("removing broken worktree {}: {e}", path.display()))?;
+    let registrations = worktree_registrations(&repo_root)
+        .map_err(|error| format!("could not read worktree registrations: {error}"))?;
+    let registered = registration_for(&registrations, path).is_some();
+
+    if metadata.is_some() {
+        if !registered {
+            return Err(format!(
+                "{} exists but is not a registered worktree; refusing to modify it",
+                path.display()
+            ));
+        }
+        let registration =
+            registration_for(&registrations, path).expect("registered was just checked");
+        if registration.locked {
+            return Err(format!("{} is a locked Git worktree", path.display()));
+        }
+        if registration.branch.is_some() || !registration.detached {
+            return Err(format!(
+                "{} is attached to a branch instead of a detached commit",
+                path.display()
+            ));
+        }
+        let admin = registration_admin_dir(&identity.common_dir, path)?.ok_or_else(|| {
+            format!(
+                "{} has no Git admin directory; refusing to modify it",
+                path.display()
+            )
+        })?;
+        if !admin_gitdir_matches(&admin, path) {
+            return Err(format!(
+                "{} is claimed by an admin directory that does not name it",
+                path.display()
+            ));
+        }
+        if git(path, &["rev-parse", "HEAD"])
+            .ok()
+            .is_some_and(|current| current.trim() == wanted)
+        {
+            return Ok(());
+        }
+        checkout_blockers(path)?;
+        git(
+            path,
+            &["checkout", "--quiet", "--force", "--detach", &wanted],
+        )
+        .map_err(|e| format!("could not check out {sha}: {e}"))?;
+        remove_disposable_graph(path)?;
+        return Ok(());
     }
-    // Forget a registration whose directory is gone, or `add` refuses the path.
-    git(repo, &["worktree", "prune"])?;
+
+    let _lock = RepositoryLock::acquire(&identity.common_dir)
+        .map_err(|error| format!("could not acquire the repository worktree lock: {error}"))?;
+    // Another process may have created the directory while we waited.
+    if std::fs::symlink_metadata(path).is_ok() {
+        return Err(format!(
+            "{} appeared while preparing the store; refusing to replace it",
+            path.display()
+        ));
+    }
+    if registered || registration_admin_dir(&identity.common_dir, path)?.is_some() {
+        remove_stale_registration(&identity.common_dir, path)?;
+    }
     git(
         repo,
         &[
@@ -275,12 +437,48 @@ pub fn ensure_worktree(repo: &Path, path: &Path, sha: &str) -> Result<(), String
         ],
     )
     .map(|_| ())
-    .map_err(|e| format!("could not check out {sha}: {e}"))
+    .map_err(|e| format!("could not check out {sha}: {e}"))?;
+    Ok(())
+}
+
+/// Resolve `path` to the exact base/head side of a `topos-pr-<N>` slot.
+fn store_side(repo: &Path, path: &Path) -> Result<StoreIdentity, String> {
+    let common = git_common_dir(repo)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("{} is not a base/head side", path.display()))?;
+    if !matches!(name, "base" | "head") {
+        return Err(format!("{} is not a base/head side", path.display()));
+    }
+    let pr = parent
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix("topos-pr-"))
+        .and_then(|number| number.parse::<u64>().ok())
+        .ok_or_else(|| format!("{} is not a topos-pr-<N> store", parent.display()))?;
+    crate::cache::identity(&common, pr, parent)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cache::write_marker;
+
+    fn mark_store(repo: &Path, parent: &Path) {
+        std::fs::create_dir_all(parent).unwrap();
+        let common = git_common_dir(repo).unwrap();
+        let pr = parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("topos-pr-"))
+            .and_then(|number| number.parse().ok())
+            .unwrap();
+        write_marker(parent, &common, repo, pr, Some("test".to_string())).unwrap();
+    }
 
     fn stores() -> (tempfile::TempDir, PrStores) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -435,15 +633,27 @@ mod tests {
     }
 
     #[test]
-    fn ensure_worktree_moves_a_stale_checkout_and_drops_its_graph() {
+    fn ensure_worktree_requires_a_clean_checkout_before_moving_commits() {
         let (_keep, repo, first, second) = two_commit_repo();
         let tree = repo.join(".git/topos-pr-1/head");
+        mark_store(&repo, &repo.join(".git/topos-pr-1"));
         ensure_worktree(&repo, &tree, &first).unwrap();
         assert_eq!(head_of(&tree), first);
         std::fs::create_dir_all(tree.join(".gitnexus")).unwrap();
         std::fs::write(tree.join("src/stray.py"), "y = 1\n").unwrap();
         std::fs::write(tree.join("src/a.py"), "x = 99\n").unwrap();
 
+        let error = ensure_worktree(&repo, &tree, &second).unwrap_err();
+        assert!(error.contains("stray.py"), "{error}");
+        assert_eq!(head_of(&tree), first, "a blocked checkout did not move");
+        assert_eq!(
+            std::fs::read_to_string(tree.join("src/a.py")).unwrap(),
+            "x = 99\n",
+            "user modifications are preserved"
+        );
+
+        std::fs::remove_file(tree.join("src/stray.py")).unwrap();
+        git(&tree, &["checkout", "--", "src/a.py"]).unwrap();
         ensure_worktree(&repo, &tree, &second).unwrap();
 
         assert_eq!(head_of(&tree), second);
@@ -459,6 +669,7 @@ mod tests {
     fn ensure_worktree_keeps_the_graph_of_a_current_checkout() {
         let (_keep, repo, first, _) = two_commit_repo();
         let tree = repo.join(".git/topos-pr-1/base");
+        mark_store(&repo, &repo.join(".git/topos-pr-1"));
         ensure_worktree(&repo, &tree, &first).unwrap();
         std::fs::create_dir_all(tree.join(".gitnexus")).unwrap();
 
@@ -472,6 +683,7 @@ mod tests {
     fn ensure_worktree_recovers_a_deleted_worktree_directory() {
         let (_keep, repo, first, second) = two_commit_repo();
         let tree = repo.join(".git/topos-pr-1/head");
+        mark_store(&repo, &repo.join(".git/topos-pr-1"));
         ensure_worktree(&repo, &tree, &first).unwrap();
         std::fs::remove_dir_all(&tree).unwrap();
 
@@ -481,31 +693,55 @@ mod tests {
     }
 
     #[test]
-    fn ensure_worktree_replaces_a_directory_git_does_not_know() {
+    fn ensure_worktree_refuses_a_directory_git_does_not_know() {
         let (_keep, repo, first, _) = two_commit_repo();
-        let tree = repo.join(".git/topos-pr-1/base");
+        let parent = repo.join(".git/topos-pr-1");
+        mark_store(&repo, &parent);
+        let tree = parent.join("base");
         std::fs::create_dir_all(&tree).unwrap();
         std::fs::write(tree.join("leftover.py"), "z = 1\n").unwrap();
 
-        ensure_worktree(&repo, &tree, &first).unwrap();
+        let error = ensure_worktree(&repo, &tree, &first).unwrap_err();
 
-        assert_eq!(head_of(&tree), first);
-        assert!(!tree.join("leftover.py").exists());
+        assert!(error.contains("not a registered worktree"), "{error}");
+        assert!(tree.join("leftover.py").exists());
     }
 
     #[test]
-    fn prepare_pr_stores_forgets_old_commits_before_rebuilding() {
+    fn prepare_pr_stores_refuses_an_unowned_partial_store() {
         let (_keep, repo, first, second) = two_commit_repo();
         let parent = repo.join(".git/topos-pr-1");
         std::fs::create_dir_all(&parent).unwrap();
         std::fs::write(parent.join("commits"), format!("{first}\n{first}\n")).unwrap();
 
-        // An unresolvable head fails before any graph is built; the stale
-        // record must already be gone so no later run trusts it.
-        let err = prepare_pr_stores(&repo, 1, &second, "0000000", &|| {}).err();
+        let error = prepare_pr_stores(&repo, 1, &second, "0000000", &|| {}).unwrap_err();
 
-        assert!(err.is_some_and(|e| e.contains("could not resolve")));
+        assert!(
+            error.contains("no ownership marker") || error.contains("commits"),
+            "{error}"
+        );
+        assert!(
+            parent.join("commits").exists(),
+            "unowned content is preserved"
+        );
+        assert!(!parent.join("topos-cache.json").exists());
+    }
+
+    #[test]
+    fn a_failed_managed_build_leaves_a_marked_partial_store() {
+        let (_keep, repo, first, second) = two_commit_repo();
+        let parent = repo.join(".git/topos-pr-1");
+        mark_store(&repo, &parent);
+        std::fs::write(parent.join("commits"), format!("{first}\n{first}\n")).unwrap();
+
+        // An unresolvable head fails before any graph is built; the stale
+        // record must already be gone and the marker must remain so cleanup
+        // can reclaim the partial store.
+        let error = prepare_pr_stores(&repo, 1, &second, "0000000", &|| {}).unwrap_err();
+
+        assert!(error.contains("could not resolve"), "{error}");
         assert!(!parent.join("commits").exists());
+        assert!(parent.join("topos-cache.json").exists());
     }
 
     /// Run from a linked worktree, whose `.git` is a file, the stores land
@@ -533,6 +769,7 @@ mod tests {
             canonical(stores.parent.parent().unwrap()),
             canonical(&repo.join(".git"))
         );
+        mark_store(&linked, &stores.parent);
         ensure_worktree(&linked, &stores.base, &first).unwrap();
         assert_eq!(head_of(&stores.base), first);
     }

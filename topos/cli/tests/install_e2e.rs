@@ -519,6 +519,85 @@ fn install_then_uninstall_leaves_no_file_and_no_directory_behind() {
     fs::remove_dir_all(&home).ok();
 }
 
+/// The shared cache inventory is not harness installation state. A full
+/// uninstall must take the harnesses out and leave the inventory — and the
+/// state directory holding it — exactly where it was, saying so on the human
+/// output instead of pruning silently.
+#[test]
+fn a_cache_inventory_survives_a_full_uninstall_and_is_reported() {
+    let home = scratch_home("cache-inventory");
+    // Pre-create the `never_prune` roots install would otherwise create and
+    // uninstall could never take back, plus `~/.local/state`, matching a
+    // machine where another XDG tool already created it. The inventory below
+    // is the only reason the `topos` state directory itself has to survive.
+    mkdirs(
+        &home,
+        &[
+            ".config",
+            ".local/state",
+            support_root(&home)
+                .strip_prefix(&home)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        ],
+    );
+    let inventory = seed(
+        &home,
+        ".local/state/topos/cache-index/entries/pr-example.json",
+        "{\"schema\":\"topos.cache_entry.v1\"}\n",
+    );
+    let before = snapshot(&home);
+
+    topos(&home, &["install", "--all"]).expect_code(0);
+    assert_eq!(status_json(&home)["active"], 10);
+
+    let uninstall = topos(&home, &["uninstall", "--all"]).expect_code(0);
+    assert_eq!(status_json(&home)["active"], 0);
+
+    // The inventory is byte-identical, and the ledger and update-check cache
+    // that were harness installation state are gone.
+    assert_eq!(
+        fs::read(&inventory).unwrap(),
+        b"{\"schema\":\"topos.cache_entry.v1\"}\n",
+        "uninstall changed the shared cache inventory"
+    );
+    assert!(!home.join(".local/state/topos/install.json").exists());
+    assert!(!home.join(".local/state/topos/update-check.json").exists());
+    assert!(
+        home.join(".local/state/topos").is_dir(),
+        "uninstall pruned the state directory holding the inventory"
+    );
+
+    // Retention is visible rather than silent.
+    assert!(
+        uninstall.stdout.contains("cache-index"),
+        "uninstall did not name the retained inventory:\n{}",
+        uninstall.stdout
+    );
+    assert!(
+        uninstall.stdout.contains("not harness installation state"),
+        "uninstall did not distinguish retained cache data:\n{}",
+        uninstall.stdout
+    );
+
+    // Stronger than the individual assertions: outside the pre-existing
+    // inventory tree, the full install/uninstall round trip left no trace.
+    let after = snapshot(&home);
+    assert!(
+        after == before,
+        "uninstall left a trace beyond the retained cache inventory\n\
+         files added: {:?}\nfiles removed: {:?}\n\
+         dirs added: {:?}\ndirs removed: {:?}",
+        added(before.files.keys(), after.files.keys()),
+        added(after.files.keys(), before.files.keys()),
+        added(before.dirs.iter(), after.dirs.iter()),
+        added(after.dirs.iter(), before.dirs.iter()),
+    );
+
+    fs::remove_dir_all(&home).ok();
+}
+
 // ---------------------------------------------------------------------------
 // 3. The recorded command is an absolute path.
 // ---------------------------------------------------------------------------

@@ -123,7 +123,7 @@ Restart the agents you configured, then ask:
 
 
 > [!IMPORTANT]
-> Too many tools spray MCP servers across agent JSON files, scatter symlinks around your machine, then leave you to burn half a Claude session untangling the mess—or pull your own hair out doing it. Topos does not play that game. We follow a leave-no-trace policy: `topos status` shows every registration, while **`topos uninstall` opens the same selector, previews exactly what will change, and removes everything Topos installed.** If Topos makes it easy to do, it should be just as easy to undo.
+> Too many tools spray MCP servers across agent JSON files, scatter symlinks around your machine, then leave you to burn half a Claude session untangling the mess—or pull your own hair out doing it. Topos does not play that game. We follow a leave-no-trace policy for harness installation state: `topos status` shows every registration, while **`topos uninstall` opens the same selector, previews exactly what will change, and removes everything it added to your harness configs.** Shared cache bookkeeping and repository-scoped cache leases are not installation state, so uninstall leaves them alone and reports any shared bookkeeping it keeps; generated PR caches are removed only by an explicit `topos cache clean` or `topos cache prune`. If Topos makes it easy to do, it should be just as easy to undo.
 >
 > ```bash
 > topos status

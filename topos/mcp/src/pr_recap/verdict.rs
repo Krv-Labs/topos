@@ -369,8 +369,8 @@ pub fn project_rollup(files: &[FileRecap]) -> Option<ProjectRollup> {
     let regression = Generator::ALL.into_iter().any(|generator| {
         before_achieved.contains(&generator) && !after_achieved.contains(&generator)
     });
-    let decisions_before = existing.iter().filter_map(|f| f.decisions_before).sum();
-    let decisions_after = existing.iter().filter_map(|f| f.decisions_after).sum();
+    let decisions_before = existing.iter().map(|f| f.decisions_before).sum();
+    let decisions_after = existing.iter().map(|f| f.decisions_after).sum();
     Some(ProjectRollup {
         medal_before: medal(verdict_from_generators(&before_achieved)),
         medal_after: medal(verdict_from_generators(&after_achieved)),
@@ -422,7 +422,7 @@ pub fn added_rollup(files: &[FileRecap]) -> Option<AddedRollup> {
             },
         );
     }
-    let decisions = added.iter().filter_map(|f| f.decisions_after).sum();
+    let decisions = added.iter().map(|f| f.decisions_after).sum();
     Some(AddedRollup {
         files: added.len(),
         medal: medal(verdict_from_generators(&achieved)),

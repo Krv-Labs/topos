@@ -334,9 +334,11 @@ pub struct ProjectRollup {
     /// Existing files compared; equal, since both sides are the same files.
     pub files_before: usize,
     pub files_after: usize,
-    /// Total control-flow decision points (`Σ cfg.cyclomatic`) across existing files at base and head.
-    pub decisions_before: usize,
-    pub decisions_after: usize,
+    /// Total control-flow decision points (`Σ cfg.cyclomatic`) across existing files at base.
+    /// `None` when any existing file lacks a measurement on this side.
+    pub decisions_before: Option<usize>,
+    /// Total at head; `None` when any existing file lacks a measurement at head.
+    pub decisions_after: Option<usize>,
 }
 
 /// One pillar over the added files, at head.
@@ -359,7 +361,8 @@ pub struct AddedRollup {
     pub medal: Medal,
     pub pillars: BTreeMap<String, AddedPillar>,
     /// Total control-flow decision points (`Σ cfg.cyclomatic`) across added files at head.
-    pub decisions: usize,
+    /// `None` when any added file lacks a measurement.
+    pub decisions: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]

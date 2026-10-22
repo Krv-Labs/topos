@@ -909,7 +909,7 @@ mod tests {
         let recap = recap(&repo, "HEAD~1", "HEAD", 40);
         let project = recap.project.expect("one existing file");
         assert_eq!((project.files_before, project.files_after), (1, 1));
-        assert!(project.decisions_before > 0);
+        assert!(project.decisions_before.is_some_and(|count| count > 0));
         assert_eq!(project.decisions_before, project.decisions_after);
         let simple = &project.pillars["simple"];
         assert_eq!((simple.files_before, simple.files_after), (1, 1));
@@ -917,7 +917,63 @@ mod tests {
         assert_eq!(simple.before_score, simple.after_score);
         let added = recap.added.expect("one new file");
         assert_eq!(added.files, 1);
-        assert!(added.decisions > 0);
+        assert!(added.decisions.is_some_and(|count| count > 0));
+    }
+
+    #[test]
+    fn rollup_decisions_preserve_missing_measurements_on_each_side() {
+        let valid = "def pick(x):\n    if x:\n        return 1\n    return 0\n";
+        let invalid = "def pick(x):\n    if x\n        return 1\n    return 0\n";
+        for (before, after, expected_before, expected_after) in [
+            (valid, invalid, Some(3), None),
+            (invalid, valid, None, Some(3)),
+        ] {
+            let (_keep, repo) = write_repo(&[
+                ("src/a.py", before),
+                ("src/b.py", "def stable():\n    return 1\n"),
+            ]);
+            write_files(
+                &repo,
+                &[
+                    ("src/a.py", after),
+                    ("src/b.py", "def stable():\n    return 2\n"),
+                ],
+            );
+            commit_all(&repo, "change both files");
+            let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+            let project = recap.project.as_ref().unwrap();
+            assert_eq!(project.files_before, 2);
+            assert_eq!(project.decisions_before, expected_before);
+            assert_eq!(project.decisions_after, expected_after);
+            let json = serde_json::to_value(&recap).unwrap();
+            assert_eq!(
+                json["project"]["decisions_before"],
+                serde_json::json!(expected_before)
+            );
+            assert_eq!(
+                json["project"]["decisions_after"],
+                serde_json::json!(expected_after)
+            );
+        }
+    }
+
+    #[test]
+    fn added_decisions_are_unknown_when_any_added_file_does_not_parse() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        write_files(
+            &repo,
+            &[
+                ("src/a.py", "def broken(:\n"),
+                ("src/b.py", "def ready():\n    return 1\n"),
+            ],
+        );
+        commit_all(&repo, "add invalid and valid files");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 40);
+        let added = recap.added.as_ref().unwrap();
+        assert_eq!(added.files, 2);
+        assert_eq!(added.decisions, None);
+        let json = serde_json::to_value(&recap).unwrap();
+        assert!(json["added"]["decisions"].is_null());
     }
 
     #[test]

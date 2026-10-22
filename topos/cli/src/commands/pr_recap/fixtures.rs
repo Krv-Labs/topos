@@ -273,8 +273,8 @@ fn rollup(before: &str, after: &str, regression: bool, lost: &[&str]) -> Rollup 
         regression,
         files_before: 23,
         files_after: 23,
-        decisions_before: 223,
-        decisions_after: 240,
+        decisions_before: Some(223),
+        decisions_after: Some(240),
     }
 }
 

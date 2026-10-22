@@ -548,6 +548,14 @@ The ``direction`` field in ``--json`` (``IMPROVEMENT``, ``SCORE DOWN``,
 ``LATERAL``, ...) says which way the structure moved and never changes the
 exit code.
 
+In ``--json``, ``project.decisions_before`` and ``project.decisions_after``
+sum ``cfg.cyclomatic`` across the scored existing files at base and head;
+``added.decisions`` sums it across scored added files at head. Each total
+is ``null`` if any file in that population lacks a measurement on that
+side (for example, because it did not parse), rather than reporting a
+partial sum as a complete total. Files excluded by ``--max-files`` are
+listed as skipped and the recap is marked incomplete.
+
 .. note::
    Structural direction is not proof that tests or behavior still pass.
    ``pr-recap`` is a deterministic structural debt ledger and pre-review

@@ -9,9 +9,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-22
+
 ### Added
 
-- Add `decisions_before` and `decisions_after` (`Σ cfg.cyclomatic`) to `ProjectRollup` and `decisions` to `AddedRollup` in `topos.pr_recap.v3` (`null` when any file in the rollup lacks a measurement on that side), and clarify in `non_claim`, CLI `--help`, Sphinx docs, and agent skills that `topos pr-recap` is a deterministic structural debt ledger and pre-review coaching aid rather than a semantic correctness check or binary AI-slop classifier (#452).
+- Add `decisions_before` and `decisions_after` (`Σ cfg.cyclomatic`) to `ProjectRollup` and `decisions` to `AddedRollup` in `topos.pr_recap.v3` (`null` when any file in the rollup lacks a measurement on that side), and clarify in `non_claim`, CLI `--help`, Sphinx docs, and agent skills that `topos pr-recap` is a deterministic structural debt ledger and pre-review coaching aid rather than a semantic correctness check or binary AI-slop classifier (#452). The 16-gate `pr-recap` presets (`relaxed`, `recommended`, `strict`) and structural debt ledger are calibrated on 1,609 pull requests across 10 open-source repositories (`518` reviewer-closed PRs, `276` merged first-time contributor controls, and `815` merged maintainer PRs; `recommended` holds ≤ 5% warn+block FPR on first-time contributors at 4.0% and 1.8% block FPR); see [topos.krv.ai/pr-recap.html](https://topos.krv.ai/pr-recap.html) and [`docs/graphs-for-pr-filtering.md`](https://github.com/Krv-Labs/topos-leaderboard/blob/main/docs/graphs-for-pr-filtering.md) in `topos-leaderboard` ([Krv-Labs/topos-leaderboard#26](https://github.com/Krv-Labs/topos-leaderboard/pull/26)).
 - Add `--format markdown` and `--no-marker` to `topos pr-recap` so GitHub-flavored markdown recaps can be embedded inside another bot's comment without the sticky `<!-- topos-pr-recap:v2 -->` marker (#449).
 - Add `--advisory` and `--fail-on [block|warn|never]` (`pr_gate.fail_on = "never"` in `topos.toml`) to `topos pr-recap` so CI workflows can render the full gate verdict while exiting `0`, and document `pr-recap` exit codes (`0` passed/advisory, `1` gate failed, `2` input/runtime error) (#448).
 

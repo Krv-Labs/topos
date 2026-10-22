@@ -273,6 +273,8 @@ fn rollup(before: &str, after: &str, regression: bool, lost: &[&str]) -> Rollup 
         regression,
         files_before: 23,
         files_after: 23,
+        decisions_before: 223,
+        decisions_after: 240,
     }
 }
 
@@ -346,7 +348,7 @@ fn recap_of(
         deleted: Vec::new(),
         hotspots: Vec::new(),
         hotspots_total: 0,
-        non_claim: "Structural direction is not proof that tests or behavior still pass.",
+        non_claim: "Structural direction is not proof that tests or behavior still pass, and PR recap is a structural debt ledger and pre-review coaching aid rather than a semantic correctness or AI-slop classifier.",
     }
 }
 

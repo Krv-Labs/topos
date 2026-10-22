@@ -550,6 +550,9 @@ exit code.
 
 .. note::
    Structural direction is not proof that tests or behavior still pass.
+   ``pr-recap`` is a deterministic structural debt ledger and pre-review
+   coaching aid, not a semantic correctness check or a binary AI-slop
+   classifier.
 
 Other commands
 ===============

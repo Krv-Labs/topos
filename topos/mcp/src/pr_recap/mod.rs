@@ -566,7 +566,7 @@ pub fn build_recap(
         deleted: diff.deleted,
         hotspots,
         hotspots_total,
-        non_claim: "Structural direction is not proof that tests or behavior still pass.",
+        non_claim: "Structural direction is not proof that tests or behavior still pass, and PR recap is a structural debt ledger and pre-review coaching aid rather than a semantic correctness or AI-slop classifier.",
     })
 }
 

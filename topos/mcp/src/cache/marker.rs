@@ -217,7 +217,18 @@ mod tests {
         )
         .unwrap();
         let read = read_marker(&parent).unwrap().unwrap();
-        assert_eq!(read, marker);
+        // JSON parsing can round a fractional Unix timestamp by one ULP.
+        // Ownership fields must still round-trip exactly.
+        assert!(
+            (read.created_at - marker.created_at).abs() <= marker.created_at.abs() * f64::EPSILON
+        );
+        assert_eq!(
+            PrStoreMarker {
+                created_at: marker.created_at,
+                ..read.clone()
+            },
+            marker
+        );
         validate_marker(&read, &common, 7).unwrap();
         assert!(validate_marker(&read, &common, 8).is_err());
     }

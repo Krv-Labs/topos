@@ -25,7 +25,7 @@ mod fsops;
 mod harness;
 mod json_entry;
 mod paths;
-mod report;
+pub(crate) mod report;
 mod residue;
 mod skills_entry;
 mod state;

@@ -107,6 +107,7 @@ pub fn load_dep_graph(
     let Some(gitnexus_dir) = gitnexus_dir else {
         return (None, None);
     };
+    crate::cache::graph_used(gitnexus_dir);
     let branch = gitnexus_dir
         .canonicalize()
         .unwrap_or_else(|_| gitnexus_dir.to_path_buf())

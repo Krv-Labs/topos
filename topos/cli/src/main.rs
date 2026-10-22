@@ -15,10 +15,10 @@ use clap::{Parser, Subcommand};
 use console::Style;
 
 use commands::{
-    compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap, update,
+    cache, compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap, update,
 };
 
-const ROOT_COMMANDS: [(&str, &str); 12] = [
+const ROOT_COMMANDS: [(&str, &str); 13] = [
     ("evaluate", "Score a file or directory"),
     ("inspect", "Explain one file"),
     ("pr-recap", "Review a change or a pull request"),
@@ -26,6 +26,7 @@ const ROOT_COMMANDS: [(&str, &str); 12] = [
     ("compare", "Compare two files"),
     ("coverage", "Compare source structure with tests"),
     ("depgraph", "Build the COMPOSABLE graph"),
+    ("cache", "Inspect known cache locations"),
     ("install", "Configure agent harnesses to use Topos"),
     ("uninstall", "Remove Topos from agent harnesses"),
     ("update", "Check for and install a newer release"),
@@ -70,6 +71,8 @@ enum Command {
     Coverage(coverage::CoverageArgs),
     /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
+    /// Inspect known cache locations and discover existing stores.
+    Cache(cache::CacheArgs),
     /// Configure agent harnesses (Claude Code, Codex, Gemini, ...) to use Topos.
     Install(install::InstallArgs),
     /// Remove Topos-owned entries from agent harnesses.
@@ -161,7 +164,7 @@ fn run_command() {
 fn wants_no_notice(command: &Command) -> bool {
     matches!(
         command,
-        Command::Update(_) | Command::Mcp(_) | Command::Uninstall(_)
+        Command::Update(_) | Command::Mcp(_) | Command::Uninstall(_) | Command::Cache(_)
     )
 }
 
@@ -177,6 +180,7 @@ fn dispatch(command: Command) -> Result<(), String> {
         Command::Compare(args) => compare::run(args),
         Command::Coverage(args) => coverage::run(args),
         Command::Depgraph(args) => depgraph::run(args),
+        Command::Cache(args) => cache::run(args),
         Command::Install(args) => install::run_install(args),
         Command::Uninstall(args) => install::run_uninstall(args),
         Command::Update(args) => update::run(args),
@@ -274,6 +278,7 @@ mod tests {
             "compare",
             "coverage",
             "depgraph",
+            "cache",
             "install",
             "uninstall",
             "update",
@@ -293,7 +298,7 @@ mod tests {
         let styled = root_help(true);
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
-        assert_eq!(ROOT_COMMANDS.len(), 12);
+        assert_eq!(ROOT_COMMANDS.len(), 13);
     }
 
     #[test]

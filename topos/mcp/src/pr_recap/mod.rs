@@ -308,6 +308,7 @@ pub fn prepare(
     match plan {
         CouplingPlan::Unavailable(status) => (None, status),
         CouplingPlan::Ready(stores) => {
+            crate::cache::pr_used(root, stores_pr_number(&stores), &stores.parent);
             let status = CouplingStatus {
                 measured: true,
                 note: format!("reused from {}", stores.parent.display()),
@@ -323,6 +324,7 @@ pub fn prepare(
             ..
         } => match prepare_pr_stores(root, pr, &base_sha, &head_sha, on_side_done) {
             Ok(stores) => {
+                crate::cache::pr_built(root, pr, &stores.parent);
                 let status = CouplingStatus {
                     measured: true,
                     note: format!("built from {}", stores.parent.display()),
@@ -334,6 +336,17 @@ pub fn prepare(
             Err(error) => (None, unmeasured(CouplingReason::Error, error)),
         },
     }
+}
+
+/// PR number encoded in a `topos-pr-<N>` parent path.
+fn stores_pr_number(stores: &PrStores) -> u64 {
+    stores
+        .parent
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_prefix("topos-pr-"))
+        .and_then(|number| number.parse().ok())
+        .unwrap_or(0)
 }
 
 /// Hears Pass A as it goes, so `run_recap` can draw a bar without

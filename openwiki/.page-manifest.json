@@ -2,57 +2,57 @@
   "schemaVersion": 1,
   "pages": {
     "/openwiki/architecture/overview.md": {
-      "pageVersion": "sha256:e7af55b409c5b88290412e7cba2891ee2d7a4418d30ca7f2954f090278ad554b",
+      "pageVersion": "sha256:35a4aca4046d85a4f5860eac887923260b64d8846b65bae3332c6692330434fb",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "0fd302b6-c2b0-4e1a-b896-87a23da9890e",
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb"
     },
     "/openwiki/domain/quality-model.md": {
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d",
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:712807b82ae86d7e59c5ba4954ebcb4d9fa66c65bb9532764caad59b46871895",
       "completedBy": "openwiki/0.7.2",
       "completedRunId": "87e54eb8-b625-48cf-8222-914cc38920aa"
     },
     "/openwiki/integrations/distribution.md": {
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:09a0066fa448430a04bda07a98bc9edcb5f18d3da24cbcacde7073e1379a029d",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8"
     },
     "/openwiki/operations/testing-and-release.md": {
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:33277d07a26643529453929f2ff090c85398ee21b8406d54160de5fce441777f",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8"
     },
     "/openwiki/quickstart.md": {
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:e623c057c3ed10b5f189fd2fe9d7fa9292227344781b7bbe4116f464131c27b4",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8"
     },
     "/openwiki/source-map.md": {
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:52829f68984205ce9aebcb253ac1df5336ac3f460cb56f08a1b4be49d141e15a",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8"
     },
     "/openwiki/workflows/agent-and-cli.md": {
-      "pageVersion": "sha256:2c8949a6ac19af491489e7abb358a901d588c8ae6f76344070035c497ec10c00",
+      "pageVersion": "sha256:126cee041677f507b15cd81cf620cbf2f959c297777d9e6ec218ed6d0489e506",
       "completedBy": "openwiki/0.7.2",
-      "completedRunId": "8302c112-8a0b-4152-9d8c-ce88684040e8",
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d"
+      "completedRunId": "0fd302b6-c2b0-4e1a-b896-87a23da9890e",
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb"
     },
     "/openwiki/workflows/harness-registration.md": {
-      "gitHead": "144c7a71aa35efaddefb5a93f31d26988c04ed3c",
-      "sourceFingerprint": "sha256:98582e843a239fea19a28e2829dd0462ac267362ac587e6b665795e8fefc226d",
+      "gitHead": "e5ac9553d6a275e681578d0bf0d68ec8be9c9f3e",
+      "sourceFingerprint": "sha256:72fa8b1b3586f33b0032060dd3fba23c68795bce40cbba502b8f8810d0da99bb",
       "pageVersion": "sha256:3e7b3efa3856c9f5b4873e4ee67c84d733546547967106e5a447590469a2dc1d",
       "completedBy": "openwiki/0.7.1",
       "completedRunId": "dd0f0553-0a37-4510-b0f7-55c0a0533035"

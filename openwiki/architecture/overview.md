@@ -5,7 +5,7 @@ description: Details the multi-crate workspace design (topos-engine, topos CLI, 
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T10:04:26.953Z
+    at: 2026-10-22T08:29:09.123Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml

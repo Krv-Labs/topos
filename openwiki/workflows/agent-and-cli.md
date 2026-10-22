@@ -5,7 +5,7 @@ description: Run Topos structural evaluation locally through the CLI or from an 
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T10:04:26.953Z
+    at: 2026-10-22T08:29:09.123Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs

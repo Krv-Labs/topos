@@ -18,7 +18,9 @@ mod view;
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use topos_engine::config::{find_config_file, load_topos_config, PrGateConfig, PrGatePreset};
+use topos_engine::config::{
+    find_config_file, load_topos_config, FailOn, PrGateConfig, PrGatePreset,
+};
 use topos_engine::evaluation::waivers::today_utc;
 pub(crate) use topos_mcp::pr_recap::{
     build_recap, gates, head_commit, model, resolve_priority, resolve_range, Judging,
@@ -43,6 +45,26 @@ pub enum RecapFormat {
     Compact,
     /// Markdown for a sticky pull request comment.
     Github,
+    /// Markdown without the sticky comment marker, for embedding.
+    Markdown,
+}
+
+/// Which findings fail the check (exit 1), for `--fail-on`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum FailOnArg {
+    Block,
+    Warn,
+    Never,
+}
+
+impl FailOnArg {
+    fn fail_on(self) -> FailOn {
+        match self {
+            FailOnArg::Block => FailOn::Block,
+            FailOnArg::Warn => FailOn::Warn,
+            FailOnArg::Never => FailOn::Never,
+        }
+    }
 }
 
 /// A built-in `[pr_recap]` preset, for `--preset`.
@@ -139,7 +161,8 @@ Project table:
 Readiness / exit codes:
   Each gate in `[pr_recap]` (`topos config`) turns what happened into a finding
   with a severity: off, info, warn or block. The worst finding decides.
-  X BLOCKED          a block finding, such as a lost pillar.   exit 1
+  X BLOCKED          a block finding, such as a lost pillar.   exit 1, or 0
+                     under fail_on = "never"
   ! NEEDS ATTENTION  a warn finding, such as a large drop.     exit 0, or 1
                      under fail_on = "warn"
   ✓ READY            info findings only, or none.              exit 0
@@ -149,9 +172,12 @@ Readiness / exit codes:
   under strict), not `pillar_lost`; a moved function that grew still loses it.
   The policy is the flags, else the nearest .topos.toml, else the recommended
   preset. --preset picks a built-in preset and ignores the file's [pr_recap],
-  waivers included; --strict fails on warn too. An error (a bad range, git or
-  gh failing) exits 2. The direction (IMPROVEMENT, SCORE DOWN, LATERAL, ...)
-  says which way the structure moved and never changes the exit code.
+  waivers included; --fail-on sets fail_on (block, warn, or never), --strict
+  is fail_on = "warn", and --advisory is fail_on = "never" (always exit 0 on a
+  verdict while still reporting readiness in the card and JSON). An error (a
+  bad range, git or gh failing) exits 2. The direction (IMPROVEMENT, SCORE
+  DOWN, LATERAL, ...) says which way the structure moved and never changes the
+  exit code.
 
 Waivers:
   A [[pr_recap.waive]] entry (gate, path glob, reason, optional expires =
@@ -210,6 +236,10 @@ Outputs:
                     and in a pipe; piped output drops the color.
   --format github   markdown for a sticky PR comment, with a hidden marker so a
                     later run replaces it instead of adding another comment.
+  --format markdown markdown without the sticky comment marker (same as
+                    `--format github --no-marker`), for embedding in another
+                    comment.
+  --no-marker       omit the hidden sticky marker from `--format github`.
   --json            schema topos.pr_recap.v3: every number and finding behind
                     the card.
   --verbose         adds the changed-files table, every split child, each
@@ -255,9 +285,12 @@ pub struct PrRecapArgs {
     /// The review card; kept so existing scripts keep working.
     #[arg(long, hide = true)]
     pub compact: bool,
-    /// Which card to print: card or github.
+    /// Which card to print: card, github, or markdown.
     #[arg(long, value_enum)]
     pub format: Option<RecapFormat>,
+    /// Omit the sticky HTML comment marker from --format github output.
+    #[arg(long)]
+    pub no_marker: bool,
     /// Skip coupling preparation without asking; COMPOSABLE is reported as
     /// not measured.
     #[arg(long)]
@@ -274,13 +307,25 @@ pub struct PrRecapArgs {
     #[arg(long, value_name = "PILLAR|SIMPLE,COMPOSABLE,SECURE,NAVIGABLE")]
     pub priority: Option<String>,
     /// Fail the check on NEEDS ATTENTION too (fail_on = "warn").
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["advisory", "fail_on"])]
     pub strict: bool,
+    /// Never fail the check (fail_on = "never"); exit 0 even when BLOCKED.
+    #[arg(long, conflicts_with_all = ["strict", "fail_on"])]
+    pub advisory: bool,
+    /// Which findings fail the check (exit 1): block, warn, or never.
+    #[arg(
+        long,
+        value_enum,
+        value_name = "LEVEL",
+        conflicts_with_all = ["strict", "advisory"]
+    )]
+    pub fail_on: Option<FailOnArg>,
     /// Gate with a built-in preset, ignoring the project's [pr_recap].
     #[arg(long, value_enum)]
     pub preset: Option<GatePreset>,
 }
 
+#[cfg(test)]
 fn resolve_gate_policy(
     strict: bool,
     preset: Option<GatePreset>,
@@ -289,11 +334,26 @@ fn resolve_gate_policy(
     topos_mcp::pr_recap::resolve_gate_policy(strict, preset.map(GatePreset::preset), file)
 }
 
+fn resolve_gate_policy_from_args(args: &PrRecapArgs, file: &PrGateConfig) -> PrGateConfig {
+    let fail_on = args
+        .fail_on
+        .map(FailOnArg::fail_on)
+        .or_else(|| args.strict.then_some(FailOn::Warn))
+        .or_else(|| args.advisory.then_some(FailOn::Never));
+    topos_mcp::pr_recap::resolve_gate_policy_with_fail_on(
+        fail_on,
+        args.preset.map(GatePreset::preset),
+        file,
+    )
+}
+
 /// Which card to print. The card is the same on a terminal and in a
 /// pipe, so `--compact` and `--format compact` are aliases for it. `--json`
 /// is decided by the caller and wins over this.
-fn resolve_format(compact: bool, format: Option<RecapFormat>) -> RecapFormat {
+fn resolve_format(compact: bool, format: Option<RecapFormat>, no_marker: bool) -> RecapFormat {
     match format {
+        Some(RecapFormat::Markdown) if !compact => RecapFormat::Markdown,
+        Some(RecapFormat::Github) if !compact && no_marker => RecapFormat::Markdown,
         Some(RecapFormat::Github) if !compact => RecapFormat::Github,
         _ => RecapFormat::Card,
     }
@@ -331,7 +391,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     }
     let judging = Judging {
         priority: resolve_priority(args.priority.as_deref(), &topos)?,
-        gate: resolve_gate_policy(args.strict, args.preset, &topos.pr_recap),
+        gate: resolve_gate_policy_from_args(&args, &topos.pr_recap),
         source: args
             .preset
             .is_none()
@@ -341,7 +401,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         today: today_utc(),
     };
     let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
-    let format = resolve_format(args.compact, args.format);
+    let format = resolve_format(args.compact, args.format, args.no_marker);
     // The stores must be built at the commit the sources are read from.
     let base = merge_base(&root, &base, head_commit(&head))?;
 
@@ -397,6 +457,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
                 );
             }
             RecapFormat::Github => println!("{}", github::render_github(&recap)),
+            RecapFormat::Markdown => println!("{}", github::render_markdown(&recap)),
         }
     }
     Ok(recap.exit_code)
@@ -680,14 +741,14 @@ mod tests {
 
     #[test]
     fn compact_is_an_alias_for_the_card() {
-        assert_eq!(resolve_format(false, None), RecapFormat::Card);
-        assert_eq!(resolve_format(true, None), RecapFormat::Card);
+        assert_eq!(resolve_format(false, None, false), RecapFormat::Card);
+        assert_eq!(resolve_format(true, None, false), RecapFormat::Card);
         assert_eq!(
-            resolve_format(false, Some(RecapFormat::Compact)),
+            resolve_format(false, Some(RecapFormat::Compact), false),
             RecapFormat::Card
         );
         assert_eq!(
-            resolve_format(false, Some(RecapFormat::Github)),
+            resolve_format(false, Some(RecapFormat::Github), false),
             RecapFormat::Github
         );
     }
@@ -1336,14 +1397,73 @@ reason = \"generated\"
             info: false,
             compact: false,
             format: None,
+            no_marker: false,
             no_coupling: true,
             yes: false,
             no_input: false,
             priority: None,
             strict: false,
+            advisory: false,
+            fail_on: None,
             preset: None,
         };
         let error = run_recap(args).unwrap_err();
         assert!(error.contains("no-such-ref"), "{error}");
+    }
+
+    #[test]
+    fn format_resolution_supports_markdown_and_no_marker() {
+        assert_eq!(
+            resolve_format(false, Some(RecapFormat::Github), false),
+            RecapFormat::Github
+        );
+        assert_eq!(
+            resolve_format(false, Some(RecapFormat::Github), true),
+            RecapFormat::Markdown
+        );
+        assert_eq!(
+            resolve_format(false, Some(RecapFormat::Markdown), false),
+            RecapFormat::Markdown
+        );
+        assert_eq!(
+            resolve_format(true, Some(RecapFormat::Markdown), false),
+            RecapFormat::Card
+        );
+    }
+
+    #[test]
+    fn advisory_mode_keeps_blocked_readiness_with_zero_exit_code() {
+        let (_keep, repo) = write_repo(&[("src/run.py", "def ready():\n    return 1\n")]);
+        write_files(&repo, &[("src/run.py", SHELL)]);
+        commit_all(&repo, "shell");
+        let gate = topos_mcp::pr_recap::resolve_gate_policy_with_fail_on(
+            Some(FailOn::Never),
+            None,
+            &PrGateConfig::default(),
+        );
+        let judging = Judging {
+            gate,
+            source: Some(repo.join(".topos.toml")),
+            ..judging(Priority::Secure)
+        };
+        let recap = build_recap(
+            &repo,
+            "HEAD~1",
+            "HEAD",
+            40,
+            None,
+            no_coupling(),
+            &judging,
+            &mut (),
+        )
+        .unwrap();
+        assert_eq!(recap.readiness, gates::Readiness::Blocked);
+        assert_eq!(recap.exit_code, 0);
+        assert_eq!(recap.check, "pass");
+        let json = serde_json::to_value(&recap).unwrap();
+        assert_eq!(json["readiness"], "BLOCKED");
+        assert_eq!(json["exit_code"], 0);
+        assert_eq!(json["check"], "pass");
+        assert_eq!(json["gate"]["fail_on"], "never");
     }
 }

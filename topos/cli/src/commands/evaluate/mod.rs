@@ -33,7 +33,7 @@ pub(crate) mod summary;
 use std::path::PathBuf;
 
 use super::classify::classify_with_representations;
-use super::composable::resolve_composable_mdg;
+use super::composable::{resolve_composable_mdg, target_composable_root};
 use super::config::{parse_priority, parse_priority_input, priority_for_generator, PriorityInput};
 use super::render::{print_classification, print_raw_metrics, progress_bar, spinner};
 use clap::Args;
@@ -123,8 +123,15 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     let priority = resolve_priority(&args, &project_config)?;
     let target_ranking = resolve_target_ranking(&args, &project_config)?;
 
-    let (mut mdg, composable_warnings) = resolve_evaluate_mdg(&args);
+    let (mut mdg, mut composable_warnings) = resolve_evaluate_mdg(&args, &inputs);
     let mut results = classify_evaluate_inputs(&inputs, &mut mdg, priority, args.json)?;
+    if mdg.is_some() && !pillar_measured(&results, "composable") {
+        composable_warnings.push(
+            "COMPOSABLE not scored — dependency graph contains no File nodes matching the \
+             evaluated path(s); re-run 'topos depgraph generate'."
+                .to_string(),
+        );
+    }
     // A multi-file run is one codebase: read advisories against it.
     if results.len() > 1 {
         rescore_population(&mut results);
@@ -162,7 +169,10 @@ fn parse_failure_pillar(args: &EvaluateArgs) -> Result<Option<Generator>, String
         .map(|pillar| pillar.map(Priority::top_generator))
 }
 
-fn resolve_evaluate_mdg(args: &EvaluateArgs) -> (Option<ModuleDependencyGraph>, Vec<String>) {
+fn resolve_evaluate_mdg(
+    args: &EvaluateArgs,
+    inputs: &[SourceInput],
+) -> (Option<ModuleDependencyGraph>, Vec<String>) {
     if args.no_composable {
         return (None, Vec::new());
     }
@@ -170,16 +180,21 @@ fn resolve_evaluate_mdg(args: &EvaluateArgs) -> (Option<ModuleDependencyGraph>, 
     let spinner = spinner(args.json, "Checking dependency graph freshness");
     let outcome = match std::env::current_dir() {
         Ok(cwd) => {
-            // The store lives at the git root, not at whatever sub-crate the
-            // user happens to be standing in.
-            let default_root = topos_mcp::security::composable_default_root(&cwd);
-            let project_root = topos_mcp::evaluation::resolve_composable_project_root(
-                args.gitnexus_dir.as_deref(),
-                &default_root,
-            );
+            // The store lives at the target's git root, not at whatever
+            // directory or sub-crate the caller happens to be standing in.
+            let default_root = inputs
+                .first()
+                .map(|i| i.path.as_path())
+                .or_else(|| args.paths.first().map(PathBuf::as_path))
+                .map(|target| target_composable_root(target, &cwd))
+                .unwrap_or_else(|| topos_mcp::security::composable_default_root(&cwd));
             let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
                 args.gitnexus_dir.as_deref(),
                 &cwd,
+            );
+            let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                resolved_override.as_deref(),
+                &default_root,
             );
             let mut on_phase = |msg: &'static str| {
                 spinner.set_message(msg);

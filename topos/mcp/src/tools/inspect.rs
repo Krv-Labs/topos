@@ -106,6 +106,9 @@ fn classify_inspected_file_with_cancel(
         return Err(EvalCancelled);
     }
     let result = classify_morphism(morphism, priority, dep_graph.as_ref());
+    let file_matched_dep = dep_graph
+        .as_ref()
+        .is_some_and(|g| g.file_node_id().is_some());
     let mut warnings = if no_composable {
         Vec::new()
     } else {
@@ -113,16 +116,24 @@ fn classify_inspected_file_with_cancel(
             resolved_gitnexus_override,
             project_root,
             gitnexus_dir.as_deref(),
-            dep_graph.is_some(),
+            file_matched_dep,
             load_error.as_deref(),
         )
     };
+    if dep_graph.is_some() && !file_matched_dep {
+        warnings.insert(
+            0,
+            "COMPOSABLE not scored — dependency graph contains no File node matching the \
+             inspected path; re-run 'topos depgraph generate'."
+                .to_string(),
+        );
+    }
     if let Some(note) = outcome.generation_note {
         warnings.insert(0, note);
     }
     Ok(InspectClassification {
         result,
-        coupling_available: dep_graph.is_some(),
+        coupling_available: file_matched_dep,
         warnings,
     })
 }

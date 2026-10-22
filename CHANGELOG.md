@@ -9,6 +9,15 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- Add `--format markdown` and `--no-marker` to `topos pr-recap` so GitHub-flavored markdown recaps can be embedded inside another bot's comment without the sticky `<!-- topos-pr-recap:v2 -->` marker (#449).
+- Add `--advisory` and `--fail-on [block|warn|never]` (`pr_gate.fail_on = "never"` in `topos.toml`) to `topos pr-recap` so CI workflows can render the full gate verdict while exiting `0`, and document `pr-recap` exit codes (`0` passed/advisory, `1` gate failed, `2` input/runtime error) (#448).
+
+### Fixed
+
+- Prevent empty or unmatched `.gitnexus` dependency graphs from fabricating `mdg.* = 0` and a `COMPOSABLE` pass: reject Ladybug stores with zero indexed `File` nodes as load errors, skip the `ModuleDependencyGraph` representation when `target_file` does not match any `File` node in the store, emit an explicit `"COMPOSABLE not scored"` warning when evaluated files do not match the loaded graph, and derive the default `.gitnexus` project root in `topos evaluate` and `topos inspect` from the target path's git root rather than the caller's working directory (#434).
+
 ## [0.12.0] - 2026-10-15
 
 ### Added

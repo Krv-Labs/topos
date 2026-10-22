@@ -37,7 +37,7 @@ pub fn classify_morphism(
     if let Some(abstractness) = &abstractness {
         representations.push(abstractness);
     }
-    if let Some(dep_graph) = dep_graph {
+    if let Some(dep_graph) = dep_graph.filter(|g| g.file_node_id().is_some()) {
         representations.push(dep_graph);
     }
 
@@ -117,5 +117,16 @@ mod tests {
             .expect("classification runs");
         assert!(result.is_parseable);
         assert!(result.scores.contains_key("simple"));
+    }
+
+    #[test]
+    fn classify_morphism_omits_composable_when_file_not_in_dep_graph() {
+        let mut morphism = ProgramMorphism::new("def f():\n    return 1\n", "python");
+        let empty_mdg = ModuleDependencyGraph::new("unindexed.py");
+        let result = classify_morphism(&mut morphism, Priority::Simple, Some(&empty_mdg));
+        assert!(
+            !result.dimensions.contains_key("composable"),
+            "composable must not be fabricated for an unindexed target file"
+        );
     }
 }

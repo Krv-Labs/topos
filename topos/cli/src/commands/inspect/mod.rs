@@ -14,7 +14,7 @@ use topos_engine::functors::probes::ast::complexity::calculate_function_complexi
 mod detail;
 
 use super::classify::classify_with_representations;
-use super::composable::resolve_composable_mdg;
+use super::composable::{resolve_composable_mdg, target_composable_root};
 use super::evaluate::info::details_for_source;
 use super::evaluate::summary::print_inspection_summary;
 use super::lang::detect_language;
@@ -56,20 +56,18 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         let progress = spinner(args.json, "Checking dependency graph freshness");
         match std::env::current_dir() {
             Ok(cwd) => {
-                // The store lives at the git root, not at whatever sub-crate
-                // the user happens to be standing in.
-                let default_root = topos_mcp::security::composable_default_root(&cwd);
-                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
-                    args.gitnexus_dir.as_deref(),
-                    &default_root,
-                );
-                // See the matching comment in evaluate/mod.rs: must use the
-                // resolved override, not `args.gitnexus_dir`, since a
-                // relative override's subdirectory is already baked into
-                // `project_root` above.
+                // The store lives at the target's git root, not at whatever
+                // directory or sub-crate the caller happens to be standing in.
+                let default_root = target_composable_root(&args.path, &cwd);
+                // See the matching comment in evaluate/mod.rs: resolve relative
+                // overrides against `cwd` first, then derive `project_root`.
                 let resolved_override = topos_mcp::evaluation::resolve_override_for_root(
                     args.gitnexus_dir.as_deref(),
                     &cwd,
+                );
+                let project_root = topos_mcp::evaluation::resolve_composable_project_root(
+                    resolved_override.as_deref(),
+                    &default_root,
                 );
                 let mut on_phase = |msg: &'static str| {
                     progress.set_message(msg);
@@ -97,6 +95,13 @@ pub fn run(args: InspectArgs) -> Result<(), String> {
         g.target_file = args.path.to_string_lossy().into_owned();
     }
     let result = classify_with_representations(&classifier, &mut morphism, mdg.as_ref(), priority);
+    if mdg.is_some() && !result.dimensions.contains_key("composable") {
+        composable_warnings.push(
+            "COMPOSABLE not scored — dependency graph contains no File node matching the \
+             inspected path; re-run 'topos depgraph generate'."
+                .to_string(),
+        );
+    }
 
     if args.json {
         return print_json(&args.path, &result);

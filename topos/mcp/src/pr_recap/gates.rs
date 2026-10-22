@@ -75,10 +75,11 @@ impl Readiness {
         }
     }
 
-    /// 1 fails the check: always when blocked, and when the change needs
-    /// attention under `fail_on = "warn"`.
+    /// 1 fails the check: when blocked (unless `fail_on = "never"`), and
+    /// when the change needs attention under `fail_on = "warn"`.
     pub fn exit_code(self, fail_on: FailOn) -> i32 {
         match (self, fail_on) {
+            (_, FailOn::Never) => 0,
             (Readiness::Blocked, _) | (Readiness::NeedsAttention, FailOn::Warn) => 1,
             _ => 0,
         }

@@ -70,7 +70,15 @@ fn load_mdg_branch_aware(
     let resolved = resolve_lbug_store(gitnexus_dir, branch);
     match resolved.path {
         Some(lbug) => {
-            ModuleDependencyGraph::from_lbug_path(&lbug, target_file).map_err(|e| e.to_string())
+            let graph = ModuleDependencyGraph::from_lbug_path(&lbug, target_file)
+                .map_err(|e| e.to_string())?;
+            if graph.nodes_of_label("File").is_empty() {
+                return Err(format!(
+                    "dependency graph at {} contains no indexed File nodes",
+                    lbug.display()
+                ));
+            }
+            Ok(graph)
         }
         None => {
             if !resolved.available_branches.is_empty() {
@@ -328,5 +336,37 @@ mod broken_store_tests {
         std::fs::remove_dir_all(&root).ok();
         assert_ne!(status.state, "present", "{:?}", status.detail);
         assert_ne!(status.state, "stale", "{:?}", status.detail);
+    }
+
+    #[test]
+    fn empty_file_table_store_is_a_load_error_not_present() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join(".gitnexus")).unwrap();
+        let db = lbug::Database::new(
+            root.path().join(".gitnexus/lbug"),
+            lbug::SystemConfig::default(),
+        )
+        .unwrap();
+        let conn = lbug::Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, filePath STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query(
+            "CREATE REL TABLE CodeRelation(FROM File TO File, type STRING, \
+             confidence DOUBLE, reason STRING, step INT64)",
+        )
+        .unwrap();
+        drop(conn);
+        drop(db);
+
+        let status = depgraph_status(None, root.path(), "src/lib.rs");
+        assert_eq!(status.state, "load_error", "{:?}", status.detail);
+        assert!(
+            status
+                .detail
+                .as_deref()
+                .is_some_and(|d| d.contains("contains no indexed File nodes")),
+            "expected empty-store load error, got {:?}",
+            status.detail
+        );
     }
 }

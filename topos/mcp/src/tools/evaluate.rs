@@ -339,6 +339,9 @@ pub(crate) fn evaluate_file_sync_with_cancel(
     // Opting out is not a missing store. The CLI prints nothing in this
     // case; the "no .gitnexus directory" warning would be false when a
     // graph is already on disk.
+    let file_matched_dep = dep_graph
+        .as_ref()
+        .is_some_and(|g| g.file_node_id().is_some());
     let mut warnings = if params.no_composable {
         resolved_override
             .as_deref()
@@ -349,10 +352,18 @@ pub(crate) fn evaluate_file_sync_with_cancel(
             resolved_override.as_deref(),
             &project_root,
             gitnexus_dir.as_deref(),
-            dep_graph.is_some(),
+            file_matched_dep,
             load_error.as_deref(),
         )
     };
+    if dep_graph.is_some() && !file_matched_dep {
+        warnings.insert(
+            0,
+            "COMPOSABLE not scored — dependency graph contains no File node matching the \
+             evaluated path; re-run 'topos depgraph generate'."
+                .to_string(),
+        );
+    }
     if let Some(note) = gitnexus_outcome.generation_note {
         warnings.insert(0, note);
     }
@@ -410,7 +421,7 @@ pub(crate) fn evaluate_file_sync_with_cancel(
     opts.offer_refactor_targets = targets.is_none();
     opts.refactor_targets = targets;
     opts.include_security_findings = params.include_security_findings;
-    let mut model = to_evaluation_result(&result, dep_graph.is_some(), opts);
+    let mut model = to_evaluation_result(&result, file_matched_dep, opts);
     run_opt_in_security_scan(
         &mut model,
         &params,
@@ -500,7 +511,6 @@ pub(crate) fn evaluate_project_sync_with_cancel(
         status_reporter,
     )?;
     let gitnexus_dir = gitnexus_outcome.gitnexus_dir;
-    let coupling_available = gitnexus_dir.is_some();
 
     let mut per_file_results: Vec<ClassificationResult> = Vec::new();
     let mut entries: Vec<ProjectFileEntry> = Vec::new();
@@ -569,6 +579,8 @@ pub(crate) fn evaluate_project_sync_with_cancel(
             .or_default()
             .push(entry.clone());
     }
+
+    let coupling_available = gitnexus_dir.is_some() && any_dep_graph_loaded;
 
     let model = build_project_result(BuildProjectArgs {
         resolved_root: &resolved_root,
@@ -663,6 +675,9 @@ fn evaluate_single_file(
         .map(|o| o.active_findings.clone())
         .unwrap_or_default();
     let adjusted = overlay.as_ref().map(|o| &o.verdict);
+    let file_matched_dep = dep_graph
+        .as_ref()
+        .is_some_and(|g| g.file_node_id().is_some());
     let entry = ProjectFileEntry {
         filepath: path
             .strip_prefix(resolved_root)
@@ -681,7 +696,7 @@ fn evaluate_single_file(
                 )
             })
             .collect(),
-        pillars: build_pillars(&result_for_rollup, dep_graph.is_some()),
+        pillars: build_pillars(&result_for_rollup, file_matched_dep),
         raw_metrics: if verbose {
             result.raw_metrics.clone()
         } else {
@@ -710,7 +725,7 @@ fn evaluate_single_file(
         result_for_rollup,
         entry,
         is_parse_failure,
-        dep_graph.is_some(),
+        file_matched_dep,
         load_error,
     ))
 }

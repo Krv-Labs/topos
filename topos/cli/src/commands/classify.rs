@@ -40,7 +40,7 @@ pub(crate) fn classify_with_representations(
     if let Some(abstractness) = &abstractness {
         representations.push(abstractness);
     }
-    if let Some(mdg) = mdg {
+    if let Some(mdg) = mdg.filter(|g| g.file_node_id().is_some()) {
         representations.push(mdg);
     }
     classifier.classify_detailed(morphism, &representations, priority)
@@ -103,6 +103,18 @@ mod tests {
         assert!(
             with.dimensions.contains_key("composable"),
             "composable must appear once an MDG representation is attached"
+        );
+
+        let unmatched = mdg.for_target("unindexed.py");
+        let with_unmatched = classify_with_representations(
+            &classifier,
+            &mut morphism,
+            Some(&unmatched),
+            Priority::default(),
+        );
+        assert!(
+            !with_unmatched.dimensions.contains_key("composable"),
+            "composable must not be fabricated when target_file is not in the MDG"
         );
     }
 

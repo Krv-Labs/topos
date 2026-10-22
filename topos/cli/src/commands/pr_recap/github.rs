@@ -49,11 +49,21 @@ const MAX_NOTES: usize = 10;
 const MAX_FILE_ROWS: usize = 40;
 
 pub(super) fn render_github(recap: &PrRecap) -> String {
+    render_github_inner(recap, true)
+}
+
+pub(super) fn render_markdown(recap: &PrRecap) -> String {
+    render_github_inner(recap, false)
+}
+
+fn render_github_inner(recap: &PrRecap, with_marker: bool) -> String {
     let view = RecapView::new(recap);
     let items = view.items();
     let mut head = String::new();
-    head.push_str(STICKY_MARKER);
-    head.push('\n');
+    if with_marker {
+        head.push_str(STICKY_MARKER);
+        head.push('\n');
+    }
     let _ = writeln!(head, "{}\n", title(&view));
     let _ = writeln!(head, "<sub>{}</sub>\n", meta(&view));
     let _ = writeln!(head, "**Why:** {}.\n", headline(recap, &items));
@@ -611,7 +621,7 @@ fn footer(view: &RecapView<'_>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{render_github, MAX_CHARS, STICKY_MARKER};
+    use super::{render_github, render_markdown, MAX_CHARS, STICKY_MARKER};
     use crate::commands::pr_recap::fixtures::{
         fixture_coupling, fixture_lateral_loss, fixture_losses, fixture_many_clusters,
         fixture_mixed, fixture_plain, fixture_pr5, LATERAL_LOSS,
@@ -1040,5 +1050,27 @@ mod tests {
             "{card:#?}"
         );
         assert!(card.contains(&"│  1 waived".to_string()), "{card:#?}");
+    }
+
+    #[test]
+    fn render_markdown_omits_sticky_marker() {
+        for recap in [
+            fixture_pr5(),
+            fixture_plain(),
+            fixture_lateral_loss(),
+            fixture_mixed(),
+            fixture_losses(),
+            needs_attention(),
+            fixture_coupling(),
+        ] {
+            let sticky = render_github(&recap);
+            let plain = render_markdown(&recap);
+            assert!(plain.starts_with("### "), "{plain}");
+            assert!(!plain.contains("topos-pr-recap"), "{plain}");
+            assert_eq!(
+                sticky.strip_prefix(&format!("{STICKY_MARKER}\n")),
+                Some(plain.as_str())
+            );
+        }
     }
 }

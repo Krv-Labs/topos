@@ -24,7 +24,14 @@ static LAST_TOUCH: LazyLock<Mutex<HashMap<String, Instant>>> =
 /// Unit tests must not write into the developer's real state directory.
 /// Integration tests (compiled without `cfg(test)`) and production do.
 fn auto_registration_enabled() -> bool {
-    !cfg!(test) || std::env::var_os("TOPOS_CACHE_INDEX_DIR").is_some()
+    #[cfg(test)]
+    {
+        super::inventory::test_index_active()
+    }
+    #[cfg(not(test))]
+    {
+        true
+    }
 }
 
 fn throttled(key: &str) -> bool {
@@ -235,19 +242,17 @@ mod tests {
             .status()
             .unwrap()
             .success());
-        std::env::set_var("TOPOS_CACHE_INDEX_DIR", &index);
 
         let common = git::git_common_dir(&repo).unwrap();
         let parent = common.join("topos-pr-4");
         std::fs::create_dir_all(parent.join("base/.git")).unwrap();
         std::fs::create_dir_all(parent.join("head/.git")).unwrap();
         std::fs::write(parent.join("commits"), "abcdef1\nabcdef2\n").unwrap();
-        pr_used(&repo, 4, &parent);
-        graph_used(&repo.join(".gitnexus"));
-
-        let inventory = Inventory::open().unwrap();
-        let (records, diagnostics) = inventory.records();
-        std::env::remove_var("TOPOS_CACHE_INDEX_DIR");
+        let (records, diagnostics) = crate::cache::inventory::with_test_index(&index, || {
+            pr_used(&repo, 4, &parent);
+            graph_used(&repo.join(".gitnexus"));
+            Inventory::open().unwrap().records()
+        });
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         assert_eq!(records.len(), 2, "{records:?}");
         let pr = records.iter().find(|record| record.kind == "pr").unwrap();

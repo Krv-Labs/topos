@@ -6,6 +6,8 @@
 //! monotonically; readers take a shared lock. Files are replaced through a
 //! unique temporary file in the same directory, never written in place.
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -192,6 +194,29 @@ fn max_time(a: Option<f64>, b: Option<f64>) -> Option<f64> {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static TEST_INDEX: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+/// Run a unit test against an isolated inventory without changing process
+/// environment variables. The override is thread-local so parallel tests cannot
+/// observe or write through another test's index.
+#[cfg(test)]
+pub(crate) fn with_test_index<R>(dir: &Path, body: impl FnOnce() -> R) -> R {
+    let previous = TEST_INDEX.with(|slot| slot.replace(Some(dir.to_path_buf())));
+    let result = body();
+    TEST_INDEX.with(|slot| {
+        slot.replace(previous);
+    });
+    result
+}
+
+#[cfg(test)]
+pub(crate) fn test_index_active() -> bool {
+    TEST_INDEX.with(|slot| slot.borrow().is_some())
+}
+
 /// Current wall-clock time in Unix seconds.
 pub fn now() -> f64 {
     SystemTime::now()
@@ -229,6 +254,10 @@ pub struct Inventory {
 
 impl Inventory {
     pub fn open() -> Result<Self, String> {
+        #[cfg(test)]
+        if let Some(dir) = TEST_INDEX.with(|slot| slot.borrow().clone()) {
+            return Ok(Self { dir });
+        }
         Ok(Self {
             dir: cache_index_dir()?,
         })

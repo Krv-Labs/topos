@@ -1,11 +1,11 @@
 ---
 type: operations runbook
-title: Testing, Packaging, CI, and Release Operations
+title: Verification, Testing, and Release Operations
 description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, CI admission, and release channels.
 tags: [operations, testing, ci, release, packaging, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T10:04:26.953Z
+    at: 2026-10-22T10:38:38.831Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -37,10 +37,10 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.7.2", at: "2026-10-15T10:04:26.953Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-22T10:38:38.831Z" }
 ---
 
-# Testing, Packaging, CI, and Release Operations
+# Verification, Testing, and Release Operations
 
 Topos is a Rust workspace with separate CLI and MCP packages, then ships that analyzer through native release binaries, a `topos-mcp` bin wheel and registry record, a VS Code extension, an Agent Plugins package, a skill publication workflow, and a container. Start with the narrowest check that proves the changed contract; use the full workspace suite for shared code or before merge. The [distribution guide](../integrations/distribution.md) explains what each delivered surface runs, while [agent and CLI workflows](../workflows/agent-and-cli.md) describes consumer use.
 
@@ -113,7 +113,7 @@ A real Actions run is still needed to verify token access to the new GraphQL fie
 
 ## Metadata, skills, and plugin invariants
 
-The workspace package version in `Cargo.toml` (currently `0.12.0`) is authoritative. `check_versions.py` requires the same version in the VS Code manifest, `agent-plugin/plugin.json`, `.mcp/server.json`, and every MCP package entry; `--tag` accepts either `vX.Y.Z` or `X.Y.Z` but requires the normalized value to match Cargo. It also rejects a PyPI `registryBaseUrl` or a `--index-url` runtime argument in the MCP record because VS Code supplies its own index argument and duplicate arguments cause `uv` to reject the launch.
+The workspace package version in `Cargo.toml` (currently `0.13.0`) is authoritative. `check_versions.py` requires the same version in the VS Code manifest, `agent-plugin/plugin.json`, `.mcp/server.json`, and every MCP package entry; `--tag` accepts either `vX.Y.Z` or `X.Y.Z` but requires the normalized value to match Cargo. It also rejects a PyPI `registryBaseUrl` or a `--index-url` runtime argument in the MCP record because VS Code supplies its own index argument and duplicate arguments cause `uv` to reject the launch.
 
 `check_skill.py` validates every non-hidden folder in `skills/`: a `SKILL.md`, matching slug/name, bounded description, and—in OpenClaw/Hermes metadata—the required metadata, documentation sections, credential declaration, and Cargo-version parity. `check_agent_plugin.py` schema-closes the plugin and MCP manifests, rejects plugin symlinks and path traversal in stdio command/working-directory entries, forbids client-reserved `PLUGIN_ROOT` and `PLUGIN_DATA` environment entries, and requires the packaged `agent-plugin/skills/topos/SKILL.md` to be a regular byte-for-byte copy of the canonical skill.
 

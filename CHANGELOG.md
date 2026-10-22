@@ -25,10 +25,12 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   store and is idempotent; `prune` requires an age threshold with a 24-hour
   minimum grace. Both revalidate ownership markers, worktree registrations, and
   content, support `--dry-run` and `--json`, and report partial failures for
-  retry. `clean` adopts an unmarked legacy store only after validating its
-  layout, commit record, registrations, and contents; `prune` never adopts one.
-  Agent snapshots and GitNexus-owned `.gitnexus` graphs are never touched.
-  There is no background cleanup.
+  retry. Generation, evaluation, and inspection that target a managed PR side
+  hold the same per-PR lease, so cleanup cannot remove a store mid-run. `clean`
+  adopts an unmarked legacy store only after validating its layout, commit
+  record, registrations, and contents; `prune` never adopts one. Agent
+  snapshots, tracked or non-directory `.gitnexus` content, and GitNexus-owned
+  `.gitnexus` graphs are never touched. There is no background cleanup.
 
 ### Fixed
 

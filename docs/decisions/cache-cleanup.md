@@ -34,8 +34,9 @@ Deletion revalidates the thing on disk. The expected slot
 `<git-common-dir>/topos-pr-<N>` must be a real directory rather than a symlink;
 the ownership marker must match that common directory and PR; any `base`/`head`
 worktree that still exists must be a live, detached registration naming that
-path; the contents must contain nothing outside the disposable graph; and a
-concurrent lease must be free. A marked store may already be partially deleted,
+path; the contents must contain nothing outside the disposable graph; no
+tracked file under `.gitnexus/` is treated as disposable; and a concurrent lease
+must be free. A marked store may already be partially deleted,
 so cleanup does not require a graph or a complete commit record. An unmarked
 legacy store is different: `clean` may adopt it only after validating the exact
 slot, allowed top-level entries, two-commit record, live detached registrations
@@ -73,7 +74,10 @@ does not duplicate GitNexus's freshness or invalidation rules. A project's
 `.gitnexus/` is owned by GitNexus, and the `base`/`head` graphs inside a PR
 store are built by GitNexus as part of that store's lifecycle. Cache cleanup
 does not delete or rebuild an ordinary project graph, and it does not treat a
-graph as garbage merely because Topos would build it differently.
+graph as garbage merely because Topos would build it differently. Inside a
+managed PR worktree, `.gitnexus/` is disposable only when it is generated and
+untracked; tracked content, a regular file, or a symlink with that name is user
+content and blocks cleanup.
 
 Duplicating invalidation would create two authorities with different versions,
 schema tolerances, and freshness markers. Until Topos can verify a stable
@@ -90,9 +94,15 @@ Every path that reads or removes a PR store follows one lock order:
 4. the inventory lock as a leaf.
 
 A PR lease is never taken while holding a repository or inventory lock, and the
-repository lock never spans analysis or scoring. Cleanup probes the lease
-non-blockingly; `busy` means another worker owns the store and the cleanup
-leaves it alone. The lease file lives beside the PR directory, not inside it,
+repository lock never spans analysis or scoring. Every Topos operation that
+targets a managed PR side — graph generation, evaluation, inspection, and the
+shared graph-ensure path — takes the same lease through a shared operation
+handle. Nested work in one operation reuses that handle, so it cannot deadlock
+against itself; a separate operation waits or reports the cache as busy.
+Cleanup probes the lease non-blockingly; `busy` means another worker owns the
+store and the cleanup leaves it alone. Status also probes the lease without
+creating a lease file, so it reports `in-use` instead of inspecting a store that
+is being generated. The lease file lives beside the PR directory, not inside it,
 so removing the directory cannot remove the lock. Lock files are durable
 coordination points: deleting a lock file while a process may hold it creates a
 split-lock race on the next open. Uninstall therefore never enters a

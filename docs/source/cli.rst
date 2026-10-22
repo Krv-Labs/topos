@@ -797,7 +797,12 @@ explicit age-based cleanup with a 24-hour minimum grace; no command runs cleanup
 in the background, and there is no garbage-collection daemon. Neither command
 deletes agent snapshots, GitNexus snapshots or registry entries, or an ordinary
 project ``.gitnexus`` graph; those belong to their owners, and GitNexus
-invalidates its own graphs. Only managed PR stores are in scope.
+invalidates its own graphs. Only managed PR stores are in scope. Graph
+generation, evaluation, and inspection that target a managed PR side hold the
+same per-PR lease, so cleanup reports the store as busy rather than removing it
+mid-run. Tracked content under ``.gitnexus/``, or a regular file or symlink
+named ``.gitnexus``, is treated as user content and blocks cleanup; only
+generated untracked graph data is disposable.
 
 The inventory lives under ``state_dir()/cache-index`` and can be redirected
 with ``TOPOS_CACHE_INDEX_DIR``. That override affects bookkeeping only; the

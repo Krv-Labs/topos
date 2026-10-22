@@ -158,7 +158,12 @@ impl RecordUpdate {
     }
 }
 
-fn key_for(kind: CacheKind, common_git_dir: Option<&str>, pr: Option<u64>, path: &str) -> String {
+pub(super) fn key_for(
+    kind: CacheKind,
+    common_git_dir: Option<&str>,
+    pr: Option<u64>,
+    path: &str,
+) -> String {
     let material = match kind {
         CacheKind::Pr => format!(
             "pr\0{}\0{}",

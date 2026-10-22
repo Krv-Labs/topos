@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use super::discovery::{self, graph_evidence};
 use super::git;
-use super::inventory::{CacheKind, CacheRecord, Inventory};
+use super::inventory::{self, CacheKind, CacheRecord, Inventory};
 use super::{CacheEntryView, StructuralState, INDEX_SCHEMA};
 
 pub type StatusEntry = CacheEntryView;
@@ -38,6 +38,7 @@ pub struct StatusTotals {
 /// `global`. Global still includes the current project when one exists.
 pub fn status(global: bool, sizes: bool) -> Result<StatusReport, String> {
     let cwd = std::env::current_dir().map_err(|error| format!("current directory: {error}"))?;
+    let inside_git = git::git_root(&cwd).is_ok();
     let current = current_project_entries(&cwd)?;
     let inventory = Inventory::open();
     let (records, mut diagnostics) = match &inventory {
@@ -45,7 +46,7 @@ pub fn status(global: bool, sizes: bool) -> Result<StatusReport, String> {
         Err(error) => (Vec::new(), vec![error.clone()]),
     };
 
-    if !global && current.is_empty() {
+    if !global && current.is_empty() && !inside_git {
         return Err(
             "not inside a Git repository or a recognized non-Git Topos project\n\
              hint: run `topos cache status --global` to inspect known locations"
@@ -72,15 +73,14 @@ pub fn status(global: bool, sizes: bool) -> Result<StatusReport, String> {
     }
 
     // Inventory timestamps are useful even for a freshly scanned current
-    // project; they are read-only here.
-    if !global {
-        for record in records {
-            let key = record_key(&record);
-            if let Some(entry) = entries.get_mut(&key) {
-                entry.last_built = max_time(entry.last_built, record.last_built);
-                entry.last_used = max_time(entry.last_used, record.last_used);
-                entry.last_seen = max_time(entry.last_seen, record.last_seen);
-            }
+    // project; they are read-only here. In global scope the records were
+    // already merged, so this only refreshes scanned rows.
+    for record in records {
+        let key = record_key(&record);
+        if let Some(entry) = entries.get_mut(&key) {
+            entry.last_built = max_time(entry.last_built, record.last_built);
+            entry.last_used = max_time(entry.last_used, record.last_used);
+            entry.last_seen = max_time(entry.last_seen, record.last_seen);
         }
     }
 
@@ -250,15 +250,12 @@ fn record_key(record: &CacheRecord) -> String {
 }
 
 fn entry_key(entry: &CacheEntryView) -> String {
-    if entry.kind == "pr" {
-        format!(
-            "pr\0{}\0{}",
-            entry.common_git_dir.as_deref().unwrap_or_default(),
-            entry.pr.unwrap_or_default()
-        )
+    let kind = if entry.kind == "pr" {
+        CacheKind::Pr
     } else {
-        format!("graph\0{}", entry.path)
-    }
+        CacheKind::Graph
+    };
+    inventory::key_for(kind, entry.common_git_dir.as_deref(), entry.pr, &entry.path)
 }
 
 fn merge_view(existing: &mut CacheEntryView, incoming: CacheEntryView) {

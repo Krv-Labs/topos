@@ -118,30 +118,42 @@ pub fn discover(paths: &[PathBuf], dry_run: bool) -> Result<DiscoverReport, Stri
     }
 
     if !dry_run {
-        if let Ok(inventory) = Inventory::open() {
-            for entry in entries.values() {
-                let kind = if entry.kind == "pr" {
-                    CacheKind::Pr
-                } else {
-                    CacheKind::Graph
-                };
-                let update = RecordUpdate {
-                    kind,
-                    managed: entry.managed,
-                    project_root: entry.project_root.clone(),
-                    common_git_dir: entry.common_git_dir.clone(),
-                    path: entry.path.clone(),
-                    pr: entry.pr,
-                    last_built: None,
-                    last_used: None,
-                    last_seen: Some(now()),
-                    compatibility: entry.compatibility.clone(),
-                };
-                let _ = inventory.upsert(update);
+        match Inventory::open() {
+            Ok(inventory) => {
+                for entry in entries.values() {
+                    let kind = if entry.kind == "pr" {
+                        CacheKind::Pr
+                    } else {
+                        CacheKind::Graph
+                    };
+                    let update = RecordUpdate {
+                        kind,
+                        managed: entry.managed,
+                        project_root: entry.project_root.clone(),
+                        common_git_dir: entry.common_git_dir.clone(),
+                        path: entry.path.clone(),
+                        pr: entry.pr,
+                        last_built: None,
+                        last_used: None,
+                        last_seen: Some(now()),
+                        compatibility: entry.compatibility.clone(),
+                    };
+                    if let Err(error) = inventory.upsert(update) {
+                        diagnostics.push(format!(
+                            "could not record discovered {} {}: {error}",
+                            entry.kind, entry.path
+                        ));
+                    }
+                }
             }
+            Err(error) => diagnostics.push(format!(
+                "could not open the cache inventory; discovered entries were not recorded: {error}"
+            )),
         }
     }
 
+    diagnostics.sort();
+    diagnostics.dedup();
     let mut entries: Vec<CacheEntryView> = entries.into_values().collect();
     entries.sort_by_key(CacheEntryView::sort_key);
     let totals = DiscoverTotals {

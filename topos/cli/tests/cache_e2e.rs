@@ -259,7 +259,45 @@ fn global_status_includes_scanned_and_inventory_locations_with_sizes() {
     for entry in entries {
         assert!(entry["estimated_bytes"].as_u64().unwrap() >= 128);
     }
-    assert!(value["totals"]["estimated_bytes"].as_u64().unwrap() >= 256);
+    let outside_bytes = value["totals"]["estimated_bytes"].as_u64().unwrap();
+    assert!(outside_bytes >= 256);
+
+    // The same inventory records must merge with the current-project scan,
+    // not appear beside it with a second copy and a doubled size total.
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "status", "--global", "--sizes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    let entries = value["entries"].as_array().unwrap();
+    let mut paths = std::collections::BTreeSet::new();
+    for entry in entries {
+        assert!(
+            paths.insert(entry["path"].as_str().unwrap()),
+            "duplicate status entry: {stdout}"
+        );
+    }
+    let main_graph = fs::canonicalize(&main)
+        .unwrap()
+        .join(".gitnexus")
+        .display()
+        .to_string();
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|entry| entry["kind"] == "graph" && entry["path"] == main_graph)
+            .count(),
+        1,
+        "the current project's graph was counted twice: {stdout}"
+    );
+    assert_eq!(
+        entries.iter().filter(|entry| entry["kind"] == "pr").count(),
+        1,
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -316,4 +354,51 @@ fn status_outside_a_repository_requires_global_scope() {
     assert_eq!(code, 0, "{stderr}");
     let value = parse(&stdout);
     assert_eq!(value["entries"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn an_empty_repository_is_a_successful_empty_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let empty = temp.path().join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    git(&empty, &["init", "-q"]);
+
+    let (code, stdout, stderr) = topos(&home, &index, &["cache", "status", "--json"], &empty);
+
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["scope"], "project");
+    assert_eq!(value["entries"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn discovery_reports_an_unusable_inventory_location() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    fs::write(&index, "not a directory").unwrap();
+    let main = temp.path().join("main");
+    repo(&main);
+    graph(&main);
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "discover", main.to_str().unwrap(), "--json"],
+        &main,
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    let diagnostics = value["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics.iter().any(|line| line
+            .as_str()
+            .is_some_and(|line| line.contains("cache inventory"))),
+        "{stdout}"
+    );
 }

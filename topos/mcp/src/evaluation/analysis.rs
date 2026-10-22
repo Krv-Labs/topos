@@ -24,8 +24,10 @@ use topos_engine::core::characteristic_morphism::{CharacteristicMorphism, Classi
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::graphs::base::Representation;
+use topos_engine::graphs::cpg::models::{CPGEdge, CPGNode};
 use topos_engine::graphs::cpg::object::CodePropertyGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
+use topos_engine::graphs::uast::models::{AttributeValue, UASTNode};
 
 use super::classify::classify_morphism;
 
@@ -36,13 +38,14 @@ use super::classify::classify_morphism;
 /// memory an agent loop should ever need for this optimization.
 pub(crate) const DEFAULT_ANALYSIS_CACHE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
-/// Estimated per-entry container bookkeeping (hash buckets, allocator
-/// headers, B-tree nodes).
-const MAP_ENTRY_OVERHEAD: usize = 32;
-/// Estimated heap owned by one CPG node beyond its id/kind strings.
-const CPG_NODE_OVERHEAD: usize = 192;
-/// Estimated heap owned by one CPG edge beyond its endpoint/label strings.
-const CPG_EDGE_OVERHEAD: usize = 48;
+/// Estimated allocator bookkeeping for one owned String/Vec/map allocation.
+const ALLOCATION_OVERHEAD: usize = 24;
+/// Estimated per-entry hash/B-tree bucket bookkeeping.
+const MAP_ENTRY_OVERHEAD: usize = 64;
+/// Estimated cache-key bookkeeping beyond `size_of::<AnalysisKey>()`.
+const CACHE_KEY_OVERHEAD: usize = 64;
+/// Estimated cache-value bookkeeping beyond `size_of::<CacheEntry>()`.
+const CACHE_ENTRY_OVERHEAD: usize = 64;
 
 /// Parser context: preserve the caller's actual parse mode.
 ///
@@ -135,42 +138,100 @@ impl SourceAnalysis {
     /// Estimated retained bytes (source, metrics, kind sequence, security
     /// evidence), used for the cache's byte budget.
     pub(crate) fn estimated_bytes(&self) -> usize {
-        let mut bytes = std::mem::size_of::<Self>() + self.source.len() + self.language.len();
-        bytes += self
-            .raw_metrics
-            .keys()
-            .map(|key| std::mem::size_of::<String>() + key.len() + 8 + MAP_ENTRY_OVERHEAD)
-            .sum::<usize>();
-        bytes += self
-            .ast_kinds
-            .iter()
-            .map(|kind| std::mem::size_of::<String>() + kind.len())
-            .sum::<usize>();
+        let mut bytes = std::mem::size_of::<Self>();
+        bytes = bytes.saturating_add(estimate_string(&self.source));
+        bytes = bytes.saturating_add(estimate_string(&self.language));
+        bytes = bytes.saturating_add(
+            self.raw_metrics
+                .keys()
+                .map(|key| {
+                    std::mem::size_of::<String>()
+                        + key.capacity()
+                        + std::mem::size_of::<f64>()
+                        + MAP_ENTRY_OVERHEAD
+                        + ALLOCATION_OVERHEAD
+                })
+                .sum::<usize>(),
+        );
+        bytes = bytes.saturating_add(
+            self.ast_kinds.capacity() * std::mem::size_of::<String>()
+                + ALLOCATION_OVERHEAD
+                + self.ast_kinds.iter().map(estimate_string).sum::<usize>(),
+        );
         if let Some(security) = &self.security {
-            bytes += estimate_cpg_bytes(&security.cpg);
+            bytes = bytes.saturating_add(estimate_cpg_bytes(&security.cpg));
         }
         bytes
     }
 }
 
+fn estimate_string(value: &String) -> usize {
+    value.capacity().saturating_add(ALLOCATION_OVERHEAD)
+}
+
+fn estimate_attributes(attributes: &HashMap<String, AttributeValue>) -> usize {
+    let mut bytes = attributes.capacity()
+        * (std::mem::size_of::<String>() + std::mem::size_of::<AttributeValue>())
+        + attributes.len() * MAP_ENTRY_OVERHEAD;
+    if attributes.capacity() > 0 {
+        bytes = bytes.saturating_add(ALLOCATION_OVERHEAD);
+    }
+    for (key, value) in attributes {
+        bytes = bytes.saturating_add(estimate_string(key));
+        if let AttributeValue::Str(value) = value {
+            bytes = bytes.saturating_add(estimate_string(value));
+        }
+    }
+    bytes
+}
+
+/// Estimate the heap owned by a UAST node's strings, attributes, and child
+/// wrappers. The node's own struct is accounted for by its container.
+fn estimate_uast_owned_bytes(node: &UASTNode) -> usize {
+    let mut bytes = estimate_string(&node.kind)
+        .saturating_add(estimate_string(&node.lang))
+        .saturating_add(estimate_string(&node.id));
+    if let Some(file) = &node.span.file {
+        bytes = bytes.saturating_add(estimate_string(file));
+    }
+    bytes = bytes
+        .saturating_add(estimate_string(&node.native.parser))
+        .saturating_add(estimate_string(&node.native.parser_version))
+        .saturating_add(estimate_string(&node.native.node_kind))
+        .saturating_add(estimate_attributes(&node.attributes));
+    bytes = bytes.saturating_add(node.children.capacity() * std::mem::size_of::<UASTNode>());
+    if node.children.capacity() > 0 {
+        bytes = bytes.saturating_add(ALLOCATION_OVERHEAD);
+    }
+    for child in &node.children {
+        bytes = bytes.saturating_add(estimate_uast_owned_bytes(child));
+    }
+    bytes
+}
+
 fn estimate_cpg_bytes(cpg: &CodePropertyGraph) -> usize {
-    let nodes: usize = cpg
-        .nodes
-        .iter()
-        .map(|(id, node)| {
-            id.len()
-                + node.uast.kind.len()
-                + node.uast.id.len()
-                + CPG_NODE_OVERHEAD
-                + MAP_ENTRY_OVERHEAD
-        })
-        .sum();
-    let edges: usize = cpg
-        .edges
-        .iter()
-        .map(|edge| edge.source.len() + edge.target.len() + edge.label.len() + CPG_EDGE_OVERHEAD)
-        .sum();
-    nodes + edges + cpg.source.len() + cpg.language.len()
+    let mut bytes = estimate_string(&cpg.source)
+        .saturating_add(estimate_string(&cpg.language))
+        .saturating_add(
+            cpg.nodes.capacity() * (std::mem::size_of::<String>() + std::mem::size_of::<CPGNode>()),
+        )
+        .saturating_add(cpg.nodes.len() * MAP_ENTRY_OVERHEAD)
+        .saturating_add(cpg.edges.capacity() * std::mem::size_of::<CPGEdge>());
+    if cpg.nodes.capacity() > 0 || cpg.edges.capacity() > 0 {
+        bytes = bytes.saturating_add(ALLOCATION_OVERHEAD);
+    }
+    for (id, node) in &cpg.nodes {
+        bytes = bytes
+            .saturating_add(estimate_string(id))
+            .saturating_add(estimate_uast_owned_bytes(&node.uast));
+    }
+    for edge in &cpg.edges {
+        bytes = bytes
+            .saturating_add(estimate_string(&edge.source))
+            .saturating_add(estimate_string(&edge.target))
+            .saturating_add(estimate_string(&edge.label));
+    }
+    bytes
 }
 
 /// Whether a classification needs SECURE evidence at all.
@@ -274,6 +335,34 @@ impl AnalysisKey {
             sighthound_enabled: sighthound_enabled(),
         }
     }
+
+    fn estimated_bytes(&self) -> usize {
+        let mut bytes = std::mem::size_of::<Self>().saturating_add(CACHE_KEY_OVERHEAD);
+        match &self.parser {
+            ParserContext::Memory { language } => {
+                bytes = bytes.saturating_add(estimate_string(language));
+            }
+            ParserContext::Path { language, path } => {
+                bytes = bytes
+                    .saturating_add(estimate_string(language))
+                    .saturating_add(path.capacity())
+                    .saturating_add(ALLOCATION_OVERHEAD);
+            }
+        }
+        if let Some(path) = &self.security_path {
+            bytes = bytes
+                .saturating_add(path.capacity())
+                .saturating_add(ALLOCATION_OVERHEAD);
+        }
+        bytes
+    }
+}
+
+fn estimated_entry_bytes(key: &AnalysisKey, analysis: &SourceAnalysis) -> usize {
+    key.estimated_bytes()
+        .saturating_add(analysis.estimated_bytes())
+        .saturating_add(std::mem::size_of::<CacheEntry>())
+        .saturating_add(CACHE_ENTRY_OVERHEAD)
 }
 
 struct CacheEntry {
@@ -323,8 +412,7 @@ impl AnalysisCacheState {
         self.counters.misses += 1;
     }
 
-    fn insert(&mut self, key: AnalysisKey, analysis: Arc<SourceAnalysis>) {
-        let bytes = analysis.estimated_bytes();
+    fn insert(&mut self, key: AnalysisKey, analysis: Arc<SourceAnalysis>, bytes: usize) {
         if bytes > self.budget_bytes {
             self.counters.oversized += 1;
             return;
@@ -437,8 +525,9 @@ pub(crate) fn analyze_source(
     }
 
     let analysis = Arc::new(analyze_source_uncached(source, &parser, security_path));
+    let bytes = estimated_entry_bytes(&key, &analysis);
     if let Ok(mut cache) = analysis_cache().lock() {
-        cache.insert(key, Arc::clone(&analysis));
+        cache.insert(key, Arc::clone(&analysis), bytes);
     }
     analysis
 }
@@ -926,23 +1015,76 @@ mod tests {
         AnalysisKey::new(source, &parser(), None)
     }
 
+    struct BudgetGuard(usize);
+
+    impl Drop for BudgetGuard {
+        fn drop(&mut self) {
+            set_analysis_cache_budget_for_tests(self.0);
+        }
+    }
+
+    fn cpg_owned_string_floor(cpg: &CodePropertyGraph) -> usize {
+        cpg.source.capacity()
+            + cpg.language.capacity()
+            + cpg
+                .nodes
+                .iter()
+                .map(|(id, node)| id.capacity() + uast_owned_string_floor(&node.uast))
+                .sum::<usize>()
+            + cpg
+                .edges
+                .iter()
+                .map(|edge| edge.source.capacity() + edge.target.capacity() + edge.label.capacity())
+                .sum::<usize>()
+    }
+
+    fn uast_owned_string_floor(node: &UASTNode) -> usize {
+        node.kind.capacity()
+            + node.lang.capacity()
+            + node.id.capacity()
+            + node.span.file.as_ref().map_or(0, String::capacity)
+            + node.native.parser.capacity()
+            + node.native.parser_version.capacity()
+            + node.native.node_kind.capacity()
+            + node
+                .attributes
+                .iter()
+                .map(|(key, value)| {
+                    key.capacity()
+                        + match value {
+                            AttributeValue::Bool(_) => 0,
+                            AttributeValue::Str(value) => value.capacity(),
+                        }
+                })
+                .sum::<usize>()
+            + node
+                .children
+                .iter()
+                .map(uast_owned_string_floor)
+                .sum::<usize>()
+    }
+
     #[test]
     fn lru_eviction_keeps_retained_bytes_within_budget() {
         let _guard = CACHE_TEST_LOCK.lock().unwrap();
         let one = stub_analysis("aaaa");
-        let entry_bytes = one.estimated_bytes();
+        let key_one = stub_key("aaaa");
+        let entry_bytes = estimated_entry_bytes(&key_one, &one);
         let mut state = AnalysisCacheState::new(entry_bytes * 2 + 8);
 
-        let key_one = stub_key("aaaa");
-        state.insert(key_one.clone(), Arc::clone(&one));
+        state.insert(key_one.clone(), Arc::clone(&one), entry_bytes);
         let key_two = stub_key("bbbb");
-        state.insert(key_two.clone(), stub_analysis("bbbb"));
+        let two = stub_analysis("bbbb");
+        let two_bytes = estimated_entry_bytes(&key_two, &two);
+        state.insert(key_two.clone(), two, two_bytes);
         assert_eq!(state.entries.len(), 2);
 
         // Touch key one so key two becomes the least recently used.
         assert!(state.lookup(&key_one).is_some());
         let key_three = stub_key("cccc");
-        state.insert(key_three.clone(), stub_analysis("cccc"));
+        let three = stub_analysis("cccc");
+        let three_bytes = estimated_entry_bytes(&key_three, &three);
+        state.insert(key_three.clone(), three, three_bytes);
 
         assert!(state.entries.contains_key(&key_one));
         assert!(!state.entries.contains_key(&key_two));
@@ -953,6 +1095,57 @@ mod tests {
         let stats = state.stats();
         assert_eq!(stats.entries, 2);
         assert!(stats.retained_bytes <= stats.budget_bytes);
+    }
+
+    #[test]
+    fn oversized_key_is_budgeted_before_insertion() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
+        clear_analysis_cache();
+        let original = analysis_cache_stats().budget_bytes;
+        let _budget = BudgetGuard(original);
+        set_analysis_cache_budget_for_tests(1024);
+        clear_analysis_cache();
+
+        let source = "x = 1\n";
+        let language = "x".repeat(8 * 1024);
+        let _analysis = analyze_source(source, ParserContext::memory(language), None);
+
+        let stats = analysis_cache_stats();
+        assert_eq!(stats.entries, 0, "an oversized key must not be retained");
+        assert_eq!(stats.retained_bytes, 0);
+        assert_eq!(stats.oversized, 1);
+        assert!(stats.retained_bytes <= stats.budget_bytes);
+    }
+
+    #[test]
+    fn security_bearing_analysis_accounts_for_cpg_payload() {
+        let parser = ParserContext::memory("python");
+        let mut source = String::from("import os\n\n");
+        for index in 0..30 {
+            source.push_str(&format!(
+                "def f_{index}(cmd):\n    if cmd:\n        return os.system(cmd)\n    return {index}\n\n"
+            ));
+        }
+        let analysis = analyze_source_uncached(&source, &parser, None);
+        let cpg = &analysis
+            .security
+            .as_ref()
+            .expect("the os.system sample has CPG security evidence")
+            .cpg;
+        assert!(cpg.nodes.len() > 100);
+        let floor = cpg_owned_string_floor(cpg);
+        let key = AnalysisKey::new(&source, &parser, None);
+        let weight = estimated_entry_bytes(&key, &analysis);
+        assert!(
+            weight >= floor,
+            "estimated weight {weight} is below CPG-owned strings {floor}"
+        );
+
+        let mut state = AnalysisCacheState::new(weight.saturating_sub(1));
+        state.insert(key, Arc::new(analysis), weight);
+        assert!(state.entries.is_empty());
+        assert_eq!(state.counters.oversized, 1);
+        assert_eq!(state.retained_bytes, 0);
     }
 
     #[test]
@@ -972,9 +1165,10 @@ mod tests {
     fn oversized_entries_bypass_the_cache() {
         let _guard = CACHE_TEST_LOCK.lock().unwrap();
         let sample = stub_analysis("oversized");
-        let entry_bytes = sample.estimated_bytes();
+        let key = stub_key("oversized");
+        let entry_bytes = estimated_entry_bytes(&key, &sample);
         let mut state = AnalysisCacheState::new(entry_bytes.saturating_sub(1));
-        state.insert(stub_key("oversized"), sample);
+        state.insert(key, sample, entry_bytes);
 
         assert!(state.entries.is_empty());
         assert_eq!(state.counters.oversized, 1);

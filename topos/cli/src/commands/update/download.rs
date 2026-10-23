@@ -317,13 +317,16 @@ fn phase<T>(
     }
     let opts = display.opts;
     let bar = ProgressBar::new_spinner();
+    // stderr, like every other progress surface in the CLI, so stdout stays
+    // clean for `--json`. Set before the first draw: `set_message` paints
+    // immediately, and replacing the target afterwards strands that line.
+    bar.set_draw_target(ProgressDrawTarget::stderr());
     bar.set_style(
         ProgressStyle::with_template("  {spinner:.cyan} {msg}")
             .expect("static progress template")
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
     );
     bar.set_message(label.to_string());
-    bar.set_draw_target(ProgressDrawTarget::stderr());
     bar.enable_steady_tick(std::time::Duration::from_millis(80));
 
     let result = work(label);

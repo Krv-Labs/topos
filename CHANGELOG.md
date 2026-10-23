@@ -9,6 +9,10 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Fixed
+
+- `topos update` no longer leaves stale spinner lines above its phase results.
+
 ## [0.14.0] - 2026-10-23
 
 ### Added

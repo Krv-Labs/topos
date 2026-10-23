@@ -319,6 +319,15 @@ impl ToposServer {
                 return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
             }
         };
+        let _cache_lease = match crate::cache::lease_managed_path(&target.target_dir) {
+            Ok(lease) => lease,
+            Err(error) => {
+                let model =
+                    generate_error(format!("could not lease the managed PR cache: {error}"));
+                let md = render_generate_md(&model);
+                return Ok(CallToolResponse::Complete(to_tool_result(&model, md)));
+            }
+        };
 
         let mut state_before = None;
         if let Some(status) = pre_status {
@@ -376,6 +385,14 @@ pub(crate) fn depgraph_status_sync(params: DepgraphStatusInput) -> CallToolResul
         Ok(resolved) => resolved,
         Err(err) => {
             let model = status_error(err);
+            let md = render_status_md(&model);
+            return to_tool_result(&model, md);
+        }
+    };
+    let _cache_lease = match crate::cache::lease_managed_path(&_target.target_dir) {
+        Ok(lease) => lease,
+        Err(error) => {
+            let model = status_error(format!("could not lease the managed PR cache: {error}"));
             let md = render_status_md(&model);
             return to_tool_result(&model, md);
         }

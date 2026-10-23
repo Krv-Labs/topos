@@ -20,6 +20,25 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `topos.cache.v1` JSON document. Discovery never adopts legacy stores or
   mutates a repository, and `TOPOS_CACHE_INDEX_DIR` isolates bookkeeping in
   tests and CI.
+- Add `topos cache clean` and `topos cache prune` for explicit, lease-protected
+  removal of managed PR stores. `clean` targets one pull request or every known
+  store and is idempotent; `prune` requires an age threshold with a 24-hour
+  minimum grace. Both revalidate ownership markers, worktree registrations, and
+  content, support `--dry-run` and `--json`, and report partial failures for
+  retry. Generation, evaluation, and inspection that target a managed PR side
+  hold the same per-PR lease, so cleanup cannot remove a store mid-run. `clean`
+  adopts an unmarked legacy store only after validating its layout, commit
+  record, registrations, and contents; `prune` never adopts one. Agent
+  snapshots, tracked or non-directory `.gitnexus` content, and GitNexus-owned
+  `.gitnexus` graphs are never touched. There is no background cleanup.
+
+### Fixed
+
+- `topos uninstall` now preserves shared cache bookkeeping under
+  `state_dir()/cache-index` and never enters a repository's Git common
+  directory, so cache leases and locks survive, while still removing harness
+  installation state. Retained bookkeeping is reported instead of silently
+  pruned.
 
 ### Changed
 

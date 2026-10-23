@@ -282,6 +282,17 @@ pub(crate) fn evaluate_file_sync_with_cancel(
             format!("Path is not a file: {}", resolved.display()),
         ));
     }
+    let _cache_lease = match crate::cache::lease_managed_path(&resolved) {
+        Ok(lease) => lease,
+        Err(error) => {
+            return Ok(err_eval(
+                "PR cache in use",
+                Priority::Simple,
+                priority_source,
+                format!("could not lease the managed PR cache: {error}"),
+            ))
+        }
+    };
 
     let composable_root = composable_default_root(&detected_project);
     let project_root =
@@ -490,6 +501,19 @@ pub(crate) fn evaluate_project_sync_with_cancel(
         Ok(context) => context,
         Err(err) => {
             let model = empty_project_result(&params, priority, priority_source, Some(err));
+            let md = render_project_md(&model);
+            return Ok(to_tool_result(&model, md));
+        }
+    };
+    let _cache_lease = match crate::cache::lease_managed_path(&resolved_root) {
+        Ok(lease) => lease,
+        Err(error) => {
+            let model = empty_project_result(
+                &params,
+                priority,
+                priority_source,
+                Some(format!("could not lease the managed PR cache: {error}")),
+            );
             let md = render_project_md(&model);
             return Ok(to_tool_result(&model, md));
         }

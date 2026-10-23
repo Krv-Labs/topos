@@ -96,6 +96,13 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     validate_evaluate_args(&args)?;
     let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
+    let _cache_leases = inputs
+        .iter()
+        .map(|input| {
+            topos_mcp::cache::lease_managed_path(&input.path)
+                .map_err(|error| format!("could not lease the managed PR cache: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     if inputs.is_empty() {
         if let Some(pillar) = failure_pillar {
             ensure_pillar_measured(&[], pillar)?;

@@ -27,11 +27,12 @@ impl WorktreeRegistration {
     }
 }
 
-/// Canonicalize `path` when it exists, else normalize `.`/`..` lexically.
+/// Canonicalize `path` when it exists, else canonicalize the longest existing
+/// ancestor and normalize the missing tail lexically.
 ///
-/// The lexical fallback is only used for entries that are already missing;
-/// it lets a stale registration be compared with the path it claims without
-/// resolving through a parent that no longer exists.
+/// Resolving the ancestor matters on platforms where a temporary root is a
+/// symlink (for example macOS `/var` to `/private/var`): a deleted worktree
+/// path and the live registration that still names it must compare equal.
 pub fn normalize_path(path: &Path) -> PathBuf {
     if let Ok(canonical) = std::fs::canonicalize(path) {
         return canonical;
@@ -43,17 +44,31 @@ pub fn normalize_path(path: &Path) -> PathBuf {
             .map(|cwd| cwd.join(path))
             .unwrap_or_else(|_| path.to_path_buf())
     };
-    let mut out = PathBuf::new();
+    let mut lexical = PathBuf::new();
     for component in absolute.components() {
         match component {
             Component::CurDir => {}
             Component::ParentDir => {
-                out.pop();
+                lexical.pop();
             }
-            other => out.push(other.as_os_str()),
+            other => lexical.push(other.as_os_str()),
         }
     }
-    out
+    let mut prefix = lexical.as_path();
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(mut canonical) = std::fs::canonicalize(prefix) {
+            for part in missing.iter().rev() {
+                canonical.push(part);
+            }
+            return canonical;
+        }
+        let (Some(parent), Some(name)) = (prefix.parent(), prefix.file_name()) else {
+            return lexical;
+        };
+        missing.push(name.to_os_string());
+        prefix = parent;
+    }
 }
 
 fn git_output(root: &Path, args: &[&str]) -> Result<Output, String> {
@@ -237,6 +252,72 @@ fn parse_worktrees_lines(text: &str) -> Vec<WorktreeRegistration> {
         }
     }
     out
+}
+
+/// Resolve the worktree `.git` path recorded in `worktrees/<id>/gitdir`.
+///
+/// A relative record is resolved against the admin directory, as Git does.
+pub fn admin_gitdir_path(admin_dir: &Path) -> Result<PathBuf, String> {
+    let path = admin_dir.join("gitdir");
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| format!("reading {}: {error}", path.display()))?;
+    let claimed = PathBuf::from(raw.trim());
+    Ok(if claimed.is_absolute() {
+        claimed
+    } else {
+        admin_dir.join(claimed)
+    })
+}
+
+/// Whether an admin directory claims exactly `worktree_path/.git`.
+///
+/// This is the ownership check before a stale registration is removed: a
+/// registration naming a different (or relative, redirected) path must be
+/// reported, never pruned.
+pub fn admin_gitdir_matches(admin_dir: &Path, worktree_path: &Path) -> bool {
+    admin_gitdir_path(admin_dir)
+        .map(|claimed| normalize_path(&claimed) == normalize_path(&worktree_path.join(".git")))
+        .unwrap_or(false)
+}
+
+/// Every non-symlink directory under `common/worktrees`.
+pub fn worktree_admin_dirs(common_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let worktrees = common_dir.join("worktrees");
+    let entries = match std::fs::read_dir(&worktrees) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!("reading {}: {error}", worktrees.display()));
+        }
+    };
+    let mut dirs: Vec<PathBuf> = entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_type()
+                .map(|kind| kind.is_dir() && !kind.is_symlink())
+                .unwrap_or(false)
+        })
+        .map(|entry| entry.path())
+        .collect();
+    dirs.sort();
+    Ok(dirs)
+}
+
+/// Find the Git admin directory for a linked worktree path.
+///
+/// Scanning `worktrees/*/gitdir` is deliberate: it works even when the
+/// worktree directory is gone, and it never guesses that a name is an id.
+pub fn registration_admin_dir(
+    common_dir: &Path,
+    worktree_path: &Path,
+) -> Result<Option<PathBuf>, String> {
+    for admin in worktree_admin_dirs(common_dir)? {
+        if admin_gitdir_matches(&admin, worktree_path) {
+            return Ok(Some(admin));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(test)]

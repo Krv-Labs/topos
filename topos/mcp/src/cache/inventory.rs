@@ -526,7 +526,7 @@ fn replace_file(temp: &Path, destination: &Path) -> Result<(), String> {
 }
 
 #[cfg(unix)]
-fn harden(path: &Path, mode: u32) {
+pub(super) fn harden(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
     if path.exists() {
         let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));

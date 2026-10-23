@@ -26,7 +26,7 @@ const ROOT_COMMANDS: [(&str, &str); 13] = [
     ("compare", "Compare two files"),
     ("coverage", "Compare source structure with tests"),
     ("depgraph", "Build the COMPOSABLE graph"),
-    ("cache", "Inspect known cache locations"),
+    ("cache", "Inspect, discover, and clean cache locations"),
     ("install", "Configure agent harnesses to use Topos"),
     ("uninstall", "Remove Topos from agent harnesses"),
     ("update", "Check for and install a newer release"),
@@ -71,7 +71,7 @@ enum Command {
     Coverage(coverage::CoverageArgs),
     /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
-    /// Inspect known cache locations and discover existing stores.
+    /// Inspect, discover, and clean known cache locations.
     Cache(cache::CacheArgs),
     /// Configure agent harnesses (Claude Code, Codex, Gemini, ...) to use Topos.
     Install(install::InstallArgs),

@@ -402,3 +402,405 @@ fn discovery_reports_an_unusable_inventory_location() {
         "{stdout}"
     );
 }
+
+fn common_dir(repo: &Path) -> PathBuf {
+    PathBuf::from(git(repo, &["rev-parse", "--absolute-git-dir"]))
+}
+
+fn lease_path(repo: &Path, pr: u64) -> PathBuf {
+    common_dir(repo).join(format!("topos-pr-{pr}.lease"))
+}
+
+fn inventory_entries(index: &Path) -> Vec<PathBuf> {
+    match fs::read_dir(index.join("entries")) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => panic!("reading inventory: {error}"),
+    }
+}
+
+#[test]
+fn clean_dry_run_reports_without_adopting_or_deleting() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let store = add_pr_store(&main, 5, &sha);
+    fs::remove_file(store.join("topos-cache.json")).unwrap();
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "5", "--dry-run", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["schema"], "topos.cache.v1");
+    assert_eq!(value["command"], "clean");
+    assert_eq!(value["dry_run"], true);
+    assert_eq!(value["entries"][0]["action"], "would-remove", "{stdout}");
+    assert!(store.exists(), "dry-run removed the store");
+    assert!(
+        !store.join("topos-cache.json").exists(),
+        "dry-run adopted the legacy store"
+    );
+    assert!(
+        !store.join("topos-delete.json").exists(),
+        "dry-run wrote a deletion marker"
+    );
+    assert!(git(&main, &["worktree", "list", "--porcelain"]).contains(store.to_str().unwrap()));
+}
+
+#[test]
+fn clean_json_refuses_to_prompt_without_yes() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let store = add_pr_store(&main, 10, &sha);
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "10", "--json"],
+        &main,
+    );
+    assert_eq!(code, 1);
+    assert!(stderr.contains("--yes"), "{stderr}");
+    assert!(stdout.is_empty(), "unexpected stdout: {stdout}");
+    assert!(store.exists(), "refused prompt still removed the store");
+}
+
+#[test]
+fn clean_removes_a_managed_store_registrations_and_inventory() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let store = add_pr_store(&main, 6, &sha);
+
+    let (code, _, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "discover", main.to_str().unwrap(), "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(inventory_entries(&index).len(), 1);
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "6", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "removed", "{stdout}");
+    assert!(!store.exists(), "managed store survived cleanup");
+    assert!(
+        !git(&main, &["worktree", "list", "--porcelain"]).contains(store.to_str().unwrap()),
+        "cleanup left a worktree registration"
+    );
+    assert!(
+        inventory_entries(&index).is_empty(),
+        "inventory record survived"
+    );
+    assert!(
+        lease_path(&main, 6).exists(),
+        "cleanup removed the PR lease"
+    );
+}
+
+#[test]
+fn status_reports_an_active_pr_lease() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    add_pr_store(&main, 31, &sha);
+
+    let lease = fs::File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lease_path(&main, 31))
+        .unwrap();
+    lease
+        .try_lock()
+        .unwrap_or_else(|error| panic!("taking test lease: {error}"));
+
+    let (code, stdout, stderr) = topos(&home, &index, &["cache", "status", "--json"], &main);
+
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["state"], "in-use", "{stdout}");
+    assert!(value["entries"][0]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|line| line.as_str().is_some_and(|line| line.contains("lease"))));
+}
+
+#[test]
+fn clean_refuses_user_content_and_keeps_the_store_retryable() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let store = add_pr_store(&main, 7, &sha);
+    fs::write(store.join("base/user.txt"), "mine\n").unwrap();
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "7", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 1, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "skipped", "{stdout}");
+    assert!(value["totals"]["unsafe_skipped"].as_u64().unwrap() >= 1);
+    assert!(store.exists(), "unsafe store was removed");
+    assert_eq!(
+        fs::read_to_string(store.join("base/user.txt")).unwrap(),
+        "mine\n"
+    );
+    assert!(git(&main, &["worktree", "list", "--porcelain"]).contains(store.to_str().unwrap()));
+}
+
+#[test]
+fn clean_refuses_tracked_gitnexus_content() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    repo(&main);
+    fs::create_dir_all(main.join(".gitnexus")).unwrap();
+    fs::write(main.join(".gitnexus/note.txt"), "tracked\n").unwrap();
+    git(&main, &["add", ".gitnexus/note.txt"]);
+    git(&main, &["commit", "-qm", "track graph note"]);
+    let sha = git(&main, &["rev-parse", "HEAD"]);
+    let store = add_pr_store(&main, 19, &sha);
+    fs::write(store.join("base/.gitnexus/note.txt"), "edited\n").unwrap();
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "19", "--yes", "--json"],
+        &main,
+    );
+
+    assert_eq!(code, 1, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "skipped", "{stdout}");
+    assert!(store.exists(), "tracked graph content authorized deletion");
+    assert_eq!(
+        fs::read_to_string(store.join("base/.gitnexus/note.txt")).unwrap(),
+        "edited\n"
+    );
+}
+
+#[test]
+fn clean_adopts_a_valid_legacy_store_but_refuses_a_foreign_marker() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+
+    let legacy_repo = temp.path().join("legacy");
+    let legacy_sha = repo(&legacy_repo);
+    let legacy = add_pr_store(&legacy_repo, 8, &legacy_sha);
+    fs::remove_file(legacy.join("topos-cache.json")).unwrap();
+
+    let (code, _, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "8", "--yes", "--json"],
+        &legacy_repo,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        !legacy.exists(),
+        "valid legacy store was not adopted and removed"
+    );
+
+    let foreign_repo = temp.path().join("foreign");
+    let foreign_sha = repo(&foreign_repo);
+    let foreign = add_pr_store(&foreign_repo, 9, &foreign_sha);
+    let marker_path = foreign.join("topos-cache.json");
+    let mut marker: Value = serde_json::from_slice(&fs::read(&marker_path).unwrap()).unwrap();
+    marker["common_git_dir"] = Value::String(temp.path().join("elsewhere").display().to_string());
+    fs::write(&marker_path, serde_json::to_vec_pretty(&marker).unwrap()).unwrap();
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "9", "--yes", "--json"],
+        &foreign_repo,
+    );
+    assert_eq!(code, 1, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "skipped", "{stdout}");
+    assert!(foreign.exists(), "foreign marker authorized deletion");
+}
+
+#[test]
+fn clean_all_prs_continues_around_a_busy_lease() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let busy = add_pr_store(&main, 30, &sha);
+    let free = add_pr_store(&main, 31, &sha);
+
+    let lease = fs::File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lease_path(&main, 30))
+        .unwrap();
+    lease
+        .try_lock()
+        .unwrap_or_else(|error| panic!("taking test lease: {error}"));
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--all-prs", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 1, "{stderr}\n{stdout}");
+    let value = parse(&stdout);
+    let entries = value["entries"].as_array().unwrap();
+    let busy_entry = entries.iter().find(|entry| entry["pr"] == 30).unwrap();
+    assert_eq!(busy_entry["action"], "skipped", "{stdout}");
+    assert_eq!(value["totals"]["busy"], 1, "{stdout}");
+    assert!(busy.exists(), "busy store was removed");
+    assert!(!free.exists(), "cleanup stopped before the unrelated store");
+
+    drop(lease);
+    let (code, _, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "30", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!busy.exists(), "released store was not retryable");
+}
+
+#[test]
+fn clean_of_a_missing_pr_is_successful_and_reports_none() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    repo(&main);
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "clean", "--pr", "999", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["entries"][0]["action"], "none", "{stdout}");
+}
+
+#[cfg(unix)]
+fn age_tree(path: &Path, when: std::time::SystemTime) {
+    let metadata = fs::symlink_metadata(path).unwrap();
+    if metadata.file_type().is_symlink() {
+        return;
+    }
+    if metadata.is_dir() {
+        for entry in fs::read_dir(path).unwrap().flatten() {
+            age_tree(&entry.path(), when);
+        }
+    }
+    let file = fs::File::open(path).unwrap();
+    file.set_times(fs::FileTimes::new().set_modified(when))
+        .unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn prune_uses_a_twenty_four_hour_grace_and_predicts_without_deleting() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    let sha = repo(&main);
+    let old = add_pr_store(&main, 40, &sha);
+    let young = add_pr_store(&main, 41, &sha);
+    let long_ago = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+    age_tree(&old, long_ago);
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &[
+            "cache",
+            "prune",
+            "--older-than",
+            "1h",
+            "--dry-run",
+            "--json",
+        ],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    assert_eq!(value["command"], "prune");
+    assert_eq!(value["dry_run"], true);
+    let entries = value["entries"].as_array().unwrap();
+    let old_entry = entries.iter().find(|entry| entry["pr"] == 40).unwrap();
+    assert_eq!(old_entry["action"], "would-remove", "{stdout}");
+    assert!(old.exists(), "prune dry-run deleted the store");
+
+    let (code, _, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "prune", "--older-than", "1h", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!old.exists(), "old store survived prune");
+    assert!(
+        young.exists(),
+        "prune ignored the 24-hour grace period for a young store"
+    );
+
+    age_tree(&young, long_ago);
+    let (code, _, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "prune", "--older-than", "1h", "--yes", "--json"],
+        &main,
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!young.exists(), "aged store survived a second prune");
+}

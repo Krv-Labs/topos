@@ -190,11 +190,11 @@ mod tests {
         built_stores(&repo, 5, &base, &head);
         let plan = plan_coupling(&repo, &base, &head, &args(&["5"]), false);
         assert!(
-            matches!(plan, CouplingPlan::Ready(_)),
+            matches!(plan, CouplingPlan::Ready { .. }),
             "built graphs load without gitnexus"
         );
         let plan = plan_coupling(&repo, &base, &head, &args(&["5"]), true);
-        assert!(matches!(plan, CouplingPlan::Ready(_)));
+        assert!(matches!(plan, CouplingPlan::Ready { .. }));
     }
 
     #[test]

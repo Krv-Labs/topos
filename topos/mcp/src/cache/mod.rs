@@ -10,25 +10,43 @@
 //! CI; it deliberately does not move operational leases, which stay under the
 //! repository's own Git common directory.
 
+pub mod cleanup;
 mod discovery;
 mod git;
 mod inventory;
+mod lease;
 mod marker;
+mod ownership;
 mod registration;
 mod status;
 
+pub use cleanup::{
+    clean, parse_duration, prune, CleanOptions, MaintenanceEntry, MaintenanceReport,
+    MaintenanceTotals, PruneOptions,
+};
 pub use discovery::{discover, DiscoverReport};
 pub use git::{
-    canonical_common_dir, git, git_common_dir, git_root, worktree_registrations,
-    WorktreeRegistration,
+    admin_gitdir_matches, admin_gitdir_path, canonical_common_dir, git, git_common_dir, git_root,
+    registration_admin_dir, worktree_admin_dirs, worktree_registrations, WorktreeRegistration,
 };
 pub use inventory::{
     cache_index_dir, now, CacheCompatibility, CacheKind, CacheRecord, Inventory, RecordUpdate,
     INDEX_SCHEMA,
 };
+pub use lease::{
+    lease_managed_path, lease_path, worktree_lock_path, LeaseError, OperationLease, PrLease,
+    RepositoryLock,
+};
 pub use marker::{
-    marker_path, read_marker, validate_marker, write_marker, PrStoreMarker, MARKER_FILE,
-    MARKER_SCHEMA,
+    delete_marker_path, marker_path, read_delete_marker, read_marker, validate_delete_marker,
+    validate_marker, write_delete_marker, write_marker, PrStoreDeleteMarker, PrStoreMarker,
+    DELETE_MARKER_FILE, DELETE_MARKER_SCHEMA, MARKER_FILE, MARKER_LAYOUT, MARKER_SCHEMA,
+};
+pub use ownership::{
+    adopt_legacy, assess_content, checkout_blockers, ensure_marker_for_build, identity,
+    legacy_store, read_commits, registration_for, remove_disposable_graph,
+    remove_stale_registration, repo_for_common, target_graph_blockers, validate_store_marker,
+    ContentReport, LegacyStore, StoreIdentity, KNOWN_ENTRIES,
 };
 pub use registration::{graph_used, pr_built, pr_used};
 pub use status::{status, StatusEntry, StatusReport};

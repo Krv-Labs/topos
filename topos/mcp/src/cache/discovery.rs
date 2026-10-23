@@ -13,6 +13,7 @@ use super::git;
 use super::inventory::{
     canonical_string, now, CacheCompatibility, CacheKind, Inventory, RecordUpdate,
 };
+use super::lease;
 use super::marker::{self, DELETE_MARKER_FILE};
 use super::{CacheEntryView, StructuralState, INDEX_SCHEMA};
 
@@ -334,6 +335,21 @@ pub(super) fn classify_pr(
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         diagnostics.push(format!("{} is not a real directory", parent.display()));
         return (StructuralState::Corrupt, false, None, diagnostics);
+    }
+    match lease::PrLease::probe(common, pr) {
+        Ok(true) => {
+            let managed = marker::read_marker(parent)
+                .ok()
+                .flatten()
+                .is_some_and(|marker| marker::validate_marker(&marker, common, pr).is_ok());
+            diagnostics.push("PR cache lease is held by an active Topos operation".to_string());
+            return (StructuralState::InUse, managed, None, diagnostics);
+        }
+        Ok(false) => {}
+        Err(error) => {
+            diagnostics.push(format!("could not probe the PR cache lease: {error}"));
+            return (StructuralState::InUse, false, None, diagnostics);
+        }
     }
 
     let deleting = parent.join(DELETE_MARKER_FILE).exists();

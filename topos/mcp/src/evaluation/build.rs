@@ -255,6 +255,18 @@ fn ensure_gitnexus_dir_inner(
             generation_note: None,
         });
     }
+    let _cache_lease = match crate::cache::lease_managed_path(project_root) {
+        Ok(lease) => lease,
+        Err(error) => {
+            return Ok(GitnexusEnsureOutcome {
+                gitnexus_dir: None,
+                generation_note: Some(format!(
+                    "PR cache is in use by another Topos operation ({error}); \
+                     COMPOSABLE not scored."
+                )),
+            });
+        }
+    };
     progress("Checking dependency graph freshness");
     let status = depgraph_status(override_dir, project_root, &project_root.to_string_lossy());
     if cancelled(cancel_flag) {

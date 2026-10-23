@@ -3,9 +3,6 @@ type: maintenance quickstart
 title: Topos Engineering Quickstart
 description: Task-routed entry point and verification guide for maintaining the Topos Rust workspace, CLI subcommands, agent interaction policies, MCP server, and OpenWiki documentation.
 tags: [topos, maintenance, static-analysis, rust, mcp, cli]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-15T10:04:26.953Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,7 +26,10 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-15T10:04:26.953Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-22T10:38:38.831Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-22T10:38:38.831Z
 ---
 
 # Topos Engineering Quickstart
@@ -40,7 +40,7 @@ Source code and tests are authoritative. Use this quickstart to route maintenanc
 
 ## Workspace Architecture
 
-The root `Cargo.toml` defines the workspace package version (`0.12.0`) and contains three member crates:
+The root `Cargo.toml` defines the workspace package version (`0.13.0`) and contains three member crates:
 
 - **`topos-engine`**: Pure-Rust evaluation core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics/functors (`functors`), quality translators (`evaluation`), and adapters (`adapters`).
 - **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 12 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
@@ -48,7 +48,7 @@ The root `Cargo.toml` defines the workspace package version (`0.12.0`) and conta
 
 ```mermaid
 flowchart TD
-    subgraph Workspace ["Cargo Workspace (v0.12.0)"]
+    subgraph Workspace ["Cargo Workspace (v0.13.0)"]
         Engine["topos-engine (Evaluation Core and Categorical Primitives)"]
         CLI["topos CLI (Command Dispatcher and Human UI)"]
         MCP["topos-mcp (Stdio MCP Server)"]
@@ -109,8 +109,8 @@ flowchart TD
     Choice -->|"Harnesses & Registration"| InstallTask["Harness Registration & Setup<br/>(topos/cli/src/commands/install/)"]
     Choice -->|"Release, Versioning & CI"| ReleaseTask["Distribution & CI Workflows<br/>(scripts/, .github/workflows/)"]
 
-    EngineTask --> EngineProof["cargo test -p topos-engine <filter>"]
-    CLITask --> CLIProof["cargo test -p topos <filter>"]
+    EngineTask --> EngineProof["cargo test -p topos-engine [filter]"]
+    CLITask --> CLIProof["cargo test -p topos [filter]"]
     MCPTask --> MCPProof["cargo test -p topos-mcp --test lifecycle"]
     InstallTask --> InstallProof["cargo test -p topos --test install_e2e"]
     ReleaseTask --> ReleaseProof["python3 scripts/check_versions.py"]

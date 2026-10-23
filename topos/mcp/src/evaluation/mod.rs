@@ -9,12 +9,20 @@
 //!    GitNexus.
 //! 4. Call `CharacteristicMorphism::classify_detailed`.
 
+mod analysis;
 mod build;
 mod classify;
 mod depgraph;
 mod freshness;
 mod gitref;
 
+pub(crate) use analysis::security_evidence_needed;
+#[cfg(test)]
+pub(crate) use analysis::{
+    analysis_cache_contains, analysis_cache_stats, clear_analysis_cache, set_analysis_cache_bypass,
+    CACHE_TEST_LOCK,
+};
+pub(crate) use analysis::{analyze_source, classify_from_analysis, ParserContext, SourceAnalysis};
 pub use build::{
     depgraph_analyze_timeout, ensure_gitnexus_dir, ensure_gitnexus_dir_with_cancel,
     ensure_gitnexus_dir_with_progress, graph_build_lock, run_locked_depgraph_generation,

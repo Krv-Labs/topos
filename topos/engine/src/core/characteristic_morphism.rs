@@ -223,90 +223,78 @@ impl CharacteristicMorphism {
         raw_metrics.extend(secure_raw.clone());
         raw_metrics.extend(navigable_raw.clone());
 
-        let language = ast.uast_root.lang.clone();
-        let advisories = advisory::assess(&language, &raw_metrics);
-
-        let mut dimensions = BTreeMap::new();
-        let mut scores = BTreeMap::new();
-        let mut interpretation = BTreeMap::new();
-        let mut gate_scores = BTreeMap::new();
-
-        if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint, source_size_bytes) {
-            record(
-                &mut dimensions,
-                &mut scores,
-                &mut gate_scores,
-                &mut interpretation,
-                &advisories,
-                "simple",
-                EvaluationValue::Simple,
-                decision,
-            );
-        }
-        if let Some(decision) = score_composable_dim(&composable_raw) {
-            record(
-                &mut dimensions,
-                &mut scores,
-                &mut gate_scores,
-                &mut interpretation,
-                &advisories,
-                "composable",
-                EvaluationValue::Composable,
-                decision,
-            );
-        }
-        if let Some(decision) = score_secure_dim(&secure_raw) {
-            record(
-                &mut dimensions,
-                &mut scores,
-                &mut gate_scores,
-                &mut interpretation,
-                &advisories,
-                "secure",
-                EvaluationValue::Secure,
-                decision,
-            );
-        }
-        if let Some(decision) = score_navigable_dim(&navigable_raw) {
-            record(
-                &mut dimensions,
-                &mut scores,
-                &mut gate_scores,
-                &mut interpretation,
-                &advisories,
-                "navigable",
-                EvaluationValue::Navigable,
-                decision,
-            );
-        }
-
-        let satisfied: Vec<Generator> = Generator::ALL
-            .into_iter()
-            .filter(|g| dimensions.get(g.as_str()) == Some(&g.value()))
-            .collect();
-        let lattice_element = verdict_from_generators(&satisfied);
-
-        for (metric, reading) in &advisories {
-            let line = advisory::interpret(metric, reading);
-            if !line.is_empty() {
-                interpretation.insert(metric.clone(), line);
-            }
-        }
-
-        ClassificationResult {
-            is_parseable: true,
-            dimensions,
-            scores,
-            lattice_element,
-            priority,
+        assemble_classification(
             raw_metrics,
-            interpretation,
-            is_entrypoint_module: is_entrypoint,
-            is_stable_leaf_module: is_stable_leaf,
-            language,
-            gate_scores,
-            advisories,
+            simple_raw,
+            composable_raw,
+            secure_raw,
+            navigable_raw,
+            ast.uast_root.lang.clone(),
+            is_entrypoint,
+            is_stable_leaf,
+            source_size_bytes,
+            priority,
+        )
+    }
+
+    /// Score an already-collected flat raw-metric map.
+    ///
+    /// This is the reusable tail of [`Self::classify_detailed`]: the caller
+    /// supplies the source-local metrics (plus whatever graph readings are
+    /// current) and this function groups them by the established metric
+    /// namespaces, runs the same policy translators, and assembles the same
+    /// [`ClassificationResult`].
+    ///
+    /// Namespace routing:
+    /// - `ast.*` / `cfg.*` → SIMPLE
+    /// - `mdg.*` / `pdg.*` → COMPOSABLE
+    /// - `cpg.*` → SECURE
+    /// - `nav.*` → NAVIGABLE
+    ///
+    /// Unknown namespaces stay in `raw_metrics` (so diagnostics can still
+    /// report them) but feed no generator, matching `classify_detailed`'s
+    /// `_ => {}` arm. `is_parseable` is `true`: callers that cache a parse
+    /// failure must construct the default result themselves.
+    #[allow(clippy::too_many_arguments)]
+    pub fn classify_raw_metrics(
+        raw_metrics: BTreeMap<String, f64>,
+        language: &str,
+        is_entrypoint_module: bool,
+        is_stable_leaf_module: bool,
+        source_size_bytes: f64,
+        priority: Priority,
+    ) -> ClassificationResult {
+        let mut simple_raw = HashMap::new();
+        let mut composable_raw = HashMap::new();
+        let mut secure_raw = HashMap::new();
+        let mut navigable_raw = HashMap::new();
+        for (name, value) in &raw_metrics {
+            let bucket = if name.starts_with("ast.") || name.starts_with("cfg.") {
+                &mut simple_raw
+            } else if name.starts_with("mdg.") || name.starts_with("pdg.") {
+                &mut composable_raw
+            } else if name.starts_with("cpg.") {
+                &mut secure_raw
+            } else if name.starts_with("nav.") {
+                &mut navigable_raw
+            } else {
+                continue;
+            };
+            bucket.insert(name.clone(), *value);
         }
+
+        assemble_classification(
+            raw_metrics,
+            simple_raw,
+            composable_raw,
+            secure_raw,
+            navigable_raw,
+            language.to_string(),
+            is_entrypoint_module,
+            is_stable_leaf_module,
+            source_size_bytes,
+            priority,
+        )
     }
 
     /// Pointwise multi-file meet `⋀_f χ_S(f)`.
@@ -354,6 +342,106 @@ impl CharacteristicMorphism {
                 (dim.to_string(), value)
             })
             .collect()
+    }
+}
+
+/// Shared scoring/assembly tail for [`CharacteristicMorphism::classify_detailed`]
+/// and [`CharacteristicMorphism::classify_raw_metrics`].
+#[allow(clippy::too_many_arguments)]
+fn assemble_classification(
+    raw_metrics: BTreeMap<String, f64>,
+    simple_raw: HashMap<String, f64>,
+    composable_raw: HashMap<String, f64>,
+    secure_raw: HashMap<String, f64>,
+    navigable_raw: HashMap<String, f64>,
+    language: String,
+    is_entrypoint: bool,
+    is_stable_leaf: bool,
+    source_size_bytes: f64,
+    priority: Priority,
+) -> ClassificationResult {
+    let advisories = advisory::assess(&language, &raw_metrics);
+
+    let mut dimensions = BTreeMap::new();
+    let mut scores = BTreeMap::new();
+    let mut interpretation = BTreeMap::new();
+    let mut gate_scores = BTreeMap::new();
+
+    if let Some(decision) = score_simple_dim(&simple_raw, is_entrypoint, source_size_bytes) {
+        record(
+            &mut dimensions,
+            &mut scores,
+            &mut gate_scores,
+            &mut interpretation,
+            &advisories,
+            "simple",
+            EvaluationValue::Simple,
+            decision,
+        );
+    }
+    if let Some(decision) = score_composable_dim(&composable_raw) {
+        record(
+            &mut dimensions,
+            &mut scores,
+            &mut gate_scores,
+            &mut interpretation,
+            &advisories,
+            "composable",
+            EvaluationValue::Composable,
+            decision,
+        );
+    }
+    if let Some(decision) = score_secure_dim(&secure_raw) {
+        record(
+            &mut dimensions,
+            &mut scores,
+            &mut gate_scores,
+            &mut interpretation,
+            &advisories,
+            "secure",
+            EvaluationValue::Secure,
+            decision,
+        );
+    }
+    if let Some(decision) = score_navigable_dim(&navigable_raw) {
+        record(
+            &mut dimensions,
+            &mut scores,
+            &mut gate_scores,
+            &mut interpretation,
+            &advisories,
+            "navigable",
+            EvaluationValue::Navigable,
+            decision,
+        );
+    }
+
+    let satisfied: Vec<Generator> = Generator::ALL
+        .into_iter()
+        .filter(|g| dimensions.get(g.as_str()) == Some(&g.value()))
+        .collect();
+    let lattice_element = verdict_from_generators(&satisfied);
+
+    for (metric, reading) in &advisories {
+        let line = advisory::interpret(metric, reading);
+        if !line.is_empty() {
+            interpretation.insert(metric.clone(), line);
+        }
+    }
+
+    ClassificationResult {
+        is_parseable: true,
+        dimensions,
+        scores,
+        lattice_element,
+        priority,
+        raw_metrics,
+        interpretation,
+        is_entrypoint_module: is_entrypoint,
+        is_stable_leaf_module: is_stable_leaf,
+        language,
+        gate_scores,
+        advisories,
     }
 }
 
@@ -668,5 +756,93 @@ mod tests {
         assert!(["simple", "composable", "secure"]
             .iter()
             .any(|g| text.contains(g)));
+    }
+
+    /// The reusable raw-metric tail must reproduce `classify_detailed`
+    /// byte-for-byte when fed the same flat metric map.
+    #[test]
+    fn classify_raw_metrics_matches_classify_detailed() {
+        use crate::evaluation::policies::base::Priority as P;
+        use crate::functors::probes::uast::abstractness::AbstractnessRepresentation;
+
+        let sources = [
+            ("python", "def f(x):\n    return x\n"),
+            (
+                "python",
+                "import os\n\ndef run(cmd):\n    if cmd:\n        return os.system(cmd)\n    return eval(cmd)\n",
+            ),
+            ("rust", "pub fn f(x: i32) -> i32 {\n    x + 1\n}\n"),
+            ("typescript", "export function f(a: boolean) { return a ? 1 : 0 }\n"),
+        ];
+
+        for (language, source) in sources {
+            for priority in [P::Simple, P::Composable, P::Secure, P::Navigable] {
+                let mut morphism = ProgramMorphism::new(source, language);
+                let cfg = morphism.build_cfg().unwrap().clone();
+                let pdg = morphism.build_pdg().unwrap().clone();
+                let cpg = morphism.build_cpg().unwrap().clone();
+                let abstractness =
+                    AbstractnessRepresentation::new(&morphism.ast.as_ref().unwrap().uast_root);
+                let reps: [&dyn Representation; 4] = [&cfg, &pdg, &cpg, &abstractness];
+                let detailed = CharacteristicMorphism.classify_detailed(&morphism, &reps, priority);
+
+                let rebuilt = CharacteristicMorphism::classify_raw_metrics(
+                    detailed.raw_metrics.clone(),
+                    &detailed.language,
+                    detailed.is_entrypoint_module,
+                    detailed.is_stable_leaf_module,
+                    morphism.source.len() as f64,
+                    priority,
+                );
+
+                assert_eq!(rebuilt.is_parseable, detailed.is_parseable);
+                assert_eq!(rebuilt.dimensions, detailed.dimensions);
+                assert_eq!(rebuilt.scores, detailed.scores);
+                assert_eq!(rebuilt.gate_scores, detailed.gate_scores);
+                assert_eq!(rebuilt.lattice_element, detailed.lattice_element);
+                assert_eq!(rebuilt.priority, detailed.priority);
+                assert_eq!(rebuilt.raw_metrics, detailed.raw_metrics);
+                assert_eq!(rebuilt.interpretation, detailed.interpretation);
+                assert_eq!(rebuilt.advisories, detailed.advisories);
+                assert_eq!(rebuilt.language, detailed.language);
+                assert_eq!(rebuilt.is_entrypoint_module, detailed.is_entrypoint_module);
+                assert_eq!(
+                    rebuilt.is_stable_leaf_module,
+                    detailed.is_stable_leaf_module
+                );
+            }
+        }
+    }
+
+    /// Namespace routing is exact, including the abstractness metric that
+    /// rides the COMPOSABLE bucket under the `mdg.` prefix.
+    #[test]
+    fn classify_raw_metrics_routes_each_namespace() {
+        let raw = BTreeMap::from([
+            ("ast.entropy".to_string(), 1.0),
+            ("cfg.cyclomatic".to_string(), 1.0),
+            ("pdg.data_deps".to_string(), 0.0),
+            ("mdg.fan_out".to_string(), 2.0),
+            ("mdg.abstractness".to_string(), 0.5),
+            ("cpg.dangerous_calls".to_string(), 0.0),
+            ("cpg.taint_flows".to_string(), 0.0),
+            ("nav.max_function_divergence".to_string(), 0.0),
+            ("custom.metric".to_string(), 42.0),
+        ]);
+        let result = CharacteristicMorphism::classify_raw_metrics(
+            raw,
+            "python",
+            false,
+            false,
+            100.0,
+            Priority::Simple,
+        );
+        assert!(result.is_parseable);
+        assert!(result.dimensions.contains_key("simple"));
+        assert!(result.dimensions.contains_key("composable"));
+        assert!(result.dimensions.contains_key("secure"));
+        assert!(result.dimensions.contains_key("navigable"));
+        // Unknown namespaces are retained for diagnostics but scored nowhere.
+        assert_eq!(result.raw_metrics["custom.metric"], 42.0);
     }
 }

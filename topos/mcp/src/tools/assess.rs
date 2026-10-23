@@ -21,12 +21,12 @@ use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator, Omega};
 use topos_engine::evaluation::policies::base::Priority;
-use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance;
+use topos_engine::functors::profunctors::ast::compare::calculate_ast_distance_from_kinds;
 
-use crate::diagnostics::{overlay_for_source, SecurityOverlay};
+use crate::diagnostics::{overlay_from_analysis, SecurityOverlay};
 use crate::evaluation::{
-    classify_morphism, detect_language, gitnexus_warnings, load_dep_graph, resolve_gitnexus_dir,
-    resolve_override_for_root,
+    analyze_source, classify_from_analysis, detect_language, gitnexus_warnings, load_dep_graph,
+    resolve_gitnexus_dir, resolve_override_for_root, ParserContext,
 };
 use crate::execution::{is_cancelled, EvalCancelled, StatusReporter};
 use crate::formatting::{
@@ -289,21 +289,28 @@ struct AssessCoreArgs<'a> {
 }
 
 fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
-    let mut baseline_morph = ProgramMorphism::new(&args.baseline_src, &args.language);
-    let baseline_res = classify_morphism(&mut baseline_morph, args.priority, args.dep_graph);
-    let mut proposed_morph = ProgramMorphism::new(&args.proposed_src, &args.language);
-    let proposed_res = classify_morphism(&mut proposed_morph, args.priority, args.dep_graph);
-
-    let current_overlay = overlay_for_source(
+    // Assessment parses with the caller's language in memory mode. That is
+    // deliberate: a `.tsx` path still parses as plain TypeScript here, as it
+    // did before the cache existed. `file_path` is only the SECURE evidence
+    // path, never the parser context.
+    let parser = ParserContext::memory(&args.language);
+    let baseline_analysis = analyze_source(
         &args.baseline_src,
-        &args.language,
+        parser.clone(),
+        args.file_path.as_deref(),
+    );
+    let baseline_res = classify_from_analysis(&baseline_analysis, args.dep_graph, args.priority);
+    let proposed_analysis = analyze_source(&args.proposed_src, parser, args.file_path.as_deref());
+    let proposed_res = classify_from_analysis(&proposed_analysis, args.dep_graph, args.priority);
+
+    let current_overlay = overlay_from_analysis(
+        &baseline_analysis,
         &baseline_res,
         args.file_path.as_deref(),
         &args.allow,
     );
-    let proposed_overlay = overlay_for_source(
-        &args.proposed_src,
-        &args.language,
+    let proposed_overlay = overlay_from_analysis(
+        &proposed_analysis,
         &proposed_res,
         args.file_path.as_deref(),
         &args.allow,
@@ -331,13 +338,14 @@ fn assess_core(args: AssessCoreArgs<'_>) -> AssessmentResult {
         calculate_deltas(&current_eval, &proposed_eval, &baseline_res, &proposed_res);
 
     let (distance, similarity) = match (
-        baseline_res.is_parseable,
-        proposed_res.is_parseable,
-        baseline_morph.ast.as_ref(),
-        proposed_morph.ast.as_ref(),
+        baseline_analysis.is_parseable,
+        proposed_analysis.is_parseable,
     ) {
-        (true, true, Some(base_ast), Some(prop_ast)) => {
-            let dist = calculate_ast_distance(base_ast, prop_ast);
+        (true, true) => {
+            let dist = calculate_ast_distance_from_kinds(
+                &baseline_analysis.ast_kinds,
+                &proposed_analysis.ast_kinds,
+            );
             (
                 Some(dist.normalized_distance),
                 Some(1.0 - dist.normalized_distance),
@@ -2362,5 +2370,231 @@ mod tests {
         assert!(!ref_exists(&tmp, "no-such-ref-at-all"));
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    // -----------------------------------------------------------------------
+    // Source-analysis reuse
+    // -----------------------------------------------------------------------
+
+    fn assess_pair(baseline: &str, proposed: &str, allow: Vec<String>) -> AssessmentResult {
+        assess_core(AssessCoreArgs {
+            baseline_src: baseline.to_string(),
+            proposed_src: proposed.to_string(),
+            language: "python".to_string(),
+            priority: Priority::Simple,
+            priority_source: PrioritySource::Default,
+            prefs: None,
+            dep_graph: None,
+            coupling_for_proposed: false,
+            file_path: None,
+            allow,
+            include_security_findings: true,
+            warnings: Vec::new(),
+        })
+    }
+
+    struct BypassGuard;
+    impl Drop for BypassGuard {
+        fn drop(&mut self) {
+            crate::evaluation::set_analysis_cache_bypass(false);
+        }
+    }
+
+    #[test]
+    fn cache_on_and_bypass_produce_identical_assessments() {
+        let _guard = crate::evaluation::CACHE_TEST_LOCK.lock().unwrap();
+        crate::evaluation::clear_analysis_cache();
+        let baseline = "def f(x):\n    if x:\n        return x\n    return 0\n";
+        let proposed = "def f(x):\n    if x > 0:\n        return x\n    return 0\n";
+
+        let cached = assess_pair(baseline, proposed, Vec::new());
+
+        let _bypass = BypassGuard;
+        crate::evaluation::set_analysis_cache_bypass(true);
+        let uncached = assess_pair(baseline, proposed, Vec::new());
+
+        assert_eq!(
+            serde_json::to_value(&cached).unwrap(),
+            serde_json::to_value(&uncached).unwrap(),
+            "cache on/off must not change the assessment payload"
+        );
+    }
+
+    #[test]
+    fn repeated_assessment_reuses_baseline_and_misses_each_new_proposal() {
+        let _guard = crate::evaluation::CACHE_TEST_LOCK.lock().unwrap();
+        crate::evaluation::clear_analysis_cache();
+        let before = crate::evaluation::analysis_cache_stats();
+        let baseline = "def f(x):\n    return x + 1\n";
+        let proposals = [
+            "def f(x):\n    return x + 2\n",
+            "def f(x):\n    return x + 3\n",
+            "def f(x):\n    return x + 4\n",
+            "def f(x):\n    return x + 5\n",
+            "def f(x):\n    return x + 6\n",
+        ];
+
+        for _ in 0..2 {
+            for proposed in proposals {
+                let result = assess_pair(baseline, proposed, Vec::new());
+                assert!(result.error.is_none(), "{result:?}");
+            }
+        }
+
+        let after = crate::evaluation::analysis_cache_stats();
+        // Round one: one baseline miss + five proposal misses. Round two:
+        // the baseline and every proposal hit.
+        assert!(
+            after.misses - before.misses >= 6,
+            "expected the baseline plus five proposals to be analyzed: {after:?}"
+        );
+        assert!(
+            after.hits - before.hits >= 6,
+            "the second round must reuse all six analyses: {after:?}"
+        );
+        assert!(after.entries >= 6);
+        assert!(after.retained_bytes <= after.budget_bytes);
+        assert!(crate::evaluation::analysis_cache_contains(
+            baseline,
+            &ParserContext::memory("python"),
+            None
+        ));
+        for proposed in proposals {
+            assert!(crate::evaluation::analysis_cache_contains(
+                proposed,
+                &ParserContext::memory("python"),
+                None
+            ));
+        }
+    }
+
+    #[test]
+    fn allowlist_applies_fresh_to_repeated_assessments() {
+        let _guard = crate::evaluation::CACHE_TEST_LOCK.lock().unwrap();
+        crate::evaluation::clear_analysis_cache();
+        const EVAL_SRC: &str = "def f(expr):\n    return eval(expr)\n";
+
+        let bare = assess_pair(EVAL_SRC, EVAL_SRC, Vec::new());
+        assert!(
+            bare.current.acknowledged_risks.is_empty(),
+            "no allowlist means nothing is acknowledged"
+        );
+
+        let hits_before = crate::evaluation::analysis_cache_stats().hits;
+        let allowed = assess_pair(EVAL_SRC, EVAL_SRC, vec!["eval".to_string()]);
+        assert!(
+            allowed
+                .current
+                .acknowledged_risks
+                .iter()
+                .any(|risk| risk.callee.as_deref() == Some("eval")),
+            "the cached evidence must be re-partitioned by the current allowlist"
+        );
+        assert!(
+            crate::evaluation::analysis_cache_stats().hits > hits_before,
+            "the second assessment reuses the source analysis"
+        );
+    }
+
+    #[test]
+    fn cancelled_assessment_does_not_populate_the_analysis_cache() {
+        let _guard = crate::evaluation::CACHE_TEST_LOCK.lock().unwrap();
+        crate::evaluation::clear_analysis_cache();
+        let source = "def cancelled_before_analysis(x):\n    return x * 3\n";
+        let params: AssessImprovementInput = serde_json::from_value(serde_json::json!({
+            "current_code": source,
+            "proposed_code": "def cancelled_before_analysis(x):\n    return x * 4\n",
+            "language": "python"
+        }))
+        .unwrap();
+        let flag = AtomicBool::new(true);
+        assert!(assess_improvement_with_cancel(params, Some(&flag)).is_err());
+        assert!(
+            !crate::evaluation::analysis_cache_contains(
+                source,
+                &ParserContext::memory("python"),
+                None
+            ),
+            "cancellation must happen before any analysis product is cached"
+        );
+    }
+
+    fn benchmark_source(seed: usize) -> String {
+        let mut source = String::new();
+        for index in 0..30 {
+            source.push_str(&format!(
+                "def f_{seed}_{index}(x):\n    if x:\n        return x + {index}\n    return {index}\n\n"
+            ));
+        }
+        source
+    }
+
+    /// Warm assessment loop, cache on vs bypass. Ignored because it is a
+    /// measurement, not a gate; it makes no wall-clock assertions.
+    #[test]
+    #[ignore]
+    fn bench_warm_assessment_loop_cache_on_off() {
+        let _guard = crate::evaluation::CACHE_TEST_LOCK.lock().unwrap();
+        let baseline = benchmark_source(0);
+        let proposals: Vec<String> = (1..=8).map(benchmark_source).collect();
+        const ROUNDS: usize = 40;
+
+        let run = |use_cache: bool| {
+            crate::evaluation::clear_analysis_cache();
+            let _bypass = if use_cache {
+                None
+            } else {
+                crate::evaluation::set_analysis_cache_bypass(true);
+                Some(BypassGuard)
+            };
+            let started = std::time::Instant::now();
+            let mut assessments = 0usize;
+            for _ in 0..ROUNDS {
+                for proposed in &proposals {
+                    let result = assess_pair(&baseline, proposed, Vec::new());
+                    assert!(result.error.is_none());
+                    assessments += 1;
+                }
+            }
+            let elapsed = started.elapsed();
+            if !use_cache {
+                crate::evaluation::set_analysis_cache_bypass(false);
+            }
+            (
+                assessments,
+                elapsed,
+                crate::evaluation::analysis_cache_stats(),
+            )
+        };
+
+        let (assessments, cached_elapsed, cached_stats) = run(true);
+        let (bypass_assessments, bypass_elapsed, _) = run(false);
+
+        assert_eq!(assessments, ROUNDS * proposals.len());
+        assert_eq!(bypass_assessments, assessments);
+        println!(
+            "cache on: assessments={assessments}, analyses_performed={}, analyses_reused={}, \
+             evictions={}, oversized={}, entries={}, retained_bytes={}, budget_bytes={}, \
+             avg_retained_bytes_per_entry={:.0}, elapsed_ms={:.3}",
+            cached_stats.misses,
+            cached_stats.hits,
+            cached_stats.evictions,
+            cached_stats.oversized,
+            cached_stats.entries,
+            cached_stats.retained_bytes,
+            cached_stats.budget_bytes,
+            if cached_stats.entries == 0 {
+                0.0
+            } else {
+                cached_stats.retained_bytes as f64 / cached_stats.entries as f64
+            },
+            cached_elapsed.as_secs_f64() * 1000.0,
+        );
+        println!(
+            "cache off: assessments={bypass_assessments}, analyses_performed={}, \
+             analyses_reused=0, elapsed_ms={:.3}",
+            bypass_assessments * 2,
+            bypass_elapsed.as_secs_f64() * 1000.0,
+        );
     }
 }

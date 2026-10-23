@@ -11,6 +11,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Changed
 
+- Reuse source-local analysis across repeated MCP assessments so an unchanged
+  baseline or proposal skips re-parsing, behind a 64 MiB process-local
+  byte-bounded LRU keyed by exact source bytes and parser context. Graph
+  evidence, path-scanned security findings, allowlists, priorities, and final
+  verdicts are still recomputed on every assessment.
 - Share one loaded dependency-graph topology across target views instead of
   copying every node and relationship per file, cutting MCP evaluation and
   PR-recap retargeting time and memory on large repositories.

@@ -70,7 +70,7 @@ impl FileGraph {
     /// Markdown-link imports.
     pub fn build(graph: &ModuleDependencyGraph) -> FileGraph {
         let mut path_of_id: HashMap<&str, &str> = HashMap::new();
-        for node in graph.nodes.values().filter(|node| node.label == "File") {
+        for node in graph.nodes().values().filter(|node| node.label == "File") {
             if let Some(path) = node.properties.get("filePath").and_then(|v| v.as_str()) {
                 path_of_id.insert(node.id.as_str(), normalized(path));
             }
@@ -92,7 +92,7 @@ impl FileGraph {
         let mut owner: HashMap<&str, Option<usize>> = HashMap::new();
         let mut imports = vec![BTreeSet::new(); paths.len()];
         let mut depended_on_by = vec![BTreeSet::new(); paths.len()];
-        for rel in graph.relationships.values() {
+        for rel in graph.relationships().values() {
             let is_import = match rel.rel_type.as_str() {
                 "IMPORTS" if rel.reason == MARKDOWN_LINK => continue,
                 "IMPORTS" => true,

@@ -47,7 +47,7 @@ pub fn calculate_mdg_curvature(
     rel_type: &str,
 ) -> MdgCurvatureResult {
     let file_ids: Vec<&str> = graph
-        .nodes
+        .nodes()
         .values()
         .filter(|n| n.label == "File")
         .map(|n| n.id.as_str())

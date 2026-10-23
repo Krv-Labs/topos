@@ -917,10 +917,8 @@ mod tests {
         );
 
         // With no edge at all the name is dropped and the child unclusters.
-        let mut head2 = head.clone();
-        head2.relationships.clear();
         let mut rebuilt = ModuleDependencyGraph::new("p1.ts");
-        for node in head2.nodes.values() {
+        for node in head.nodes().values() {
             rebuilt.add_node(node.clone());
         }
         let report2 = detect_splits(

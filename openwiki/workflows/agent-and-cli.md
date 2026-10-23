@@ -1,11 +1,11 @@
 ---
 type: workflow guide
-title: Agent and CLI Workflows
-description: Run Topos structural evaluation locally through the CLI or from an MCP client. This guide covers CLI entrypoints, input resolution, optional GitNexus preparation, MCP lifecycle and trust boundaries, schema options, and baseline-aware refactor workflows.
+title: Agent & CLI Workflows
+description: Detailed execution workflows for Topos CLI commands and MCP agent tool calls, covering entrypoint dispatch, input resolution, COMPOSABLE preparation, security overlays, and snapshot refactoring.
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-22T08:29:09.123Z
+    at: 2026-10-23T10:31:29.483Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,16 +47,33 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-15T10:04:26.953Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
 ---
 
-# Agent and CLI Workflows
+# Agent & CLI Workflows
 
 Topos provides the `topos` CLI for local terminal operations and the stdio `topos-mcp` server for MCP hosts and autonomous agents. Both interfaces invoke the same underlying quality engine, but operate under distinct interaction and safety contracts: CLI output is formatted for human terminal display or shell scripting, whereas MCP tool definitions, JSON schemas, result structures, tool annotations, protocol revisions, and filesystem containment boundaries constitute public contracts for external agents. Quality lattice verdicts are defined in the [quality model](../domain/quality-model.md); structural test coverage and advisory refactor hotspot analysis are complementary architectural signals that operate outside the four-pillar lattice.
 
 ## Select an entrypoint
 
-The root `topos` executable dispatches twelve public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help and exits with status 2, while explicit help prints to standard output and exits with status 0.
+The root `topos` executable dispatches thirteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help and exits with status 2, while explicit help prints to standard output and exits with status 0.
+
+```mermaid
+flowchart TD
+    A["topos CLI Invocation"] --> B{"Pre-dispatch check"}
+    B -- "Empty args" --> C["Print root help to stderr, exit status 2"]
+    B -- "-h / --help" --> D["Print root help to stdout, exit status 0"]
+    B -- "Subcommand supplied" --> E["Clap argument parsing"]
+    E -- "Parse error" --> F["Clap exits with error"]
+    E -- "Valid command" --> G["dispatch(command)"]
+    G --> H{"Command Handler Execution"}
+    H -- "Err(message)" --> I["Print Error: message, exit status 1"]
+    H -- "Ok(())" --> J{"wants_no_notice?"}
+    J -- "false" --> K["Run passive_notice() 24h check"]
+    J -- "true" --> L["Return Ok status"]
+    K --> L
+```
+*CLI entrypoint pre-dispatch checks, clap argument parsing, subcommand execution, error termination, and passive update notice handling.*
 
 | Entry point | Use it when |
 | --- | --- |
@@ -65,6 +82,7 @@ The root `topos` executable dispatches twelve public subcommands: `config`, `eva
 | `topos depgraph generate [PATH]` | You want to explicitly build or refresh the GitNexus graph used for COMPOSABLE. |
 | `topos pr-recap RANGE_OR_PR` | You want structural before/after summaries for a Git revision range or pull request number. |
 | `topos coverage PATH...` | You want to compare source structure against test declarations without executing test code. |
+| `topos cache ...` | You want to inspect, discover, or clean cache locations across Topos operations. |
 | `topos mcp` | An MCP host launches the unified CLI executable as a stdio server. |
 | `topos-mcp` | An MCP host launches the standalone server binary; without `--help` or `--version`, it serves stdio. |
 
@@ -96,7 +114,7 @@ Command-line output controls operate independently of input discovery. `--json` 
 
 ## COMPOSABLE preparation policy
 
-COMPOSABLE depends on a GitNexus module-dependency graph (MDG); SIMPLE, SECURE, and NAVIGABLE do not. Unless `--no-composable` or `no_composable: true` is passed, CLI commands and filesystem MCP evaluation tools invoke `ensure_gitnexus_dir` (or its cancellation-aware variant `ensure_gitnexus_dir_with_cancel`) to inspect store state. If the store is `missing`, `stale`, `branch_not_indexed`, or returns `load_error`, Topos attempts to generate or refresh the store by running `gitnexus analyze --skip-agents-md`.
+COMPOSABLE depends on a GitNexus module-dependency graph (MDG); SIMPLE, SECURE, and NAVIGABLE do not. Unless `--no-composable` or `no_composable: true` is passed, CLI commands and filesystem MCP evaluation tools invoke `ensure_gitnexus_dir` (or its cancellation-aware variant `ensure_gitnexus_dir_with_cancel`) to inspect store state. If the store state is `missing`, `stale`, `branch_not_indexed`, or `load_error`, Topos attempts to generate or refresh the store by running `gitnexus analyze --skip-agents-md`.
 
 ```bash
 # Explicitly score SIMPLE/SECURE/NAVIGABLE without COMPOSABLE.
@@ -109,7 +127,7 @@ topos evaluate src/ -r
 
 Subprocess execution during store generation is bounded by `TOPOS_DEPGRAPH_TIMEOUT` (300 seconds by default). If the `gitnexus` binary is missing from `$PATH`, generation fails, or a schema mismatch occurs, Topos gracefully degrades evaluation: SIMPLE, SECURE, and NAVIGABLE continue running, while a top-level warning explains why COMPOSABLE was omitted.
 
-`topos depgraph generate` provides the explicit, strict graph-generation entrypoint. It no-ops if a fresh graph exists (`present`) unless `--force` is supplied and refuses a schema-mismatched store rather than overwriting it. In MCP contexts, `topos_depgraph_status` is read-only (`read_only_hint = true`), whereas `topos_generate_depgraph` is its side-effecting counterpart (`read_only_hint = false`).
+`topos depgraph generate` provides the explicit, strict graph-generation entrypoint. It no-ops if a fresh graph exists (`present`) unless `--force` is supplied and refuses a schema-mismatched store (`schema_mismatch`) rather than overwriting it. In MCP contexts, `topos_depgraph_status` is read-only (`read_only_hint = true`), whereas `topos_generate_depgraph` is its side-effecting counterpart (`read_only_hint = false`).
 
 ### Store location and project root resolution
 
@@ -153,6 +171,29 @@ MCP tool annotations signal side effects and execution behavior to hosts:
 - `topos_evaluate_code`: Evaluates in-memory code snippets. Marked as read-only (`read_only_hint = true`), idempotent (`idempotent_hint = true`), and closed-world (`open_world_hint = false`). It cannot score COMPOSABLE because snippet code lacks module context.
 - `topos_evaluate_file` & `topos_evaluate_project`: Non-read-only (`read_only_hint = false`), non-idempotent (`idempotent_hint = false`), and closed-world (`open_world_hint = false`) because default COMPOSABLE preparation can auto-generate or refresh `.gitnexus`. These tools do not modify source code files.
 - `topos_inspect_code`: Accepts either inline `code` or a `filepath`. Supplying a file path permits COMPOSABLE graph preparation (non-read-only annotation), whereas inline code scores without COMPOSABLE.
+
+```mermaid
+flowchart TD
+    A["Agent Tool Request"] --> B["Canonicalize path & verify file root"]
+    B -- "Outside root or missing project" --> C["Return Path Access Error"]
+    B -- "Valid Path" --> D{"COMPOSABLE skipped?"}
+    D -- "Yes (--no-composable)" --> E["Score SIMPLE, SECURE, NAVIGABLE only"]
+    D -- "No" --> F["check depgraph_status"]
+    F -- "present" --> G["Use existing store"]
+    F -- "missing / stale / load_error" --> H{"gitnexus available?"}
+    H -- "No" --> I["Add generation note, degrade to 3 pillars"]
+    H -- "Yes" --> J["Run gitnexus analyze --skip-agents-md"]
+    J -- "Success" --> G
+    J -- "Failure / Timeout" --> I
+    G --> K["Compute Quality Lattice Verdicts"]
+    I --> K
+    E --> K
+    K --> L{"Overlay applies?"}
+    L -- "Yes (SECURE fail)" --> M["Extract CPG findings & apply allowlist"]
+    L -- "No" --> N["Return Evaluation Response"]
+    M --> N
+```
+*MCP tool request execution path covering containment validation, COMPOSABLE dependency graph preparation, engine classification, and security overlay application.*
 
 ### Project evaluation schema (`EvaluateProjectInput`)
 

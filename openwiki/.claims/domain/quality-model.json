@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:712807b82ae86d7e59c5ba4954ebcb4d9fa66c65bb9532764caad59b46871895",
+  "pageVersion": "sha256:192fe4be41a03c64fa381a0fa5d50273b89b90dc80f710237912a9c37f35334c",
   "claims": [
     {
       "id": "claim_e8682d5eb5604266a48fb6f6ac3fbb3e",
@@ -25,16 +25,12 @@
       "statement": "`CharacteristicMorphism::classify_detailed` builds AST and NAVIGABLE measurements for valid parsed source, merges optional representations by dimension, records each policy's `achieved` state, and constructs the lattice result from the satisfied generators; missing MDG/CPG metrics are unmeasured while invalid parsing returns the default SLOP result.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L182-L310",
-          "version": "repo-lines-v1:sha256:258b7fee7925bb216e2084ffebb73bb40f128f9dac7dbaffeb3b84778c31b90e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjODliMDc2ZGQyYzE0NTYxMDQ3OTMyY2FkZTg5OTVhZDg0YjliZGNhZmUwYzk1ODliOGY2ZDcyZTNiZTgzNDRiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZGM0OTJiYzdhNzdlODhkNGJkNjcyZDkyYTljOTg4ZmFjOWYzNGU1ZWU3Y2Y0YzJlNTE2ZTU4MGY1ZGE2ZmE0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYzA5NWNjMjgzY2Q3MjdmYTlkNDM5NjNmMjAxYWU4ZDQyMDc2MmIwNTEwNTk4ZTA0MWMxMjAzNjdhMDFkNGEwIn0"
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L182-L238",
+          "version": "repo-lines-v1:sha256:74366b547392440d440b5ff48b44a541a09f6b2720a89aba7a1271e51cb45910:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OWIwNzZkZDJjMTQ1NjEwNDc5MzJjYWRlODk5NWFkODRiOWJkY2FmZTBjOTU4OWI4ZjZkNzJlM2JlODM0NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkYzQ5MmJjN2E3N2U4OGQ0YmQ2NzJkOTJhOWM5ODhmYWM5ZjM0ZTVlZTdjZjRjMmU1MTZlNTgwZjVkYTZmYTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTMxMWVmYWU0NjllNjFkNTUyYzBiNDNkMTMwZDQ3NTk3ZmQ4MmY2OWExMmNhODY5Yjg5MTdkODliYmU5N2MifQ"
         },
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L328-L358",
-          "version": "repo-lines-v1:sha256:74f59ca3f737e571b2d520dff4b369375cc68e956e7ed68f8a0ca6a096250e70:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkOTM5MzE5YzBjZGY2ZDIyMzJkYzEwNzcwODM2NWEyMjdjNzM1ZDlhNzUwNTE4YmVhNmFjZmE5MWZlMzQzY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1NTdhMGIxYjFiMTlkNzI4MDdlOTA0MDM4MTNmZjAwYjdhNTcwMDI5NzBkYWViYzJiMWU4MTJkN2UzM2M4MmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MzU5MjI3OTZjOTZhZTZmZDU1NGIxZTgzODlmMmYyN2RmODAzZDFkNTc1N2JjMzczZGM5YWMxMmEyZjQ0YzkifQ"
-        },
-        {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L361-L388",
-          "version": "repo-lines-v1:sha256:fbd364127172f5147882c4b6c31064650b079cbbf40623607a1344f002058c91:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlMmJlY2M1ODc3MzRkZjM3OTI1Y2M2N2I5OGFhMTdlN2FmYTZlZGYzMDk2MmYwYmZiMWZjMDRlMDY4MDE4MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMjJmYzliNjA2M2I3YmE3MWQxN2UyY2RlNzAzODdhMTM2MTUxZDk0MzJhM2FlNjZmOTgwZjhhZGE2OTg3ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlOTIwOWE3MTA2ODRiMGQ5MTU0ZDI5ODkxNTEwMTY5NDk3YjAwNmU1ZmNkZmVkZjVlNTU0ZmQ0YjYwMmQ4OWEifQ"
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L351-L446",
+          "version": "repo-lines-v1:sha256:1b8f41634a4ab4a56eaa2e9f1b6bfddf7f81671a9293d1332ff07e9297f9f8b4:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMTRjZWI2OWRkNDVhYzJmNjlkMWFjNzFkOWQyODU2MmIyM2QwMjYyZWJhZTBkNDJkNzI4ZTliNTU5NTQzZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwYjllZGNlN2UwMjA2NzUyOThkZDRjZjk3Njk5ZmRiZmY3NjA2MTlkZWI1ZDI5YzliMDU3M2MyMGNlNzAxMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MzU5MjI3OTZjOTZhZTZmZDU1NGIxZTgzODlmMmYyN2RmODAzZDFkNTc1N2JjMzczZGM5YWMxMmEyZjQ0YzkifQ"
         }
       ]
     },
@@ -65,7 +61,7 @@
       "statement": "SIMPLE hard-gates entropy in the inclusive 0.2–0.8 band and maximum per-function complexity at 10, while whole-file `cfg.cyclomatic` is deliberately scored and surfaced as a codebase-relative advisory rather than an achieved gate.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L74-L81",
+          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L86-L93",
           "version": "repo-lines-v1:sha256:a497c5663126b505b1ab9a78990201a956063d585d8784bed411d05b54343474:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBiODIwMjQ2NTFjNzQ2NmZhNzYxNDlhZGEyMjdkZjFhY2UwYjAyOTA0NjIxZWVjY2M1YjNkOWRhYzhmYWY5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTgyNzUxMDk5NDMxNzA2NTBmM2M3NjhhNTgwMmVhNTRjNjdmMGZhNjBkZTEyNWZiMjRiMjhhM2UwZWRmMDYwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDU1YTQ5NWM2MjU1NWI5NmZkNmE1ZWJmOGE4NzU4NzAyYmI5NmFlZTU2NDVhOTRlMDZmNjVkZmU4ZWNkYmJkYyJ9"
         },
         {
@@ -87,11 +83,11 @@
       "statement": "At file granularity COMPOSABLE's achieved result is gated by `mdg.fan_out <= 10`; instability and fan-in are advisory inputs evaluated relative to the codebase when coupling is at least 2.0, and the dimension is absent when no MDG metrics are provided.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L411-L419",
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L499-L507",
           "version": "repo-lines-v1:sha256:510bcef2b107987cc2e3069870bac3facce4d21e8ace9e18217e46433258ea55:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODY4NmNlNTA5MjNkMTAzM2ZkNTA4NDM4YTZiYWExZWY4MDEwMjAwYTk4Y2RkNzE2YjBiZTk1YjY0NWZiNGRjMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2ZkNjgxMjZiNTVmMTJhMjEyZmVjNzI1ZGM0YjUwMTIxODk2NTZiZDZiMDY3MDIxZjNkMjVhMjBlMmM0ZTY5ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGU4ODNlOGMxOTkwMDhmZDAzY2Y3MmUxNGQ2ZDg2YTI4YWEyYzVlNjkwN2FlN2M2OTY5YTM2YWI3OGJjNzIxZSJ9"
         },
         {
-          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L57-L61",
+          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L69-L73",
           "version": "repo-lines-v1:sha256:041e551051f3caa2c21dc093296fdcca45b2f42c24e6d9b278e35b8991d13659:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU1MmJjNWRkOTA2MzY3OWM1Mzc0NjFlMWJhZmYzYTA3MmE3NDhhZjNkODU2OWM3ZDA0MzliOWIzOTEyMWJiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjg4NzE2MGVjYzYyMWQ4NmM5MjYxZmYwMDYwYmZlYmZmYTdmZmRmYjE4NTcxNGFlNjhmYjhhMmI5MDU2ZjJlZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE0Mzc1NmFmMWIwNDFhNzJhZDlmZTk2NDhlYzU5YmQ2OWM3ZWUzOTMwNTkzZjZiMTMyMjkwNjIyMGIyOTFhMSJ9"
         },
         {
@@ -123,7 +119,7 @@
       "statement": "NAVIGABLE uses the maximum per-callable Semantic Compositional Divergence, summing depth times log of one plus immediate scope fanout over selected block scopes; its inclusive achieved gate is 10.0 and reporting score reaches zero at 20.0 (twice the gate), independently of SIMPLE branch complexity.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L100-L113",
+          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L112-L125",
           "version": "repo-lines-v1:sha256:199191fa8854a971d7202248c69090965d17865531ecef56c994c20cfdc6787f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZmY4OWI2M2UwNjZkNjBmMTFhNTYzOTNhNzU3MDlmOTBkZGI3YTljZWRhZjM5NzAwNDhiMDVkNDM5NjJkMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0M2NkYTE5MGUzMGY3YmY1YzU1NmFjZTUwNzc2YzAyNDAwY2VjNjVhY2RjYmIxNmM5ZWE1NjUxMTBjNjA5YzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NTZhYzM0YjUwYzg1NzFiMzJjYjVkYTY3YTA4MmE2OThhYzcwOWUyZWNkNzE1NzMwNjMzMzFhNDYyMjQ3Y2YifQ"
         },
         {
@@ -153,7 +149,7 @@
           "version": "repo-lines-v1:sha256:1ce025a6ab304d7ef94cbc50c48a49b8d0a520d6c22b38cffecb37329ff0e782:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NzdjNTU5OGZjN2U0N2JjNmVhNjQ0ZWUxOGVmMjhkMWRmMjI1NWJhNzY5MDQ2MDljOGY2NTQxZjljY2U2NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMmFiYjg4MDBmNDdkYWI2ZTU0ZDRlY2Y5NGFlNjM2Mzg3ZmViOGVjOGI4MTc0YzBmZTE1NjQyN2ViMDNkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmM2UxYzkxYjgwOTQ0YTMxNTE3ODY1ZGU0OTU4MmU0MDVkMTFkY2FmNWI3ODcxZGNkMjJiYzNkYzdkN2FkODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxMjRmYTBjZThlMDc5ZDkxNDI3ODlhMDY0ZDU1ZjlkMDY1NzA1Yzk5MGM3NDUzNGVkMzU2ZjhjN2M3Yzc2YjcifQ"
         },
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L312-L356",
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L300-L344",
           "version": "repo-lines-v1:sha256:206ddc5b627d16994ff033707288e7095505158b775d4764039992a12a64c1b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MzYzYWI5ZWZkZDM5MGMzZTljNjM3ZDQxZDQxZTNhNmY5ZjM0YmQ4ZTcyZDQ2MTZjNDQ1YjRjZjU5ZmFlNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5NDlmMjRkZGQ3NzY1ODYyZDcyMDg5ZDc1OWYyOGM5MWNhNDg1ZTY0OGFkM2MwNjg0OTc1MWRiMzRlNDkxNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUifQ"
         },
         {
@@ -179,7 +175,7 @@
           "version": "repo-lines-v1:sha256:a8879f94d8acadf72a257f20ec98921842f13178ad5d89c36bd3b99cb33125b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQ3OGJiMTg5ZmRjNjZiOGMyMWZiYzg4NWZlODU1YzlmYTFhMmYwYjAwYzNjMjA1ZWJhMjQxYTQ0M2UxZjU0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODAyZDYyYWMzYmFhYmVmOGZmMGI1ZTE1MWQ3ZmNlMmNmZWY0MmFlN2FiYmQ2NjExZmEzY2NjMzJlNTQwM2JkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjNkZDRmMDU1NjdmMDJjOWZiZWI5Y2JiNjYzOGFiMjc2MzI3ZjZlZGZmMDM1ODNiNWFiNTgwZjBjMWMxZTRhMSJ9"
         },
         {
-          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L29-L30",
+          "resource": "repo://topos/engine/src/evaluation/policies/calibration.rs#L41-L42",
           "version": "repo-lines-v1:sha256:5bb2af4627670b57d4397058dcd0d095a46234917a5caad94b200006266b3a3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdlNzQ1MWUzZDJiYzZhMDY0YWJlMTI4Nzg0ODRlMjY3Mjg4MDM0ZjUyZWU3ZmI4ZmNlNWM5NzkyMjZiZjNhOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGY1NTFiNjJiNDM5ZDkyM2EzMDQyMjU5NTc5ZTQxNDgwNWE3MTdkYTFkOTQ4ODY2ZjE0NzEwNjExODM1YzM2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzdmNzczMWMzMjc2NGI3NDk5YTAwMzA5MmNiZWZiOWQ0NjQ3MjBmMTVjYTJhODlmNGJhNmM2ZWQyMmVjOTBhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTNkODllZDA3ZWQzNzJiNjAzMGQwNDUxMzkyZjFkNWI5YzcwMGMyODM1M2JkMThhNzc2MmE1NDQ2NmVjNTA3NiJ9"
         },
         {
@@ -207,16 +203,12 @@
       "statement": "The MCP security overlay is considered only for parseable classifications with a positive raw dangerous-call or taint-flow metric; it performs that guard before reparsing, then supplies raw findings and a CPG to apply_allowlist so acknowledged findings remain disclosed and the grade cap can apply.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L29-L42",
-          "version": "repo-lines-v1:sha256:fbce0fbd285f90b12b46aada8a7d69c46ed1460a41df3fdb50ecea3af710afda:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkNDBmN2E0NWYxNGYzZGZhOGQxNzY3NTg5MDQ3ZWVkOTc0OTk5NDE3ODJjYTYxYWUyZThlNzY0ZGI2ZjI1ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhMDFiOWNhYWYzMjFkZDdjNGFjNDgyYTFiZTllZDRjZWJiMWE5NWFiYThiZmZlYjI2MWUyZmE2YWQxNjkxMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMTY3MGJlYWIyN2ViNDM2MDIzY2FkY2M0NzczODE3Nzk1MDQ0ZDQ0Yjk0ZGM5NzhlMGE2MzYxMzFkYjQ4MGYifQ"
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L65-L138",
+          "version": "repo-lines-v1:sha256:dbab71c5c0ce0c99da32931ae29ed471eb851cace920432b4d116fbeb691276d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNzQ0ZTNlZTk1ODUyNjU1MDA3ZDQyYTMzNTVkOTAzOGUyZWRjYmY0ZDgxOWJiYmU0ZDM0NTc1ZGUzNWY0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2ODI3ODQ5NmFkYjM5YTg2MzFkNWIzYTlkNmMyMDBhOGIzOWI3Njk5YjQ1NDA4NDlhZDg0MGYwNjFhNzljNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2M3NDExMjk0Y2RkOTNhN2VmMzI0OWZkNzk4ZGRkN2I4MmVlNmRhMzZmOGZiN2UxMDkwZWU1ZjNiZWNkMzgifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L78-L80",
-          "version": "repo-lines-v1:sha256:867c47aefa26f9119c646cd072e32ac39ba719a8f5eb0625cee92f2d218acad5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA3NDRlM2VlOTU4NTI2NTUwMDdkNDJhMzM1NWQ5MDM4ZTJlZGNiZjRkODE5YmJiZTRkMzQ1NzVkZTM1ZjQ4NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjY4Mjc4NDk2YWRiMzlhODYzMWQ1YjNhOWQ2YzIwMGE4YjM5Yjc2OTliNDU0MDg0OWFkODQwZjA2MWE3OWM2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWQyNjc3NjM4ZTY0OGY0ZTcwNzgxNjJjZDkwNjdjZmZhYjIwNmVlYTg5Njk2YWMwMTIzMGI4NjhlMTk4NmQ3NCJ9"
-        },
-        {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L82-L130",
-          "version": "repo-lines-v1:sha256:6cab798297b482778e92f0d3827c8e5ae2af7e1239021b0ed03cd1ad0eefb035:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlMWUyMTRhNTAxM2YyOTgzZDI2YWZmZDcyMGVlN2FjM2U2Nzc5NzFmN2NlMzY4NjA2ZWJkNjFkNzA5MmFiYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1ZjU1NmJhNjg4OGFmZmQ5NmMxNDQwNDQ0NGIxZTY0MDY2MDk1OGE2MzNiNWFlZTFhOGQ3NGI2YmE0NDg1ZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmOGQ2ZjQyNzMwYzU1ZjJmMTFiNDlmNWRmOTgxMmMxM2ZhMDcyYTgwOTI0MTMyZjlmODgwNGYyNGIxMWIzY2YifQ"
+          "resource": "repo://topos/mcp/src/evaluation/analysis.rs#L241-L255",
+          "version": "repo-lines-v1:sha256:cdcb74d7ca3a9cb99d84dae4e4205738f3feaf4cb5f5e828ecbcd68226f3e850:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkYzFiMzNkZDQ1N2VlMTNjNGViOGQ2Mzk0MjA0ZDM1YjdhZjEzZWJkNWZlM2FiNTQ2ZmM1YzAzNzNmNzJhNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0MWExNmYzMmU0NzNlZTkxODdmNDE0ZGE3ZDIyOGU3YzI3YjA3YTkxNWNkOGYwOTVhODU2NzNkNWFlYjM2NjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzNzdlZmNjNzFmMDEzNWExNTgxZGE1NTk0NmY3ZWI0MThjMjU5NGY4OTEzMWIyNDcxZDExYmNjMDg3MjU2MTcifQ"
         }
       ]
     },
@@ -247,11 +239,11 @@
       "statement": "COMPOSABLE evaluates instability and fan-in as codebase-relative advisories (when coupling is at least 2.0) rather than gating on a fixed band or main-sequence distance; regardless of advisory diagnostics, only fan-out gate results determine the file-level achieved state.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/evaluation/advisory.rs#L150-L155",
+          "resource": "repo://topos/engine/src/evaluation/advisory.rs#L151-L156",
           "version": "repo-lines-v1:sha256:8efea122585c80ab03d3f62e139ed5bcc3fcd0eaf14f64ca7807bc59cb501a4c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE1YjUwYmM0NmE2ODUyYTYyNTYyYmQ4NDBiZTJiOGJjYzk3YWYyMzdkNGIyMzNhNjQxYWYyNGM5Yjc2YjMxZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI1ZDQ1OTU2NGI5MjU1YmRmNGFkM2JiNjg3YjZjNDgwZmEyMDRlY2JmOGU1YjBjYzYxNDQ0OWQwY2ZkZjA5MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2IzZDJmYzAyM2ViMGEwMjM4NjY3MTRhYzdkNzFmMWQ5YzYzZDNjODRhMWQwYTMwMDA1NDZkMmM5MzA3NTI4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGQ2YjU1YzY4NDI4YmQ5ZThkNmI0ZTRjZjBiYmZiYjgyNzgxYTMyNTg2MTBhZTllMDEyMjc3MDQ2MzUwZDA3YiJ9"
         },
         {
-          "resource": "repo://topos/engine/src/evaluation/advisory.rs#L44-L50",
+          "resource": "repo://topos/engine/src/evaluation/advisory.rs#L45-L51",
           "version": "repo-lines-v1:sha256:34a2a82af1a3608905428a0b1e83f0a44a1debfc3ffdc67330100874165daa44:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmMDFjNGRiY2IxYmYwYTFjYmIwYjVkMjVjMWIwNjRlM2UxNWY5Nzg3NTA2ZjBlOWM0MjI3ODhiMjY2MGRhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmRlYWFkNzZmZjA1MGM3MzE3OThlZGVmODEwYzdmMmE3NTE0ZTFkYTU4YWE5NTlhMmM4NzhkZmRkYjA1NDgxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE4M2QwNDliZGU3MDk2MWRlMmQzOGE4MmM2NDk1NmNmMGM3ZWFhZWZjNWE5OWI2NzQwZjUyZTBmNzY1NDg4YSJ9"
         },
         {
@@ -267,6 +259,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T13:18:21.510Z"
+    "at": "2026-10-23T10:31:29.483Z"
   }
 }

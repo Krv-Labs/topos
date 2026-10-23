@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9423dfe1746b585c9ea38461a48811c53416c62f66f8ec8ba4de54f7eeda6cfd",
+  "pageVersion": "sha256:34d71fc96b1dd80ce9893f4590bb17f9311622dce844b55b1576c1f855d57e7e",
   "claims": [
     {
       "id": "claim_51e019e3c33443d4885dd5c08e11ab51",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:4f15cc2341ce1d6828f2a424d0e0a69ade4a4d7560ae9d3f3a6ec640800c7536:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:874ead1f23e7de68b779596437a469fa3dc29afc1b1282dc0922cb49b3c8e466:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -24,15 +24,15 @@
     },
     {
       "id": "claim_b25990294def4d499bc5a2ac943b0d9d",
-      "statement": "The `topos` CLI dispatches `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `install`, `uninstall`, `update`, `status`, and `mcp` subcommands; command failures write an error message to stderr and exit with status 1.",
+      "statement": "The `topos` CLI dispatches `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp` subcommands; command failures write an error message to stderr and exit with status 1.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/main.rs#L145-L148",
+          "resource": "repo://topos/cli/src/main.rs#L148-L151",
           "version": "repo-lines-v1:sha256:075c4881a5ac17e1820d16a7265bfac23eaa83caf1261565e1d3c47910cd9dda:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzM5NzBkNTRhYmI3ZmU3ZWZkOTUzOTkwOTdjYTBhMzAxYWMzZmQ4YzNmZjMzYzlhNjFmOGU2NzQxZDllNGE3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGZiYmE2ZDYyYzI5ZTM5ZDFiNDhiMmMzYWVkMjI3YWEyYzU0M2RiNWJmNWQ5YjRkYTEyNDRlNDQwMjkwNTI2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzVlMjk3Yzk5ODM3MGJkMWY1NzA5MzFlMDIyMmY5ZDc0MTI2ZjUxMjRhMWU2YjM5YzdmYzIxODMzMDRmOTE3NSJ9"
         },
         {
-          "resource": "repo://topos/cli/src/main.rs#L21-L87",
-          "version": "repo-lines-v1:sha256:083be01454b8ee9103cb27f80db0935ee9e68ae4ace14fafb463828f005d9cd5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NDVlZTE2ZTlmZWJmMDEzNDdhNTI4ZDRhMzllYzk2YTRhYTc0ODA5N2RjZWIxZjdlZWI5YTM1OGFmYWE3YzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MzEzMzk2ZmJmMzlmYTQ1Mzc3NDI0ODdiMWUzMTI4MzRiZmFkNDExYzFhMGRlYzYyMjgwOTUxY2YzOWU3NGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwMWQ5MDZiZWZkN2NjN2U5OTJlM2FkNjVhYzcxOGYwYzU0NGFiNzgxNDVlY2EzYjdiYjY5NTM1NDZlOWZhMzkifQ"
+          "resource": "repo://topos/cli/src/main.rs#L21-L35",
+          "version": "repo-lines-v1:sha256:347ffb2eb10970f48908f861e4f6b9bb13834cf8f25aa1075ac9f7d7929d5274:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNzgzZGRkMTk4ZTExM2RjYmMzOGY1ZTM5NGFiY2QzNjJmMjljMmM0Yzk5Yzk2YWYzODJhZTk4MmE2MWY3ZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2OTExNDk4ZjE1OGIyZjQyZDRhN2Q2NWY1YmRjYWIwNDA4M2NkYmE5ZDE5ZjA3MDc2Y2JjNjE2MzlkMjNjNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1MGIyNzc0MDg4M2RkMjU3Y2U4OWQ2MTRhMzQ0OGNhYjhmYTBkZTc2MTMxNzUxMTE5YmY1Y2U0NWFiNjQ2YmQifQ"
         }
       ]
     },
@@ -49,7 +49,7 @@
           "version": "repo-lines-v1:sha256:d65d2c6fadf4a236d10c64431543b7b682e8ba52c59d33eae779f3e237d60dde:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDYzOWVjMjYyMWY1Nzg5MTFlZjVmNzFkMTUzNGE3OTUyYjYyYWVhM2E4ZDQ4NDYxOTc5OTlmNjQxYzcyNWQ3NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTA2MjZkNzA1ZjE4YzBiZDkwNmM3NDk5MTg4MTRmNDYzYTFhMGM2YzgwNDM5NGU4ZWNjOWIxMzdiOTk3MjhjYyJ9"
         },
         {
-          "resource": "repo://topos/cli/src/main.rs#L182-L187",
+          "resource": "repo://topos/cli/src/main.rs#L186-L191",
           "version": "repo-lines-v1:sha256:71180e3e92a19d2c1ff12112de954c7105926b6c74a6066ec7dc72da0210d429:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzlhZTU4YWI0MmI2NDY4Y2E2NzFkYWJiZTlmYjM0MWJlZGFiOTJiMTNhMjU5N2JhZTZlOGY0MGI1ZWFjYTM3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTYxOGUwOTUwZmU3NWMxMzJiMWZmN2QwM2RjMTllNDAyZTJiZjhhYTFmNWNlNzU5NjgxNzc2OWUxZTQzYmEwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzhjNzMwYzE2OTFmYTQ1YWRiMmNlYzA5YWE1MThmN2Q2M2YyNTNhMDkxNmQzYWM5YmRmMDk1ODg3MGIzMWI2NiJ9"
         }
       ]
@@ -175,18 +175,18 @@
           "version": "repo-lines-v1:sha256:6c57bfe123ff52c94acde67e94975f6184f55488fc40698624194a6fe5af636c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYjQ0YWNjNTdkYWEyYzA3NTQwNmY5OTZhOTRkMzhjYmIwNDJkYWVhYjI4MzRiN2UzODMyNzY1MWMxODViYWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhOTFkZjcxYjlmYzY5NGNkMjAwZWI1YmFkNjg5ZmEwNmExNGU0YWQxMzgzNjY0NmRkMmYyMTk2YWU0YWI0ZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhZGJmYTIzNDBiYjMzOTk2N2NiZjcyYjZiMWQ0NDhjNzY3NmRmODhkYzJkNWQ1ZjAzODNmOWZkMGQ1ZTBkYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ODU3OTI5Zjg0N2NmMDRkMWY0MmI2OGNjNTIzNTlkOTE3MmQwNjNiMDZhMWRhZGIwYjQ3NDE5ZDY3NGVhY2YifQ"
         },
         {
-          "resource": "repo://topos/cli/src/main.rs#L194-L206",
+          "resource": "repo://topos/cli/src/main.rs#L198-L210",
           "version": "repo-lines-v1:sha256:9e4a3476abe7061cb665d54106fd654d8925406cdb95aff68cdfe5e14047e57e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjMWE0YmRhZDk1NThlMDlmMDVlMGY0NTZjOWM3Y2UxNWFlZTczYmZiM2U4ZjBlNmViN2RlY2E4OTFhMjdjZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwZWI1ZjU0MmYyN2Q0OWMzNmY4MGE0ZjU0Mzg4NDUwMjc5M2NkNTAzZDMxODg1MWEyMGFmMzdmMTkwZDFiN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjN2MwOTJmODgxZjk2YWFhOGY4MzhlMjgzZDMwNGFmN2FiMjRjNDEzMDY4MDliZjJmZjdmYTQ3ZGYzOTRkNTUifQ"
         }
       ]
     },
     {
       "id": "claim_6c67b78ea8c94772a9af439a6c5d90db",
-      "statement": "The Cargo workspace package version (0.13.0) is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
+      "statement": "The Cargo workspace package version (0.14.0) is synchronized across workspace crates, the VS Code extension, agent plugins, and MCP manifests via scripts/check_versions.py.",
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L5-L7",
-          "version": "repo-lines-v1:sha256:a6948544df9ae190704c861fad693e15a2c16cdb300c5fb825fac93b61415600:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
+          "version": "repo-lines-v1:sha256:da61a84d12511a4c274510bd0c46394254ce6992e591acd19f0c4a8ab742ccea:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2OTQxMmEyZThkNWYzYmFiNDE4ODZjMTNhMDZjNmYwOTkzMzg3Y2RlNzExZDgzMjZlZGI4ZDU3NzRlYzk5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFhMjI2MzRiYmZmZWM2MjgyMmZhYTIwOGIzNTJkMzAyYzE5YzJmNzBlMjllNTc2MTNiOWRmMThkN2MyZmMzNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTE3YjcyZDZjYzY1ODdhNWZjMjExMDkzMDRjNjEzOTM2MjU5Yjk5YTExNGI4YmQ0NDExMmUzM2M1OTc2YTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhkN2M4MzBiYWJjZDVkN2JjZGRlN2U5ZDM2MDNiZTkyZTYyOWMwYWVhOWM2ZTBjZmFhNTJkZjNkYjA1NmZlNiJ9"
         },
         {
           "resource": "repo://scripts/check_versions.py#L48-L80",
@@ -197,6 +197,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-22T10:38:38.831Z"
+    "at": "2026-10-23T10:31:29.483Z"
   }
 }

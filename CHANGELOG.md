@@ -9,6 +9,18 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- Add a shared, versioned cache inventory plus `topos cache status` and
+  `topos cache discover` for cross-repository visibility of managed PR stores
+  and `.gitnexus` graph directories. Inventory writes are lazily registered
+  from actual PR/graph use, merged monotonically under a file lock, and
+  replaced atomically; status remains read-only and reports structural state,
+  ownership markers, optional estimated directory sizes, and a stable
+  `topos.cache.v1` JSON document. Discovery never adopts legacy stores or
+  mutates a repository, and `TOPOS_CACHE_INDEX_DIR` isolates bookkeeping in
+  tests and CI.
+
 ### Changed
 
 - Reuse source-local analysis across repeated MCP assessments so an unchanged

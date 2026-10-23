@@ -1,5 +1,6 @@
 //! One module per `topos` subcommand, plus a shared [`lang`] helper.
 
+pub mod cache;
 mod classify;
 pub mod compare;
 mod composable;

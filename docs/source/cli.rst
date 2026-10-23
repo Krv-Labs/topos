@@ -36,6 +36,7 @@ Quick reference
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
    topos depgraph generate
+   topos cache status
    topos mcp
 
 Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
@@ -55,7 +56,7 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
 
       Agent registration, project settings, and the MCP server.
       ^^^
-      ``install`` · ``status`` · ``uninstall`` · ``update`` · ``config`` · ``depgraph`` · ``mcp``
+      ``install`` · ``status`` · ``uninstall`` · ``update`` · ``config`` · ``depgraph`` · ``cache`` · ``mcp``
 
 Quality commands
 ================
@@ -724,6 +725,48 @@ the same store automatically; this command is useful for explicit refreshes
 after dependency changes. If a graph reported as current appears stale, rerun
 with ``--force``. When ``evaluate`` cannot measure COMPOSABLE, its terminal
 summary points back to this command.
+
+cache
+-----
+
+Inspect the cross-repository inventory of generated data, or discover existing
+PR stores and graph directories under explicit paths. The inventory is a hint:
+status validates markers, commit records, and worktree registrations on disk
+before calling anything managed.
+
+.. code-block:: bash
+
+   topos cache status [--global] [--sizes] [--json]
+   topos cache discover PATH... [--dry-run] [--json]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Option
+     - Behavior
+   * - ``--global`` (``status``)
+     - Include every known location, not only the current repository. This is
+       a known-location view, not an exhaustive crawl.
+   * - ``--sizes`` (``status``)
+     - Recursively estimate bytes in managed directories. Hardlinks,
+       copy-on-write storage, and Git's shared object database mean this is
+       **not** guaranteed reclaimable disk space.
+   * - ``--dry-run`` (``discover``)
+     - Report what would be registered without writing inventory. Discovery
+       never creates ownership markers.
+   * - ``--json``
+     - Emit the stable ``topos.cache.v1`` document.
+
+PR stores live beside a repository's shared Git directory as
+``topos-pr-<N>/{base,head}``. Linked worktrees share those PR stores but can
+have separate per-worktree ``.gitnexus`` graphs; those graphs are reported as
+distinct locations. Status labels a marker-free store ``legacy-ambiguous`` and
+does not adopt it.
+
+The inventory lives under ``state_dir()/cache-index`` and can be redirected
+with ``TOPOS_CACHE_INDEX_DIR``. That override affects bookkeeping only; the
+operational leases and worktree registrations stay with the repository.
 
 mcp
 ---

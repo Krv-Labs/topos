@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3e7b3efa3856c9f5b4873e4ee67c84d733546547967106e5a447590469a2dc1d",
+  "pageVersion": "sha256:8473149ee6c3830ba5f06d2bf5747123342f875970909124bad9a3bfa0b77caf",
   "claims": [
     {
       "id": "claim_74f28609c9e24ccd8ca4b841c7a0678b",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://topos/cli/src/commands/install/mod.rs",
-          "version": "repo-file-v1:sha256:0a6bf898ae84c1864555f9e15e9388417b05edb8e9347329770fc6cc78ac9d99"
+          "version": "repo-file-v1:sha256:65e5acf1742282e6df5bdd6dd0cefb4d06f61af041bcfb238c0d7ed2e56ab66a"
         },
         {
           "resource": "repo://topos/cli/src/commands/install/residue.rs",
@@ -168,7 +168,7 @@
         },
         {
           "resource": "repo://topos/cli/src/commands/install/uninstall.rs",
-          "version": "repo-file-v1:sha256:4f68c024693129c4f9618ee41d57e4c98b93b31b1768ec5efd0f3a0fb6b11062"
+          "version": "repo-file-v1:sha256:338dc058aca9b2cfa35b9e5e4578a165168f64c5b35f29036b0f96b26a07df7a"
         }
       ]
     },
@@ -177,15 +177,15 @@
       "statement": "Uninstall scopes backup purging to selected harnesses and is non-mutating in dry-run mode; it reports conflicts while leaving their content untouched.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L163-L199",
+          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L170-L206",
           "version": "repo-lines-v1:sha256:c3c9b575e15e3f130d02e7abf111554e87afb1d7f1b21eb0493333c5f03fcc6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYTAxN2MzOGI1OWIyZDE4OWQwNzA3YmQ0MDU3YTZiMTU3ZjE5MTJkNTg2MjZlMDc3MjY4MDc0NjM3M2ZkMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMzNhN2FlNmM4MzA5ZTk0YTkzZWM3MGE3NjY0MjUxZTAxNjNiMzFkYjJmZjU1MmU2MGY1YzYzNzc5N2FiZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1ODM5YjNhNDIzMjY1MzQ3Yjc4YWFkN2Y1OGY0ZGM5NTk3MWU2NTRjZWYyMTIwMzI0ODg5NDY2Y2YwMmU4MDkifQ"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L254-L266",
+          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L296-L308",
           "version": "repo-lines-v1:sha256:372e2c12891982856366c129c1a821fc5a399de45948eda333e99624b815f6f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2Mzk5MjY4YTdmNjkwOTgyZDM5NWUyM2MzZTU3OWI1N2IwN2UyMGMxMzBmNDlmZTM5NjgyYWZjZjE1ZGM5ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNzVlYTg1OTVkNTBhZmJiYjRjNGRmM2VkODg5MjVhNGFjMzM4NWM3MTRiYWJiMTQ4NTViYjIwNmE2NDAzNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxODM5ZmQ0NGNkMzU2MDNkNWI5NmQyNDFhODM3MjBjZDQ1ZDE2ZGVlMjA0ZWZjZjk4NmI1Y2MzN2QzM2I4MjYifQ"
         },
         {
-          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L320-L341",
+          "resource": "repo://topos/cli/src/commands/install/uninstall.rs#L378-L399",
           "version": "repo-lines-v1:sha256:bc9c195e9f2218f9df43e5bac8be7b98b72edbd5b302b890a735b58fcbdcadf4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhYTRhMzU4ODY0NjlkODNmOTJmN2Q5YWYxZjM0YzQxOWM1Y2JjOTA3MzBhZDQ1N2JmNjQ3Mzk4ODQ0YTU1ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjNjNGQxYWY4Y2Q4OWJiMGJkZDc2NTdmZmNiZjY4MDZhNjEwZDc5ZDZjOGQ0YzMwN2MyNDFkZjM5MDA1MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNTVhZGYyMGY5YTQ5NGExMWUwZGYwYTU0N2Q0OTJiYThkOGFjZDY2MDZhNThiZTI3ZWZhYjlhOGM4MzgwNTAifQ"
         }
       ]
@@ -228,7 +228,7 @@
       "evidence": [
         {
           "resource": "repo://topos/cli/tests/install_e2e.rs",
-          "version": "repo-file-v1:sha256:7e06487dfdeb136e72aadfece4b9ac479164c52ec013e97b3bcfc86f3c0e8cb3"
+          "version": "repo-file-v1:sha256:d91ddd83d402ac62e66b9bf06afdd1319b77da6e0815f3ffbbc5f0f479a369d9"
         }
       ]
     },
@@ -250,7 +250,7 @@
         },
         {
           "resource": "repo://topos/cli/src/commands/install/uninstall.rs",
-          "version": "repo-file-v1:sha256:4f68c024693129c4f9618ee41d57e4c98b93b31b1768ec5efd0f3a0fb6b11062"
+          "version": "repo-file-v1:sha256:338dc058aca9b2cfa35b9e5e4578a165168f64c5b35f29036b0f96b26a07df7a"
         }
       ]
     },
@@ -270,13 +270,13 @@
       "evidence": [
         {
           "resource": "repo://topos/cli/tests/install_e2e.rs",
-          "version": "repo-file-v1:sha256:7e06487dfdeb136e72aadfece4b9ac479164c52ec013e97b3bcfc86f3c0e8cb3"
+          "version": "repo-file-v1:sha256:d91ddd83d402ac62e66b9bf06afdd1319b77da6e0815f3ffbbc5f0f479a369d9"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.1",
-    "at": "2026-10-09T13:09:16.317Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-23T10:31:29.483Z"
   }
 }

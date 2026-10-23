@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:17c433b77fced25d9d12b79a1fcf42d8e6d933b1f713a7bb45d22aba9322ea7a",
+  "pageVersion": "sha256:eb4dbf57de1b9bf85cdb5228c14a4bbe54f179630eaa2693f3f90ca266c8b095",
   "claims": [
     {
       "id": "claim_cd9f76f376044be39aaf30a4f8bc6b6c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:4f15cc2341ce1d6828f2a424d0e0a69ade4a4d7560ae9d3f3a6ec640800c7536:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:874ead1f23e7de68b779596437a469fa3dc29afc1b1282dc0922cb49b3c8e466:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
           "resource": "repo://topos/cli/Cargo.toml#L13-L19",
@@ -25,8 +25,8 @@
       "statement": "`ProgramMorphism` immediately attempts parsing on construction and owns the source, language, optional path, parsed AST, and lazily cached CFG, PDG, and CPG; an unsupported language has no AST and an invalid tree-sitter parse is not valid source.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/morphism.rs#L47-L202",
-          "version": "repo-lines-v1:sha256:cbdd64d64d371b560c351210d813c16173ca77dc464d8f83ab23acb666849031:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MDU0NDM0NTlkM2UwMzliMGU2NTJhYzQ1NGY2YTljMGYyNTY3YjI2ZTcwYzgxM2Q3MTYzZmRjNzU4NGIzNDNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YmEyOGE5MzQ1NDMwNjQyNjRkYWI5ZTVmZGZkZDhlODhjZDE4ODY4N2QzMGNkYzA5MWQ3YmEwOGFhNDY4ZDM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxOGQzOGMyZDBjMzY3NDg2MzFlNTRkMzkxNDJhNjU5NWRhMTJhNWNmZDE5M2MxOWVmMmNkZmNjNmQzY2JjZmJmIn0"
+          "resource": "repo://topos/engine/src/core/morphism.rs#L47-L212",
+          "version": "repo-lines-v1:sha256:934644af3142a0fc46639b951483160adf577ed4fdf9c7dfc257ba6636bdcd23:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MDU0NDM0NTlkM2UwMzliMGU2NTJhYzQ1NGY2YTljMGYyNTY3YjI2ZTcwYzgxM2Q3MTYzZmRjNzU4NGIzNDNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODkzZjQwZTM3ODFlYjg5NmM4MmQwNDZhMDgwNjdhMTFlMzVjZGYyZjFkZmFmMjZmZWE5MGI4ZGI2Njc2NDEzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2YmEyOGE5MzQ1NDMwNjQyNjRkYWI5ZTVmZGZkZDhlODhjZDE4ODY4N2QzMGNkYzA5MWQ3YmEwOGFhNDY4ZDM5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxOGQzOGMyZDBjMzY3NDg2MzFlNTRkMzkxNDJhNjU5NWRhMTJhNWNmZDE5M2MxOWVmMmNkZmNjNmQzY2JjZmJmIn0"
         },
         {
           "resource": "repo://topos/engine/src/graphs/ast/dispatch.rs#L138-L187",
@@ -71,12 +71,8 @@
       "statement": "For parseable source, the characteristic morphism always evaluates SIMPLE from AST metrics and NAVIGABLE from the same UAST; SECURE requires CPG metrics and COMPOSABLE requires an attached MDG, so unavailable representations yield an unmeasured dimension rather than a failed one, while parse failure returns the default SLOP result.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L188-L200",
-          "version": "repo-lines-v1:sha256:4a2436f1779ad3a36a2af457048b8528da2bc9a5b5f52afa8f84af1a6747bd69:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmYjQyNzFlZjg3ZmVkN2RmY2VlZmE2Zjk0OWM0NTVmN2U2OWNiZDdiNDlmNzA5ZDVlZTZmNzk4NWRlZTk5NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2NzMyYWVkNGM4NDYwYTI2NjMxODFmZGZhMjk5OGU5YzNmYjQ1ZDgzOTQ4YzllMmMyOGVjNmM3OGVlNTRkZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjYWQ0MDMzNjY1NTYwOGVmOTk2ODI5OTBkMzI3Nzg5ZjlmZDJmOTJiN2UwMjZjNThlOGE0ZmE0ZjM1OTg5YWQifQ"
-        },
-        {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L201-L281",
-          "version": "repo-lines-v1:sha256:f20a80e5bb83d27939990f570c9f3885de35aa7d6b87e73e2de33f0a4d281625:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGE4NjJhYzEwMjk2MTlmYjdjNGM4YzEwODQwZDE3MWUxNjE4MWU4Y2U3YmJmODJlZTA4MTAyNmQ3YjU4ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5ZDFhNzc1ODUyNDk0NThlYTVkM2UzNzIzYzE0MTNkMzk1OTJjN2VhMWZmNmI4MDI3ODhjNTMzNzEwYjE3YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMzQ2ZDcxNTkyMTExNzkyMzMyZThjZTJlOWQxMzZhNTc5YzM1YmFmZWZlMTAzYTZhMjI1NTM0YTllZDZlOGUifQ"
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L188-L238",
+          "version": "repo-lines-v1:sha256:9ae5eec2873722ae6c84acf637e71d375f90e58f00388bbb5ea59a0505266eeb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmYjQyNzFlZjg3ZmVkN2RmY2VlZmE2Zjk0OWM0NTVmN2U2OWNiZDdiNDlmNzA5ZDVlZTZmNzk4NWRlZTk5NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2NzMyYWVkNGM4NDYwYTI2NjMxODFmZGZhMjk5OGU5YzNmYjQ1ZDgzOTQ4YzllMmMyOGVjNmM3OGVlNTRkZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTMxMWVmYWU0NjllNjFkNTUyYzBiNDNkMTMwZDQ3NTk3ZmQ4MmY2OWExMmNhODY5Yjg5MTdkODliYmU5N2MifQ"
         },
         {
           "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L46-L50",
@@ -89,8 +85,8 @@
       "statement": "Classification routes dimension metrics to four policy scorers and derives the final verdict from their `achieved` Booleans; raw gate comparisons use AND semantics, normalized scores are reporting-only, and `Priority` does not alter per-metric pass/fail thresholds.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L201-L287",
-          "version": "repo-lines-v1:sha256:5d2e0794054e54eb3e3e1a967d4a8aa7169d9dcee60222645ec99e895eb9e567:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGE4NjJhYzEwMjk2MTlmYjdjNGM4YzEwODQwZDE3MWUxNjE4MWU4Y2U3YmJmODJlZTA4MTAyNmQ3YjU4ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxMzk5MTE1NmFiM2QzZWQ2MjI3NjcxMmMwYzUwYzUzNTQ5MTcxOGJkZWUzNWUxYzZjNTI1YTZmZGIzMzljMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5ZDFhNzc1ODUyNDk0NThlYTVkM2UzNzIzYzE0MTNkMzk1OTJjN2VhMWZmNmI4MDI3ODhjNTMzNzEwYjE3YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNGUxNjA5ZDYzNjM0MGJmYzUwOTg0YjE2NjJlODYwNjU5OWRjNGMwYTA5MTJhYzNlYjYwNzM2NjcyMWE5ODcifQ"
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L201-L238",
+          "version": "repo-lines-v1:sha256:0425ef51f15dda05cbab1c9db249de9637e19f639b384117cae13fa54c822352:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGE4NjJhYzEwMjk2MTlmYjdjNGM4YzEwODQwZDE3MWUxNjE4MWU4Y2U3YmJmODJlZTA4MTAyNmQ3YjU4ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5ZDFhNzc1ODUyNDk0NThlYTVkM2UzNzIzYzE0MTNkMzk1OTJjN2VhMWZmNmI4MDI3ODhjNTMzNzEwYjE3YmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMTMxMWVmYWU0NjllNjFkNTUyYzBiNDNkMTMwZDQ3NTk3ZmQ4MmY2OWExMmNhODY5Yjg5MTdkODliYmU5N2MifQ"
         },
         {
           "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L34-L35",
@@ -115,7 +111,7 @@
       "statement": "The verdict carrier contains all 16 subsets of SIMPLE, COMPOSABLE, SECURE, and NAVIGABLE, with `IDEAL` representing satisfaction of all four. Multi-file aggregation reports a dimension only if it was measured by at least one file, requires every result to be parseable, and requires every file that measured that dimension to satisfy it; an absent optional dimension does not fail the rollup.",
       "evidence": [
         {
-          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L312-L356",
+          "resource": "repo://topos/engine/src/core/characteristic_morphism.rs#L300-L344",
           "version": "repo-lines-v1:sha256:206ddc5b627d16994ff033707288e7095505158b775d4764039992a12a64c1b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MzYzYWI5ZWZkZDM5MGMzZTljNjM3ZDQxZDQxZTNhNmY5ZjM0YmQ4ZTcyZDQ2MTZjNDQ1YjRjZjU5ZmFlNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5NDlmMjRkZGQ3NzY1ODYyZDcyMDg5ZDc1OWYyOGM5MWNhNDg1ZTY0OGFkM2MwNjg0OTc1MWRiMzRlNDkxNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OWJkZWZlZWFjYTYzNDBlMDI5MGRjODZlODg5Yzg5ZDVlMTg5YWE1YmE0NGI1ODViM2I3MDczNGY0YTYyZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUifQ"
         },
         {
@@ -191,12 +187,12 @@
           "version": "repo-lines-v1:sha256:82a138fdf3b07c5ebf71ec1ab9ed4192d88af623aeeaa66f61629dbacf9f6d5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkOTdlNGIyODBlNzBjYjEwZjc4ZDA4MDJhODIzOGNlMmY1N2IxM2QwNTQzYjM0YTQ1N2M4ZjU4MDJlMTg1MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNjNhOTZhZTBkMDkzZmRkOWUxYWNmYTBlYWU2YTgyMzYzNWJkMjY3YTc1MTdhMTFlYjcwNzc4MTkxYzZiZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5Yjk2MWYyMzE0ZTAxNGM0MTQ2YWY4NTcyZDMzNGEyNTM0MWVmMWIyMDMzYmY3ZWRkYmEyNDAzZWY0Y2EyNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkOTEyMzU5OTM0ODUwOTFjMTYwMzE4NzFiYmNmMmJkOTBkMzRmZmNjZmZlZTIzNzY0Yzg4ZDBjYWQwY2FlOTgifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/evaluation/depgraph.rs#L97-L158",
-          "version": "repo-lines-v1:sha256:ae5d7cbd9f0bae05ac5a3d375c38f1b4d6d63e4e3411e22da15bf82efcc1df21:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxODljNDA4MmY5MTJlOWNiOTY0OWFjZjllZTUzNDQ3ZGUxZTQxYjk2MjhjMWUwNmZhNTMwOGZiNWY2MWIxNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3OWViNGU0NWJhNDBmODY2MTYyOTQ5ZGMyMGYyYjRiN2ZmNzE2N2Y4NWZmOTEwYmMxOGRlNTViMmJkNjM2M2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1Yzc5ZDUzMmM1MWJlMDE4ZmI5NmI1ZWRjM2MyNzIwZDhkODE3MGQ2NmVjNzFlZWY4MzYxMGY4Nzg5MmViZGIifQ"
+          "resource": "repo://topos/mcp/src/evaluation/depgraph.rs#L97-L160",
+          "version": "repo-lines-v1:sha256:731316d03d191a8b697ab640f3744225448d8d0e6bd728b71cb51bbd51f84f3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxODljNDA4MmY5MTJlOWNiOTY0OWFjZjllZTUzNDQ3ZGUxZTQxYjk2MjhjMWUwNmZhNTMwOGZiNWY2MWIxNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ZTc2MzU1Y2YxMTk5NDgwYzNmOTk4MzZiMTQ4NmM4NDFkODkxZmFhZDkwNGM2MDhlMDkzMDIyZDM3NTdhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzZGEwNzc2NmQ3ZjBlNzMxNTljZDkyNDVjOWQ0MjczNzcyYWRiOWI5ZmZjNmU3N2I2M2Q2ZTE0Y2Q1ZWYxNTYifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/tools/inspect.rs#L164-L183",
-          "version": "repo-lines-v1:sha256:c45b6d9f31072ac65050c601a07cd96c13227409c57f626bf92595e13c74b82a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMGIwY2ZmZTk0MTBjN2ZjZjUyMjY1YjFiOWE0MzRkZjNlZjYzNjE5M2ZkNGE1NzY1M2E1ZjVlY2U2Zjc4NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ZDE2NmVmM2QyNTM0MmMwNzRjMTBkN2E3ZTNhNzI3MWJlNzU5ZjdlNDI0ZjAwNjdlM2ZjMjAwNTY0OWUzMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlY2MyZjQ5OTdjMzlmMGMzNTMyZTZhZjc2NmU2MjZhZTdlNWFlMTRkODE4ODg2ZDM5NjU5YzM0MzQ3YjUzY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiNjBjNmExNjI0ZGY2MWEyNjM0ZjBhNTkxMGU3ZjgwMTAxYmRiYzRhNDBkN2RjYmEyYjU0MjkwYTEzZDI2MDgifQ"
+          "resource": "repo://topos/mcp/src/tools/inspect.rs#L164-L208",
+          "version": "repo-lines-v1:sha256:a55d1a1ec5729902efa73d7fdfa4deb89466a3bb24d84998745b18c662ced1c4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMGIwY2ZmZTk0MTBjN2ZjZjUyMjY1YjFiOWE0MzRkZjNlZjYzNjE5M2ZkNGE1NzY1M2E1ZjVlY2U2Zjc4NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlY2MyZjQ5OTdjMzlmMGMzNTMyZTZhZjc2NmU2MjZhZTdlNWFlMTRkODE4ODg2ZDM5NjU5YzM0MzQ3YjUzY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYjUyYzI4MzIxNjM5MTNmYTZlMjM4NTlkZmIxYjRhYjhiYjRlZDNiZDlmZGIxZjAyOGFjM2EzYzQ0Y2Q5NDYifQ"
         }
       ]
     },
@@ -241,8 +237,8 @@
           "version": "repo-lines-v1:sha256:b0b47c7d3343ee4a54fafd70cff779bc38fed3104dbabc5d2410a4988c394cb5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNzUzYmMxMmQxOTYxZjQ5OWY2MGM0YjE2ZWEzZTU5ZGNiMzA3NWU4YmU2YTUxNTYzYWIyZjBlMTA0MWM0OGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0Mjc1YmUyNzVmNTA1OWExMTRlMGJlODc2NzVjYjBmZWU1ZGE3YTUwM2E0OGYwNDdjMWE2ZjMzZjVlYTZlZmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZDkyZmU5NWJhM2EyYzNhZmE5YjU0MzhkYjA4NmZiODQ5YTVlYmM5MzVjYzU0M2I2YTBiODMwODg5NTY0YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZmRjMmU2OTBiOWU3NmY5YTZjYmEyNTQ4YjIzNzA5NjhmMjRiNGU2ZjVmNzljNjcwMzE2ZTZjZDMwNjc5ODcifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/diagnostics.rs#L78-L129",
-          "version": "repo-lines-v1:sha256:e9e70cd4ab9f7fa451576e559fa0a27ef05a5b7ab51c41521df7bcc6bd4574aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNzQ0ZTNlZTk1ODUyNjU1MDA3ZDQyYTMzNTVkOTAzOGUyZWRjYmY0ZDgxOWJiYmU0ZDM0NTc1ZGUzNWY0ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2ODI3ODQ5NmFkYjM5YTg2MzFkNWIzYTlkNmMyMDBhOGIzOWI3Njk5YjQ1NDA4NDlhZDg0MGYwNjFhNzljNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxNjM1NjcwYWJkZDMyNTJkZWQxOGRiNzJiZDEyYTE0ZDIwYzhkNGNkNGVkNTgwZjYyYWJjOWQ3ZWFlNzliZjYifQ"
+          "resource": "repo://topos/mcp/src/diagnostics.rs#L75-L138",
+          "version": "repo-lines-v1:sha256:79cc0dde263262775da030ed121aed22eb08ed171cf4ad4e6f30ac3e01367c37:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3MWI3MTY1ZDdhYmYxNTI4MWM5ZjI3ZmE1N2YxMDNlNzdmYTc2Y2E5MGUzZDQ0MTUwNTA1ODUxMjZiMGU1ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2YzZmMGMyOTkzNjUxMjVmNzYyMDM1YzNmODg3YTA5OTIwNDAwOTc5MTUwMmQwOTI2ZWMxOGNkYTU4ZGM1MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2M3NDExMjk0Y2RkOTNhN2VmMzI0OWZkNzk4ZGRkN2I4MmVlNmRhMzZmOGZiN2UxMDkwZWU1ZjNiZWNkMzgifQ"
         },
         {
           "resource": "repo://topos/mcp/src/formatting.rs#L732-L745",
@@ -253,6 +249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-22T10:38:38.831Z"
+    "at": "2026-10-23T10:31:29.483Z"
   }
 }

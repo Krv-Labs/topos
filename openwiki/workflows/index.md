@@ -1,4 +1,4 @@
 # Files
 
-- [Agent and CLI Workflows](agent-and-cli.md) - Run Topos structural evaluation locally through the CLI or from an MCP client. This guide covers CLI entrypoints, input resolution, optional GitNexus preparation, MCP lifecycle and trust boundaries, schema options, and baseline-aware refactor workflows.
-- [Agent-harness MCP registration lifecycle](harness-registration.md) - How Topos installs, inspects, repairs, and removes its user-scope MCP registrations without overwriting foreign configuration. Covers the pi-only skill-directory reference, ownership ledger, conflict handling, and end-to-end safety checks.
+- [Agent & CLI Workflows](agent-and-cli.md) - Detailed execution workflows for Topos CLI commands and MCP agent tool calls, covering entrypoint dispatch, input resolution, COMPOSABLE preparation, security overlays, and snapshot refactoring.
+- [Harness & Plugin Registration Workflow](harness-registration.md) - Workflows and life cycle mechanics for installing Topos, registering its MCP server across agent harnesses, tracking ownership via the persistent ledger, and executing leave-no-trace uninstallation.

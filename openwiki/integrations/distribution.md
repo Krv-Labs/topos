@@ -3,9 +3,6 @@ type: integration boundary guide
 title: Distribution and Integration Systems
 description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, and shell installers.
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update, maturin, pypi, installer]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-22T10:38:38.831Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -53,6 +50,8 @@ sources:
     resource: repo://topos/engine/src/graphs/mdg/object.rs
   - id: openwiki-source-96e811321a2876ec965585cd
     resource: repo://topos/mcp/Cargo.toml
+  - id: openwiki-source-3ffc625fdcca55488739d27a
+    resource: repo://topos/mcp/src/evaluation/build.rs
   - id: openwiki-source-a61e967f6e50552f558cc216
     resource: repo://topos/mcp/src/evaluation/freshness.rs
   - id: openwiki-source-ca5302a9c887c6fd31583237
@@ -73,7 +72,10 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-22T10:38:38.831Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-23T10:31:29.483Z
 ---
 
 # Distribution and Integration Systems
@@ -82,7 +84,7 @@ Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio serv
 
 ## External topology: GitNexus and the MDG
 
-GitNexus is the optional executable behind the COMPOSABLE pillar. Both `topos depgraph generate` and MCP `topos_generate_depgraph` use the shared engine adapter, which runs `gitnexus analyze --skip-agents-md` in the selected analysis root. Topos looks for `gitnexus` on `PATH`, recognizes `1.5.0` as the minimum supported version, and pins the known-good install to `gitnexus@1.6.8`. A version newer than that pin is reported as *untested*, rather than categorically rejected, because it can still work but its store format may have drifted.
+GitNexus is the optional executable behind the COMPOSABLE pillar. Both `topos depgraph generate` and MCP `topos_generate_depgraph` use the shared engine adapter, which runs `gitnexus analyze --skip-agents-md --skip-skills` in the selected analysis root. Topos looks for `gitnexus` on `PATH`, recognizes `1.5.0` as the minimum supported version, and pins the known-good install to `gitnexus@1.6.8`. A version newer than that pin is reported as *untested*, rather than categorically rejected, because it can still work but its store format may have drifted.
 
 GitNexus produces `.gitnexus/`; Topos consumes it as an inter-module `ModuleDependencyGraph`, not as a replacement parser. The loader supports legacy JSON directories and current LadybugDB `lbug` stores. For a native store it discovers node tables, loads node properties, and reads `CodeRelation` edges including confidence and reason. The resulting graph supplies coupling, instability, call fan-in/out, and import-chain depth. Call fan measures symbols transitively contained by the target File through `CONTAINS`, `DEFINES`, `HAS_METHOD`, and `HAS_PROPERTY`; following `MEMBER_OF` would incorrectly cross into a community cluster.
 
@@ -158,13 +160,13 @@ A separate resolver supports paths that may not exist yet, chiefly a graph-store
 
 ## Registry wheels, native binaries, Docker image, and shell installer
 
-Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.13.0`.
+Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.14.0`.
 
 ### Maturin PyPI packaging and MCP Registry manifest
 
-`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.13.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies (`dependencies = []`) or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.14.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies (`dependencies = []`) or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
 
-The workspace version in `Cargo.toml` (`0.13.0`) is the authoritative version root. `scripts/check_versions.py` enforces strict version agreement across:
+The workspace version in `Cargo.toml` (`0.14.0`) is the authoritative version root. `scripts/check_versions.py` enforces strict version agreement across:
 - Cargo workspace (`Cargo.toml`)
 - VS Code extension (`extensions/vscode/package.json`)
 - Agent Plugin manifest (`agent-plugin/plugin.json`)
@@ -196,7 +198,7 @@ The standalone shell installer (`install.sh`) provides automated binary installa
 
 ### Agent Plugin manifests
 
-The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package metadata at version `0.13.0`; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos.
+The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package metadata at version `0.14.0`; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos.
 
 Validation script `scripts/check_agent_plugin.py` enforces strict package boundaries:
 - Validates top-level JSON fields against Agent Plugins 1.0 schemas.

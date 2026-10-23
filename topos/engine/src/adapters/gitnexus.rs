@@ -364,7 +364,7 @@ pub fn generate_depgraph_with_cancel(
     run_analyze_with_cancel(
         target_dir,
         GITNEXUS_CMD,
-        &["analyze", "--skip-agents-md"],
+        &["analyze", "--skip-agents-md", "--skip-skills"],
         capture,
         timeout,
         cancel_flag,

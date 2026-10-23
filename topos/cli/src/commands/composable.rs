@@ -174,6 +174,7 @@ pub(crate) fn resolve_composable_mdg(
             }
         }
         Ok(graph) => {
+            topos_mcp::cache::graph_used(&gitnexus_dir);
             // Freshness is advisory even when the graph loads — surface it the
             // same way MCP does so CLI/MCP do not disagree on stale stores.
             warnings.extend(gitnexus_warnings(

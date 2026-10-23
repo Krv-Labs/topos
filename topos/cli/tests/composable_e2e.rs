@@ -8,12 +8,14 @@ use std::process::{Command, Stdio};
 use serde_json::{json, Value};
 
 fn run(cwd: &Path, args: &[&str]) -> Value {
+    let cache_index = cwd.join(".topos-test-cache-index");
     let output = Command::new(env!("CARGO_BIN_EXE_topos"))
         .args(args)
         .arg("--json")
         .current_dir(cwd)
         // Keep an installed GitNexus from regenerating the fixture store.
         .env("PATH", "/usr/bin:/bin")
+        .env("TOPOS_CACHE_INDEX_DIR", cache_index)
         .env_remove("TOPOS_MCP_FILE_ROOT")
         .stdin(Stdio::null())
         .output()

@@ -39,6 +39,14 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   directory, so cache leases and locks survive, while still removing harness
   installation state. Retained bookkeeping is reported instead of silently
   pruned.
+- Pass `--skip-skills` alongside `--skip-agents-md` when invoking `gitnexus analyze`
+  so GitNexus 1.6.8+ does not inject untracked `.claude/skills/gitnexus/` files into
+  user repositories or managed PR worktrees, and treat untracked
+  `.claude/skills/gitnexus/` artifacts as disposable during PR worktree checkout and
+  cache cleanup. Also register `.gitnexus` cache usage from CLI `evaluate`,
+  `inspect`, and `depgraph generate` commands, deduplicate entry diagnostics in
+  `topos cache status --global`, and isolate `TOPOS_CACHE_INDEX_DIR` in CLI
+  end-to-end tests.
 
 ### Changed
 

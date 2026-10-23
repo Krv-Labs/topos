@@ -264,7 +264,11 @@ fn merge_view(existing: &mut CacheEntryView, incoming: CacheEntryView) {
     existing.last_used = max_time(existing.last_used, incoming.last_used);
     existing.last_seen = max_time(existing.last_seen, incoming.last_seen);
     existing.state = incoming.state;
-    existing.diagnostics.extend(incoming.diagnostics);
+    for diagnostic in incoming.diagnostics {
+        if !existing.diagnostics.contains(&diagnostic) {
+            existing.diagnostics.push(diagnostic);
+        }
+    }
     if incoming.compatibility.is_some() {
         existing.compatibility = incoming.compatibility;
     }
@@ -351,5 +355,40 @@ mod tests {
         assert!(error.is_none());
         let (_, error) = estimate_bytes(&dir.path().join("missing"));
         assert!(error.is_some());
+    }
+
+    #[test]
+    fn merge_view_deduplicates_diagnostics_preserving_order() {
+        let mut existing = CacheEntryView {
+            kind: "pr".to_string(),
+            path: "/repo/.git/topos-pr-1".to_string(),
+            project_root: "/repo".to_string(),
+            common_git_dir: Some("/repo/.git".to_string()),
+            pr: Some(1),
+            managed: false,
+            state: "legacy-ambiguous".to_string(),
+            last_built: None,
+            last_used: None,
+            last_seen: Some(10.0),
+            compatibility: None,
+            estimated_bytes: None,
+            size_error: None,
+            diagnostics: vec!["legacy store has no ownership marker".to_string()],
+        };
+        let incoming = CacheEntryView {
+            diagnostics: vec![
+                "legacy store has no ownership marker".to_string(),
+                "second note".to_string(),
+            ],
+            ..existing.clone()
+        };
+        merge_view(&mut existing, incoming);
+        assert_eq!(
+            existing.diagnostics,
+            vec![
+                "legacy store has no ownership marker".to_string(),
+                "second note".to_string(),
+            ]
+        );
     }
 }

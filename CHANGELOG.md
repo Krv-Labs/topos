@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-23
+
 ### Added
 
 - Add a shared, versioned cache inventory plus `topos cache status` and
@@ -19,7 +21,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   ownership markers, optional estimated directory sizes, and a stable
   `topos.cache.v1` JSON document. Discovery never adopts legacy stores or
   mutates a repository, and `TOPOS_CACHE_INDEX_DIR` isolates bookkeeping in
-  tests and CI.
+  tests and CI (#455).
 - Add `topos cache clean` and `topos cache prune` for explicit, lease-protected
   removal of managed PR stores. `clean` targets one pull request or every known
   store and is idempotent; `prune` requires an age threshold with a 24-hour
@@ -30,23 +32,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   adopts an unmarked legacy store only after validating its layout, commit
   record, registrations, and contents; `prune` never adopts one. Agent
   snapshots, tracked or non-directory `.gitnexus` content, and GitNexus-owned
-  `.gitnexus` graphs are never touched. There is no background cleanup.
-
-### Fixed
-
-- `topos uninstall` now preserves shared cache bookkeeping under
-  `state_dir()/cache-index` and never enters a repository's Git common
-  directory, so cache leases and locks survive, while still removing harness
-  installation state. Retained bookkeeping is reported instead of silently
-  pruned.
-- Pass `--skip-skills` alongside `--skip-agents-md` when invoking `gitnexus analyze`
-  so GitNexus 1.6.8+ does not inject untracked `.claude/skills/gitnexus/` files into
-  user repositories or managed PR worktrees, and treat untracked
-  `.claude/skills/gitnexus/` artifacts as disposable during PR worktree checkout and
-  cache cleanup. Also register `.gitnexus` cache usage from CLI `evaluate`,
-  `inspect`, and `depgraph generate` commands, deduplicate entry diagnostics in
-  `topos cache status --global`, and isolate `TOPOS_CACHE_INDEX_DIR` in CLI
-  end-to-end tests.
+  `.gitnexus` graphs are never touched. There is no background cleanup (#456).
 
 ### Changed
 
@@ -54,10 +40,26 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   baseline or proposal skips re-parsing, behind a 64 MiB process-local
   byte-bounded LRU keyed by exact source bytes and parser context. Graph
   evidence, path-scanned security findings, allowlists, priorities, and final
-  verdicts are still recomputed on every assessment.
+  verdicts are still recomputed on every assessment (#458).
 - Share one loaded dependency-graph topology across target views instead of
   copying every node and relationship per file, cutting MCP evaluation and
-  PR-recap retargeting time and memory on large repositories.
+  PR-recap retargeting time and memory on large repositories (#457).
+
+### Fixed
+
+- `topos uninstall` now preserves shared cache bookkeeping under
+  `state_dir()/cache-index` and never enters a repository's Git common
+  directory, so cache leases and locks survive, while still removing harness
+  installation state. Retained bookkeeping is reported instead of silently
+  pruned (#456).
+- Pass `--skip-skills` alongside `--skip-agents-md` when invoking `gitnexus analyze`
+  so GitNexus 1.6.8+ does not inject untracked `.claude/skills/gitnexus/` files into
+  user repositories or managed PR worktrees, and treat untracked
+  `.claude/skills/gitnexus/` artifacts as disposable during PR worktree checkout and
+  cache cleanup. Also register `.gitnexus` cache usage from CLI `evaluate`,
+  `inspect`, and `depgraph generate` commands, deduplicate entry diagnostics in
+  `topos cache status --global`, and isolate `TOPOS_CACHE_INDEX_DIR` in CLI
+  end-to-end tests (#462).
 
 ## [0.13.0] - 2026-10-22
 

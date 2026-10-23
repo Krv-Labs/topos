@@ -52,6 +52,7 @@ fn topos_on_path(repo: &Path, path: &str, args: &[&str]) -> Run {
         .current_dir(repo)
         .env("PATH", path)
         .env("NO_COLOR", "1")
+        .env("TOPOS_CACHE_INDEX_DIR", scratch.join("cache-index"))
         .env_remove("CI")
         .env_remove("GH_PROMPT_DISABLED")
         .stdin(Stdio::null())

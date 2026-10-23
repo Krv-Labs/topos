@@ -108,6 +108,9 @@ pub fn run_locked_depgraph_generation(
     if !force {
         let status = depgraph_status(status_override, target_dir, &target_dir.to_string_lossy());
         if status.state == "present" {
+            if let Some(ref dir) = status.gitnexus_dir {
+                crate::cache::graph_used(Path::new(dir));
+            }
             return Ok(LockedGenerateOutcome::AlreadyCurrent {
                 gitnexus_dir: status.gitnexus_dir,
             });
@@ -124,6 +127,11 @@ pub fn run_locked_depgraph_generation(
 
     if result.returncode == CANCELLED_RC || cancelled(cancel_flag) {
         return Err(EvalCancelled);
+    }
+    if result.ok {
+        if let Some(ref dir) = result.gitnexus_path {
+            crate::cache::graph_used(dir);
+        }
     }
 
     Ok(LockedGenerateOutcome::Generated(result))
@@ -188,6 +196,11 @@ fn rebuild_gitnexus_locked(
     clear_freshness_cache();
     if result.returncode == CANCELLED_RC || cancelled(cancel_flag) {
         return Err(EvalCancelled);
+    }
+    if result.ok {
+        if let Some(ref dir) = result.gitnexus_path {
+            crate::cache::graph_used(dir);
+        }
     }
     Ok((!result.ok).then(|| generation_failure_note(&result.message)))
 }

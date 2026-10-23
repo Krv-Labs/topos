@@ -24,7 +24,7 @@ pub struct DepgraphArgs {
 
 #[derive(Subcommand)]
 pub enum DepgraphAction {
-    /// Build or refresh `.gitnexus/` via `gitnexus analyze --skip-agents-md`.
+    /// Build or refresh `.gitnexus/` via `gitnexus analyze --skip-agents-md --skip-skills`.
     Generate(GenerateArgs),
     /// Build the base and head graphs for one pull request, in parallel.
     /// Does not print the review.

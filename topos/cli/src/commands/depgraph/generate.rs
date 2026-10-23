@@ -40,6 +40,9 @@ pub fn run_generate(args: GenerateArgs) -> Result<(), String> {
     if !args.force {
         let status = depgraph_status(None, &target_dir, &target_file);
         if status.state == "present" {
+            if let Some(ref dir) = status.gitnexus_dir {
+                topos_mcp::cache::graph_used(std::path::Path::new(dir));
+            }
             let message = "Dependency graph already current.".to_string();
             if args.json {
                 print_json(&serde_json::json!({
@@ -151,6 +154,9 @@ fn finish_generate(
     result: topos_engine::adapters::gitnexus::DepgraphGenerationResult,
 ) -> Result<(), String> {
     if result.ok {
+        if let Some(ref dir) = result.gitnexus_path {
+            topos_mcp::cache::graph_used(dir);
+        }
         if !json {
             let options = RenderOptions::stdout();
             println!(

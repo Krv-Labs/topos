@@ -804,3 +804,58 @@ fn prune_uses_a_twenty_four_hour_grace_and_predicts_without_deleting() {
     assert_eq!(code, 0, "{stderr}");
     assert!(!young.exists(), "aged store survived a second prune");
 }
+
+#[test]
+fn cli_evaluate_registers_graph_usage_in_cache_inventory() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let index = temp.path().join("index");
+    fs::create_dir_all(&home).unwrap();
+    let main = temp.path().join("main");
+    repo(&main);
+    fs::write(main.join("a.py"), "def f():\n    return 1\n").unwrap();
+    fs::create_dir_all(main.join(".gitnexus/lbug")).unwrap();
+    fs::write(
+        main.join(".gitnexus/lbug/nodes.json"),
+        serde_json::json!([
+            {
+                "id": "File:a.py",
+                "label": "File",
+                "properties": {"filePath": "a.py"}
+            }
+        ])
+        .to_string(),
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_topos"))
+        .args(["evaluate", "a.py", "--json"])
+        .current_dir(&main)
+        .env("HOME", &home)
+        .env("TOPOS_CACHE_INDEX_DIR", &index)
+        // Keep an installed GitNexus from regenerating the fixture store.
+        .env("PATH", "/usr/bin:/bin")
+        .env_remove("CI")
+        .env_remove("GITHUB_ACTIONS")
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("running topos");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let (code, stdout, stderr) = topos(
+        &home,
+        &index,
+        &["cache", "status", "--global", "--json"],
+        temp.path(),
+    );
+    assert_eq!(code, 0, "{stderr}");
+    let value = parse(&stdout);
+    let entries = value["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{stdout}");
+    assert_eq!(entries[0]["kind"], "graph");
+    assert!(entries[0]["last_used"].is_number(), "{stdout}");
+}

@@ -58,7 +58,9 @@ use self::store::{
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use crate::cache::{ensure_marker_for_build, PrLease};
 
-pub const DEFAULT_FILE_CAP: usize = 40;
+/// Above this many files to score, the CLI warns the run may take a while;
+/// `0` (`--max-files 0`) still scores everything.
+pub const LARGE_RECAP_WARN_THRESHOLD: usize = 100;
 
 /// Everything a recap is judged by: the pillar emphasis, the project
 /// config (for its allowlist), the resolved gate policy with the file it
@@ -488,7 +490,11 @@ pub fn build_recap(
             }
         }
     }
-    let capped = scoreable.len().saturating_sub(max_files);
+    let capped = if max_files == 0 {
+        0
+    } else {
+        scoreable.len().saturating_sub(max_files)
+    };
     let mut capped_entries = Vec::new();
     if capped > 0 {
         let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
@@ -891,7 +897,7 @@ pub(super) mod tests {
                 pr: None,
                 base: Some("HEAD".to_string()),
                 head: Some(":worktree".to_string()),
-                max_files: DEFAULT_FILE_CAP,
+                max_files: 0,
                 no_coupling: true,
                 priority: Some("simple".to_string()),
                 strict: false,
@@ -910,7 +916,7 @@ pub(super) mod tests {
                 pr: Some(1),
                 base: Some("HEAD".to_string()),
                 head: None,
-                max_files: DEFAULT_FILE_CAP,
+                max_files: 0,
                 no_coupling: true,
                 priority: None,
                 strict: false,

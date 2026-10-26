@@ -22,9 +22,10 @@ use topos_engine::config::{
     find_config_file, load_topos_config, FailOn, PrGateConfig, PrGatePreset,
 };
 use topos_engine::evaluation::waivers::today_utc;
+pub(crate) use topos_mcp::pr_recap::git::{changed_files, skip_reason, worktree_files};
 pub(crate) use topos_mcp::pr_recap::{
     build_recap, gates, head_commit, model, resolve_priority, resolve_range, Judging,
-    ScoreProgress, DEFAULT_FILE_CAP,
+    ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
 };
 #[cfg(test)]
 use {self::model::*, std::path::Path, topos_mcp::pr_recap::moves};
@@ -194,8 +195,9 @@ Range:
   The base side is the merge-base of the base and the head, so commits that
   landed on the base branch after the fork are not charged to the change. With no
   arguments, uncommitted edits (tracked and untracked) are reviewed against HEAD.
-  Past --max-files, the files with the most changed lines are scored first and
-  the recap is marked incomplete; the rest are listed as skipped.
+  Every scorable file is scored; pass --max-files N to score only the N files
+  with the most changed lines, in which case the recap is marked incomplete
+  and the rest are listed as skipped.
 
 Priority:
   Files are classified with the project's configured priority (`topos config`),
@@ -276,7 +278,8 @@ pub struct PrRecapArgs {
     #[arg(long)]
     pub json: bool,
     /// Score at most this many added or modified files, most changed first.
-    #[arg(long, default_value_t = DEFAULT_FILE_CAP)]
+    /// `0` scores everything (the default).
+    #[arg(long, default_value_t = 0)]
     pub max_files: usize,
     /// Add the changed-files table, every split child and the per-function
     /// ledger.
@@ -362,6 +365,43 @@ fn resolve_format(compact: bool, format: Option<RecapFormat>, no_marker: bool) -
     }
 }
 
+/// Best-effort count of files about to be scored, for the large-recap
+/// warning. `None` when the diff itself cannot be read, in which case the
+/// recap runs without the warning instead of failing.
+fn files_to_score(
+    root: &std::path::Path,
+    base: &str,
+    head: &str,
+    max_files: usize,
+) -> Option<usize> {
+    let diff = if head == ":worktree" {
+        worktree_files(root, base).ok()?
+    } else {
+        changed_files(root, base, head).ok()?
+    };
+    let scoreable = diff
+        .entries
+        .iter()
+        .filter(|entry| skip_reason(entry).is_none())
+        .count();
+    Some(if max_files == 0 {
+        scoreable
+    } else {
+        scoreable.min(max_files)
+    })
+}
+
+fn warn_if_large_recap(root: &std::path::Path, base: &str, head: &str, max_files: usize) {
+    let Some(count) = files_to_score(root, base, head, max_files) else {
+        return;
+    };
+    if count > LARGE_RECAP_WARN_THRESHOLD {
+        eprintln!(
+            "warning: scoring {count} files; this may take a while. Pass --max-files M to score only the M highest-churn files."
+        );
+    }
+}
+
 // --- Entry point -------------------------------------------------------
 
 /// Exit 0 on a pass, 1 when the readiness fails the check under
@@ -407,6 +447,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
     let format = resolve_format(args.compact, args.format, args.no_marker);
     // The stores must be built at the commit the sources are read from.
     let base = merge_base(&root, &base, head_commit(&head))?;
+    warn_if_large_recap(&root, &base, &head, args.max_files);
 
     // Any question is asked here, before the progress lines take stderr.
     let streams = Streams::detect();
@@ -632,6 +673,34 @@ mod tests {
         assert_eq!(recap.scope.files_capped, 2);
         assert_eq!(recap.skipped.len(), 2);
         assert!(recap.incomplete);
+    }
+
+    #[test]
+    fn zero_max_files_scores_everything() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        for i in 0..3 {
+            write_files(&repo, &[(&format!("src/f{i}.py"), "x = 1\n")]);
+        }
+        commit_all(&repo, "three");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        assert_eq!(recap.files.len(), 3);
+        assert_eq!(recap.scope.files_capped, 0);
+        assert!(!recap.incomplete);
+    }
+
+    #[test]
+    fn files_to_score_counts_scorable_files_and_honors_the_cap() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        for i in 0..3 {
+            write_files(&repo, &[(&format!("src/f{i}.py"), "x = 1\n")]);
+        }
+        commit_all(&repo, "three");
+        let base = "HEAD~1";
+        let head = "HEAD";
+        let merge = crate::commands::gh::merge_base(&repo, base, head).unwrap();
+        assert_eq!(files_to_score(&repo, &merge, head, 0), Some(3));
+        assert_eq!(files_to_score(&repo, &merge, head, 2), Some(2));
+        assert_eq!(files_to_score(&repo, &merge, head, 10), Some(3));
     }
 
     /// Records what a progress bar would be told.
@@ -1455,7 +1524,7 @@ reason = \"generated\"
             head: None,
             repo: Some(repo),
             json: true,
-            max_files: DEFAULT_FILE_CAP,
+            max_files: 0,
             verbose: false,
             info: false,
             compact: false,

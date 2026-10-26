@@ -334,11 +334,11 @@ loop.
        the exit code, every finding with its gate and severity, and the
        ``gate`` settings that produced them.
    * - ``--max-files N``
-     - Do not score more than this many added or modified files (default 40).
+     - Do not score more than this many added or modified files (default 0, which scores everything).
        The most-changed files (lines added plus removed) are kept; the recap
        is then marked incomplete and the rest are listed as skipped. What
        that costs the verdict is the ``incomplete`` gate's call (info by
-       default).
+       default). Past 100 files to score, the command warns on stderr.
    * - ``--verbose``
      - Add the **Changed files** table, every split child, and the
        per-function move ledger inside the card.

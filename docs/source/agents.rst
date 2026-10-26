@@ -423,7 +423,7 @@ Refactor & Iterate
    ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
    blocked, call ``topos_generate_depgraph`` first, then re-assess.
 
-``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 40, "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
+``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 0, "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
    Structural pull-request or commit-range recap (``topos.pr_recap.v3``) judged
    against the project's ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or
    ``BLOCKED``). Pass either ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs.

@@ -527,7 +527,7 @@ pub struct AssessChangesetInput {
 }
 
 fn default_pr_recap_max_files() -> usize {
-    crate::pr_recap::DEFAULT_FILE_CAP
+    crate::pr_recap::MCP_DEFAULT_FILE_CAP
 }
 
 /// Arguments for `topos_pr_recap`.
@@ -550,7 +550,7 @@ pub struct PrRecapInput {
     #[serde(default)]
     #[schemars(transform = nullable_to_any_of)]
     pub head: Option<String>,
-    /// Max scored files by churn (default 40).
+    /// Max scored files by churn (default 40; 0 scores everything).
     #[serde(default = "default_pr_recap_max_files")]
     pub max_files: usize,
     /// Skip coupling graph preparation.

@@ -58,6 +58,10 @@ use self::store::{
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use crate::cache::{ensure_marker_for_build, PrLease};
 
+/// `topos_pr_recap` default. The MCP response carries every scored file
+/// (~1.2 KB of JSON each), so agents opt into `max_files: 0` explicitly.
+pub const MCP_DEFAULT_FILE_CAP: usize = 40;
+
 /// Above this many files to score, the CLI warns the run may take a while;
 /// `0` (`--max-files 0`) still scores everything.
 pub const LARGE_RECAP_WARN_THRESHOLD: usize = 100;

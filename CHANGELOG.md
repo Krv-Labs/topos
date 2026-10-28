@@ -14,7 +14,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
   Pass `--max-files N` to score only the N highest-churn files, in which case
   the recap is marked incomplete as before. Past 100 files to score, the
-  command warns on stderr and suggests `--max-files`.
+  command warns on stderr and suggests `--max-files`. The `topos_pr_recap`
+  MCP tool keeps its 40-file default, since its response carries every
+  scored file; agents pass `max_files: 0` to score everything.
 
 ### Fixed
 

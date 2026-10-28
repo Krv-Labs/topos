@@ -395,11 +395,17 @@ fn warn_if_large_recap(root: &std::path::Path, base: &str, head: &str, max_files
     let Some(count) = files_to_score(root, base, head, max_files) else {
         return;
     };
-    if count > LARGE_RECAP_WARN_THRESHOLD {
-        eprintln!(
-            "warning: scoring {count} files; this may take a while. Pass --max-files M to score only the M highest-churn files."
-        );
+    if let Some(warning) = large_recap_warning(count) {
+        eprintln!("{warning}");
     }
+}
+
+fn large_recap_warning(count: usize) -> Option<String> {
+    (count > LARGE_RECAP_WARN_THRESHOLD).then(|| {
+        format!(
+            "warning: scoring {count} files; this may take a while. Pass --max-files M to score only the M highest-churn files."
+        )
+    })
 }
 
 // --- Entry point -------------------------------------------------------
@@ -701,6 +707,18 @@ mod tests {
         assert_eq!(files_to_score(&repo, &merge, head, 0), Some(3));
         assert_eq!(files_to_score(&repo, &merge, head, 2), Some(2));
         assert_eq!(files_to_score(&repo, &merge, head, 10), Some(3));
+    }
+
+    #[test]
+    fn large_recap_warning_fires_only_past_the_threshold() {
+        assert_eq!(large_recap_warning(LARGE_RECAP_WARN_THRESHOLD), None);
+        let over = LARGE_RECAP_WARN_THRESHOLD + 1;
+        let warning = large_recap_warning(over).unwrap();
+        assert!(
+            warning.contains(&format!("scoring {over} files")),
+            "{warning}"
+        );
+        assert!(warning.contains("--max-files"), "{warning}");
     }
 
     /// Records what a progress bar would be told.

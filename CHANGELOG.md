@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-30
+
 ### Added
 
 - `topos_pr_recap` returns a summary by default (`topos.pr_recap.summary.v1`,
@@ -75,7 +77,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
   Pass `--max-files N` to score only the N highest-churn files, in which case
   the recap is marked incomplete as before. Past 100 files to score, the
-  command warns on stderr and suggests `--max-files`.
+  command warns on stderr and suggests `--max-files` (#465).
 - The `topos_pr_recap` MCP tool now also scores every file by default
   (`max_files: 0`), since its default response is a summary instead of every
   scored file (#469).
@@ -121,7 +123,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `reason` names, replaces the mismatch between the blocking files and the
   hotspots (#475). Errors in summary mode keep the summary's schema with
   `error` at the top level.
-- `topos update` no longer leaves stale spinner lines above its phase results.
+- `topos update` no longer leaves stale spinner lines above its phase results (#463).
 
 ## [0.14.0] - 2026-10-23
 

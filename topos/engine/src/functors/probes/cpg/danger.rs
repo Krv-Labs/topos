@@ -122,11 +122,14 @@ pub fn callee_from_text(text: &str) -> String {
 
 /// The registry key `callee` matches, or `None`.
 ///
-/// Exact membership wins; otherwise suffix match for qualified names
+/// Exact membership wins; otherwise a `.`-qualified suffix match
 /// (`foo.eval` against `eval`, `mypkg.pickle.loads` against
-/// `pickle.loads`), restricted to dotted or longer-than-3-char keys to
-/// avoid spurious short-name suffix hits. Prefers the longest matching
-/// key so `pickle.loads` beats a hypothetical bare `loads`.
+/// `pickle.loads`). A bare string suffix never matches, so
+/// `page.waitForFunction` does not hit `Function`. `compile` skips
+/// `re.compile` and `regex.compile`. Undotted keys of at most 3 chars
+/// (in practice short allow patterns such as `run`) are exact-only.
+/// Prefers the longest matching key so `pickle.loads` beats a
+/// hypothetical bare `loads`.
 pub fn match_registry_key<'a>(
     callee: &str,
     keys: impl Iterator<Item = &'a str>,
@@ -146,7 +149,7 @@ pub fn match_registry_key<'a>(
                 && callee != "regex.compile"
                 && !callee.ends_with(".regex.compile")
         } else {
-            callee.ends_with(&format!(".{key}")) || callee.ends_with(key)
+            callee.ends_with(&format!(".{key}"))
         };
         if matches && best.is_none_or(|b| key.len() > b.len()) {
             best = Some(key);
@@ -187,6 +190,51 @@ mod tests {
         let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
         let allow = HashSet::from(["eval".to_string()]);
         assert_eq!(dangerous_api_reachable(&cpg, &allow), 0);
+    }
+
+    #[test]
+    fn registry_key_requires_exact_or_dotted_suffix() {
+        let keys = ["eval", "Function", "pickle.loads"];
+        let m = |c: &str| match_registry_key(c, keys.iter().copied());
+        for callee in [
+            "page.waitForFunction",
+            "isFunction",
+            "retrieval",
+            "evaluate",
+        ] {
+            assert_eq!(m(callee), None, "{callee}");
+        }
+        assert_eq!(m("eval"), Some("eval"));
+        assert_eq!(m("x.eval"), Some("eval"));
+        assert_eq!(m("Function"), Some("Function"));
+        assert_eq!(m("pickle.loads"), Some("pickle.loads"));
+        assert_eq!(m("mypkg.pickle.loads"), Some("pickle.loads"));
+    }
+
+    /// The `eval` line is a control: the lookalike calls are parsed and
+    /// skipped, not missing from the graph.
+    #[test]
+    fn ignores_lookalike_method_names_in_javascript_and_typescript() {
+        let source = "await page.waitForFunction(() => true);\n\
+                      isFunction(x);\nretrieval(x);\neval(x);\n";
+        for language in ["javascript", "typescript"] {
+            let result = parse_source(source, language, None).unwrap();
+            let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+            assert_eq!(
+                dangerous_api_reachable(&cpg, &HashSet::new()),
+                1,
+                "{language}"
+            );
+        }
+    }
+
+    #[test]
+    fn allow_patterns_drop_dotted_keys_but_not_lookalikes() {
+        let registry = effective_registry("python", &HashSet::from(["loads".to_string()]));
+        assert!(!registry.contains("pickle.loads"));
+        assert!(!registry.contains("marshal.loads"));
+        assert!(registry.contains("eval"));
+        assert_eq!(match_registry_key("retrieval", ["eval"].into_iter()), None);
     }
 
     #[test]

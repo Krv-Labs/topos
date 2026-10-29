@@ -26,6 +26,8 @@ pub(super) struct BindingInputs<'a> {
 /// SECURE gate that the allowlist overlay cleared (`secure_adjusted`) is not
 /// a failure.
 pub(super) fn failing_gates(row: &ScoredProjectRow) -> Vec<GateResult> {
+    #[cfg(test)]
+    super::GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
     let secure_cleared = row.entry.secure_adjusted == Some(true);
     evaluate_gates(
         &row.result.raw_metrics,
@@ -48,8 +50,12 @@ pub(super) fn worst_entry(row: &ScoredProjectRow, inputs: &BindingInputs<'_>) ->
         worst.pillar = Some(pillar.clone());
         worst.score = Some(*score);
     }
+    // The scan's own classification is the file's, unless a security overlay
+    // adjusted it; only then is the file classified again.
+    let scanned = entry.secure_adjusted.is_none().then_some(&row.result);
     worst.binding_constraint = Some(file_targets::project_binding_constraint(
         Path::new(&entry.filepath),
+        scanned,
         inputs.priority,
         inputs.gitnexus_dir,
         inputs.params,

@@ -60,25 +60,39 @@ pub(super) fn targets(
 }
 
 /// What `topos_evaluate_file` reports as `binding_constraint` for `path` with
-/// the same defaults: classified fresh with the same scorer, the project's
-/// allowlist and preferences applied, and the default number of targets.
+/// the same defaults: the project's allowlist and preferences applied, and
+/// the default number of targets.
+///
+/// `scanned` is the classification the project scan already made of a file
+/// that no security overlay adjusted: its targets read only the raw metrics,
+/// the lattice element and the gate scores, which the scan leaves as
+/// `topos_evaluate_file` would. For a file the overlay adjusted (`None`),
+/// the unadjusted classification and the overlay are made again. Only the
+/// source is always read again, for the function locations.
 pub(super) fn project_binding_constraint(
     path: &Path,
+    scanned: Option<&ClassificationResult>,
     priority: Priority,
     gitnexus_dir: Option<&Path>,
     params: &EvaluateProjectInput,
 ) -> Option<BindingConstraint> {
-    let (result, _, _) = classify_file(path, priority, gitnexus_dir).ok()?;
-    let overlay = overlay_for_file(path, &result, &params.allow);
+    let fresh;
+    let (result, overlay) = match scanned {
+        Some(result) => (result, None),
+        None => {
+            fresh = classify_file(path, priority, gitnexus_dir).ok()?.0;
+            (&fresh, overlay_for_file(path, &fresh, &params.allow))
+        }
+    };
     let source = read_resolved_utf8(path).ok();
-    let locations = locations(path, source.as_deref(), &result);
+    let locations = locations(path, source.as_deref(), result);
     let resolved_preferences = params
         .preferences
         .as_ref()
         .and_then(|p| p.to_preferences().ok());
     let targets = targets(
         path,
-        &result,
+        result,
         overlay.as_ref(),
         &locations,
         params.preferences.as_ref(),

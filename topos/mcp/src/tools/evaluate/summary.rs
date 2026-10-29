@@ -16,8 +16,8 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::schemas::{
-    AgentContract, BindingConstraint, LatticeElement, PrioritySource, ProjectEvaluationResult,
-    ProjectLanguageRollup, WorstFileEntry,
+    AgentContract, BindingConstraint, EvaluateProjectInput, LatticeElement, PrioritySource,
+    ProjectEvaluationResult, ProjectLanguageRollup, WorstFileEntry,
 };
 use crate::shaping;
 
@@ -30,11 +30,18 @@ pub(crate) const WORST_LEN: usize = 5;
 const RANKED_BY: &str = "failures (failed gates or a parse failure, most first), then lowest \
                          score, then fewest pillars held";
 
+/// Unreadable files whose paths are listed; the rest are counted.
+pub(crate) const UNREAD_LISTED: usize = 10;
+
+/// What a security finding's binding metric (the callee's name) measures.
+const CALLEE_DESCRIPTION: &str = "a call to a dangerous API (the callee's name)";
+
 /// Characters of one warning in the text block.
 const TEXT_WARNING_CHARS: usize = 300;
 
-/// What binds a file: `topos_evaluate_file`'s `binding_constraint` for it,
-/// with the value rounded apart from its limit and the side it is on.
+/// What binds a file: `topos_evaluate_file`'s `binding_constraint` for it
+/// (same keys), with the value rounded apart from its threshold and `bound`
+/// added: the side of the threshold the value is on.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub(crate) struct SummaryBinding {
     pub pillar: String,
@@ -44,8 +51,8 @@ pub(crate) struct SummaryBinding {
     pub value: Option<f64>,
     /// The bound the value must satisfy.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<f64>,
-    /// `min` when `value` is below `limit`, else `max`; only with both.
+    pub threshold: Option<f64>,
+    /// `min` when `value` is below `threshold`, else `max`; only with both.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound: Option<&'static str>,
     /// Offending symbol, or `<module>` for a whole-file metric.
@@ -79,16 +86,62 @@ pub(crate) struct SummaryWorst {
     pub binding_constraint: Option<SummaryBinding>,
 }
 
-/// Counts of what the summary leaves out.
+/// Counts of files the summary leaves out.
 #[derive(Debug, Clone, Default, Serialize, JsonSchema)]
 pub(crate) struct Omitted {
     /// Scored files not named in `worst`.
     pub files: usize,
+    /// Unreadable files whose paths are not in `unread_paths`.
+    #[serde(skip_serializing_if = "shaping::is_zero")]
+    pub unread_files: usize,
 }
 
 impl Omitted {
     fn is_empty(&self) -> bool {
-        self.files == 0
+        self.files + self.unread_files == 0
+    }
+}
+
+/// What the summary is built for: the page size the full response would
+/// have, and whether the call set parameters that only the full response
+/// uses.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Request {
+    limit: usize,
+    verbose: bool,
+    include_security_findings: bool,
+}
+
+impl From<usize> for Request {
+    fn from(limit: usize) -> Self {
+        Self {
+            limit,
+            verbose: false,
+            include_security_findings: false,
+        }
+    }
+}
+
+impl From<&EvaluateProjectInput> for Request {
+    fn from(params: &EvaluateProjectInput) -> Self {
+        Self {
+            limit: params.limit.clamp(1, 500),
+            verbose: params.verbose,
+            include_security_findings: params.include_security_findings,
+        }
+    }
+}
+
+impl Request {
+    /// The parameters set that a summary does not use.
+    fn full_only(self) -> Vec<&'static str> {
+        [
+            (self.verbose, "verbose"),
+            (self.include_security_findings, "include_security_findings"),
+        ]
+        .into_iter()
+        .filter_map(|(set, name)| set.then_some(name))
+        .collect()
     }
 }
 
@@ -106,7 +159,11 @@ pub(crate) struct Summary {
     /// in no rollup.
     #[serde(skip_serializing_if = "shaping::is_zero")]
     pub unread_files: usize,
-    /// Milliseconds spent on the scan: walk, dependency graph, scoring.
+    /// Absolute paths of the first unreadable files.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unread_paths: Vec<String>,
+    /// Milliseconds spent on the scan: walk, dependency graph, per-file
+    /// scoring. Not the ranking or the worst files' binding constraints.
     /// Absent on an error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scan_ms: Option<u64>,
@@ -142,6 +199,9 @@ pub(crate) struct Summary {
     pub ranked_by: &'static str,
     /// The worst files, worst first.
     pub worst: Vec<SummaryWorst>,
+    /// Parameters of this call that apply only to `detail: "full"`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub apply_to_full_only: Vec<&'static str>,
     /// What each metric shown in `worst` measures.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub metrics: BTreeMap<String, &'static str>,
@@ -170,21 +230,22 @@ fn summary_binding(binding: BindingConstraint) -> SummaryBinding {
         line_start,
         line_end,
     } = binding;
-    let (bound, value, limit) = match (value, threshold) {
-        (Some(value), Some(limit)) => {
-            let side = shaping::bound(value, limit);
-            match shaping::round_apart(&[value, limit])[..] {
-                [value, limit] => (side, Some(value), Some(limit)),
-                _ => (side, Some(value), Some(limit)),
-            }
+    let (bound, value, threshold) = match (value, threshold) {
+        (Some(value), Some(threshold)) => {
+            let rounded = shaping::round_apart(&[value, threshold]);
+            (
+                shaping::bound(value, threshold),
+                Some(rounded[0]),
+                Some(rounded[1]),
+            )
         }
-        (value, limit) => (None, value.map(shaping::sig3), limit.map(shaping::sig3)),
+        (value, threshold) => (None, value.map(shaping::sig3), threshold.map(shaping::sig3)),
     };
     SummaryBinding {
         pillar,
         metric,
         value,
-        limit,
+        threshold,
         bound,
         symbol,
         line_start,
@@ -232,7 +293,8 @@ pub(super) fn offset_past_end(result: &ProjectEvaluationResult) -> Option<String
 
 /// What `more` says: the whole-response estimate at the requested `limit`,
 /// and when `offset` is past the last file.
-fn more_text(result: &ProjectEvaluationResult, limit: usize) -> String {
+fn more_text(result: &ProjectEvaluationResult, request: Request) -> String {
+    let limit = request.limit;
     let past_end = offset_past_end(result)
         .map(|note| format!(", but {note}"))
         .unwrap_or_default();
@@ -257,27 +319,46 @@ fn held_by_every_file(result: &ProjectEvaluationResult) -> Option<Vec<String>> {
     )
 }
 
-/// The summary of `result`, with the estimate for the page of `limit` rows
-/// that was requested.
-pub(crate) fn build(result: &ProjectEvaluationResult, limit: usize) -> Summary {
+/// What each metric shown in `worst` measures: the gate metrics have a
+/// description, and a security binding names the dangerous callee.
+fn metric_glossary(worst: &[SummaryWorst]) -> BTreeMap<String, &'static str> {
+    let bindings: Vec<&SummaryBinding> = worst
+        .iter()
+        .filter_map(|w| w.binding_constraint.as_ref())
+        .collect();
+    let mut metrics = shaping::describe_metrics(bindings.iter().map(|b| b.metric.as_str()));
+    for binding in bindings.iter().filter(|b| b.pillar == "secure") {
+        metrics
+            .entry(binding.metric.clone())
+            .or_insert(CALLEE_DESCRIPTION);
+    }
+    metrics
+}
+
+/// The summary of `result`: `request` says the page size the full response
+/// would have and which parameters of the call only that response uses.
+pub(crate) fn build(result: &ProjectEvaluationResult, request: impl Into<Request>) -> Summary {
+    let request = request.into();
     let worst: Vec<SummaryWorst> = result.worst_files.iter().map(worst_row).collect();
-    let metrics = shaping::describe_metrics(
-        worst
-            .iter()
-            .filter_map(|w| w.binding_constraint.as_ref())
-            .map(|binding| binding.metric.as_str()),
-    );
+    let metrics = metric_glossary(&worst);
     let omitted = Omitted {
         files: result.total.saturating_sub(worst.len()),
+        unread_files: result
+            .unread_files
+            .saturating_sub(result.unread_paths.len()),
     };
-    let more = (!omitted.is_empty() || offset_past_end(result).is_some())
-        .then(|| more_text(result, limit));
+    let apply_to_full_only = request.full_only();
+    let more = (!omitted.is_empty()
+        || offset_past_end(result).is_some()
+        || !apply_to_full_only.is_empty())
+    .then(|| more_text(result, request));
     Summary {
         schema: SUMMARY_SCHEMA,
         root: result.root.clone(),
         file_count: result.file_count,
         parse_failures: result.parse_failures,
         unread_files: result.unread_files,
+        unread_paths: result.unread_paths.clone(),
         scan_ms: result.scan_ms,
         priority: result.priority.clone(),
         priority_source: result.priority_source,
@@ -291,6 +372,7 @@ pub(crate) fn build(result: &ProjectEvaluationResult, limit: usize) -> Summary {
         giants: result.maintainability_giants.len(),
         ranked_by: RANKED_BY,
         worst,
+        apply_to_full_only,
         metrics,
         omitted,
         more,
@@ -316,12 +398,41 @@ impl Summary {
         let mut out = format!("{}{}", self.headline(), self.counts_lines());
         out.push_str(&self.rollup_line());
         out.push_str(&self.worst_lines());
-        let counts = [("files", self.omitted.files)];
+        out.push_str(&self.unread_line());
+        out.push_str(&self.full_only_line());
+        let counts = [
+            ("files", self.omitted.files),
+            ("unread files", self.omitted.unread_files),
+        ];
         if let Some(line) = shaping::omitted_line(&counts, self.more.as_deref()) {
             out.push_str(&format!("{line}\n"));
         }
         out.push_str(&self.warning_lines());
         out
+    }
+
+    /// Names the unreadable files, as many as the summary lists.
+    fn unread_line(&self) -> String {
+        if self.unread_paths.is_empty() {
+            return String::new();
+        }
+        let more = if self.omitted.unread_files > 0 {
+            format!(" (+{} not listed)", self.omitted.unread_files)
+        } else {
+            String::new()
+        };
+        format!("Unreadable: {}{more}\n", self.unread_paths.join(", "))
+    }
+
+    /// States that parameters of the call are for the full response.
+    fn full_only_line(&self) -> String {
+        if self.apply_to_full_only.is_empty() {
+            return String::new();
+        }
+        format!(
+            "{} apply to detail: \"full\" only.\n",
+            self.apply_to_full_only.join(" and ")
+        )
     }
 
     /// Every warning, one line each (continuation lines are joined) and
@@ -439,9 +550,9 @@ fn binding_text(binding: &SummaryBinding) -> String {
     let mut text = binding.metric.clone();
     if let Some(value) = binding.value {
         text.push_str(&format!(" {value}"));
-        match (binding.bound, binding.limit) {
-            (Some(bound), Some(limit)) => text.push_str(&format!(" ({bound} {limit})")),
-            (None, Some(limit)) => text.push_str(&format!(" (limit {limit})")),
+        match (binding.bound, binding.threshold) {
+            (Some(bound), Some(threshold)) => text.push_str(&format!(" ({bound} {threshold})")),
+            (None, Some(threshold)) => text.push_str(&format!(" (threshold {threshold})")),
             _ => {}
         }
     }

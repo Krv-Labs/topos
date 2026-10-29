@@ -83,8 +83,10 @@ Outside MCP, `topos-mcp --version` prints the same report.
   `{"path": "..."}` — same default generation behavior, plus
   a summary by default (`topos.evaluate_project.summary.v1`): the rollup,
   `aggregate_floor_verdict` (the lattice element of the pillars every scored
-  file that measured them holds, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
-  consistent; `held_by_every_file` lists them), counts (`failing_files`,
+  file holds, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
+  consistent; `held_by_every_file` lists them; a file that did not measure a
+  pillar does not count against it, but a file that does not parse fails
+  every pillar), counts (`failing_files`,
   `giants`), and `worst`, the five worst files with absolute paths. Each says
   why it ranks there (its lowest-scoring pillar and score, its failed gates,
   `parse_failure`) and what binds it: `binding_constraint`, the same field

@@ -38,15 +38,19 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   there (its lowest-scoring pillar and score, failed gates, `parse_failure`)
   and what binds it (`binding_constraint`, the same field and the same code as
   `topos_evaluate_file`, `null` when that returns none), counts of failing
-  files and giants, files found and scanned, scan time, warnings, and the agent contract. What it
-  leaves out is counted, with the parameters that widen it (`detail: "full"`,
+  files and giants, files found and scanned, scan time, warnings, and the
+  agent contract. `binding_constraint` has the keys of `topos_evaluate_file`'s
+  (`threshold` included), plus `bound` and values rounded apart from their
+  threshold. Unreadable files are listed by path. In the summary, `verbose`
+  and `include_security_findings` are stated as applying to `detail: "full"`
+  only. What it leaves out is counted, with the parameters that widen it (`detail: "full"`,
   `limit`/`offset`, a narrower `path`, `topos_evaluate_file`). Errors come back
   in the same shape. `detail: "full"` returns the per-file rows as before,
   with `scan_ms` and `response_tokens_estimate` (the structured content plus
   the text block, characters / 4); the summary reports the same estimate for
   the full response at the requested `limit`/`offset`, and says when `offset`
-  is past the last file. Past 1,000 files, the first warning lists the top-level directories by
-  file count. Ranking ties are broken by fewest pillars held. The text block
+  is past the last file. Past 1,000 files, the first warning lists the
+  top-level directories by scored-file count. Ranking ties are broken by fewest pillars held. The text block
   is a short markdown summary that says what the floor verdict is (the pillars
   every scored file holds, with the unreadable files named), how the
   files are ranked and what a giant is, with every warning. Errors carry no
@@ -58,7 +62,7 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 - `topos_evaluate_project` full rows are smaller: advisory floats are rounded
   to three significant figures and `pillars.*` carry only `achieved`. The
   score is `scores[pillar]`; a pillar with no `scores` key was not measured
-  and reads `achieved: false`. `worst_files` holds five entries (was three),
+  and reads `achieved: false`. `worst_files` holds at most five entries (was three),
   each with its reason and binding constraint, and is no longer deprecated.
   `hard_fails` entries flag `parse_failure` too. Every file path in the
   response is absolute (`files[].filepath`, the lists, `worst_files`,

@@ -384,7 +384,8 @@ Core Evaluation
    returns for that file, ``null`` when that returns none.
    ``aggregate_floor_verdict`` is the lattice element of the pillars every
    scored file holds, a file that did not measure a pillar not counting against
-   it (``held_by_every_file`` lists them). One order ranks every
+   it and a file that does not parse failing every pillar
+   (``held_by_every_file`` lists them). One order ranks every
    worst file: files that fail a gate or do not parse first (most failures,
    then lowest score, then fewest pillars held), then the rest by lowest
    score; ``maintainability_giants`` is a separate watch list. Pass

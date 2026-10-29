@@ -1360,8 +1360,8 @@ pub struct ProjectEvaluationResult {
     pub file_count: usize,
     pub parse_failures: usize,
     /// Per dimension: the generator's value when every file that measured it
-    /// satisfies it,
-    /// else `SLOP` (at least one file does not).
+    /// satisfies it, else `SLOP`. A file that does not parse measured nothing
+    /// and fails every dimension, so one parse failure reads `SLOP` for all.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,
     /// Per dimension: the lowest file score in percent.
@@ -1414,14 +1414,18 @@ pub struct ProjectEvaluationResult {
     pub has_more: bool,
     pub next_offset: Option<usize>,
     /// Wall-clock milliseconds spent on the scan: the walk, the dependency
-    /// graph and per-file scoring, not the ranking or serialization. Absent
-    /// on an error.
+    /// graph and per-file scoring. Not the ranking, the binding constraints
+    /// of the worst files, or serialization. Absent on an error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scan_ms: Option<u64>,
     /// Files that were found but could not be evaluated (for example
-    /// unreadable). They count in `parse_failures` and are in no list.
+    /// unreadable). They count in `parse_failures` and are in no list;
+    /// `unread_paths` names them.
     #[serde(skip_serializing_if = "crate::shaping::is_zero")]
     pub unread_files: usize,
+    /// Absolute paths of the first unreadable files.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unread_paths: Vec<String>,
     /// Estimated tokens (characters / 4) of this whole response: the
     /// structured content and the text block.
     #[serde(skip_serializing_if = "crate::shaping::is_zero")]

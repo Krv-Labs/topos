@@ -169,8 +169,8 @@ impl ToposServer {
     ///
     /// Autodetects all supported languages in one walk. Returns a summary
     /// by default: the rollup (`aggregate_floor_verdict` is the pillars
-    /// every file holds), the five `worst` files with absolute paths and
-    /// the metric behind each, counts, and warnings. `detail: "full"`
+    /// every scored file holds), the five `worst` files with absolute paths
+    /// and the metric behind each, counts, and warnings. `detail: "full"`
     /// returns per-file rows (`limit` / `offset`) and the named lists.
     ///
     /// Unless `no_composable` is set, generates/refreshes `.gitnexus` when
@@ -497,7 +497,7 @@ fn project_response(
 ) -> CallToolResult {
     match params.detail {
         Detail::Summary => {
-            let summary = summary::build(model, params.limit.clamp(1, 500));
+            let summary = summary::build(model, params);
             to_tool_result(&summary, summary.to_markdown())
         }
         Detail::Full => to_tool_result(model, render_project_md(model)),
@@ -581,6 +581,7 @@ pub(crate) fn evaluate_project_sync_with_cancel(
     let mut file_has_dep: Vec<bool> = Vec::new();
     let mut parse_failures = 0usize;
     let mut unread_files = 0usize;
+    let mut unread_paths: Vec<String> = Vec::new();
     let mut any_dep_graph_loaded = false;
     let mut last_load_error: Option<String> = None;
     let mut per_language_results: HashMap<String, Vec<ClassificationResult>> = HashMap::new();
@@ -607,6 +608,7 @@ pub(crate) fn evaluate_project_sync_with_cancel(
             Err(_) => {
                 parse_failures += 1;
                 unread_files += 1;
+                unread_paths.push(path.to_string_lossy().to_string());
                 *per_language_parse_failures.entry(language).or_default() += 1;
             }
             Ok((result, entry, failed, has_dep, load_error)) => {
@@ -668,6 +670,7 @@ pub(crate) fn evaluate_project_sync_with_cancel(
         generation_note: gitnexus_outcome.generation_note,
         scan_ms: started.elapsed().as_millis() as u64,
         unread_files,
+        unread_paths,
     });
     Ok(project_response(&params, &model))
 }
@@ -903,19 +906,12 @@ struct ScoredProjectRow {
     result: ClassificationResult,
 }
 
-// Counts `gate_metrics_for` calls on the current test thread, so the
+// Counts `failing_gates` calls on the current test thread, so the
 // decorate-sort-undecorate refactor can assert one gate evaluation per row.
 // Thread-local because libtest runs each test on its own thread.
 #[cfg(test)]
 thread_local! {
     static GATE_EVAL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Gate-input map for a file — mirrors the scorers and suggestion engine.
-fn gate_metrics_for(result: &ClassificationResult) -> BTreeMap<String, f64> {
-    #[cfg(test)]
-    GATE_EVAL_COUNT.with(|c| c.set(c.get() + 1));
-    result.raw_metrics.clone()
 }
 
 /// Sort key of a file: tier (failures first), then the tier's two ranking
@@ -943,11 +939,10 @@ struct RowKeys {
 impl RowKeys {
     fn new(row: &ScoredProjectRow) -> Self {
         let result = &row.result;
-        let gate_metrics = gate_metrics_for(result);
         let gate_failures = failing_gates(row).len();
         let failures = gate_failures + usize::from(!result.is_parseable);
         let hard_fail = failures > 0;
-        let cyclomatic = gate_metrics.get("cfg.cyclomatic").copied();
+        let cyclomatic = result.raw_metrics.get("cfg.cyclomatic").copied();
         let giant = !hard_fail && cyclomatic.is_some_and(|v| v > SIMPLE.max_cyclomatic);
         let weakest = if hard_fail {
             weakest_score_from_result(result)
@@ -1195,6 +1190,8 @@ struct BuildProjectArgs<'a> {
     scan_ms: u64,
     /// Files whose evaluation failed outright (unreadable); not in `entries`.
     unread_files: usize,
+    /// Their absolute paths.
+    unread_paths: Vec<String>,
 }
 
 fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
@@ -1307,6 +1304,12 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
         next_offset,
         scan_ms: Some(args.scan_ms),
         unread_files: args.unread_files,
+        unread_paths: args
+            .unread_paths
+            .iter()
+            .take(summary::UNREAD_LISTED)
+            .cloned()
+            .collect(),
         response_tokens_estimate: 0,
         files: page,
         verbose: args.params.verbose,
@@ -1399,6 +1402,7 @@ fn empty_project_result(
         next_offset: None,
         scan_ms: None,
         unread_files: 0,
+        unread_paths: Vec::new(),
         response_tokens_estimate: 0,
         files: Vec::new(),
         verbose: params.verbose,
@@ -1805,6 +1809,7 @@ mod tests {
             generation_note: None,
             scan_ms: 7,
             unread_files: 0,
+            unread_paths: Vec::new(),
         })
     }
 
@@ -2191,6 +2196,7 @@ mod tests {
             generation_note: None,
             scan_ms: 12,
             unread_files,
+            unread_paths: Vec::new(),
         })
     }
 
@@ -2697,7 +2703,7 @@ mod tests {
         let summary = summary::build(&model, 25);
         let binding = summary.worst[0].binding_constraint.as_ref().unwrap();
         assert_eq!(binding.value, Some(0.1996));
-        assert_eq!(binding.limit, Some(0.2));
+        assert_eq!(binding.threshold, Some(0.2));
         assert_eq!(binding.bound, Some("min"));
         let text = summary.to_markdown();
         assert!(
@@ -2898,6 +2904,93 @@ mod tests {
         assert!(model.worst_files[0].parse_failure);
     }
 
+    /// The summary reads the same keys as `topos_evaluate_file`'s
+    /// `binding_constraint`, with `bound` added.
+    #[test]
+    fn summary_binding_has_the_evaluate_file_keys_plus_bound() {
+        let binding = crate::schemas::BindingConstraint {
+            pillar: "simple".to_string(),
+            metric: "ast.entropy".to_string(),
+            value: Some(0.1),
+            threshold: Some(0.2),
+            symbol: Some("f".to_string()),
+            line_start: Some(3),
+            line_end: Some(9),
+        };
+        let keys = |value: serde_json::Value| -> Vec<String> {
+            let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+            keys.sort();
+            keys
+        };
+        let mut model = project_from(many_rows(1), &project_params(0));
+        model.worst_files[0].binding_constraint = Some(Some(binding.clone()));
+        let summary = json_of(&summary::build(&model, 25));
+        let mut expected = keys(serde_json::to_value(&binding).unwrap());
+        expected.push("bound".to_string());
+        expected.sort();
+        assert_eq!(
+            keys(summary["worst"][0]["binding_constraint"].clone()),
+            expected
+        );
+    }
+
+    #[test]
+    fn a_security_binding_gets_a_description_in_metrics() {
+        let mut model = project_from(many_rows(1), &project_params(0));
+        model.worst_files[0].binding_constraint = Some(Some(crate::schemas::BindingConstraint {
+            pillar: "secure".to_string(),
+            metric: "eval".to_string(),
+            value: Some(1.0),
+            threshold: Some(0.0),
+            symbol: None,
+            line_start: None,
+            line_end: None,
+        }));
+        let summary = summary::build(&model, 25);
+        assert!(summary.metrics["eval"].contains("dangerous API"));
+    }
+
+    /// `verbose` and `include_security_findings` change nothing in a
+    /// summary; the summary says so and still points at `detail: "full"`.
+    #[test]
+    fn parameters_only_the_full_response_uses_are_stated() {
+        let mut params = project_params(0);
+        params.verbose = true;
+        params.include_security_findings = true;
+        let model = project_from(many_rows(2), &params);
+        let summary = summary::build(&model, &params);
+        assert_eq!(
+            json_of(&summary)["apply_to_full_only"],
+            serde_json::json!(["verbose", "include_security_findings"])
+        );
+        assert!(summary.more.is_some(), "two files, yet `more` is present");
+        assert!(summary
+            .to_markdown()
+            .contains("verbose and include_security_findings apply to detail: \"full\" only."));
+        let plain = json_of(&summary::build(&model, 25));
+        assert!(plain.get("apply_to_full_only").is_none());
+    }
+
+    #[test]
+    fn unreadable_files_are_listed_up_to_a_cap_and_the_rest_counted() {
+        let mut model = project_from(many_rows(2), &project_params(0));
+        model.unread_files = 15;
+        model.unread_paths = (0..summary::UNREAD_LISTED)
+            .map(|i| abs(&format!("u{i}.py")))
+            .collect();
+        let summary = summary::build(&model, 25);
+        assert_eq!(summary.unread_paths.len(), 10);
+        assert_eq!(summary.omitted.unread_files, 5);
+        assert_eq!(summary.failing_files, model.hard_fails.len() + 15);
+        let text = summary.to_markdown();
+        assert!(
+            text.contains("Unreadable: ") && text.contains("u0.py"),
+            "{text}"
+        );
+        assert!(text.contains("(+5 not listed)"), "{text}");
+        assert!(text.contains("Omitted: unread files 5."), "{text}");
+    }
+
     #[test]
     fn full_text_says_when_the_offset_is_past_the_end() {
         let mut params = project_params(80);
@@ -2978,6 +3071,7 @@ mod tests {
                 generation_note: None,
                 scan_ms: 1,
                 unread_files: 2,
+                unread_paths: vec![abs("gone.py"), abs("locked.py")],
             })
         };
         assert!(model.aggregate_explanation.contains("2 unreadable"));

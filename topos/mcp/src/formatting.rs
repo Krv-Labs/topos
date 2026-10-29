@@ -42,6 +42,25 @@ fn top_gating_target(targets: &[RefactorTarget]) -> Option<&RefactorTarget> {
     targets.iter().find(|t| t.severity == GATING_SEVERITY)
 }
 
+/// The binding constraint of a file: its top gating target. Both
+/// `topos_evaluate_file` and the worst files of `topos_evaluate_project` call
+/// this on the targets they ranked, so they name the same metric.
+pub fn binding_constraint(targets: &[RefactorTarget]) -> Option<BindingConstraint> {
+    top_gating_target(targets).map(|target| BindingConstraint {
+        pillar: target
+            .failing_generators
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "simple".to_string()),
+        metric: target.metric.clone(),
+        value: target.current_value,
+        threshold: target.threshold,
+        symbol: target.symbol.clone(),
+        line_start: target.line_start,
+        line_end: target.line_end,
+    })
+}
+
 /// Agent-contract fields implied by COMPOSABLE setup state.
 #[derive(Debug, Default, Clone)]
 pub struct ComposableContractSignals {
@@ -669,20 +688,7 @@ pub fn to_evaluation_result(
     let binding_constraint = opts
         .refactor_targets
         .as_deref()
-        .and_then(top_gating_target)
-        .map(|target| BindingConstraint {
-            pillar: target
-                .failing_generators
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "simple".to_string()),
-            metric: target.metric.clone(),
-            value: target.current_value,
-            threshold: target.threshold,
-            symbol: target.symbol.clone(),
-            line_start: target.line_start,
-            line_end: target.line_end,
-        });
+        .and_then(binding_constraint);
 
     let core_findings: Vec<topos_engine::evaluation::security_guidance::SecurityFinding> =
         opts.security_findings.iter().map(|f| f.to_core()).collect();

@@ -9,12 +9,21 @@ struct McpSession {
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
+    /// The server's cwd and state home, apart from the scanned project.
+    _state: tempfile::TempDir,
 }
 
 impl McpSession {
     fn start(file_root: &std::path::Path) -> Self {
+        // Hermetic: no update-check cache or notice from the machine running
+        // the test, and a cwd that is not the file root.
+        let state = tempfile::tempdir().expect("state dir");
         let mut child = Command::new(env!("CARGO_BIN_EXE_topos-mcp"))
+            .current_dir(state.path())
             .env("TOPOS_MCP_FILE_ROOT", file_root)
+            .env("TOPOS_NO_UPDATE_NOTICES", "1")
+            .env("XDG_STATE_HOME", state.path())
+            .env("HOME", state.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -26,6 +35,7 @@ impl McpSession {
             child,
             stdin,
             stdout,
+            _state: state,
         }
     }
 
@@ -149,6 +159,17 @@ fn an_error_root_resolves_against_the_file_root_and_never_names_a_file() {
     );
     assert!(structured["error"].as_str().is_some_and(|e| !e.is_empty()));
     assert!(structured.get("aggregate_floor_verdict").is_none());
+
+    // `..` is resolved, and a path outside the file root is not echoed.
+    let dotted = format!("{}/d0/../nope2", root.display());
+    let result = session.evaluate_project(serde_json::json!({"path": dotted}));
+    assert_eq!(
+        result["structuredContent"]["root"],
+        root.join("nope2").to_string_lossy().as_ref()
+    );
+    let outside = session.evaluate_project(serde_json::json!({"path": "/no/such/place"}));
+    assert!(outside["structuredContent"]["error"].is_string());
+    assert!(outside["structuredContent"].get("root").is_none());
 
     // A file is not a root.
     let file = root.join("d0").join("f0.py");

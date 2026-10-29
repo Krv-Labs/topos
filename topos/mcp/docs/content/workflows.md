@@ -82,16 +82,17 @@ Outside MCP, `topos-mcp --version` prints the same report.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
   a summary by default (`topos.evaluate_project.summary.v1`): the rollup,
-  `aggregate_floor_verdict` (the lattice element of the dimensions every file
-  satisfies, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
-  consistent), counts (`failing_files`, `giants`), and `worst`, the five worst
-  files with absolute paths and what put each there (the failing gate's
-  metric, value and limit; the weakest pillar and score for a file that fails
-  no gate; `parse_failure` for one that did not parse). One order ranks every
-  worst file: files that fail a gate or do not parse first (most failures,
-  then lowest score, then fewest pillars held), then the rest by lowest score;
-  giants are a watch list. `detail: "full"` returns per-file
-  rows, paged by `limit`/`offset`, plus the lists `hard_fails`,
+  `aggregate_floor_verdict` (the lattice element of the pillars every scored
+  file that measured them holds, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
+  consistent; `held_by_every_file` lists them), counts (`failing_files`,
+  `giants`), and `worst`, the five worst files with absolute paths. Each says
+  why it ranks there (its lowest-scoring pillar and score, its failed gates,
+  `parse_failure`) and what binds it: `binding_constraint`, the same field
+  `topos_evaluate_file` returns for that file, `null` when that returns none.
+  One order ranks every worst file: files that fail a gate or do not parse
+  first (most failures, then lowest score, then fewest pillars held), then the
+  rest by lowest score; giants are a watch list. `detail: "full"` returns
+  per-file rows, paged by `limit`/`offset`, plus the lists `hard_fails`,
   `maintainability_giants` and `worst_files`, with `guidance` naming the same
   worst file. Every file path in the response is absolute.
 

@@ -323,7 +323,7 @@ pub struct EvaluateFileInput {
 /// (`build_metric_locations`) is already computed on every call, and the
 /// agent contract routes off the top gating target, so returning none by
 /// default made the common loop pay for a second round trip.
-fn default_refactor_targets() -> usize {
+pub(crate) fn default_refactor_targets() -> usize {
     3
 }
 
@@ -1077,7 +1077,7 @@ pub struct RefactorTarget {
 /// `constraints`, `recommended_operations`). It answers "why is this
 /// pillar not achieved?", not "how do I fix it?"; the matching
 /// `refactor_targets` entry answers the latter.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct BindingConstraint {
     /// simple | composable | secure.
     pub pillar: String,
@@ -1270,9 +1270,10 @@ pub struct ProjectFileEntry {
 }
 
 /// A project row's pillar outcome. The score is `scores[pillar]`, so it is
-/// not repeated here. A pillar with no `scores` key was not measured (for
-/// example `composable` without a dependency graph) and reads `achieved:
-/// false`.
+/// not repeated here. A pillar present here with no `scores` key was not
+/// measured (for example `composable` without a dependency graph) and reads
+/// `achieved: false`; a pillar none of whose metrics were measured is absent
+/// from `pillars` altogether.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectPillar {
     /// Whether the generator's threshold was met.
@@ -1284,37 +1285,33 @@ pub struct ProjectPillar {
 /// The identity and the verdict: the full row for any of these files is
 /// already in `files` (or one page away), so repeating the whole
 /// `ProjectFileEntry` here duplicated the page's largest rows. `worst_files`
-/// entries also say why the file ranks where it does; the other lists leave
-/// those fields out.
+/// entries also say why the file ranks where it does and what binds it; the
+/// other lists leave those fields out.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct WorstFileEntry {
+    /// Absolute path.
     pub filepath: String,
     pub lattice_element: LatticeElement,
-    /// The pillar that put the file here: the failing gate's pillar with the
-    /// lowest score, else the lowest-scoring pillar.
+    /// The file's lowest-scoring pillar, the one that ranks it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pillar: Option<String>,
     /// That pillar's score in percent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
-    /// The failing gate's metric; absent when the file fails no gate.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metric: Option<String>,
-    /// The metric's measured value.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub value: Option<f64>,
-    /// The violated bound of the gate.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<f64>,
-    /// `min` when `value` is below `limit`, else `max`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bound: Option<&'static str>,
-    /// Gates the file fails (all pillars).
+    /// Gates the file fails (all pillars), counted from the same evaluation
+    /// as its verdict: a SECURE gate that an allowlist cleared is not
+    /// counted.
     #[serde(skip_serializing_if = "crate::shaping::is_zero")]
     pub gates_failed: usize,
     /// The file did not parse.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub parse_failure: bool,
+    /// What `topos_evaluate_file` reports as `binding_constraint` for this
+    /// file, computed by the same code: the metric to fix first. Absent in
+    /// the lists that do not compute it; `null` when `topos_evaluate_file`
+    /// would report none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding_constraint: Option<Option<BindingConstraint>>,
 }
 
 impl WorstFileEntry {
@@ -1325,12 +1322,9 @@ impl WorstFileEntry {
             lattice_element,
             pillar: None,
             score: None,
-            metric: None,
-            value: None,
-            limit: None,
-            bound: None,
             gates_failed: 0,
             parse_failure: false,
+            binding_constraint: None,
         }
     }
 }
@@ -1365,7 +1359,8 @@ pub struct ProjectEvaluationResult {
     pub root: String,
     pub file_count: usize,
     pub parse_failures: usize,
-    /// Per dimension: the generator's value when every file satisfies it,
+    /// Per dimension: the generator's value when every file that measured it
+    /// satisfies it,
     /// else `SLOP` (at least one file does not).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,

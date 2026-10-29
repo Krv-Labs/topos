@@ -15,7 +15,6 @@ use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Genera
 use topos_engine::evaluation::advisory::{advisories_json, rescore_population};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::calibration::SIMPLE;
-use topos_engine::evaluation::policies::gates::evaluate_gates;
 use topos_engine::evaluation::weakest_score;
 
 use crate::diagnostics::{
@@ -33,7 +32,6 @@ use crate::formatting::{
     to_evaluation_result, to_tool_result, AgentContractPreludeInput, EvalResultOptions,
 };
 use crate::metric_locations::build_metric_locations;
-use crate::refactor_targets::build_refactor_targets;
 use crate::schemas::{
     lattice_to_str, priority_str, resolve_priority, AgentContract, Detail, EvaluateCodeInput,
     EvaluateFileInput, EvaluateProjectInput, EvaluationResult, LatticeElement, PrioritySource,
@@ -47,11 +45,12 @@ use crate::security::{
 use crate::security_findings::SecurityReport;
 use crate::server::ToposServer;
 
+mod file_targets;
 mod large_tree;
-pub mod summary;
+mod summary;
 mod worst;
 
-use self::worst::worst_entry;
+use self::worst::{failing_gates, worst_entry, BindingInputs};
 use crate::shaping;
 
 pub(crate) fn overlay_opts(overlay: Option<&SecurityOverlay>, opts: &mut EvalResultOptions<'_>) {
@@ -403,10 +402,7 @@ pub(crate) fn evaluate_file_sync_with_cancel(
     }
     let overlay = overlay_for_file(&resolved, &result, &params.allow);
     let source = read_resolved_utf8(&resolved).ok();
-    let locations = match &source {
-        Some(source) => build_metric_locations(source, detect_language(&resolved), &result),
-        None => BTreeMap::new(),
-    };
+    let locations = file_targets::locations(&resolved, source.as_deref(), &result);
 
     // Targets are computed before the result model so the agent contract
     // can route them natively and `binding_constraint` can project the top
@@ -415,20 +411,14 @@ pub(crate) fn evaluate_file_sync_with_cancel(
     // deliberately has no equivalent — a few full targets per row would
     // outweigh the rows.
     let targets: Option<Vec<RefactorTarget>> = if params.refactor_targets > 0 {
-        Some(build_refactor_targets(
-            &resolved.to_string_lossy(),
+        Some(file_targets::targets(
+            &resolved,
             &result,
-            overlay
-                .as_ref()
-                .map(|o| o.active_findings.as_slice())
-                .unwrap_or(&[]),
+            overlay.as_ref(),
             &locations,
-            params.preferences.as_ref().map(|p| p.ranking.as_slice()),
-            prefs
-                .as_ref()
-                .map(|prefs| prefs.aspirational_target())
-                .unwrap_or(topos_engine::core::omega::EvaluationValue::Ideal),
-            params.refactor_targets.min(25),
+            params.preferences.as_ref(),
+            prefs.as_ref(),
+            params.refactor_targets,
         ))
     } else {
         None
@@ -954,10 +944,7 @@ impl RowKeys {
     fn new(row: &ScoredProjectRow) -> Self {
         let result = &row.result;
         let gate_metrics = gate_metrics_for(result);
-        let gate_failures = evaluate_gates(&gate_metrics, None, result.is_entrypoint_module)
-            .into_iter()
-            .filter(|r| !r.passed())
-            .count();
+        let gate_failures = failing_gates(row).len();
         let failures = gate_failures + usize::from(!result.is_parseable);
         let hard_fail = failures > 0;
         let cyclomatic = gate_metrics.get("cfg.cyclomatic").copied();
@@ -1016,7 +1003,10 @@ fn weakest_score_from_result(result: &ClassificationResult) -> f64 {
 }
 
 fn to_worst_entry(entry: &ProjectFileEntry) -> WorstFileEntry {
-    WorstFileEntry::plain(entry.filepath.clone(), entry.lattice_element)
+    WorstFileEntry {
+        parse_failure: !entry.is_parseable,
+        ..WorstFileEntry::plain(entry.filepath.clone(), entry.lattice_element)
+    }
 }
 
 fn classify_keyed_rows<'a>(
@@ -1244,10 +1234,15 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     let mut keyed = decorate_rows(&rows);
     sort_keyed(&mut keyed);
     let (hard_fails, leaf_composable_zeros, maintainability_giants) = classify_keyed_rows(&keyed);
+    let binding_inputs = BindingInputs {
+        params: args.params,
+        priority: args.priority,
+        gitnexus_dir: args.gitnexus_dir,
+    };
     let worst_files: Vec<WorstFileEntry> = keyed
         .iter()
         .take(summary::WORST_LEN)
-        .map(|(_, row)| worst_entry(row))
+        .map(|(_, row)| worst_entry(row, &binding_inputs))
         .collect();
     let entries: Vec<ProjectFileEntry> = keyed.iter().map(|(_, row)| row.entry.clone()).collect();
     let hard_fail_head = entries
@@ -1320,7 +1315,7 @@ fn build_project_result(args: BuildProjectArgs<'_>) -> ProjectEvaluationResult {
     // The estimate is of the whole full response: the structured content
     // and the text block.
     model.response_tokens_estimate =
-        shaping::estimate_tokens(&model) + render_project_md(&model).len() / 4;
+        shaping::estimate_tokens(&model) + shaping::estimate_tokens(&render_project_md(&model));
     model
 }
 
@@ -1449,8 +1444,14 @@ fn aggregate_explanation(
         let sb = rolled_scores.get(**b).copied().unwrap_or(100.0);
         sa.partial_cmp(&sb).unwrap_or(Ordering::Equal)
     }) else {
+        let unread_note = if unread > 0 {
+            format!(" ({unread} unreadable not counted)")
+        } else {
+            String::new()
+        };
         return format!(
-            "Aggregate floor is {}: every file satisfies every measured generator; {target}.",
+            "Aggregate floor is {}: every scored file satisfies every measured \
+             generator{unread_note}; {target}.",
             overall.as_str()
         );
     };
@@ -1471,9 +1472,6 @@ fn project_guidance(entries: &[ProjectFileEntry]) -> String {
         return "No files were evaluated.".to_string();
     };
     let path = &worst.filepath;
-    if let Some(warning) = worst.warnings.first() {
-        return format!("Start with `{path}`: {warning}");
-    }
     if !worst.scores.is_empty() {
         let dim = worst
             .scores
@@ -1627,26 +1625,28 @@ fn render_project_entry(entry: &ProjectFileEntry, verbose: bool) -> Vec<String> 
 /// The floor verdict, and what it is.
 fn overall_line(r: &ProjectEvaluationResult) -> Option<String> {
     let floor = r.aggregate_floor_verdict?;
+    let unread = if r.unread_files > 0 {
+        format!("; {} unreadable not counted", r.unread_files)
+    } else {
+        String::new()
+    };
     Some(format!(
-        "**Overall:** {} (the pillars every file holds)",
+        "**Overall:** {} (the pillars every scored file holds{unread})",
         floor.as_str()
     ))
 }
 
-/// Says when the requested `offset` is past the last scored file.
-fn past_end_note(r: &ProjectEvaluationResult) -> Option<String> {
-    if r.total == 0 || r.offset < r.total {
-        return None;
+/// The header: the scanned directory, when there is one.
+fn project_title(r: &ProjectEvaluationResult) -> String {
+    if r.root.is_empty() {
+        "# Project Evaluation".to_string()
+    } else {
+        format!("# Project Evaluation — {}", r.root)
     }
-    let scored = if r.unread_files > 0 { "scored " } else { "" };
-    Some(format!(
-        "\n_offset {} is past the last of {} {scored}files._",
-        r.offset, r.total
-    ))
 }
 
 pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
-    let mut lines = vec![format!("# Project Evaluation — {}", r.root), String::new()];
+    let mut lines = vec![project_title(r), String::new()];
     if let Some(error) = &r.error {
         lines.push(format!("> ⚠️ **Error:** {error}"));
         lines.push(String::new());
@@ -1688,7 +1688,7 @@ pub(crate) fn render_project_md(r: &ProjectEvaluationResult) -> String {
             r.next_offset.unwrap_or_default()
         ));
     }
-    lines.extend(past_end_note(r));
+    lines.extend(summary::offset_past_end(r).map(|note| format!("\n_{note}._")));
     if let Some(error) = &r.error {
         lines.push(format!("\n> error: {error}"));
     }
@@ -2265,22 +2265,20 @@ mod tests {
     }
 
     #[test]
-    fn worst_files_say_which_gate_put_them_there() {
+    fn worst_files_name_the_weakest_pillar_and_count_failed_gates() {
         let model = project_from(disagreeing_rows(), &project_params(0));
         let b = &model.worst_files[0];
         assert_eq!(b.gates_failed, 2);
-        // secure (20%) is the lower-scoring pillar of the two failing gates.
+        // secure (20%) is b's lowest-scoring pillar.
         assert_eq!(b.pillar.as_deref(), Some("secure"));
         assert_eq!(b.score, Some(20.0));
-        assert_eq!(b.metric.as_deref(), Some("cpg.dangerous_calls"));
-        assert_eq!(b.value, Some(2.0));
-        assert_eq!(b.bound, Some("max"));
-        assert!(b.limit.is_some());
-        // A file that fails no gate names its weakest pillar only.
+        // The fixture's paths do not exist, so there is nothing to bind:
+        // the field is present and `null`, as `topos_evaluate_file` has it.
+        assert_eq!(b.binding_constraint, Some(None));
         let c = &model.worst_files[2];
         assert_eq!(c.pillar.as_deref(), Some("simple"));
         assert_eq!(c.score, Some(5.0));
-        assert!(c.metric.is_none() && c.gates_failed == 0);
+        assert_eq!(c.gates_failed, 0);
     }
 
     /// #474: `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is the lattice
@@ -2357,7 +2355,7 @@ mod tests {
                 shown["verdict"], full["worst_files"][index]["lattice_element"],
                 "same file, same verdict"
             );
-            assert_eq!(shown["metric"], "ast.max_function_complexity");
+            assert_eq!(shown["binding_constraint"], serde_json::Value::Null);
         }
         assert_eq!(json["failing_files"], model.hard_fails.len());
         assert_eq!(json["giants"], model.maintainability_giants.len());
@@ -2407,7 +2405,7 @@ mod tests {
             "full page {full_page} vs summary {chars}"
         );
         let whole =
-            (serde_json::to_string(&model).unwrap().len() + render_project_md(&model).len()) / 4;
+            shaping::estimate_tokens(&model) + shaping::estimate_tokens(&render_project_md(&model));
         assert!(
             model.response_tokens_estimate.abs_diff(whole) <= 20,
             "{} vs {whole}",
@@ -2418,7 +2416,9 @@ mod tests {
 
     #[test]
     fn summary_text_block_is_compact_and_names_worst_files() {
-        let mut model = project_from(many_rows(400), &project_params(0));
+        let mut params = project_params(0);
+        params.limit = 25;
+        let mut model = project_from(many_rows(400), &params);
         model.root = "/Users/someone/Repos/a-long-repository-name/with/nested/crates/path".into();
         model
             .warnings
@@ -2433,7 +2433,10 @@ mod tests {
         );
         assert!(text.contains("Worst, ranked by"));
         assert!(text.contains("module_"));
-        assert!(text.contains("ast.max_function_complexity"), "{text}");
+        assert!(
+            text.contains("2 gates failed") || text.contains("simple"),
+            "{text}"
+        );
         assert!(text.contains("detail: \"full\""), "{text}");
         assert!(
             text.contains("400 file(s) found, 400 scored; scan 12ms"),
@@ -2542,43 +2545,114 @@ mod tests {
         );
     }
 
-    /// The binding metric is the engine's (lowest desirability), the one
-    /// `topos_evaluate_file` names, not the largest relative overshoot:
-    /// complexity 14 is 40% over its limit but entropy 0.9 is only 12.5%
-    /// over its ceiling, and the entropy band is the steeper curve.
-    #[test]
-    fn binding_metric_is_the_engines_not_the_largest_overshoot() {
-        let metrics = BTreeMap::from([
-            ("ast.max_function_complexity".to_string(), 14.0),
-            ("ast.entropy".to_string(), 0.9),
-        ]);
-        let gates: Vec<_> = evaluate_gates(&metrics, Some("simple"), false)
-            .into_iter()
-            .filter(|gate| !gate.passed())
-            .collect();
-        let overshoot = |g: &topos_engine::evaluation::policies::gates::GateResult| {
-            let limit = g.threshold().unwrap();
-            (g.value - limit).abs() / limit
-        };
-        let most_over = gates
-            .iter()
-            .max_by(|a, b| overshoot(a).total_cmp(&overshoot(b)))
-            .unwrap();
-        let engine =
-            topos_engine::evaluation::policies::gates::binding_failure(&gates, "simple").unwrap();
-        assert_ne!(
-            most_over.spec.metric, engine.spec.metric,
-            "the fixture must make the two rules disagree"
-        );
+    /// A scanned project of `files` (name, source) and its absolute root.
+    fn scanned_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_mcp_evaluate_project_{}_{name}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create project dir");
+        std::fs::write(dir.join("pyproject.toml"), "[project]\nname = \"t\"\n")
+            .expect("write project marker");
+        for (file, source) in files {
+            std::fs::write(dir.join(file), source).expect("write source");
+        }
+        dir.canonicalize().expect("canonicalize")
+    }
 
-        let (mut result, row) = gated_row("a.py", &[("simple", 5.0)], &[]);
-        result.raw_metrics = metrics;
-        let worst = worst_entry(&classified_row(result, row));
-        assert_eq!(worst.metric.as_deref(), Some(engine.spec.metric));
-        assert_eq!(worst.value, Some(0.9));
-        assert_eq!(worst.limit, Some(0.8));
-        assert_eq!(worst.bound, Some("max"));
-        assert_eq!(worst.gates_failed, 2);
+    fn structured_of(result: CallToolResult) -> serde_json::Value {
+        result.structured_content.expect("structured content")
+    }
+
+    /// `topos_evaluate_file`'s `binding_constraint` for `file`, `null` when
+    /// it reports none.
+    fn file_binding(file: &Path, allow: &[&str]) -> serde_json::Value {
+        let params: EvaluateFileInput = serde_json::from_value(serde_json::json!({
+            "filepath": file.to_string_lossy(),
+            "no_composable": true,
+            "allow": allow,
+        }))
+        .expect("file params");
+        let result = evaluate_file_sync_with_cancel(params, None).expect("not cancelled");
+        structured_of(result)
+            .get("binding_constraint")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    fn project_full(dir: &Path, allow: &[&str]) -> serde_json::Value {
+        let params: EvaluateProjectInput = serde_json::from_value(serde_json::json!({
+            "path": dir.to_string_lossy(),
+            "no_composable": true,
+            "detail": "full",
+            "allow": allow,
+        }))
+        .expect("project params");
+        structured_of(evaluate_project_sync_with_cancel(params, None, None).expect("not cancelled"))
+    }
+
+    const NESTED: &str = "def f(a, b, c, d, e, g):\n    if a:\n        if b:\n            if c:\n                if d:\n                    if e:\n                        if g:\n                            return 1\n    return 0\n";
+
+    fn branchy(branches: usize) -> String {
+        let mut source = String::from("def g(x):\n");
+        for i in 0..branches {
+            source.push_str(&format!("    if x == {i}:\n        return {i}\n"));
+        }
+        source.push_str("    return -1\n");
+        source
+    }
+
+    /// For each worst file, `binding_constraint` is exactly what
+    /// `topos_evaluate_file` reports for that file: nested versus complex
+    /// code, a dangerous call beside complexity, and an allowlisted call.
+    #[test]
+    fn worst_files_bind_the_same_metric_as_evaluate_file() {
+        let complex = branchy(14);
+        let both = format!("{}\ndef h(x):\n    return eval(x)\n", branchy(14));
+        let files = [
+            ("nested.py", NESTED),
+            ("complex.py", complex.as_str()),
+            ("both.py", both.as_str()),
+            ("allowed.py", "def h(x):\n    return eval(x)\n"),
+        ];
+        for allow in [&[][..], &["eval"][..]] {
+            let name = format!("binding_{}", allow.len());
+            let dir = scanned_project(&name, &files);
+            let worst = project_full(&dir, allow)["worst_files"].clone();
+            let worst = worst.as_array().expect("worst_files");
+            assert_eq!(worst.len(), files.len());
+            let mut bound = 0;
+            for entry in worst {
+                let path = Path::new(entry["filepath"].as_str().expect("path"));
+                assert!(path.is_absolute());
+                let from_project = entry
+                    .get("binding_constraint")
+                    .expect("present, null when none");
+                let from_file = file_binding(path, allow);
+                assert_eq!(*from_project, from_file, "{path:?} with allow {allow:?}");
+                bound += usize::from(!from_file.is_null());
+            }
+            assert!(bound >= 2, "the fixtures must bind something: {worst:?}");
+        }
+    }
+
+    /// With `eval` allowlisted the verdict holds SECURE, and so must every
+    /// count: no failed gate, no failing file, no security binding.
+    #[test]
+    fn an_allowlisted_call_is_not_counted_as_a_failure() {
+        let files = [("allowed.py", "def h(x):\n    return eval(x)\n")];
+        let flagged = project_full(&scanned_project("allow_off", &files), &[]);
+        assert_eq!(flagged["hard_fails"].as_array().map(Vec::len), Some(1));
+        assert_eq!(flagged["worst_files"][0]["gates_failed"], 1);
+
+        let allowed = project_full(&scanned_project("allow_on", &files), &["eval"]);
+        assert!(allowed["rolled_up_dimensions"]["secure"] != "SLOP");
+        assert!(allowed.get("hard_fails").is_none(), "{allowed}");
+        assert!(allowed["worst_files"][0].get("gates_failed").is_none());
+        assert_eq!(
+            allowed["worst_files"][0]["binding_constraint"],
+            serde_json::Value::Null
+        );
     }
 
     /// Equal failures and equal score: the file that holds fewer pillars
@@ -2610,17 +2684,27 @@ mod tests {
     /// A value 0.1996 under a 0.2 floor must not read as `0.2`, `0.2`, `min`.
     #[test]
     fn summary_values_stay_apart_from_their_limit() {
-        let (mut result, row) = gated_row("a.py", &[("simple", 49.0)], &[]);
-        result.raw_metrics = BTreeMap::from([("ast.entropy".to_string(), 0.1996)]);
-        let model = project_from(vec![(result, row)], &project_params(0));
+        let mut model = project_from(many_rows(1), &project_params(0));
+        model.worst_files[0].binding_constraint = Some(Some(crate::schemas::BindingConstraint {
+            pillar: "simple".to_string(),
+            metric: "ast.entropy".to_string(),
+            value: Some(0.1996),
+            threshold: Some(0.2),
+            symbol: None,
+            line_start: None,
+            line_end: None,
+        }));
         let summary = summary::build(&model, 25);
-        let worst = &summary.worst[0];
-        assert_eq!(worst.metric.as_deref(), Some("ast.entropy"));
-        assert_eq!(worst.value, Some(0.1996));
-        assert_eq!(worst.limit, Some(0.2));
-        assert_eq!(worst.bound, Some("min"));
+        let binding = summary.worst[0].binding_constraint.as_ref().unwrap();
+        assert_eq!(binding.value, Some(0.1996));
+        assert_eq!(binding.limit, Some(0.2));
+        assert_eq!(binding.bound, Some("min"));
         let text = summary.to_markdown();
-        assert!(text.contains("ast.entropy 0.1996 (min 0.2)"), "{text}");
+        assert!(
+            text.contains("fix first: ast.entropy 0.1996 (min 0.2)"),
+            "{text}"
+        );
+        assert!(summary.metrics.contains_key("ast.entropy"));
     }
 
     /// The estimate and the text name the limit that was asked for.
@@ -2681,7 +2765,7 @@ mod tests {
         let text = summary::build(&model, 25).to_markdown();
         assert!(
             text.contains(
-                "floor `SECURE_NAVIGABLE` (the pillars every file holds: navigable, secure)"
+                "floor `SECURE_NAVIGABLE` (the pillars every scored file holds: navigable, secure)"
             ),
             "{text}"
         );
@@ -2691,7 +2775,7 @@ mod tests {
             "{text}"
         );
         let md = render_project_md(&model);
-        assert!(md.contains("(the pillars every file holds)"), "{md}");
+        assert!(md.contains("(the pillars every scored file holds)"), "{md}");
     }
 
     #[test]
@@ -2757,6 +2841,64 @@ mod tests {
     }
 
     #[test]
+    fn nothing_held_serializes_an_empty_list_and_an_error_omits_it() {
+        let (mut result, row) = gated_row("a.py", &[("simple", 1.0)], &[]);
+        for dim in ["simple", "secure", "navigable"] {
+            result
+                .dimensions
+                .insert(dim.to_string(), EvaluationValue::Slop);
+        }
+        let model = project_from(vec![(result, row)], &project_params(0));
+        let json = json_of(&summary::build(&model, 25));
+        assert_eq!(json["held_by_every_file"], serde_json::json!([]));
+        assert!(summary::build(&model, 25)
+            .to_markdown()
+            .contains("the pillars every scored file holds: no pillar"));
+
+        let error = project_error(
+            &project_params(0),
+            Priority::Simple,
+            PrioritySource::Default,
+            "boom".into(),
+        );
+        assert!(error
+            .structured_content
+            .unwrap()
+            .get("held_by_every_file")
+            .is_none());
+    }
+
+    #[test]
+    fn unreadable_files_are_named_wherever_every_file_is_claimed() {
+        let rows = vec![gated_row(
+            "ok.py",
+            &[("simple", 90.0), ("secure", 90.0)],
+            &[],
+        )];
+        let model = project_from_with(rows, &project_params(0), 3, 2);
+        assert!(
+            model.aggregate_explanation.contains(
+                "every scored file satisfies every measured generator (2 unreadable not counted)"
+            ),
+            "{}",
+            model.aggregate_explanation
+        );
+        let text = summary::build(&model, 25).to_markdown();
+        assert!(text.contains("2 unreadable not counted"), "{text}");
+        assert!(render_project_md(&model).contains("2 unreadable not counted"));
+    }
+
+    #[test]
+    fn hard_fails_flag_parse_failures_like_worst_files() {
+        let (mut unparsed, mut row) = gated_row("broken.py", &[], &[]);
+        unparsed.is_parseable = false;
+        row.is_parseable = false;
+        let model = project_from(vec![(unparsed, row)], &project_params(0));
+        assert!(model.hard_fails[0].parse_failure);
+        assert!(model.worst_files[0].parse_failure);
+    }
+
+    #[test]
     fn full_text_says_when_the_offset_is_past_the_end() {
         let mut params = project_params(80);
         params.limit = 25;
@@ -2782,7 +2924,7 @@ mod tests {
             &[],
         )]);
         assert!(
-            passing.contains("every file satisfies every measured generator"),
+            passing.contains("every scored file satisfies every measured generator"),
             "{passing}"
         );
         // Nothing parsed: no generator was measured, which is not "all pass".

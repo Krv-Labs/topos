@@ -430,9 +430,13 @@ Refactor & Iterate
    Returns a summary by default (``topos.pr_recap.summary.v1``): readiness, reason,
    blocking findings with path, line, metric, before, after and limit, one ranked
    ``attention`` list of files, rollups, scoring time, and a description of each metric
-   shown. File paths in the summary's structured fields are absolute, under its ``root``,
-   so they can be passed straight to the other tools; range-wide findings carry no
-   path, and ``reason`` and finding ``text`` keep repo-relative paths. Everything left out is counted in ``omitted``.
+   shown. ``findings[].path``, ``attention[].path``, ``worst_file`` and ``files[].path``
+   are absolute, under ``root``, so they can be passed straight to the other tools;
+   range-wide findings have no ``path``, ``paths_not_found[].path`` echoes the request,
+   and ``reason`` and finding ``text`` keep repo-relative paths. Everything left out is
+   counted in ``omitted``. A recap that runs past 300 seconds fails with the phase it was
+   in; set ``TOPOS_PR_RECAP_TIMEOUT`` (seconds, ``0`` or negative to disable) to change
+   that.
    ``detail: "full"`` returns the same ``topos.pr_recap.v3`` document as
    ``topos pr-recap --json`` (repo-relative paths, ``max_files`` named in its hints).
    ``paths`` takes absolute or repo-relative paths: in summary mode it adds their full

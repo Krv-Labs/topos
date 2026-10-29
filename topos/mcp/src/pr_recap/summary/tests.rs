@@ -96,7 +96,10 @@ fn summary_and_full_agree_on_the_verdict() {
     for key in ["check", "exit_code", "readiness", "reason", "base", "head"] {
         assert_eq!(value[key], full[key], "{key}");
     }
+    // The worst file's own status, which is the aggregate direction unless
+    // the files disagree on an improvement (see the worst-file test).
     assert_eq!(value["worst_file_direction"], full["direction"]);
+    assert_eq!(value["worst_file"], abs(&repo, &recap.files[0].path));
     for severity in [Severity::Block, Severity::Warn] {
         let total = value["findings_total"][severity.as_str()].as_u64();
         assert_eq!(total.unwrap_or(0) as usize, counting(&recap, severity));
@@ -391,4 +394,22 @@ fn the_worst_file_and_its_direction_are_one_files_status() {
         Some(Headline::ImprovementScore)
     );
     assert_eq!(summary.worst_file, Some(abs(&repo, &recap.files[1].path)));
+}
+
+#[test]
+fn a_range_wide_finding_has_no_path() {
+    let (_keep, repo) = fixture(2, 1);
+    let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);
+    recap.findings[0].path = String::new();
+    let value = json(&summarize(&recap, &repo));
+    assert!(
+        value["findings"][0].get("path").is_none(),
+        "{}",
+        value["findings"][0]
+    );
+    let findings = value["findings"].as_array().unwrap();
+    assert!(findings
+        .iter()
+        .skip(1)
+        .all(|f| f["path"].as_str().is_some_and(|p| p.starts_with('/'))));
 }

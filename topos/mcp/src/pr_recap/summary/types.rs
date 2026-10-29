@@ -17,7 +17,7 @@ pub struct SummaryGate {
     pub fail_on: &'static str,
     pub changes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// The `.topos.toml` consulted, as an absolute path.
+    /// The `.topos.toml` consulted.
     pub source: Option<String>,
 }
 
@@ -25,7 +25,8 @@ pub struct SummaryGate {
 pub struct SummaryFinding {
     pub gate: String,
     pub severity: &'static str,
-    /// Absolute; empty for a range-wide finding.
+    /// Absolute under `root`; absent for a range-wide finding.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<usize>,
@@ -121,7 +122,8 @@ pub struct SummaryScope {
     #[serde(flatten)]
     pub counts: Scope,
     /// Wall time of the run up to this response: preparing graphs, scoring
-    /// files, the gates and clusters. Not the time to serialize this.
+    /// files, the gates and clusters. Excludes building and serializing the
+    /// summary itself.
     pub elapsed_ms: u64,
     /// The part of `elapsed_ms` spent scoring files; absent when none was.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,9 +149,12 @@ pub struct SummaryProject {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Summary {
     pub schema: &'static str,
-    /// Absolute repository root. File paths in the structured fields below
-    /// are absolute under it; range-wide findings carry no path, and prose
-    /// (`reason`, finding `text`) keeps repo-relative paths.
+    /// Absolute repository root. `findings[].path`, `attention[].path`,
+    /// `worst_file` and `files[].path` are absolute under it. Range-wide
+    /// findings have no `path`, `paths_not_found[].path` echoes the request,
+    /// `gate.source` is the config file found (absolute, and possibly
+    /// outside the root), and prose (`reason`, finding `text`) keeps
+    /// repo-relative paths.
     pub root: String,
     pub base: String,
     pub head: String,

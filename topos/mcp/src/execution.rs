@@ -43,14 +43,18 @@ const CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 /// down, so it reports where the time went and not where the worker ended.
 pub type TimeoutNote = Arc<dyn Fn() -> String + Send + Sync>;
 
-/// The error for an operation that ran past `timeout`: `where_` says which
-/// wait it was in (empty when it was running), then the tool's note on what
-/// it was doing, when there is one.
+/// The error for an operation that ran past `timeout`: the tool's note on
+/// what it was doing when there is one, else `where_`, which says which
+/// wait it was in (empty when it was running).
 fn timed_out(timeout: Duration, where_: &str, note: Option<&TimeoutNote>) -> McpError {
-    let mut message = format!("Operation timed out after {}s{where_}", timeout.as_secs());
-    if let Some(note) = note {
-        message.push(' ');
-        message.push_str(&note());
+    let mut message = format!("Operation timed out after {}s", timeout.as_secs());
+    match note {
+        // The note says where the operation was, so every path reads alike.
+        Some(note) => {
+            message.push(' ');
+            message.push_str(&note());
+        }
+        None => message.push_str(where_),
     }
     McpError::internal_error(message, None)
 }
@@ -581,6 +585,11 @@ mod tests {
         let plain = timed_out(timeout, "", None);
         assert_eq!(plain.message, "Operation timed out after 300s");
         let note: TimeoutNote = Arc::new(|| "while scoring 4 file(s).".to_string());
+        let waiting = timed_out(timeout, " while waiting for execution capacity", None);
+        assert_eq!(
+            waiting.message,
+            "Operation timed out after 300s while waiting for execution capacity"
+        );
         let described = timed_out(timeout, "", Some(&note));
         assert_eq!(
             described.message,
@@ -667,10 +676,7 @@ mod tests {
             worker(&phase),
         );
         let message = failed_message(&manager, &task.task_id).await;
-        assert_eq!(
-            message,
-            "Operation timed out after 0s while waiting for execution capacity while queued."
-        );
+        assert_eq!(message, "Operation timed out after 0s while queued.");
     }
 
     /// The error message of the task once it has failed.

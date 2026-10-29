@@ -16,10 +16,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   ranked list of files that need attention (each with why, and its top
   hotspot with the measured value), rollups, scoring time, and a description
   per metric shown. Everything left out (findings, files, hotspots, clusters,
-  skipped files) is counted, with the parameter that widens it. File paths in
-  the summary's structured fields are absolute, under its `root` (range-wide
-  findings carry no path, and `reason` and finding `text` keep repo-relative
-  paths). `detail: "full"` returns the same
+  skipped files) is counted, with the parameter that widens it. The file paths in
+  its structured fields (`findings[].path`, `attention[].path`,
+  `worst_file`, `files[].path`) are absolute, under its `root`; range-wide
+  findings have no `path`, `paths_not_found[].path` echoes the request, and
+  `reason` and finding `text` keep repo-relative paths. `detail: "full"` returns the same
   `topos.pr_recap.v3` document as `topos pr-recap --json` (repo-relative
   paths, MCP parameter names in its hints). `paths` takes absolute or
   repo-relative paths: in summary mode it adds their full file records as
@@ -28,7 +29,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   The text block is a short markdown rendering of the summary. A recap that
   runs past the tool timeout, inline or as a task, says which phase it was in
   (queued, preparing, scoring with the file count, or finishing), and the
-  summary reports total and scoring time.
+  summary reports total and scoring time. The timeout is 300 seconds; set
+  `TOPOS_PR_RECAP_TIMEOUT` (seconds, `0` or negative to disable), like
+  `TOPOS_DEPGRAPH_TIMEOUT`, to change it.
 
 ### Changed
 
@@ -57,8 +60,10 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   the terminal card shows `0.199 < 0.2`.
 - `topos_pr_recap` incomplete-range messages name the `max_files` parameter
   instead of the CLI's `--max-files` (the CLI output is unchanged). The
-  summary names `direction` as `worst_file_direction` (with the file it
-  describes, and omitted when no file was compared) and `project.regression`
+  summary reports the worst file's own status as `worst_file_direction`
+  (with that file as `worst_file`, both omitted when no file was compared;
+  v3 `direction` can differ when files disagree on an improvement) and
+  `project.regression`
   as `rollup_lost_pillar`, so they no longer read as contradicting each
   other, and one `attention` ranking, which always includes the file
   `reason` names, replaces the mismatch between the blocking files and the

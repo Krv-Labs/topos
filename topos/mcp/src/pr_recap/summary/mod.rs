@@ -7,7 +7,8 @@
 //! the files that need attention. Everything left out is counted in
 //! `omitted`, with the parameter that widens it in `more`. It states facts;
 //! per-finding `fix` text stays in the full document, and `metrics` says
-//! what each metric shown measures. Paths are absolute under `root`.
+//! what each metric shown measures. The file paths in its structured fields
+//! are absolute under `root` (see [`Summary::root`]).
 
 mod attention;
 mod paths;
@@ -71,7 +72,7 @@ pub(crate) fn build(recap: &PrRecap, root: &Path, requested: &[String], timing: 
         exit_code: recap.exit_code,
         reason: recap.reason.clone(),
         incomplete: recap.incomplete,
-        gate: gate_of(recap, &absolute),
+        gate: gate_of(recap),
         worst_file_direction: worst.map(|file| file.status),
         worst_file: worst.map(|file| absolute.path(&file.path)),
         scope: scope_of(recap, timing),
@@ -135,12 +136,12 @@ fn findings_total(
     total
 }
 
-fn gate_of(recap: &PrRecap, absolute: &Absolute) -> SummaryGate {
+fn gate_of(recap: &PrRecap) -> SummaryGate {
     SummaryGate {
         preset: recap.gate.preset,
         fail_on: recap.gate.fail_on,
         changes: recap.gate.changes,
-        source: recap.gate.source.as_deref().map(|path| absolute.path(path)),
+        source: recap.gate.source.clone(),
     }
 }
 

@@ -28,19 +28,32 @@ use topos_engine::adapters::gitnexus::gitnexus_available;
 /// What the MCP tool calls the scoring cap in the hints that name it.
 const MCP_CAP_NAME: &str = "max_files";
 
-/// How long a recap may run before the tool gives up on it.
-const DEADLINE: Duration = Duration::from_secs(300);
+/// How long a recap may run before the tool gives up on it, in seconds.
+const DEFAULT_DEADLINE_S: f64 = 300.0;
 
-/// Overrides [`DEADLINE`], in milliseconds. Meant for tests of the timeout
-/// error, which would otherwise take five minutes to reach.
-const DEADLINE_ENV: &str = "TOPOS_PR_RECAP_TIMEOUT_MS";
+/// Overrides [`DEFAULT_DEADLINE_S`], in seconds; zero or negative disables
+/// the deadline. The same convention as `TOPOS_DEPGRAPH_TIMEOUT`.
+const DEADLINE_ENV: &str = "TOPOS_PR_RECAP_TIMEOUT";
+
+/// Stands in for "no deadline": longer than any run.
+const NO_DEADLINE: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
 /// The deadline for one recap.
 pub fn deadline() -> Duration {
-    std::env::var(DEADLINE_ENV)
-        .ok()
-        .and_then(|millis| millis.parse().ok())
-        .map_or(DEADLINE, Duration::from_millis)
+    deadline_from(std::env::var(DEADLINE_ENV).ok().as_deref())
+}
+
+/// The deadline `raw` (the env var's value) asks for: the default when it
+/// is unset or not a number, none when it is zero or negative.
+fn deadline_from(raw: Option<&str>) -> Duration {
+    let seconds = raw
+        .and_then(|raw| raw.trim().parse::<f64>().ok())
+        .unwrap_or(DEFAULT_DEADLINE_S);
+    if seconds > 0.0 {
+        Duration::try_from_secs_f64(seconds).map_or(NO_DEADLINE, |d| d.min(NO_DEADLINE))
+    } else {
+        NO_DEADLINE
+    }
 }
 
 /// What a timeout error adds about the parameters that change the work.
@@ -200,6 +213,21 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+
+    #[test]
+    fn the_deadline_follows_the_depgraph_timeout_convention() {
+        let secs = |s| Duration::from_secs(s);
+        assert_eq!(deadline_from(None), secs(300));
+        assert_eq!(deadline_from(Some("45")), secs(45));
+        assert_eq!(deadline_from(Some(" 1.5 ")), Duration::from_millis(1500));
+        assert_eq!(deadline_from(Some("soon")), secs(300));
+        assert_eq!(deadline_from(Some("")), secs(300));
+        assert_eq!(deadline_from(Some("0")), NO_DEADLINE);
+        assert_eq!(deadline_from(Some("-5")), NO_DEADLINE);
+        assert_eq!(deadline_from(Some("NaN")), NO_DEADLINE);
+        assert_eq!(deadline_from(Some("inf")), NO_DEADLINE);
+        assert_eq!(deadline_from(Some("1e30")), NO_DEADLINE);
+    }
     use crate::pr_recap::progress::Phase;
     use crate::pr_recap::summary::tests::{fixture, input};
     use crate::pr_recap::tests::{

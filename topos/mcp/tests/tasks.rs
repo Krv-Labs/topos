@@ -500,7 +500,7 @@ fn a_pr_recap_timeout_names_the_work_when_run_inline() {
     let (_project, root) = make_git_project_with_history();
     let mut session = McpTestSession::with_envs(&[
         ("TOPOS_MCP_FILE_ROOT", root.as_os_str()),
-        ("TOPOS_PR_RECAP_TIMEOUT_MS", OsStr::new("1")),
+        ("TOPOS_PR_RECAP_TIMEOUT", OsStr::new("0.001")),
     ]);
     session.send(&pr_recap_call(&root, meta_2026_no_tasks()));
     let resp = session.recv();
@@ -516,7 +516,7 @@ fn a_pr_recap_timeout_names_the_work_when_run_as_a_task() {
     let (_project, root) = make_git_project_with_history();
     let mut session = McpTestSession::with_envs(&[
         ("TOPOS_MCP_FILE_ROOT", root.as_os_str()),
-        ("TOPOS_PR_RECAP_TIMEOUT_MS", OsStr::new("1")),
+        ("TOPOS_PR_RECAP_TIMEOUT", OsStr::new("0.001")),
     ]);
     session.send(&pr_recap_call(&root, meta_2026_with_tasks()));
     let resp = session.recv();

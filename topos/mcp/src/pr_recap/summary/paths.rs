@@ -1,7 +1,8 @@
 //! Paths in and out of the summary.
 //!
-//! Out: every path the summary reports is absolute, under the repository
-//! root, so an agent can pass it straight to another tool. In: `paths`
+//! Out: the file paths the summary reports in its structured fields are
+//! absolute, under the repository root, so an agent can pass them straight
+//! to another tool. In: `paths`
 //! accepts what the summary reports or a repo-relative path, and is matched
 //! against the scored files only; no file is read.
 

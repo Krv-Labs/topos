@@ -817,7 +817,7 @@ fn default_fix(gate: GateId) -> &'static str {
         GateId::Cosmetic | GateId::Suspicious => {
             "Check that the change does more than reshuffle code the scores react to."
         }
-        GateId::Incomplete => "Raise --max-files to score every changed file.",
+        GateId::Incomplete => "Lift the scoring cap to score every changed file.",
         GateId::ImportCycle => "Break the cycle by inverting one of the imports this change added.",
         GateId::FanInGrowth => {
             "Simplify the file before more code depends on it, or give the new callers a \

@@ -16,8 +16,10 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   ranked list of files that need attention (each with why, and its top
   hotspot with the measured value), rollups, scoring time, and a description
   per metric shown. Everything left out (findings, files, hotspots, clusters,
-  skipped files) is counted, with the parameter that widens it. Every path in
-  the summary is absolute, under its `root`. `detail: "full"` returns the same
+  skipped files) is counted, with the parameter that widens it. File paths in
+  the summary's structured fields are absolute, under its `root` (range-wide
+  findings carry no path, and `reason` and finding `text` keep repo-relative
+  paths). `detail: "full"` returns the same
   `topos.pr_recap.v3` document as `topos pr-recap --json` (repo-relative
   paths, MCP parameter names in its hints). `paths` takes absolute or
   repo-relative paths: in summary mode it adds their full file records as

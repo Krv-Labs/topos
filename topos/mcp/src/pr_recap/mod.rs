@@ -12,7 +12,7 @@ pub mod hotspots;
 mod mcp;
 pub mod model;
 pub mod moves;
-pub mod progress;
+mod progress;
 pub mod score;
 pub mod store;
 pub mod summary;
@@ -22,7 +22,6 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::CallToolResponse;
@@ -764,7 +763,7 @@ impl ToposServer {
         self.executor
             .run_task_described(
                 &context,
-                Duration::from_secs(300),
+                mcp::deadline(),
                 "Building PR structural recap",
                 mcp::timeout_note(&progress),
                 move |cancel_flag, _reporter| Ok(mcp::respond(params, Some(cancel_flag), &worker)),

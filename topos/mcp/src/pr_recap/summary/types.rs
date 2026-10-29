@@ -17,6 +17,7 @@ pub struct SummaryGate {
     pub fail_on: &'static str,
     pub changes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// The `.topos.toml` consulted, as an absolute path.
     pub source: Option<String>,
 }
 
@@ -119,7 +120,8 @@ impl Omitted {
 pub struct SummaryScope {
     #[serde(flatten)]
     pub counts: Scope,
-    /// Wall time of the run: preparing graphs, scoring, and building this.
+    /// Wall time of the run up to this response: preparing graphs, scoring
+    /// files, the gates and clusters. Not the time to serialize this.
     pub elapsed_ms: u64,
     /// The part of `elapsed_ms` spent scoring files; absent when none was.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -145,7 +147,9 @@ pub struct SummaryProject {
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Summary {
     pub schema: &'static str,
-    /// Absolute repository root. Every path below is absolute under it.
+    /// Absolute repository root. File paths in the structured fields below
+    /// are absolute under it; range-wide findings carry no path, and prose
+    /// (`reason`, finding `text`) keeps repo-relative paths.
     pub root: String,
     pub base: String,
     pub head: String,
@@ -177,14 +181,14 @@ pub struct Summary {
     pub attention: Vec<AttentionFile>,
     /// What each metric shown measures.
     pub metrics: BTreeMap<String, &'static str>,
-    #[serde(skip_serializing_if = "Omitted::is_empty")]
+    #[serde(default, skip_serializing_if = "Omitted::is_empty")]
     pub omitted: Omitted,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub more: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths_not_found: Vec<NotFound>,
     pub non_claim: &'static str,
     /// The v3 records of the requested `paths`, with absolute paths.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<FileRecap>,
 }

@@ -439,3 +439,92 @@ fn stdio_eof_kills_in_flight_gitnexus_subprocess() {
         "fake gitnexus subprocess (pid {pid}) survived topos-mcp stdio EOF"
     );
 }
+
+/// A git repository with two commits, so `HEAD~1...HEAD` has a file to score.
+fn make_git_project_with_history() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("create temp project dir");
+    let root = dir.path().canonicalize().expect("canonicalize temp dir");
+    let git = |args: &[&str]| {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .stdout(Stdio::null())
+            .status()
+            .expect("run git");
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@example.com"]);
+    git(&["config", "user.name", "T"]);
+    std::fs::write(root.join("a.py"), "def a(x):\n    return x\n").expect("write a.py");
+    git(&["add", "."]);
+    git(&["commit", "-qm", "base"]);
+    std::fs::write(root.join("a.py"), "def a(x):\n    return x + 1\n").expect("write a.py");
+    git(&["add", "."]);
+    git(&["commit", "-qm", "change"]);
+    (dir, root)
+}
+
+fn pr_recap_call(root: &Path, meta: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "topos_pr_recap",
+            "arguments": {
+                "directory": root.to_string_lossy(),
+                "base": "HEAD~1",
+                "head": "HEAD",
+                "no_coupling": true
+            },
+            "_meta": meta
+        }
+    })
+}
+
+fn assert_names_the_work(message: &str) {
+    assert!(
+        message.starts_with("Operation timed out after 0s while "),
+        "{message}"
+    );
+    assert!(
+        message.contains("`max_files`") && message.contains("`paths`"),
+        "{message}"
+    );
+}
+
+/// A recap that outruns its deadline, run inline, says what it was doing.
+#[test]
+fn a_pr_recap_timeout_names_the_work_when_run_inline() {
+    let (_project, root) = make_git_project_with_history();
+    let mut session = McpTestSession::with_envs(&[
+        ("TOPOS_MCP_FILE_ROOT", root.as_os_str()),
+        ("TOPOS_PR_RECAP_TIMEOUT_MS", OsStr::new("1")),
+    ]);
+    session.send(&pr_recap_call(&root, meta_2026_no_tasks()));
+    let resp = session.recv();
+    let message = resp["error"]["message"]
+        .as_str()
+        .expect("an error response");
+    assert_names_the_work(message);
+}
+
+/// The same, run as a task: the failed task carries the same message.
+#[test]
+fn a_pr_recap_timeout_names_the_work_when_run_as_a_task() {
+    let (_project, root) = make_git_project_with_history();
+    let mut session = McpTestSession::with_envs(&[
+        ("TOPOS_MCP_FILE_ROOT", root.as_os_str()),
+        ("TOPOS_PR_RECAP_TIMEOUT_MS", OsStr::new("1")),
+    ]);
+    session.send(&pr_recap_call(&root, meta_2026_with_tasks()));
+    let resp = session.recv();
+    let task_id = resp["result"]["taskId"]
+        .as_str()
+        .expect("a task")
+        .to_string();
+    let failed = poll_until_status(&mut session, &task_id, "failed", Duration::from_secs(10));
+    let message = failed["error"]["message"].as_str().expect("an error");
+    assert_names_the_work(message);
+}

@@ -430,8 +430,9 @@ Refactor & Iterate
    Returns a summary by default (``topos.pr_recap.summary.v1``): readiness, reason,
    blocking findings with path, line, metric, before, after and limit, one ranked
    ``attention`` list of files, rollups, scoring time, and a description of each metric
-   shown. Every path in the summary is absolute, under its ``root``, so it can be passed
-   straight to the other tools. Everything left out is counted in ``omitted``.
+   shown. File paths in the summary's structured fields are absolute, under its ``root``,
+   so they can be passed straight to the other tools; range-wide findings carry no
+   path, and ``reason`` and finding ``text`` keep repo-relative paths. Everything left out is counted in ``omitted``.
    ``detail: "full"`` returns the same ``topos.pr_recap.v3`` document as
    ``topos pr-recap --json`` (repo-relative paths, ``max_files`` named in its hints).
    ``paths`` takes absolute or repo-relative paths: in summary mode it adds their full

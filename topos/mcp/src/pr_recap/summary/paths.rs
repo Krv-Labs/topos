@@ -14,7 +14,7 @@ use serde::Serialize;
 use super::super::model::{FileRecap, PrRecap};
 
 /// Repo-relative paths made absolute under the repository root.
-pub struct Absolute<'a>(&'a Path);
+pub(super) struct Absolute<'a>(&'a Path);
 
 impl<'a> Absolute<'a> {
     pub fn new(root: &'a Path) -> Self {
@@ -54,7 +54,7 @@ pub struct NotFound {
 
 /// What `paths` resolved to.
 #[derive(Debug, Default)]
-pub struct Resolved {
+pub(crate) struct Resolved {
     /// Indexes into `recap.files`, in file order.
     pub found: Vec<usize>,
     pub missing: Vec<NotFound>,
@@ -76,7 +76,7 @@ enum Unplaced {
 /// the path is cleaned lexically (`.`, empty segments and `..`, which cannot
 /// leave the repository) and, when absolute, made relative to the root with
 /// symlinks resolved on both sides (`/var` is `/private/var` on macOS).
-pub fn resolve_paths(recap: &PrRecap, root: &Path, requested: &[String]) -> Resolved {
+pub(crate) fn resolve_paths(recap: &PrRecap, root: &Path, requested: &[String]) -> Resolved {
     let mut found = BTreeSet::new();
     let mut missing: Vec<NotFound> = Vec::new();
     let mut seen = BTreeSet::new();
@@ -191,4 +191,123 @@ fn clean(path: &Path) -> Option<PathBuf> {
         }
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::super::tests::{abs, fixture};
+    use super::*;
+    use crate::pr_recap::model::SkippedFile;
+    use crate::pr_recap::tests::{branchy, commit_all, recap, write_files, write_repo};
+    use crate::pr_recap::PrRecap;
+
+    fn resolve(recap: &PrRecap, root: &Path, asked: &[&str]) -> Resolved {
+        let asked: Vec<String> = asked.iter().map(|p| p.to_string()).collect();
+        resolve_paths(recap, root, &asked)
+    }
+
+    fn placed(resolved: &Resolved) -> (usize, usize) {
+        (resolved.found.len(), resolved.missing.len())
+    }
+
+    #[test]
+    fn absolute_paths_resolve_through_symlinks() {
+        let (_keep, repo) = fixture(3, 1);
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let outside = tempfile::tempdir().unwrap();
+        let link = outside.path().join("link");
+        std::os::unix::fs::symlink(&repo, &link).unwrap();
+        let real = repo.canonicalize().unwrap();
+        for (root, base) in [
+            (&repo, &link),
+            (&link, &repo),
+            (&repo, &real),
+            (&real, &repo),
+        ] {
+            let path = base.join("src/big1.py").display().to_string();
+            let resolved = resolve(&recap, root, &[path.as_str()]);
+            assert_eq!(placed(&resolved), (1, 0), "{root:?} {base:?}");
+        }
+    }
+
+    #[test]
+    fn relative_paths_are_cleaned_lexically_and_cannot_leave_the_repository() {
+        let (_keep, repo) = fixture(3, 1);
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        for raw in ["././src/big1.py", "src/../src/big1.py", "./src//big1.py"] {
+            assert_eq!(placed(&resolve(&recap, &repo, &[raw])), (1, 0), "{raw}");
+        }
+        let escaped = resolve(&recap, &repo, &["../x.py", "src/../../x.py", "/etc/passwd"]);
+        assert!(escaped.found.is_empty());
+        let reasons: Vec<&str> = escaped.missing.iter().map(|m| m.reason.as_str()).collect();
+        assert_eq!(reasons[..2], ["outside the repository"; 2]);
+    }
+
+    #[test]
+    fn a_backslash_is_part_of_a_file_name_on_unix() {
+        let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+        write_files(
+            &repo,
+            &[
+                ("a\\b.py", &branchy("odd")),
+                ("a/b.py", "def ok(x):\n    return x\n"),
+            ],
+        );
+        commit_all(&repo, "add");
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let resolved = resolve(&recap, &repo, &["a\\b.py"]);
+        assert_eq!(placed(&resolved), (1, 0));
+        assert_eq!(recap.files[resolved.found[0]].path, "a\\b.py");
+        assert_eq!(placed(&resolve(&recap, &repo, &["src\\b.py"])), (0, 1));
+    }
+
+    #[test]
+    fn an_in_repo_path_with_a_missing_directory_is_resolved_lexically() {
+        let (_keep, repo) = fixture(2, 0);
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let gone = abs(&repo, "gone/dir/x.py");
+        let resolved = resolve(&recap, &repo, &[gone.as_str()]);
+        assert_eq!(resolved.missing[0].reason, "not changed in this range");
+        let unresolvable = resolve(&recap, &repo, &["/no/such/dir/x.py"]);
+        assert_eq!(unresolvable.missing[0].reason, "could not resolve the path");
+    }
+
+    #[test]
+    fn missing_paths_are_deduped_and_say_why() {
+        let (_keep, repo) = fixture(2, 1);
+        let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        recap.skipped.push(SkippedFile {
+            path: "docs/huge.py".to_string(),
+            reason: "over the size limit".to_string(),
+        });
+        recap.deleted.push("old.py".to_string());
+        let asked = [
+            "nope.py",
+            "./nope.py",
+            "nope.py",
+            "docs/huge.py",
+            "old.py",
+            "",
+            "  ",
+        ];
+        let resolved = resolve(&recap, &repo, &asked);
+        assert!(resolved.found.is_empty());
+        let reasons: Vec<(&str, &str)> = resolved
+            .missing
+            .iter()
+            .map(|m| (m.path.as_str(), m.reason.as_str()))
+            .collect();
+        assert_eq!(
+            reasons,
+            vec![
+                ("nope.py", "not changed in this range"),
+                ("docs/huge.py", "skipped: over the size limit"),
+                ("old.py", "deleted in this range"),
+                ("", "invalid path: empty"),
+                ("  ", "invalid path: empty"),
+            ]
+        );
+    }
 }

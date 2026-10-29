@@ -15,7 +15,7 @@ use super::super::model::{FileRecap, PrRecap};
 use super::types::{AttentionFile, AttentionSpot};
 
 /// Files in `attention`, unless more files carry a block finding.
-pub const MAX_ATTENTION: usize = 5;
+const MAX_ATTENTION: usize = 5;
 
 /// How a file got on the list, most pressing first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -36,7 +36,7 @@ struct Entry<'a> {
 }
 
 /// The files that need attention, paths repo-relative.
-pub fn rank(recap: &PrRecap, counting: &[(usize, &Finding)]) -> Vec<AttentionFile> {
+pub(super) fn rank(recap: &PrRecap, counting: &[(usize, &Finding)]) -> Vec<AttentionFile> {
     let mut entries = finding_entries(counting);
     add_reason_file(&mut entries, recap, counting);
     add_hotspot_files(&mut entries, recap);
@@ -157,4 +157,77 @@ fn top_hotspot(file: &FileRecap) -> Option<AttentionSpot> {
         metric: spot.metric.clone(),
         detail: spot.detail.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::{abs, fixture, info_on, summarize};
+    use crate::pr_recap::gates::Waived;
+    use crate::pr_recap::tests::recap;
+    use topos_engine::config::Severity;
+
+    #[test]
+    fn attention_names_the_reason_file_and_every_block_file() {
+        let (_keep, repo) = fixture(4, 2);
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let summary = summarize(&recap, &repo);
+        let attention: Vec<&str> = summary.attention.iter().map(|a| a.path.as_str()).collect();
+        let lead = recap.findings.iter().find(|f| f.counts()).unwrap();
+        assert_eq!(attention[0], abs(&repo, &lead.path));
+        for finding in recap.findings.iter().filter(|f| f.counts()) {
+            if finding.severity == Severity::Block {
+                assert!(attention.contains(&abs(&repo, &finding.path).as_str()));
+            }
+        }
+        let blocks = summary
+            .attention
+            .iter()
+            .take_while(|a| a.severity == Some("block"))
+            .count();
+        assert!(blocks > 0);
+        assert!(summary.attention[blocks..]
+            .iter()
+            .all(|a| a.severity != Some("block")));
+    }
+
+    #[test]
+    fn attention_leads_with_the_reason_file_whatever_made_it_the_reason() {
+        let (_keep, repo) = fixture(8, 0);
+        let base = recap(&repo, "HEAD~1", "HEAD", 0);
+        let last = base.files.last().unwrap().path.clone();
+        let last_abs = abs(&repo, &last);
+
+        let mut info = base.clone();
+        info_on(&mut info, &last);
+        info.reason_path = Some(last.clone());
+        let summary = summarize(&info, &repo);
+        assert_eq!(summary.attention[0].path, last_abs);
+        assert!(summary.attention[0].why.starts_with("info"));
+        assert!(summary.findings.is_empty());
+        assert_eq!(summary.findings_total["info"], 1);
+
+        let mut waived = base.clone();
+        for finding in &mut waived.findings {
+            finding.waived = Some(Waived {
+                reason: "r".into(),
+                source: "s".into(),
+                expires: None,
+            });
+        }
+        waived.reason_path = Some(last.clone());
+        let summary = summarize(&waived, &repo);
+        assert_eq!(summary.attention[0].path, last_abs);
+        assert!(summary.findings.is_empty());
+        assert_eq!(summary.findings_total["waived"], waived.findings.len());
+
+        let mut none = base.clone();
+        none.findings.clear();
+        none.reason_path = Some(last);
+        let summary = summarize(&none, &repo);
+        assert_eq!(summary.attention[0].path, last_abs);
+        assert_eq!(summary.attention[0].why, "named in reason");
+
+        let lead = base.findings.iter().find(|f| f.counts()).unwrap();
+        assert_eq!(base.reason_path.as_deref(), Some(lead.path.as_str()));
+    }
 }

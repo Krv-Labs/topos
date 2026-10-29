@@ -25,8 +25,9 @@ use super::progress::Timing;
 use super::verdict::worst_file;
 use crate::shaping::{bound, describe_metrics, round_apart, sig3};
 
-pub use paths::{resolve_paths, NotFound, Resolved};
-pub use text::not_found_block;
+pub use paths::NotFound;
+pub(crate) use paths::{resolve_paths, Resolved};
+pub(crate) use text::not_found_block;
 pub use types::{
     AttentionFile, AttentionSpot, Omitted, Summary, SummaryFinding, SummaryGate, SummaryProject,
     SummaryScope,
@@ -39,7 +40,7 @@ pub const SUMMARY_SCHEMA: &str = "topos.pr_recap.summary.v1";
 
 /// Findings listed in the summary: every block, then warnings up to this
 /// total. Blocks are never dropped past it.
-pub const MAX_FINDINGS: usize = 10;
+const MAX_FINDINGS: usize = 10;
 
 /// How to widen what the summary left out.
 const MORE: &str = "detail: \"full\" returns the whole topos.pr_recap.v3 document; paths: [..] \
@@ -47,7 +48,7 @@ const MORE: &str = "detail: \"full\" returns the whole topos.pr_recap.v3 documen
 
 /// The summary of `recap`, with the v3 records of the `requested` paths.
 /// `root` is the absolute repository root the reported paths are under.
-pub fn build(recap: &PrRecap, root: &Path, requested: &[String], timing: Timing) -> Summary {
+pub(crate) fn build(recap: &PrRecap, root: &Path, requested: &[String], timing: Timing) -> Summary {
     let absolute = Absolute::new(root);
     let counting = counting_findings(recap);
     let shown = shown_findings(&counting);
@@ -70,7 +71,7 @@ pub fn build(recap: &PrRecap, root: &Path, requested: &[String], timing: Timing)
         exit_code: recap.exit_code,
         reason: recap.reason.clone(),
         incomplete: recap.incomplete,
-        gate: gate_of(recap),
+        gate: gate_of(recap, &absolute),
         worst_file_direction: worst.map(|file| file.status),
         worst_file: worst.map(|file| absolute.path(&file.path)),
         scope: scope_of(recap, timing),
@@ -134,12 +135,12 @@ fn findings_total(
     total
 }
 
-fn gate_of(recap: &PrRecap) -> SummaryGate {
+fn gate_of(recap: &PrRecap, absolute: &Absolute) -> SummaryGate {
     SummaryGate {
         preset: recap.gate.preset,
         fail_on: recap.gate.fail_on,
         changes: recap.gate.changes,
-        source: recap.gate.source.clone(),
+        source: recap.gate.source.as_deref().map(|path| absolute.path(path)),
     }
 }
 
@@ -273,4 +274,4 @@ fn round_options(values: [Option<f64>; 3]) -> [Option<f64>; 3] {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

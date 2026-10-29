@@ -231,3 +231,66 @@ fn hotspot_parts(file: &FileRecap) -> Vec<String> {
 fn short(sha: &str) -> &str {
     sha.get(..12).unwrap_or(sha)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::build;
+    use super::super::tests::{abs, fixture, info_on, summarize, TIMING};
+    use crate::pr_recap::tests::recap;
+
+    #[test]
+    fn text_covers_info_only_incomplete_direction_and_paths() {
+        let (_keep, repo) = fixture(3, 1);
+        let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let first = recap.files[0].path.clone();
+        info_on(&mut recap, &first);
+        recap.reason_path = Some(first);
+        let text = summarize(&recap, &repo).to_markdown();
+        assert!(text.contains("Findings (info 1):"), "{text}");
+        assert!(text.contains("Worst file direction:"), "{text}");
+        assert!(text.contains("independent of readiness"), "{text}");
+        assert!(text.contains("ms scoring"), "{text}");
+        assert!(!text.contains("Incomplete:"));
+
+        recap.incomplete = true;
+        recap.scope.files_capped = 4;
+        recap.reason = "x".repeat(900);
+        let text = summarize(&recap, &repo).to_markdown();
+        assert!(
+            text.contains("Incomplete: 4 file(s) over the max_files cap"),
+            "{text}"
+        );
+        assert!(text.contains('…'));
+
+        let asked = ["src/big1.py".to_string(), "nope.py".to_string()];
+        let text = build(&recap, &repo, &asked, TIMING).to_markdown();
+        assert!(
+            text.contains(&format!("File `{}`", abs(&repo, "src/big1.py"))),
+            "{text}"
+        );
+        assert!(text.contains("medal"), "{text}");
+        assert!(
+            text.contains("hotspot ast.max_function_complexity"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Not found `nope.py`: not changed in this range"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn a_requested_record_counts_the_hotspots_it_does_not_print() {
+        let (_keep, repo) = fixture(2, 0);
+        let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let spot = recap.files[0].hotspots[0].clone();
+        recap.files[0].hotspots = vec![spot; 5];
+        let path = recap.files[0].path.clone();
+        let text = build(&recap, &repo, &[path], TIMING).to_markdown();
+        assert_eq!(
+            text.matches("hotspot ast.max_function_complexity").count(),
+            2
+        );
+        assert!(text.contains("+3 more hotspots"), "{text}");
+    }
+}

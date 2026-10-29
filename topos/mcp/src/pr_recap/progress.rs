@@ -13,7 +13,7 @@ use super::ScoreProgress;
 
 /// The part of a run the worker is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
+pub(crate) enum Phase {
     /// Waiting for execution capacity: the worker has not started.
     Queued,
     /// Resolving the range, diffing, and building the coupling graphs.
@@ -41,7 +41,7 @@ impl Phase {
 
 /// Wall time of a run: all of it, and the scoring part on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Timing {
+pub(crate) struct Timing {
     /// From the start of the run, graph preparation included.
     pub elapsed_ms: u64,
     /// From the first file scored to the last; `None` when nothing was scored.
@@ -50,7 +50,7 @@ pub struct Timing {
 
 /// Live progress of one recap run.
 #[derive(Debug)]
-pub struct Progress {
+pub(crate) struct Progress {
     /// Set when the worker starts, so queueing is not counted.
     started: OnceLock<Instant>,
     phase: AtomicU8,
@@ -130,12 +130,17 @@ impl Progress {
 }
 
 /// Feeds the scoring pass's progress into a shared [`Progress`].
-pub struct Watch<'a>(pub &'a Progress);
+pub(crate) struct Watch<'a>(pub &'a Progress);
 
 impl ScoreProgress for Watch<'_> {
     fn start(&mut self, total: usize) {
         let progress = self.0;
         progress.files.store(total, Ordering::Relaxed);
+        if total == 0 {
+            // Nothing to score: the run goes straight on to the rest.
+            progress.finish_up();
+            return;
+        }
         progress
             .scoring_from
             .store(progress.stamp(), Ordering::Relaxed);
@@ -189,5 +194,15 @@ mod tests {
         let timing = progress.timing();
         assert!(timing.scoring_ms.is_some());
         assert!(timing.scoring_ms.unwrap() <= timing.elapsed_ms);
+    }
+
+    #[test]
+    fn zero_files_to_score_moves_straight_on_and_times_no_scoring() {
+        let progress = Progress::default();
+        progress.begin();
+        Watch(&progress).start(0);
+        assert_eq!(progress.phase(), Phase::Finishing);
+        assert!(progress.describe().contains("after scoring 0 file(s)"));
+        assert_eq!(progress.timing().scoring_ms, None);
     }
 }

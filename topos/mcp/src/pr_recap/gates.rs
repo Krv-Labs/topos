@@ -1473,6 +1473,13 @@ mod tests {
     }
 
     #[test]
+    fn every_gating_metric_has_a_description() {
+        for spec in GATE_SPECS {
+            assert!(metric_description(spec.metric).is_some(), "{}", spec.metric);
+        }
+    }
+
+    #[test]
     fn a_finding_serializes_its_gate_and_severity_by_name() {
         let mut file = changed("src/a.rs");
         set(&mut file, "simple", (true, false), (60.0, 40.0));

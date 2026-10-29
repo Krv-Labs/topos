@@ -16,8 +16,11 @@ use serde::Serialize;
 use serde_json::Value;
 use topos_engine::config::Severity;
 
-use super::gates::{metric_description, Finding, Readiness};
+use super::gates::{Finding, Readiness};
 use super::model::{FileRecap, Headline, PrRecap};
+use crate::shaping::{
+    bound, clip, describe_metrics, is_zero, omitted_line, round_apart, round_floats, sig3,
+};
 
 pub const SUMMARY_SCHEMA: &str = "topos.pr_recap.summary.v1";
 
@@ -116,10 +119,6 @@ pub struct Omitted {
     pub clusters: usize,
     #[serde(skip_serializing_if = "is_zero")]
     pub skipped: usize,
-}
-
-fn is_zero(n: &usize) -> bool {
-    *n == 0
 }
 
 impl Omitted {
@@ -290,16 +289,11 @@ pub fn build(recap: &PrRecap, root: &Path, paths: &[String], elapsed_ms: u64) ->
     }
 
     let attention = attention(recap, &counting);
-    let mut metrics = BTreeMap::new();
     let spot_metrics = attention
         .iter()
         .filter_map(|file| file.hotspot.as_ref().map(|spot| spot.metric.as_str()));
     let finding_metrics = shown.iter().filter_map(|f| f.metric.as_deref());
-    for metric in finding_metrics.chain(spot_metrics) {
-        if let Some(description) = metric_description(metric) {
-            metrics.insert(metric.to_string(), description);
-        }
-    }
+    let metrics = describe_metrics(finding_metrics.chain(spot_metrics));
 
     let (included, paths_not_found) = resolve_paths(recap, root, paths);
     let omitted = omitted(recap, &shown, &attention, &included);
@@ -414,13 +408,11 @@ fn omitted(
 }
 
 fn slim(finding: &Finding) -> SummaryFinding {
-    let bound = match (finding.after, finding.limit) {
-        (Some(after), Some(limit)) if after.is_finite() && limit.is_finite() => {
-            Some(if after < limit { "min" } else { "max" })
-        }
-        _ => None,
-    };
-    let [before, after, limit] = round_group([finding.before, finding.after, finding.limit]);
+    let bound = finding
+        .after
+        .zip(finding.limit)
+        .and_then(|(after, limit)| bound(after, limit));
+    let [before, after, limit] = round_options([finding.before, finding.after, finding.limit]);
     SummaryFinding {
         gate: finding.gate.key().to_string(),
         severity: finding.severity.as_str(),
@@ -435,6 +427,14 @@ fn slim(finding: &Finding) -> SummaryFinding {
         bound,
         text: finding.text.clone(),
     }
+}
+
+/// The values that are there, rounded together so that no two different
+/// ones read as equal.
+fn round_options(values: [Option<f64>; 3]) -> [Option<f64>; 3] {
+    let present: Vec<f64> = values.iter().flatten().copied().collect();
+    let mut rounded = round_apart(&present).into_iter();
+    values.map(|value| value.and_then(|_| rounded.next()))
 }
 
 /// One ranking of the files that need attention: files with a block
@@ -630,19 +630,16 @@ impl Summary {
                 missing.path, missing.reason
             ));
         }
-        let omitted = [
+        let counts = [
             ("findings", self.omitted.findings),
             ("files", self.omitted.files),
             ("hotspots", self.omitted.hotspots),
             ("clusters", self.omitted.clusters),
             ("skipped", self.omitted.skipped),
-        ]
-        .iter()
-        .filter(|(_, count)| *count > 0)
-        .map(|(name, count)| format!("{name} {count}"))
-        .collect::<Vec<_>>();
-        if let Some(more) = &self.more {
-            out.push_str(&format!("Omitted: {}. {more}\n", omitted.join(", ")));
+        ];
+        if let Some(line) = omitted_line(&counts, self.more.as_deref()) {
+            out.push_str(&line);
+            out.push('\n');
         }
         out
     }
@@ -728,63 +725,6 @@ fn bullet(finding: &SummaryFinding) -> String {
 
 fn short(sha: &str) -> &str {
     sha.get(..12).unwrap_or(sha)
-}
-
-fn clip(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        return text.to_string();
-    }
-    let kept: String = text.chars().take(max).collect();
-    format!("{}…", kept.trim_end())
-}
-
-/// `x` to `digits` significant figures.
-fn sig(x: f64, digits: usize) -> f64 {
-    if x == 0.0 || !x.is_finite() {
-        return x;
-    }
-    format!("{:.*e}", digits - 1, x).parse().unwrap_or(x)
-}
-
-/// `x` to three significant figures.
-pub fn sig3(x: f64) -> f64 {
-    sig(x, 3)
-}
-
-/// The values of one finding to three significant figures, or to as many
-/// as four to six when three would make two different values equal (a
-/// `9.999` after against a `10` limit), else as they are.
-fn round_group(values: [Option<f64>; 3]) -> [Option<f64>; 3] {
-    for digits in 3..=6 {
-        let rounded = values.map(|value| value.map(|x| sig(x, digits)));
-        let collides = (0..3).any(|i| {
-            (i + 1..3).any(|j| match (values[i], values[j], rounded[i], rounded[j]) {
-                (Some(a), Some(b), Some(ra), Some(rb)) => a != b && ra == rb,
-                _ => false,
-            })
-        });
-        if !collides {
-            return rounded;
-        }
-    }
-    values
-}
-
-fn round_floats(value: &mut Value) {
-    match value {
-        Value::Number(number) if number.is_f64() => {
-            if let Some(rounded) = number
-                .as_f64()
-                .map(sig3)
-                .and_then(serde_json::Number::from_f64)
-            {
-                *number = rounded;
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(round_floats),
-        Value::Object(map) => map.values_mut().for_each(round_floats),
-        _ => {}
-    }
 }
 
 #[cfg(test)]
@@ -974,29 +914,19 @@ def run{i}(x):
     }
 
     #[test]
-    fn metrics_describe_the_metrics_shown_and_floats_are_rounded() {
+    fn metrics_describe_every_metric_the_findings_show() {
         let (_keep, repo) = fixture(2, 1);
         let recap = recap(&repo, "HEAD~1", "HEAD", 0);
         let summary = build(&recap, &repo, &[], 7);
-        for finding in &summary.findings {
-            if let Some(metric) = finding
-                .metric
-                .as_deref()
-                .filter(|m| metric_description(m).is_some())
-            {
-                assert!(summary.metrics.contains_key(metric));
-            }
+        let shown: Vec<&str> = summary
+            .findings
+            .iter()
+            .filter_map(|finding| finding.metric.as_deref())
+            .collect();
+        assert!(!shown.is_empty());
+        for metric in shown {
+            assert!(summary.metrics.contains_key(metric), "{metric}");
         }
-        assert_eq!(sig3(12.34567), 12.3);
-        assert_eq!(sig3(0.0123456), 0.0123);
-        assert_eq!(sig3(1234.5), 1230.0);
-        assert_eq!(sig3(-0.5556), -0.556);
-        let mut value = serde_json::json!({ "a": [1.23456, 7], "b": { "c": 0.98765 } });
-        round_floats(&mut value);
-        assert_eq!(
-            value,
-            serde_json::json!({ "a": [1.23, 7], "b": { "c": 0.988 } })
-        );
     }
 
     #[test]
@@ -1265,14 +1195,10 @@ def run{i}(x):
 
     #[test]
     fn rounding_never_makes_different_values_equal() {
-        let [before, after, limit] = round_group([None, Some(9.9996), Some(10.0)]);
+        let [before, after, limit] = round_options([None, Some(9.9996), Some(10.0)]);
         assert_eq!((before, after, limit), (None, Some(9.9996), Some(10.0)));
-        let [_, after, limit] = round_group([None, Some(9.99), Some(10.0)]);
-        assert_eq!((after, limit), (Some(9.99), Some(10.0)));
-        let [a, b, _] = round_group([Some(12.3456), Some(7.0), None]);
-        assert_eq!((a, b), (Some(12.3), Some(7.0)));
-        let [a, ..] = round_group([Some(1.0000001), Some(1.0), None]);
-        assert_eq!(a, Some(1.0000001));
+        let [a, b, c] = round_options([Some(12.3456), None, Some(7.0)]);
+        assert_eq!((a, b, c), (Some(12.3), None, Some(7.0)));
 
         let (_keep, repo) = fixture(1, 1);
         let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);

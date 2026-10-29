@@ -34,24 +34,36 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `TOPOS_DEPGRAPH_TIMEOUT`, to change it.
 - `topos_evaluate_project` returns a summary by default
   (`topos.evaluate_project.summary.v1`, #471): the rollup, per-language
-  rollups, the five worst files with absolute paths and the metric, value and
-  limit that put each there, counts of failing files and giants, files scored,
-  scan time, warnings, and the agent contract. What it leaves out is counted,
-  with the parameters that widen it (`detail: "full"`, `limit`/`offset`, a
-  narrower `path`, `topos_evaluate_file`). `detail: "full"` returns the
-  per-file rows as before, now with `scan_ms` and `page_tokens_estimate`
-  (serialized characters / 4). Past 1,000 files, `warnings` lists the
-  top-level directories by file count. `worst_files` entries carry `pillar`,
-  `score`, `metric`, `value`, `limit` and `gates_failed`. The text block is a
-  short markdown summary. The CLI is unchanged.
+  rollups, the five worst files with absolute paths, each with its reason (the
+  failing gate's metric, value, limit and `bound`, else the weakest pillar and
+  its score, or `parse_failure`), counts of failing files and giants, files
+  found and scanned, scan time, warnings, and the agent contract. What it
+  leaves out is counted, with the parameters that widen it (`detail: "full"`,
+  `limit`/`offset`, a narrower `path`, `topos_evaluate_file`). Errors come back
+  in the same shape. `detail: "full"` returns the per-file rows as before,
+  with `scan_ms` and `response_tokens_estimate` (the structured content plus
+  the text block, characters / 4); the summary reports the same estimate for
+  the full response
+  at the requested `limit`/`offset`, and says when `offset` is past the last
+  file. Past 1,000 files, the first warning lists the top-level directories by
+  file count. Ranking ties are broken by fewest pillars held. The text block
+  is a short markdown summary that says what the floor verdict is, how the
+  files are ranked and what a giant is, with every warning. Errors carry no
+  verdict or rollup, and `root` is the directory asked for, resolved against
+  the file root. The CLI is unchanged.
 
 ### Changed
 
 - `topos_evaluate_project` full rows are smaller: advisory floats are rounded
-  to three significant figures and `pillars.*` carry only `achieved`, since
-  the score is `scores[pillar]`. `worst_files` holds five entries (was three)
-  and is no longer deprecated. `files[].filepath` stays relative to the
-  response's absolute `root` (#471).
+  to three significant figures and `pillars.*` carry only `achieved`. The
+  score is `scores[pillar]`; a pillar with no `scores` key was not measured
+  and reads `achieved: false`. `worst_files` holds five entries (was three),
+  each with its reason, and is no longer deprecated. Every file path in the
+  response is absolute (`files[].filepath`, the lists, `worst_files`,
+  `worst_file_path`, `guidance`, `aggregate_explanation`, the agent contract),
+  so it passes straight into `topos_evaluate_file`; `root` is kept (#471).
+- The `topos_evaluate_project` tool description describes the summary default
+  and `detail`.
 - `topos_pr_recap` and `topos_evaluate_project` share one `detail` enum, which
   also trims the tool definitions.
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
@@ -79,13 +91,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   the terminal card shows `0.199 < 0.2`.
 - `topos_evaluate_project` headline fields no longer contradict each other
   (#474). `worst_files`, `hard_fails`, `aggregate_explanation`, `guidance` and
-  the agent contract now share one definition of the worst file, the first row
-  of `files` (before, `guidance` and the contract took the first failing file
-  in walk order, `hard_fails` the most failed gates, and `worst_files` the
-  lowest score). `aggregate_explanation` states the floor verdict and which
-  dimensions some file does not satisfy instead of "Aggregate floor is SLOP"
-  beside a `SECURE_NAVIGABLE` floor, and the field docs say what
-  `aggregate_floor_verdict`, `hard_fails` and `maintainability_giants` mean.
+  the agent contract share one definition of the worst file, the first row of
+  `files`: files that fail a gate or do not parse first (most failures, then
+  lowest score), then every other file by lowest score. Before, `guidance` and
+  the contract took the first failing file in walk order, `hard_fails` the
+  most failed gates, and `worst_files` the lowest score. Giants are a watch
+  list and no longer outrank other files. `aggregate_explanation` states the
+  floor verdict and which dimensions some file does not satisfy instead of
+  "Aggregate floor is SLOP" beside a `SECURE_NAVIGABLE` floor, and no longer
+  claims every file passes when no generator was measured. The field docs say
+  what `aggregate_floor_verdict`, `hard_fails` and `maintainability_giants`
+  mean. Unreadable files count in `failing_files` and `unread_files`.
 - `topos_pr_recap` incomplete-range messages name the `max_files` parameter
   instead of the CLI's `--max-files` (the CLI output is unchanged). The
   summary reports the worst file's own status as `worst_file_direction`

@@ -1232,7 +1232,7 @@ impl EvaluationResult {
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectFileEntry {
-    /// Relative to the result's `root`; join the two for an absolute path.
+    /// Absolute path: pass it straight to `topos_evaluate_file`.
     pub filepath: String,
     /// Detected language used to evaluate this file.
     pub language: String,
@@ -1270,7 +1270,9 @@ pub struct ProjectFileEntry {
 }
 
 /// A project row's pillar outcome. The score is `scores[pillar]`, so it is
-/// not repeated here.
+/// not repeated here. A pillar with no `scores` key was not measured (for
+/// example `composable` without a dependency graph) and reads `achieved:
+/// false`.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectPillar {
     /// Whether the generator's threshold was met.
@@ -1308,7 +1310,7 @@ pub struct WorstFileEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound: Option<&'static str>,
     /// Gates the file fails (all pillars).
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
     pub gates_failed: usize,
     /// The file did not parse.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -1333,10 +1335,6 @@ impl WorstFileEntry {
     }
 }
 
-fn is_zero(n: &usize) -> bool {
-    *n == 0
-}
-
 /// Per-language project rollup for polyglot directory evaluation.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectLanguageRollup {
@@ -1353,30 +1351,37 @@ pub struct ProjectLanguageRollup {
 /// Result of a directory-wide evaluation.
 ///
 /// **Worst.** Every field that names a worst file uses one order, the order
-/// of `files`: files that fail gates first (most failed gates, then lowest
-/// score), then files with advisory cyclomatic above the SIMPLE band
-/// (highest first), then the rest by lowest score. `worst_files`,
-/// `hard_fails`, `maintainability_giants`, `aggregate_explanation`,
-/// `guidance` and `agent_contract` all read it.
+/// of `files`: files that fail a gate or do not parse first (most failures,
+/// then lowest score, then fewest pillars held), then every other file by
+/// lowest score, then fewest pillars held. Giants are a
+/// watch list and do not outrank other files. `worst_files`, `hard_fails`,
+/// `aggregate_explanation`, `guidance` and `agent_contract` all read it.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectEvaluationResult {
-    /// Absolute scanned directory. `files[].filepath` and the list entries
-    /// are relative to it.
+    /// Absolute scanned directory. Every file path in the result (`files`,
+    /// the lists, `guidance`, the agent contract) is absolute. On an error
+    /// it is the directory that was asked for, absent for a file.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub root: String,
     pub file_count: usize,
     pub parse_failures: usize,
     /// Per dimension: the generator's value when every file satisfies it,
     /// else `SLOP` (at least one file does not).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,
     /// Per dimension: the lowest file score in percent.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_scores: BTreeMap<String, f64>,
     /// The lattice element of the dimensions in `rolled_up_dimensions` that
     /// are not `SLOP`. A dimension reading `SLOP` is missing from it, so
     /// `simple: SLOP` with a `SECURE_NAVIGABLE` floor means every file is
     /// secure and navigable and at least one is not simple. The floor is
-    /// `SLOP` only when no dimension holds for every file.
-    pub aggregate_floor_verdict: LatticeElement,
+    /// `SLOP` only when no dimension holds for every file. Absent on an
+    /// error, when nothing was scanned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate_floor_verdict: Option<LatticeElement>,
     pub language_rollups: Vec<ProjectLanguageRollup>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub aggregate_explanation: String,
     /// Verdict of the worst file.
     pub worst_file_verdict: Option<LatticeElement>,
@@ -1413,11 +1418,19 @@ pub struct ProjectEvaluationResult {
     pub total: usize,
     pub has_more: bool,
     pub next_offset: Option<usize>,
-    /// Wall-clock milliseconds from request to result: the walk, the
-    /// dependency graph, and scoring.
-    pub scan_ms: u64,
-    /// Estimated tokens (serialized characters / 4) of the `files` page.
-    pub page_tokens_estimate: usize,
+    /// Wall-clock milliseconds spent on the scan: the walk, the dependency
+    /// graph and per-file scoring, not the ranking or serialization. Absent
+    /// on an error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan_ms: Option<u64>,
+    /// Files that were found but could not be evaluated (for example
+    /// unreadable). They count in `parse_failures` and are in no list.
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
+    pub unread_files: usize,
+    /// Estimated tokens (characters / 4) of this whole response: the
+    /// structured content and the text block.
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
+    pub response_tokens_estimate: usize,
     pub files: Vec<ProjectFileEntry>,
     pub verbose: bool,
     pub error: Option<String>,

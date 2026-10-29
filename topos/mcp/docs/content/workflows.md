@@ -81,10 +81,19 @@ Outside MCP, `topos-mcp --version` prints the same report.
   `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
-  a rollup plus page-global lists (`hard_fails`, `leaf_composable_zeros`,
-  `maintainability_giants`; `worst_files` is deprecated). Treat
-  `aggregate_floor_verdict` as the codebase floor; start from `hard_fails[0]`
-  or `guidance`.
+  a summary by default (`topos.evaluate_project.summary.v1`): the rollup,
+  `aggregate_floor_verdict` (the lattice element of the dimensions every file
+  satisfies, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
+  consistent), counts (`failing_files`, `giants`), and `worst`, the five worst
+  files with absolute paths and what put each there (the failing gate's
+  metric, value and limit; the weakest pillar and score for a file that fails
+  no gate; `parse_failure` for one that did not parse). One order ranks every
+  worst file: files that fail a gate or do not parse first (most failures,
+  then lowest score, then fewest pillars held), then the rest by lowest score;
+  giants are a watch list. `detail: "full"` returns per-file
+  rows, paged by `limit`/`offset`, plus the lists `hard_fails`,
+  `maintainability_giants` and `worst_files`, with `guidance` naming the same
+  worst file. Every file path in the response is absolute.
 
 ### 2. Plan
 

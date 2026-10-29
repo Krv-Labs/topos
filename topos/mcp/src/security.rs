@@ -107,6 +107,21 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     Ok((resolved, project_root))
 }
 
+/// Where `path` resolves to, whether or not it exists: itself when absolute,
+/// else under the configured root or the project the process started in.
+/// Nothing is read or checked; `None` when a relative path has no base.
+pub fn requested_absolute(path: &str) -> Option<PathBuf> {
+    let requested = PathBuf::from(path);
+    if requested.is_absolute() {
+        return Some(requested);
+    }
+    let base = match configured_file_root() {
+        Ok(Some(root)) => root,
+        _ => startup_project_root().ok()?,
+    };
+    Some(base.join(requested))
+}
+
 /// The explicitly configured boundary, if any. Not an error when unset.
 fn configured_file_root() -> Result<Option<PathBuf>, String> {
     std::env::var("TOPOS_MCP_FILE_ROOT")

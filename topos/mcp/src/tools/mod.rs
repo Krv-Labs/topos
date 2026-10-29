@@ -9,7 +9,6 @@ pub mod coverage;
 pub mod depgraph;
 pub mod docs;
 pub mod evaluate;
-pub mod evaluate_summary;
 pub mod inspect;
 pub mod preferences;
 pub mod refactor;

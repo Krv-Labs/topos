@@ -1,17 +1,16 @@
-//! Response-shaping helpers shared by the agent-facing summaries.
+//! Response-shaping helpers for the agent-facing summaries.
 //!
 //! The full documents the tools compute are too large to hand an agent
-//! whole, so each tool answers with a summary instead. The summaries share
-//! one set of rules: floats to three significant figures (more where three
-//! would make two different values look equal), a `bound` that says which
-//! side of a limit a value is on, one `Omitted:` line that counts what was
-//! left out, and one description per metric shown.
+//! whole, so a tool answers with a summary instead. The helpers here are
+//! its rules: floats to three significant figures (more where three would
+//! make two different values look equal), a `bound` that says which side of
+//! a limit a value is on, text clipped to a length, one `Omitted:` line that
+//! counts what was left out, and one description per metric shown.
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
-use serde_json::Value;
-
+// Until #490 moves the descriptions onto the engine, they live with the PR
+// recap gates.
 use crate::pr_recap::gates::metric_description;
 
 /// Figures kept by default.
@@ -32,24 +31,6 @@ pub fn sig(value: f64, figures: u32) -> f64 {
 /// `value` to three significant figures.
 pub fn sig3(value: f64) -> f64 {
     sig(value, DEFAULT_FIGURES)
-}
-
-/// Every float anywhere in `value` to three significant figures.
-pub fn round_floats(value: &mut Value) {
-    match value {
-        Value::Number(number) if number.is_f64() => {
-            let rounded = number
-                .as_f64()
-                .map(sig3)
-                .and_then(serde_json::Number::from_f64);
-            if let Some(rounded) = rounded {
-                *number = rounded;
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(round_floats),
-        Value::Object(map) => map.values_mut().for_each(round_floats),
-        _ => {}
-    }
 }
 
 /// `values` to three significant figures, or to as many as four to six
@@ -81,11 +62,6 @@ pub fn bound(value: f64, limit: f64) -> Option<&'static str> {
         std::cmp::Ordering::Greater => Some("max"),
         std::cmp::Ordering::Equal => None,
     }
-}
-
-/// Tokens `value` costs serialized, estimated as characters over four.
-pub fn estimate_tokens<T: Serialize + ?Sized>(value: &T) -> usize {
-    serde_json::to_string(value).map_or(0, |json| json.chars().count() / 4)
 }
 
 /// `text` cut to `max_chars` characters, with `…` marking the cut.
@@ -148,16 +124,6 @@ mod tests {
     }
 
     #[test]
-    fn round_floats_reaches_every_float_and_leaves_integers() {
-        let mut value = serde_json::json!({ "a": [1.23456, 7], "b": { "c": 0.98765 }, "d": "x" });
-        round_floats(&mut value);
-        assert_eq!(
-            value,
-            serde_json::json!({ "a": [1.23, 7], "b": { "c": 0.988 }, "d": "x" })
-        );
-    }
-
-    #[test]
     fn round_apart_escalates_only_to_keep_distinct_values_distinct() {
         assert_eq!(round_apart(&[12.3456, 7.0]), vec![12.3, 7.0]);
         assert_eq!(round_apart(&[9.9996, 10.0]), vec![9.9996, 10.0]);
@@ -177,13 +143,6 @@ mod tests {
         assert_eq!(bound(10.0, 10.0), None);
         assert_eq!(bound(f64::NAN, 10.0), None);
         assert_eq!(bound(1.0, f64::INFINITY), None);
-    }
-
-    #[test]
-    fn estimate_tokens_is_serialized_chars_over_four() {
-        assert_eq!(estimate_tokens(&serde_json::json!({ "k": "12345678" })), 4);
-        assert_eq!(estimate_tokens("abcd"), 1);
-        assert_eq!(estimate_tokens(&Vec::<u8>::new()), 0);
     }
 
     #[test]

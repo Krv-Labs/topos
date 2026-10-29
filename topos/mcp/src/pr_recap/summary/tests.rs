@@ -14,7 +14,7 @@ use super::super::tests::{
 };
 use super::super::{build_recap, PrRecap, SCHEMA};
 use super::*;
-use crate::schemas::{PrRecapDetail, PrRecapInput};
+use crate::schemas::{Detail, PrRecapInput};
 
 /// Summary JSON for the 41-file fixture (3 blocks, 38 warnings) stays under
 /// this; the same range's full v3 document is ~74K.
@@ -49,7 +49,7 @@ fn fixture(n: usize, insecure: usize) -> (tempfile::TempDir, PathBuf) {
     (keep, repo)
 }
 
-fn input(repo: &Path, detail: PrRecapDetail, paths: &[&str]) -> PrRecapInput {
+fn input(repo: &Path, detail: Detail, paths: &[&str]) -> PrRecapInput {
     let mut params: PrRecapInput = serde_json::from_str("{}").unwrap();
     params.directory = Some(repo.to_str().unwrap().to_string());
     params.base = Some("HEAD~1".to_string());
@@ -90,7 +90,7 @@ fn abs(repo: &Path, relative: &str) -> String {
 fn defaults_are_summary_all_files_no_paths() {
     let parsed: PrRecapInput = serde_json::from_str("{}").unwrap();
     assert_eq!(parsed.max_files, 0);
-    assert_eq!(parsed.detail, PrRecapDetail::Summary);
+    assert_eq!(parsed.detail, Detail::Summary);
     assert!(parsed.paths.is_empty());
 }
 
@@ -249,11 +249,11 @@ fn metrics_include_those_only_a_requested_record_shows() {
 #[test]
 fn summary_and_text_stay_under_their_ceilings() {
     let (_keep, repo) = fixture(40, 3);
-    let response = respond_untimed(input(&repo, PrRecapDetail::Summary, &[]), None);
+    let response = respond_untimed(input(&repo, Detail::Summary, &[]), None);
     let structured = response.structured_content.expect("structured");
     let size = serde_json::to_string(&structured).unwrap().len();
     let text = response.content[0].as_text().unwrap().text.clone();
-    let full = respond_untimed(input(&repo, PrRecapDetail::Full, &[]), None);
+    let full = respond_untimed(input(&repo, Detail::Full, &[]), None);
     let full_size = serde_json::to_string(&full.structured_content.unwrap())
         .unwrap()
         .len();
@@ -274,7 +274,7 @@ fn summary_and_text_stay_under_their_ceilings() {
 #[test]
 fn incomplete_hint_names_the_mcp_parameter() {
     let (_keep, repo) = fixture(3, 1);
-    let mut params = input(&repo, PrRecapDetail::Summary, &[]);
+    let mut params = input(&repo, Detail::Summary, &[]);
     params.max_files = 1;
     let structured = respond_untimed(params, None).structured_content.unwrap();
     assert_eq!(structured["incomplete"], true);
@@ -612,12 +612,12 @@ fn errors_keep_the_shape_of_the_mode_asked_for() {
         params.directory = Some("/no/such/dir".to_string());
         params
     };
-    let summary = respond_untimed(params(PrRecapDetail::Summary), None);
+    let summary = respond_untimed(params(Detail::Summary), None);
     let body = summary.structured_content.unwrap();
     assert_eq!(body["schema"], SUMMARY_SCHEMA);
     assert!(body["error"].as_str().is_some());
     assert_eq!(summary.is_error, Some(true));
-    let full = respond_untimed(params(PrRecapDetail::Full), None);
+    let full = respond_untimed(params(Detail::Full), None);
     let body = full.structured_content.unwrap();
     assert!(body.get("schema").is_none());
     assert!(body["error"].as_str().is_some());
@@ -682,7 +682,7 @@ fn a_requested_record_counts_the_hotspots_it_does_not_print() {
 #[test]
 fn full_detail_text_lists_paths_not_found() {
     let (_keep, repo) = fixture(2, 0);
-    let response = respond_untimed(input(&repo, PrRecapDetail::Full, &["nope.py"]), None);
+    let response = respond_untimed(input(&repo, Detail::Full, &["nope.py"]), None);
     let text = &response.content[0].as_text().unwrap().text;
     assert!(
         text.contains("Not found `nope.py`: not changed in this range"),
@@ -693,7 +693,7 @@ fn full_detail_text_lists_paths_not_found() {
 #[test]
 fn the_summary_reports_what_its_times_measure() {
     let (_keep, repo) = fixture(2, 0);
-    let response = respond_untimed(input(&repo, PrRecapDetail::Summary, &[]), None);
+    let response = respond_untimed(input(&repo, Detail::Summary, &[]), None);
     let scope = &response.structured_content.unwrap()["scope"];
     let (total, scoring) = (scope["elapsed_ms"].as_u64(), scope["scoring_ms"].as_u64());
     assert!(scoring.unwrap() <= total.unwrap());

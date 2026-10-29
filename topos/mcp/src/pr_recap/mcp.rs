@@ -20,7 +20,7 @@ use super::{
 };
 use crate::execution::TimeoutNote;
 use crate::formatting::to_tool_result;
-use crate::schemas::{PrRecapDetail, PrRecapInput};
+use crate::schemas::{Detail, PrRecapInput};
 use crate::security::{composable_default_root, resolve_file_root, resolve_project_path};
 use topos_engine::adapters::gitnexus::gitnexus_available;
 
@@ -51,8 +51,8 @@ pub fn respond(
         Ok((recap, root)) => {
             progress.finish_up();
             match detail {
-                PrRecapDetail::Summary => summary_result(&recap, &root, &paths, progress),
-                PrRecapDetail::Full => full_result(&recap, &root, &paths),
+                Detail::Summary => summary_result(&recap, &root, &paths, progress),
+                Detail::Full => full_result(&recap, &root, &paths),
             }
         }
         Err(error) => error_result(detail, &error),
@@ -93,10 +93,10 @@ fn full_result(recap: &PrRecap, root: &Path, paths: &[String]) -> CallToolResult
 
 /// An error in the shape of the mode asked for: the summary carries its
 /// schema, the full document keeps its bare `error`.
-fn error_result(detail: PrRecapDetail, error: &str) -> CallToolResult {
+fn error_result(detail: Detail, error: &str) -> CallToolResult {
     let body = match detail {
-        PrRecapDetail::Summary => json!({ "schema": SUMMARY_SCHEMA, "error": error }),
-        PrRecapDetail::Full => json!({ "error": error }),
+        Detail::Summary => json!({ "schema": SUMMARY_SCHEMA, "error": error }),
+        Detail::Full => json!({ "error": error }),
     };
     to_tool_result(&body, format!("**Error:** {error}"))
 }

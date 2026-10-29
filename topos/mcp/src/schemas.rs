@@ -530,14 +530,17 @@ fn default_pr_recap_max_files() -> usize {
     0
 }
 
-/// How much of the recap `topos_pr_recap` returns.
+// How much a summary-first tool returns: a summary, or the whole document.
+// Plain comments, not doc comments: a doc comment is repeated in the input
+// schema of every tool that takes this, and the tool definitions are
+// budget-ratcheted (`context_budget.rs`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
-pub enum PrRecapDetail {
-    /// `topos.pr_recap.summary.v1`.
+pub enum Detail {
+    // The tool's summary schema.
     #[default]
     Summary,
-    /// The whole `topos.pr_recap.v3` document.
+    // The tool's whole document.
     Full,
 }
 
@@ -566,7 +569,7 @@ pub struct PrRecapInput {
     pub max_files: usize,
     /// `summary` (default) or `full` v3 document.
     #[serde(default)]
-    pub detail: PrRecapDetail,
+    pub detail: Detail,
     /// Absolute or repo-relative paths of files whose full records to include.
     #[serde(default)]
     pub paths: Vec<String>,

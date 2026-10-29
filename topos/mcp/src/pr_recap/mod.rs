@@ -777,7 +777,7 @@ impl ToposServer {
 pub(super) mod tests {
     use super::gh::git;
     use super::*;
-    use crate::schemas::PrRecapDetail;
+    use crate::schemas::Detail;
 
     pub(super) fn no_coupling() -> CouplingStatus {
         unmeasured(
@@ -859,7 +859,7 @@ pub(super) mod tests {
                 base: Some("HEAD".to_string()),
                 head: Some(":worktree".to_string()),
                 max_files: 0,
-                detail: PrRecapDetail::Summary,
+                detail: Detail::Summary,
                 paths: Vec::new(),
                 no_coupling: true,
                 priority: Some("simple".to_string()),
@@ -880,7 +880,7 @@ pub(super) mod tests {
                 base: Some("HEAD".to_string()),
                 head: None,
                 max_files: 0,
-                detail: PrRecapDetail::Summary,
+                detail: Detail::Summary,
                 paths: Vec::new(),
                 no_coupling: true,
                 priority: None,

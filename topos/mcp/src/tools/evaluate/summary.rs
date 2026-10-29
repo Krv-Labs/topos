@@ -439,8 +439,10 @@ fn binding_text(binding: &SummaryBinding) -> String {
     let mut text = binding.metric.clone();
     if let Some(value) = binding.value {
         text.push_str(&format!(" {value}"));
-        if let (Some(bound), Some(limit)) = (binding.bound, binding.limit) {
-            text.push_str(&format!(" ({bound} {limit})"));
+        match (binding.bound, binding.limit) {
+            (Some(bound), Some(limit)) => text.push_str(&format!(" ({bound} {limit})")),
+            (None, Some(limit)) => text.push_str(&format!(" (limit {limit})")),
+            _ => {}
         }
     }
     if let Some(symbol) = &binding.symbol {

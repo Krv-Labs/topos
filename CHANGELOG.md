@@ -32,9 +32,28 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   summary reports total and scoring time. The timeout is 300 seconds; set
   `TOPOS_PR_RECAP_TIMEOUT` (seconds, `0` or negative to disable), like
   `TOPOS_DEPGRAPH_TIMEOUT`, to change it.
+- `topos_evaluate_project` returns a summary by default
+  (`topos.evaluate_project.summary.v1`, #471): the rollup, per-language
+  rollups, the five worst files with absolute paths and the metric, value and
+  limit that put each there, counts of failing files and giants, files scored,
+  scan time, warnings, and the agent contract. What it leaves out is counted,
+  with the parameters that widen it (`detail: "full"`, `limit`/`offset`, a
+  narrower `path`, `topos_evaluate_file`). `detail: "full"` returns the
+  per-file rows as before, now with `scan_ms` and `page_tokens_estimate`
+  (serialized characters / 4). Past 1,000 files, `warnings` lists the
+  top-level directories by file count. `worst_files` entries carry `pillar`,
+  `score`, `metric`, `value`, `limit` and `gates_failed`. The text block is a
+  short markdown summary. The CLI is unchanged.
 
 ### Changed
 
+- `topos_evaluate_project` full rows are smaller: advisory floats are rounded
+  to three significant figures and `pillars.*` carry only `achieved`, since
+  the score is `scores[pillar]`. `worst_files` holds five entries (was three)
+  and is no longer deprecated. `files[].filepath` stays relative to the
+  response's absolute `root` (#471).
+- `topos_pr_recap` and `topos_evaluate_project` share one `detail` enum, which
+  also trims the tool definitions.
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
   Pass `--max-files N` to score only the N highest-churn files, in which case
   the recap is marked incomplete as before. Past 100 files to score, the
@@ -58,6 +77,15 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   them apart, so `9→14, limit 10` stays short; a value closer than that reads
   `just under 0.2`. A floor the metric fell below reads `min` in the message;
   the terminal card shows `0.199 < 0.2`.
+- `topos_evaluate_project` headline fields no longer contradict each other
+  (#474). `worst_files`, `hard_fails`, `aggregate_explanation`, `guidance` and
+  the agent contract now share one definition of the worst file, the first row
+  of `files` (before, `guidance` and the contract took the first failing file
+  in walk order, `hard_fails` the most failed gates, and `worst_files` the
+  lowest score). `aggregate_explanation` states the floor verdict and which
+  dimensions some file does not satisfy instead of "Aggregate floor is SLOP"
+  beside a `SECURE_NAVIGABLE` floor, and the field docs say what
+  `aggregate_floor_verdict`, `hard_fails` and `maintainability_giants` mean.
 - `topos_pr_recap` incomplete-range messages name the `max_files` parameter
   instead of the CLI's `--max-files` (the CLI output is unchanged). The
   summary reports the worst file's own status as `worst_file_direction`

@@ -5,9 +5,14 @@
 //! its rules: floats to three significant figures (more where three would
 //! make two different values look equal), a `bound` that says which side of
 //! a limit a value is on, text clipped to a length, one `Omitted:` line that
-//! counts what was left out, and one description per metric shown.
+//! counts what was left out, and one description per metric shown. Two
+//! more serve a tool that returns a document with floats in free-form JSON:
+//! `round_floats` rounds them all, and `estimate_tokens` prices a response.
 
 use std::collections::BTreeMap;
+
+use serde::Serialize;
+use serde_json::Value;
 
 // Until #490 moves the descriptions onto the engine, they live with the PR
 // recap gates.
@@ -31,6 +36,25 @@ pub fn sig(value: f64, figures: u32) -> f64 {
 /// `value` to three significant figures.
 pub fn sig3(value: f64) -> f64 {
     sig(value, DEFAULT_FIGURES)
+}
+
+/// Every float in `value`, however deep, to three significant figures.
+/// Integers and other values are left as they are.
+pub fn round_floats(value: &mut Value) {
+    match value {
+        Value::Number(number) if number.is_f64() => {
+            if let Some(rounded) = number
+                .as_f64()
+                .map(sig3)
+                .and_then(serde_json::Number::from_f64)
+            {
+                *number = rounded;
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(round_floats),
+        Value::Object(map) => map.values_mut().for_each(round_floats),
+        _ => {}
+    }
 }
 
 /// `values` to three significant figures, or to as many as four to six
@@ -62,6 +86,11 @@ pub fn bound(value: f64, limit: f64) -> Option<&'static str> {
         std::cmp::Ordering::Greater => Some("max"),
         std::cmp::Ordering::Equal => None,
     }
+}
+
+/// Tokens `value` costs serialized, estimated as characters over four.
+pub fn estimate_tokens<T: Serialize + ?Sized>(value: &T) -> usize {
+    serde_json::to_string(value).map_or(0, |json| json.chars().count() / 4)
 }
 
 /// `text` cut to `max_chars` characters, with `…` marking the cut.
@@ -134,6 +163,24 @@ mod tests {
         assert!(mixed[0].is_nan());
         assert_eq!(mixed[1], 1.23);
         assert!(round_apart(&[]).is_empty());
+    }
+
+    #[test]
+    fn round_floats_rounds_nested_floats_and_leaves_integers() {
+        let mut value = serde_json::json!({
+            "a": 1.23456, "n": 12, "nested": [{"b": -0.000_123_456}], "s": "1.23456"
+        });
+        round_floats(&mut value);
+        assert_eq!(value["a"], 1.23);
+        assert_eq!(value["n"], 12);
+        assert_eq!(value["nested"][0]["b"], -0.000_123);
+        assert_eq!(value["s"], "1.23456");
+    }
+
+    #[test]
+    fn estimate_tokens_is_serialized_characters_over_four() {
+        assert_eq!(estimate_tokens(&serde_json::json!({"k": "12345678"})), 4);
+        assert_eq!(estimate_tokens(&"é".repeat(8)), 2);
     }
 
     #[test]

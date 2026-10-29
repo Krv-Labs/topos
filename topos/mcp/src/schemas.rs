@@ -567,7 +567,7 @@ pub struct PrRecapInput {
     /// `summary` (default) or `full` v3 document.
     #[serde(default)]
     pub detail: PrRecapDetail,
-    /// Repo-relative paths whose full file records to include.
+    /// Absolute or repo-relative paths of files whose full records to include.
     #[serde(default)]
     pub paths: Vec<String>,
     /// Skip coupling graph preparation.

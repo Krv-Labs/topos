@@ -430,9 +430,14 @@ Refactor & Iterate
    Returns a summary by default (``topos.pr_recap.summary.v1``): readiness, reason,
    blocking findings with path, line, metric, before, after and limit, one ranked
    ``attention`` list of files, rollups, scoring time, and a description of each metric
-   shown. Everything left out is counted in ``omitted``. ``detail: "full"`` returns the
-   whole ``topos.pr_recap.v3`` document, and ``paths`` adds the full file records for
-   just those repo-relative paths. ``max_files`` defaults to ``0`` (score every file).
+   shown. Every path in the summary is absolute, under its ``root``, so it can be passed
+   straight to the other tools. Everything left out is counted in ``omitted``.
+   ``detail: "full"`` returns the same ``topos.pr_recap.v3`` document as
+   ``topos pr-recap --json`` (repo-relative paths, ``max_files`` named in its hints).
+   ``paths`` takes absolute or repo-relative paths: in summary mode it adds their full
+   file records as ``files``; in full mode it replaces ``files`` with just those records
+   and adds ``paths_not_found`` for the rest. ``max_files`` defaults to ``0`` (score every
+   file).
 
 ``topos_preference_walk({"ranking": ..., "target": ..., "current": ...})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should

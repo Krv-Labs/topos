@@ -9,8 +9,10 @@ pub mod gates;
 pub mod gh;
 pub mod git;
 pub mod hotspots;
+mod mcp;
 pub mod model;
 pub mod moves;
+pub mod progress;
 pub mod score;
 pub mod store;
 pub mod summary;
@@ -18,30 +20,23 @@ pub mod verdict;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResponse, CallToolResult};
+use rmcp::model::CallToolResponse;
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router, ErrorData as McpError, RoleServer};
-use topos_engine::adapters::gitnexus::gitnexus_available;
-use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, Severity,
-    ToposConfig,
-};
+use topos_engine::config::{FailOn, GateId, PrGateConfig, PrGatePreset, Severity, ToposConfig};
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
-use topos_engine::evaluation::waivers::today_utc;
 use topos_engine::graphs::mdg::file_graph::FileGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
-use crate::formatting::to_tool_result;
-use crate::schemas::{PrRecapDetail, PrRecapInput};
-use crate::security::{composable_default_root, resolve_file_root, resolve_project_path};
+use crate::schemas::PrRecapInput;
 use crate::server::ToposServer;
 
 use self::clusters::{build_clusters, changed_list};
@@ -52,6 +47,7 @@ use self::git::{
 use self::hotspots::top_hotspots;
 pub use self::model::*;
 use self::moves::RangeMoves;
+use self::progress::Progress;
 use self::score::Scoring;
 use self::store::{
     build_estimate_ms, last_build_ms, pr_store_state, prepare_pr_stores_with_cancel, PrStores,
@@ -75,6 +71,9 @@ pub struct Judging {
     /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
     /// nothing.
     pub today: String,
+    /// What the surface calls the scoring cap in hints that name it:
+    /// [`gates::CLI_CAP_NAME`] on the CLI, `max_files` on the MCP tool.
+    pub cap_name: &'static str,
 }
 
 /// The gate policy for one run: `--preset` replaces the project's
@@ -458,34 +457,6 @@ pub fn build_recap(
     judging: &Judging,
     progress: &mut dyn ScoreProgress,
 ) -> Result<PrRecap, String> {
-    build_recap_named(
-        repo,
-        base,
-        head,
-        max_files,
-        gates::CLI_CAP_NAME,
-        stores,
-        coupling,
-        judging,
-        progress,
-    )
-}
-
-/// [`build_recap`] for a surface that calls the scoring cap `cap_name`
-/// (`--max-files` for the CLI, `max_files` for the MCP tool), so the hints
-/// that tell the reader how to raise it name the parameter they have.
-#[allow(clippy::too_many_arguments)]
-pub fn build_recap_named(
-    repo: &Path,
-    base: &str,
-    head: &str,
-    max_files: usize,
-    cap_name: &str,
-    stores: Option<&PrStores>,
-    coupling: CouplingStatus,
-    judging: &Judging,
-    progress: &mut dyn ScoreProgress,
-) -> Result<PrRecap, String> {
     let repo = git_root(repo)?;
     let worktree = head == ":worktree";
     let base_sha = merge_base(&repo, base, head_commit(head))?;
@@ -625,14 +596,17 @@ pub fn build_recap_named(
             &judging.gate,
         )?;
     }
-    let (_, mut findings) = gates::evaluate_named(
+    let unscored = gates::Unscored {
+        files: capped,
+        cap_name: judging.cap_name,
+    };
+    let (_, mut findings) = gates::evaluate(
         &files,
         &clusters,
-        capped,
+        unscored,
         &judging.gate,
         &moves,
         coupling_graphs.as_ref(),
-        cap_name,
     );
     let waivers = gates::waive(
         &mut findings,
@@ -645,20 +619,8 @@ pub fn build_recap_named(
     for file in &mut files {
         file.severity = gates::worst_at(&findings, &file.path);
     }
-    let lead = findings.iter().find(|finding| finding.counts());
-    let reason_path = match lead {
-        Some(finding) => Some(finding.path.clone()).filter(|path| !path.is_empty()),
-        None => described_path,
-    };
-    let mut reason = lead.map_or(described, |finding| finding.text.clone());
-    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
-    if capped > 0 && !incomplete_leads {
-        reason.push_str(&format!(
-            " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
-             unscored (raise {cap_name}).",
-            if capped == 1 { "" } else { "s" }
-        ));
-    }
+    let (reason, reason_path) =
+        reason_for(&findings, (described, described_path), unscored, max_files);
     let (hotspots, hotspots_total) = top_hotspots(&files, judging.gate.max_hotspots as usize);
     let project = project_rollup(&files);
     let added = added_rollup(&files);
@@ -700,6 +662,34 @@ pub fn build_recap_named(
         hotspots_total,
         non_claim: "Structural direction is not proof that tests or behavior still pass, and PR recap is a structural debt ledger and pre-review coaching aid rather than a semantic correctness or AI-slop classifier.",
     })
+}
+
+/// What the verdict says and the file it names: the first counting
+/// finding's text and path, else the direction's `described` text and its
+/// file. A run that left files unscored says so, unless the lead finding is
+/// that very incompleteness.
+fn reason_for(
+    findings: &[gates::Finding],
+    (described, described_path): (String, Option<String>),
+    unscored: gates::Unscored,
+    max_files: usize,
+) -> (String, Option<String>) {
+    let lead = findings.iter().find(|finding| finding.counts());
+    let path = match lead {
+        Some(finding) => Some(finding.path.clone()).filter(|path| !path.is_empty()),
+        None => described_path,
+    };
+    let mut reason = lead.map_or(described, |finding| finding.text.clone());
+    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
+    if unscored.files > 0 && !incomplete_leads {
+        let (files, cap_name) = (unscored.files, unscored.cap_name);
+        reason.push_str(&format!(
+            " Incomplete: {files} lower-churn file{} over the {max_files}-file cap went \
+             unscored (raise {cap_name}).",
+            if files == 1 { "" } else { "s" },
+        ));
+    }
+    (reason, path)
 }
 
 fn score_capped_for_fan_in(
@@ -751,157 +741,6 @@ fn parse_preset(raw: &str) -> Result<PrGatePreset, String> {
     }
 }
 
-#[cfg(test)]
-fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) -> CallToolResult {
-    pr_recap_counted(params, cancel, &AtomicUsize::new(0))
-}
-
-fn pr_recap_counted(
-    params: PrRecapInput,
-    cancel: Option<&AtomicBool>,
-    scoring: &AtomicUsize,
-) -> CallToolResult {
-    let detail = params.detail;
-    let paths = params.paths.clone();
-    let started = Instant::now();
-    match run_pr_recap(params, cancel, scoring) {
-        Ok((recap, root)) => match detail {
-            PrRecapDetail::Summary => {
-                let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-                let summary = summary::build(&recap, &root, &paths, elapsed_ms);
-                to_tool_result(&summary.to_value(), summary.to_markdown())
-            }
-            PrRecapDetail::Full => {
-                let markdown = format!(
-                    "**PR Recap ({})**: `{}` ({:?}) — {}\nScored {} file(s) (`{}...{}`).",
-                    recap.check,
-                    recap.readiness.word(),
-                    recap.direction,
-                    recap.reason,
-                    recap.scope.files_scored,
-                    recap.base,
-                    recap.head,
-                );
-                to_tool_result(&full_value(&recap, &root, &paths), markdown)
-            }
-        },
-        Err(error) => to_tool_result(
-            &serde_json::json!({ "error": error }),
-            format!("**Error:** {error}"),
-        ),
-    }
-}
-
-/// The v3 document as is; with `paths`, `files` holds just those records
-/// and `paths_not_found` lists the ones that matched no scored file.
-fn full_value(recap: &PrRecap, root: &Path, paths: &[String]) -> serde_json::Value {
-    let mut value = serde_json::to_value(recap).unwrap_or(serde_json::Value::Null);
-    if paths.is_empty() {
-        return value;
-    }
-    let (found, missing) = summary::resolve_paths(recap, root, paths);
-    if let Some(object) = value.as_object_mut() {
-        let files: Vec<&FileRecap> = found.into_iter().map(|index| &recap.files[index]).collect();
-        object.insert(
-            "files".to_string(),
-            serde_json::to_value(files).unwrap_or_default(),
-        );
-        if !missing.is_empty() {
-            object.insert(
-                "paths_not_found".to_string(),
-                serde_json::to_value(&missing).unwrap_or_default(),
-            );
-        }
-    }
-    value
-}
-
-/// What the MCP tool calls the scoring cap in the hints that name it.
-const MCP_CAP_NAME: &str = "max_files";
-
-/// Publishes how many files Pass A is scoring, so a timeout can say.
-struct CountProgress<'a>(&'a AtomicUsize);
-
-impl ScoreProgress for CountProgress<'_> {
-    fn start(&mut self, total: usize) {
-        self.0.store(total, Ordering::Relaxed);
-    }
-    fn scoring(&mut self, _: &str) {}
-    fn scored(&mut self) {}
-}
-
-/// The error for a recap that ran past its deadline: what was being scored,
-/// and the parameters that change that.
-fn timeout_error(error: McpError, scoring: usize) -> McpError {
-    if !error.message.starts_with("Operation timed out") {
-        return error;
-    }
-    let progress = if scoring == 0 {
-        "before scoring began (preparing the coupling graphs)".to_string()
-    } else {
-        format!("while scoring {scoring} file(s)")
-    };
-    McpError::internal_error(
-        format!(
-            "{} {progress}. `max_files` caps the files scored, highest churn first; `paths` \
-             selects which files' full records are returned.",
-            error.message
-        ),
-        error.data,
-    )
-}
-
-fn run_pr_recap(
-    params: PrRecapInput,
-    cancel: Option<&AtomicBool>,
-    scoring: &AtomicUsize,
-) -> Result<(PrRecap, PathBuf), String> {
-    let project_root = match params.directory.as_deref() {
-        Some(directory) => {
-            let (resolved, project) = resolve_project_path(directory)?;
-            if !resolved.is_dir() {
-                return Err(format!("Path is not a directory: {}", resolved.display()));
-            }
-            composable_default_root(&project)
-        }
-        None => composable_default_root(&resolve_file_root()?),
-    };
-    let root = git_root(&project_root)?;
-    let preset = params.preset.as_deref().map(parse_preset).transpose()?;
-    let topos = load_topos_config(&root);
-    let judging = Judging {
-        priority: resolve_priority(params.priority.as_deref(), &topos)?,
-        gate: resolve_gate_policy(params.strict, preset, &topos.pr_recap),
-        source: preset.is_none().then(|| find_config_file(&root)).flatten(),
-        topos,
-        today: today_utc(),
-    };
-    let (base, head, review) = resolve_range(&root, params.pr, params.base, params.head)?;
-    let base = merge_base(&root, &base, head_commit(&head))?;
-    let plan = plan_coupling(
-        &root,
-        &base,
-        &head,
-        params.pr,
-        params.no_coupling,
-        gitnexus_available(),
-    );
-    let (stores, coupling) = prepare_with_cancel(&root, plan, &|| {}, cancel);
-    let mut recap = build_recap_named(
-        &root,
-        &base,
-        &head,
-        params.max_files,
-        MCP_CAP_NAME,
-        stores.as_ref(),
-        coupling,
-        &judging,
-        &mut CountProgress(scoring),
-    )?;
-    recap.review = review;
-    Ok((recap, root))
-}
-
 #[tool_router(router = pr_recap_router, vis = "pub(crate)")]
 impl ToposServer {
     /// Structural PR or commit-range recap: gate readiness, blocking findings, files needing attention. Summary by default; `detail: "full"` for `topos.pr_recap.v3`.
@@ -920,19 +759,17 @@ impl ToposServer {
         context: RequestContext<RoleServer>,
         Parameters(params): Parameters<PrRecapInput>,
     ) -> Result<CallToolResponse, McpError> {
-        let scoring = Arc::new(AtomicUsize::new(0));
-        let counter = Arc::clone(&scoring);
+        let progress = Arc::new(Progress::default());
+        let worker = Arc::clone(&progress);
         self.executor
-            .run_task(
+            .run_task_described(
                 &context,
                 Duration::from_secs(300),
                 "Building PR structural recap",
-                move |cancel_flag, _reporter| {
-                    Ok(pr_recap_counted(params, Some(cancel_flag), &counter))
-                },
+                mcp::timeout_note(&progress),
+                move |cancel_flag, _reporter| Ok(mcp::respond(params, Some(cancel_flag), &worker)),
             )
             .await
-            .map_err(|error| timeout_error(error, scoring.load(Ordering::Relaxed)))
     }
 }
 
@@ -940,6 +777,7 @@ impl ToposServer {
 pub(super) mod tests {
     use super::gh::git;
     use super::*;
+    use crate::schemas::PrRecapDetail;
 
     pub(super) fn no_coupling() -> CouplingStatus {
         unmeasured(
@@ -955,6 +793,7 @@ pub(super) mod tests {
             gate: PrGateConfig::default(),
             source: None,
             today: "2026-09-22".to_string(),
+            cap_name: gates::CLI_CAP_NAME,
         }
     }
 
@@ -1013,7 +852,7 @@ pub(super) mod tests {
         let (_temp_dir, repo) = write_repo(&[("a.py", &branchy("solve"))]);
         write_files(&repo, &[("a.py", "def solve(x):\n    return x\n")]);
         let repo_path = repo.to_str().expect("utf-8 repo path").to_string();
-        let response = pr_recap_sync_with_cancel(
+        let response = mcp::respond_untimed(
             PrRecapInput {
                 directory: Some(repo_path.clone()),
                 pr: None,
@@ -1034,7 +873,7 @@ pub(super) mod tests {
         assert_eq!(structured["check"], "pass");
         assert_eq!(structured["scope"]["files_scored"], 1);
 
-        let invalid_response = pr_recap_sync_with_cancel(
+        let invalid_response = mcp::respond_untimed(
             PrRecapInput {
                 directory: Some(repo_path),
                 pr: Some(1),

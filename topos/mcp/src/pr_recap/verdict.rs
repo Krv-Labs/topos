@@ -441,6 +441,28 @@ fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// Which way the structure moved, and what happened, in one line. The
 /// reason is the recap's when no gate raised a finding.
+/// The files the direction is judged on. A passing new file has no
+/// before-medal, so it cannot make an existing file's lateral move into an
+/// improvement, and it cannot hide one either. A new file that arrives
+/// failing is judged like changed code.
+fn judged_files(files: &[FileRecap]) -> Vec<&FileRecap> {
+    if files.iter().all(FileRecap::is_new) {
+        return files.iter().collect();
+    }
+    files
+        .iter()
+        .filter(|file| !file.is_new() || file.status == Headline::Regression)
+        .collect()
+}
+
+/// The file whose headline is the direction: the worst of the judged files.
+/// `None` when no file was compared.
+pub fn worst_file(files: &[FileRecap]) -> Option<&FileRecap> {
+    judged_files(files)
+        .into_iter()
+        .min_by_key(|file| file.status.rank())
+}
+
 pub fn direction_for(
     files: &[FileRecap],
     base: &str,
@@ -459,18 +481,8 @@ pub fn direction_for(
         };
         return (Headline::LateralMove, reason, None);
     }
-    // A passing new file has no before-medal, so it cannot make an existing
-    // file's lateral move into an improvement, and it cannot hide one
-    // either. A new file that arrives failing is judged like changed code.
     let existing: Vec<&FileRecap> = files.iter().filter(|file| !file.is_new()).collect();
-    let judged: Vec<&FileRecap> = if existing.is_empty() {
-        files.iter().collect()
-    } else {
-        files
-            .iter()
-            .filter(|file| !file.is_new() || file.status == Headline::Regression)
-            .collect()
-    };
+    let judged = judged_files(files);
     // Worst measured file wins. A mixed change is not an improvement.
     let worst = judged
         .iter()

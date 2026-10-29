@@ -16,13 +16,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   ranked list of files that need attention (each with why, and its top
   hotspot with the measured value), rollups, scoring time, and a description
   per metric shown. Everything left out (findings, files, hotspots, clusters,
-  skipped files) is counted, with the parameter that widens it. `detail:
-  "full"` returns the same `topos.pr_recap.v3` document as `topos pr-recap
-  --json`, with MCP parameter names in its hints, and `paths` adds the full
-  file records for just those repo-relative paths (unknown paths come back
-  with the reason). The text block is a short markdown rendering of the
-  summary. A recap that runs past the tool timeout reports how many files it
-  was scoring.
+  skipped files) is counted, with the parameter that widens it. Every path in
+  the summary is absolute, under its `root`. `detail: "full"` returns the same
+  `topos.pr_recap.v3` document as `topos pr-recap --json` (repo-relative
+  paths, MCP parameter names in its hints). `paths` takes absolute or
+  repo-relative paths: in summary mode it adds their full file records as
+  `files`; in full mode it replaces `files` with just those records. Paths
+  that match no scored file come back as `paths_not_found` with the reason.
+  The text block is a short markdown rendering of the summary. A recap that
+  runs past the tool timeout, inline or as a task, says which phase it was in
+  (queued, preparing, scoring with the file count, or finishing), and the
+  summary reports total and scoring time.
 
 ### Changed
 
@@ -50,11 +54,14 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `just under 0.2`. A floor the metric fell below reads `min` in the message;
   the terminal card shows `0.199 < 0.2`.
 - `topos_pr_recap` incomplete-range messages name the `max_files` parameter
-  instead of the CLI's `--max-files` (the CLI output is unchanged), and the
-  summary names `direction` as
-  `worst_file_direction` and `project.regression` as `rollup_lost_pillar`, so
-  they no longer read as contradicting each other; one `attention` ranking
-  replaces the mismatch between the blocking files and the hotspots (#475).
+  instead of the CLI's `--max-files` (the CLI output is unchanged). The
+  summary names `direction` as `worst_file_direction` (with the file it
+  describes, and omitted when no file was compared) and `project.regression`
+  as `rollup_lost_pillar`, so they no longer read as contradicting each
+  other, and one `attention` ranking, which always includes the file
+  `reason` names, replaces the mismatch between the blocking files and the
+  hotspots (#475). Errors in summary mode keep the summary's schema with
+  `error` at the top level.
 - `topos update` no longer leaves stale spinner lines above its phase results.
 
 ## [0.14.0] - 2026-10-23

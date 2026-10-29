@@ -22,6 +22,7 @@ pub use coupling::capped_fan_in_paths;
 use std::cmp::Ordering;
 use std::path::Path;
 
+use schemars::JsonSchema;
 use serde::{Serialize, Serializer};
 use topos_engine::config::{FailOn, GateId, PrGateConfig, Severity};
 use topos_engine::evaluation::waivers::{self, Waiver};
@@ -39,7 +40,7 @@ pub use self::coupling::Coupling;
 const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
 
 /// Whether the change is ready to merge under the configured gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Readiness {
     Ready,
@@ -183,6 +184,29 @@ pub struct Waived {
     pub expires: Option<String>,
 }
 
+/// What the scoring cap left out, and what the caller calls the cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unscored {
+    /// Files over the cap that went unscored.
+    pub files: usize,
+    /// The cap as the caller's surface spells it: `--max-files` on the CLI,
+    /// `max_files` on the MCP tool.
+    pub cap_name: &'static str,
+}
+
+/// What the CLI calls the scoring cap, for the hints that name it.
+pub const CLI_CAP_NAME: &str = "--max-files";
+
+impl From<usize> for Unscored {
+    /// `files` unscored under the CLI's name for the cap.
+    fn from(files: usize) -> Self {
+        Unscored {
+            files,
+            cap_name: CLI_CAP_NAME,
+        }
+    }
+}
+
 /// Apply the gates in `cfg` to the scored files, the split clusters and
 /// the scoring cap (`incomplete` files left unscored), with the range's
 /// `moves` to tell a moved regression from a new one. The coupling gates
@@ -194,36 +218,12 @@ pub struct Waived {
 pub fn evaluate(
     files: &[FileRecap],
     clusters: &[Cluster],
-    incomplete: usize,
+    incomplete: impl Into<Unscored>,
     cfg: &PrGateConfig,
     moves: &RangeMoves,
     coupling: Option<&Coupling>,
 ) -> (Readiness, Vec<Finding>) {
-    evaluate_named(
-        files,
-        clusters,
-        incomplete,
-        cfg,
-        moves,
-        coupling,
-        CLI_CAP_NAME,
-    )
-}
-
-/// What the CLI calls the scoring cap, for the hints that name it.
-pub const CLI_CAP_NAME: &str = "--max-files";
-
-/// [`evaluate`], with the scoring cap named as the caller's surface calls
-/// it (`--max-files` on the CLI, `max_files` on the MCP tool).
-pub fn evaluate_named(
-    files: &[FileRecap],
-    clusters: &[Cluster],
-    incomplete: usize,
-    cfg: &PrGateConfig,
-    moves: &RangeMoves,
-    coupling: Option<&Coupling>,
-    cap_name: &str,
-) -> (Readiness, Vec<Finding>) {
+    let incomplete = incomplete.into();
     let mut found = Vec::new();
     for file in files {
         if file.is_new() {
@@ -243,8 +243,8 @@ pub fn evaluate_named(
     if let Some(coupling) = coupling {
         coupling::coupling_findings(coupling, files, clusters, cfg, &mut found);
     }
-    if incomplete > 0 {
-        found.push(incomplete_finding(incomplete, cap_name));
+    if incomplete.files > 0 {
+        found.push(incomplete_finding(&incomplete));
     }
     let mut findings: Vec<Finding> = found
         .into_iter()
@@ -644,14 +644,15 @@ fn split_findings(cluster: &Cluster, files: &[FileRecap], found: &mut Vec<Findin
     }
 }
 
-fn incomplete_finding(unscored: usize, cap_name: &str) -> Finding {
+fn incomplete_finding(unscored: &Unscored) -> Finding {
+    let Unscored { files, cap_name } = unscored;
     let mut finding = Finding::new(
         GateId::Incomplete,
         "",
         format!(
-            "{unscored} lower-churn file{} went unscored over the {cap_name} cap, so the \
+            "{files} lower-churn file{} went unscored over the {cap_name} cap, so the \
              verdict covers only the files scored.",
-            if unscored == 1 { "" } else { "s" }
+            if *files == 1 { "" } else { "s" }
         ),
     );
     finding.fix = format!("Raise {cap_name} to score every changed file.");

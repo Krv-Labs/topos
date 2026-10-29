@@ -12,6 +12,7 @@ use super::super::progress::Timing;
 use super::super::tests::{
     branchy, commit_all, judging, no_coupling, recap, write_files, write_repo,
 };
+use super::super::verdict::direction_for;
 use super::super::{build_recap, PrRecap, SCHEMA};
 use super::*;
 use crate::schemas::{Detail, PrRecapInput};
@@ -495,7 +496,7 @@ fn direction_text_names_its_file_in_a_real_recap() {
     }
     let summary = summarize(&recap, &repo);
     assert_eq!(summary.worst_file, Some(abs(&repo, "a.py")));
-    assert_eq!(summary.worst_file_direction, Some(recap.direction));
+    assert_eq!(summary.worst_file_direction, Some(recap.files[0].status));
 }
 
 #[test]
@@ -697,4 +698,24 @@ fn the_summary_reports_what_its_times_measure() {
     let scope = &response.structured_content.unwrap()["scope"];
     let (total, scoring) = (scope["elapsed_ms"].as_u64(), scope["scoring_ms"].as_u64());
     assert!(scoring.unwrap() <= total.unwrap());
+}
+
+#[test]
+fn the_worst_file_and_its_direction_are_one_files_status() {
+    let (_keep, repo) = fixture(3, 0);
+    let mut recap = recap(&repo, "HEAD~1", "HEAD", 0);
+    recap.files[0].status = Headline::Improvement;
+    recap.files[1].status = Headline::ImprovementScore;
+    recap.files[2].status = Headline::Improvement;
+    let (direction, _, named) = direction_for(&recap.files, &recap.base, &recap.head);
+    // The files disagree on an improvement, so the aggregate is lateral and
+    // names no file; the summary still pairs the worst file with its own status.
+    assert_eq!((direction, named), (Headline::LateralMove, None));
+    recap.direction = direction;
+    let summary = summarize(&recap, &repo);
+    assert_eq!(
+        summary.worst_file_direction,
+        Some(Headline::ImprovementScore)
+    );
+    assert_eq!(summary.worst_file, Some(abs(&repo, &recap.files[1].path)));
 }

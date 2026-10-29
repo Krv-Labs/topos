@@ -156,9 +156,11 @@ pub struct Summary {
     pub reason: String,
     pub incomplete: bool,
     pub gate: SummaryGate,
-    /// The most severe single file's structural change (v3 `direction`),
-    /// independent of readiness: it can be `SUSPICIOUS_NO_STRUCTURAL_CHANGE`
-    /// on a passing PR. Absent when no file was compared.
+    /// The structural change of the most severe single file, by that file's
+    /// own status and independent of readiness: it can be
+    /// `SUSPICIOUS_NO_STRUCTURAL_CHANGE` on a passing PR. v3 `direction` is
+    /// this unless the files disagree on an improvement. Absent when no file
+    /// was compared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worst_file_direction: Option<Headline>,
     /// The file `worst_file_direction` describes.

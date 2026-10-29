@@ -71,7 +71,7 @@ pub fn build(recap: &PrRecap, root: &Path, requested: &[String], timing: Timing)
         reason: recap.reason.clone(),
         incomplete: recap.incomplete,
         gate: gate_of(recap),
-        worst_file_direction: worst.map(|_| recap.direction),
+        worst_file_direction: worst.map(|file| file.status),
         worst_file: worst.map(|file| absolute.path(&file.path)),
         scope: scope_of(recap, timing),
         project: recap.project.as_ref().map(project_of),

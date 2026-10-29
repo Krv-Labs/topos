@@ -2,7 +2,7 @@
 //! entry.
 //!
 //! A file ranks by its failures and its lowest-scoring pillar, which the
-//! entry names with that pillar's score. What to fix first is not that
+//! entry names with that pillar's score. What binds the file is not that
 //! pillar's concern alone: it is the `binding_constraint` that
 //! `topos_evaluate_file` reports for the file, computed here by the same
 //! code (`file_targets`), so the two never name different metrics.

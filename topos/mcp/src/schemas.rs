@@ -1307,7 +1307,7 @@ pub struct WorstFileEntry {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub parse_failure: bool,
     /// What `topos_evaluate_file` reports as `binding_constraint` for this
-    /// file, computed by the same code: the metric to fix first. Absent in
+    /// file, computed by the same code: the gate failure that binds it. Absent in
     /// the lists that do not compute it; `null` when `topos_evaluate_file`
     /// would report none.
     #[serde(skip_serializing_if = "Option::is_none")]

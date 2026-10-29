@@ -2701,7 +2701,7 @@ mod tests {
         assert_eq!(binding.bound, Some("min"));
         let text = summary.to_markdown();
         assert!(
-            text.contains("fix first: ast.entropy 0.1996 (min 0.2)"),
+            text.contains("binding: ast.entropy 0.1996 (min 0.2)"),
             "{text}"
         );
         assert!(summary.metrics.contains_key("ast.entropy"));

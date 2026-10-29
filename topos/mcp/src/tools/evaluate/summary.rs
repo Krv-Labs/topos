@@ -430,7 +430,7 @@ fn worst_line(file: &SummaryWorst) -> String {
         line.push_str(&format!(" · {} gates failed", file.gates_failed));
     }
     if let Some(binding) = &file.binding_constraint {
-        line.push_str(&format!(" · fix first: {}", binding_text(binding)));
+        line.push_str(&format!(" · binding: {}", binding_text(binding)));
     }
     line
 }

@@ -13,6 +13,7 @@ pub mod model;
 pub mod moves;
 pub mod score;
 pub mod store;
+pub mod summary;
 pub mod verdict;
 
 use std::collections::{BTreeSet, HashMap};
@@ -38,7 +39,7 @@ use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
 use crate::formatting::to_tool_result;
-use crate::schemas::PrRecapInput;
+use crate::schemas::{PrRecapDetail, PrRecapInput};
 use crate::security::{composable_default_root, resolve_file_root, resolve_project_path};
 use crate::server::ToposServer;
 
@@ -57,10 +58,6 @@ use self::store::{
 };
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use crate::cache::{ensure_marker_for_build, PrLease};
-
-/// `topos_pr_recap` default. The MCP response carries every scored file
-/// (~1.2 KB of JSON each), so agents opt into `max_files: 0` explicitly.
-pub const MCP_DEFAULT_FILE_CAP: usize = 40;
 
 /// Above this many files to score, the CLI warns the run may take a while;
 /// `0` (`--max-files 0`) still scores everything.
@@ -720,20 +717,28 @@ fn parse_preset(raw: &str) -> Result<PrGatePreset, String> {
 }
 
 fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) -> CallToolResult {
+    let detail = params.detail;
+    let paths = params.paths.clone();
     match run_pr_recap(params, cancel) {
-        Ok(recap) => {
-            let markdown = format!(
-                "**PR Recap ({})**: `{}` ({:?}) — {}\nScored {} file(s) (`{}...{}`).",
-                recap.check,
-                recap.readiness.word(),
-                recap.direction,
-                recap.reason,
-                recap.scope.files_scored,
-                recap.base,
-                recap.head,
-            );
-            to_tool_result(&recap, markdown)
-        }
+        Ok((recap, root)) => match detail {
+            PrRecapDetail::Summary => {
+                let summary = summary::build(&recap, &root, &paths);
+                to_tool_result(&summary.to_value(), summary.to_markdown())
+            }
+            PrRecapDetail::Full => {
+                let markdown = format!(
+                    "**PR Recap ({})**: `{}` ({:?}) — {}\nScored {} file(s) (`{}...{}`).",
+                    recap.check,
+                    recap.readiness.word(),
+                    recap.direction,
+                    recap.reason,
+                    recap.scope.files_scored,
+                    recap.base,
+                    recap.head,
+                );
+                to_tool_result(&full_value(&recap, &root, &paths), markdown)
+            }
+        },
         Err(error) => to_tool_result(
             &serde_json::json!({ "error": error }),
             format!("**Error:** {error}"),
@@ -741,7 +746,41 @@ fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) 
     }
 }
 
-fn run_pr_recap(params: PrRecapInput, cancel: Option<&AtomicBool>) -> Result<PrRecap, String> {
+/// The v3 document as is; with `paths`, `files` holds just those records
+/// and `paths_not_found` lists the ones that matched no scored file.
+fn full_value(recap: &PrRecap, root: &Path, paths: &[String]) -> serde_json::Value {
+    let mut value = serde_json::to_value(recap).unwrap_or(serde_json::Value::Null);
+    if paths.is_empty() {
+        return value;
+    }
+    let (found, missing) = summary::resolve_paths(recap, root, paths);
+    if let Some(object) = value.as_object_mut() {
+        let files: Vec<&FileRecap> = found.into_iter().map(|index| &recap.files[index]).collect();
+        object.insert(
+            "files".to_string(),
+            serde_json::to_value(files).unwrap_or_default(),
+        );
+        if !missing.is_empty() {
+            object.insert("paths_not_found".to_string(), serde_json::json!(missing));
+        }
+    }
+    value
+}
+
+/// The MCP tool's parameter is `max_files`, not the CLI's `--max-files`.
+fn mcp_wording(recap: &mut PrRecap) {
+    let swap = |text: &mut String| *text = text.replace("--max-files", "max_files");
+    swap(&mut recap.reason);
+    for finding in &mut recap.findings {
+        swap(&mut finding.text);
+        swap(&mut finding.fix);
+    }
+}
+
+fn run_pr_recap(
+    params: PrRecapInput,
+    cancel: Option<&AtomicBool>,
+) -> Result<(PrRecap, PathBuf), String> {
     let project_root = match params.directory.as_deref() {
         Some(directory) => {
             let (resolved, project) = resolve_project_path(directory)?;
@@ -784,12 +823,13 @@ fn run_pr_recap(params: PrRecapInput, cancel: Option<&AtomicBool>) -> Result<PrR
         &mut (),
     )?;
     recap.review = review;
-    Ok(recap)
+    mcp_wording(&mut recap);
+    Ok((recap, root))
 }
 
 #[tool_router(router = pr_recap_router, vis = "pub(crate)")]
 impl ToposServer {
-    /// Structural PR or commit-range recap (`topos.pr_recap.v3`) with gate readiness, findings, splits, and rollups.
+    /// Structural PR or commit-range recap: gate readiness, blocking findings, files needing attention. Summary by default; `detail: "full"` for `topos.pr_recap.v3`.
     #[tool(
         name = "topos_pr_recap",
         annotations(
@@ -902,6 +942,8 @@ pub(super) mod tests {
                 base: Some("HEAD".to_string()),
                 head: Some(":worktree".to_string()),
                 max_files: 0,
+                detail: PrRecapDetail::Summary,
+                paths: Vec::new(),
                 no_coupling: true,
                 priority: Some("simple".to_string()),
                 strict: false,
@@ -910,7 +952,7 @@ pub(super) mod tests {
             None,
         );
         let structured = response.structured_content.expect("structured_content");
-        assert_eq!(structured["schema"], SCHEMA);
+        assert_eq!(structured["schema"], summary::SUMMARY_SCHEMA);
         assert_eq!(structured["check"], "pass");
         assert_eq!(structured["scope"]["files_scored"], 1);
 
@@ -921,6 +963,8 @@ pub(super) mod tests {
                 base: Some("HEAD".to_string()),
                 head: None,
                 max_files: 0,
+                detail: PrRecapDetail::Summary,
+                paths: Vec::new(),
                 no_coupling: true,
                 priority: None,
                 strict: false,

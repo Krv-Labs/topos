@@ -329,7 +329,9 @@ pub struct ProjectRollup {
     pub medal_after: Medal,
     /// A pillar is present only when both sides scored it.
     pub pillars: BTreeMap<String, PillarRollup>,
-    /// A pillar the touched set passed at base is failed at head.
+    /// The rollup over the touched set, not any one file, lost a pillar:
+    /// passed at base, fails at head. Can be `false` while `direction` is
+    /// `REGRESSION`, since one file's regression may not move the rollup.
     pub regression: bool,
     /// Existing files compared; equal, since both sides are the same files.
     pub files_before: usize,
@@ -494,7 +496,9 @@ pub struct PrRecap {
     /// Every `[[pr_recap.waive]]` entry and what it did.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub waivers: Vec<WaiverSummary>,
-    /// Which way the structure moved. Descriptive only.
+    /// The worst single file's headline (`REGRESSION` when any one file
+    /// regressed), not a verdict on the touched set as a whole; compare
+    /// `project.regression`. Descriptive only.
     pub direction: Headline,
     /// `--max-files` left `scope.files_capped` files unscored. The verdict
     /// covers only the highest-churn files that were scored.

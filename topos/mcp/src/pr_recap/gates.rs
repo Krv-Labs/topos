@@ -751,6 +751,22 @@ pub fn advice_for(metric: &str) -> Option<&'static str> {
     })
 }
 
+/// One descriptive line per metric [`advice_for`] covers: what it measures.
+/// The summary names these instead of carrying per-finding `fix` text.
+pub fn metric_description(metric: &str) -> Option<&'static str> {
+    Some(match metric {
+        "ast.max_function_complexity" => "cyclomatic complexity of the most complex function",
+        "ast.entropy" => "source-text compression ratio (token entropy); gated to a band",
+        "nav.max_function_divergence" => {
+            "nesting divergence of the most divergent function (depth-weighted scope fan-out)"
+        }
+        "mdg.fan_out" => "distinct external symbols the file calls",
+        "cpg.dangerous_calls" => "reachable call sites that match the dangerous-API registry",
+        "cpg.taint_flows" => "data-flow paths from untrusted input to a dangerous sink",
+        _ => return None,
+    })
+}
+
 /// The fix for a finding that no metric's advice covers.
 fn default_fix(gate: GateId) -> &'static str {
     match gate {

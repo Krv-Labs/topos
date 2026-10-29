@@ -9,14 +9,25 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- `topos_pr_recap` returns a summary by default (`topos.pr_recap.summary.v1`,
+  #469): readiness, reason, blocking findings with values and locations, one
+  ranked list of files that need attention, rollups, and a description per
+  metric shown. Everything left out is counted, with the parameter that widens
+  it. `detail: "full"` returns the whole `topos.pr_recap.v3` document, and
+  `paths` adds the full file records for just those paths. The text block is a
+  short markdown rendering of the summary.
+
 ### Changed
 
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
   Pass `--max-files N` to score only the N highest-churn files, in which case
   the recap is marked incomplete as before. Past 100 files to score, the
-  command warns on stderr and suggests `--max-files`. The `topos_pr_recap`
-  MCP tool keeps its 40-file default, since its response carries every
-  scored file; agents pass `max_files: 0` to score everything.
+  command warns on stderr and suggests `--max-files`.
+- The `topos_pr_recap` MCP tool now also scores every file by default
+  (`max_files: 0`), since its default response is a summary instead of every
+  scored file (#469).
 
 ### Fixed
 
@@ -33,6 +44,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   them apart, so `9→14, limit 10` stays short; a value closer than that reads
   `just under 0.2`. A floor the metric fell below reads `min` in the message;
   the terminal card shows `0.199 < 0.2`.
+- `topos_pr_recap` incomplete-range messages name the `max_files` parameter
+  instead of the CLI's `--max-files`, and the summary names `direction` as
+  `worst_file_direction` and `project.regression` as `rollup_lost_pillar`, so
+  they no longer read as contradicting each other; one `attention` ranking
+  replaces the mismatch between the blocking files and the hotspots (#475).
 - `topos update` no longer leaves stale spinner lines above its phase results.
 
 ## [0.14.0] - 2026-10-23

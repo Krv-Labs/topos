@@ -441,7 +441,11 @@ fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
 
 /// Which way the structure moved, and what happened, in one line. The
 /// reason is the recap's when no gate raised a finding.
-pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
+pub fn direction_for(
+    files: &[FileRecap],
+    base: &str,
+    head: &str,
+) -> (Headline, String, Option<String>) {
     if files.is_empty() {
         let reason = if base == head {
             // `base` is the merge-base, so this also covers a head that is
@@ -453,7 +457,7 @@ pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, 
         } else {
             "No supported source files changed.".to_string()
         };
-        return (Headline::LateralMove, reason);
+        return (Headline::LateralMove, reason, None);
     }
     // A passing new file has no before-medal, so it cannot make an existing
     // file's lateral move into an improvement, and it cannot hide one
@@ -507,7 +511,9 @@ pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, 
         }
         Headline::LateralMove => lateral_reason(&existing),
     };
-    (headline, reason)
+    // The reason names the worst file unless the change was a lateral move.
+    let named = (headline != Headline::LateralMove).then(|| worst.path.clone());
+    (headline, reason, named)
 }
 
 fn new_file_reason(file: &FileRecap) -> String {

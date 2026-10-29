@@ -13,11 +13,16 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 - `topos_pr_recap` returns a summary by default (`topos.pr_recap.summary.v1`,
   #469): readiness, reason, blocking findings with values and locations, one
-  ranked list of files that need attention, rollups, and a description per
-  metric shown. Everything left out is counted, with the parameter that widens
-  it. `detail: "full"` returns the whole `topos.pr_recap.v3` document, and
-  `paths` adds the full file records for just those paths. The text block is a
-  short markdown rendering of the summary.
+  ranked list of files that need attention (each with why, and its top
+  hotspot with the measured value), rollups, scoring time, and a description
+  per metric shown. Everything left out (findings, files, hotspots, clusters,
+  skipped files) is counted, with the parameter that widens it. `detail:
+  "full"` returns the same `topos.pr_recap.v3` document as `topos pr-recap
+  --json`, with MCP parameter names in its hints, and `paths` adds the full
+  file records for just those repo-relative paths (unknown paths come back
+  with the reason). The text block is a short markdown rendering of the
+  summary. A recap that runs past the tool timeout reports how many files it
+  was scoring.
 
 ### Changed
 
@@ -45,7 +50,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   `just under 0.2`. A floor the metric fell below reads `min` in the message;
   the terminal card shows `0.199 < 0.2`.
 - `topos_pr_recap` incomplete-range messages name the `max_files` parameter
-  instead of the CLI's `--max-files`, and the summary names `direction` as
+  instead of the CLI's `--max-files` (the CLI output is unchanged), and the
+  summary names `direction` as
   `worst_file_direction` and `project.regression` as `rollup_lost_pillar`, so
   they no longer read as contradicting each other; one `attention` ranking
   replaces the mismatch between the blocking files and the hotspots (#475).

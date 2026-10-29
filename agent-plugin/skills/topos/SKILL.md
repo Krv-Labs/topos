@@ -148,7 +148,7 @@ Without `--gitnexus-dir`, COMPOSABLE uses process **cwd** (CLI) or the project d
 | `topos_begin_refactor` / `topos_assess_snapshot` | Snapshot flow for untracked baselines |
 | `topos_assess_improvement` | Side-by-side variant comparison |
 | `topos_assess_changeset` | Assess several edited files at once against a git baseline |
-| `topos_pr_recap` | Judge a PR or commit range against `[pr_recap]` gates (`topos.pr_recap.v3`) |
+| `topos_pr_recap` | Judge a PR or commit range against `[pr_recap]` gates; summary by default (`topos.pr_recap.summary.v1`), `detail: "full"` for `topos.pr_recap.v3`, `paths` for full records of named files |
 | `topos_generate_depgraph` / `topos_depgraph_status` | Force-refresh, or read-only diagnose, the GitNexus graph |
 | `topos_calculate_coverage` | Structural test coverage (separate from lattice) |
 | `topos_evaluate_code` | Score a source string when there is no file on disk |

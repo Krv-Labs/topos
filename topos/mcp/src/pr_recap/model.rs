@@ -490,6 +490,10 @@ pub struct PrRecap {
     /// The first counting finding's text, or what happened when there is
     /// none.
     pub reason: String,
+    /// The file `reason` names, when it names one: the lead finding's path,
+    /// or the worst file the direction text is about. Not in the document.
+    #[serde(skip)]
+    pub reason_path: Option<String>,
     /// Every finding the configured gates kept, most important first, the
     /// waived ones last.
     pub findings: Vec<Finding>,

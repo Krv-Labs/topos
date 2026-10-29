@@ -199,6 +199,31 @@ pub fn evaluate(
     moves: &RangeMoves,
     coupling: Option<&Coupling>,
 ) -> (Readiness, Vec<Finding>) {
+    evaluate_named(
+        files,
+        clusters,
+        incomplete,
+        cfg,
+        moves,
+        coupling,
+        CLI_CAP_NAME,
+    )
+}
+
+/// What the CLI calls the scoring cap, for the hints that name it.
+pub const CLI_CAP_NAME: &str = "--max-files";
+
+/// [`evaluate`], with the scoring cap named as the caller's surface calls
+/// it (`--max-files` on the CLI, `max_files` on the MCP tool).
+pub fn evaluate_named(
+    files: &[FileRecap],
+    clusters: &[Cluster],
+    incomplete: usize,
+    cfg: &PrGateConfig,
+    moves: &RangeMoves,
+    coupling: Option<&Coupling>,
+    cap_name: &str,
+) -> (Readiness, Vec<Finding>) {
     let mut found = Vec::new();
     for file in files {
         if file.is_new() {
@@ -219,7 +244,7 @@ pub fn evaluate(
         coupling::coupling_findings(coupling, files, clusters, cfg, &mut found);
     }
     if incomplete > 0 {
-        found.push(incomplete_finding(incomplete));
+        found.push(incomplete_finding(incomplete, cap_name));
     }
     let mut findings: Vec<Finding> = found
         .into_iter()
@@ -619,16 +644,18 @@ fn split_findings(cluster: &Cluster, files: &[FileRecap], found: &mut Vec<Findin
     }
 }
 
-fn incomplete_finding(unscored: usize) -> Finding {
-    Finding::new(
+fn incomplete_finding(unscored: usize, cap_name: &str) -> Finding {
+    let mut finding = Finding::new(
         GateId::Incomplete,
         "",
         format!(
-            "{unscored} lower-churn file{} went unscored over the --max-files cap, so the \
+            "{unscored} lower-churn file{} went unscored over the {cap_name} cap, so the \
              verdict covers only the files scored.",
             if unscored == 1 { "" } else { "s" }
         ),
-    )
+    );
+    finding.fix = format!("Raise {cap_name} to score every changed file.");
+    finding
 }
 
 /// The largest displayed-score move on any pillar, either way.

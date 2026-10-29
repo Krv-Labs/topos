@@ -423,12 +423,16 @@ Refactor & Iterate
    ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
    blocked, call ``topos_generate_depgraph`` first, then re-assess.
 
-``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 40, "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
-   Structural pull-request or commit-range recap (``topos.pr_recap.v3``) judged
-   against the project's ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or
-   ``BLOCKED``). Pass either ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs.
-   ``:worktree`` when omitted). Returns gate readiness, findings, split clusters,
-   per-file before/after medals, and project rollups.
+``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 0, "detail": "summary", "paths": [], "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
+   Structural pull-request or commit-range recap judged against the project's
+   ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or ``BLOCKED``). Pass either
+   ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs. ``:worktree`` when omitted).
+   Returns a summary by default (``topos.pr_recap.summary.v1``): readiness, reason,
+   blocking findings with path, line, metric, before, after and limit, one ranked
+   ``attention`` list of files, rollups, scoring time, and a description of each metric
+   shown. Everything left out is counted in ``omitted``. ``detail: "full"`` returns the
+   whole ``topos.pr_recap.v3`` document, and ``paths`` adds the full file records for
+   just those repo-relative paths. ``max_files`` defaults to ``0`` (score every file).
 
 ``topos_preference_walk({"ranking": ..., "target": ..., "current": ...})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should

@@ -18,8 +18,9 @@ pub mod verdict;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResponse, CallToolResult};
@@ -457,6 +458,34 @@ pub fn build_recap(
     judging: &Judging,
     progress: &mut dyn ScoreProgress,
 ) -> Result<PrRecap, String> {
+    build_recap_named(
+        repo,
+        base,
+        head,
+        max_files,
+        gates::CLI_CAP_NAME,
+        stores,
+        coupling,
+        judging,
+        progress,
+    )
+}
+
+/// [`build_recap`] for a surface that calls the scoring cap `cap_name`
+/// (`--max-files` for the CLI, `max_files` for the MCP tool), so the hints
+/// that tell the reader how to raise it name the parameter they have.
+#[allow(clippy::too_many_arguments)]
+pub fn build_recap_named(
+    repo: &Path,
+    base: &str,
+    head: &str,
+    max_files: usize,
+    cap_name: &str,
+    stores: Option<&PrStores>,
+    coupling: CouplingStatus,
+    judging: &Judging,
+    progress: &mut dyn ScoreProgress,
+) -> Result<PrRecap, String> {
     let repo = git_root(repo)?;
     let worktree = head == ":worktree";
     let base_sha = merge_base(&repo, base, head_commit(head))?;
@@ -573,7 +602,7 @@ pub fn build_recap(
     finish_statuses(&mut scored, &clusters, &lattice);
 
     let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
-    let (direction, described) = direction_for(&files, &base_sha, &head_sha);
+    let (direction, described, described_path) = direction_for(&files, &base_sha, &head_sha);
     let mut coupling_graphs = base_graph
         .as_ref()
         .zip(head_graph.as_ref())
@@ -596,13 +625,14 @@ pub fn build_recap(
             &judging.gate,
         )?;
     }
-    let (_, mut findings) = gates::evaluate(
+    let (_, mut findings) = gates::evaluate_named(
         &files,
         &clusters,
         capped,
         &judging.gate,
         &moves,
         coupling_graphs.as_ref(),
+        cap_name,
     );
     let waivers = gates::waive(
         &mut findings,
@@ -616,12 +646,16 @@ pub fn build_recap(
         file.severity = gates::worst_at(&findings, &file.path);
     }
     let lead = findings.iter().find(|finding| finding.counts());
+    let reason_path = match lead {
+        Some(finding) => Some(finding.path.clone()).filter(|path| !path.is_empty()),
+        None => described_path,
+    };
     let mut reason = lead.map_or(described, |finding| finding.text.clone());
     let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
     if capped > 0 && !incomplete_leads {
         reason.push_str(&format!(
             " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
-             unscored (raise --max-files).",
+             unscored (raise {cap_name}).",
             if capped == 1 { "" } else { "s" }
         ));
     }
@@ -650,6 +684,7 @@ pub fn build_recap(
         exit_code,
         check: if exit_code == 1 { "fail" } else { "pass" },
         reason,
+        reason_path,
         findings,
         waivers,
         direction,
@@ -716,13 +751,24 @@ fn parse_preset(raw: &str) -> Result<PrGatePreset, String> {
     }
 }
 
+#[cfg(test)]
 fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) -> CallToolResult {
+    pr_recap_counted(params, cancel, &AtomicUsize::new(0))
+}
+
+fn pr_recap_counted(
+    params: PrRecapInput,
+    cancel: Option<&AtomicBool>,
+    scoring: &AtomicUsize,
+) -> CallToolResult {
     let detail = params.detail;
     let paths = params.paths.clone();
-    match run_pr_recap(params, cancel) {
+    let started = Instant::now();
+    match run_pr_recap(params, cancel, scoring) {
         Ok((recap, root)) => match detail {
             PrRecapDetail::Summary => {
-                let summary = summary::build(&recap, &root, &paths);
+                let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let summary = summary::build(&recap, &root, &paths, elapsed_ms);
                 to_tool_result(&summary.to_value(), summary.to_markdown())
             }
             PrRecapDetail::Full => {
@@ -761,25 +807,54 @@ fn full_value(recap: &PrRecap, root: &Path, paths: &[String]) -> serde_json::Val
             serde_json::to_value(files).unwrap_or_default(),
         );
         if !missing.is_empty() {
-            object.insert("paths_not_found".to_string(), serde_json::json!(missing));
+            object.insert(
+                "paths_not_found".to_string(),
+                serde_json::to_value(&missing).unwrap_or_default(),
+            );
         }
     }
     value
 }
 
-/// The MCP tool's parameter is `max_files`, not the CLI's `--max-files`.
-fn mcp_wording(recap: &mut PrRecap) {
-    let swap = |text: &mut String| *text = text.replace("--max-files", "max_files");
-    swap(&mut recap.reason);
-    for finding in &mut recap.findings {
-        swap(&mut finding.text);
-        swap(&mut finding.fix);
+/// What the MCP tool calls the scoring cap in the hints that name it.
+const MCP_CAP_NAME: &str = "max_files";
+
+/// Publishes how many files Pass A is scoring, so a timeout can say.
+struct CountProgress<'a>(&'a AtomicUsize);
+
+impl ScoreProgress for CountProgress<'_> {
+    fn start(&mut self, total: usize) {
+        self.0.store(total, Ordering::Relaxed);
     }
+    fn scoring(&mut self, _: &str) {}
+    fn scored(&mut self) {}
+}
+
+/// The error for a recap that ran past its deadline: what was being scored,
+/// and the parameters that change that.
+fn timeout_error(error: McpError, scoring: usize) -> McpError {
+    if !error.message.starts_with("Operation timed out") {
+        return error;
+    }
+    let progress = if scoring == 0 {
+        "before scoring began (preparing the coupling graphs)".to_string()
+    } else {
+        format!("while scoring {scoring} file(s)")
+    };
+    McpError::internal_error(
+        format!(
+            "{} {progress}. `max_files` caps the files scored, highest churn first; `paths` \
+             selects which files' full records are returned.",
+            error.message
+        ),
+        error.data,
+    )
 }
 
 fn run_pr_recap(
     params: PrRecapInput,
     cancel: Option<&AtomicBool>,
+    scoring: &AtomicUsize,
 ) -> Result<(PrRecap, PathBuf), String> {
     let project_root = match params.directory.as_deref() {
         Some(directory) => {
@@ -812,18 +887,18 @@ fn run_pr_recap(
         gitnexus_available(),
     );
     let (stores, coupling) = prepare_with_cancel(&root, plan, &|| {}, cancel);
-    let mut recap = build_recap(
+    let mut recap = build_recap_named(
         &root,
         &base,
         &head,
         params.max_files,
+        MCP_CAP_NAME,
         stores.as_ref(),
         coupling,
         &judging,
-        &mut (),
+        &mut CountProgress(scoring),
     )?;
     recap.review = review;
-    mcp_wording(&mut recap);
     Ok((recap, root))
 }
 
@@ -845,16 +920,19 @@ impl ToposServer {
         context: RequestContext<RoleServer>,
         Parameters(params): Parameters<PrRecapInput>,
     ) -> Result<CallToolResponse, McpError> {
+        let scoring = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&scoring);
         self.executor
             .run_task(
                 &context,
                 Duration::from_secs(300),
                 "Building PR structural recap",
                 move |cancel_flag, _reporter| {
-                    Ok(pr_recap_sync_with_cancel(params, Some(cancel_flag)))
+                    Ok(pr_recap_counted(params, Some(cancel_flag), &counter))
                 },
             )
             .await
+            .map_err(|error| timeout_error(error, scoring.load(Ordering::Relaxed)))
     }
 }
 
@@ -870,7 +948,7 @@ pub(super) mod tests {
         )
     }
 
-    fn judging(priority: Priority) -> Judging {
+    pub(super) fn judging(priority: Priority) -> Judging {
         Judging {
             priority,
             topos: ToposConfig::default(),

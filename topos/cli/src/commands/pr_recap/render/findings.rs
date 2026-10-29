@@ -16,7 +16,9 @@ use topos_mcp::schemas::RefactorTarget;
 
 use super::layout::{budget, dim_wrapped, plain_budget, rail, wrapped};
 use crate::commands::evaluate::info_render::{recommendation_lines, FileDetails};
-use crate::commands::pr_recap::gates::{number, Finding, Readiness};
+use crate::commands::pr_recap::gates::{
+    beside_limit, distinct_numbers, number, Finding, Readiness,
+};
 use crate::commands::pr_recap::model::{FileRecap, PrRecap};
 use crate::commands::pr_recap::view::{
     common_parent, drop_of, lost_a_pillar, pillar_names, relative, short_name, visible_dip, Item,
@@ -279,12 +281,18 @@ fn fact(finding: &Finding) -> String {
         | GateId::MovedPillar
         | GateId::NewFileInsecure
         | GateId::NewFilePillar => match (finding.after, finding.limit) {
-            (Some(after), Some(limit)) => format!(
-                "{pillar} {} {} {}",
-                tenths(after),
-                if after < limit { '<' } else { '>' },
-                tenths(limit)
-            ),
+            (Some(after), Some(limit)) => {
+                let shown = distinct_numbers(&[after, limit], 1);
+                let value = beside_limit(after, limit, &shown[0], &shown[1]);
+                if value != shown[0] {
+                    return format!("{pillar} {value}");
+                }
+                format!(
+                    "{pillar} {value} {} {}",
+                    if after < limit { '<' } else { '>' },
+                    shown[1]
+                )
+            }
             _ => format!(
                 "{pillar} {}",
                 match finding.gate {
@@ -507,11 +515,6 @@ fn plural(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
-/// One decimal, trailing zero dropped: `21.4`, `10`.
-fn tenths(value: f64) -> String {
-    number((value * 10.0).round() / 10.0)
-}
-
 /// A sentence read as a phrase: the trailing period dropped.
 fn sentence(text: &str) -> String {
     text.trim().trim_end_matches('.').to_string()
@@ -522,4 +525,34 @@ fn lowercase_first(text: &str) -> String {
     chars.next().map_or_else(String::new, |first| {
         first.to_lowercase().chain(chars).collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fact;
+    use crate::commands::pr_recap::fixtures::fixture_losses;
+    use topos_engine::config::GateId;
+
+    /// A pillar lost just under its limit must not read `0.2 < 0.2`.
+    #[test]
+    fn a_crossing_just_under_the_limit_shows_the_difference() {
+        let mut finding = fixture_losses().findings.remove(0);
+        finding.gate = GateId::PillarLost;
+        finding.after = Some(0.1988);
+        finding.limit = Some(0.2);
+        assert!(
+            fact(&finding).ends_with(" 0.199 < 0.2"),
+            "{}",
+            fact(&finding)
+        );
+        finding.after = Some(0.2 - f64::EPSILON);
+        assert!(
+            fact(&finding).ends_with(" just under 0.2"),
+            "{}",
+            fact(&finding)
+        );
+        finding.after = Some(14.0);
+        finding.limit = Some(10.0);
+        assert!(fact(&finding).ends_with(" 14 > 10"), "{}", fact(&finding));
+    }
 }

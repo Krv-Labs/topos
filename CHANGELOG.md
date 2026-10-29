@@ -27,6 +27,12 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   matched part of an identifier (`process.exec` for `child_process.exec`, or a
   leading-dot `.eval`) no longer applies; write the full name (`eval`,
   `child_process.exec`).
+- `topos pr-recap` gate messages no longer round a crossing until before, after,
+  and limit look identical (#468): `ast.entropy 0.2→0.2, limit 0.2` now reads
+  `0.202→0.199, min 0.2`. Values get the fewest decimals (up to six) that tell
+  them apart, so `9→14, limit 10` stays short; a value closer than that reads
+  `just under 0.2`. A floor the metric fell below reads `min` in the message;
+  the terminal card shows `0.199 < 0.2`.
 - `topos update` no longer leaves stale spinner lines above its phase results.
 
 ## [0.14.0] - 2026-10-23

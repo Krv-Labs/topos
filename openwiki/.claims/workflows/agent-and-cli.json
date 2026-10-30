@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:53fd845666d38576bfad9bb27d81ad7ebdad30a63915fa709db9e7757dea7a53",
+  "pageVersion": "sha256:c82ece172b1eb73e9289ea0ec3812e70a8192042b6b3e0050e6681aa56e37f86",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -245,15 +245,15 @@
       "statement": "MCP evaluation tool annotations distinguish pure snippet evaluation from file/project evaluation that may prepare `.gitnexus`: `topos_evaluate_code` is read-only, while `topos_evaluate_file` and `topos_evaluate_project` are non-read-only and may generate or refresh COMPOSABLE state without editing source.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L134-L142",
+          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L141-L149",
           "version": "repo-lines-v1:sha256:00cc6a8e0eb66d22195ed92272d9707669fc4d636339d7f33641b403a0253a38:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGIyYjBiMDlhOTYzNWRlM2U3Y2VkOTJiZjE3N2U1YmUzMzczNGIxODI0ZmYwOTE3ZjQxNzRiNjhjZTFjODVhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDI4YThlMzI2ZjhiZDljZTZmNDNiYTNiZDA3YTY4OTFiYWUxN2FkYWY1Y2YxMjgzZmE3ZWMzNTMzMzFhOGQyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM2YTA3ZTczOWZjNTcxN2ZlYTE1NWY2ZThlOGVmOWVjNTJjODZkN2RhNzMxZjUzZWRjZGE4Y2M2NjI2MmRlMCJ9"
         },
         {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L179-L187",
+          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L184-L192",
           "version": "repo-lines-v1:sha256:1cb276436283c938333a247075e5922b00594bc18f7db595d7da0e792e75677f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGIyYjBiMDlhOTYzNWRlM2U3Y2VkOTJiZjE3N2U1YmUzMzczNGIxODI0ZmYwOTE3ZjQxNzRiNjhjZTFjODVhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWYxMjY3NTkwODVhZmEwMmI3MTE0OGJlZDQ4ZjM4ZWM2YzM3Y2VlMjY5YzhkZmExYWQ2YzZlZGViMDJiMmNjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmUyNzU2OTJhY2FjYTM0YzA1OTI5MDc0ZWU5YTJiMGUzNWQxMjExN2U2ZTc1ODZiNDc4MGQ1NGExODRiODM2OCJ9"
         },
         {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L94-L102",
+          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L101-L109",
           "version": "repo-lines-v1:sha256:c330c9c5cec48435ce728da0a5b005bf9d71d364a15b5b488069fd45b5e1407b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGIyYjBiMDlhOTYzNWRlM2U3Y2VkOTJiZjE3N2U1YmUzMzczNGIxODI0ZmYwOTE3ZjQxNzRiNjhjZTFjODVhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDFiODczOTEyYTg1M2I2ZGY1MjI4NDViYzJkZjg5MDMzODJiYzg1MjZiMTU5ZDQzNWFlNDMzMzI3MWYwMjdkYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODZjZDA1MjlmMTI5MzU0NTM1ZDUwODQ2Y2JjZjkwYThjOWRiYzdmZDcxOGE3ODYwZTQxOGUxMGYxZGM2Mjk2ZSJ9"
         }
       ]
@@ -263,12 +263,12 @@
       "statement": "`topos_evaluate_project` recursively discovers all supported source files, detects a language per file, returns per-language rollups and a weakest-file floor, and paginates the sorted file rows using bounded `limit` and `offset` values.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/schemas.rs#L335-L372",
-          "version": "repo-lines-v1:sha256:b85219569f73bbbef63e112b2de36530d4520ba57ae93c7c323bf5670eae8c70:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMjE5NmRjYWFjNjE0MTE3ZDFiYWJjYTI1OTNhOTI5ZDUyNTI4ZjIzNTVjYzk3YTY2ZWEzZmY5Y2NjODQ5NGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4M2Q2YTU0ZTY1ODYyNmQ4MTk3YTI2OGMwYTlkOWI1MzgxODA0YTU1OTM4ZTc0YjRkNzVmOTM1OTE1MTQ2YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZDgxMzU2Yzc3Y2JhZjQxNDQ2MGU3MWFhYmZlMzZjMjk4MjM0MDk2OTY2MWQwZTI4ZjZmNmJkZTAxNDRjMjEifQ"
+          "resource": "repo://topos/mcp/src/schemas.rs#L335-L375",
+          "version": "repo-lines-v1:sha256:8b6ae5865c61583c06cbe7f51ca52c1a922e47e8eb52bf29d9e61e3861a8ebe8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMjE5NmRjYWFjNjE0MTE3ZDFiYWJjYTI1OTNhOTI5ZDUyNTI4ZjIzNTVjYzk3YTY2ZWEzZmY5Y2NjODQ5NGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4M2Q2YTU0ZTY1ODYyNmQ4MTk3YTI2OGMwYTlkOWI1MzgxODA0YTU1OTM4ZTc0YjRkNzVmOTM1OTE1MTQ2YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZDgxMzU2Yzc3Y2JhZjQxNDQ2MGU3MWFhYmZlMzZjMjk4MjM0MDk2OTY2MWQwZTI4ZjZmNmJkZTAxNDRjMjEifQ"
         },
         {
-          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L179-L220",
-          "version": "repo-lines-v1:sha256:beced104f9e0a805c8c9fb90a69ea989d6866b76952a55500291833bbbe34ced:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMmIwYjA5YTk2MzVkZTNlN2NlZDkyYmYxNzdlNWJlMzM3MzRiMTgyNGZmMDkxN2Y0MTc0YjY4Y2UxYzg1YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxOWNmZDhmOGYwODJlMDVkYWU0NjA5MjUwYzJkZGQ5NDdlNjU5NDkyNGE0Y2I4NjhhM2ZjNDliYWUzYjdkY2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMTI2NzU5MDg1YWZhMDJiNzExNDhiZWQ0OGYzOGVjNmMzN2NlZTI2OWM4ZGZhMWFkNmM2ZWRlYjAyYjJjY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0OGNjZGM1NWI1N2E0MGQ4ZTc5ZWI3ZmFhZjE0NGRiN2MwOWU3ZDkyYjY5MTYwNDUyOWE3ZjBiYzQyNzQzNzAifQ"
+          "resource": "repo://topos/mcp/src/tools/evaluate.rs#L184-L228",
+          "version": "repo-lines-v1:sha256:88cca4312c489168ff683e6a2a6398a224db7d8efcc4f3e995414c35cda8ebfa:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMmIwYjA5YTk2MzVkZTNlN2NlZDkyYmYxNzdlNWJlMzM3MzRiMTgyNGZmMDkxN2Y0MTc0YjY4Y2UxYzg1YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMTI2NzU5MDg1YWZhMDJiNzExNDhiZWQ0OGYzOGVjNmMzN2NlZTI2OWM4ZGZhMWFkNmM2ZWRlYjAyYjJjY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4MWNkMGYxMmIzNzA0ZGMwYzRkYjQwNWM5YWRhYzYxMWZhOWRlNjhiMDNmNGUxOGJkYTRiOTNmZGM0OTRhMGMifQ"
         }
       ]
     },
@@ -327,6 +327,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-23T10:31:29.483Z"
+    "at": "2026-10-30T12:01:57.716Z"
   }
 }

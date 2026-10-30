@@ -1,11 +1,11 @@
 ---
 type: domain model
-title: Four-Pillar Quality Model and Verdict Semantics
-description: Domain model guide for the four quality pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), Heyting algebra subobject classifier, characteristic morphisms, quality evaluation metrics, and diagnostic mapping semantics.
+title: Quality Model
+description: Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, and grade capping invariants.
 tags: [domain-model, quality, security, metrics, policies, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
+    at: 2026-10-30T12:01:57.716Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
@@ -45,7 +45,7 @@ sources:
     resource: repo://topos/mcp/src/evaluation/analysis.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 ---
 
 Topos expresses source quality through category-theoretic principles using four independent generator atoms: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. In the category of programs, source code functions as a `ProgramMorphism` between computational states. The evaluation lattice codomain $\Omega$ acts as a subobject classifier (a 16-element Heyting algebra), while `CharacteristicMorphism` computes the unique characteristic map $\chi_S : P \to \Omega$ that evaluates each program morphism against canonical raw-metric gate thresholds.
@@ -133,14 +133,14 @@ Import/export entrypoint modules (`is_entrypoint_module`) are exempted from entr
 
 Module instability (`mdg.instability`) and fan-in (`mdg.fan_in`) are measured as codebase-relative advisories when coupling is non-trivial ($\text{coupling} \ge 2.0$). Advisory readings do not alter the `mdg.fan_out` gate result. When no MDG is provided, `COMPOSABLE` is marked unavailable rather than failed.
 
-### SECURE: Strict Zero-Tolerance and Diagnostic Overlay
+### SECURE: Zero-Tolerance and Suppression Overlay
 
 `SECURE` enforces zero-tolerance security requirements:
 - Gates: `cpg.dangerous_calls == 0` and `cpg.taint_flows == 0`.
 
 Any nonzero dangerous call or taint flow clears the `SECURE` generator bit. Desirability scoring for security is reporting-only and cannot compensate for active vulnerabilities.
 
-#### Security Diagnostic Overlay and Suppression
+#### Security Diagnostic Overlay and Suppression Mechanics
 
 In MCP tool execution (`diagnostics.rs`), security evidence is evaluated lazily through a diagnostic overlay. The overlay checks `overlay_applies` (calling `security_evidence_needed`) before reparsing source or constructing a full `ProgramMorphism`:
 
@@ -156,7 +156,7 @@ If `security_evidence_needed` returns true, the overlay loads project configurat
 
 ```mermaid
 sequenceDiagram
-    participant Tool as Tool / Agent Execution
+    participant Tool as Tool or Agent Execution
     participant Morphism as ProgramMorphism
     participant Diag as Security Diagnostic Overlay
     participant Engine as apply_allowlist
@@ -176,9 +176,64 @@ sequenceDiagram
 ```
 *Diagnostic mapping flow: the security overlay guards against unnecessary CPG construction and applies allowlists to raw findings without blinding risk disclosures or bypassing grade caps.*
 
-Project allowlists in `.topos.toml` use `[[secure.allow]]` tables. Each entry requires non-empty `pattern` and `reason` strings to enforce friction against unwarranted suppressions, and optional `scope` globs. Malformed configurations or invalid entries drop silently to default settings without crashing evaluation. Ephemeral CLI arguments (`--allow`) merge with scope `**` under the reason `CLI --allow (ephemeral)`.
+Project allowlists in `.topos.toml` use `[[secure.allow]]` tables. To enforce mandatory anti-gaming friction:
+- Each allowlist entry requires non-empty `pattern` and `reason` strings; entries lacking a reason are dropped during configuration parsing (`parse_allow_entries`).
+- Entries support posix-style `scope` glob patterns evaluated relative to the configuration root (`ToposConfig::entries_for`).
+- Malformed configuration files or entries drop silently to default settings without crashing evaluation.
+- Ephemeral CLI flags (`--allow`) merge with scope `**` under the reason `CLI --allow (ephemeral)`.
 
-Acknowledging a risk via an allowlist does not produce a clean pass. `apply_allowlist` recomputes adjusted risk counts excluding allowlisted patterns, discloses both active findings and acknowledged risk reasons, and caps an otherwise `IDEAL` adjusted result by clearing the `SECURE` bit (`grade_capped = true`). An allowlisted risk cannot receive an `IDEAL` / PLATINUM verdict; if all other pillars pass, the adjusted verdict is capped at `SIMPLE_COMPOSABLE_NAVIGABLE` (GOLD).
+#### Exact Metric Recomputation and Mathematical Grade Capping
+
+The suppression overlay in `suppression.rs` (`apply_allowlist`) computes an adjusted verdict on top of the canonical raw result while upholding explicit anti-gaming invariants:
+
+1. **Findings Partitioning**: Raw findings are partitioned into `active` and `acknowledged` based on pattern matching against callee names (`entry_for_callee`).
+2. **Exact Metric Recomputation on CPG**: To prevent upstream findings display caps (such as truncation to 20 findings) from corrupting evaluation, `apply_allowlist` recomputes exact `cpg.dangerous_calls` and `cpg.taint_flows` counts directly on the `CodePropertyGraph` using `dangerous_api_reachable(cpg, &allow_patterns)` and `taint_flow_paths(cpg, &allow_patterns)`.
+3. **Adjusted Pass Determination**: `adjusted_secure_pass` becomes `true` if and only if exact recomputed counts reach zero (`dangerous == 0 && taint == 0`).
+4. **Mathematical Grade Capping**: Acknowledging a risk via an allowlist can never buy an `IDEAL` (PLATINUM) verdict. If findings were acknowledged (`!acknowledged.is_empty()`) and the recomputed adjusted element satisfies all four pillars (`adjusted_element == EvaluationValue::Ideal`), `apply_allowlist` mathematically caps the grade by clearing the `SECURE` generator bit:
+   $$\text{adjusted\_element} = \text{EvaluationValue::from\_bits}(\text{adjusted\_element.bits()} \land \neg \text{Generator::Secure.value().bits()})$$
+   This forces the capped verdict to `SIMPLE_COMPOSABLE_NAVIGABLE` (GOLD) and sets `grade_capped = true`. An acknowledged risk is capped at GOLD.
+5. **Score Lifting**: Calling `secure_lifted` lifts the SECURE pillar score to $\tau$ ($0.50$) when `adjusted_secure_pass` is true so passing pillars do not score below gate threshold, while keeping the grade cap enforced on the lattice element.
+
+```mermaid
+stateDiagram-v2
+    [*] --> RawFinding: CPG security analysis detects risk
+    RawFinding --> ActiveFinding: No allowlist match or missing reason
+    RawFinding --> AcknowledgedFinding: Pattern match in [[secure.allow]] with valid reason
+    
+    ActiveFinding --> GateFailed: Active dangerous calls or taint flows > 0
+    GateFailed --> RawSecureFailed: cpg.dangerous_calls > 0 OR cpg.taint_flows > 0
+    
+    AcknowledgedFinding --> ExactRecomputation: Recompute CPG metrics without allowlisted patterns
+    
+    ExactRecomputation --> AdjustedPass: Adjusted dangerous = 0 AND adjusted taint = 0
+    ExactRecomputation --> AdjustedFail: Remaining unsuppressed active risks > 0
+    
+    AdjustedFail --> SECURE_Cleared: Adjusted SECURE bit cleared (0)
+    AdjustedPass --> GradeCapCheck: Check all other pillars satisfied (IDEAL candidate)
+    
+    GradeCapCheck --> GradeCapped: Un-capped verdict is IDEAL (0b1111) and acknowledged is non-empty
+    GradeCapCheck --> UncappedVerdict: Un-capped verdict is not IDEAL or acknowledged is empty
+    
+    GradeCapped --> GOLD_Verdict: Clear SECURE bit (0b1011 SIMPLE_COMPOSABLE_NAVIGABLE) and set grade_capped = true
+    UncappedVerdict --> FinalVerdict: Retain computed lattice element
+```
+*Suppression state transitions: raw security findings are evaluated against scoped allowlist entries, exact CPG counts are recomputed, and acknowledged findings enforce mathematical grade capping below IDEAL.*
+
+```mermaid
+flowchart TD
+    Raw["Raw ClassificationResult (e.g. SECURE bit cleared)"] --> Allow["apply_allowlist(result, findings, config, path, cpg)"]
+    Allow --> Partition["Partition raw findings into active vs acknowledged"]
+    Partition --> Recompute["Recompute CPG counts: dangerous_api_reachable and taint_flow_paths"]
+    Recompute --> PassCheck{"Adjusted counts zero? (dangerous == 0 and taint == 0)"}
+    PassCheck -->|No| KeepFailed["adjusted_secure_pass = false (SECURE bit = 0)"]
+    PassCheck -->|Yes| SetPass["adjusted_secure_pass = true (set SECURE bit)"]
+    SetPass --> Rebuild["recompute_element: join satisfied bits (e.g. 0b1111 = IDEAL)"]
+    Rebuild --> CapCheck{"acknowledged is non-empty AND adjusted_element == IDEAL?"}
+    CapCheck -->|No| KeepElement["adjusted_element remains uncapped (e.g. PLATINUM)"]
+    CapCheck -->|Yes| BitClear["Clear SECURE bit: 0b1111 AND NOT 0b0100 = 0b1011"]
+    BitClear --> SetFlag["grade_capped = true (verdict capped at GOLD: SIMPLE_COMPOSABLE_NAVIGABLE)"]
+```
+*Verdict mathematical grade capping: clearing the SECURE bit (0b0100) from an otherwise IDEAL verdict (0b1111) mathematically caps suppressed results at GOLD, preventing acknowledged risks from ever achieving PLATINUM.*
 
 ### NAVIGABLE: Semantic Compositional Divergence
 

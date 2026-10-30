@@ -5,7 +5,7 @@ description: Immediate onboarding entry point, workspace CLI/MCP command referen
 tags: [topos, quickstart, rust, cli, mcp, navigation]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
+    at: 2026-10-30T12:01:57.716Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,7 +29,7 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 ---
 
 # Quickstart Guide
@@ -40,7 +40,7 @@ Source code and tests are authoritative. Use this quickstart to route maintenanc
 
 ## Workspace Architecture
 
-The root `Cargo.toml` defines the workspace package version (`0.14.0`) and contains three member crates:
+The root `Cargo.toml` defines the workspace package version (`0.15.0`) and contains three member crates:
 
 - **`topos-engine`**: Pure-Rust evaluation core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics/functors (`functors`), quality translators (`evaluation`), and adapters (`adapters`).
 - **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 13 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
@@ -48,7 +48,7 @@ The root `Cargo.toml` defines the workspace package version (`0.14.0`) and conta
 
 ```mermaid
 flowchart TD
-    subgraph Workspace ["Cargo Workspace (v0.14.0)"]
+    subgraph Workspace ["Cargo Workspace (v0.15.0)"]
         Engine["topos-engine (Evaluation Core and Categorical Primitives)"]
         CLI["topos CLI (Command Dispatcher and Human UI)"]
         MCP["topos-mcp (Stdio MCP Server)"]

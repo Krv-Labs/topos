@@ -1,3 +1,3 @@
 # Files
 
-- [Four-Pillar Quality Model and Verdict Semantics](quality-model.md) - Domain model guide for the four quality pillars (SIMPLE, COMPOSABLE, SECURE, NAVIGABLE), Heyting algebra subobject classifier, characteristic morphisms, quality evaluation metrics, and diagnostic mapping semantics.
+- [Quality Model](quality-model.md) - Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, and grade capping invariants.

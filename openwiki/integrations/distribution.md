@@ -72,10 +72,10 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
+    at: 2026-10-30T12:01:57.716Z
 ---
 
 # Distribution and Integration Systems
@@ -160,13 +160,13 @@ A separate resolver supports paths that may not exist yet, chiefly a graph-store
 
 ## Registry wheels, native binaries, Docker image, and shell installer
 
-Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.14.0`.
+Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.15.0`.
 
 ### Maturin PyPI packaging and MCP Registry manifest
 
-`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.14.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies (`dependencies = []`) or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
+`.mcp/server.json` declares the MCP Registry entry `io.github.Krv-Labs/topos` at version `0.15.0`: the `topos-mcp` PyPI package is launched with `uvx` using stdio transport. `pyproject.toml` packages the Rust server with Maturin `bindings = "bin"`. The wheel installs the compiled `topos-mcp` command on `PATH`; it has no Python runtime dependencies (`dependencies = []`) or Python import surface, although it declares Python `>=3.9` as its package-installation requirement.
 
-The workspace version in `Cargo.toml` (`0.14.0`) is the authoritative version root. `scripts/check_versions.py` enforces strict version agreement across:
+The workspace version in `Cargo.toml` (`0.15.0`) is the authoritative version root. `scripts/check_versions.py` enforces strict version agreement across:
 - Cargo workspace (`Cargo.toml`)
 - VS Code extension (`extensions/vscode/package.json`)
 - Agent Plugin manifest (`agent-plugin/plugin.json`)
@@ -198,7 +198,7 @@ The standalone shell installer (`install.sh`) provides automated binary installa
 
 ### Agent Plugin manifests
 
-The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package metadata at version `0.14.0`; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos.
+The portable Agent Plugins 1.0 package is **host-owned setup**. `agent-plugin/plugin.json` provides package metadata at version `0.15.0`; `agent-plugin/mcp.json` asks a compatible host to start `topos mcp` over stdio. Discovery, enablement, permission prompts, environment construction, and process supervision belong to that host, not to Topos.
 
 Validation script `scripts/check_agent_plugin.py` enforces strict package boundaries:
 - Validates top-level JSON fields against Agent Plugins 1.0 schemas.

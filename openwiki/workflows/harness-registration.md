@@ -3,7 +3,16 @@ type: workflow guide
 title: Harness & Plugin Registration Workflow
 description: Workflows and life cycle mechanics for installing Topos, registering its MCP server across agent harnesses, tracking ownership via the persistent ledger, and executing leave-no-trace uninstallation.
 tags: [workflows, cli, mcp, agents, configuration, safety, installation, plugins]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-30T12:01:57.716Z
 sources:
+  - id: openwiki-source-6b1d82c5b3e8f760360a25c5
+    resource: repo://.mcp/server.json
+  - id: openwiki-source-d34098371626e84da01d5b28
+    resource: repo://agent-plugin/plugin.json
+  - id: openwiki-source-03ffc32a0ca502ab67c54b25
+    resource: repo://install.sh
   - id: openwiki-source-7d7960e96e037fce64b922b5
     resource: repo://topos/cli/src/commands/install/artifact.rs
   - id: openwiki-source-bac29063004a8a9c033c632e
@@ -32,10 +41,9 @@ sources:
     resource: repo://topos/cli/src/commands/install/uninstall.rs
   - id: openwiki-source-06d3c16386c87213458c954c
     resource: repo://topos/cli/tests/install_e2e.rs
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+  - id: openwiki-source-9bf1d8e64277056e6ccedf90
+    resource: repo://topos/mcp/src/main.rs
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 ---
 
 # Harness & Plugin Registration Workflow
@@ -46,24 +54,24 @@ The core rule is one MCP artifact per harness; **pi is the intentional exception
 
 ## Installer Lifecycle and Shell Distribution
 
-Topos supplies a shell installer (`install.sh`) for automated binary deployment alongside direct CLI execution. The installer verifies shell dependencies, preflights existing installations (such as Homebrew or existing binary builds), deploys the `topos` binary into `INSTALL_DIR` (`~/.local/bin` by default), configures shell profile PATH entries when required, records an installation provenance record, and verifies execution.
+Topos supplies a shell installer (`install.sh`) for automated binary deployment alongside direct CLI execution. The installer verifies shell dependencies (`curl`, `mktemp`, `sed`, `grep`, `uname`, `mkdir`, `mv`, `chmod`), preflights existing installations (such as Homebrew or existing binary builds), deploys the `topos` binary into `INSTALL_DIR` (`~/.local/bin` by default), configures shell profile PATH entries when required (using `# BEGIN TOPOS INSTALLER PATH` markers), records an installation provenance record in `${XDG_STATE_HOME:-$HOME/.local/state}/topos/install-provenance`, and verifies execution.
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: an unescaped angle bracket inside a label breaks rendering; rephrase the label. -->
-```text
+```mermaid
 flowchart TD
-    Start["Execute install.sh"] --> CheckDeps["Check dependencies<br>(curl, mktemp, sed, grep, uname, mkdir, mv, chmod)"]
-    CheckDeps --> ValidateDir["Validate INSTALL_DIR<br>(default ~/.local/bin)"]
-    ValidateDir --> Preflight["Preflight existing installs<br>(Homebrew, PATH, previous versions)"]
-    Preflight --> FetchBin["Download and extract Topos binary<br>for target OS / Architecture"]
-    FetchBin --> SetupPath["Setup shell profile PATH<br>(# BEGIN TOPOS INSTALLER PATH)"]
-    SetupPath --> WriteProv["Write provenance file<br>(~/.local/state/topos/install-provenance)"]
-    WriteProv --> Verify["Verify execution and print agent guidance<br>(topos --version, agent setup instructions)"]
+    Start["Execute install.sh"] --> CheckDeps["Check dependencies: curl, mktemp, sed, grep, uname, mkdir, mv, chmod"]
+    CheckDeps --> ValidateDir["Validate INSTALL_DIR (default ~/.local/bin)"]
+    ValidateDir --> Preflight["Preflight existing installs (Homebrew, PATH, previous versions)"]
+    Preflight --> FetchBin["Download and extract Topos binary for target OS and Architecture"]
+    FetchBin --> SetupPath["Setup shell profile PATH (# BEGIN TOPOS INSTALLER PATH)"]
+    SetupPath --> WriteProv["Write provenance file (~/.local/state/topos/install-provenance)"]
+    WriteProv --> Verify["Verify execution and print agent guidance (topos --version, agent setup)"]
 ```
 *Installer lifecycle flow for shell-based binary distribution and environment setup.*
 
-Topos also provides standardized plugin and package metadata manifests for registry discovery:
-- `.mcp/server.json`: Standard Model Context Protocol server manifest (conforming to schema version `2025-12-11`), declaring package registry bindings (PyPI `topos-mcp`) and stdio transport configurations.
-- `agent-plugin/plugin.json`: Plugin manifest for agent plugin ecosystems (conforming to `agent-plugins.org` schema `1.0.0`), declaring plugin ownership, licensing (`BSD-3-Clause`), and repository links.
+Topos also provides standardized plugin and package metadata manifests for registry discovery and dedicated MCP transport execution:
+- `.mcp/server.json`: Standard Model Context Protocol server manifest (conforming to schema version `2025-12-11`), declaring package registry bindings (PyPI `topos-mcp`), `uvx` runtime hints, and stdio transport configurations.
+- `agent-plugin/plugin.json`: Plugin manifest for agent plugin ecosystems (conforming to `agent-plugins.org` schema `1.0.0`), declaring plugin ownership (`Krv Labs`), licensing (`BSD-3-Clause`), and repository links.
+- `topos-mcp`: Dedicated stdio binary (`topos/mcp/src/main.rs`) serving Model Context Protocol requests directly or launched via `topos mcp`. It honors `--version` and `--help` flags to prevent handshake stalls during diagnostic queries.
 
 ## Supported Agent Harnesses and Metadata Formats
 
@@ -101,7 +109,6 @@ stateDiagram-v2
 ```
 *Per-harness MCP Artifact lifecycle. Conflict deliberately has no mutation transition; pi's separate skill-reference outcome is reported alongside.*
 
-The registration lifecycle is governed by four distinct states:
 - **Active**: The `topos` entry is recognized as Topos-owned, possesses required configuration fields, and points to an executable binary matching the running executable.
 - **Incomplete**: The entry is owned by Topos but exhibits path drift (pointing to an old executable), missing `type: stdio` (VS Code), or missing `type: local` / array `command` formatting (OpenCode). Re-running `topos install <id>` repairs the entry.
 - **Conflict**: The configuration file is unparsable JSON/TOML, a required container object has an incompatible type, the `topos` key is not recognized as Topos-owned, or a necessary VS Code or OpenCode JSONC update would strip comments or trailing commas. `install` refuses modification, and `uninstall` leaves the file untouched.
@@ -109,24 +116,23 @@ The registration lifecycle is governed by four distinct states:
 
 Topos uses field-level ownership rules rather than whole-object comparison. An entry is recognized as Topos-owned when its executable filename is `topos` or `topos.exe` and its arguments are exactly `["mcp"]` (either as a standalone `args` array or as the second element in OpenCode's combined `command` array), even if the path no longer exists. This enables repairing or removing stale paths while preventing accidental modification of hand-authored `topos` entries. Writers modify only Topos-owned keys (`command`, `args`, and `type`) while preserving sibling server definitions, foreign keys, and existing formatting.
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: a semicolon inside a label breaks rendering; rephrase the label. -->
-```text
+```mermaid
 flowchart TD
-    Req["topos install [harness]"] --> ResolveBin["Resolve binary path<br>(absolute file path)"]
-    ResolveBin --> InspectState["Inspect harness config<br>(Artifact state &amp; field-level check)"]
+    Req["topos install [harness]"] --> ResolveBin["Resolve binary path (absolute file path)"]
+    ResolveBin --> InspectState["Inspect harness config (Artifact state and field-level check)"]
     InspectState --> CheckState{"Config State"}
-    CheckState -- Active --> NoWrite["No write needed<br>(idempotent report)"]
-    CheckState -- Conflict --> AbortConflict["Refuse write<br>(preserve foreign JSONC/comments)"]
-    CheckState -- Absent or Incomplete --> CreateBackup["Create .topos.backup<br>(only if pre-existing file)"]
-    CreateBackup --> AtomicWrite["Atomic write via temp file<br>(field-level update, preserve foreign keys)"]
-    AtomicWrite --> RecordLedger["Record created file &amp; dirs<br>in install.json ledger"]
+    CheckState -- Active --> NoWrite["No write needed (idempotent report)"]
+    CheckState -- Conflict --> AbortConflict["Refuse write (preserve foreign JSONC and comments)"]
+    CheckState -- Absent or Incomplete --> CreateBackup["Create .topos.backup (only if pre-existing file)"]
+    CreateBackup --> AtomicWrite["Atomic write via temp file (field-level update, preserve foreign keys)"]
+    AtomicWrite --> RecordLedger["Record created file and dirs in install.json ledger"]
     RecordLedger --> CheckPi{"Harness is pi?"}
     CheckPi -- No --> Done["Registration Complete"]
-    CheckPi -- Yes --> PiSkill["Check pi skill source<br>(~/.pi/agent/skills or candidate dirs)"]
+    CheckPi -- Yes --> PiSkill["Check pi skill source (~/.pi/agent/skills or candidate dirs)"]
     PiSkill --> PiRef{"Skill Source"}
     PiRef -- Discovered --> PiDone["Report discovered in native dir"]
     PiRef -- Missing --> PiAdvice["Report openclaw install advice"]
-    PiRef -- Referenceable --> PiWrite["Append candidate dir to skills array<br>Record addedSkillRef in ledger"]
+    PiRef -- Referenceable --> PiWrite["Append candidate dir to skills array and record addedSkillRef in ledger"]
     PiWrite --> Done
 ```
 *Detailed harness registration pathway illustrating binary resolution, inspection, backup creation, atomic updates, ledger authorization, and pi skill handling.*

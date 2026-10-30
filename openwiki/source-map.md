@@ -5,7 +5,7 @@ description: Ownership-oriented starting points for changing Topos analysis, com
 tags: [source-map, maintenance, navigation, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
+    at: 2026-10-30T12:01:57.716Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -45,12 +45,12 @@ sources:
     resource: repo://topos/mcp/src/tools/depgraph.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 ---
 
 # Topos maintenance source map
 
-Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.14.0`).
+Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.15.0`).
 
 ```mermaid
 flowchart TD

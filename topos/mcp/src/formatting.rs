@@ -1124,6 +1124,7 @@ mod tests {
             active_findings: Vec::new(),
             acknowledged: Vec::new(),
             grade_capped: false,
+            adjusted_counts: None,
         };
         let prefs = default_preferences();
         let model = to_evaluation_result(

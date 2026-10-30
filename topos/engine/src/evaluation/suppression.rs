@@ -49,6 +49,9 @@ pub struct AdjustedVerdict {
     pub acknowledged: Vec<(SecurityFinding, AllowEntry)>,
     /// `true` iff `IDEAL` was demoted due to suppression.
     pub grade_capped: bool,
+    /// Allowlist-adjusted `cpg.dangerous_calls` and `cpg.taint_flows` counts,
+    /// when a CPG and allowlist were evaluated.
+    pub adjusted_counts: Option<(usize, usize)>,
 }
 
 impl AdjustedVerdict {
@@ -72,6 +75,24 @@ impl AdjustedVerdict {
             }
         }
         scores
+    }
+
+    /// `raw` metrics with `cpg.dangerous_calls` and `cpg.taint_flows` replaced
+    /// by their allowlist-adjusted counts, when computed.
+    pub fn metrics_with_adjusted_counts(
+        &self,
+        raw: &BTreeMap<String, f64>,
+    ) -> BTreeMap<String, f64> {
+        let mut metrics = raw.clone();
+        if let Some((dangerous, taint)) = self.adjusted_counts {
+            if let Some(slot) = metrics.get_mut("cpg.dangerous_calls") {
+                *slot = dangerous as f64;
+            }
+            if let Some(slot) = metrics.get_mut("cpg.taint_flows") {
+                *slot = taint as f64;
+            }
+        }
+        metrics
     }
 }
 
@@ -116,13 +137,13 @@ pub fn apply_allowlist(
 
     // Recompute the adjusted SECURE gate from exact counts (gate == 0).
     let allow_patterns: HashSet<String> = entries.iter().map(|e| e.pattern.clone()).collect();
-    let adjusted_secure_pass = match (allow_patterns.is_empty(), cpg) {
+    let (adjusted_secure_pass, adjusted_counts) = match (allow_patterns.is_empty(), cpg) {
         (false, Some(cpg)) => {
             let dangerous = dangerous_api_reachable(cpg, &allow_patterns);
             let taint = taint_flow_paths(cpg, &allow_patterns);
-            dangerous == 0 && taint == 0
+            (dangerous == 0 && taint == 0, Some((dangerous, taint)))
         }
-        _ => raw_secure_pass,
+        _ => (raw_secure_pass, None),
     };
 
     let mut adjusted_element = recompute_element(result, adjusted_secure_pass);
@@ -147,6 +168,7 @@ pub fn apply_allowlist(
         active_findings: active,
         acknowledged,
         grade_capped,
+        adjusted_counts,
     }
 }
 

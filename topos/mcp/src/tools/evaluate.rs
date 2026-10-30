@@ -698,7 +698,9 @@ fn adjusted_result(
         scores: overlay.verdict.secure_lifted(&result.scores),
         lattice_element: overlay.verdict.adjusted_element,
         priority: result.priority,
-        raw_metrics: result.raw_metrics.clone(),
+        raw_metrics: overlay
+            .verdict
+            .metrics_with_adjusted_counts(&result.raw_metrics),
         interpretation: result.interpretation.clone(),
         is_entrypoint_module: result.is_entrypoint_module,
         is_stable_leaf_module: result.is_stable_leaf_module,
@@ -2659,6 +2661,23 @@ mod tests {
             allowed["worst_files"][0]["binding_constraint"],
             serde_json::Value::Null
         );
+
+        let taint_and_eval = [(
+            "partial.py",
+            "import os\ndef h(x):\n    cmd = input()\n    os.system(cmd)\n    return eval(x)\n",
+        )];
+        let raw_both = project_full(&scanned_project("partial_off", &taint_and_eval), &[]);
+        assert_eq!(raw_both["worst_files"][0]["gates_failed"], 2);
+        let one_left = project_full(
+            &scanned_project("partial_one", &taint_and_eval),
+            &["os.system"],
+        );
+        assert_eq!(one_left["worst_files"][0]["gates_failed"], 1);
+        let partial = project_full(
+            &scanned_project("partial_on", &taint_and_eval),
+            &["eval", "os.system"],
+        );
+        assert!(partial["worst_files"][0].get("gates_failed").is_none());
     }
 
     /// Equal failures and equal score: the file that holds fewer pillars

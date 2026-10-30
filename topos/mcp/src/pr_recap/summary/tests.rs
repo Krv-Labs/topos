@@ -5,7 +5,7 @@ use serde_json::Value;
 use topos_engine::config::Severity;
 
 use super::super::mcp::full_value;
-use super::super::model::{Headline, Hotspot};
+use super::super::model::{GateCrossing, Headline, Hotspot};
 use super::super::progress::Timing;
 use super::super::tests::{branchy, commit_all, recap, write_files, write_repo};
 use super::super::verdict::direction_for;
@@ -210,10 +210,20 @@ fn metrics_include_those_only_a_requested_record_shows() {
         advice: String::new(),
     }];
     let path = recap.files[index].path.clone();
+    if let Some(pillar) = recap.files[index].pillars.get_mut("navigable") {
+        pillar.gate = Some(GateCrossing {
+            metric: "ast.entropy".to_string(),
+            before: None,
+            after: 0.1,
+            limit: 0.2,
+            worse: true,
+        });
+    }
     let without = summarize(&recap, &repo);
     let with = build(&recap, &repo, &[path], TIMING);
     assert!(!with.files.is_empty());
     assert!(with.metrics.contains_key("cpg.taint_flows"));
+    assert!(with.metrics.contains_key("ast.entropy"));
     assert!(with.metrics.len() >= without.metrics.len());
 }
 
@@ -408,8 +418,7 @@ fn a_range_wide_finding_has_no_path() {
         value["findings"][0]
     );
     let findings = value["findings"].as_array().unwrap();
-    assert!(findings
-        .iter()
-        .skip(1)
-        .all(|f| f["path"].as_str().is_some_and(|p| p.starts_with('/'))));
+    assert!(findings.iter().skip(1).all(|f| f["path"]
+        .as_str()
+        .is_some_and(|p| Path::new(p).is_absolute())));
 }

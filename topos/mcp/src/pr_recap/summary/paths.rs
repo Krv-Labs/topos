@@ -112,6 +112,14 @@ fn lookup(recap: &PrRecap, root: &Path, raw: &str) -> Result<usize, (String, Str
     if let Some(index) = position(raw) {
         return Ok(index);
     }
+    let absolute = Absolute::new(root);
+    if let Some(index) = recap
+        .files
+        .iter()
+        .position(|file| absolute.path(&file.path) == raw)
+    {
+        return Ok(index);
+    }
     match relative_path(raw, root) {
         Ok(wanted) => position(&wanted).ok_or_else(|| {
             let reason = why_missing(recap, &wanted);
@@ -213,6 +221,7 @@ mod tests {
         (resolved.found.len(), resolved.missing.len())
     }
 
+    #[cfg(unix)]
     #[test]
     fn absolute_paths_resolve_through_symlinks() {
         let (_keep, repo) = fixture(3, 1);
@@ -233,6 +242,21 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn an_emitted_absolute_path_that_became_a_symlink_still_matches_its_own_record() {
+        let (_keep, repo) = fixture(2, 0);
+        let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+        let first = repo.join("src/big1.py");
+        let second = repo.join("src/big2.py");
+        std::fs::remove_file(&first).unwrap();
+        std::os::unix::fs::symlink(&second, &first).unwrap();
+        let asked = first.display().to_string();
+        let resolved = resolve(&recap, &repo, &[asked.as_str()]);
+        assert_eq!(placed(&resolved), (1, 0));
+        assert_eq!(recap.files[resolved.found[0]].path, "src/big1.py");
+    }
+
     #[test]
     fn relative_paths_are_cleaned_lexically_and_cannot_leave_the_repository() {
         let (_keep, repo) = fixture(3, 1);
@@ -246,6 +270,7 @@ mod tests {
         assert_eq!(reasons[..2], ["outside the repository"; 2]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_backslash_is_part_of_a_file_name_on_unix() {
         let (_keep, repo) = write_repo(&[("README.md", "# hi\n")]);

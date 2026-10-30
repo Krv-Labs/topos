@@ -197,7 +197,13 @@ fn metrics_shown(
         .iter()
         .flat_map(|&index| recap.files[index].hotspots.iter())
         .map(|spot| spot.metric.as_str());
-    describe_metrics(findings.chain(spots).chain(records))
+    let gates = resolved
+        .found
+        .iter()
+        .flat_map(|&index| recap.files[index].pillars.values())
+        .filter_map(|pillar| pillar.gate.as_ref())
+        .map(|gate| gate.metric.as_str());
+    describe_metrics(findings.chain(spots).chain(records).chain(gates))
 }
 
 /// What the summary leaves out. A scored file counts as left out only when

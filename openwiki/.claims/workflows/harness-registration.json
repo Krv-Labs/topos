@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8473149ee6c3830ba5f06d2bf5747123342f875970909124bad9a3bfa0b77caf",
+  "pageVersion": "sha256:74501071ca0208c341bcef8b0512ff5b4281c1c552cc10b966014319c95af44f",
   "claims": [
     {
       "id": "claim_74f28609c9e24ccd8ca4b841c7a0678b",
@@ -273,10 +273,32 @@
           "version": "repo-file-v1:sha256:d91ddd83d402ac62e66b9bf06afdd1319b77da6e0815f3ffbbc5f0f479a369d9"
         }
       ]
+    },
+    {
+      "id": "claim_db4104abfc9b490fa7efb7e856ae0ddc",
+      "statement": "Topos provides an automated shell installer (install.sh) for binary deployment, PATH updates, and provenance tracking alongside standard MCP server (.mcp/server.json) and agent plugin (agent-plugin/plugin.json) manifests, with a dedicated topos-mcp binary serving stdio MCP requests.",
+      "evidence": [
+        {
+          "resource": "repo://.mcp/server.json",
+          "version": "repo-file-v1:sha256:b64b648748bc5f490c64453f406aee798b51e4a92f1e6e2e6b92ffbb81cb3088"
+        },
+        {
+          "resource": "repo://agent-plugin/plugin.json",
+          "version": "repo-file-v1:sha256:ab075920ee8277d66365ac2b8d9b7f5f6320106404e250e9d3a7a2244d2af7c0"
+        },
+        {
+          "resource": "repo://install.sh#L73-L115",
+          "version": "repo-lines-v1:sha256:9a890d62f4fa43fdaeacb7538b84bdd282893a8b3327478d4fe3ca62e2ca4645:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmYyOGY3YTE5NmZiYjA0MWZkMTE0NzJjYzdjOGIxZjZkY2RhYmQyZmZjYjk4MjVkN2M5NDQ2ZDJiOTJlNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMTY4MDljMDc1ZGIzMDllMDliYmM5YWI3ZWZlZTY5ZWZiNWY0MTliZDRkODkzMGQwMzgwNjYwMmRkMDJmZDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDUwNzhhYWU3ODY3NzZlMDI0ZWNmMzZmZTFhYWQ5ZjZhZjM3NTkwZWVmMWM3MWExNWFmN2FlNDQyMWE5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkNzIwZjcwZDZhNWNlNWMwYjVjNmEyNDJkOWY5MTM5ZmUwMDdlZDU0OTc0MDRlMDY3Yzc1MjNjYzQ1ZjQ2ZGIifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/main.rs#L15-L38",
+          "version": "repo-lines-v1:sha256:7d75bcd5a55877db1bb2db3b8595f537878e2dfaf1c336c96a85a370da7580ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZDA2ZTA0OGNkMjcyNzM4ZDgzN2IwYzBlYzZhYWIwYjAzMTQ1N2U0NzVmZDQ5YWJiY2JhZmM1ZjczYzAyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MjQ4Y2RiNmRmYTU1MzM0MmM4M2E0YjdkMjg0ZTk1OGEzMmZkZjI2YjZhODA4ODA3YTFlNmYyYWFiYTkyNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-23T10:31:29.483Z"
+    "at": "2026-10-30T12:01:57.716Z"
   }
 }

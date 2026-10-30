@@ -5,7 +5,7 @@ description: Detailed execution workflows for Topos CLI commands and MCP agent t
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-23T10:31:29.483Z
+    at: 2026-10-30T12:01:57.716Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,16 +47,40 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-23T10:31:29.483Z" }
+generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
 ---
 
 # Agent & CLI Workflows
 
 Topos provides the `topos` CLI for local terminal operations and the stdio `topos-mcp` server for MCP hosts and autonomous agents. Both interfaces invoke the same underlying quality engine, but operate under distinct interaction and safety contracts: CLI output is formatted for human terminal display or shell scripting, whereas MCP tool definitions, JSON schemas, result structures, tool annotations, protocol revisions, and filesystem containment boundaries constitute public contracts for external agents. Quality lattice verdicts are defined in the [quality model](../domain/quality-model.md); structural test coverage and advisory refactor hotspot analysis are complementary architectural signals that operate outside the four-pillar lattice.
 
+## Command invocation: CLI vs MCP
+
+While CLI commands run ephemerally from shell arguments and write formatted human or JSON output directly to standard streams, MCP tool calls run over a long-lived JSON-RPC stdio connection with strict security containment checks and standardized response structures.
+
+```mermaid
+flowchart TD
+    subgraph CLI ["Topos CLI Invocation Path"]
+        CLI_IN["topos evaluate / inspect / ..."] --> PRE["pre_dispatch() check"]
+        PRE --> CLAP["clap Argument Parsing"]
+        CLAP --> CMD_HDL["Subcommand Handler Execution"]
+        CMD_HDL --> ENGINE1["topos-engine Quality Lattice"]
+        ENGINE1 --> OUT1["Terminal Text Output or Output JSON Document"]
+    end
+
+    subgraph MCP ["Topos MCP Tool Call Path"]
+        MCP_IN["JSON-RPC Request Frame over stdio"] --> SRV["ToposServer Stdio Processing"]
+        SRV --> VAL["Path Containment & Security Boundary Check"]
+        VAL --> ROUTE["Tool Router (e.g. topos_evaluate_file)"]
+        ROUTE --> ENGINE2["topos-engine Quality Lattice"]
+        ENGINE2 --> OUT2["JSON-RPC CallToolResponse Object"]
+    end
+```
+*Comparison of invocation mechanisms: direct shell dispatch with clap parsing versus stdio JSON-RPC routing with path containment enforcement.*
+
 ## Select an entrypoint
 
-The root `topos` executable dispatches thirteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help and exits with status 2, while explicit help prints to standard output and exits with status 0.
+The root `topos` executable dispatches thirteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help to standard error and exits with status 2, while explicit help prints to standard output and exits with status 0.
 
 ```mermaid
 flowchart TD
@@ -202,9 +226,10 @@ flowchart TD
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `path` | `String` | *(required)* | Target directory path to evaluate recursively. Must resolve inside the file root. |
-| `preferences` | `Option<UserPreferencesInput>` | `None` | Custom pillar priority ranking (defaults to SIMPLE priority). |
+| `preferences` | `Option<UserPreferencesInput>` | `None` | Custom pillar priority ranking and optional target verdict. |
 | `gitnexus_dir` | `Option<String>` | `None` | Store path relative to file root (default: `<file_root>/.gitnexus`). |
 | `no_composable` | `bool` | `false` | When true, skips GitNexus graph resolution and scores SIMPLE/SECURE/NAVIGABLE only. |
+| `detail` | `Detail` | `"summary"` | `"summary"` for rollups and worst files, or `"full"` for per-file rows. |
 | `limit` | `usize` | `25` | Page row count limit (clamped between 1 and 500). |
 | `offset` | `usize` | `0` | Zero-based row offset for pagination; submit `next_offset` from response for next page. |
 | `verbose` | `bool` | `false` | When true, includes raw metric score details for each file row. |
@@ -212,6 +237,85 @@ flowchart TD
 | `allow` | `Vec<String>` | `[]` | List of dangerous-call patterns to acknowledge for the current evaluation run. |
 
 `topos_evaluate_project` recursively scans all supported source files, infers language per file, computes per-language rollups, identifies the weakest-file floor, and paginates sorted results using `limit` and `offset`. Security diagnostic overlays are constructed for parseable classifications failing dangerous-call or taint-flow metrics; allowlists partition findings into active and acknowledged risks without removing allowed items prior to disclosure.
+
+### Request/response flow examples
+
+Below are concrete JSON-RPC request and response payload structures for key agent tool interactions.
+
+#### 1. Evaluation with custom preferences and suppressions (`topos_evaluate_file`)
+
+**Request**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "topos_evaluate_file",
+    "arguments": {
+      "filepath": "/project/src/server.rs",
+      "preferences": {
+        "ranking": ["secure", "simple", "composable", "navigable"]
+      },
+      "allow": ["exec", "eval"],
+      "include_security_findings": true,
+      "refactor_targets": 3
+    }
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"is_parseable\": true,\n  \"lattice_element\": \"SECURE_SIMPLE\",\n  \"lattice_symbol\": \"\u25b2 S+S\",\n  \"lattice_description\": \"Meets SECURE and SIMPLE gates\",\n  \"dimensions\": {\n    \"simple\": \"SIMPLE\",\n    \"composable\": \"NON_COMPOSABLE\",\n    \"secure\": \"SECURE\",\n    \"navigable\": \"NON_NAVIGABLE\"\n  },\n  \"scores\": {\n    \"simple\": 88.5,\n    \"secure\": 95.0\n  },\n  \"priority\": \"secure\",\n  \"priority_source\": \"preferences\",\n  \"guidance\": \"Focus on COMPOSABLE to achieve IDEAL status.\",\n  \"coupling_available\": true,\n  \"security_findings\": [],\n  \"acknowledged_risks\": [\n    {\n      \"pattern\": \"exec\",\n      \"status\": \"acknowledged\"\n    }\n  ]\n}"
+      }
+    ]
+  }
+}
+```
+
+#### 2. Project-wide evaluation with pagination (`topos_evaluate_project`)
+
+**Request**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "topos_evaluate_project",
+    "arguments": {
+      "path": "/project/src",
+      "detail": "full",
+      "limit": 10,
+      "offset": 0
+    }
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"path\": \"/project/src\",\n  \"total_files\": 42,\n  \"aggregate_floor_verdict\": \"SIMPLE\",\n  \"limit\": 10,\n  \"offset\": 0,\n  \"next_offset\": 10,\n  \"files\": [\n    {\n      \"filepath\": \"/project/src/lib.rs\",\n      \"language\": \"rust\",\n      \"lattice_element\": \"IDEAL\"\n    }\n  ]\n}"
+      }
+    ]
+  }
+}
+```
 
 ## Baseline-aware evaluate–edit–assess loop
 

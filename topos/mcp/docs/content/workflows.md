@@ -23,7 +23,7 @@ situational.
 | `topos_begin_refactor` → `topos_assess_snapshot` | Verify when the baseline is untracked/uncommitted. |
 | `topos_assess_improvement` | Verify a side-by-side proposed variant. |
 | `topos_assess_changeset` | Verify several edited files at once against a git ref. |
-| `topos_pr_recap` | PR / commit-range structural recap (`topos.pr_recap.v3`) with gate readiness, findings, splits, and rollups. |
+| `topos_pr_recap` | PR / commit-range structural recap: a summary by default (`topos.pr_recap.summary.v1`: readiness, blocking findings, ranked files needing attention, counts of what is left out); `detail: "full"` returns `topos.pr_recap.v3`, `paths` adds full records for those files. |
 | `topos_compare_files` / `topos_compare_code` | AST edit distance between two versions (no verdict). |
 | `topos_preference_walk` | Resolve `target`, `fallback_target`, `next_step`, and `next_pillar` (pass `gate_scores`) for a ranking. |
 | `topos_depgraph_status` | Read-only GitNexus diagnosis; never triggers generation. |

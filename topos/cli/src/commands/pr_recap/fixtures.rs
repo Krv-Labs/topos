@@ -322,6 +322,7 @@ fn recap_of(
     let exit_code = readiness.exit_code(cfg.fail_on);
     PrRecap {
         schema: SCHEMA,
+        reason_path: None,
         base: "2e352d7aaaaaaa".to_string(),
         head: "7b18166bbbbbbb".to_string(),
         review: Some(PullRequest {

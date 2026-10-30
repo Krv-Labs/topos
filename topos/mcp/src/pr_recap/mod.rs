@@ -9,37 +9,33 @@ pub mod gates;
 pub mod gh;
 pub mod git;
 pub mod hotspots;
+mod mcp;
 pub mod model;
 pub mod moves;
+mod progress;
 pub mod score;
 pub mod store;
+pub mod summary;
 pub mod verdict;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::Arc;
 
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResponse, CallToolResult};
+use rmcp::model::CallToolResponse;
 use rmcp::service::RequestContext;
 use rmcp::{tool, tool_router, ErrorData as McpError, RoleServer};
-use topos_engine::adapters::gitnexus::gitnexus_available;
-use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, GateId, PrGateConfig, PrGatePreset, Severity,
-    ToposConfig,
-};
+use topos_engine::config::{FailOn, GateId, PrGateConfig, PrGatePreset, Severity, ToposConfig};
 use topos_engine::core::omega::Omega;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::preferences::{Generator, UserPreferences, RANKING_LEN};
-use topos_engine::evaluation::waivers::today_utc;
 use topos_engine::graphs::mdg::file_graph::FileGraph;
 use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use topos_engine::graphs::mdg::split::{detect_splits, SplitReport};
 
-use crate::formatting::to_tool_result;
 use crate::schemas::PrRecapInput;
-use crate::security::{composable_default_root, resolve_file_root, resolve_project_path};
 use crate::server::ToposServer;
 
 use self::clusters::{build_clusters, changed_list};
@@ -50,6 +46,7 @@ use self::git::{
 use self::hotspots::top_hotspots;
 pub use self::model::*;
 use self::moves::RangeMoves;
+use self::progress::Progress;
 use self::score::Scoring;
 use self::store::{
     build_estimate_ms, last_build_ms, pr_store_state, prepare_pr_stores_with_cancel, PrStores,
@@ -57,10 +54,6 @@ use self::store::{
 };
 use self::verdict::{added_rollup, direction_for, finish_statuses, project_rollup};
 use crate::cache::{ensure_marker_for_build, PrLease};
-
-/// `topos_pr_recap` default. The MCP response carries every scored file
-/// (~1.2 KB of JSON each), so agents opt into `max_files: 0` explicitly.
-pub const MCP_DEFAULT_FILE_CAP: usize = 40;
 
 /// Above this many files to score, the CLI warns the run may take a while;
 /// `0` (`--max-files 0`) still scores everything.
@@ -77,6 +70,9 @@ pub struct Judging {
     /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
     /// nothing.
     pub today: String,
+    /// What the surface calls the scoring cap in hints that name it:
+    /// [`gates::CLI_CAP_NAME`] on the CLI, `max_files` on the MCP tool.
+    pub cap_name: &'static str,
 }
 
 /// The gate policy for one run: `--preset` replaces the project's
@@ -576,7 +572,7 @@ pub fn build_recap(
     finish_statuses(&mut scored, &clusters, &lattice);
 
     let mut files: Vec<FileRecap> = scored.into_iter().map(|file| file.recap).collect();
-    let (direction, described) = direction_for(&files, &base_sha, &head_sha);
+    let (direction, described, described_path) = direction_for(&files, &base_sha, &head_sha);
     let mut coupling_graphs = base_graph
         .as_ref()
         .zip(head_graph.as_ref())
@@ -599,10 +595,14 @@ pub fn build_recap(
             &judging.gate,
         )?;
     }
+    let unscored = gates::Unscored {
+        files: capped,
+        cap_name: judging.cap_name,
+    };
     let (_, mut findings) = gates::evaluate(
         &files,
         &clusters,
-        capped,
+        unscored,
         &judging.gate,
         &moves,
         coupling_graphs.as_ref(),
@@ -618,16 +618,8 @@ pub fn build_recap(
     for file in &mut files {
         file.severity = gates::worst_at(&findings, &file.path);
     }
-    let lead = findings.iter().find(|finding| finding.counts());
-    let mut reason = lead.map_or(described, |finding| finding.text.clone());
-    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
-    if capped > 0 && !incomplete_leads {
-        reason.push_str(&format!(
-            " Incomplete: {capped} lower-churn file{} over the {max_files}-file cap went \
-             unscored (raise --max-files).",
-            if capped == 1 { "" } else { "s" }
-        ));
-    }
+    let (reason, reason_path) =
+        reason_for(&findings, (described, described_path), unscored, max_files);
     let (hotspots, hotspots_total) = top_hotspots(&files, judging.gate.max_hotspots as usize);
     let project = project_rollup(&files);
     let added = added_rollup(&files);
@@ -653,6 +645,7 @@ pub fn build_recap(
         exit_code,
         check: if exit_code == 1 { "fail" } else { "pass" },
         reason,
+        reason_path,
         findings,
         waivers,
         direction,
@@ -668,6 +661,34 @@ pub fn build_recap(
         hotspots_total,
         non_claim: "Structural direction is not proof that tests or behavior still pass, and PR recap is a structural debt ledger and pre-review coaching aid rather than a semantic correctness or AI-slop classifier.",
     })
+}
+
+/// What the verdict says and the file it names: the first counting
+/// finding's text and path, else the direction's `described` text and its
+/// file. A run that left files unscored says so, unless the lead finding is
+/// that very incompleteness.
+fn reason_for(
+    findings: &[gates::Finding],
+    (described, described_path): (String, Option<String>),
+    unscored: gates::Unscored,
+    max_files: usize,
+) -> (String, Option<String>) {
+    let lead = findings.iter().find(|finding| finding.counts());
+    let path = match lead {
+        Some(finding) => Some(finding.path.clone()).filter(|path| !path.is_empty()),
+        None => described_path,
+    };
+    let mut reason = lead.map_or(described, |finding| finding.text.clone());
+    let incomplete_leads = lead.is_some_and(|finding| finding.gate == GateId::Incomplete);
+    if unscored.files > 0 && !incomplete_leads {
+        let (files, cap_name) = (unscored.files, unscored.cap_name);
+        reason.push_str(&format!(
+            " Incomplete: {files} lower-churn file{} over the {max_files}-file cap went \
+             unscored (raise {cap_name}).",
+            if files == 1 { "" } else { "s" },
+        ));
+    }
+    (reason, path)
 }
 
 fn score_capped_for_fan_in(
@@ -719,77 +740,9 @@ fn parse_preset(raw: &str) -> Result<PrGatePreset, String> {
     }
 }
 
-fn pr_recap_sync_with_cancel(params: PrRecapInput, cancel: Option<&AtomicBool>) -> CallToolResult {
-    match run_pr_recap(params, cancel) {
-        Ok(recap) => {
-            let markdown = format!(
-                "**PR Recap ({})**: `{}` ({:?}) — {}\nScored {} file(s) (`{}...{}`).",
-                recap.check,
-                recap.readiness.word(),
-                recap.direction,
-                recap.reason,
-                recap.scope.files_scored,
-                recap.base,
-                recap.head,
-            );
-            to_tool_result(&recap, markdown)
-        }
-        Err(error) => to_tool_result(
-            &serde_json::json!({ "error": error }),
-            format!("**Error:** {error}"),
-        ),
-    }
-}
-
-fn run_pr_recap(params: PrRecapInput, cancel: Option<&AtomicBool>) -> Result<PrRecap, String> {
-    let project_root = match params.directory.as_deref() {
-        Some(directory) => {
-            let (resolved, project) = resolve_project_path(directory)?;
-            if !resolved.is_dir() {
-                return Err(format!("Path is not a directory: {}", resolved.display()));
-            }
-            composable_default_root(&project)
-        }
-        None => composable_default_root(&resolve_file_root()?),
-    };
-    let root = git_root(&project_root)?;
-    let preset = params.preset.as_deref().map(parse_preset).transpose()?;
-    let topos = load_topos_config(&root);
-    let judging = Judging {
-        priority: resolve_priority(params.priority.as_deref(), &topos)?,
-        gate: resolve_gate_policy(params.strict, preset, &topos.pr_recap),
-        source: preset.is_none().then(|| find_config_file(&root)).flatten(),
-        topos,
-        today: today_utc(),
-    };
-    let (base, head, review) = resolve_range(&root, params.pr, params.base, params.head)?;
-    let base = merge_base(&root, &base, head_commit(&head))?;
-    let plan = plan_coupling(
-        &root,
-        &base,
-        &head,
-        params.pr,
-        params.no_coupling,
-        gitnexus_available(),
-    );
-    let (stores, coupling) = prepare_with_cancel(&root, plan, &|| {}, cancel);
-    let mut recap = build_recap(
-        &root,
-        &base,
-        &head,
-        params.max_files,
-        stores.as_ref(),
-        coupling,
-        &judging,
-        &mut (),
-    )?;
-    recap.review = review;
-    Ok(recap)
-}
-
 #[tool_router(router = pr_recap_router, vis = "pub(crate)")]
 impl ToposServer {
-    /// Structural PR or commit-range recap (`topos.pr_recap.v3`) with gate readiness, findings, splits, and rollups.
+    /// Structural PR or commit-range recap: gate readiness, blocking findings, files needing attention. Summary by default; `detail: "full"` for `topos.pr_recap.v3`.
     #[tool(
         name = "topos_pr_recap",
         annotations(
@@ -805,14 +758,15 @@ impl ToposServer {
         context: RequestContext<RoleServer>,
         Parameters(params): Parameters<PrRecapInput>,
     ) -> Result<CallToolResponse, McpError> {
+        let progress = Arc::new(Progress::default());
+        let worker = Arc::clone(&progress);
         self.executor
-            .run_task(
+            .run_task_described(
                 &context,
-                Duration::from_secs(300),
+                mcp::deadline(),
                 "Building PR structural recap",
-                move |cancel_flag, _reporter| {
-                    Ok(pr_recap_sync_with_cancel(params, Some(cancel_flag)))
-                },
+                mcp::timeout_note(&progress),
+                move |cancel_flag, _reporter| Ok(mcp::respond(params, Some(cancel_flag), &worker)),
             )
             .await
     }
@@ -822,6 +776,7 @@ impl ToposServer {
 pub(super) mod tests {
     use super::gh::git;
     use super::*;
+    use crate::schemas::Detail;
 
     pub(super) fn no_coupling() -> CouplingStatus {
         unmeasured(
@@ -830,13 +785,14 @@ pub(super) mod tests {
         )
     }
 
-    fn judging(priority: Priority) -> Judging {
+    pub(super) fn judging(priority: Priority) -> Judging {
         Judging {
             priority,
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
             today: "2026-09-22".to_string(),
+            cap_name: gates::CLI_CAP_NAME,
         }
     }
 
@@ -895,13 +851,15 @@ pub(super) mod tests {
         let (_temp_dir, repo) = write_repo(&[("a.py", &branchy("solve"))]);
         write_files(&repo, &[("a.py", "def solve(x):\n    return x\n")]);
         let repo_path = repo.to_str().expect("utf-8 repo path").to_string();
-        let response = pr_recap_sync_with_cancel(
+        let response = mcp::respond_untimed(
             PrRecapInput {
                 directory: Some(repo_path.clone()),
                 pr: None,
                 base: Some("HEAD".to_string()),
                 head: Some(":worktree".to_string()),
                 max_files: 0,
+                detail: Detail::Summary,
+                paths: Vec::new(),
                 no_coupling: true,
                 priority: Some("simple".to_string()),
                 strict: false,
@@ -910,17 +868,19 @@ pub(super) mod tests {
             None,
         );
         let structured = response.structured_content.expect("structured_content");
-        assert_eq!(structured["schema"], SCHEMA);
+        assert_eq!(structured["schema"], summary::SUMMARY_SCHEMA);
         assert_eq!(structured["check"], "pass");
         assert_eq!(structured["scope"]["files_scored"], 1);
 
-        let invalid_response = pr_recap_sync_with_cancel(
+        let invalid_response = mcp::respond_untimed(
             PrRecapInput {
                 directory: Some(repo_path),
                 pr: Some(1),
                 base: Some("HEAD".to_string()),
                 head: None,
                 max_files: 0,
+                detail: Detail::Summary,
+                paths: Vec::new(),
                 no_coupling: true,
                 priority: None,
                 strict: false,

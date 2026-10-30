@@ -13,6 +13,9 @@ topos-engine = { path = "../engine" }
 # silent protocol drift across minor bumps.
 rmcp = { version = "~3.5.1", features = ["server", "transport-io", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "sync", "time"] }
+# The cancellation token `rmcp` hands every request, named so the deadline
+# race can be driven without a request context.
+tokio-util = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 schemars = "1"

@@ -22,6 +22,7 @@ pub use coupling::capped_fan_in_paths;
 use std::cmp::Ordering;
 use std::path::Path;
 
+use schemars::JsonSchema;
 use serde::{Serialize, Serializer};
 use topos_engine::config::{FailOn, GateId, PrGateConfig, Severity};
 use topos_engine::evaluation::waivers::{self, Waiver};
@@ -39,7 +40,7 @@ pub use self::coupling::Coupling;
 const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
 
 /// Whether the change is ready to merge under the configured gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Readiness {
     Ready,
@@ -183,6 +184,29 @@ pub struct Waived {
     pub expires: Option<String>,
 }
 
+/// What the scoring cap left out, and what the caller calls the cap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unscored {
+    /// Files over the cap that went unscored.
+    pub files: usize,
+    /// The cap as the caller's surface spells it: `--max-files` on the CLI,
+    /// `max_files` on the MCP tool.
+    pub cap_name: &'static str,
+}
+
+/// What the CLI calls the scoring cap, for the hints that name it.
+pub const CLI_CAP_NAME: &str = "--max-files";
+
+impl From<usize> for Unscored {
+    /// `files` unscored under the CLI's name for the cap.
+    fn from(files: usize) -> Self {
+        Unscored {
+            files,
+            cap_name: CLI_CAP_NAME,
+        }
+    }
+}
+
 /// Apply the gates in `cfg` to the scored files, the split clusters and
 /// the scoring cap (`incomplete` files left unscored), with the range's
 /// `moves` to tell a moved regression from a new one. The coupling gates
@@ -194,11 +218,12 @@ pub struct Waived {
 pub fn evaluate(
     files: &[FileRecap],
     clusters: &[Cluster],
-    incomplete: usize,
+    incomplete: impl Into<Unscored>,
     cfg: &PrGateConfig,
     moves: &RangeMoves,
     coupling: Option<&Coupling>,
 ) -> (Readiness, Vec<Finding>) {
+    let incomplete = incomplete.into();
     let mut found = Vec::new();
     for file in files {
         if file.is_new() {
@@ -218,8 +243,8 @@ pub fn evaluate(
     if let Some(coupling) = coupling {
         coupling::coupling_findings(coupling, files, clusters, cfg, &mut found);
     }
-    if incomplete > 0 {
-        found.push(incomplete_finding(incomplete));
+    if incomplete.files > 0 {
+        found.push(incomplete_finding(&incomplete));
     }
     let mut findings: Vec<Finding> = found
         .into_iter()
@@ -619,16 +644,19 @@ fn split_findings(cluster: &Cluster, files: &[FileRecap], found: &mut Vec<Findin
     }
 }
 
-fn incomplete_finding(unscored: usize) -> Finding {
-    Finding::new(
+fn incomplete_finding(unscored: &Unscored) -> Finding {
+    let Unscored { files, cap_name } = unscored;
+    let mut finding = Finding::new(
         GateId::Incomplete,
         "",
         format!(
-            "{unscored} lower-churn file{} went unscored over the --max-files cap, so the \
+            "{files} lower-churn file{} went unscored over the {cap_name} cap, so the \
              verdict covers only the files scored.",
-            if unscored == 1 { "" } else { "s" }
+            if *files == 1 { "" } else { "s" }
         ),
-    )
+    );
+    finding.fix = format!("Raise {cap_name} to score every changed file.");
+    finding
 }
 
 /// The largest displayed-score move on any pillar, either way.
@@ -751,6 +779,22 @@ pub fn advice_for(metric: &str) -> Option<&'static str> {
     })
 }
 
+/// One descriptive line per metric [`advice_for`] covers: what it measures.
+/// The summary names these instead of carrying per-finding `fix` text.
+pub fn metric_description(metric: &str) -> Option<&'static str> {
+    Some(match metric {
+        "ast.max_function_complexity" => "cyclomatic complexity of the most complex function",
+        "ast.entropy" => "source-text compression ratio (token entropy); gated to a band",
+        "nav.max_function_divergence" => {
+            "nesting divergence of the most divergent function (depth-weighted scope fan-out)"
+        }
+        "mdg.fan_out" => "distinct external symbols the file calls",
+        "cpg.dangerous_calls" => "reachable call sites that match the dangerous-API registry",
+        "cpg.taint_flows" => "data-flow paths from untrusted input to a dangerous sink",
+        _ => return None,
+    })
+}
+
 /// The fix for a finding that no metric's advice covers.
 fn default_fix(gate: GateId) -> &'static str {
     match gate {
@@ -773,7 +817,7 @@ fn default_fix(gate: GateId) -> &'static str {
         GateId::Cosmetic | GateId::Suspicious => {
             "Check that the change does more than reshuffle code the scores react to."
         }
-        GateId::Incomplete => "Raise --max-files to score every changed file.",
+        GateId::Incomplete => "Lift the scoring cap to score every changed file.",
         GateId::ImportCycle => "Break the cycle by inverting one of the imports this change added.",
         GateId::FanInGrowth => {
             "Simplify the file before more code depends on it, or give the new callers a \
@@ -1426,6 +1470,13 @@ mod tests {
     fn every_gating_metric_has_advice() {
         for spec in GATE_SPECS {
             assert!(advice_for(spec.metric).is_some(), "{}", spec.metric);
+        }
+    }
+
+    #[test]
+    fn every_gating_metric_has_a_description() {
+        for spec in GATE_SPECS {
+            assert!(metric_description(spec.metric).is_some(), "{}", spec.metric);
         }
     }
 

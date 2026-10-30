@@ -448,6 +448,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
             .flatten(),
         topos,
         today: today_utc(),
+        cap_name: gates::CLI_CAP_NAME,
     };
     let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
     let format = resolve_format(args.compact, args.format, args.no_marker);
@@ -536,6 +537,7 @@ mod tests {
             gate: PrGateConfig::default(),
             source: None,
             today: "2026-09-22".to_string(),
+            cap_name: gates::CLI_CAP_NAME,
         }
     }
 

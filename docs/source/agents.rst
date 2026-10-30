@@ -423,12 +423,26 @@ Refactor & Iterate
    ``complexity_relocated_within_file`` and ``project_regression``. When COMPOSABLE is
    blocked, call ``topos_generate_depgraph`` first, then re-assess.
 
-``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 40, "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
-   Structural pull-request or commit-range recap (``topos.pr_recap.v3``) judged
-   against the project's ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or
-   ``BLOCKED``). Pass either ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs.
-   ``:worktree`` when omitted). Returns gate readiness, findings, split clusters,
-   per-file before/after medals, and project rollups.
+``topos_pr_recap({"directory": ..., "pr": ..., "base": "HEAD", "head": ":worktree", "max_files": 0, "detail": "summary", "paths": [], "no_coupling": ..., "priority": ..., "strict": ..., "preset": ...})``
+   Structural pull-request or commit-range recap judged against the project's
+   ``[pr_recap]`` gates (``READY``, ``NEEDS ATTENTION``, or ``BLOCKED``). Pass either
+   ``pr`` or ``base``/``head`` (defaults to ``HEAD`` vs. ``:worktree`` when omitted).
+   Returns a summary by default (``topos.pr_recap.summary.v1``): readiness, reason,
+   blocking findings with path, line, metric, before, after and limit, one ranked
+   ``attention`` list of files, rollups, scoring time, and a description of each metric
+   shown. ``findings[].path``, ``attention[].path``, ``worst_file`` and ``files[].path``
+   are absolute, under ``root``, so they can be passed straight to the other tools;
+   range-wide findings have no ``path``, ``paths_not_found[].path`` echoes the request,
+   and ``reason`` and finding ``text`` keep repo-relative paths. Everything left out is
+   counted in ``omitted``. A recap that runs past 300 seconds fails with the phase it was
+   in; set ``TOPOS_PR_RECAP_TIMEOUT`` (seconds, ``0`` or negative to disable) to change
+   that.
+   ``detail: "full"`` returns the same ``topos.pr_recap.v3`` document as
+   ``topos pr-recap --json`` (repo-relative paths, ``max_files`` named in its hints).
+   ``paths`` takes absolute or repo-relative paths: in summary mode it adds their full
+   file records as ``files``; in full mode it replaces ``files`` with just those records
+   and adds ``paths_not_found`` for the rest. ``max_files`` defaults to ``0`` (score every
+   file).
 
 ``topos_preference_walk({"ranking": ..., "target": ..., "current": ...})``
    Returns the concrete relaxation walk (sequence of Quality Badges) the agent should

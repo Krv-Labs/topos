@@ -20,6 +20,7 @@ pub mod schemas;
 pub mod security;
 pub mod security_findings;
 pub mod server;
+pub mod shaping;
 pub mod sighthound;
 pub mod snapshots;
 pub mod tools;

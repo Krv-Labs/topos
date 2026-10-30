@@ -8,6 +8,7 @@
 
 use std::collections::BTreeMap;
 
+use schemars::JsonSchema;
 use serde::Serialize;
 use topos_engine::config::Severity;
 use topos_engine::functors::profunctors::uast::ledger::{Ledger, MatchKind};
@@ -26,7 +27,7 @@ pub const CLUSTER_GROWTH_WARN: f64 = 0.10;
 
 /// Which way the structure moved. Descriptive only: whether the change is
 /// ready is [`Readiness`], decided by the configured gates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Headline {
     SuspiciousNoStructuralChange,
@@ -51,7 +52,7 @@ impl Headline {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum FileChange {
     Added,
@@ -60,14 +61,14 @@ pub enum FileChange {
 }
 
 /// A lattice verdict as the card shows it: `🥈 SILVER · SECURE_NAVIGABLE`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Medal {
     pub symbol: String,
     pub tier: String,
     pub verdict: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PillarDelta {
     pub measured: bool,
     pub before_passed: Option<bool>,
@@ -85,7 +86,7 @@ pub struct PillarDelta {
 
 /// A gate a pillar fails at head: which bound, and whether this change
 /// pushed the metric further past it.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct GateCrossing {
     pub metric: String,
     /// `None` when the metric was not measured at base (an added file).
@@ -115,14 +116,14 @@ impl PillarDelta {
 }
 
 /// A named callable with its complexity, for "worst function" cells.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct FunctionRef {
     pub name: String,
     pub line: usize,
     pub complexity: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Hotspot {
     pub path: String,
     pub line: usize,
@@ -134,21 +135,21 @@ pub struct Hotspot {
     pub advice: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ClusterRole {
     Parent,
     Child,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ClusterMembership {
     /// Path of the cluster parent (equals `FileRecap::path` for the parent).
     pub parent: String,
     pub role: ClusterRole,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct FileRecap {
     pub path: String,
     pub change: FileChange,
@@ -158,6 +159,7 @@ pub struct FileRecap {
     pub status: Headline,
     /// The worst severity among this file's findings; `None` without any.
     #[serde(serialize_with = "optional_severity_name")]
+    #[schemars(with = "Option<String>")]
     pub severity: Option<Severity>,
     pub lines_before: usize,
     pub lines_after: usize,
@@ -304,7 +306,7 @@ impl Cluster {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct PillarRollup {
     pub before_passed: bool,
     pub after_passed: bool,
@@ -329,7 +331,9 @@ pub struct ProjectRollup {
     pub medal_after: Medal,
     /// A pillar is present only when both sides scored it.
     pub pillars: BTreeMap<String, PillarRollup>,
-    /// A pillar the touched set passed at base is failed at head.
+    /// The rollup over the touched set, not any one file, lost a pillar:
+    /// passed at base, fails at head. Can be `false` while `direction` is
+    /// `REGRESSION`, since one file's regression may not move the rollup.
     pub regression: bool,
     /// Existing files compared; equal, since both sides are the same files.
     pub files_before: usize,
@@ -342,7 +346,7 @@ pub struct ProjectRollup {
 }
 
 /// One pillar over the added files, at head.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AddedPillar {
     /// Every added file measuring this pillar passes it.
     pub passed: bool,
@@ -354,7 +358,7 @@ pub struct AddedPillar {
 
 /// The quality of the files this change added. They have no before side,
 /// so they are never mixed into [`ProjectRollup`]'s comparison.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct AddedRollup {
     pub files: usize,
     /// Lattice verdict over the pillars every added file passes.
@@ -365,7 +369,7 @@ pub struct AddedRollup {
     pub decisions: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct CouplingStatus {
     pub measured: bool,
     /// Why not, or where from ("built from .git/topos-pr-5", "gitnexus not installed").
@@ -378,7 +382,7 @@ pub struct CouplingStatus {
 }
 
 /// Why the coupling graphs were or were not there for this run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CouplingReason {
     /// Built on this run.
@@ -401,7 +405,7 @@ pub enum CouplingReason {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Scope {
     pub files_scored: usize,
     pub files_new: usize,
@@ -488,13 +492,19 @@ pub struct PrRecap {
     /// The first counting finding's text, or what happened when there is
     /// none.
     pub reason: String,
+    /// The file `reason` names, when it names one: the lead finding's path,
+    /// or the worst file the direction text is about. Not in the document.
+    #[serde(skip)]
+    pub reason_path: Option<String>,
     /// Every finding the configured gates kept, most important first, the
     /// waived ones last.
     pub findings: Vec<Finding>,
     /// Every `[[pr_recap.waive]]` entry and what it did.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub waivers: Vec<WaiverSummary>,
-    /// Which way the structure moved. Descriptive only.
+    /// The worst single file's headline (`REGRESSION` when any one file
+    /// regressed), not a verdict on the touched set as a whole; compare
+    /// `project.regression`. Descriptive only.
     pub direction: Headline,
     /// `--max-files` left `scope.files_capped` files unscored. The verdict
     /// covers only the highest-churn files that were scored.

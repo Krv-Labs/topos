@@ -9,14 +9,39 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- `topos_pr_recap` returns a summary by default (`topos.pr_recap.summary.v1`,
+  #469): readiness, reason, blocking findings with values and locations, one
+  ranked list of files that need attention (each with why, and its top
+  hotspot with the measured value), rollups, scoring time, and a description
+  per metric shown. Everything left out (findings, files, hotspots, clusters,
+  skipped files) is counted, with the parameter that widens it. The file paths in
+  its structured fields (`findings[].path`, `attention[].path`,
+  `worst_file`, `files[].path`) are absolute, under its `root`; range-wide
+  findings have no `path`, `paths_not_found[].path` echoes the request, and
+  `reason` and finding `text` keep repo-relative paths. `detail: "full"` returns the same
+  `topos.pr_recap.v3` document as `topos pr-recap --json` (repo-relative
+  paths, MCP parameter names in its hints). `paths` takes absolute or
+  repo-relative paths: in summary mode it adds their full file records as
+  `files`; in full mode it replaces `files` with just those records. Paths
+  that match no scored file come back as `paths_not_found` with the reason.
+  The text block is a short markdown rendering of the summary. A recap that
+  runs past the tool timeout, inline or as a task, says which phase it was in
+  (queued, preparing, scoring with the file count, or finishing), and the
+  summary reports total and scoring time. The timeout is 300 seconds; set
+  `TOPOS_PR_RECAP_TIMEOUT` (seconds, `0` or negative to disable), like
+  `TOPOS_DEPGRAPH_TIMEOUT`, to change it.
+
 ### Changed
 
 - `topos pr-recap` now scores every scorable file by default (`--max-files 0`).
   Pass `--max-files N` to score only the N highest-churn files, in which case
   the recap is marked incomplete as before. Past 100 files to score, the
-  command warns on stderr and suggests `--max-files`. The `topos_pr_recap`
-  MCP tool keeps its 40-file default, since its response carries every
-  scored file; agents pass `max_files: 0` to score everything.
+  command warns on stderr and suggests `--max-files`.
+- The `topos_pr_recap` MCP tool now also scores every file by default
+  (`max_files: 0`), since its default response is a summary instead of every
+  scored file (#469).
 
 ### Fixed
 
@@ -33,6 +58,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   them apart, so `9→14, limit 10` stays short; a value closer than that reads
   `just under 0.2`. A floor the metric fell below reads `min` in the message;
   the terminal card shows `0.199 < 0.2`.
+- `topos_pr_recap` incomplete-range messages name the `max_files` parameter
+  instead of the CLI's `--max-files` (the CLI output is unchanged). The
+  summary reports the worst file's own status as `worst_file_direction`
+  (with that file as `worst_file`, both omitted when no file was compared;
+  v3 `direction` can differ when files disagree on an improvement) and
+  `project.regression`
+  as `rollup_lost_pillar`, so they no longer read as contradicting each
+  other, and one `attention` ranking, which always includes the file
+  `reason` names, replaces the mismatch between the blocking files and the
+  hotspots (#475). Errors in summary mode keep the summary's schema with
+  `error` at the top level.
 - `topos update` no longer leaves stale spinner lines above its phase results.
 
 ## [0.14.0] - 2026-10-23

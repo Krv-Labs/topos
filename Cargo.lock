@@ -1642,6 +1642,7 @@ dependencies = [
  "similar",
  "tempfile",
  "tokio",
+ "tokio-util",
  "topos-engine",
 ]
 

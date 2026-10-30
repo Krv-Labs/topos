@@ -22,6 +22,7 @@ use rmcp::service::RequestContext;
 use rmcp::task_manager::{TaskExit, TaskManager, TaskOptions};
 use rmcp::{ErrorData as McpError, RoleServer};
 use tokio::sync::{mpsc, Notify, Semaphore};
+use tokio_util::sync::CancellationToken;
 
 /// Retention TTL for completed/failed/cancelled task records (`10` minutes).
 ///
@@ -35,6 +36,28 @@ pub const TASK_POLL_INTERVAL_MS: u64 = 1_000;
 /// Grace period to await a blocking worker after signalling cancellation on an
 /// inline request or task cancellation before returning to the caller.
 const CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
+
+/// What a tool was doing when its deadline passed, appended to the timeout
+/// error so the caller learns where the time went. Read the moment the
+/// deadline fires, before the worker is given its drain period to wind
+/// down, so it reports where the time went and not where the worker ended.
+pub type TimeoutNote = Arc<dyn Fn() -> String + Send + Sync>;
+
+/// The error for an operation that ran past `timeout`: the tool's note on
+/// what it was doing when there is one, else `where_`, which says which
+/// wait it was in (empty when it was running).
+fn timed_out(timeout: Duration, where_: &str, note: Option<&TimeoutNote>) -> McpError {
+    let mut message = format!("Operation timed out after {}s", timeout.as_secs());
+    match note {
+        // The note says where the operation was, so every path reads alike.
+        Some(note) => {
+            message.push(' ');
+            message.push_str(&note());
+        }
+        None => message.push_str(where_),
+    }
+    McpError::internal_error(message, None)
+}
 
 /// Marker error returned when a blocking evaluation or subprocess operation
 /// exits early due to cooperative cancellation.
@@ -297,6 +320,33 @@ impl ExecutionCoordinator {
             .await
     }
 
+    /// [`Self::run_task`] for a tool that can say what it was doing when the
+    /// deadline passed: `note` is appended to the timeout error, whether the
+    /// operation was queued or running, inline or as a task.
+    pub async fn run_task_described<F>(
+        &self,
+        context: &RequestContext<RoleServer>,
+        timeout: Duration,
+        initial_status: &'static str,
+        note: TimeoutNote,
+        work: F,
+    ) -> Result<CallToolResponse, McpError>
+    where
+        F: FnOnce(&AtomicBool, &StatusReporter) -> Result<CallToolResult, EvalCancelled>
+            + Send
+            + 'static,
+    {
+        self.run_with_note(
+            &self.task_manager,
+            context,
+            timeout,
+            initial_status,
+            Some(note),
+            work,
+        )
+        .await
+    }
+
     /// Run a heavy tool body either as a background SEP-2663 task (when the
     /// client negotiated `2026-07-28+` and declared task support) or inline on
     /// `spawn_blocking` with an active execution deadline.
@@ -313,10 +363,49 @@ impl ExecutionCoordinator {
             + Send
             + 'static,
     {
+        self.run_with_note(task_manager, context, timeout, initial_status, None, work)
+            .await
+    }
+
+    async fn run_with_note<F>(
+        &self,
+        task_manager: &TaskManager,
+        context: &RequestContext<RoleServer>,
+        timeout: Duration,
+        initial_status: &'static str,
+        note: Option<TimeoutNote>,
+        work: F,
+    ) -> Result<CallToolResponse, McpError>
+    where
+        F: FnOnce(&AtomicBool, &StatusReporter) -> Result<CallToolResult, EvalCancelled>
+            + Send
+            + 'static,
+    {
         if !client_supports_tasks(context) {
-            return self.run_inline_with_deadline(context, timeout, work).await;
+            return self
+                .run_inline_with_deadline(&context.ct, timeout, note.as_ref(), work)
+                .await;
         }
 
+        let task = self.spawn_task(task_manager, timeout, initial_status, note, work);
+        Ok(CallToolResponse::Task(CreateTaskResult::new(task)))
+    }
+
+    /// Start the task that runs `work` under the shared semaphore, with the
+    /// deadline `timeout` covering the wait for capacity and the run alike.
+    fn spawn_task<F>(
+        &self,
+        task_manager: &TaskManager,
+        timeout: Duration,
+        initial_status: &'static str,
+        note: Option<TimeoutNote>,
+        work: F,
+    ) -> rmcp::model::Task
+    where
+        F: FnOnce(&AtomicBool, &StatusReporter) -> Result<CallToolResult, EvalCancelled>
+            + Send
+            + 'static,
+    {
         let coordinator = self.clone();
         let options = TaskOptions::new()
             .with_ttl_ms(Some(TASK_RETENTION_TTL_MS))
@@ -339,12 +428,10 @@ impl ExecutionCoordinator {
                     }
                     _ = &mut deadline => {
                         cancel_flag.store(true, Ordering::SeqCst);
-                        return Err(TaskExit::Error(McpError::internal_error(
-                            format!(
-                                "Operation timed out after {}s while waiting for execution capacity",
-                                timeout.as_secs()
-                            ),
-                            None,
+                        return Err(TaskExit::Error(timed_out(
+                            timeout,
+                            " while waiting for execution capacity",
+                            note.as_ref(),
                         )));
                     }
                     res = Arc::clone(&coordinator.semaphore).acquire_owned() => {
@@ -377,12 +464,10 @@ impl ExecutionCoordinator {
                             return Err(TaskExit::Cancelled);
                         }
                         _ = &mut deadline => {
+                            let error = timed_out(timeout, "", note.as_ref());
                             cancel_flag.store(true, Ordering::SeqCst);
                             let _ = tokio::time::timeout(CANCEL_DRAIN_TIMEOUT, &mut handle).await;
-                            return Err(TaskExit::Error(McpError::internal_error(
-                                format!("Operation timed out after {}s", timeout.as_secs()),
-                                None,
-                            )));
+                            return Err(TaskExit::Error(error));
                         }
                         join_res = &mut handle => {
                             while let Ok(msg) = status_rx.try_recv() {
@@ -416,13 +501,14 @@ impl ExecutionCoordinator {
             })
         });
 
-        Ok(CallToolResponse::Task(CreateTaskResult::new(task)))
+        task
     }
 
     async fn run_inline_with_deadline<F>(
         &self,
-        context: &RequestContext<RoleServer>,
+        ct: &CancellationToken,
         timeout: Duration,
+        note: Option<&TimeoutNote>,
         work: F,
     ) -> Result<CallToolResponse, McpError>
     where
@@ -430,7 +516,7 @@ impl ExecutionCoordinator {
             + Send
             + 'static,
     {
-        if context.ct.is_cancelled() {
+        if ct.is_cancelled() {
             return Err(McpError::internal_error("Request cancelled", None));
         }
 
@@ -439,14 +525,11 @@ impl ExecutionCoordinator {
 
         let permit = tokio::select! {
             biased;
-            _ = context.ct.cancelled() => {
+            _ = ct.cancelled() => {
                 return Err(McpError::internal_error("Request cancelled", None));
             }
             _ = &mut deadline => {
-                return Err(McpError::internal_error(
-                    format!("Operation timed out after {}s", timeout.as_secs()),
-                    None,
-                ));
+                return Err(timed_out(timeout, "", note));
             }
             res = Arc::clone(&self.semaphore).acquire_owned() => {
                 res.map_err(|e| McpError::internal_error(format!("Semaphore closed: {e}"), None))?
@@ -467,18 +550,16 @@ impl ExecutionCoordinator {
 
         tokio::select! {
             biased;
-            _ = context.ct.cancelled() => {
+            _ = ct.cancelled() => {
                 cancel_flag.store(true, Ordering::SeqCst);
                 let _ = tokio::time::timeout(CANCEL_DRAIN_TIMEOUT, &mut handle).await;
                 Err(McpError::internal_error("Request cancelled", None))
             }
             _ = &mut deadline => {
+                let error = timed_out(timeout, "", note);
                 cancel_flag.store(true, Ordering::SeqCst);
                 let _ = tokio::time::timeout(CANCEL_DRAIN_TIMEOUT, &mut handle).await;
-                Err(McpError::internal_error(
-                    format!("Operation timed out after {}s", timeout.as_secs()),
-                    None,
-                ))
+                Err(error)
             }
             join_res = &mut handle => {
                 match join_res {
@@ -497,6 +578,118 @@ impl ExecutionCoordinator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_timeout_error_carries_the_tools_note_when_it_has_one() {
+        let timeout = Duration::from_secs(300);
+        let plain = timed_out(timeout, "", None);
+        assert_eq!(plain.message, "Operation timed out after 300s");
+        let note: TimeoutNote = Arc::new(|| "while scoring 4 file(s).".to_string());
+        let waiting = timed_out(timeout, " while waiting for execution capacity", None);
+        assert_eq!(
+            waiting.message,
+            "Operation timed out after 300s while waiting for execution capacity"
+        );
+        let described = timed_out(timeout, "", Some(&note));
+        assert_eq!(
+            described.message,
+            "Operation timed out after 300s while scoring 4 file(s)."
+        );
+    }
+
+    /// A note that reads `phase` when the deadline fires.
+    fn phase_note(phase: &Arc<Mutex<&'static str>>) -> TimeoutNote {
+        let phase = Arc::clone(phase);
+        Arc::new(move || format!("while {}.", phase.lock().unwrap()))
+    }
+
+    /// A worker that sets `phase` to `scoring`, waits to be cancelled, then
+    /// moves it on to `finishing` and returns, as a worker does when it
+    /// finishes during the drain.
+    fn worker(
+        phase: &Arc<Mutex<&'static str>>,
+    ) -> impl FnOnce(&AtomicBool, &StatusReporter) -> Result<CallToolResult, EvalCancelled>
+           + Send
+           + 'static {
+        let phase = Arc::clone(phase);
+        move |cancel, _| {
+            *phase.lock().unwrap() = "scoring";
+            while !cancel.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            *phase.lock().unwrap() = "finishing";
+            Err(EvalCancelled)
+        }
+    }
+
+    #[tokio::test]
+    async fn an_inline_timeout_carries_the_phase_at_the_deadline() {
+        let coordinator = ExecutionCoordinator::with_max_concurrency(2);
+        let phase = Arc::new(Mutex::new("queued"));
+        let note = phase_note(&phase);
+        let error = coordinator
+            .run_inline_with_deadline(
+                &CancellationToken::new(),
+                Duration::from_millis(100),
+                Some(&note),
+                worker(&phase),
+            )
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        // The worker moved on while it was being drained; the note was read
+        // before that.
+        assert_eq!(error.message, "Operation timed out after 0s while scoring.");
+        assert_eq!(*phase.lock().unwrap(), "finishing");
+    }
+
+    #[tokio::test]
+    async fn a_task_timeout_carries_the_phase_at_the_deadline() {
+        let coordinator = ExecutionCoordinator::with_max_concurrency(2);
+        let phase = Arc::new(Mutex::new("queued"));
+        let manager = TaskManager::new();
+        let task = coordinator.spawn_task(
+            &manager,
+            Duration::from_millis(100),
+            "working",
+            Some(phase_note(&phase)),
+            worker(&phase),
+        );
+        let message = failed_message(&manager, &task.task_id).await;
+        assert_eq!(message, "Operation timed out after 0s while scoring.");
+    }
+
+    #[tokio::test]
+    async fn a_task_that_never_got_capacity_says_so_and_carries_the_note() {
+        let coordinator = ExecutionCoordinator::with_max_concurrency(1);
+        let _held = Arc::clone(&coordinator.semaphore)
+            .acquire_owned()
+            .await
+            .unwrap();
+        let phase = Arc::new(Mutex::new("queued"));
+        let manager = TaskManager::new();
+        let task = coordinator.spawn_task(
+            &manager,
+            Duration::from_millis(50),
+            "working",
+            Some(phase_note(&phase)),
+            worker(&phase),
+        );
+        let message = failed_message(&manager, &task.task_id).await;
+        assert_eq!(message, "Operation timed out after 0s while queued.");
+    }
+
+    /// The error message of the task once it has failed.
+    async fn failed_message(manager: &TaskManager, id: &str) -> String {
+        for _ in 0..200 {
+            let payload = manager.get_task(id).unwrap().payload;
+            if let rmcp::model::TaskPayload::Failed { error } = payload {
+                return error["message"].as_str().unwrap().to_string();
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("the task did not fail");
+    }
 
     #[tokio::test]
     async fn cancel_on_drop_sets_flag_when_future_is_aborted() {

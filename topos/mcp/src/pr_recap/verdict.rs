@@ -439,65 +439,79 @@ fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
     Some(values.iter().sum::<f64>() / values.len() as f64)
 }
 
-/// Which way the structure moved, and what happened, in one line. The
-/// reason is the recap's when no gate raised a finding.
-pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, String) {
-    if files.is_empty() {
-        let reason = if base == head {
-            // `base` is the merge-base, so this also covers a head that is
-            // already contained in the base branch.
-            "The head adds no commits on top of the base. Uncommitted edits need --head :worktree."
-                .to_string()
-        } else if head == "worktree" {
-            "The working tree has no supported source changes.".to_string()
-        } else {
-            "No supported source files changed.".to_string()
-        };
-        return (Headline::LateralMove, reason);
+/// The files the direction is judged on. A passing new file has no
+/// before-medal, so it cannot make an existing file's lateral move into an
+/// improvement, and it cannot hide one either. A new file that arrives
+/// failing is judged like changed code.
+fn judged_files(files: &[FileRecap]) -> Vec<&FileRecap> {
+    if files.iter().all(FileRecap::is_new) {
+        return files.iter().collect();
     }
-    // A passing new file has no before-medal, so it cannot make an existing
-    // file's lateral move into an improvement, and it cannot hide one
-    // either. A new file that arrives failing is judged like changed code.
-    let existing: Vec<&FileRecap> = files.iter().filter(|file| !file.is_new()).collect();
-    let judged: Vec<&FileRecap> = if existing.is_empty() {
-        files.iter().collect()
-    } else {
-        files
-            .iter()
-            .filter(|file| !file.is_new() || file.status == Headline::Regression)
-            .collect()
+    files
+        .iter()
+        .filter(|file| !file.is_new() || file.status == Headline::Regression)
+        .collect()
+}
+
+/// The worst of the judged files by its own status (the first on a tie):
+/// the file whose headline decides the direction. Its status is not the
+/// direction itself, which also needs every judged file to agree before it
+/// calls an improvement. `None` when no file was compared.
+pub fn worst_file(files: &[FileRecap]) -> Option<&FileRecap> {
+    judged_files(files)
+        .into_iter()
+        .min_by_key(|file| file.status.rank())
+}
+
+/// Which way the structure moved, and what happened, in one line, with the
+/// file the line is about: none for a lateral move or an empty range. The
+/// reason is the recap's when no gate raised a finding.
+pub fn direction_for(
+    files: &[FileRecap],
+    base: &str,
+    head: &str,
+) -> (Headline, String, Option<String>) {
+    let Some(worst) = worst_file(files) else {
+        return (Headline::LateralMove, empty_range_reason(base, head), None);
     };
     // Worst measured file wins. A mixed change is not an improvement.
-    let worst = judged
+    let unanimous = judged_files(files)
         .iter()
-        .min_by_key(|file| file.status.rank())
-        .expect("judged is non-empty");
-    let best = judged
-        .iter()
-        .max_by_key(|file| file.status.rank())
-        .expect("judged is non-empty");
-    let unanimous = best.status.rank() == worst.status.rank();
+        .all(|file| file.status.rank() == worst.status.rank());
     let headline = match worst.status {
-        Headline::SuspiciousNoStructuralChange => Headline::SuspiciousNoStructuralChange,
-        Headline::Regression => Headline::Regression,
-        Headline::RegressionScore => Headline::RegressionScore,
-        Headline::Improvement if unanimous => Headline::Improvement,
-        Headline::ImprovementScore if unanimous => Headline::ImprovementScore,
-        _ => Headline::LateralMove,
+        Headline::Improvement | Headline::ImprovementScore if !unanimous => Headline::LateralMove,
+        status => status,
     };
-    let reason = match headline {
+    let reason = reason_for_headline(headline, worst, files);
+    let named = (headline != Headline::LateralMove).then(|| worst.path.clone());
+    (headline, reason, named)
+}
+
+fn empty_range_reason(base: &str, head: &str) -> String {
+    if base == head {
+        // `base` is the merge-base, so this also covers a head that is
+        // already contained in the base branch.
+        "The head adds no commits on top of the base. Uncommitted edits need --head :worktree."
+            .to_string()
+    } else if head == "worktree" {
+        "The working tree has no supported source changes.".to_string()
+    } else {
+        "No supported source files changed.".to_string()
+    }
+}
+
+fn reason_for_headline(headline: Headline, worst: &FileRecap, files: &[FileRecap]) -> String {
+    match headline {
         Headline::SuspiciousNoStructuralChange => format!(
             "{} moved its score while the syntax tree barely changed.",
             worst.path
         ),
         Headline::Regression if worst.is_new() => new_file_reason(worst),
         Headline::Regression => format!("{} lost a structural pillar.", worst.path),
-        Headline::RegressionScore => {
-            format!(
-                "{} kept its medal, but a pillar score went down.",
-                worst.path
-            )
-        }
+        Headline::RegressionScore => format!(
+            "{} kept its medal, but a pillar score went down.",
+            worst.path
+        ),
         Headline::Improvement => format!(
             "{} cleared a structural pillar it missed before.",
             worst.path
@@ -505,9 +519,11 @@ pub fn direction_for(files: &[FileRecap], base: &str, head: &str) -> (Headline, 
         Headline::ImprovementScore => {
             format!("{} kept its medal and improved a pillar score.", worst.path)
         }
-        Headline::LateralMove => lateral_reason(&existing),
-    };
-    (headline, reason)
+        Headline::LateralMove => {
+            let existing: Vec<&FileRecap> = files.iter().filter(|f| !f.is_new()).collect();
+            lateral_reason(&existing)
+        }
+    }
 }
 
 fn new_file_reason(file: &FileRecap) -> String {

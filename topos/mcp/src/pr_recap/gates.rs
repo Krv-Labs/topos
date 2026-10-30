@@ -650,22 +650,78 @@ fn site(function: Option<&str>, line: Option<usize>) -> String {
     }
 }
 
-/// `: ast.max_function_complexity 9→14, limit 10`.
+/// `: ast.max_function_complexity 9→14, limit 10`, or `min 0.2` for a floor.
 fn measured(crossed: &GateCrossing) -> String {
-    let value = match crossed.before {
-        Some(before) => format!("{}→{}", number(before), number(crossed.after)),
-        None => format!("is {}", number(crossed.after)),
+    let (value, limit) = match crossed.before {
+        Some(before) => {
+            let text = distinct_numbers(&[before, crossed.after, crossed.limit], 2);
+            let after = beside_limit(crossed.after, crossed.limit, &text[1], &text[2]);
+            (format!("{}→{after}", text[0]), text[2].clone())
+        }
+        None => {
+            let text = distinct_numbers(&[crossed.after, crossed.limit], 2);
+            let after = beside_limit(crossed.after, crossed.limit, &text[0], &text[1]);
+            (format!("is {after}"), text[1].clone())
+        }
     };
-    format!(
-        ": {} {value}, limit {}",
-        crossed.metric,
-        number(crossed.limit)
-    )
+    // A metric that fell below its band has a floor, not a ceiling.
+    let bound = if crossed.after < crossed.limit {
+        "min"
+    } else {
+        "limit"
+    };
+    format!(": {} {value}, {bound} {limit}", crossed.metric)
 }
 
 /// Up to two decimals, trailing zeros dropped: `14`, `7.5`, `0.35`.
 pub fn number(value: f64) -> String {
-    let text = format!("{value:.2}");
+    format_trimmed(value, 2)
+}
+
+/// `values` at the fewest decimals, from `min_places` up to six, that keep
+/// different values apart: `[0.2022, 0.1988, 0.2]` reads `0.202`, `0.199`,
+/// `0.2`, not three `0.2`s. Trailing zeros are dropped as in [`number`].
+/// Values equal to each other stay equal. Values closer than six decimals
+/// can still collide; [`beside_limit`] words that case.
+pub fn distinct_numbers(values: &[f64], min_places: usize) -> Vec<String> {
+    let render = |places| -> Vec<String> {
+        values
+            .iter()
+            .map(|value| format_trimmed(*value, places))
+            .collect()
+    };
+    let apart = |text: &[String]| {
+        values
+            .iter()
+            .enumerate()
+            .all(|(i, a)| (0..i).all(|j| a == &values[j] || text[i] != text[j]))
+    };
+    (min_places..=MAX_PLACES)
+        .map(render)
+        .find(|text| apart(text))
+        .unwrap_or_else(|| render(MAX_PLACES))
+}
+
+/// `shown`, or `just under 0.2` / `just over 0.2` when `value` differs from
+/// `limit` by less than the displayed decimals can show.
+pub fn beside_limit(value: f64, limit: f64, shown: &str, shown_limit: &str) -> String {
+    if shown != shown_limit || value == limit {
+        return shown.to_string();
+    }
+    let side = if value < limit { "under" } else { "over" };
+    format!("just {side} {shown_limit}")
+}
+
+/// The most decimals a gate message spends on telling values apart.
+const MAX_PLACES: usize = 6;
+
+fn format_trimmed(value: f64, places: usize) -> String {
+    // `-0.0 == 0.0`, so it renders as `0`.
+    let value = if value == 0.0 { 0.0 } else { value };
+    let text = format!("{value:.places$}");
+    if places == 0 {
+        return text;
+    }
     text.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
@@ -833,6 +889,45 @@ mod tests {
         )
     }
 
+    #[test]
+    fn close_values_get_enough_decimals_to_differ() {
+        let crossed = crossing("ast.entropy", 0.2022, 0.1988, 0.2).unwrap();
+        assert_eq!(measured(&crossed), ": ast.entropy 0.202→0.199, min 0.2");
+        let crossed = crossing("ast.max_function_complexity", 9.0, 14.0, 10.0).unwrap();
+        assert_eq!(
+            measured(&crossed),
+            ": ast.max_function_complexity 9→14, limit 10"
+        );
+        let crossed = crossing("ast.entropy", 0.2309, 0.1831, 0.2).unwrap();
+        assert_eq!(measured(&crossed), ": ast.entropy 0.23→0.18, min 0.2");
+        let mut added = crossing("ast.entropy", 0.0, 0.1988, 0.2).unwrap();
+        added.before = None;
+        assert_eq!(measured(&added), ": ast.entropy is 0.199, min 0.2");
+    }
+
+    /// Float noise just under a floor still fails the gate, so the message
+    /// must not read `0.2→0.2, min 0.2`.
+    #[test]
+    fn a_value_too_close_to_show_reads_just_under_the_limit() {
+        let crossed = crossing("ast.entropy", 0.2022, 0.2 - f64::EPSILON, 0.2).unwrap();
+        assert_eq!(
+            measured(&crossed),
+            ": ast.entropy 0.2022→just under 0.2, min 0.2"
+        );
+        assert_eq!(beside_limit(10.0, 10.0, "10", "10"), "10");
+        assert_eq!(beside_limit(10.000_000_1, 10.0, "10", "10"), "just over 10");
+    }
+
+    #[test]
+    fn distinct_numbers_use_the_fewest_decimals_that_differ() {
+        assert_eq!(distinct_numbers(&[0.1988, 0.2], 1), ["0.199", "0.2"]);
+        assert_eq!(distinct_numbers(&[0.199_99, 0.2], 1), ["0.19999", "0.2"]);
+        assert_eq!(distinct_numbers(&[0.2, 0.2], 2), ["0.2", "0.2"]);
+        assert_eq!(distinct_numbers(&[21.43, 10.0], 1), ["21.4", "10"]);
+        assert_eq!(distinct_numbers(&[100.0, 20.0], 0), ["100", "20"]);
+        assert_eq!(distinct_numbers(&[-0.0, 0.0], 2), ["0", "0"]);
+    }
+
     fn medal(tier: &str) -> Medal {
         Medal {
             symbol: String::new(),
@@ -921,7 +1016,12 @@ mod tests {
             before: Some(before),
             after,
             limit,
-            worse: after > before,
+            // Past a floor, worse means further below it.
+            worse: if after < limit {
+                after < before
+            } else {
+                after > before
+            },
         })
     }
 

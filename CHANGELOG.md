@@ -20,6 +20,13 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Fixed
 
+- The dangerous-API check no longer flags calls like `page.waitForFunction`,
+  `isFunction`, or `retrieval` as `Function`/`eval` (#467). A callee now matches
+  a registry key only exactly or after a `.` (`x.eval`, `mypkg.pickle.loads`).
+  Allow and suppression patterns use the same rule, so a pattern that only
+  matched part of an identifier (`process.exec` for `child_process.exec`, or a
+  leading-dot `.eval`) no longer applies; write the full name (`eval`,
+  `child_process.exec`).
 - `topos update` no longer leaves stale spinner lines above its phase results.
 
 ## [0.14.0] - 2026-10-23

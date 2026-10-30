@@ -81,10 +81,22 @@ Outside MCP, `topos-mcp --version` prints the same report.
   `mdg.unavailable` interpretation explaining why.
 - Whole project: `topos_evaluate_project` with
   `{"path": "..."}` — same default generation behavior, plus
-  a rollup plus page-global lists (`hard_fails`, `leaf_composable_zeros`,
-  `maintainability_giants`; `worst_files` is deprecated). Treat
-  `aggregate_floor_verdict` as the codebase floor; start from `hard_fails[0]`
-  or `guidance`.
+  a summary by default (`topos.evaluate_project.summary.v1`): the rollup,
+  `aggregate_floor_verdict` (the lattice element of the pillars every scored
+  file holds, so `simple: SLOP` beside a `SECURE_NAVIGABLE` floor is
+  consistent; `held_by_every_file` lists them; a file that did not measure a
+  pillar does not count against it, but a file that does not parse fails
+  every pillar), counts (`failing_files`,
+  `giants`), and `worst`, the five worst files with absolute paths. Each says
+  why it ranks there (its lowest-scoring pillar and score, its failed gates,
+  `parse_failure`) and what binds it: `binding_constraint`, the same field
+  `topos_evaluate_file` returns for that file, `null` when that returns none.
+  One order ranks every worst file: files that fail a gate or do not parse
+  first (most failures, then lowest score, then fewest pillars held), then the
+  rest by lowest score; giants are a watch list. `detail: "full"` returns
+  per-file rows, paged by `limit`/`offset`, plus the lists `hard_fails`,
+  `maintainability_giants` and `worst_files`, with `guidance` naming the same
+  worst file. Every file path in the response is absolute.
 
 ### 2. Plan
 

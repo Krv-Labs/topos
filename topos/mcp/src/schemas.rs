@@ -323,7 +323,7 @@ pub struct EvaluateFileInput {
 /// (`build_metric_locations`) is already computed on every call, and the
 /// agent contract routes off the top gating target, so returning none by
 /// default made the common loop pay for a second round trip.
-fn default_refactor_targets() -> usize {
+pub(crate) fn default_refactor_targets() -> usize {
     3
 }
 
@@ -352,6 +352,9 @@ pub struct EvaluateProjectInput {
     /// SIMPLE/SECURE/NAVIGABLE only.
     #[serde(default)]
     pub no_composable: bool,
+    /// `summary` (default): rollups and worst files. `full`: per-file rows.
+    #[serde(default)]
+    pub detail: Detail,
     /// Per-file rows to return per page (1–500, default 25).
     #[serde(default = "default_project_limit")]
     pub limit: usize,
@@ -1074,7 +1077,7 @@ pub struct RefactorTarget {
 /// `constraints`, `recommended_operations`). It answers "why is this
 /// pillar not achieved?", not "how do I fix it?"; the matching
 /// `refactor_targets` entry answers the latter.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct BindingConstraint {
     /// simple | composable | secure.
     pub pillar: String,
@@ -1229,6 +1232,7 @@ impl EvaluationResult {
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectFileEntry {
+    /// Absolute path: pass it straight to `topos_evaluate_file`.
     pub filepath: String,
     /// Detected language used to evaluate this file.
     pub language: String,
@@ -1236,7 +1240,7 @@ pub struct ProjectFileEntry {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub scores: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub pillars: BTreeMap<String, PillarResult>,
+    pub pillars: BTreeMap<String, ProjectPillar>,
     /// Raw probe values; present only under `verbose`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub raw_metrics: BTreeMap<String, f64>,
@@ -1265,15 +1269,64 @@ pub struct ProjectFileEntry {
     pub is_parseable: bool,
 }
 
-/// A pointer at one of the project's lowest-scoring rows.
+/// A project row's pillar outcome. The score is `scores[pillar]`, so it is
+/// not repeated here. A pillar present here with no `scores` key was not
+/// measured (for example `composable` without a dependency graph) and reads
+/// `achieved: false`; a pillar none of whose metrics were measured is absent
+/// from `pillars` altogether.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct ProjectPillar {
+    /// Whether the generator's threshold was met.
+    pub achieved: bool,
+}
+
+/// A pointer at one of the project's rows.
 ///
-/// Deliberately just the identity and the verdict: the full row for any of
-/// these files is already in `files` (or one page away), so repeating the
-/// whole `ProjectFileEntry` here duplicated the page's largest rows.
+/// The identity and the verdict: the full row for any of these files is
+/// already in `files` (or one page away), so repeating the whole
+/// `ProjectFileEntry` here duplicated the page's largest rows. `worst_files`
+/// entries also say why the file ranks where it does and what binds it; the
+/// other lists leave those fields out.
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct WorstFileEntry {
+    /// Absolute path.
     pub filepath: String,
     pub lattice_element: LatticeElement,
+    /// The file's lowest-scoring pillar, the one that ranks it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pillar: Option<String>,
+    /// That pillar's score in percent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    /// Gates the file fails (all pillars), counted from the same evaluation
+    /// as its verdict: a SECURE gate that an allowlist cleared is not
+    /// counted.
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
+    pub gates_failed: usize,
+    /// The file did not parse.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub parse_failure: bool,
+    /// What `topos_evaluate_file` reports as `binding_constraint` for this
+    /// file, computed by the same code: the gate failure that binds it. Absent in
+    /// the lists that do not compute it; `null` when `topos_evaluate_file`
+    /// would report none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binding_constraint: Option<Option<BindingConstraint>>,
+}
+
+impl WorstFileEntry {
+    /// Identity and verdict only.
+    pub fn plain(filepath: String, lattice_element: LatticeElement) -> Self {
+        Self {
+            filepath,
+            lattice_element,
+            pillar: None,
+            score: None,
+            gates_failed: 0,
+            parse_failure: false,
+            binding_constraint: None,
+        }
+    }
 }
 
 /// Per-language project rollup for polyglot directory evaluation.
@@ -1290,21 +1343,46 @@ pub struct ProjectLanguageRollup {
 }
 
 /// Result of a directory-wide evaluation.
+///
+/// **Worst.** Every field that names a worst file uses one order, the order
+/// of `files`: files that fail a gate or do not parse first (most failures,
+/// then lowest score, then fewest pillars held), then every other file by
+/// lowest score, then fewest pillars held. Giants are a
+/// watch list and do not outrank other files. `worst_files`, `hard_fails`,
+/// `aggregate_explanation`, `guidance` and `agent_contract` all read it.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ProjectEvaluationResult {
+    /// Absolute scanned directory. Every file path in the result (`files`,
+    /// the lists, `guidance`, the agent contract) is absolute. On an error
+    /// it is the directory that was asked for, absent for a file.
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub root: String,
     pub file_count: usize,
     pub parse_failures: usize,
+    /// Per dimension: the generator's value when every file that measured it
+    /// satisfies it, else `SLOP`. A file that does not parse measured nothing
+    /// and fails every dimension, so one parse failure reads `SLOP` for all.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_dimensions: BTreeMap<String, LatticeElement>,
+    /// Per dimension: the lowest file score in percent.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub rolled_up_scores: BTreeMap<String, f64>,
-    pub aggregate_floor_verdict: LatticeElement,
+    /// The lattice element of the dimensions in `rolled_up_dimensions` that
+    /// are not `SLOP`. A dimension reading `SLOP` is missing from it, so
+    /// `simple: SLOP` with a `SECURE_NAVIGABLE` floor means every file is
+    /// secure and navigable and at least one is not simple. The floor is
+    /// `SLOP` only when no dimension holds for every file. Absent on an
+    /// error, when nothing was scanned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate_floor_verdict: Option<LatticeElement>,
     pub language_rollups: Vec<ProjectLanguageRollup>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub aggregate_explanation: String,
+    /// Verdict of the worst file.
     pub worst_file_verdict: Option<LatticeElement>,
-    /// Files failing at least one gate (`GATE_SPECS`), excluding
-    /// structural leaf composable zeros.
-    /// Page-global — unaffected by `offset`/`limit`. Prefer this over
-    /// `worst_files` for fix order.
+    /// Files that fail at least one gate (`GATE_SPECS`) or do not parse, in
+    /// worst order. A file that only lacks SIMPLE through one failed gate is
+    /// listed. Page-global: unaffected by `offset`/`limit`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hard_fails: Vec<WorstFileEntry>,
     /// **Deprecated** — always empty, kept for one release for wire
@@ -1314,13 +1392,14 @@ pub struct ProjectEvaluationResult {
     /// cannot produce a hard fail, so there is nothing left to suppress.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub leaf_composable_zeros: Vec<WorstFileEntry>,
-    /// High advisory cyclomatic complexity with all gating gates passing.
+    /// A watch list, not failures: files whose advisory cyclomatic exceeds
+    /// the SIMPLE band while every gate passes. They can hold a passing
+    /// verdict such as `SIMPLE_SECURE_NAVIGABLE`. Highest cyclomatic first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub maintainability_giants: Vec<WorstFileEntry>,
-    /// **Deprecated** — kept for one release; use `hard_fails` /
-    /// `maintainability_giants` instead. The three lowest-scoring rows by
-    /// ascending minimum score across dimensions. Page-global — unaffected
-    /// by `offset`/`limit`. Not an estimate of effort, payoff, or fix order.
+    /// The five worst files in `files` order, each with the pillar and
+    /// failing metric that put it there. Page-global: unaffected by
+    /// `offset`/`limit`.
     pub worst_files: Vec<WorstFileEntry>,
     pub guidance: String,
     pub priority: String,
@@ -1334,6 +1413,23 @@ pub struct ProjectEvaluationResult {
     pub total: usize,
     pub has_more: bool,
     pub next_offset: Option<usize>,
+    /// Wall-clock milliseconds spent on the scan: the walk, the dependency
+    /// graph and per-file scoring. Not the ranking, the binding constraints
+    /// of the worst files, or serialization. Absent on an error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan_ms: Option<u64>,
+    /// Files that were found but could not be evaluated (for example
+    /// unreadable). They count in `parse_failures` and are in no list;
+    /// `unread_paths` names them.
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
+    pub unread_files: usize,
+    /// Absolute paths of the first unreadable files.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unread_paths: Vec<String>,
+    /// Estimated tokens (characters / 4) of this whole response: the
+    /// structured content and the text block.
+    #[serde(skip_serializing_if = "crate::shaping::is_zero")]
+    pub response_tokens_estimate: usize,
     pub files: Vec<ProjectFileEntry>,
     pub verbose: bool,
     pub error: Option<String>,

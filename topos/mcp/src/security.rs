@@ -107,6 +107,53 @@ pub fn resolve_project_path(path: &str) -> Result<(PathBuf, PathBuf), String> {
     Ok((resolved, project_root))
 }
 
+/// Where `path` resolves to, whether or not it exists, for an error that
+/// should say what was asked for: itself when absolute, else under the
+/// configured root or the project the process started in, with `.` and `..`
+/// resolved lexically. Nothing is read or followed.
+///
+/// `None` when it cannot be said honestly: the configured file root is
+/// unusable, a relative path has no base, or the path lies outside the
+/// configured root.
+pub fn requested_absolute(path: &str) -> Option<PathBuf> {
+    requested_with(path, configured_file_root(), || startup_project_root().ok())
+}
+
+fn requested_with(
+    path: &str,
+    configured: Result<Option<PathBuf>, String>,
+    startup_root: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    let boundary = configured.ok()?;
+    let requested = PathBuf::from(path);
+    let joined = if requested.is_absolute() {
+        requested
+    } else {
+        let base = boundary.clone().or_else(startup_root)?;
+        base.join(requested)
+    };
+    let resolved = normalize_lexically(&joined);
+    match boundary {
+        Some(boundary) if !resolved.starts_with(&boundary) => None,
+        _ => Some(resolved),
+    }
+}
+
+/// `path` with `.` dropped and each `..` removing the component before it.
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 /// The explicitly configured boundary, if any. Not an error when unset.
 fn configured_file_root() -> Result<Option<PathBuf>, String> {
     std::env::var("TOPOS_MCP_FILE_ROOT")
@@ -356,6 +403,30 @@ pub fn read_resolved_utf8(path: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn requested_path_is_normalized_and_kept_inside_the_file_root() {
+        let root = || Ok(Some(PathBuf::from("/x/fixture")));
+        let startup = || Some(PathBuf::from("/start"));
+        let at = |path: &str, configured| requested_with(path, configured, startup);
+        assert_eq!(at("nope", root()), Some(PathBuf::from("/x/fixture/nope")));
+        assert_eq!(
+            at("/x/fixture/a/../b/./c", root()),
+            Some(PathBuf::from("/x/fixture/b/c"))
+        );
+        // Escapes and outside paths are not echoed.
+        assert_eq!(at("../fixture2", root()), None);
+        assert_eq!(at("/x/fixture3/../fixture2", root()), None);
+        assert_eq!(at("/etc/passwd", root()), None);
+        // No configured root: relative paths use the startup project, and
+        // an absolute path stands on its own.
+        assert_eq!(at("src", Ok(None)), Some(PathBuf::from("/start/src")));
+        assert_eq!(at("/a/b/../c", Ok(None)), Some(PathBuf::from("/a/c")));
+        assert_eq!(requested_with("src", Ok(None), || None), None);
+        // An unusable file root says nothing, rather than falling back.
+        assert_eq!(at("nope", Err("unreadable".into())), None);
+        assert_eq!(at("/x/fixture/nope", Err("unreadable".into())), None);
+    }
+
     use super::*;
 
     /// `cargo test` is threaded and `set_var` is process-global, so every test

@@ -373,12 +373,25 @@ Core Evaluation
 ``topos_evaluate_code({"code": ..., "language": ..., "preferences": ..., "allow": ..., "verbose": ...})``
    Classifies a raw code string (SIMPLE and SECURE only).
 
-``topos_evaluate_project({"path": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
-   Project-wide rollup with progress reporting and pagination. Autodetects
-   all six supported languages (Python, Rust, JavaScript, TypeScript, C++,
-   Go) in one walk — no language argument needed. Returns worst-scoring
-   files first. Use ``aggregate_floor_verdict`` for the codebase floor and
-   ``worst_files`` / ``guidance`` for the next action.
+``topos_evaluate_project({"path": ..., "detail": ..., "preferences": ..., "gitnexus_dir": ..., "no_composable": ..., "limit": ..., "offset": ..., "include_security_findings": ..., "allow": ..., "verbose": ...})``
+   Project-wide rollup with progress reporting. Autodetects all six supported
+   languages (Python, Rust, JavaScript, TypeScript, C++, Go) in one walk — no
+   language argument needed. Returns a summary by default
+   (``topos.evaluate_project.summary.v1``): the rollup, counts, and ``worst``,
+   the five worst files with absolute paths. Each says why it ranks there (its
+   lowest-scoring pillar and score, its failed gates, ``parse_failure``) and
+   what binds it: ``binding_constraint``, the same field ``topos_evaluate_file``
+   returns for that file, ``null`` when that returns none.
+   ``aggregate_floor_verdict`` is the lattice element of the pillars every
+   scored file holds, a file that did not measure a pillar not counting against
+   it and a file that does not parse failing every pillar
+   (``held_by_every_file`` lists them). One order ranks every
+   worst file: files that fail a gate or do not parse first (most failures,
+   then lowest score, then fewest pillars held), then the rest by lowest
+   score; ``maintainability_giants`` is a separate watch list. Pass
+   ``"detail": "full"`` for per-file rows paged by ``limit``/``offset`` (every
+   file path is absolute) with ``hard_fails``, ``worst_files`` and
+   ``guidance``.
 
 ``topos_inspect_code({"code": ..., "filepath": ..., "language": ..., "preferences": ..., "top_n_functions": ..., "allow": ..., "verbose": ...})``
    Detailed metric breakdown: top-N functions by complexity (with line numbers and

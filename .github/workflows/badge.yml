@@ -55,7 +55,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Install pinned GitNexus
         run: npm install -g gitnexus@1.6.8

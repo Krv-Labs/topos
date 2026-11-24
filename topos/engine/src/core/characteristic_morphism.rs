@@ -636,6 +636,24 @@ mod tests {
         assert_eq!(classifier.classify(&morphism), EvaluationValue::Slop);
     }
 
+    #[test]
+    fn empty_and_blank_files_pass_simple_without_an_entropy_reading() {
+        for source in ["", "\n", "\n\n   \n\t\n", &"\n".repeat(400)] {
+            let morphism = ProgramMorphism::new(source, "python");
+            let result =
+                CharacteristicMorphism.classify_detailed(&morphism, &[], Priority::default());
+            assert!(
+                !result.raw_metrics.contains_key("ast.entropy"),
+                "{source:?}"
+            );
+            assert_eq!(
+                result.dimensions.get("simple"),
+                Some(&EvaluationValue::Simple),
+                "{source:?}"
+            );
+        }
+    }
+
     /// NAVIGABLE needs no external representation: it comes off the same
     /// UAST as SIMPLE, so every parseable file gets a verdict for it.
     #[test]

@@ -174,6 +174,8 @@ Readiness / exit codes:
   ([pr_recap.score_drop]); a smaller one is info. A pillar lost only because
   code moved in from another file in the range is `moved_pillar` (info, warn
   under strict), not `pillar_lost`; a moved function that grew still loses it.
+  A test or literal-data file that fails SIMPLE on entropy alone (repeated
+  cases or table entries) warns instead of blocking, except under strict.
   The policy is the flags, else the nearest .topos.toml, else the recommended
   preset. --preset picks a built-in preset and ignores the file's [pr_recap],
   waivers included; --fail-on sets fail_on (block, warn, or never), --strict

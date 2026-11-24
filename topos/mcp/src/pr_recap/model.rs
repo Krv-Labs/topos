@@ -188,6 +188,18 @@ pub struct FileRecap {
     pub cluster: Option<ClusterMembership>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hotspots: Vec<Hotspot>,
+    /// Set when SIMPLE fails at head on `ast.entropy` alone and the file
+    /// is a test or literal-data file, where repeated text is expected.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub entropy_role: Option<FileRole>,
+}
+
+/// Why repeated text is expected in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileRole {
+    Test,
+    Data,
 }
 
 impl FileRecap {

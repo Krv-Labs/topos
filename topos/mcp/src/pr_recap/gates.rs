@@ -24,12 +24,13 @@ use std::path::Path;
 
 use schemars::JsonSchema;
 use serde::{Serialize, Serializer};
-use topos_engine::config::{FailOn, GateId, PrGateConfig, Severity};
+use topos_engine::config::{FailOn, GateId, PrGateConfig, PrGatePreset, Severity};
 use topos_engine::evaluation::waivers::{self, Waiver};
 
 use super::hotspots::FUNCTION_COMPLEXITY;
 use super::model::{
-    percent_change, Cluster, FileRecap, GateCrossing, GateSummary, Headline, WaiverSummary,
+    percent_change, Cluster, FileRecap, FileRole, GateCrossing, GateSummary, Headline,
+    WaiverSummary,
 };
 use super::moves::{MoveCause, RangeMoves};
 
@@ -135,6 +136,10 @@ pub struct Finding {
     /// Every file in a new import cycle, for its per-language severity.
     #[serde(skip)]
     cycle: Vec<String>,
+    /// A SIMPLE finding on `ast.entropy` alone in a test or data file,
+    /// which [`judged`] caps at warn outside the strict preset.
+    #[serde(skip)]
+    entropy_role: Option<FileRole>,
 }
 
 impl Finding {
@@ -161,6 +166,7 @@ impl Finding {
             text,
             magnitude: 0.0,
             cycle: Vec::new(),
+            entropy_role: None,
         }
     }
 
@@ -310,9 +316,10 @@ pub fn waive(
 }
 
 /// The policy's severity for the finding, or `None` when its gate is off.
-/// A score drop under the materiality thresholds is at most info, and an
+/// A score drop under the materiality thresholds is at most info, an
 /// import cycle takes the strictest `[pr_recap.import_cycle]` row among
-/// its files' languages.
+/// its files' languages, and a test or data file that fails SIMPLE on
+/// entropy alone is at most warn unless the preset is strict.
 fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     let severity = match finding.gate {
         GateId::ImportCycle => cfg.cycle_severity(finding.cycle.iter().map(String::as_str)),
@@ -320,6 +327,12 @@ fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     };
     finding.severity = if finding.gate == GateId::ScoreDrop && !finding.material {
         severity.min(Severity::Info)
+    } else if finding.entropy_role.is_some()
+        && cfg.preset != PrGatePreset::Strict
+        && severity > Severity::Warn
+    {
+        finding.text.push_str(" It warns instead of blocking.");
+        Severity::Warn
     } else {
         severity
     };
@@ -510,7 +523,40 @@ fn pillar_finding(
         }
     }
     finding.magnitude += drop.max(0.0);
+    if let Some(role) = file
+        .entropy_role
+        .filter(|_| pillar == "simple" && finding.metric.as_deref() == Some(ENTROPY))
+    {
+        expected_repetition(&mut finding, role);
+    }
     finding
+}
+
+const ENTROPY: &str = "ast.entropy";
+
+/// Say why low entropy is expected in a test or data file, and what to do
+/// if the file is not one.
+fn expected_repetition(finding: &mut Finding, role: FileRole) {
+    let (kind, why, fix) = match role {
+        FileRole::Test => (
+            "a test file",
+            "repeated cases are expected",
+            "If these are repeated cases, parametrize them: one table of inputs and expected \
+             results, run by one test. If this is not a test file, consolidate the repeated code.",
+        ),
+        FileRole::Data => (
+            "a data file (mostly literal tables, no branching)",
+            "repeated entries are expected",
+            "If this is literal data, consider loading it from a data file (JSON, CSV, YAML) at \
+             runtime. If it is not data, consolidate the repeated code.",
+        ),
+    };
+    finding.text = format!(
+        "{} Entropy measures how repetitive the text is, and this is {kind}, where {why}.",
+        finding.text
+    );
+    finding.fix = fix.to_string();
+    finding.entropy_role = Some(role);
 }
 
 /// A lost pillar the range's moves explain: the same finding, reported
@@ -1029,6 +1075,7 @@ mod tests {
             fan_out_after: None,
             cluster: None,
             hotspots: Vec::new(),
+            entropy_role: None,
         }
     }
 
@@ -1132,6 +1179,82 @@ mod tests {
             "src/a.rs lost SIMPLE in pick (line 12): ast.max_function_complexity 9→14, limit 10."
         );
         assert_eq!(lost.fix, advice_for("ast.max_function_complexity").unwrap());
+    }
+
+    fn entropy_lost(path: &str, role: Option<FileRole>) -> FileRecap {
+        let mut file = changed(path);
+        set(&mut file, "simple", (true, false), (80.0, 70.0));
+        file.pillars.get_mut("simple").unwrap().gate = crossing("ast.entropy", 0.23, 0.18, 0.2);
+        file.entropy_role = role;
+        file
+    }
+
+    #[test]
+    fn a_test_or_data_file_losing_simple_on_entropy_warns_outside_strict() {
+        for (preset, expected) in [
+            (PrGatePreset::Relaxed, Severity::Warn),
+            (PrGatePreset::Recommended, Severity::Warn),
+            (PrGatePreset::Strict, Severity::Block),
+        ] {
+            for role in [FileRole::Test, FileRole::Data] {
+                let file = entropy_lost("tests/cache.rs", Some(role));
+                let cfg = PrGateConfig::for_preset(preset);
+                let (_, findings) = unmoved(&[file], &[], 0, &cfg);
+                assert_eq!(gates(&findings), [GateId::PillarLost]);
+                assert_eq!(findings[0].severity, expected, "{preset:?} {role:?}");
+                let warns = findings[0].text.ends_with("It warns instead of blocking.");
+                assert_eq!(warns, expected == Severity::Warn, "{}", findings[0].text);
+            }
+        }
+    }
+
+    #[test]
+    fn an_entropy_loss_in_a_test_file_explains_itself() {
+        let (readiness, findings) = unmoved(
+            &[entropy_lost("tests/cache.rs", Some(FileRole::Test))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert_eq!(readiness, Readiness::NeedsAttention);
+        assert_eq!(
+            findings[0].text,
+            "tests/cache.rs lost SIMPLE: ast.entropy 0.23→0.18, min 0.2. Entropy measures how \
+             repetitive the text is, and this is a test file, where repeated cases are expected. \
+             It warns instead of blocking."
+        );
+        assert!(findings[0]
+            .fix
+            .starts_with("If these are repeated cases, parametrize them"));
+
+        let (_, findings) = unmoved(
+            &[entropy_lost("src/codes.py", Some(FileRole::Data))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert!(findings[0].text.contains("this is a data file"));
+        assert!(findings[0].fix.contains("loading it from a data file"));
+    }
+
+    #[test]
+    fn an_entropy_loss_in_ordinary_code_still_blocks() {
+        let (readiness, findings) =
+            unmoved(&[entropy_lost("src/a.py", None)], &[], 0, &recommended());
+        assert_eq!(readiness, Readiness::Blocked);
+        assert_eq!(findings[0].severity, Severity::Block);
+        assert_eq!(findings[0].fix, advice_for("ast.entropy").unwrap());
+    }
+
+    #[test]
+    fn a_role_does_not_soften_a_complexity_loss() {
+        let mut file = changed("tests/a.rs");
+        set(&mut file, "simple", (true, false), (60.0, 40.0));
+        file.pillars.get_mut("simple").unwrap().gate =
+            crossing("ast.max_function_complexity", 9.0, 14.0, 10.0);
+        file.entropy_role = Some(FileRole::Test);
+        let (_, findings) = unmoved(&[file], &[], 0, &recommended());
+        assert_eq!(findings[0].severity, Severity::Block);
     }
 
     #[test]

@@ -41,9 +41,7 @@ use crate::server::ToposServer;
 
 use self::clusters::{build_clusters, changed_list};
 use self::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
-use self::git::{
-    cap_by_churn, changed_files, churn, file_change, skip_reason, worktree_files, DiffEntry,
-};
+use self::git::{cap_by_churn, changed_files, churn, file_change, worktree_files, DiffEntry};
 use self::hotspots::top_hotspots;
 pub use self::model::*;
 use self::moves::RangeMoves;
@@ -478,28 +476,27 @@ pub fn build_recap(
         changed_files(&repo, &base_sha, &head_sha)?
     };
 
-    let head_to_base: HashMap<String, String> = diff
-        .entries
-        .iter()
-        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
-        .collect();
-    let mut changed_sources = BTreeSet::new();
+    let exclusions = policy::Exclusions {
+        repo: &repo,
+        base: &base_sha,
+        head: &head_sha,
+        ignore: &judging.ignore,
+    };
     let mut skipped = Vec::new();
     let mut scoreable = Vec::new();
     for entry in diff.entries {
-        let reason = skip_reason(&entry)
-            .or_else(|| policy::excluded_at_base(&repo, &base_sha, &entry, &judging.ignore));
-        match reason {
-            Some(reason) => skipped.push(SkippedFile {
-                path: entry.path,
-                reason,
-            }),
-            None => {
-                changed_sources.insert(entry.path.clone());
-                scoreable.push(entry);
-            }
+        match exclusions.review(entry) {
+            Ok(entry) => scoreable.push(entry),
+            Err(file) => skipped.push(file),
         }
     }
+    let files_unreviewed = skipped.iter().filter(|file| file.source).count();
+    let head_to_base: HashMap<String, String> = scoreable
+        .iter()
+        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
+        .collect();
+    let changed_sources: BTreeSet<String> =
+        scoreable.iter().map(|entry| entry.path.clone()).collect();
     let capped = if max_files == 0 {
         0
     } else {
@@ -526,6 +523,7 @@ pub fn build_recap(
             skipped.push(SkippedFile {
                 path: entry.path.clone(),
                 reason: format!("over the {max_files}-file scoring cap"),
+                source: false,
             });
         }
     }
@@ -639,6 +637,7 @@ pub fn build_recap(
         lines_added: files.iter().map(|file| file.lines_added).sum(),
         lines_removed: files.iter().map(|file| file.lines_removed).sum(),
         files_skipped: skipped.len(),
+        files_unreviewed,
         files_deleted: diff.deleted.len(),
         files_capped: capped,
         coupling,

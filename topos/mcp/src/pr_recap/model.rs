@@ -426,6 +426,9 @@ pub struct Scope {
     pub lines_added: usize,
     pub lines_removed: usize,
     pub files_skipped: usize,
+    /// Skipped files that are source in a supported language: see
+    /// [`SkippedFile::source`].
+    pub files_unreviewed: usize,
     pub files_deleted: usize,
     /// Scoreable files left out by `--max-files`, lowest churn first out.
     pub files_capped: usize,
@@ -436,6 +439,12 @@ pub struct Scope {
 pub struct SkippedFile {
     pub path: String,
     pub reason: String,
+    /// Source in a supported language that no gate looked at, because of
+    /// where it sits (a vendor, fixtures or build path), the base
+    /// `.toposignore`, or a generated-code header. `false` for a file
+    /// that is not source, and for one over the scoring cap, which
+    /// `incomplete` reports.
+    pub source: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -569,6 +578,35 @@ pub struct PrRecap {
 impl PrRecap {
     pub fn new_files(&self) -> Vec<&FileRecap> {
         self.files.iter().filter(|f| f.is_new()).collect()
+    }
+
+    /// The skipped files that are source, in the recap's order.
+    pub fn unreviewed(&self) -> Vec<&SkippedFile> {
+        self.skipped.iter().filter(|file| file.source).collect()
+    }
+
+    /// `2 source files not reviewed (skipped by path or policy): a.py,
+    /// b.py and 3 more`, naming at most `shown` paths, or `None` when
+    /// every skipped file is non-source.
+    pub fn unreviewed_note(&self, shown: usize) -> Option<String> {
+        let files = self.unreviewed();
+        let named: Vec<&str> = files
+            .iter()
+            .take(shown)
+            .map(|file| file.path.as_str())
+            .collect();
+        let more = match files.len() - named.len() {
+            0 => String::new(),
+            more => format!(" and {more} more"),
+        };
+        (!files.is_empty()).then(|| {
+            format!(
+                "{} source file{} not reviewed (skipped by path or policy): {}{more}",
+                files.len(),
+                if files.len() == 1 { "" } else { "s" },
+                named.join(", ")
+            )
+        })
     }
 }
 

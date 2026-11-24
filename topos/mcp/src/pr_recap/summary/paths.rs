@@ -307,6 +307,7 @@ mod tests {
         recap.skipped.push(SkippedFile {
             path: "docs/huge.py".to_string(),
             reason: "over the size limit".to_string(),
+            source: false,
         });
         recap.deleted.push("old.py".to_string());
         let asked = [

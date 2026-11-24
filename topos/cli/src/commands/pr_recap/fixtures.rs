@@ -286,6 +286,7 @@ fn scope(files: usize, new: usize, skipped: usize, measured: bool) -> Scope {
         lines_added: 2539,
         lines_removed: 1864,
         files_skipped: skipped,
+        files_unreviewed: 0,
         files_deleted: 0,
         files_capped: 0,
         coupling: CouplingStatus {

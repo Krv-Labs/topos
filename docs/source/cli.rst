@@ -497,25 +497,33 @@ lands as SLOP and raises ``new_file_slop`` (``block`` under every preset),
 whether or not it is a split child. Files the recap skips are not parsed
 and raise nothing.
 
+Both findings carry the remedy on the card and in the GitHub comment: fix
+the syntax error. A file can also be valid and still not parse, when it uses
+syntax newer than the bundled grammar or is a template with a source
+extension. The change cannot exempt itself, so that case needs a maintainer:
+add the path to ``.toposignore``, or add a ``[[pr_recap.waive]]`` for
+``pillar_lost`` or ``new_file_slop``, **on the base branch**.
+
 **Skipped files**
 
-A changed file is skipped, and never judged, when ``topos evaluate -r``
-would not score it either. The path rules are the same code as project
-discovery, so the two cannot disagree:
+A changed file is skipped, and never judged, when it is one of these:
 
 - an unsupported file type;
-- a cache, build or dependency directory (``node_modules``, ``target``,
-  ``.venv``, ``htmlcov``, ..., and ``build``, ``dist``, ``out``,
-  ``coverage`` or ``env`` at the repository root);
-- a ``fixtures``, ``testdata``, ``vendor`` or ``__snapshots__`` directory at
-  any depth, so an intentionally broken parser fixture does not block;
-- a minified or bundled file (``*.min.*``, ``*.bundle.*``);
+- anything ``topos evaluate -r`` does not score by its path. This part is
+  project discovery's own code, so the recap skips every path discovery
+  skips: a cache, build or dependency directory (``node_modules``,
+  ``target``, ``.venv``, ``htmlcov``, ..., and ``build``, ``dist``, ``out``,
+  ``coverage`` or ``env`` at the repository root), a ``fixtures``,
+  ``testdata``, ``vendor`` or ``__snapshots__`` directory at any depth (so an
+  intentionally broken parser fixture does not block), and ``*.min.*``;
+- four more that only the recap skips and ``topos evaluate -r`` still
+  scores, because they are generated or bundled output that is large and
+  slow to diff: ``openwiki/`` at any depth, ``builds/`` at the repository
+  root, a ``dist/`` directory that is not directly inside ``src/``, and
+  ``*.bundle.*``;
 - a path matched by ``.toposignore`` **at the base revision**;
-- a file that already carried a generated-code header (``@generated``,
-  ``Code generated ... DO NOT EDIT``) **at the base revision**.
-
-Each skipped file is listed with its reason in ``--json`` (``skipped``) and
-counted on the card.
+- a file that carries a generated-code header (``@generated``,
+  ``Code generated ... DO NOT EDIT``) **at both the base and the head**.
 
 ``.toposignore`` and the generated header are policy like ``.topos.toml``,
 so a change cannot bring its own: a ``.toposignore`` pattern the change adds
@@ -524,14 +532,35 @@ existing file does not skip it, and an added file is never skipped for its
 header. A newly added generated file is therefore scored until its path is
 in the base's ``.toposignore``.
 
+**Code that leaves a skipped place is judged as new.** Its old content was
+never reviewed, so it is no baseline. A file renamed out of a skipped path
+(``fixtures/x.py`` to ``src/x.py``), renamed from an unsupported type
+(``notes/x.txt`` to ``x.py``), or a generated file whose header the change
+removes, is reported as an added file and has to clear the new-file gates
+(``new_file_insecure``, ``new_file_slop``, ``new_file_pillar``) on its own.
+
+**Skipped source is named.** The author picks the path, so a skipped file
+that is source in a supported language is called out, apart from skipped
+docs and config:
+
+- ``--json``: ``skipped[].source`` is ``true`` and
+  ``scope.files_unreviewed`` counts them;
+- the card: ``! 2 source files not reviewed (skipped by path or policy):``
+  followed by the first three paths;
+- the GitHub comment: a **Not reviewed** block listing up to ten with their
+  reasons, beside the findings;
+- the ``topos_pr_recap`` summary: the same count.
+
+It does not change the readiness or the exit code: plenty of honest pull
+requests touch vendored code.
+
 .. warning::
-   The directory names are a different matter, and they matter for a
-   required check. A change that puts code under a directory named
-   ``fixtures``, ``testdata``, ``vendor``, ``__snapshots__`` or
-   ``node_modules`` is not reviewed there, exactly as ``topos evaluate -r``
-   would not score it. The recap cannot tell a real fixture from code hidden
-   under that name. Review the ``skipped`` list of a pull request from an
-   untrusted contributor, or protect those paths with ``CODEOWNERS``.
+   A required check does not review code under a directory named
+   ``fixtures``, ``testdata``, ``vendor``, ``__snapshots__``,
+   ``node_modules``, ``dist`` and the like, and the recap cannot tell a real
+   fixture from code hidden under that name. For pull requests from
+   untrusted contributors, read the **Not reviewed** block, or protect those
+   paths with ``CODEOWNERS``.
 
 **Split evidence in --json**
 

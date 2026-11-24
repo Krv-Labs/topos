@@ -20,6 +20,7 @@ impl Summary {
         out.push_str(&self.direction_line());
         out.push_str(&self.incomplete_line());
         out.push_str(&self.unapplied_line());
+        out.push_str(&self.unreviewed_line());
         out.push_str(&self.findings_block());
         out.push_str(&attention_block(&self.attention));
         for file in &self.files {
@@ -83,6 +84,16 @@ impl Summary {
     fn unapplied_line(&self) -> String {
         unapplied_note(&self.gate.unapplied)
             .map_or(String::new(), |note| format!("Config: {note}\n"))
+    }
+
+    fn unreviewed_line(&self) -> String {
+        match self.scope.counts.files_unreviewed {
+            0 => String::new(),
+            files => format!(
+                "Not reviewed: {files} source file(s) skipped by path or policy; \
+                 `detail: \"full\"` lists them under `skipped`.\n"
+            ),
+        }
     }
 
     fn findings_block(&self) -> String {

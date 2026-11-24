@@ -191,6 +191,9 @@ fn meta(view: &RecapView<'_>) -> String {
 
 // ------------------------------------------------------------- policy
 
+/// Skipped source files the card names before folding into `and N more`.
+const CARD_UNREVIEWED_PATHS: usize = 3;
+
 /// What the waivers did, any `.topos.toml` edit the change made that did
 /// not judge it, and the gate line.
 fn policy_lines(view: &RecapView<'_>, options: RenderOptions) -> Vec<String> {
@@ -199,7 +202,12 @@ fn policy_lines(view: &RecapView<'_>, options: RenderOptions) -> Vec<String> {
     if let Some(note) = view.waiver_note() {
         lines.extend(dim_wrapped("", "", &note, options));
     }
-    if let Some(note) = recap.gate.unapplied_note() {
+    for note in recap
+        .gate
+        .unapplied_note()
+        .into_iter()
+        .chain(recap.unreviewed_note(CARD_UNREVIEWED_PATHS))
+    {
         lines.extend(dim_wrapped("! ", "  ", &note, options));
     }
     lines.extend(dim_wrapped("", "", &findings::gate_line(recap), options));

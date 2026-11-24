@@ -267,7 +267,7 @@ pub(in crate::commands::pr_recap) fn facts(item: &Item<'_>) -> String {
         }
     }
     let lead = item.lead();
-    if lead.metric.is_some() {
+    if lead.metric.is_some() || lead.is_unparsed() {
         parts.push(lowercase_first(&sentence(&lead.fix)));
     }
     parts.join(" · ")

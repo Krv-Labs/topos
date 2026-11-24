@@ -20,10 +20,10 @@ use std::path::PathBuf;
 use clap::{Args, ValueEnum};
 use topos_engine::config::{FailOn, PrGateConfig, PrGatePreset};
 use topos_engine::evaluation::waivers::today_utc;
-pub(crate) use topos_mcp::pr_recap::git::{changed_files, skip_reason, worktree_files};
+pub(crate) use topos_mcp::pr_recap::git::{changed_files, worktree_files};
 pub(crate) use topos_mcp::pr_recap::{
-    build_recap, gates, head_commit, model, policy::base_policy, resolve_priority, resolve_range,
-    Judging, ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
+    build_recap, gates, head_commit, model, policy::base_policy, policy::Exclusions,
+    resolve_priority, resolve_range, Judging, ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
 };
 #[cfg(test)]
 use {self::model::*, std::path::Path, topos_mcp::pr_recap::moves};
@@ -188,14 +188,23 @@ Readiness / exit codes:
   exit code.
 
 Skipped files:
-  A changed file is skipped, listed with its reason and never judged, when
-  `topos evaluate -r` would not score it either: an unsupported file type; a
-  cache, build, vendor, fixtures, testdata or __snapshots__ directory; a
-  minified or bundled file; a path the base revision's .toposignore lists; or
-  a file that already carried a generated-code header at base. A
-  .toposignore entry or a generated header the change itself adds hides
-  nothing. A directory name does: code under a new fixtures/ or vendor/
-  directory is not reviewed, so read the skipped list (--json `skipped`).
+  A changed file is skipped and never judged when it is: an unsupported file
+  type; any path `topos evaluate -r` does not score (cache, build, vendor,
+  fixtures, testdata and __snapshots__ directories, *.min.*); generated or
+  bundled output only pr-recap skips (openwiki/, a root builds/, a dist/ not
+  directly inside src/, *.bundle.*); a path the base revision's .toposignore
+  lists; or a file with a generated-code header at both base and head. A
+  .toposignore entry or a header the change itself adds hides nothing.
+  A file that leaves a skipped place (renamed out of fixtures/, renamed from
+  an unsupported type, or a generated file that lost its header) is judged as
+  a new file, since its old content was never reviewed.
+  Skipped source files are named: `! N source files not reviewed` on the
+  card, a "Not reviewed" block in the GitHub comment, skipped[].source and
+  scope.files_unreviewed in --json. They do not change the exit code, and the
+  recap cannot tell a real fixture from code hidden under such a name, so
+  read that list on a pull request from an untrusted contributor.
+  A file that is valid but that Topos cannot parse can only be exempted by a
+  maintainer, on the base branch: a .toposignore entry or a [[pr_recap.waive]].
 
 Waivers:
   A [[pr_recap.waive]] entry (gate, path glob, reason, optional expires =
@@ -383,21 +392,16 @@ fn resolve_format(compact: bool, format: Option<RecapFormat>, no_marker: bool) -
 /// Best-effort count of files about to be scored, for the large-recap
 /// warning. `None` when the diff itself cannot be read, in which case the
 /// recap runs without the warning instead of failing.
-fn files_to_score(
-    root: &std::path::Path,
-    base: &str,
-    head: &str,
-    max_files: usize,
-) -> Option<usize> {
-    let diff = if head == ":worktree" {
-        worktree_files(root, base).ok()?
+fn files_to_score(exclusions: &Exclusions<'_>, max_files: usize) -> Option<usize> {
+    let diff = if exclusions.head == ":worktree" {
+        worktree_files(exclusions.repo, exclusions.base).ok()?
     } else {
-        changed_files(root, base, head).ok()?
+        changed_files(exclusions.repo, exclusions.base, exclusions.head).ok()?
     };
     let scoreable = diff
         .entries
-        .iter()
-        .filter(|entry| skip_reason(entry).is_none())
+        .into_iter()
+        .filter_map(|entry| exclusions.review(entry).ok())
         .count();
     Some(if max_files == 0 {
         scoreable
@@ -406,8 +410,8 @@ fn files_to_score(
     })
 }
 
-fn warn_if_large_recap(root: &std::path::Path, base: &str, head: &str, max_files: usize) {
-    let Some(count) = files_to_score(root, base, head, max_files) else {
+fn warn_if_large_recap(exclusions: &Exclusions<'_>, max_files: usize) {
+    let Some(count) = files_to_score(exclusions, max_files) else {
         return;
     };
     if let Some(warning) = large_recap_warning(count) {
@@ -479,7 +483,15 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         today: today_utc(),
         cap_name: gates::CLI_CAP_NAME,
     };
-    warn_if_large_recap(&root, &base, &head, args.max_files);
+    warn_if_large_recap(
+        &Exclusions {
+            repo: &root,
+            base: &base,
+            head: &head,
+            ignore: &judging.ignore,
+        },
+        args.max_files,
+    );
 
     // Any question is asked here, before the progress lines take stderr.
     let streams = Streams::detect();
@@ -733,9 +745,23 @@ mod tests {
         let base = "HEAD~1";
         let head = "HEAD";
         let merge = crate::commands::gh::merge_base(&repo, base, head).unwrap();
-        assert_eq!(files_to_score(&repo, &merge, head, 0), Some(3));
-        assert_eq!(files_to_score(&repo, &merge, head, 2), Some(2));
-        assert_eq!(files_to_score(&repo, &merge, head, 10), Some(3));
+        let count = |ignore: &[String], max_files| {
+            let exclusions = Exclusions {
+                repo: &repo,
+                base: &merge,
+                head,
+                ignore,
+            };
+            files_to_score(&exclusions, max_files)
+        };
+        assert_eq!(count(&[], 0), Some(3));
+        assert_eq!(count(&[], 2), Some(2));
+        assert_eq!(count(&[], 10), Some(3));
+        assert_eq!(
+            count(&["src".to_string()], 0),
+            Some(0),
+            "files the base .toposignore skips are not about to be scored"
+        );
     }
 
     #[test]

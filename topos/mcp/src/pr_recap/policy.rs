@@ -13,8 +13,10 @@ use topos_engine::adapters::discovery::{
 };
 use topos_engine::config::{parse_topos_config, ToposConfig};
 
-use super::git::{file_change, show_file, DiffEntry};
-use super::model::FileChange;
+use topos_engine::graphs::ast::languages::language_for_path;
+
+use super::git::{file_change, show_file, skip_reason, DiffEntry};
+use super::model::{FileChange, SkippedFile};
 use super::{priority_name, resolve_priority};
 
 const CONFIG_FILE: &str = ".topos.toml";
@@ -66,28 +68,89 @@ pub fn base_policy(root: &Path, base: &str, fork: &str, head: &str) -> BasePolic
     }
 }
 
-/// Why project discovery would not score this changed file, for the two
-/// exclusions a path alone cannot decide: the base revision's
-/// `.toposignore` (`ignore`), and a generated-code header the file already
-/// carried at `base`. Neither can be brought by the change itself: an
-/// added file has no base header, and the head's `.toposignore` is not
-/// read.
-pub fn excluded_at_base(
-    repo: &Path,
-    base: &str,
-    entry: &DiffEntry,
-    ignore: &[String],
-) -> Option<String> {
-    if is_ignored_by_patterns(&entry.path, ignore) {
-        return Some("ignored by .toposignore at base".to_string());
+/// Decides, for each changed file, whether it is scored, and against
+/// what. The rules a path alone cannot settle are read at the base
+/// revision, so a change cannot bring its own: the head's `.toposignore`
+/// is not read, and a generated-code header counts only when the file
+/// carries it on both sides.
+pub struct Exclusions<'a> {
+    pub repo: &'a Path,
+    /// The revision the before side is read at.
+    pub base: &'a str,
+    /// The head revision, or `worktree` / `:worktree` for the files on
+    /// disk.
+    pub head: &'a str,
+    /// The base revision's `.toposignore` patterns.
+    pub ignore: &'a [String],
+}
+
+impl Exclusions<'_> {
+    /// The entry to score, or the record of why it is skipped.
+    ///
+    /// An existing file whose base side was never reviewed (it sat at a
+    /// skipped path, or was generated code and has since lost its header)
+    /// comes back as an added file: unreviewed content is no baseline, so
+    /// it must clear the new-file gates on its own.
+    pub fn review(&self, entry: DiffEntry) -> Result<DiffEntry, SkippedFile> {
+        if let Some(reason) = self.path_skip(&entry.path) {
+            return Err(skipped(entry.path, reason));
+        }
+        if file_change(&entry.status) == FileChange::Added {
+            return Ok(entry);
+        }
+        let base_path = entry.old_path.as_deref().unwrap_or(&entry.path);
+        let generated = self.generated(self.base, base_path);
+        if generated && self.generated(self.head, &entry.path) {
+            return Err(skipped(
+                entry.path,
+                "generated-code header at base and head".to_string(),
+            ));
+        }
+        let moved_from_skipped = entry
+            .old_path
+            .as_deref()
+            .is_some_and(|old| self.path_skip(old).is_some());
+        Ok(if generated || moved_from_skipped {
+            DiffEntry {
+                status: "A".to_string(),
+                old_path: None,
+                ..entry
+            }
+        } else {
+            entry
+        })
     }
-    if file_change(&entry.status) == FileChange::Added {
-        return None;
+
+    /// Why a file at `path` is not scored, by its path: the recap's skip
+    /// rules, then the base `.toposignore`.
+    fn path_skip(&self, path: &str) -> Option<String> {
+        let at_path = DiffEntry {
+            status: "M".to_string(),
+            path: path.to_string(),
+            old_path: None,
+        };
+        skip_reason(&at_path).or_else(|| {
+            is_ignored_by_patterns(path, self.ignore)
+                .then(|| "ignored by .toposignore at base".to_string())
+        })
     }
-    let base_path = entry.old_path.as_deref().unwrap_or(&entry.path);
-    show_file(repo, base, base_path)
-        .is_ok_and(|text| text_has_generated_header(&text))
-        .then(|| "generated-code header at base".to_string())
+
+    fn generated(&self, rev: &str, path: &str) -> bool {
+        let text = if rev.ends_with("worktree") {
+            std::fs::read_to_string(self.repo.join(path)).ok()
+        } else {
+            show_file(self.repo, rev, path).ok()
+        };
+        text.is_some_and(|text| text_has_generated_header(&text))
+    }
+}
+
+fn skipped(path: String, reason: String) -> SkippedFile {
+    SkippedFile {
+        source: language_for_path(&path).is_some(),
+        path,
+        reason,
+    }
 }
 
 /// What `head` changes about how a range is judged, one phrase each.
@@ -193,22 +256,33 @@ mod tests {
             ]
         );
 
-        let entry = |status: &str, path: &str| DiffEntry {
-            status: status.to_string(),
+        let entry = |path: &str| DiffEntry {
+            status: "A".to_string(),
             path: path.to_string(),
             old_path: None,
         };
-        let excluded = |entry: &DiffEntry| excluded_at_base(&repo, "HEAD~1", entry, &policy.ignore);
-        assert_eq!(
-            excluded(&entry("A", "samples/a.py")).as_deref(),
-            Some("ignored by .toposignore at base")
-        );
-        assert_eq!(excluded(&entry("A", "src/a.py")), None);
+        let exclusions = Exclusions {
+            repo: &repo,
+            base: "HEAD~1",
+            head: "HEAD",
+            ignore: &policy.ignore,
+        };
+        let skipped = exclusions
+            .review(entry("samples/a.py"))
+            .err()
+            .expect("skipped");
+        assert_eq!(skipped.reason, "ignored by .toposignore at base");
+        assert!(skipped.source, "a Python file is source");
+        assert!(exclusions.review(entry("src/a.py")).is_ok());
+        let docs = exclusions
+            .review(entry("docs/a.md"))
+            .err()
+            .expect("skipped");
+        assert!(!docs.source, "Markdown is not source");
     }
 
     #[test]
     fn the_recap_skips_every_path_discovery_excludes() {
-        use super::super::git::skip_reason;
         for path in [
             "tests/fixtures/broken.py",
             "pkg/testdata/broken.go",

@@ -43,6 +43,13 @@ const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
 /// every score it had is gone.
 const UNPARSED_MAGNITUDE: f64 = 100.0;
 
+/// Both ways out of an unparsed-file finding. The second matters for a
+/// valid file the parser cannot handle (newer syntax, a template with a
+/// source extension): the exemption has to land on the base branch.
+const UNPARSED_FIX: &str = "Fix the syntax error so the file parses; or, if the file is valid \
+     and Topos cannot parse it, have a maintainer add it to .toposignore or waive it with \
+     [[pr_recap.waive]] on the base branch.";
+
 /// Whether the change is ready to merge under the configured gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -139,6 +146,9 @@ pub struct Finding {
     /// Every file in a new import cycle, for its per-language severity.
     #[serde(skip)]
     cycle: Vec<String>,
+    /// The finding is that the file does not parse at head.
+    #[serde(skip)]
+    unparsed: bool,
 }
 
 impl Finding {
@@ -165,6 +175,22 @@ impl Finding {
             text,
             magnitude: 0.0,
             cycle: Vec::new(),
+            unparsed: false,
+        }
+    }
+
+    /// A finding that the file does not parse at head. It has no metric,
+    /// and its `fix` is the only remedy there is, so a card shows it.
+    pub fn is_unparsed(&self) -> bool {
+        self.unparsed
+    }
+
+    fn unparsed(gate: GateId, path: &str, text: String) -> Finding {
+        Finding {
+            fix: UNPARSED_FIX.to_string(),
+            magnitude: UNPARSED_MAGNITUDE,
+            unparsed: true,
+            ..Finding::new(gate, path, text)
         }
     }
 
@@ -475,7 +501,7 @@ fn stopped_parsing(file: &FileRecap) -> bool {
 /// A file that stopped parsing loses every pillar at once: one
 /// `pillar_lost` finding for the file, naming the cause.
 fn unparsed_finding(file: &FileRecap) -> Finding {
-    let mut finding = Finding::new(
+    Finding::unparsed(
         GateId::PillarLost,
         &file.path,
         format!(
@@ -483,26 +509,20 @@ fn unparsed_finding(file: &FileRecap) -> Finding {
              measured: every pillar it held is lost.",
             file.path
         ),
-    );
-    finding.fix = "Fix the syntax error so the file parses again.".to_string();
-    finding.magnitude = UNPARSED_MAGNITUDE;
-    finding
+    )
 }
 
 /// An added file that does not parse lands as SLOP: one `new_file_slop`
 /// finding saying why.
 fn unparsed_new_file(file: &FileRecap) -> Finding {
-    let mut finding = Finding::new(
+    Finding::unparsed(
         GateId::NewFileSlop,
         &file.path,
         format!(
             "{} is new and does not parse, so no pillar can be measured (SLOP).",
             file.path
         ),
-    );
-    finding.fix = "Fix the syntax error so the file parses.".to_string();
-    finding.magnitude = UNPARSED_MAGNITUDE;
-    finding
+    )
 }
 
 /// A finding about one pillar's gate, pointed at the hotspot for that

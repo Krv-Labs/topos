@@ -69,6 +69,7 @@ pub(super) fn render_github(recap: &PrRecap) -> String {
         .partition(|item| item.severity() == Severity::Block);
     head.push_str(&finding_list("Blocking", &blocking));
     head.push_str(&finding_list("Needs attention", &attention));
+    head.push_str(&not_reviewed(recap));
     head.push_str(&notes(&view.note_items()));
     head.push_str(&waived_section(&view));
     head.push_str(&changed_table(recap));
@@ -160,6 +161,31 @@ fn sentence_case(word: &str) -> String {
     chars.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(chars).collect()
     })
+}
+
+/// Skipped source files listed before the rest fold into `and N more`.
+const MAX_UNREVIEWED: usize = 10;
+
+/// The source files no gate looked at, with why. The author picks the
+/// path, so these are named in the body, not counted in the small print.
+fn not_reviewed(recap: &PrRecap) -> String {
+    let files = recap.unreviewed();
+    if files.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "**Not reviewed** — {} skipped by path or policy; no gate looked at {}:\n\n",
+        plural(files.len(), "source file", "source files"),
+        if files.len() == 1 { "it" } else { "them" },
+    );
+    for file in files.iter().take(MAX_UNREVIEWED) {
+        let _ = writeln!(out, "- `{}` — {}", file.path, file.reason);
+    }
+    if files.len() > MAX_UNREVIEWED {
+        let _ = writeln!(out, "- and {} more", files.len() - MAX_UNREVIEWED);
+    }
+    out.push('\n');
+    out
 }
 
 /// `3 files · +174/−1 · priority navigable · COMPOSABLE not measured ·

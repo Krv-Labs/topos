@@ -18,6 +18,13 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   coupling stores. The schema stays `topos.pr_recap.v3`.
 - `gate.unapplied` in `topos.pr_recap.v3` and in the `topos_pr_recap` summary
   lists the edits a change makes to `.topos.toml` that did not judge it.
+- `topos pr-recap` names the source files it skipped. `skipped[].source` and
+  `scope.files_unreviewed` in `topos.pr_recap.v3` tell a skipped source file
+  (vendor, fixtures, build path, `.toposignore`, generated header) from a
+  skipped doc or config file; the card prints
+  `! N source files not reviewed`, the GitHub comment gets a **Not reviewed**
+  block, and the `topos_pr_recap` summary carries the count. The exit code
+  does not change.
 
 ### Changed
 
@@ -45,6 +52,20 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   broken parser fixture no longer blocks. `.toposignore` and the header are
   read at the base revision, so a change cannot use either to hide its own
   file; `.toposignore` edits the change makes are listed in `gate.unapplied`.
+  A generated header skips a file only when it is there at both base and
+  head. pr-recap still skips four kinds of generated output that
+  `topos evaluate -r` scores: `openwiki/`, a root `builds/`, a `dist/` not
+  directly inside `src/`, and `*.bundle.*`.
+- A file that leaves a skipped place is judged as a new file: one renamed out
+  of a skipped path or from an unsupported type, or a generated file whose
+  header the change removes. Its base content was never reviewed, so it no
+  longer serves as the baseline that made an existing dangerous call look
+  unchanged.
+- The findings for a file that does not parse now show their remedy on the
+  card and in the GitHub comment, including that a valid file Topos cannot
+  parse needs a `.toposignore` entry or a waiver on the base branch.
+- The large-recap warning no longer counts files that will be skipped by the
+  base `.toposignore` or a generated header.
 
 ## [0.15.0] - 2026-10-30
 

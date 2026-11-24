@@ -354,6 +354,78 @@ mod tests {
         assert!(mcp.contains("src/--max-files.py"));
     }
 
+    const SHELL: &str = "import os\n\ndef run(cmd):\n    os.system(cmd)\n";
+
+    /// The tool reads policy where the CLI does: at the base revision.
+    #[test]
+    fn the_tool_judges_by_the_base_config_and_the_base_toposignore() {
+        let (_keep, repo) = write_repo(&[
+            ("src/a.py", "def ready():\n    return 1\n"),
+            (".toposignore", "samples/\n"),
+        ]);
+        write_files(
+            &repo,
+            &[
+                ("src/a.py", SHELL),
+                ("samples/b.py", SHELL),
+                ("hidden/c.py", SHELL),
+                (".toposignore", "samples/\nhidden/\n"),
+                (
+                    ".topos.toml",
+                    "[pr_recap]\nfail_on = \"never\"\n\n[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/**\"\nreason = \"trust me\"\n",
+                ),
+            ],
+        );
+        commit_all(&repo, "regress and self-exempt");
+
+        let response = respond_untimed(input(&repo, Detail::Full, &[]), None);
+        let full = response.structured_content.expect("structured");
+        assert_eq!(full["check"], "fail", "{full:#}");
+        assert_eq!(full["exit_code"], 1);
+        assert_eq!(full["gate"]["fail_on"], "block");
+        assert_eq!(
+            full["gate"]["unapplied"],
+            json!([
+                "fail_on: block → never",
+                "waiver added: pillar_lost on src/**",
+                ".toposignore pattern added: hidden"
+            ])
+        );
+        let gates: Vec<(&str, &str)> = full["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["severity"] == "block")
+            .map(|finding| {
+                (
+                    finding["gate"].as_str().unwrap(),
+                    finding["path"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert!(gates.contains(&("pillar_lost", "src/a.py")), "{gates:?}");
+        assert!(
+            gates.contains(&("new_file_insecure", "hidden/c.py")),
+            "a path the change adds to .toposignore is still judged: {gates:?}"
+        );
+        assert_eq!(full["scope"]["files_unreviewed"], 1);
+        let skipped = full["skipped"].as_array().unwrap();
+        assert!(
+            skipped.iter().any(|file| file["path"] == "samples/b.py"
+                && file["reason"] == "ignored by .toposignore at base"
+                && file["source"] == true),
+            "{skipped:?}"
+        );
+
+        let summary = respond_untimed(input(&repo, Detail::Summary, &[]), None);
+        let text = summary.content[0].as_text().unwrap().text.clone();
+        assert!(text.contains("these edits were not applied"), "{text}");
+        assert!(text.contains("Not reviewed: 1 source file(s)"), "{text}");
+        let structured = summary.structured_content.unwrap();
+        assert_eq!(structured["check"], "fail");
+        assert_eq!(structured["scope"]["files_unreviewed"], 1);
+    }
+
     #[test]
     fn errors_keep_the_shape_of_the_mode_asked_for() {
         let params = |detail| {

@@ -538,7 +538,7 @@ fn a_generated_header_skips_a_file_only_when_the_base_has_it() {
     let value = json(&run);
     assert_eq!(
         skipped(&value, "src/gen.py"),
-        Some("generated-code header at base"),
+        Some("generated-code header at base and head"),
         "{value:#}"
     );
     assert_eq!(skipped(&value, "src/a.py"), None);

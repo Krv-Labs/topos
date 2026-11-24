@@ -15,16 +15,18 @@ use clap::{Parser, Subcommand};
 use console::Style;
 
 use commands::{
-    cache, compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap, update,
+    badge, cache, compare, config, coverage, depgraph, evaluate, inspect, install, mcp, pr_recap,
+    update,
 };
 
-const ROOT_COMMANDS: [(&str, &str); 13] = [
+const ROOT_COMMANDS: [(&str, &str); 14] = [
     ("evaluate", "Score a file or directory"),
     ("inspect", "Explain one file"),
     ("pr-recap", "Review a change or a pull request"),
     ("config", "Set project priorities"),
     ("compare", "Compare two files"),
     ("coverage", "Compare source structure with tests"),
+    ("badge", "Write a pass-rate badge for a README"),
     ("depgraph", "Build the COMPOSABLE graph"),
     ("cache", "Inspect, discover, and clean cache locations"),
     ("install", "Configure agent harnesses to use Topos"),
@@ -69,6 +71,11 @@ enum Command {
         after_help = "Examples:\n  topos coverage src/ --recursive --language rust\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
     )]
     Coverage(coverage::CoverageArgs),
+    /// Write a pass-rate badge (SVG, shields.io endpoint) for a repository.
+    #[command(
+        after_help = "Examples:\n  topos badge --out docs/topos.svg\n  topos badge src/ --endpoint .github/badges/topos.json\n  topos badge > topos.svg"
+    )]
+    Badge(badge::BadgeArgs),
     /// Build the GitNexus graph used by COMPOSABLE.
     Depgraph(depgraph::DepgraphArgs),
     /// Inspect, discover, and clean known cache locations.
@@ -179,6 +186,7 @@ fn dispatch(command: Command) -> Result<(), String> {
         Command::Inspect(args) => inspect::run(args),
         Command::Compare(args) => compare::run(args),
         Command::Coverage(args) => coverage::run(args),
+        Command::Badge(args) => badge::run(args),
         Command::Depgraph(args) => depgraph::run(args),
         Command::Cache(args) => cache::run(args),
         Command::Install(args) => install::run_install(args),
@@ -277,6 +285,7 @@ mod tests {
             "inspect",
             "compare",
             "coverage",
+            "badge",
             "depgraph",
             "cache",
             "install",
@@ -298,7 +307,7 @@ mod tests {
         let styled = root_help(true);
         assert!(styled.contains("\u{1b}[1mCommands\u{1b}[0m"));
         assert!(styled.contains("\u{1b}[2mScore a file or directory\u{1b}[0m"));
-        assert_eq!(ROOT_COMMANDS.len(), 13);
+        assert_eq!(ROOT_COMMANDS.len(), 14);
     }
 
     #[test]

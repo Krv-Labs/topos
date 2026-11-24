@@ -40,7 +40,7 @@ use crate::schemas::PrRecapInput;
 use crate::server::ToposServer;
 
 use self::clusters::{build_clusters, changed_list};
-use self::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
+use self::gh::{ensure_pull_request_commits, git_root, merge_base, pull_request, resolve_commit};
 use self::git::{
     cap_by_churn, changed_files, churn, file_change, show_file, worktree_files, DiffEntry,
 };
@@ -203,8 +203,7 @@ pub fn resolve_range(
         }
         (Some(number), None, None) => {
             let review = pull_request(repo, number)?;
-            ensure_commit(repo, &review.base_sha)?;
-            ensure_commit(repo, &review.head_sha)?;
+            ensure_pull_request_commits(repo, &review)?;
             Ok((
                 review.base_sha,
                 review.head_sha,

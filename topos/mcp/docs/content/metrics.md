@@ -69,6 +69,15 @@ desirabilities, so `achieved` ⇔ score ≥ 50. A dispatch module with
 least 50; the high cyclomatic reading lowers the score within the passing
 half and is flagged if it is atypical for the codebase.
 
+**`ast.entropy` measures repeated text.** Below 0.2 the file compresses
+very well, which usually means repeated code. An empty or whitespace-only
+file has no entropy reading at all (the key is absent from `raw_metrics`),
+so the entropy gate does not apply and the file is judged on
+`ast.max_function_complexity` alone; an empty `__init__.py` passes SIMPLE.
+In `topos pr-recap`, a test file or literal-data file that fails SIMPLE on
+entropy alone warns rather than blocks outside the strict preset (see the
+`pr-recap` gates in the CLI docs).
+
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
 `mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`
@@ -105,6 +114,29 @@ diagnostic only. See `docs/decisions/file-level-composable.md`.
 **`achieved`** ⇔ `mdg.fan_out ≤ 10` ⇔ COMPOSABLE score ≥ 50. Fan-in and
 instability move the score within its half only.
 
+### False edges removed before scoring
+
+GitNexus resolves calls and imports by bare name, so some edges point at a
+repository file that the code never uses. When the graph loads, Topos
+removes an edge only when the source proves it false:
+
+| Rule | Removed edge | Why it is false |
+|---|---|---|
+| `rust_private_cross_crate` | `CALLS` between files of different crates (nearest `Cargo.toml`) whose target is a non-exported free function | A private function cannot be called from another crate (`std::fs::write` matched to a private `fn write`). Methods are kept: a trait impl method has no `pub` and is still callable through the trait. |
+| `python_stdlib_import` | `IMPORTS` to a module named only by absolute standard-library imports in the source (`import json`, `from json import x`) | `import json` loads the standard library, not `pkg/http/json.py`. Kept when the repository has its own top-level `json` module, and when any relative or repository import in the file names the same module. |
+| `js_bare_package_import` | `IMPORTS` to a file named only by bare package specifiers (`@codemirror/state`, `roughjs/bin/math`) | A package import resolves under `node_modules`. Kept when a `paths` alias, `baseUrl` entry, workspace package name, `#`/`~`/`@/` alias, or a relative import could also name the file, and when the nearest `tsconfig.json`/`jsconfig.json` cannot be read in full (for example, it extends a package config). |
+
+The filter applies to every consumer: `mdg.fan_out`, `mdg.fan_in`,
+`mdg.coupling`, and the pr-recap coupling gates. `topos_depgraph_status`
+(and `topos depgraph status`) reports how many edges each rule removed;
+`topos depgraph status --json` lists every removed edge.
+
+Known limits, not filtered: TypeScript `paths` aliases that GitNexus routes to
+the wrong file (`@pkg/element/types` → `packages/pkg/types.ts`), dynamic
+imports with computed specifiers, and Python modules wired by string
+(plugin settings, `importlib.import_module`), which GitNexus does not see at
+all.
+
 ## SECURE generator (← Code Property Graph)
 
 Computed from a CPG fused over AST + CFG + DDG + CDG (Yamaguchi et al.,
@@ -114,6 +146,18 @@ arxiv:1909.03496).  Always available.
 |---|---|---|
 | `cpg.dangerous_calls` | Count of reachable call sites whose callee matches the per-language dangerous-API registry (Python: `eval`, `exec`, `pickle.loads`, `subprocess.*(shell=True)`, ...; C++: `gets`, `strcpy`, ...). | **0** (strict) |
 | `cpg.taint_flows`     | DDG paths from any taint source (e.g. `input`, `request.args`) to any dangerous-API sink. | **0** (strict) |
+
+**How a callee is read.** The callee is the call's syntax node, not the text
+that follows it. Parentheses, `!`, `as`/`satisfies` casts, generic arguments
+and Rust turbofish around it are seen through; whitespace is dropped and `?.`
+and `::` read as `.`. So `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`,
+`window . eval(x)`, `std::mem::transmute(p)` and `Box::from_raw(p)` all count,
+and `new Function(...)` counts as a call to `Function`. A callee matches a
+registry entry exactly or when it ends in `.` followed by the entry, so
+`model.eval()` matches `eval`; a call on a computed receiver
+(`getModel().eval()`) matches the same way. A callee with no name
+(`wrap(eval)(x)`, `obj["eval"](x)`) and a string containing `eval(` never
+count.
 
 Each count's desirability is 1 at zero and `0.5·exp(−v/3)` otherwise, so any
 finding puts the score below 50. **`achieved`** requires zero dangerous calls

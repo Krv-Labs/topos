@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use topos_engine::adapters::gitnexus::{current_git_branch, resolve_lbug_store};
+use topos_engine::graphs::mdg::edge_filter::DroppedEdge;
 use topos_engine::graphs::mdg::object::{MdgError, ModuleDependencyGraph};
 
 use super::freshness::graph_freshness;
@@ -169,6 +170,8 @@ pub struct DepgraphStatus {
     pub gitnexus_mtime: Option<f64>,
     pub git_head_mtime: Option<f64>,
     pub detail: Option<String>,
+    /// Edges removed as false when the store loaded; empty unless it loaded.
+    pub dropped_edges: Vec<DroppedEdge>,
 }
 
 /// Report `.gitnexus` availability/freshness without shelling out.
@@ -185,6 +188,7 @@ pub fn depgraph_status(
                 gitnexus_mtime: None,
                 git_head_mtime: None,
                 detail: warn.into_iter().next(),
+                dropped_edges: Vec::new(),
             };
         }
     }
@@ -196,6 +200,7 @@ pub fn depgraph_status(
             gitnexus_mtime: None,
             git_head_mtime: None,
             detail: Some("No .gitnexus directory found; run topos_generate_depgraph.".into()),
+            dropped_edges: Vec::new(),
         };
     };
 
@@ -206,22 +211,26 @@ pub fn depgraph_status(
     // Through the process store: the first status pays the open that the
     // following `load_dep_graph` then reuses, and a half-written or
     // wrong-schema store still reports `load_error` / `schema_mismatch`.
-    if let Err(msg) = store_graph(&gitnexus_dir, branch, target_file) {
-        let state = if is_branch_not_indexed(&msg) {
-            "branch_not_indexed"
-        } else if is_schema_mismatch(&msg) {
-            "schema_mismatch"
-        } else {
-            "load_error"
-        };
-        return DepgraphStatus {
-            state,
-            gitnexus_dir: Some(dir_str),
-            gitnexus_mtime: graph_mtime,
-            git_head_mtime: head_mtime,
-            detail: Some(msg),
-        };
-    }
+    let graph = match store_graph(&gitnexus_dir, branch, target_file) {
+        Ok(graph) => graph,
+        Err(msg) => {
+            let state = if is_branch_not_indexed(&msg) {
+                "branch_not_indexed"
+            } else if is_schema_mismatch(&msg) {
+                "schema_mismatch"
+            } else {
+                "load_error"
+            };
+            return DepgraphStatus {
+                state,
+                gitnexus_dir: Some(dir_str),
+                gitnexus_mtime: graph_mtime,
+                git_head_mtime: head_mtime,
+                detail: Some(msg),
+                dropped_edges: Vec::new(),
+            };
+        }
+    };
 
     let (stale, detail) = graph_freshness(project_root, &gitnexus_dir);
     DepgraphStatus {
@@ -230,6 +239,7 @@ pub fn depgraph_status(
         gitnexus_mtime: graph_mtime,
         git_head_mtime: head_mtime,
         detail,
+        dropped_edges: graph.dropped_edges().to_vec(),
     }
 }
 
@@ -337,6 +347,37 @@ mod broken_store_tests {
         std::fs::remove_dir_all(&root).ok();
         assert_ne!(status.state, "present", "{:?}", status.detail);
         assert_ne!(status.state, "stale", "{:?}", status.detail);
+    }
+
+    #[test]
+    fn interrupted_store_is_a_load_error_that_names_the_store_and_the_fix() {
+        let root = tempfile::tempdir().unwrap();
+        let store = root.path().join(".gitnexus");
+        std::fs::create_dir(&store).unwrap();
+        let db = lbug::Database::new(store.join("lbug"), lbug::SystemConfig::default()).unwrap();
+        let conn = lbug::Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, filePath STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE (:File {id: 'lib', filePath: 'src/lib.rs'})")
+            .unwrap();
+        drop(conn);
+        drop(db);
+        std::fs::write(
+            store.join("lbug.wal"),
+            b"wal left by a killed gitnexus analyze",
+        )
+        .unwrap();
+
+        clear_caches();
+        let status = depgraph_status(None, root.path(), "src/lib.rs");
+        assert_eq!(status.state, "load_error", "{:?}", status.detail);
+        let warning = crate::evaluation::dep_graph_load_warning(status.detail.as_deref());
+        let store_dir = store.canonicalize().unwrap().display().to_string();
+        assert!(warning[0].contains(&store_dir), "{warning:?}");
+        assert!(
+            warning[0].contains("topos depgraph generate --force"),
+            "{warning:?}"
+        );
     }
 
     #[test]

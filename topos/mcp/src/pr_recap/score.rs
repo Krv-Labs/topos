@@ -8,6 +8,7 @@ use topos_engine::core::characteristic_morphism::ClassificationResult;
 use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::core::object::ProgramObject;
 use topos_engine::core::omega::{verdict_from_generators, EvaluationValue, Generator};
+use topos_engine::evaluation::file_roles::{is_data_module, is_test_module};
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::secure::score_secure;
 use topos_engine::functors::probes::ast::complexity::{
@@ -23,7 +24,9 @@ use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 use super::git::{file_change, show_file, DiffEntry};
 use super::hotspots::file_hotspots;
 use super::model::*;
-use super::verdict::{complexity_relocated, measured_verdict, medal, pillar_deltas, raw};
+use super::verdict::{
+    complexity_relocated, entropy_alone_fails_simple, measured_verdict, medal, pillar_deltas, raw,
+};
 use crate::evaluation::{classify_morphism, detect_language};
 use crate::schemas::SecurityFinding;
 use crate::security_findings::dangerous_call_findings;
@@ -139,6 +142,21 @@ fn allow_secure(
     result.lattice_element = verdict_from_generators(&satisfied);
 }
 
+/// The role that makes low entropy expected, read only when SIMPLE fails
+/// at head on `ast.entropy` and on nothing else.
+fn entropy_role(side: &Side) -> Option<FileRole> {
+    if !entropy_alone_fails_simple(&side.result) {
+        return None;
+    }
+    if is_test_module(&side.morphism) {
+        Some(FileRole::Test)
+    } else if is_data_module(&side.morphism) {
+        Some(FileRole::Data)
+    } else {
+        None
+    }
+}
+
 /// The allowlist patterns `config` applies to `path`, relative to `repo`.
 fn allow_patterns(config: &ToposConfig, repo: &Path, path: &str) -> HashSet<String> {
     config
@@ -237,6 +255,7 @@ impl Scoring<'_> {
             &mut before,
             &mut after,
         );
+        let entropy_role = entropy_role(&after);
         let (before, after) = (before.result, after.result);
 
         let before_verdict = measured_verdict(&before);
@@ -272,6 +291,7 @@ impl Scoring<'_> {
             cluster: None,
             hotspots,
             promoted: false,
+            entropy_role,
         };
         Ok(Scored {
             recap,

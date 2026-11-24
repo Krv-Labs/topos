@@ -58,6 +58,19 @@ Evaluates how much external behavior a file coordinates by analyzing the depende
 * **Dependency Depth** (``mdg.dep_depth``)
   The longest dependency chain from this module. Shallow chains are easier to understand and refactor.
 
+.. note::
+   GitNexus resolves calls and imports by bare name, so some edges point at a
+   repository file the code never uses. When the graph loads, Topos removes
+   three kinds of edge that the source proves false: calls into a private free
+   function of another Rust crate, Python standard-library imports (``import json``)
+   matched to a same-named repository module, and JavaScript/TypeScript bare
+   package imports (``@codemirror/state``) matched to a same-named repository
+   file. Anything an alias, a relative import, or a repository module of the
+   same name could explain is kept. ``topos depgraph status`` reports how
+   many edges each rule removed. Not filtered: TypeScript path aliases that
+   GitNexus routes to the wrong file, dynamic imports, and Python modules
+   wired by string.
+
 3. The SECURE Pillar (Vulnerability Analysis)
 -------------------------------------------------
 
@@ -66,6 +79,7 @@ Evaluates whether the code flow can reach dangerous operations or untrusted data
 
 * **Dangerous Calls** (``cpg.dangerous_calls``)
   Count of reachable call sites matching a per-language registry of dangerous APIs (Python: ``eval``, ``exec``, ``pickle.loads``, …; C++: ``gets``, ``strcpy``, …).  Lower counts improve the SECURE score.
+  The callee is read from the call's syntax, so parenthesized, optional-chained, cast and generic spellings (``(eval)(x)``, ``eval?.(x)``, ``obj?.eval(x)``), Rust paths (``std::mem::transmute(p)``, ``Box::from_raw(p)``) and ``new Function(...)`` all count.  A callee matches an entry exactly or when it ends in ``.`` plus the entry, so ``model.eval()`` matches ``eval``.
 
 * **Taint Flows** (``cpg.taint_flows``)
   Source→sink data-flow paths along the CPG's data-dependence edges, from untrusted sources (e.g. ``input``, ``request.args``) to dangerous sinks. Longer taint chains increase risk.

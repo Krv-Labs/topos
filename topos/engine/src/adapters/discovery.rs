@@ -560,7 +560,15 @@ pub fn collect_source_files_with_cancel<P: AsRef<Path>>(
         files.extend(found);
     }
 
-    Some(files.into_iter().collect())
+    Some(distinct_files(files))
+}
+
+fn distinct_files(files: BTreeSet<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = std::collections::HashSet::new();
+    files
+        .into_iter()
+        .filter(|path| seen.insert(path.canonicalize().unwrap_or_else(|_| path.clone())))
+        .collect()
 }
 
 #[cfg(test)]
@@ -585,6 +593,19 @@ mod tests {
         assert!(should_skip_dir(Path::new("/proj/.venv")));
         assert!(should_skip_dir(Path::new("/proj/venv")));
         assert!(should_skip_dir(Path::new("/proj/env")));
+    }
+
+    #[test]
+    fn collect_source_files_counts_a_file_named_two_ways_once() {
+        let tmp = unique_tmp_dir("same_file_twice");
+        let file = tmp.join("app.py");
+        std::fs::write(&file, "x = 1\n").unwrap();
+        std::fs::create_dir(tmp.join("sub")).unwrap();
+        let respelled = tmp.join("sub").join("..").join("app.py");
+
+        let files = collect_source_files(&[tmp.clone(), respelled], &[".py"], true);
+        assert_eq!(files, vec![file], "one file must be scored once");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]

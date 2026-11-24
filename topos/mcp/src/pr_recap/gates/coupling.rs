@@ -13,6 +13,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use topos_engine::config::{GateId, PrGateConfig};
+use topos_engine::evaluation::file_roles::is_test_path;
 use topos_engine::graphs::mdg::file_graph::{new_import_cycles, CycleDelta, FileGraph};
 
 use super::super::model::{Cluster, FileRecap};
@@ -301,52 +302,4 @@ fn blast_radius(coupling: &Coupling) -> Option<Finding> {
 /// `1 file`, `12 files`.
 fn files(count: usize) -> String {
     format!("{count} file{}", if count == 1 { "" } else { "s" })
-}
-
-/// A test by the common layout conventions: under a `tests`, `test` or
-/// `__tests__` directory, or named `*_test.*` (Go, Rust), `test_*.py`
-/// (pytest), `*.test.*` or `*.spec.*` (Jest, Vitest, Mocha). Tests depend
-/// on what they cover, so a new one is not fan-in worth reporting.
-fn is_test_path(path: &str) -> bool {
-    let mut segments: Vec<&str> = path.split('/').collect();
-    let name = segments.pop().unwrap_or_default();
-    if segments
-        .iter()
-        .any(|dir| matches!(*dir, "tests" | "test" | "__tests__"))
-    {
-        return true;
-    }
-    let stem = name.split('.').next().unwrap_or_default();
-    stem.ends_with("_test")
-        || (name.starts_with("test_") && name.ends_with(".py"))
-        || name.contains(".test.")
-        || name.contains(".spec.")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_paths_follow_the_common_conventions() {
-        for path in [
-            "tests/cli.rs",
-            "src/test/Main.go",
-            "web/__tests__/app.tsx",
-            "pkg/run_test.go",
-            "tools/test_split.py",
-            "web/app.test.ts",
-            "web/app.spec.js",
-        ] {
-            assert!(is_test_path(path), "{path}");
-        }
-        for path in [
-            "src/testing.rs",
-            "src/contest.py",
-            "test_data.rs",
-            "src/latest/app.ts",
-        ] {
-            assert!(!is_test_path(path), "{path}");
-        }
-    }
 }

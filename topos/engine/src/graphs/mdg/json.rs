@@ -32,17 +32,22 @@ impl ModuleDependencyGraph {
     ///
     /// - Directory → legacy JSON export (GitNexus < 1.5)
     /// - File → native LadybugDB binary store (GitNexus ≥ 1.5)
+    ///
+    /// Either way, edges GitNexus resolved by bare name and the source
+    /// proves false are removed (see [`super::edge_filter`]).
     pub fn from_lbug_path(
         lbug_path: &Path,
         target_file: impl Into<String>,
     ) -> Result<Self, MdgError> {
-        if lbug_path.is_dir() {
-            return Self::from_json_dir(lbug_path, target_file);
-        }
-        if lbug_path.is_file() {
-            return Self::from_ladybug_native(lbug_path, target_file);
-        }
-        Err(MdgError::NotFound(lbug_path.to_path_buf()))
+        let mut graph = if lbug_path.is_dir() {
+            Self::from_json_dir(lbug_path, target_file)?
+        } else if lbug_path.is_file() {
+            Self::from_ladybug_native(lbug_path, target_file)?
+        } else {
+            return Err(MdgError::NotFound(lbug_path.to_path_buf()));
+        };
+        graph.drop_false_edges();
+        Ok(graph)
     }
 
     /// Load from the legacy JSON directory format produced by GitNexus < 1.5.
@@ -132,5 +137,50 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn loading_a_store_drops_false_edges_and_keeps_real_ones() {
+        let dir =
+            std::env::temp_dir().join(format!("topos_mdg_filter_test_{}", std::process::id()));
+        let lbug = dir.join("lbug");
+        std::fs::create_dir_all(&lbug).unwrap();
+        let file = |path: &str, content: &str| {
+            serde_json::json!({
+                "id": format!("File:{path}"),
+                "label": "File",
+                "properties": {"filePath": path, "content": content}
+            })
+        };
+        let import = |from: &str, to: &str| {
+            serde_json::json!({
+                "type": "IMPORTS",
+                "sourceId": format!("File:{from}"),
+                "targetId": format!("File:{to}")
+            })
+        };
+        let document = serde_json::json!([
+            file("pkg/__init__.py", ""),
+            file("pkg/http/__init__.py", ""),
+            file("pkg/http/json.py", ""),
+            file("pkg/http/text.py", ""),
+            file("pkg/spider.py", "import json\nfrom pkg.http import text\n"),
+            import("pkg/spider.py", "pkg/http/json.py"),
+            import("pkg/spider.py", "pkg/http/text.py"),
+        ]);
+        std::fs::write(lbug.join("graph.json"), document.to_string()).unwrap();
+
+        let graph = ModuleDependencyGraph::from_lbug_path(&lbug, "pkg/spider.py").unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+
+        let targets: Vec<&str> = graph
+            .outgoing("File:pkg/spider.py", Some("IMPORTS"))
+            .into_iter()
+            .map(|rel| rel.target_id.as_str())
+            .collect();
+        assert_eq!(targets, vec!["File:pkg/http/text.py"]);
+        assert!(graph.incoming("File:pkg/http/json.py", None).is_empty());
+        assert_eq!(graph.dropped_edge_counts().python_stdlib_import, 1);
+        assert_eq!(graph.dropped_edges()[0].target_file, "pkg/http/json.py");
     }
 }

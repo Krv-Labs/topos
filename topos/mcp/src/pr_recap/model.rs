@@ -193,6 +193,18 @@ pub struct FileRecap {
     /// and never excused as a split child.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub promoted: bool,
+    /// Set when SIMPLE fails at head on `ast.entropy` alone and the file
+    /// is a test or literal-data file, where repeated text is expected.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub entropy_role: Option<FileRole>,
+}
+
+/// Why repeated text is expected in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileRole {
+    Test,
+    Data,
 }
 
 impl FileRecap {

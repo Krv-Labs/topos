@@ -23,7 +23,7 @@ const REPO: &str = "Krv-Labs/topos";
 /// Deliberately short. This runs on a human's command line, sometimes on a
 /// flaky hotel network, and an update notice that delays a command by ten
 /// seconds is worse than no notice at all.
-const LOOKUP_TIMEOUT_SECS: u64 = 5;
+pub(crate) const LOOKUP_TIMEOUT_SECS: u64 = 5;
 
 /// The newest published tag, without a leading `v`, or `None` if it cannot be
 /// determined.

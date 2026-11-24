@@ -6,7 +6,8 @@
 //! other representations (dependency graph, CFG, etc.).
 //!
 //! The metrics this representation produces:
-//! - `ast.entropy` — Kolmogorov proxy via compression ratio
+//! - `ast.entropy` — Kolmogorov proxy via compression ratio; absent for an
+//!   empty or whitespace-only file, where the ratio is undefined
 //! - `ast.max_function_complexity` — cyclomatic complexity of the most
 //!   complex function
 //!
@@ -19,7 +20,7 @@ use std::collections::HashMap;
 use crate::core::object::ProgramObject;
 use crate::functors::probes::ast::complexity::calculate_max_function_complexity;
 use crate::functors::probes::ast::divergence::calculate_max_function_divergence;
-use crate::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
+use crate::functors::probes::ast::entropy::source_entropy;
 use crate::graphs::base::Representation;
 use crate::graphs::uast::models::UASTNode;
 
@@ -94,15 +95,13 @@ impl Representation for AstRepresentation<'_> {
 
     fn metrics(&self) -> HashMap<String, f64> {
         let _ = self.program_object; // reserved: node_count/depth-based metrics, if any land later
-        HashMap::from([
-            (
-                "ast.entropy".to_string(),
-                calculate_kolmogorov_proxy(self.source),
-            ),
-            (
-                "ast.max_function_complexity".to_string(),
-                calculate_max_function_complexity(self.uast_root) as f64,
-            ),
-        ])
+        let mut metrics = HashMap::from([(
+            "ast.max_function_complexity".to_string(),
+            calculate_max_function_complexity(self.uast_root) as f64,
+        )]);
+        if let Some(entropy) = source_entropy(self.source) {
+            metrics.insert("ast.entropy".to_string(), entropy);
+        }
+        metrics
     }
 }

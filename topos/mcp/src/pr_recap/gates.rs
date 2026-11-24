@@ -24,12 +24,14 @@ use std::path::Path;
 
 use schemars::JsonSchema;
 use serde::{Serialize, Serializer};
-use topos_engine::config::{FailOn, GateId, PrGateConfig, Severity};
+use topos_engine::config::{FailOn, GateId, PrGateConfig, PrGatePreset, Severity};
+use topos_engine::evaluation::policies::gates::GATE_SPECS;
 use topos_engine::evaluation::waivers::{self, Waiver};
 
 use super::hotspots::FUNCTION_COMPLEXITY;
 use super::model::{
-    percent_change, Cluster, FileRecap, GateCrossing, GateSummary, Headline, WaiverSummary,
+    percent_change, Cluster, FileRecap, FileRole, FunctionRef, GateCrossing, GateSummary, Headline,
+    PillarDelta, WaiverSummary,
 };
 use super::moves::{MoveCause, RangeMoves};
 
@@ -149,6 +151,10 @@ pub struct Finding {
     /// The finding is that the file does not parse at head.
     #[serde(skip)]
     unparsed: bool,
+    /// A SIMPLE finding on `ast.entropy` alone in a test or data file,
+    /// which [`judged`] caps at warn outside the strict preset.
+    #[serde(skip)]
+    entropy_role: Option<FileRole>,
 }
 
 impl Finding {
@@ -176,6 +182,7 @@ impl Finding {
             magnitude: 0.0,
             cycle: Vec::new(),
             unparsed: false,
+            entropy_role: None,
         }
     }
 
@@ -257,7 +264,7 @@ pub fn evaluate(
     let mut found = Vec::new();
     for file in files {
         if file.is_new() {
-            new_file_findings(file, &mut found);
+            new_file_findings(file, moves, &mut found);
         } else if stopped_parsing(file) {
             found.push(unparsed_finding(file));
         } else {
@@ -342,9 +349,10 @@ pub fn waive(
 }
 
 /// The policy's severity for the finding, or `None` when its gate is off.
-/// A score drop under the materiality thresholds is at most info, and an
+/// A score drop under the materiality thresholds is at most info, an
 /// import cycle takes the strictest `[pr_recap.import_cycle]` row among
-/// its files' languages.
+/// its files' languages, and a test or data file that fails SIMPLE on
+/// entropy alone is at most warn unless the preset is strict.
 fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     let severity = match finding.gate {
         GateId::ImportCycle => cfg.cycle_severity(finding.cycle.iter().map(String::as_str)),
@@ -352,10 +360,32 @@ fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     };
     finding.severity = if finding.gate == GateId::ScoreDrop && !finding.material {
         severity.min(Severity::Info)
+    } else if finding.entropy_role.is_some()
+        && cfg.preset != PrGatePreset::Strict
+        && severity > Severity::Warn
+    {
+        finding.text.push_str(" It warns instead of blocking.");
+        Severity::Warn
+    } else if finding.gate == GateId::NewFilePillar
+        && finding.pillar.as_deref() == Some("composable")
+    {
+        severity.min(new_file_composable_cap(cfg.preset))
     } else {
         severity
     };
     (finding.severity != Severity::Off).then_some(finding)
+}
+
+/// The most a new file failing COMPOSABLE can weigh: fan-out comes from the
+/// dependency graph, whose false edges could block a file on imports it
+/// does not have, so it keeps the severity `new_file_pillar` had before new
+/// code was held to the SIMPLE and NAVIGABLE limits.
+fn new_file_composable_cap(preset: PrGatePreset) -> Severity {
+    match preset {
+        PrGatePreset::Relaxed => Severity::Off,
+        PrGatePreset::Strict => Severity::Warn,
+        PrGatePreset::Recommended | PrGatePreset::Custom => Severity::Info,
+    }
 }
 
 fn importance(a: &Finding, b: &Finding) -> Ordering {
@@ -367,30 +397,39 @@ fn importance(a: &Finding, b: &Finding) -> Ordering {
         .then_with(|| a.line.cmp(&b.line))
 }
 
-/// An added file is judged on arrival. A split child is left to its
-/// split's gates: code moved out of the parent brings its findings along,
-/// and charging them to the child would fail every split of an imperfect
-/// file. A file that does not parse is judged whatever it belongs to:
-/// nothing in it can be measured, so it holds no pillar. So is a promoted
-/// file: nothing reviewed its base side, so none of it is known moved code.
-fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
+/// An added file is judged on arrival, and its new code meets the same
+/// limits as a changed file's. A split child is left to its split's gates
+/// except for new logic failing SIMPLE or NAVIGABLE: code moved out of the
+/// parent brings its findings along, and charging them to the child would
+/// fail every split of an imperfect file. A file that does not parse is
+/// judged whatever it belongs to: nothing in it can be measured, so it
+/// holds no pillar. So is a promoted file: nothing reviewed its base side,
+/// so none of it is known moved code.
+fn new_file_findings(file: &FileRecap, moves: &RangeMoves, found: &mut Vec<Finding>) {
     if file.medal_after.is_none() {
         found.push(unparsed_new_file(file));
         return;
     }
     if file.is_split_child() && !file.promoted {
+        for pillar in ["simple", "navigable"] {
+            if let Some(delta) = file.pillars.get(pillar) {
+                if delta.after_passed == Some(false) {
+                    found.extend(new_code_finding(file, pillar, delta, moves, true));
+                }
+            }
+        }
         return;
     }
     for (pillar, delta) in &file.pillars {
         if delta.after_passed != Some(false) {
             continue;
         }
-        let gate = if pillar == "secure" {
-            GateId::NewFileInsecure
+        if pillar == "secure" {
+            let gate = GateId::NewFileInsecure;
+            found.push(pillar_finding(gate, file, pillar, delta.gate.as_ref(), 0.0));
         } else {
-            GateId::NewFilePillar
-        };
-        found.push(pillar_finding(gate, file, pillar, delta.gate.as_ref(), 0.0));
+            found.extend(new_code_finding(file, pillar, delta, moves, false));
+        }
     }
     if file.landed_slop() {
         found.push(Finding::new(
@@ -399,6 +438,75 @@ fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
             format!("{} is new and passes no pillar (SLOP).", file.path),
         ));
     }
+}
+
+/// A new file failing a pillar other than SECURE, judged like a changed
+/// file that lost it. A function over the complexity limit that did not
+/// arrive from another file without growing is named first. A failure the
+/// range's moves explain is `moved_pillar`, and a split child leaves it,
+/// and any failure no function accounts for, to its split.
+fn new_code_finding(
+    file: &FileRecap,
+    pillar: &str,
+    delta: &PillarDelta,
+    moves: &RangeMoves,
+    child: bool,
+) -> Option<Finding> {
+    let (new_function, new_crossing) = match pillar {
+        "simple" => new_complex_function(file, moves).unzip(),
+        _ => (None, None),
+    };
+    let crossing = new_crossing.as_ref().or(delta.gate.as_ref());
+    let mut finding = pillar_finding(GateId::NewFilePillar, file, pillar, crossing, 0.0);
+    if let Some(function) = new_function {
+        finding.function = Some(function.name);
+        finding.line = Some(function.line);
+    } else {
+        let function = finding.function.as_deref();
+        if let Some(cause) = moves.caused(&file.path, pillar, function, finding.line) {
+            return (!child).then(|| moved_pillar(finding, file, pillar, crossing, cause));
+        }
+        if child && function.is_none() {
+            return None;
+        }
+    }
+    let what = if child {
+        "adds new code that fails"
+    } else {
+        "is new and fails"
+    };
+    finding.text = format!(
+        "{} {what} {}{}{}.",
+        file.path,
+        pillar.to_ascii_uppercase(),
+        site(finding.function.as_deref(), finding.line),
+        crossing.map_or(String::new(), measured)
+    );
+    Some(finding)
+}
+
+/// The most complex function in a new file over the complexity limit that
+/// is new logic, and its crossing, when the file's worst function is over.
+fn new_complex_function(
+    file: &FileRecap,
+    moves: &RangeMoves,
+) -> Option<(FunctionRef, GateCrossing)> {
+    let limit = GATE_SPECS
+        .iter()
+        .find(|spec| spec.metric == FUNCTION_COMPLEXITY)?
+        .high?;
+    if file.worst_function_after.as_ref()?.complexity as f64 <= limit {
+        return None;
+    }
+    let function = moves.new_logic_over(&file.path, limit as usize)?;
+    let crossing = GateCrossing {
+        metric: FUNCTION_COMPLEXITY.to_string(),
+        before: None,
+        after: function.complexity as f64,
+        limit,
+        worse: true,
+    };
+    Some((function, crossing))
 }
 
 /// An existing file, one pillar at a time, so losing one pillar while
@@ -585,7 +693,40 @@ fn pillar_finding(
         }
     }
     finding.magnitude += drop.max(0.0);
+    if let Some(role) = file
+        .entropy_role
+        .filter(|_| pillar == "simple" && finding.metric.as_deref() == Some(ENTROPY))
+    {
+        expected_repetition(&mut finding, role);
+    }
     finding
+}
+
+const ENTROPY: &str = "ast.entropy";
+
+/// Say why low entropy is expected in a test or data file, and what to do
+/// if the file is not one.
+fn expected_repetition(finding: &mut Finding, role: FileRole) {
+    let (kind, why, fix) = match role {
+        FileRole::Test => (
+            "a test file",
+            "repeated cases are expected",
+            "If these are repeated cases, parametrize them: one table of inputs and expected \
+             results, run by one test. If this is not a test file, consolidate the repeated code.",
+        ),
+        FileRole::Data => (
+            "a data file (mostly literal tables, no branching)",
+            "repeated entries are expected",
+            "If this is literal data, consider loading it from a data file (JSON, CSV, YAML) at \
+             runtime. If it is not data, consolidate the repeated code.",
+        ),
+    };
+    finding.text = format!(
+        "{} Entropy measures how repetitive the text is, and this is {kind}, where {why}.",
+        finding.text
+    );
+    finding.fix = fix.to_string();
+    finding.entropy_role = Some(role);
 }
 
 /// A lost pillar the range's moves explain: the same finding, reported
@@ -1106,6 +1247,7 @@ mod tests {
             cluster: None,
             hotspots: Vec::new(),
             promoted: false,
+            entropy_role: None,
         }
     }
 
@@ -1185,6 +1327,35 @@ mod tests {
     }
 
     #[test]
+    fn a_new_file_failing_only_composable_does_not_block() {
+        let mut file = added("src/wide.py");
+        let fan_out = file.pillars.get_mut("composable").unwrap();
+        fan_out.measured = true;
+        fan_out.after_passed = Some(false);
+        fan_out.after_score = Some(40.0);
+        fan_out.gate = crossing("mdg.fan_out", 0.0, 30.0, 20.0);
+        let mut simple = added("src/deep.py");
+        set(&mut simple, "simple", (true, false), (0.0, 40.0));
+        for (preset, severity) in [
+            (PrGatePreset::Relaxed, None),
+            (PrGatePreset::Recommended, Some(Severity::Info)),
+            (PrGatePreset::Strict, Some(Severity::Warn)),
+        ] {
+            let cfg = PrGateConfig::for_preset(preset);
+            let (_, findings) = unmoved(&[file.clone(), simple.clone()], &[], 0, &cfg);
+            let at = |path: &str| {
+                findings
+                    .iter()
+                    .filter(|f| f.path == path && f.gate == GateId::NewFilePillar)
+                    .map(|f| f.severity)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(at("src/wide.py"), Vec::from_iter(severity), "{preset:?}");
+            assert_eq!(at("src/deep.py"), [Severity::Block], "{preset:?}");
+        }
+    }
+
+    #[test]
     fn a_lost_pillar_blocks_and_points_at_the_worst_function() {
         let mut file = changed("src/a.rs");
         set(&mut file, "simple", (true, false), (60.0, 40.0));
@@ -1210,6 +1381,82 @@ mod tests {
             "src/a.rs lost SIMPLE in pick (line 12): ast.max_function_complexity 9→14, limit 10."
         );
         assert_eq!(lost.fix, advice_for("ast.max_function_complexity").unwrap());
+    }
+
+    fn entropy_lost(path: &str, role: Option<FileRole>) -> FileRecap {
+        let mut file = changed(path);
+        set(&mut file, "simple", (true, false), (80.0, 70.0));
+        file.pillars.get_mut("simple").unwrap().gate = crossing("ast.entropy", 0.23, 0.18, 0.2);
+        file.entropy_role = role;
+        file
+    }
+
+    #[test]
+    fn a_test_or_data_file_losing_simple_on_entropy_warns_outside_strict() {
+        for (preset, expected) in [
+            (PrGatePreset::Relaxed, Severity::Warn),
+            (PrGatePreset::Recommended, Severity::Warn),
+            (PrGatePreset::Strict, Severity::Block),
+        ] {
+            for role in [FileRole::Test, FileRole::Data] {
+                let file = entropy_lost("tests/cache.rs", Some(role));
+                let cfg = PrGateConfig::for_preset(preset);
+                let (_, findings) = unmoved(&[file], &[], 0, &cfg);
+                assert_eq!(gates(&findings), [GateId::PillarLost]);
+                assert_eq!(findings[0].severity, expected, "{preset:?} {role:?}");
+                let warns = findings[0].text.ends_with("It warns instead of blocking.");
+                assert_eq!(warns, expected == Severity::Warn, "{}", findings[0].text);
+            }
+        }
+    }
+
+    #[test]
+    fn an_entropy_loss_in_a_test_file_explains_itself() {
+        let (readiness, findings) = unmoved(
+            &[entropy_lost("tests/cache.rs", Some(FileRole::Test))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert_eq!(readiness, Readiness::NeedsAttention);
+        assert_eq!(
+            findings[0].text,
+            "tests/cache.rs lost SIMPLE: ast.entropy 0.23→0.18, min 0.2. Entropy measures how \
+             repetitive the text is, and this is a test file, where repeated cases are expected. \
+             It warns instead of blocking."
+        );
+        assert!(findings[0]
+            .fix
+            .starts_with("If these are repeated cases, parametrize them"));
+
+        let (_, findings) = unmoved(
+            &[entropy_lost("src/codes.py", Some(FileRole::Data))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert!(findings[0].text.contains("this is a data file"));
+        assert!(findings[0].fix.contains("loading it from a data file"));
+    }
+
+    #[test]
+    fn an_entropy_loss_in_ordinary_code_still_blocks() {
+        let (readiness, findings) =
+            unmoved(&[entropy_lost("src/a.py", None)], &[], 0, &recommended());
+        assert_eq!(readiness, Readiness::Blocked);
+        assert_eq!(findings[0].severity, Severity::Block);
+        assert_eq!(findings[0].fix, advice_for("ast.entropy").unwrap());
+    }
+
+    #[test]
+    fn a_role_does_not_soften_a_complexity_loss() {
+        let mut file = changed("tests/a.rs");
+        set(&mut file, "simple", (true, false), (60.0, 40.0));
+        file.pillars.get_mut("simple").unwrap().gate =
+            crossing("ast.max_function_complexity", 9.0, 14.0, 10.0);
+        file.entropy_role = Some(FileRole::Test);
+        let (_, findings) = unmoved(&[file], &[], 0, &recommended());
+        assert_eq!(findings[0].severity, Severity::Block);
     }
 
     #[test]

@@ -186,13 +186,26 @@ fn which(name: &str) -> PathBuf {
 /// (an empty store, as fast as a cached one).
 #[cfg(unix)]
 fn fake_tools(repo: &Path, bin: &Path) {
-    use std::os::unix::fs::PermissionsExt;
+    fake_tools_for(repo, bin, false);
+}
 
+/// [`fake_tools`], with pull request 7 coming from a fork when
+/// `cross_repository`. The commits are `repo`'s last two.
+#[cfg(unix)]
+fn fake_tools_for(repo: &Path, bin: &Path, cross_repository: bool) {
     let base = git(repo, &["rev-parse", "HEAD~1"]);
     let head = git(repo, &["rev-parse", "HEAD"]);
+    fake_tools_at(bin, &base, &head, cross_repository);
+}
+
+/// [`fake_tools`], with pull request 7 running from `base` to `head`.
+#[cfg(unix)]
+fn fake_tools_at(bin: &Path, base: &str, head: &str, cross_repository: bool) {
+    use std::os::unix::fs::PermissionsExt;
+
     let gh = format!(
         "#!/bin/sh\ncat <<'EOF'\n{{\"number\":7,\"baseRefName\":\"main\",\"headRefName\":\"feature\",\
-         \"baseRefOid\":\"{base}\",\"headRefOid\":\"{head}\",\"isCrossRepository\":false}}\nEOF\n"
+         \"baseRefOid\":\"{base}\",\"headRefOid\":\"{head}\",\"isCrossRepository\":{cross_repository}}}\nEOF\n"
     );
     let gitnexus = "#!/bin/sh\n[ \"$1\" = analyze ] && mkdir -p .gitnexus\nexit 0\n";
     for (name, body) in [("gh", gh.as_str()), ("gitnexus", gitnexus)] {
@@ -957,4 +970,193 @@ fn a_modified_file_that_stops_parsing_says_how_to_fix_or_exempt_it() {
             && comment.contains("base branch"),
         "{comment}"
     );
+}
+
+/// The base repository beside `repo`: its branch stands at `branch_at`,
+/// and it offers pull request 7's head at `refs/pull/7/head` when
+/// `pull_head` names a commit.
+#[cfg(unix)]
+fn upstream(repo: &Path, branch_at: &str, pull_head: Option<&str>) -> PathBuf {
+    let scratch = repo.parent().unwrap();
+    let upstream = scratch.join("upstream.git");
+    let branch = git(repo, &["symbolic-ref", "--short", "HEAD"]);
+    git(
+        scratch,
+        &[
+            "clone",
+            "-q",
+            "--bare",
+            "repo",
+            &upstream.display().to_string(),
+        ],
+    );
+    git(
+        &upstream,
+        &["update-ref", &format!("refs/heads/{branch}"), branch_at],
+    );
+    if let Some(head) = pull_head {
+        git(&upstream, &["update-ref", "refs/pull/7/head", head]);
+    }
+    upstream
+}
+
+/// A clone of `upstream` named `name`, as a maintainer's checkout or a CI
+/// job holds it: the base branch only, never the fork's head.
+#[cfg(unix)]
+fn clone_of(upstream: &Path, name: &str, options: &[&str]) -> PathBuf {
+    let scratch = upstream.parent().unwrap();
+    let clone = scratch.join(name);
+    let source = upstream.display().to_string();
+    let target = clone.display().to_string();
+    let mut args = vec!["clone", "-q", "--no-local"];
+    args.extend(options);
+    args.extend([source.as_str(), target.as_str()]);
+    git(scratch, &args);
+    clone
+}
+
+#[cfg(unix)]
+fn has_commit(repo: &Path, sha: &str) -> bool {
+    Command::new("git")
+        .current_dir(repo)
+        .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+/// A fork's head commit is not on any branch of `origin`; it is fetched
+/// through the base repository's `refs/pull/<N>/head`.
+#[cfg(unix)]
+#[test]
+fn a_cross_repository_pull_request_is_fetched_and_reviewed() {
+    let (_keep, repo, bin) = scratch();
+    fake_tools_for(&repo, &bin, true);
+    let base = git(&repo, &["rev-parse", "HEAD~1"]);
+    let head = git(&repo, &["rev-parse", "HEAD"]);
+    let upstream = upstream(&repo, &base, Some(&head));
+
+    let clone = clone_of(&upstream, "clone", &[]);
+    assert!(!has_commit(&clone, &head), "the clone already has the head");
+    let run = topos(&clone, &bin, &["pr-recap", "7", "--json"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_no_prompt(&run);
+    let value = json(&run);
+    assert_eq!(value["review"]["number"], 7, "{value}");
+    assert_eq!(value["scope"]["files_scored"], 1, "{value}");
+    assert_eq!(reason(&value), "built", "{value}");
+    assert!(has_commit(&clone, &head));
+}
+
+/// `depgraph generate-pr` fetches a fork's head on its own, in a clone
+/// no recap has run in.
+#[cfg(unix)]
+#[test]
+fn depgraph_generate_pr_fetches_a_cross_repository_head() {
+    let (_keep, repo, bin) = scratch();
+    fake_tools_for(&repo, &bin, true);
+    let base = git(&repo, &["rev-parse", "HEAD~1"]);
+    let head = git(&repo, &["rev-parse", "HEAD"]);
+    let upstream = upstream(&repo, &base, Some(&head));
+
+    let clone = clone_of(&upstream, "clone", &[]);
+    assert!(!has_commit(&clone, &head), "the clone already has the head");
+    let run = topos(&clone, &bin, &["depgraph", "generate-pr", "7"]);
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(has_commit(&clone, &head));
+    assert!(clone.join(".git/topos-pr-7/commits").is_file());
+}
+
+/// `pr-recap` reports an error as exit 2; `depgraph` reports every error
+/// as exit 1.
+#[cfg(unix)]
+#[test]
+fn a_pull_request_head_that_cannot_be_fetched_is_a_clear_error() {
+    let (_keep, repo, bin) = scratch();
+    fake_tools_for(&repo, &bin, true);
+    let base = git(&repo, &["rev-parse", "HEAD~1"]);
+    let clone = clone_of(&upstream(&repo, &base, None), "clone", &[]);
+
+    for (args, code) in [
+        (&["pr-recap", "7", "--json"][..], 2),
+        (&["depgraph", "generate-pr", "7"], 1),
+    ] {
+        let run = topos(&clone, &bin, args);
+        assert_eq!(run.code, code, "{args:?}: {}", run.stderr);
+        assert!(run.stdout.is_empty(), "{args:?}: {}", run.stdout);
+        for expected in ["pull request 7", "refs/pull/7/head", "--base", "--head"] {
+            assert!(
+                run.stderr.contains(expected),
+                "{args:?}: {expected:?} in:\n{}",
+                run.stderr
+            );
+        }
+    }
+}
+
+/// A commit on a branch of its own off the base commit: where the base
+/// branch moved to after the pull request forked, or what a force-push
+/// replaced the head with.
+#[cfg(unix)]
+fn sibling_commit(repo: &Path) -> String {
+    let branch = git(repo, &["symbolic-ref", "--short", "HEAD"]);
+    git(repo, &["checkout", "-q", "-b", "sibling", "HEAD~1"]);
+    fs::write(repo.join("src/b.py"), "def other():\n    return 3\n").unwrap();
+    git(repo, &["add", "."]);
+    git(repo, &["commit", "-qm", "sibling"]);
+    let sibling = git(repo, &["rev-parse", "HEAD"]);
+    git(repo, &["checkout", "-q", &branch]);
+    sibling
+}
+
+/// A head force-pushed after `gh` read it is gone from the pull ref, so
+/// fetching that ref and passing the old commit cannot work.
+#[cfg(unix)]
+#[test]
+fn a_pull_request_that_moved_while_being_read_says_to_rerun() {
+    let (_keep, repo, bin) = scratch();
+    fake_tools_for(&repo, &bin, true);
+    let base = git(&repo, &["rev-parse", "HEAD~1"]);
+    let pushed_over = sibling_commit(&repo);
+    let clone = clone_of(&upstream(&repo, &base, Some(&pushed_over)), "clone", &[]);
+
+    let run = topos(&clone, &bin, &["pr-recap", "7", "--json"]);
+    assert_eq!(run.code, 2, "{}", run.stderr);
+    for expected in ["pull request 7", "changed while", "again"] {
+        assert!(
+            run.stderr.contains(expected),
+            "{expected:?} in:\n{}",
+            run.stderr
+        );
+    }
+    assert!(!run.stderr.contains("--base"), "{}", run.stderr);
+}
+
+/// A depth-1 clone, the `actions/checkout` default, cannot say where the
+/// pull request forked once the base branch has moved on.
+#[cfg(unix)]
+#[test]
+fn a_shallow_clone_names_how_to_fetch_the_history() {
+    let (_keep, repo, bin) = scratch();
+    let head = git(&repo, &["rev-parse", "HEAD"]);
+    let moved_base = sibling_commit(&repo);
+    fake_tools_at(&bin, &moved_base, &head, true);
+    let upstream = upstream(&repo, &moved_base, Some(&head));
+
+    for (name, args, code) in [
+        ("recap", &["pr-recap", "7", "--json"][..], 2),
+        ("depgraph", &["depgraph", "generate-pr", "7"], 1),
+    ] {
+        let clone = clone_of(&upstream, name, &["--depth=1"]);
+        let run = topos(&clone, &bin, args);
+        assert_eq!(run.code, code, "{args:?}: {}", run.stderr);
+        for expected in ["shallow", "fetch-depth: 0", "git fetch --unshallow origin"] {
+            assert!(
+                run.stderr.contains(expected),
+                "{args:?}: {expected:?} in:\n{}",
+                run.stderr
+            );
+        }
+    }
 }

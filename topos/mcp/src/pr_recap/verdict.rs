@@ -221,6 +221,23 @@ fn crossed_gate(
     crossings.into_iter().nth(worse.unwrap_or(0))
 }
 
+/// SIMPLE fails, and `ast.entropy` is the only SIMPLE gate that does.
+pub fn entropy_alone_fails_simple(result: &ClassificationResult) -> bool {
+    if !result.is_parseable {
+        return false;
+    }
+    let failing: Vec<&str> = evaluate_gates(
+        &result.raw_metrics,
+        Some("simple"),
+        result.is_entrypoint_module,
+    )
+    .into_iter()
+    .filter(|gate| !gate.passed())
+    .map(|gate| gate.spec.metric)
+    .collect();
+    failing == ["ast.entropy"]
+}
+
 fn pillar_measured(result: &ClassificationResult, pillar: &str) -> bool {
     // `mdg.abstractness` can exist from the file alone. COMPOSABLE's gate
     // needs the dependency graph, which is only attached for a pull request.
@@ -703,6 +720,7 @@ mod tests {
                 cluster: None,
                 hotspots: Vec::new(),
                 promoted: false,
+                entropy_role: None,
             },
             before,
             after,

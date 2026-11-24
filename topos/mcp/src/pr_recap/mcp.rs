@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(deadline_from(Some("1e30")), NO_DEADLINE);
     }
     use crate::pr_recap::progress::Phase;
-    use crate::pr_recap::summary::tests::{fixture, input};
+    use crate::pr_recap::summary::tests::{fixture, fixture_on, input};
     use crate::pr_recap::tests::{
         branchy, commit_all, judging, no_coupling, recap, write_files, write_repo,
     };
@@ -263,8 +263,9 @@ mod tests {
         );
     }
 
-    /// Summary JSON for the 41-file fixture (3 blocks, 38 warnings) stays under
-    /// this; the same range's full v3 document is ~74K.
+    /// Summary JSON for the 41-file fixture (3 blocks, the rest lower, with
+    /// `new_file_pillar` at info) stays under this; the same range's full v3
+    /// document is ~74K.
     const SUMMARY_CEILING_CHARS: usize = 4_500;
     const TEXT_CEILING_CHARS: usize = 3_000;
 
@@ -288,7 +289,17 @@ mod tests {
 
     #[test]
     fn summary_and_text_stay_under_their_ceilings() {
-        let (_keep, repo) = fixture(40, 3);
+        let (_keep, repo) = fixture_on(
+            &[
+                ("README.md", "# hi\n"),
+                (
+                    ".topos.toml",
+                    "[pr_recap.gates]\nnew_file_pillar = \"info\"\n",
+                ),
+            ],
+            40,
+            3,
+        );
         let response = respond_untimed(input(&repo, Detail::Summary, &[]), None);
         let structured = response.structured_content.expect("structured");
         let size = serde_json::to_string(&structured).unwrap().len();

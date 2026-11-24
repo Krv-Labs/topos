@@ -2,14 +2,17 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use topos_engine::config::Severity;
+use topos_engine::config::{GateId, Severity};
+use topos_engine::evaluation::policies::base::Priority;
 
 use super::super::mcp::full_value;
 use super::super::model::{GateCrossing, Headline, Hotspot};
 use super::super::progress::Timing;
-use super::super::tests::{branchy, commit_all, recap, write_files, write_repo};
+use super::super::tests::{
+    branchy, commit_all, judging, no_coupling, recap, write_files, write_repo,
+};
 use super::super::verdict::direction_for;
-use super::super::{PrRecap, SCHEMA};
+use super::super::{build_recap, PrRecap, SCHEMA};
 use super::*;
 use crate::schemas::{Detail, PrRecapInput};
 
@@ -21,7 +24,17 @@ pub(in crate::pr_recap) const TIMING: Timing = Timing {
 /// `n` new files over the complexity gate, the first `insecure` of them
 /// also calling `eval`, plus one clean one.
 pub(in crate::pr_recap) fn fixture(n: usize, insecure: usize) -> (tempfile::TempDir, PathBuf) {
-    let (keep, repo) = write_repo(&[("README.md", "# hi\n")]);
+    fixture_on(&[("README.md", "# hi\n")], n, insecure)
+}
+
+/// [`fixture`] on a base revision holding `base`, such as a `.topos.toml`
+/// that judges the range: policy is read at the base, not the head.
+pub(in crate::pr_recap) fn fixture_on(
+    base: &[(&str, &str)],
+    n: usize,
+    insecure: usize,
+) -> (tempfile::TempDir, PathBuf) {
+    let (keep, repo) = write_repo(base);
     let mut files: Vec<(String, String)> = (0..n)
         .map(|i| {
             let mut body = branchy(&format!("pick{i}"));
@@ -262,7 +275,22 @@ fn an_empty_range_has_no_direction() {
 #[test]
 fn hotspots_carry_their_measure_and_are_counted() {
     let (_keep, repo) = fixture(8, 0);
-    let recap = recap(&repo, "HEAD~1", "HEAD", 0);
+    let mut judging = judging(Priority::Secure);
+    judging
+        .gate
+        .gates
+        .set(GateId::NewFilePillar, Severity::Info);
+    let recap = build_recap(
+        &repo,
+        "HEAD~1",
+        "HEAD",
+        0,
+        None,
+        no_coupling(),
+        &judging,
+        &mut (),
+    )
+    .unwrap();
     let summary = summarize(&recap, &repo);
     let spot = summary.attention.iter().find_map(|a| a.hotspot.as_ref());
     assert!(spot.expect("a hotspot").detail.contains("gate is"));

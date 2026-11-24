@@ -1,17 +1,13 @@
 //! Dangerous-API reachability probe (CPG → ℝ).
 //!
-//! Counts call-site nodes whose callee text matches the per-language
-//! registry of dangerous APIs. The match is intentionally textual: the
-//! UAST mappers don't carry token text, so this slices the original
-//! source by the CPG node's byte span and pattern-matches the result.
-//!
-//! No `regex` dependency: the one pattern needed
-//! (`^[A-Za-z_][A-Za-z0-9_.]*\s*\(`) is a simple enough prefix scan that
-//! pulling in a regex engine for it would be reaching for a bigger tool
-//! than the job needs.
+//! Counts call and `new` sites whose callee matches the per-language
+//! registry of dangerous APIs. The callee is the call's first syntax
+//! child, unwrapped through parentheses, casts and generics, and its
+//! source text is normalized to a dotted name before matching.
 
 use std::collections::HashSet;
 
+use crate::graphs::cpg::models::CPGNode;
 use crate::graphs::cpg::object::CodePropertyGraph;
 
 /// Per-language registry of forbidden symbol names. Conservative — meant
@@ -37,17 +33,10 @@ pub(crate) fn dangerous_apis(language: &str) -> &'static [&'static str] {
             "Function",
             "setTimeout",
             "setInterval",
-            "innerHTML",
             "document.write",
             "child_process.exec",
         ],
-        "typescript" => &[
-            "eval",
-            "Function",
-            "innerHTML",
-            "document.write",
-            "child_process.exec",
-        ],
+        "typescript" => &["eval", "Function", "document.write", "child_process.exec"],
         "rust" => &["unsafe", "transmute", "from_raw"],
         "cpp" => &["gets", "strcpy", "strcat", "sprintf", "scanf", "system"],
         "go" => &[
@@ -77,9 +66,9 @@ pub fn effective_registry(language: &str, allow: &HashSet<String>) -> HashSet<&'
         .collect()
 }
 
-/// Count `CallExpr` nodes whose callee text matches the dangerous-API
-/// registry for `cpg.language`. Matches both bare names (`eval`) and
-/// dotted/qualified names (`pickle.loads`).
+/// Count call sites whose callee matches the dangerous-API registry for
+/// `cpg.language`. Matches both bare names (`eval`) and dotted/qualified
+/// names (`pickle.loads`, `std::mem::transmute`).
 pub fn dangerous_api_reachable(cpg: &CodePropertyGraph, allow: &HashSet<String>) -> usize {
     let registry = effective_registry(&cpg.language, allow);
     if registry.is_empty() {
@@ -88,36 +77,71 @@ pub fn dangerous_api_reachable(cpg: &CodePropertyGraph, allow: &HashSet<String>)
 
     cpg.nodes
         .values()
-        .filter(|node| node.kind() == "CallExpr")
-        .filter(|node| {
-            let text = cpg.node_text(node);
-            let callee = callee_from_text(&text);
-            !callee.is_empty() && matches_registry(&callee, registry.iter().copied())
-        })
+        .filter_map(|node| call_callee(cpg, node))
+        .filter(|callee| matches_registry(callee, registry.iter().copied()))
         .count()
 }
 
-/// Extract the dotted callee prefix from a call expression's text.
-pub fn callee_from_text(text: &str) -> String {
-    let text = text.trim();
-    let mut chars = text.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return String::new(),
+/// The dotted callee of a call or `new` expression, read from the
+/// callee's syntax node, or `None` when `node` is not a call or its
+/// callee has no name (`wrap(eval)(x)`, `obj["eval"](x)`).
+///
+/// Parentheses, non-null assertions, casts and Rust turbofish around the
+/// callee are seen through. Whitespace is dropped and `?.`, `::` and
+/// `->` read as `.`. A name reached through a computed receiver
+/// (`a.b().eval`) is prefixed with `?`, so it still ends in `.eval` but
+/// never equals a bare key.
+pub fn call_callee(cpg: &CodePropertyGraph, node: &CPGNode) -> Option<String> {
+    if node.kind() != "CallExpr" && node.uast.native.node_kind != "new_expression" {
+        return None;
     }
-    let mut end = 0;
-    for (i, c) in text.char_indices() {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '.' {
-            end = i + c.len_utf8();
+    let mut head = node.uast.children.first()?;
+    loop {
+        let full = cpg.nodes.get(&head.id).map_or(head, |found| &found.uast);
+        let kind = full.native.node_kind.as_str();
+        head = if kind == "type_assertion" {
+            full.children.last()?
+        } else if CALLEE_WRAPPERS.contains(&kind) {
+            full.children.first()?
         } else {
             break;
-        }
+        };
     }
-    if text[end..].trim_start().starts_with('(') {
-        text[..end].to_string()
-    } else {
-        String::new()
+    if ARGUMENT_KINDS.contains(&head.native.node_kind.as_str()) {
+        return None;
     }
+    let name = dotted_name(cpg.source.get(head.span.start_byte..head.span.end_byte)?);
+    (!name.is_empty()).then_some(name)
+}
+
+const CALLEE_WRAPPERS: [&str; 5] = [
+    "parenthesized_expression",
+    "non_null_expression",
+    "generic_function",
+    "as_expression",
+    "satisfies_expression",
+];
+const ARGUMENT_KINDS: [&str; 2] = ["arguments", "argument_list"];
+
+fn dotted_name(text: &str) -> String {
+    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let joined = compact
+        .replace("?.", ".")
+        .replace("::", ".")
+        .replace("->", ".")
+        .replace('!', "");
+    let is_name = |c: char| c.is_alphanumeric() || matches!(c, '_' | '$' | '.');
+    let start = joined
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| is_name(*c))
+        .last()
+        .map_or(joined.len(), |(at, _)| at);
+    let name = &joined[start..];
+    if start > 0 && name.starts_with('.') {
+        return format!("?{}", name.trim_end_matches('.'));
+    }
+    name.trim_matches('.').to_string()
 }
 
 /// The registry key `callee` matches, or `None`.
@@ -248,5 +272,92 @@ mod tests {
         let cpg =
             CodePropertyGraph::from_uast(&result.uast_root, "compile(source, 'input', 'exec')");
         assert_eq!(dangerous_api_reachable(&cpg, &HashSet::new()), 1);
+    }
+
+    fn count(source: &str, language: &str) -> usize {
+        let result = parse_source(source, language, None).unwrap();
+        let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+        dangerous_api_reachable(&cpg, &HashSet::new())
+    }
+
+    #[test]
+    fn javascript_and_typescript_spellings_of_a_dangerous_call_are_seen() {
+        for spelling in [
+            "eval(a);\n",
+            "(eval)(x);\n",
+            "eval?.(x);\n",
+            "obj?.eval(x);\n",
+            "x!.eval();\n",
+            "window\n    .eval(c);\n",
+            "window . eval(c);\n",
+            "a.b().eval(j);\n",
+            "eval<string>(b);\n",
+            "new Function('h');\n",
+            "(eval as any)(x);\n",
+        ] {
+            assert_eq!(count(spelling, "typescript"), 1, "typescript: {spelling}");
+            if !spelling.contains(" as ") && !spelling.contains('!') && !spelling.contains('<') {
+                assert_eq!(count(spelling, "javascript"), 1, "javascript: {spelling}");
+            }
+        }
+    }
+
+    #[test]
+    fn python_spellings_of_a_dangerous_call_are_seen() {
+        for spelling in [
+            "os.system(c)\n",
+            "os .system(c)\n",
+            "(os.system)(c)\n",
+            "(eval)(c)\n",
+        ] {
+            assert_eq!(count(spelling, "python"), 1, "{spelling}");
+        }
+    }
+
+    #[test]
+    fn rust_path_calls_are_seen() {
+        for spelling in [
+            "std::mem::transmute(p)",
+            "transmute::<A, B>(x)",
+            "mem::transmute::<u32, f32>(x)",
+            "Box::from_raw(p)",
+            "K :: transmute(p)",
+        ] {
+            let source = format!("fn f() {{\n    let _a = {spelling};\n}}\n");
+            assert_eq!(count(&source, "rust"), 1, "{spelling}");
+        }
+    }
+
+    #[test]
+    fn mentions_wrappers_and_short_keys_on_computed_receivers_are_not_calls() {
+        assert_eq!(count("wrap(eval)(x);\n", "typescript"), 0);
+        assert_eq!(count("const s = \"eval(x)\";\n", "typescript"), 0);
+        assert_eq!(count("s = 'eval(x)'\n", "python"), 0);
+        assert_eq!(count("re.compile(p)\n(re.compile)(p)\n", "python"), 0);
+        let allow = HashSet::new();
+        let keys = ["run"];
+        let source = "getJob().run();\njobs[0].run();\n";
+        let result = parse_source(source, "typescript", None).unwrap();
+        let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+        let callees: Vec<String> = cpg
+            .nodes
+            .values()
+            .filter_map(|node| call_callee(&cpg, node))
+            .collect();
+        assert!(!callees.is_empty());
+        for callee in &callees {
+            assert_eq!(
+                match_registry_key(callee, keys.into_iter()),
+                None,
+                "{callee}"
+            );
+        }
+        assert_eq!(dangerous_api_reachable(&cpg, &allow), 0);
+    }
+
+    #[test]
+    fn a_computed_receiver_matches_like_a_dotted_name() {
+        assert_eq!(count("model.eval();\n", "typescript"), 1);
+        assert_eq!(count("getModel().eval();\n", "typescript"), 1);
     }
 }

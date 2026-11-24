@@ -112,6 +112,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
         hotspots: Vec::new(),
         promoted: false,
         severity: None,
+        entropy_role: None,
     }
 }
 

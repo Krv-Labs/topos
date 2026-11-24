@@ -1,16 +1,18 @@
 ---
 type: domain model
-title: Quality Model
-description: Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, and grade capping invariants.
-tags: [domain-model, quality, security, metrics, policies, rust]
+title: Quality Model & Categorical Evaluation
+description: Core domain model for quality pillars, Omega subobject classifier algebra, metric evaluation policies, security suppression overlay, waiver rules, and grade capping invariants.
+tags: [domain-model, quality, security, metrics, policies, rust, waivers]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T22:59:02.267Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
   - id: openwiki-source-c386b4993bec7b31315a096c
     resource: repo://topos/engine/src/config.rs
+  - id: openwiki-source-2e8e474d9d4df0ad4f7856fa
+    resource: repo://topos/engine/src/config/pr_gate.rs
   - id: openwiki-source-44098145b30ab92fb4bf3c70
     resource: repo://topos/engine/src/core/characteristic_morphism.rs
   - id: openwiki-source-195e23ac57e29d66773b4152
@@ -37,6 +39,8 @@ sources:
     resource: repo://topos/engine/src/evaluation/preferences.rs
   - id: openwiki-source-56387a0ca7b6f70787282c46
     resource: repo://topos/engine/src/evaluation/suppression.rs
+  - id: openwiki-source-9116c735e507fb122f25c154
+    resource: repo://topos/engine/src/evaluation/waivers.rs
   - id: openwiki-source-e99769a989da62cadb7b3f68
     resource: repo://topos/engine/src/functors/probes/ast/divergence.rs
   - id: openwiki-source-d2e755265f68157a7939a2d3
@@ -45,8 +49,10 @@ sources:
     resource: repo://topos/mcp/src/evaluation/analysis.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T22:59:02.267Z" }
 ---
+
+# Quality Model & Categorical Evaluation
 
 Topos expresses source quality through category-theoretic principles using four independent generator atoms: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. In the category of programs, source code functions as a `ProgramMorphism` between computational states. The evaluation lattice codomain $\Omega$ acts as a subobject classifier (a 16-element Heyting algebra), while `CharacteristicMorphism` computes the unique characteristic map $\chi_S : P \to \Omega$ that evaluates each program morphism against canonical raw-metric gate thresholds.
 
@@ -248,6 +254,26 @@ The summation iterates over nested block scopes (`IfStmt`, loops, `MatchStmt`, `
 
 The divergence probe isolates specific function spans and names, allowing diagnostics and refactor targets to identify exact source locations responsible for high nesting.
 
+## PR Recap Waiver Rules and Disclosed Findings
+
+Waivers enable projects to acknowledge findings checked during `topos pr-recap` without silently suppressing risk context. Configured via `[[pr_recap.waive]]` tables in `.topos.toml`, waivers match PR gate IDs against file path globs:
+
+```toml
+[[pr_recap.waive]]
+gate = "pillar_lost"
+path = "legacy/parser.rs"
+reason = "Legacy parser refactor deferred to Q4 roadmap"
+expires = "2026-12-31"
+```
+
+- **Mandatory Anti-Gaming Friction**: Every waiver requires a valid `gate` identifier (such as `pillar_lost`, `new_file_insecure`, or `import_cycle`), a `path` glob pattern (`scope`), and a non-empty `reason`. Any entry lacking mandatory fields or specifying an unknown gate ID is dropped during configuration parsing (`parse_waivers`) and logged in `PrGateConfig::warnings`.
+- **Date Expiration**: Waivers support an optional `expires` field formatted as a zero-padded `YYYY-MM-DD` date string or TOML datetime value. `Waiver::is_active(today)` verifies that the evaluation date does not exceed `expires`.
+- **Matching and Outcome Partitioning**: `apply` evaluates findings `(gate, path)` against configured waivers:
+  - `Used`: The waiver is active (`is_active == true`) and matched at least one finding in the PR recap run.
+  - `Unused`: The waiver is active but matched zero findings, signaling that the waived issue may be resolved and the waiver can be removed.
+  - `Expired`: The waiver's expiration date has passed. Expired waivers no longer suppress findings, but continue reporting the count of findings they would have matched so developers notice stale entries and renew or remediate them.
+- **Disclosed Reporting**: Waived findings retain their original severity (`off`, `info`, `warn`, or `block`) and remain visible in PR recap outputs alongside their recorded reasons. Active waivers prevent covered findings from triggering PR readiness failure exit codes while preserving complete diagnostic context.
+
 ## Multi-File Roll-up, Preferences, and Severity
 
 ### Codebase Roll-up ($\bigwedge_f \chi_S(f)$)
@@ -291,4 +317,4 @@ When modifying or extending the quality model:
 1. **Gate Definitions**: Maintain threshold logic, exemptions, and `NaN` guards in `evaluation/policies/gates.rs`. Store score curves and calibration weights in respective policy/calibration modules.
 2. **Classifier Synchronization**: When adding or altering metrics, update policy scorers, classifier representation grouping in `characteristic_morphism.rs`, and MCP/CLI renderers.
 3. **Verdict Invariants**: Preserve distinction between parse failures, gate failures, and unmeasured optional dimensions. Never allow advisory scores or allowlist acknowledgements to pass a gate.
-4. **Testing Standards**: Validate changes using `cargo test -p topos-engine`. Include diagnostic overlay, suppression, and refactor target test suites when modifying MCP integration boundaries.
+4. **Testing Standards**: Validate changes using `cargo test -p topos-engine`. Include diagnostic overlay, suppression, waiver evaluation, and refactor target test suites when modifying MCP integration boundaries.

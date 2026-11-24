@@ -1,8 +1,11 @@
 ---
 type: integration boundary guide
 title: Distribution and Integration Systems
-description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, and shell installers.
+description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, VS Code extension, Docker, shell installers, and engine adapters.
 tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update, maturin, pypi, installer]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-24T22:59:02.267Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -72,15 +75,42 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T22:59:02.267Z" }
 ---
 
 # Distribution and Integration Systems
 
-Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, and update delivery mechanics across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
+Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, and update delivery mechanics across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see [harness registration](../workflows/harness-registration.md).
+
+```mermaid
+flowchart TD
+    subgraph Core ["Topos Engine & MCP Server"]
+        Engine["topos-engine"]
+        MCP["topos-mcp stdio server"]
+        CLI["topos CLI"]
+    end
+
+    subgraph Integrations ["External Engines"]
+        GitNexus["GitNexus CLI (gitnexus analyze)"] -->|.gitnexus LadybugDB| Engine
+        Sighthound["Embedded Sighthound SAST"] -->|Supplementary findings| MCP
+    end
+
+    subgraph Channels ["Distribution Channels"]
+        PyPI["PyPI (topos-mcp Maturin wheel)"] -->|uvx| Registry["MCP Registry (.mcp/server.json)"]
+        GitHub["GitHub Release CI"] -->|install.sh| LocalBin["Native Binary (~/.local/bin)"]
+        GitHub -->|VSIX download / bundled| VSCode["VS Code Extension"]
+        Docker["Docker Image (python:3.12-slim)"] -->|Container runtime| DockerMCP["Containerized topos-mcp"]
+        Plugin["Agent Plugin (plugin.json)"] -->|Host launch| MCP
+        Harness["CLI Harness Reg (topos install)"] -->|Config edits| AgentHosts["Claude, Cursor, Windsurf, etc."]
+    end
+
+    Registry --> MCP
+    LocalBin --> CLI
+    VSCode -->|stdio / TOPOS_MCP_FILE_ROOT| MCP
+    DockerMCP --> MCP
+    AgentHosts --> MCP
+```
+Topos workspace distribution channels, host registration boundaries, and external analysis engine integrations.
 
 ## External topology: GitNexus and the MDG
 
@@ -112,7 +142,6 @@ flowchart TD
     Recover -->|no| Terminal["Report invalid override or schema mismatch"]
     Load --> Score["Attach MDG to COMPOSABLE"]
 ```
-
 Shared graph generation and recovery decision: recoverable graph states receive one bounded generation attempt, while unsafe or schema-mismatched states do not.
 
 ### Root selection is also a containment rule
@@ -153,7 +182,6 @@ flowchart TD
     Project -->|yes| Accept["Use resolved path and project root"]
     Project -->|no| RejectProject["Reject request"]
 ```
-
 MCP filesystem containment flow: canonicalizes requests and verifies that resolved paths and discovered project markers satisfy containment boundaries.
 
 A separate resolver supports paths that may not exist yet, chiefly a graph-store override. `resolve_existing_prefix` canonicalizes every existing component; it applies a missing tail lexically, but resumes symlink resolution if `..` removes that tail. `resolve_path_within` then compares that result with the canonical root. This is why a missing leaf and paths such as `link/missing/..` cannot hide an existing symlink escape; lexical normalization alone is unsafe here.
@@ -254,7 +282,6 @@ flowchart TD
     Latch -->|yes| Banner["Inject Markdown banner into 1 tool result"]
     Latch -->|no| Quiet
 ```
-
 Update check, throttle, and notice delivery workflow across CLI and MCP execution surfaces.
 
 ### Surface-specific delivery mechanics

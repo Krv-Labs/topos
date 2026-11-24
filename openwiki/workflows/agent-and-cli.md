@@ -1,11 +1,11 @@
 ---
 type: workflow guide
 title: Agent & CLI Workflows
-description: Detailed execution workflows for Topos CLI commands and MCP agent tool calls, covering entrypoint dispatch, input resolution, COMPOSABLE preparation, security overlays, and snapshot refactoring.
+description: Detailed execution workflows for Topos CLI commands and MCP agent tool calls, covering entrypoint dispatch, input resolution, COMPOSABLE preparation, security finding synthesis, PR recap, and snapshot refactoring.
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T22:59:02.267Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,16 +47,16 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T22:59:02.267Z" }
 ---
 
 # Agent & CLI Workflows
 
-Topos provides the `topos` CLI for local terminal operations and the stdio `topos-mcp` server for MCP hosts and autonomous agents. Both interfaces invoke the same underlying quality engine, but operate under distinct interaction and safety contracts: CLI output is formatted for human terminal display or shell scripting, whereas MCP tool definitions, JSON schemas, result structures, tool annotations, protocol revisions, and filesystem containment boundaries constitute public contracts for external agents. Quality lattice verdicts are defined in the [quality model](../domain/quality-model.md); structural test coverage and advisory refactor hotspot analysis are complementary architectural signals that operate outside the four-pillar lattice.
+Topos provides the `topos` CLI for local terminal operations and the stdio `topos-mcp` server for MCP hosts and autonomous agents. Both interfaces invoke the same underlying quality engine, but operate under distinct interaction and safety contracts: CLI output is formatted for human terminal display or shell scripting, whereas MCP tool definitions, JSON schemas, result structures, tool annotations, protocol revisions, and filesystem containment boundaries constitute public contracts for external agents. Quality lattice verdicts are defined in the [quality model](../domain/quality-model.md); structural test coverage, pull request recap ledgers, and advisory refactor hotspot analysis are complementary architectural signals that operate outside the four-pillar lattice.
 
 ## Command invocation: CLI vs MCP
 
-While CLI commands run ephemerally from shell arguments and write formatted human or JSON output directly to standard streams, MCP tool calls run over a long-lived JSON-RPC stdio connection with strict security containment checks and standardized response structures.
+While CLI commands run ephemerally from shell arguments and write formatted human text or JSON output directly to standard streams, MCP tool calls run over a long-lived JSON-RPC stdio connection with strict security containment checks and standardized response structures.
 
 ```mermaid
 flowchart TD
@@ -80,33 +80,55 @@ flowchart TD
 
 ## Select an entrypoint
 
-The root `topos` executable dispatches thirteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help to standard error and exits with status 2, while explicit help prints to standard output and exits with status 0.
+The root `topos` CLI dispatches fourteen public subcommands: `config`, `evaluate`, `inspect`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`, and `pr-recap`. Handlers report execution errors as `Error: <message>` to standard error and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help to standard error and exits with status 2, while explicit help prints to standard output and exits with status 0.
 
 ```mermaid
-flowchart TD
-    A["topos CLI Invocation"] --> B{"Pre-dispatch check"}
-    B -- "Empty args" --> C["Print root help to stderr, exit status 2"]
-    B -- "-h / --help" --> D["Print root help to stdout, exit status 0"]
-    B -- "Subcommand supplied" --> E["Clap argument parsing"]
-    E -- "Parse error" --> F["Clap exits with error"]
-    E -- "Valid command" --> G["dispatch(command)"]
-    G --> H{"Command Handler Execution"}
-    H -- "Err(message)" --> I["Print Error: message, exit status 1"]
-    H -- "Ok(())" --> J{"wants_no_notice?"}
-    J -- "false" --> K["Run passive_notice() 24h check"]
-    J -- "true" --> L["Return Ok status"]
-    K --> L
+sequenceDiagram
+    participant User as Shell / Caller
+    participant Main as CLI main / pre_dispatch
+    participant Clap as Clap Parser
+    participant Handler as Subcommand Handler
+    participant Engine as Quality Engine
+
+    User->>Main: topos <subcommand> [args]
+    alt Bare invocation (no args)
+        Main-->>User: Print root help to stderr (exit 2)
+    else Help flag (-h / --help)
+        Main-->>User: Print root help to stdout (exit 0)
+    else Subcommand specified
+        Main->>Clap: Parse arguments
+        alt Invalid arguments
+            Clap-->>User: Print usage error (exit 2)
+        else Valid arguments
+            Main->>Handler: dispatch(command)
+            Handler->>Engine: Run evaluation / operation
+            Engine-->>Handler: Result / Error
+            alt Execution error
+                Handler-->>User: Print Error: message (exit 1)
+            else Success path
+                Handler-->>User: Standard output / JSON payload
+                opt Update check enabled
+                    Main->>User: Run passive_notice() check
+                end
+            end
+        end
+    end
 ```
-*CLI entrypoint pre-dispatch checks, clap argument parsing, subcommand execution, error termination, and passive update notice handling.*
+*Sequence diagram of CLI entrypoint pre-dispatch checks, clap argument parsing, subcommand handler execution, and exit handling.*
 
 | Entry point | Use it when |
 | --- | --- |
 | `topos evaluate PATH...` | You want local scores for files or directories, terminal summaries, or structured JSON output. |
 | `topos inspect FILE` | You need a single file's metrics, function decompositions, and actionable line-level guidance. |
-| `topos depgraph generate [PATH]` | You want to explicitly build or refresh the GitNexus graph used for COMPOSABLE. |
-| `topos pr-recap RANGE_OR_PR` | You want structural before/after summaries for a Git revision range or pull request number. |
+| `topos pr-recap RANGE_OR_PR` | You want structural before/after summaries and debt ledgers for a Git revision range or pull request number. |
+| `topos compare FILE1 FILE2` | You want to measure normalized AST structural distance between two specific file variants. |
 | `topos coverage PATH...` | You want to compare source structure against test declarations without executing test code. |
+| `topos badge [PATH...]` | You want to write a pass-rate SVG or shields.io JSON badge for project README files or repository endpoints. |
+| `topos depgraph generate [PATH]` | You want to explicitly build or refresh the GitNexus graph used for COMPOSABLE. |
 | `topos cache ...` | You want to inspect, discover, or clean cache locations across Topos operations. |
+| `topos config` | You want to inspect or edit project quality priorities and gate rules. |
+| `topos install` / `uninstall` / `status` | You want to manage or check agent harness registrations across installed AI assistants. |
+| `topos update` | You want to check for and apply updates for your binary distribution channel. |
 | `topos mcp` | An MCP host launches the unified CLI executable as a stdio server. |
 | `topos-mcp` | An MCP host launches the standalone server binary; without `--help` or `--version`, it serves stdio. |
 
@@ -197,27 +219,40 @@ MCP tool annotations signal side effects and execution behavior to hosts:
 - `topos_inspect_code`: Accepts either inline `code` or a `filepath`. Supplying a file path permits COMPOSABLE graph preparation (non-read-only annotation), whereas inline code scores without COMPOSABLE.
 
 ```mermaid
-flowchart TD
-    A["Agent Tool Request"] --> B["Canonicalize path & verify file root"]
-    B -- "Outside root or missing project" --> C["Return Path Access Error"]
-    B -- "Valid Path" --> D{"COMPOSABLE skipped?"}
-    D -- "Yes (--no-composable)" --> E["Score SIMPLE, SECURE, NAVIGABLE only"]
-    D -- "No" --> F["check depgraph_status"]
-    F -- "present" --> G["Use existing store"]
-    F -- "missing / stale / load_error" --> H{"gitnexus available?"}
-    H -- "No" --> I["Add generation note, degrade to 3 pillars"]
-    H -- "Yes" --> J["Run gitnexus analyze --skip-agents-md"]
-    J -- "Success" --> G
-    J -- "Failure / Timeout" --> I
-    G --> K["Compute Quality Lattice Verdicts"]
-    I --> K
-    E --> K
-    K --> L{"Overlay applies?"}
-    L -- "Yes (SECURE fail)" --> M["Extract CPG findings & apply allowlist"]
-    L -- "No" --> N["Return Evaluation Response"]
-    M --> N
+sequenceDiagram
+    participant Agent as Host / Agent
+    participant Server as ToposServer Stdio
+    participant Security as Security & Root Resolver
+    participant Router as Tool Router
+    participant GitNexus as GitNexus Store / Analyzer
+    participant Engine as Quality Engine
+
+    Agent->>Server: JSON-RPC CallToolRequest (e.g. topos_evaluate_file)
+    Server->>Security: resolve_project_path(filepath)
+    alt Path outside boundary or missing project marker
+        Security-->>Server: Path containment / boundary error
+        Server-->>Agent: JSON-RPC CallToolResponse error
+    else Valid project path
+        Security-->>Server: (canonical_path, project_root)
+        Server->>Router: Route to tool handler
+        opt COMPOSABLE enabled and Store needs refresh
+            Router->>GitNexus: ensure_gitnexus_dir_with_cancel()
+            alt GitNexus missing or generation timeout
+                GitNexus-->>Router: Warning (degrade to 3 pillars)
+            else Store ready
+                GitNexus-->>Router: Graph loaded
+            end
+        end
+        Router->>Engine: Classify source / compute lattice verdicts
+        Engine-->>Router: ClassificationResult & metrics
+        opt SECURE findings & allowlist
+            Router->>Router: Apply security overlay & filter findings
+        end
+        Router-->>Server: Format JSON evaluation result
+        Server-->>Agent: JSON-RPC CallToolResponse
+    end
 ```
-*MCP tool request execution path covering containment validation, COMPOSABLE dependency graph preparation, engine classification, and security overlay application.*
+*Sequence diagram of an MCP tool request execution flow covering containment validation, dependency graph preparation, quality lattice classification, and result formatting.*
 
 ### Project evaluation schema (`EvaluateProjectInput`)
 
@@ -317,6 +352,24 @@ Below are concrete JSON-RPC request and response payload structures for key agen
 }
 ```
 
+## Pull Request recap workflow (`topos pr-recap` / `topos_pr_recap`)
+
+Both the CLI command `topos pr-recap` and the MCP tool `topos_pr_recap` compute structural before/after delta ledgers for changed source files across a Git revision range (such as `main..HEAD`) or a pull request number.
+
+1. **Range & Commit Resolution**: Resolves the base commit, head commit, and merge base using Git or GitHub API integration.
+2. **Dual-Commit Scoring**: Scores added and modified files at both base and head commits, identifying code splits, structural moves, and churn metrics.
+3. **Gate Policy Evaluation**: Applies gate configurations (`[pr_recap]`), configured presets (`relaxed`, `recommended`, `strict`), or command overrides (`--fail-on block|warn|never`).
+4. **Output Rendering**: Returns schema `topos.pr_recap.v3` for full records or `topos.pr_recap.summary.v1` for MCP summary mode. The CLI formats output as terminal cards, GitHub PR comments, or plain Markdown.
+5. **Execution Deadline**: Bounded by `TOPOS_PR_RECAP_TIMEOUT` (300 seconds default). If the deadline passes, Topos reports the active progress phase and suggests capping input files via `max_files` or scoping paths.
+
+## Security finding synthesis & allowlists
+
+Security diagnostic overlays are constructed exclusively for parseable code classifications that fail dangerous-call or taint-flow metrics in the SECURE pillar. When opt-in security reporting (`include_security_findings: true` or `topos_evaluate_file` diagnostic scan) is active, Topos synthesizes CPG taint findings and dangerous call pattern occurrences into a `SecurityOverlay`.
+
+Supplying `allow` patterns (such as `["exec", "eval"]`) does **not** silently remove findings prior to disclosure. Instead, allowlists partition raw findings into active risks and acknowledged risks:
+- Active findings remain exposed under `security_findings` and contribute to SECURE gate failures.
+- Acknowledged findings move to `acknowledged_risks`, marking the risk as explicitly accepted for the run without altering metric calculations or hiding findings from caller audit logs.
+
 ## Baseline-aware evaluate–edit–assess loop
 
 Iterative code refactoring requires establishing a baseline *before* modifying source files. Committed baselines are read directly from Git, while dirty or untracked pre-edit states require snapshots.
@@ -354,7 +407,7 @@ sequenceDiagram
 
 1. **Initial Assessment**: Call `topos_evaluate_file` or `topos_inspect_code` on the target file to establish initial scores and obtain actionable refactor targets.
 2. **Committed Baseline (`topos_assess_worktree_change`)**: When the pre-edit source is committed in Git, make edits in place and invoke `topos_assess_worktree_change` with `filepath` and optional `baseline_ref` (default `HEAD`). The tool reads `<ref>:<path>` via Git; dash-prefixed refs are rejected before invoking Git to prevent flag injection.
-3. **Dirty / Untracked Baseline (`topos_begin_refactor` & `topos_assess_snapshot`)**: For uncommitted or untracked files, invoke `topos_begin_refactor` prior to editing. Topos creates a content-addressed snapshot outside the working tree (in temporary storage or `TOPOS_SNAPSHOT_DIR`). Snapshots survive server restarts, expire after 24 hours, and bind to the resolved file path. Pass the returned `snapshot_id` to `topos_assess_snapshot` after editing. Missing, expired, or path-mismatched IDs return a blocked assessment status.
+3. **Dirty / Untracked Baseline (`topos_begin_refactor` & `topos_assess_snapshot`)**: For uncommitted or untracked files, invoke `topos_begin_refactor` prior to editing. Topos creates a content-addressed snapshot outside the working tree (in system temp or `TOPOS_SNAPSHOT_DIR`). Snapshots survive server restarts, expire after 24 hours (TTL), and bind to the resolved file path and source hash. Pass the returned `snapshot_id` to `topos_assess_snapshot` after editing. Missing, expired, or path-mismatched IDs return a blocked assessment status.
 4. **Side-by-Side & Multi-File**: Use `topos_assess_improvement` for explicit side-by-side variants (accepting exactly one of `filepath`/`current_code` and `proposed_filepath`/`proposed_code`). Use `topos_assess_changeset` for multi-file Git diff assessments.
 
 Assessment outcomes compute score deltas, lattice status shifts, and normalized AST edit distance for parseable code pairs. If normalized AST distance is below `0.02` while any score delta has a magnitude of at least `3.0`, Topos flags the result as `SUSPICIOUS_NO_STRUCTURAL_CHANGE` to highlight metric gaming or scoring instability.

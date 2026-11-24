@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:570c2becd365f9884e5e3ee7b5f47015ba73d7066d6a0222ab07e07f2d62507b",
+  "pageVersion": "sha256:e7dfbf7f1e2dc95c38d308e2e124c74dfb4cf3ffb0e9156f732ade7a38345ab7",
   "claims": [
     {
       "id": "claim_e4c0eafe313c458291568721ef6e14b0",
@@ -42,19 +42,19 @@
     },
     {
       "id": "claim_d1945d28a320499fb445fcc36d7caec7",
-      "statement": "The CLI's root dispatcher owns thirteen user-facing commands, routes human commands to command modules, launches the MCP server through its `mcp` subcommand, and reports command errors with a non-zero exit.",
+      "statement": "The CLI's root dispatcher owns fourteen user-facing commands, routes human commands to command modules, launches the MCP server through its `mcp` subcommand, and reports command errors with a non-zero exit.",
       "evidence": [
         {
-          "resource": "repo://topos/cli/src/main.rs#L134-L158",
-          "version": "repo-lines-v1:sha256:0e444ee66f237be7eb2939047572cbd87bf0bbf94aee6c80d87c6d414daecaf6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NmI3YTVlZmI2NjQ0NWE3NTg5ZDkyZWVlYzlmM2Y5NTQ3MTg1NTUzOTNhMGNhZmQxYWU2YTM3OGRhY2VkZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3YjZkNWU1ZjI1ODkwMTk4MzJmNjNjZjkzNTM4YjU5OWZjZjljY2M4MTBkZTc3ZDljZGVhMzZmNzNmNTM5YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2MWY3YTJiNTE2NDc3MDJkNDNkMDYyZmMxY2I1ZTc3ZGZmYzU1MTVjYTFlNmVjOWFjYWZmZWQwNTU3MDFhNmIifQ"
+          "resource": "repo://topos/cli/src/main.rs#L144-L157",
+          "version": "repo-lines-v1:sha256:e46e350d659a7a67573a3cb34da7dfd0a13be6b2cd704fb98856641a2ac66b4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMDg1MjdmMjBjZDRhNjQ5OTJjOWFmOTZlN2I5MDY1NWUyMTAxYzcxMjMxZWQ0Mjc5M2JlOGZkNDI5OWQwMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MGM4MmViMjA5YmMwZWI4ZjRlZmYxMmIyOWFjOTNjNmM5Y2RlNzg4M2E2OTVmMzBlYWU5MDI5Y2RmNTdkZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4NDAzNmFlYjBkYjM0ZDU5ZDg2YjdlZjc1ZmI0MjZhZjQ3YWE0YmE1OTVlMDgyNjM1MmY2ZTM3YzJiZDYzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZWZmNGRlYmQwMTg4ZjIzODBlZTgyMDdlOTBlOTE2MWZhNDhiNGQ4NGJmYWJkNzc0ZTUxOWE3NzRjZGI3MzYifQ"
         },
         {
-          "resource": "repo://topos/cli/src/main.rs#L21-L35",
-          "version": "repo-lines-v1:sha256:347ffb2eb10970f48908f861e4f6b9bb13834cf8f25aa1075ac9f7d7929d5274:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNzgzZGRkMTk4ZTExM2RjYmMzOGY1ZTM5NGFiY2QzNjJmMjljMmM0Yzk5Yzk2YWYzODJhZTk4MmE2MWY3ZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2OTExNDk4ZjE1OGIyZjQyZDRhN2Q2NWY1YmRjYWIwNDA4M2NkYmE5ZDE5ZjA3MDc2Y2JjNjE2MzlkMjNjNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1MGIyNzc0MDg4M2RkMjU3Y2U4OWQ2MTRhMzQ0OGNhYjhmYTBkZTc2MTMxNzUxMTE5YmY1Y2U0NWFiNjQ2YmQifQ"
+          "resource": "repo://topos/cli/src/main.rs#L182-L199",
+          "version": "repo-lines-v1:sha256:c7156cf8206ff01d96a8b2b238918926493ea35b07b3483971a5fceffc57571b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiNWZmZWM2MjdiYWE1NWI4ZDJmYTFiNGFmNmNhZTkyMTQwYzFlYzZlNDBlNjkyOGZkZmJiYTMzNTc1ZTg5NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3MzY3MzM4M2U5ZjVmMjNhNGJlY2YzZmQyZGEzZDU5ZGQ2Y2Y1OTRmYTE1MDdjNmZlNTFiODdlZGY1NWY0MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4YzczMGMxNjkxZmE0NWFkYjJjZWMwOWFhNTE4ZjdkNjNmMjUzYTA5MTZkM2FjOWJkZjA5NTg4NzBiMzFiNjYifQ"
         },
         {
-          "resource": "repo://topos/cli/src/main.rs#L50-L90",
-          "version": "repo-lines-v1:sha256:7e606724326aa5e833110bf3c58e1c0a7f6571c2970f2a18d2d7744de9a6237d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NWZkYmQxMDlmNGQwNDZlMGUzMjhlOWY2M2YyMDA3ZTZmMWFhYzU2MDllODU4MDcwYmQ4NTkyMGQ5ZTYyZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1MDEwZjQ4NDRhZWU5MWUxNmY1ZjA3MDUzY2ZmMzZlNWU1YjFiODc0MTZjMzQ0MzQ2NjgyMjExNTVhYmQ4YTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwMWQ5MDZiZWZkN2NjN2U5OTJlM2FkNjVhYzcxOGYwYzU0NGFiNzgxNDVlY2EzYjdiYjY5NTM1NDZlOWZhMzkifQ"
+          "resource": "repo://topos/cli/src/main.rs#L21-L36",
+          "version": "repo-lines-v1:sha256:f1a3f569d6c6fc68ed1715ad6f4b79f7119273ccab0af06f7d0a827c41b171f2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyMDA0NzQzYTg5YmZmNjA0ZjY2NGY4MGUyMTEyZmYwYzIyZDYzYzVhOTcyOWQwN2U2NTNjY2Q4MmVmZTdkZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzODQ1NjdmNDEwNzBmOGNlYjdhOTI5ZWU4MjI3OTYwZjRjNTEzZGY3ZTBiZWZlNGQ3NDg0NTcwMTc5NWFhOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0MWViN2UzNTljN2MyYzYwYTUwMWFmMzg3MDg3Yzc1YTA5MmYwN2E2ODRiZTYwYTUzZjc3ZDdkMThmNDVhMTkifQ"
         }
       ]
     },
@@ -237,7 +237,7 @@
       "statement": "MCP dependency-graph operations apply containment checks to a `gitnexus_dir` override with a resolver that canonicalizes each existing path component before accepting a missing tail, preventing an existing symlink prefix from escaping the allowed root.",
       "evidence": [
         {
-          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L280-L303",
+          "resource": "repo://topos/mcp/src/evaluation/mod.rs#L282-L305",
           "version": "repo-lines-v1:sha256:3e1c9c98243b9382a0df2a9ac56da0b808f2e49c6bb1fd0d30712f98521306fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwZDM3MmVjMzVmNGY4M2M0NjE4NzQxMmU1OTE5NmNlYjg0MzU1YTkyOTdjZWYxNDdiN2Q3MGU0OTBlMjU1MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5OWFlYWEyY2ExMGE2ZTMzODkwNTQ2NDVmMGVmZjliMDE0NjllMTcxMTY0NWE1M2ZjNDIwNTAyMGI1ZTA4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2M2YzZjIyNTIzNWE2MjUwOWQ2MTA2MWU2OTk0OGViYTlmYWY1ZGMzYzhmZmJiMGU5MTIwYWFjOTkwMmVhMTEifQ"
         },
         {
@@ -252,7 +252,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-30T12:01:57.716Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-24T22:59:02.267Z"
   }
 }

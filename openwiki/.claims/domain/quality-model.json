@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:10cd7b9508f10c21a315ad0606aeafbb1cbf0ad554da3c88e69399a08b79bf8a",
+  "pageVersion": "sha256:64006df783119233a021d3172ed3148027288b14eb262cae2bc322b73da18a74",
   "claims": [
     {
       "id": "claim_e8682d5eb5604266a48fb6f6ac3fbb3e",
@@ -255,10 +255,28 @@
           "version": "repo-lines-v1:sha256:44ee3d81cab079afdb866c8de89db83af9a061a7b9036262f1a447e1e4864e91:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MThiY2UxNDg4N2QxMjdiYjY0ZDExZWExZmQzNWY5ZWQ1N2Y1NjUxMTVjZTE1ZmNkNTYxOTI4ZTYyNGRiNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmOWEzYWM5MTc5NmY5ZDQzZTVhYjJjZWFhODE2YzU4MjQ1NGMxNmI3NzIzOWUxNjM5YmNiNGM3ZGQxMGQ5NWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNWUxNmEzNTgyNWU4ZTYxMWNlZDU0ODAwNWFiMTNkYzI4ZTQ4NGUyMDEyMzE5ZDFiMjY0NDA2NGQ0NWNjYjAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_20369ebc21af4dc5ae8a63d5d66fb6c4",
+      "statement": "PR recap waivers (`[[pr_recap.waive]]`) match gate keys and path globs to acknowledge findings, require a non-empty reason and valid gate ID to parse, support optional date expiration, and partition findings into used, unused, or expired statuses without hiding findings from recap output.",
+      "evidence": [
+        {
+          "resource": "repo://topos/engine/src/config/pr_gate.rs#L1-L30",
+          "version": "repo-lines-v1:sha256:9e48768e39bf976af84c177927521fde54f651aa5fc86bed0107e042635fff2b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNDdiNDIzOTkwNjIwMDI1ZTc2NmJmN2ZmNTcwMDExMWI2MzllNjRkNDhhMWY2ZDIzMTgxODEyZGZiNzE2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MzA1OGVlODc1MzcwNzJjYzAxNzAwNWNiNTFmYzVmYmQxZjJiNGZiOTU1MmJjZjkwOGJiMGExMDAzNzQ3NjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwMzRmZTI4ZmI0NTZkMzA0YTk4MjMyZTc3YzA5MGNhNTM3MjQxZDNmMzY3NjFlZWQ4ZTRlNTRkNGNkNTA3MmIifQ"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/waivers.rs#L1-L100",
+          "version": "repo-lines-v1:sha256:34c88fc75de5d475d2a9166d194945120cb70172e6ebe845698d1d759a8c6373:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZmVjMzNmOTc1MDNhYmQ1NmQ5MTM4ZWQ1MGE1ZTk0NTljMzdiZjc4ZTE5MzEyZWJlNzI5YzA5NWExOWE5OWIwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3MzA1ZjFhYmExOGNlZGQ4MDU5YTk0YjM4MmUzYzM4MWZhMjI0OTg4MzJlZWFhZmUxMDZjODc1MWI4ZWU1MjNmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ZDBiODhlMTliYmY1NjY3YTRlZDIyMzA2M2YxZjc4YzdjY2U1NjY5NWQwZGU4ZTkwNzVjMmM1MDZkNDZjNTczIn0"
+        },
+        {
+          "resource": "repo://topos/engine/src/evaluation/waivers.rs#L101-L160",
+          "version": "repo-lines-v1:sha256:e566479d920513ac2b7764c36aac2beb94afaa0aa4b24e7735bd0a7fc663e969:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlOGQyZjhhOWU0MmRkMDRiNDY5NDRmODg5YWZhNjU4NTc3NWY1ZWFlYzBmNDRkZDA4NDZlOGVkNTRmN2FiNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3N2FmMWYzMjVkNjU0NGQzYjAxYTFjMmI4ZTUyZDY1MjAxMDE2ZWZhZjU2N2RmOWI1Yjk5ZDcxMmM3ZGE2Y2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmN2I3MmZmZjNmNjIzZDFkNDVmYzhjNDJmZjQ0ZjA4MWExMjI0ZmQyNDBmNmZjNDNmMmJjZDM2Yjk2OGE5ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwNTliN2QwNmJiMzZkZDFlZjcyZTZiZGIzZjNjYWUzZjcxNDBjYTU3OTY1YzE2Y2U5MzQ1NGM3YzhkNTFhNmIifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-30T12:01:57.716Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-24T22:59:02.267Z"
   }
 }

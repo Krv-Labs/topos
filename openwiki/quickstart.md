@@ -1,11 +1,11 @@
 ---
 type: quickstart
 title: Quickstart Guide
-description: Immediate onboarding entry point, workspace CLI/MCP command references, and task-based navigation map across all OpenWiki sections for Topos maintainers and AI agents.
+description: Immediate onboarding entry point, workspace CLI/MCP command references, agent guidelines, and task-based navigation map across all OpenWiki sections.
 tags: [topos, quickstart, rust, cli, mcp, navigation]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T22:59:02.267Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,7 +29,7 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T22:59:02.267Z" }
 ---
 
 # Quickstart Guide
@@ -43,7 +43,7 @@ Source code and tests are authoritative. Use this quickstart to route maintenanc
 The root `Cargo.toml` defines the workspace package version (`0.15.0`) and contains three member crates:
 
 - **`topos-engine`**: Pure-Rust evaluation core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics/functors (`functors`), quality translators (`evaluation`), and adapters (`adapters`).
-- **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 13 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
+- **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 14 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
 - **`topos-mcp`**: Stdio MCP server combining evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, pr-recap, and refactor tool routers, embedded documentation resources (`topos://docs/*`), build identity resource (`topos://build`), and the `topos_refactor_until_ideal` prompt.
 
 ```mermaid
@@ -120,7 +120,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | Pillars (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`), gate decisions, thresholds, suppressions, preferences | [Quality Model & Domain Concepts](domain/quality-model.md) | `topos/engine/src/evaluation/`, `topos/engine/src/core/` | `cargo test -p topos-engine <filter>` |
 | Structural views (AST, UAST, CFG, PDG, CPG, MDG), graph metrics, categorical functors, curvature | [System Architecture Overview](architecture/overview.md) | `topos/engine/src/graphs/`, `topos/engine/src/functors/` | `cargo test -p topos-engine <filter>` |
-| CLI subcommands (`evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`), terminal rendering, JSON output | [Agent & CLI Workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, `topos/cli/src/commands/` | `cargo test -p topos <filter>` and `cargo run -p topos -- <cmd> --help` |
+| CLI subcommands (`evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`), terminal rendering, JSON output | [Agent & CLI Workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, `topos/cli/src/commands/` | `cargo test -p topos <filter>` and `cargo run -p topos -- <cmd> --help` |
 | MCP tools, JSON-RPC schemas, resources, prompts, stdio transport lifecycle, MCP protocol versions | [Agent & CLI Workflows](workflows/agent-and-cli.md) | `topos/mcp/src/main.rs`, `topos/mcp/src/server.rs` | `cargo test -p topos-mcp --test lifecycle` |
 | Agent harness registration (`install`, `uninstall`, `status`), harness configs (`~/.claude.json`, Codex, Gemini), clean-home residue | [Harness & Plugin Registration Workflow](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `cargo test -p topos --test install_e2e` |
 | GitNexus (`.gitnexus` store), distribution channels (binary installer `install.sh`, Homebrew, Cargo, Python wheel, VS Code VSIX, agent skills/plugins), updates | [Integration & Distribution Models](integrations/distribution.md) | `topos/engine/src/adapters/gitnexus.rs`, `topos/cli/src/commands/update/`, `install.sh` | `python3 scripts/check_skill.py` and channel-specific checks |

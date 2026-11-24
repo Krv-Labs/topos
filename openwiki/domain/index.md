@@ -1,3 +1,3 @@
 # Files
 
-- [Quality Model](quality-model.md) - Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, and grade capping invariants.
+- [Quality Model & Categorical Evaluation](quality-model.md) - Core domain model for quality pillars, Omega subobject classifier algebra, metric evaluation policies, security suppression overlay, waiver rules, and grade capping invariants.

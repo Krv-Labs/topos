@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f6b6c3436eee04b9f3ccde01ff2c5d29606cd03100fb42a83305dc8aee91941c",
+  "pageVersion": "sha256:38f2f62c56765e003f2f697a48919753e1ca5db3735d46990596b5cf754a6668",
   "claims": [
     {
       "id": "claim_b8167f4a6dc049f08d3b062b0c0de27d",
@@ -183,8 +183,8 @@
       "statement": "The docs workflow builds Sphinx through uv and deploys only successful main-push output, while the badge workflow rebuilds/indexes on selected core changes and commits generated badges only on main.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/badge.yml#L3-L95",
-          "version": "repo-lines-v1:sha256:d8d20396db146943538ffdeff8944a3f1c094a7ded2fef2500e12c3f51617127:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OTRiYzI2OTdkYjJhZDk3OWI5ZWNmNjcwNTU1MzY3MGMwMmY1MTVjM2IwNzNiNjNmM2VmMzE2Mjc0ZDA3ZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjRiZWUyOTMwZDQ4YTA3M2FmMWQxNjNiM2RiMDU3M2E1OWRhYTAxNTE1NDBlYTg2YmQwMjI3ZDg5MDk4MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUifQ"
+          "resource": "repo://.github/workflows/badge.yml#L3-L93",
+          "version": "repo-lines-v1:sha256:5fe765254a8aac13e0927433b814484e23fc139aaf0b58d5ca6eed3995514c84:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjRiZWUyOTMwZDQ4YTA3M2FmMWQxNjNiM2RiMDU3M2E1OWRhYTAxNTE1NDBlYTg2YmQwMjI3ZDg5MDk4MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://.github/workflows/docs.yml#L1-L40",
@@ -226,7 +226,7 @@
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-30T12:01:57.716Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-24T22:59:02.267Z"
   }
 }

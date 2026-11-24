@@ -1550,6 +1550,19 @@ pub enum DepgraphState {
     BranchNotIndexed,
 }
 
+/// Dependency edges removed at load because the source code proves them
+/// false, per rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct DroppedEdgeCounts {
+    /// Calls into a non-exported item of another Rust crate.
+    pub rust_private_cross_crate: usize,
+    /// Python standard-library imports matched to a same-named repo module.
+    pub python_stdlib_import: usize,
+    /// JS/TS bare package imports matched to a same-named repo file.
+    pub js_bare_package_import: usize,
+    pub total: usize,
+}
+
 /// Result of `topos_depgraph_status` — read-only graph state.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct DepgraphStatusResult {
@@ -1560,6 +1573,9 @@ pub struct DepgraphStatusResult {
     /// True only when the graph loads and is not stale.
     pub coupling_available: bool,
     pub detail: Option<String>,
+    /// Edges filtered out as false when the graph loaded; absent unless it
+    /// loaded.
+    pub dropped_edges: Option<DroppedEdgeCounts>,
     pub recommended_next_action: String,
     pub agent_contract: Option<AgentContract>,
     pub error: Option<String>,

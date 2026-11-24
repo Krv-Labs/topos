@@ -83,3 +83,92 @@ fn indexed_files_keep_composable_with_relative_paths_from_a_subdirectory() {
         );
     }
 }
+
+fn file_node(path: &str, content: &str) -> Value {
+    json!({
+        "id": format!("File:{path}"),
+        "label": "File",
+        "properties": {"filePath": path, "content": content}
+    })
+}
+
+fn function_node(path: &str, name: &str, exported: bool) -> Value {
+    json!({
+        "id": format!("Function:{path}:{name}"),
+        "label": "Function",
+        "properties": {"name": name, "filePath": path, "isExported": exported}
+    })
+}
+
+fn edge(rel_type: &str, source: &str, target: &str) -> Value {
+    json!({"type": rel_type, "sourceId": source, "targetId": target})
+}
+
+#[test]
+fn composable_fixture_keeps_its_real_call_and_drops_a_false_cross_crate_one() {
+    let root = tempfile::tempdir().unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/composable_mdg");
+    fs::create_dir(root.path().join(".git")).unwrap();
+    fs::create_dir_all(root.path().join("src")).unwrap();
+    fs::create_dir_all(root.path().join("tools/src")).unwrap();
+    let lib = fs::read_to_string(fixture.join("src/lib.rs")).unwrap();
+    let helper = fs::read_to_string(fixture.join("src/helper.rs")).unwrap();
+    let tools = "fn write() {}\n";
+    let manifest = "[package]\nname = \"fixture\"\n";
+    fs::write(root.path().join("src/lib.rs"), &lib).unwrap();
+    fs::write(root.path().join("src/helper.rs"), &helper).unwrap();
+    fs::write(root.path().join("tools/src/io.rs"), tools).unwrap();
+    fs::write(root.path().join("Cargo.toml"), manifest).unwrap();
+    fs::write(root.path().join("tools/Cargo.toml"), manifest).unwrap();
+
+    let store = root.path().join(".gitnexus/lbug");
+    fs::create_dir_all(&store).unwrap();
+    fs::write(
+        store.join("nodes.json"),
+        json!([
+            file_node("Cargo.toml", manifest),
+            file_node("tools/Cargo.toml", manifest),
+            file_node("src/lib.rs", &lib),
+            file_node("src/helper.rs", &helper),
+            file_node("tools/src/io.rs", tools),
+            function_node("src/lib.rs", "entry", true),
+            function_node("src/helper.rs", "assist", true),
+            function_node("tools/src/io.rs", "write", false),
+            edge("DEFINES", "File:src/lib.rs", "Function:src/lib.rs:entry"),
+            edge(
+                "DEFINES",
+                "File:src/helper.rs",
+                "Function:src/helper.rs:assist"
+            ),
+            edge(
+                "DEFINES",
+                "File:tools/src/io.rs",
+                "Function:tools/src/io.rs:write"
+            ),
+            edge(
+                "CALLS",
+                "Function:src/lib.rs:entry",
+                "Function:src/helper.rs:assist"
+            ),
+            edge(
+                "CALLS",
+                "Function:src/lib.rs:entry",
+                "Function:tools/src/io.rs:write"
+            ),
+        ])
+        .to_string(),
+    )
+    .unwrap();
+
+    let inspected = run(root.path(), &["inspect", "src/lib.rs"]);
+    assert_eq!(inspected["dimensions"]["composable"], "COMPOSABLE");
+    assert_eq!(inspected["raw_metrics"]["mdg.fan_out"], 1.0);
+
+    let status = run(root.path(), &["depgraph", "status"]);
+    assert_eq!(
+        status["dropped_edge_counts"]["rust_private_cross_crate"], 1,
+        "{status}"
+    );
+    assert_eq!(status["dropped_edges"][0]["source_file"], "src/lib.rs");
+    assert_eq!(status["dropped_edges"][0]["target_file"], "tools/src/io.rs");
+}

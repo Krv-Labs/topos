@@ -124,8 +124,10 @@ impl Exclusions<'_> {
     }
 
     /// Why a file at `path` is not scored, by its path: the recap's skip
-    /// rules, then the base `.toposignore`.
-    fn path_skip(&self, path: &str) -> Option<String> {
+    /// rules, then the base `.toposignore`. Reads no file contents, so it
+    /// is cheap enough for an estimate; [`Exclusions::review`] adds the
+    /// generated-header check that decides what is actually scored.
+    pub fn path_skip(&self, path: &str) -> Option<String> {
         let at_path = DiffEntry {
             status: "M".to_string(),
             path: path.to_string(),

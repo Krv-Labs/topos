@@ -397,7 +397,9 @@ fn resolve_format(compact: bool, format: Option<RecapFormat>, no_marker: bool) -
 
 /// Best-effort count of files about to be scored, for the large-recap
 /// warning. `None` when the diff itself cannot be read, in which case the
-/// recap runs without the warning instead of failing.
+/// recap runs without the warning instead of failing. Path rules only: the
+/// generated-header check reads every base blob, and `build_recap` runs it
+/// anyway, so the estimate may count a generated file the recap skips.
 fn files_to_score(exclusions: &Exclusions<'_>, max_files: usize) -> Option<usize> {
     let diff = if exclusions.head == ":worktree" {
         worktree_files(exclusions.repo, exclusions.base).ok()?
@@ -407,7 +409,7 @@ fn files_to_score(exclusions: &Exclusions<'_>, max_files: usize) -> Option<usize
     let scoreable = diff
         .entries
         .into_iter()
-        .filter_map(|entry| exclusions.review(entry).ok())
+        .filter(|entry| exclusions.path_skip(&entry.path).is_none())
         .count();
     Some(if max_files == 0 {
         scoreable

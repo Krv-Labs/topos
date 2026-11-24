@@ -9,6 +9,12 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Fixed
+
+- `topos evaluate` no longer panics on a file name containing multi-byte
+  characters (for example `src/ünîcödé/fîlé.ts`); the supported-suffix check
+  now compares bytes instead of slicing the name mid-character.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

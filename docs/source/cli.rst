@@ -655,12 +655,16 @@ projects such as ``requests`` and ``django`` get no medal at all. A pass rate
 says how much of the code meets each pillar and moves with every file fixed.
 ``--json`` still reports the strict medal under ``strict`` for reference.
 
-**Reading the SVG.** The badge has a gray ``topos`` label followed by one
-segment per pillar, each with the full pillar name and its rate. Segments are
-colored on a fixed scale: 100% bright green, 95% and up green, 85% and up
-yellow-green, 70% and up yellow, 50% and up orange, below 50% red, and gray
-for ``n/a``. The image's ``aria-label`` and ``<title>`` spell out all four
-rates.
+**Reading the SVG.** The badge shows the Topos logo followed by one chip per
+pillar: ``Si`` (SIMPLE), ``Co`` (COMPOSABLE), ``Se`` (SECURE), and ``Na``
+(NAVIGABLE). A thin meter under each code fills in proportion to the pillar's
+pass rate. A pillar that was not measured shows a gray chip with no meter. The
+image's ``aria-label`` and ``<title>`` spell out all four rates, so hovering
+the badge shows the exact numbers.
+
+The ``--endpoint`` document colors its single message by the lowest rate on a
+fixed scale: 100% bright green, 95% and up green, 85% and up yellow-green, 70%
+and up yellow, 50% and up orange, below 50% red, and gray for ``n/a``.
 
 COMPOSABLE needs a dependency graph. When GitNexus is installed, ``badge``
 builds or refreshes one in ``.gitnexus/`` at the project root, as ``evaluate``

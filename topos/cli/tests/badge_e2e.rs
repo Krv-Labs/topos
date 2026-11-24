@@ -149,13 +149,14 @@ fn writes_an_svg_and_a_shields_endpoint_for_a_directory() {
 
     let svg = fs::read_to_string(root.path().join("badges/topos.svg")).unwrap();
     assert_well_formed(&svg);
-    for text in [
-        ">SIMPLE 100%<",
-        ">COMPOSABLE n/a<",
-        ">SECURE 100%<",
-        ">NAVIGABLE 100%<",
-    ] {
-        assert!(svg.contains(text), "missing {text:?}");
+    assert!(
+        svg.contains(
+            "<title>topos: SIMPLE 100%, COMPOSABLE n/a, SECURE 100%, NAVIGABLE 100%</title>"
+        ),
+        "{svg}"
+    );
+    for code in [">Si<", ">Co<", ">Se<", ">Na<"] {
+        assert!(svg.contains(code), "missing {code:?}");
     }
     assert!(
         !svg.contains("GOLD"),
@@ -190,8 +191,8 @@ fn one_failing_file_of_four_shows_as_a_pass_rate_everywhere() {
 
     let svg = fs::read_to_string(root.path().join("topos.svg")).unwrap();
     assert_well_formed(&svg);
-    assert!(svg.contains(">SIMPLE 75%<"), "{svg}");
-    assert!(svg.contains(&format!(">{navigable}<")), "{svg}");
+    assert!(svg.contains("topos: SIMPLE 75%, "), "{svg}");
+    assert!(svg.contains(&format!(", {navigable}</title>")), "{svg}");
 
     let endpoint: Value =
         serde_json::from_str(&fs::read_to_string(root.path().join("topos.json")).unwrap()).unwrap();

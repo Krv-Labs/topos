@@ -9,6 +9,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Fixed
+
+- `topos evaluate` and the MCP tools no longer crash with a segmentation fault
+  on a dependency graph store that an interrupted `gitnexus analyze` left
+  half-written. Topos now checks for a leftover `lbug.wal` or an
+  `incrementalInProgress` flag in the store's `meta.json` before opening it,
+  and treats such a store as unloadable: evaluate regenerates it when GitNexus
+  is installed, and otherwise reports COMPOSABLE as not scored with a warning
+  that names the store and the fix (`topos depgraph generate --force`, or
+  delete the store directory).
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

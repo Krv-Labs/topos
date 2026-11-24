@@ -28,6 +28,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Changed
 
+- SECURE reads a call's callee from its syntax instead of the text that
+  follows it, so `cpg.dangerous_calls` and `cpg.taint_flows` now see
+  `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`, `x!.eval()`, a receiver on the
+  previous line, `window . eval(x)`, `a.b().eval(x)`, generic and cast
+  callees, Python `os .system(c)` and `(os.system)(c)`, every Rust
+  `::`-qualified call (`std::mem::transmute(p)`, `transmute::<A, B>(x)`,
+  `Box::from_raw(p)`), and JavaScript/TypeScript `new Function(...)`. Files
+  that passed SECURE because of how a call was spelled may now fail it. The
+  JavaScript/TypeScript `innerHTML` entry is removed: it is an assignment, not
+  a call, so it never matched.
+
 - `topos pr-recap`: new code meets the same limit as changed code. A new file
   that fails SIMPLE or NAVIGABLE now blocks under every preset
   (`new_file_pillar` defaults to `block`, as `pillar_lost` does; it was off,

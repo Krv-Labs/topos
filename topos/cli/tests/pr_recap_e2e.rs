@@ -743,3 +743,218 @@ fn the_base_branch_tip_judges_a_branch_that_forked_before_it() {
     assert_eq!(blocked.code, 1, "the tip dropped the waiver: {value:#}");
     assert!(value["gate"].get("unapplied").is_none(), "{value:#}");
 }
+
+fn branchy(name: &str) -> String {
+    let mut body = format!("def {name}(x):\n");
+    for i in 0..14 {
+        body.push_str(&format!("    if x == {i}:\n        return {i}\n"));
+    }
+    body.push_str("    return -1\n");
+    body
+}
+
+fn skipped_file<'a>(value: &'a Value, path: &str) -> &'a Value {
+    value["skipped"]
+        .as_array()
+        .expect("skipped")
+        .iter()
+        .find(|file| file["path"] == path)
+        .unwrap_or_else(|| panic!("{path} is not skipped: {value:#}"))
+}
+
+fn github(repo: &Path, bin: &Path) -> String {
+    topos(
+        repo,
+        bin,
+        &[
+            "pr-recap", "--base", "HEAD~1", "--head", "HEAD", "--format", "github",
+        ],
+    )
+    .stdout
+}
+
+/// A promoted file is unreviewed code. Looking like a split child of a
+/// file that imports it must not excuse it from the new-file gates.
+#[test]
+fn a_promoted_file_attached_as_a_split_child_still_meets_the_new_file_gates() {
+    let alpha = "def alpha(x):\n    if x:\n        return 1\n    return 0\n";
+    let beta = "def beta(x):\n    if x:\n        return 2\n    return 0\n";
+    let evil = format!("{alpha}\n\n{}", branchy("sprawl"));
+    let (_keep, repo, bin) = range(
+        &[("README.md", "# hi\n")],
+        &[
+            ("src/big.py", &format!("{alpha}\n\n{beta}")),
+            ("fixtures/evil.py", evil.as_str()),
+        ],
+    );
+    then(&repo, || {
+        git(&repo, &["mv", "fixtures/evil.py", "src/evil.py"]);
+        fs::write(
+            repo.join("src/big.py"),
+            format!("from evil import alpha\n\n\n{beta}"),
+        )
+        .unwrap();
+    });
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    let found = value["findings"].as_array().unwrap().iter().any(|finding| {
+        finding["gate"] == "new_file_pillar"
+            && finding["path"] == "src/evil.py"
+            && finding["pillar"] == "simple"
+    });
+    assert!(found, "recommended reports it: {value:#}");
+    let strict = committed_range(&repo, &bin, &["--preset", "strict"]);
+    assert_eq!(strict.code, 1, "{}", strict.stdout);
+}
+
+/// An unchanged rename has no churn, but a promoted one is all new to the
+/// review: it ranks by its size, and what the cap drops is named.
+#[test]
+fn the_cap_keeps_a_promoted_file_and_names_the_source_it_drops() {
+    let (_keep, repo, bin) = range(
+        &[("README.md", "# hi\n")],
+        &[(
+            "fixtures/evil.py",
+            &format!("{SHELL}\n{}", branchy("sprawl")),
+        )],
+    );
+    then(&repo, || {
+        fs::create_dir_all(repo.join("src")).unwrap();
+        git(&repo, &["mv", "fixtures/evil.py", "src/evil.py"]);
+        fs::write(repo.join("src/small.py"), CLEAN).unwrap();
+    });
+    let run = committed_range(&repo, &bin, &["--max-files", "1"]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(first_finding(&value), ("new_file_insecure", "src/evil.py"));
+    let dropped = skipped_file(&value, "src/small.py");
+    assert_eq!(dropped["source"], true);
+    assert_eq!(dropped["kind"], "scoring_cap");
+    assert_eq!(value["scope"]["files_unreviewed"], 1);
+    let comment = topos(
+        &repo,
+        &bin,
+        &[
+            "pr-recap",
+            "--base",
+            "HEAD~1",
+            "--head",
+            "HEAD",
+            "--format",
+            "github",
+            "--max-files",
+            "1",
+        ],
+    )
+    .stdout;
+    assert!(
+        comment.contains("**Not reviewed**") && comment.contains("`src/small.py`"),
+        "{comment}"
+    );
+}
+
+/// Code in a language Topos does not score is still code nobody reviewed,
+/// and it reads differently from a file hidden by its path.
+#[test]
+fn source_in_a_language_topos_does_not_score_is_named_as_such() {
+    let (_keep, repo, bin) = range(
+        &[("README.md", "# hi\n")],
+        &[
+            ("web/app.jsx", "export const App = () => <div />;\n"),
+            ("native/lib.c", "int main(void) { return 0; }\n"),
+            ("types/api.pyi", "def run(cmd: str) -> None: ...\n"),
+            ("vendor/lib.py", SHELL),
+            ("docs/guide.md", "# guide\n"),
+        ],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 0, "{value:#}");
+    assert_eq!(value["scope"]["files_unreviewed"], 4);
+    for path in ["web/app.jsx", "native/lib.c", "types/api.pyi"] {
+        let file = skipped_file(&value, path);
+        assert_eq!(file["source"], true, "{path}");
+        assert_eq!(file["kind"], "language_not_scored", "{path}");
+        assert_eq!(
+            file["reason"],
+            "source file in a language Topos does not score"
+        );
+    }
+    assert_eq!(
+        skipped_file(&value, "vendor/lib.py")["kind"],
+        "path_or_policy"
+    );
+    assert_eq!(skipped_file(&value, "docs/guide.md")["kind"], "not_source");
+    let comment = github(&repo, &bin);
+    assert!(
+        comment.contains("**Not reviewed** — 4 source files")
+            && comment.contains("1 skipped by path or policy")
+            && comment.contains("3 in a language Topos does not score"),
+        "{comment}"
+    );
+}
+
+#[test]
+fn a_file_renamed_into_a_skipped_path_is_listed_as_not_reviewed() {
+    let (_keep, repo, bin) = range(&[("README.md", "# hi\n")], &[("src/a.py", SHELL)]);
+    then(&repo, || {
+        fs::create_dir_all(repo.join("fixtures")).unwrap();
+        git(&repo, &["mv", "src/a.py", "fixtures/a.py"]);
+    });
+    let value = json(&committed_range(&repo, &bin, &[]));
+    let file = skipped_file(&value, "fixtures/a.py");
+    assert_eq!(file["source"], true);
+    assert_eq!(file["lines_changed"], 4, "a moved file counts in full");
+    assert!(github(&repo, &bin).contains("- `fixtures/a.py`"));
+}
+
+/// The list is cut at ten, largest first, with the total up front, so
+/// small filler cannot push a large file out of sight.
+#[test]
+fn the_not_reviewed_list_shows_the_largest_files_and_counts_the_rest() {
+    let big = format!("{SHELL}\n{}", branchy("sprawl"));
+    let mut files: Vec<(String, String)> = (0..11)
+        .map(|i| (format!("vendor/a{i:02}.py"), CLEAN.to_string()))
+        .collect();
+    files.push(("vendor/zzz.py".to_string(), big));
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, body)| (path.as_str(), body.as_str()))
+        .collect();
+    let (_keep, repo, bin) = range(&[("README.md", "# hi\n")], &borrowed);
+    let comment = github(&repo, &bin);
+    assert!(
+        comment.contains("**Not reviewed** — 12 source files"),
+        "{comment}"
+    );
+    assert!(comment.contains("- and 2 more"), "{comment}");
+    let listed: Vec<&str> = comment
+        .lines()
+        .filter(|line| line.starts_with("- `vendor/"))
+        .collect();
+    assert_eq!(listed.len(), 10, "{comment}");
+    assert!(listed[0].starts_with("- `vendor/zzz.py`"), "{comment}");
+    let card = topos(
+        &repo,
+        &bin,
+        &["pr-recap", "--base", "HEAD~1", "--head", "HEAD"],
+    )
+    .stdout;
+    assert!(
+        card.contains("12 source files not reviewed") && card.contains("vendor/zzz.py"),
+        "{card}"
+    );
+}
+
+#[test]
+fn a_modified_file_that_stops_parsing_says_how_to_fix_or_exempt_it() {
+    let (_keep, repo, bin) = range(&[("src/a.py", CLEAN)], &[("src/a.py", BROKEN)]);
+    let comment = github(&repo, &bin);
+    assert!(
+        comment.contains("no longer parses at head")
+            && comment.contains("fix the syntax error")
+            && comment.contains(".toposignore")
+            && comment.contains("base branch"),
+        "{comment}"
+    );
+}

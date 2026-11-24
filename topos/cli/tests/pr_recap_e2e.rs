@@ -405,3 +405,55 @@ fn a_file_that_stops_parsing_fails_the_check() {
         "{finding:#}"
     );
 }
+
+const BROKEN: &str = "def broken(:\n";
+
+#[test]
+fn an_added_file_that_does_not_parse_fails_the_check() {
+    let (_keep, repo, bin) = range(&[("src/a.py", CLEAN)], &[("src/new.py", BROKEN)]);
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(value["readiness"], "BLOCKED");
+    let finding = &value["findings"][0];
+    assert_eq!(finding["gate"], "new_file_slop");
+    assert_eq!(finding["severity"], "block");
+    assert_eq!(finding["path"], "src/new.py");
+    assert!(
+        finding["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("does not parse")),
+        "{finding:#}"
+    );
+    for preset in ["relaxed", "recommended", "strict"] {
+        let run = committed_range(&repo, &bin, &["--preset", preset]);
+        assert_eq!(run.code, 1, "{preset}: {}", run.stdout);
+    }
+}
+
+/// Files the recap does not score are not judged for parsing either.
+#[test]
+fn added_files_that_are_skipped_raise_nothing_when_they_do_not_parse() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[
+            ("notes.txt", BROKEN),
+            ("src/app.min.js", "function ( {"),
+            ("src/data.bundle.js", "function ( {"),
+        ],
+    );
+    fs::create_dir_all(repo.join("node_modules/pkg")).unwrap();
+    fs::write(repo.join("node_modules/pkg/index.js"), "function ( {").unwrap();
+    git(&repo, &["add", "-f", "."]);
+    git(&repo, &["commit", "-qm", "vendored"]);
+    let run = topos(
+        &repo,
+        &bin,
+        &["pr-recap", "--base", "HEAD~2", "--head", "HEAD", "--json"],
+    );
+    let value = json(&run);
+    assert_eq!(run.code, 0, "{value:#}");
+    assert_eq!(value["findings"], serde_json::json!([]));
+    assert_eq!(value["scope"]["files_scored"], 0);
+    assert_eq!(value["scope"]["files_skipped"], 4);
+}

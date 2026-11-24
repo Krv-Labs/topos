@@ -48,9 +48,18 @@ pub enum MdgError {
     NotFound(PathBuf),
     /// Embedded `lbug` client failed to open/query the binary store.
     LadybugNativeFailed(String),
+    /// `gitnexus analyze` stopped mid-write; the native reader can crash on the store.
+    UnfinishedWrite {
+        store: PathBuf,
+        reason: &'static str,
+    },
     Io(std::io::Error),
     Json(serde_json::Error),
 }
+
+/// Text every [`MdgError::UnfinishedWrite`] message carries, for callers that
+/// classify load errors by message.
+pub const UNFINISHED_WRITE_MARKER: &str = "left half-written by an interrupted";
 
 impl std::fmt::Display for MdgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,6 +72,15 @@ impl std::fmt::Display for MdgError {
             ),
             MdgError::LadybugNativeFailed(msg) => {
                 write!(f, "failed to load LadybugDB store via native lbug: {msg}")
+            }
+            MdgError::UnfinishedWrite { store, reason } => {
+                let dir = store.parent().unwrap_or(store).display();
+                write!(
+                    f,
+                    "dependency graph store {dir} was {UNFINISHED_WRITE_MARKER} `gitnexus analyze` \
+                     ({reason}); Topos did not open it. Rebuild it with \
+                     'topos depgraph generate --force' or delete {dir}."
+                )
             }
             MdgError::Io(e) => write!(f, "{e}"),
             MdgError::Json(e) => write!(f, "{e}"),

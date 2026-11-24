@@ -350,6 +350,37 @@ mod broken_store_tests {
     }
 
     #[test]
+    fn interrupted_store_is_a_load_error_that_names_the_store_and_the_fix() {
+        let root = tempfile::tempdir().unwrap();
+        let store = root.path().join(".gitnexus");
+        std::fs::create_dir(&store).unwrap();
+        let db = lbug::Database::new(store.join("lbug"), lbug::SystemConfig::default()).unwrap();
+        let conn = lbug::Connection::new(&db).unwrap();
+        conn.query("CREATE NODE TABLE File(id STRING, filePath STRING, PRIMARY KEY(id))")
+            .unwrap();
+        conn.query("CREATE (:File {id: 'lib', filePath: 'src/lib.rs'})")
+            .unwrap();
+        drop(conn);
+        drop(db);
+        std::fs::write(
+            store.join("lbug.wal"),
+            b"wal left by a killed gitnexus analyze",
+        )
+        .unwrap();
+
+        clear_caches();
+        let status = depgraph_status(None, root.path(), "src/lib.rs");
+        assert_eq!(status.state, "load_error", "{:?}", status.detail);
+        let warning = crate::evaluation::dep_graph_load_warning(status.detail.as_deref());
+        let store_dir = store.canonicalize().unwrap().display().to_string();
+        assert!(warning[0].contains(&store_dir), "{warning:?}");
+        assert!(
+            warning[0].contains("topos depgraph generate --force"),
+            "{warning:?}"
+        );
+    }
+
+    #[test]
     fn empty_file_table_store_is_a_load_error_not_present() {
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir(root.path().join(".gitnexus")).unwrap();

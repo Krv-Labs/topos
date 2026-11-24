@@ -14,7 +14,7 @@ use topos_engine::core::morphism::ProgramMorphism;
 use topos_engine::evaluation::policies::base::Priority;
 use topos_engine::evaluation::policies::simple::describe_entropy_ratio;
 use topos_engine::functors::probes::ast::complexity::calculate_function_complexity_entries;
-use topos_engine::functors::probes::ast::entropy::calculate_kolmogorov_proxy;
+use topos_engine::functors::probes::ast::entropy::source_entropy;
 
 use crate::evaluation::{
     classify_morphism, detect_language, ensure_gitnexus_dir_with_cancel, gitnexus_warnings,
@@ -446,16 +446,16 @@ fn inspect_code_with_cancel(
         .map(|e| (e.name.clone(), e.complexity))
         .collect();
 
-    let ratio = calculate_kolmogorov_proxy(&morphism.source);
-    let interpretation = describe_entropy_ratio(ratio);
+    let ratio = source_entropy(&morphism.source);
+    let interpretation = ratio.map(describe_entropy_ratio);
 
     let model = InspectionResult {
         evaluation,
         functions: top_funcs,
         function_entries: top_entries,
         total_functions: all_funcs.len(),
-        entropy_compression_ratio: Some(ratio),
-        entropy_interpretation: Some(interpretation),
+        entropy_compression_ratio: ratio,
+        entropy_interpretation: interpretation,
         error: None,
     };
     let mut md = render_inspection_md(&model, params.verbose);

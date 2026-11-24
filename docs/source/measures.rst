@@ -79,6 +79,7 @@ Evaluates whether the code flow can reach dangerous operations or untrusted data
 
 * **Dangerous Calls** (``cpg.dangerous_calls``)
   Count of reachable call sites matching a per-language registry of dangerous APIs (Python: ``eval``, ``exec``, ``pickle.loads``, …; C++: ``gets``, ``strcpy``, …).  Lower counts improve the SECURE score.
+  The callee is read from the call's syntax, so parenthesized, optional-chained, cast and generic spellings (``(eval)(x)``, ``eval?.(x)``, ``obj?.eval(x)``), Rust paths (``std::mem::transmute(p)``, ``Box::from_raw(p)``) and ``new Function(...)`` all count.  A callee matches an entry exactly or when it ends in ``.`` plus the entry, so ``model.eval()`` matches ``eval``.
 
 * **Taint Flows** (``cpg.taint_flows``)
   Source→sink data-flow paths along the CPG's data-dependence edges, from untrusted sources (e.g. ``input``, ``request.args``) to dangerous sinks. Longer taint chains increase risk.

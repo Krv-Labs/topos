@@ -126,8 +126,8 @@ const GATES: [GateSpec; GATE_COUNT] = [
     GateSpec {
         id: GateId::NewFilePillar,
         key: "new_file_pillar",
-        describe: "a new file fails SIMPLE, COMPOSABLE or NAVIGABLE",
-        defaults: [Off, Info, Warn],
+        describe: "new code fails SIMPLE or NAVIGABLE: a new file, or new logic in a split child (a new file failing COMPOSABLE: at most info, warn under strict)",
+        defaults: [Block, Block, Block],
     },
     GateSpec {
         id: GateId::SplitSecureRise,
@@ -850,6 +850,11 @@ mod tests {
             let config = PrGateConfig::for_preset(preset);
             assert_eq!(config.severity(GateId::PillarLost), Severity::Block);
             assert_eq!(config.severity(GateId::NewFileInsecure), Severity::Block);
+            assert_eq!(
+                config.severity(GateId::NewFilePillar),
+                config.severity(GateId::PillarLost),
+                "new code meets the same limits as changed code"
+            );
         }
     }
 

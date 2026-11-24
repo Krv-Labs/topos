@@ -96,13 +96,7 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
     validate_evaluate_args(&args)?;
     let failure_pillar = parse_failure_pillar(&args)?;
     let inputs = resolve_evaluate_inputs(&args.paths, args.language.as_deref(), args.recursive)?;
-    let _cache_leases = inputs
-        .iter()
-        .map(|input| {
-            topos_mcp::cache::lease_managed_path(&input.path)
-                .map_err(|error| format!("could not lease the managed PR cache: {error}"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let _cache_leases = lease_inputs(&inputs)?;
     if inputs.is_empty() {
         if let Some(pillar) = failure_pillar {
             ensure_pillar_measured(&[], pillar)?;
@@ -126,23 +120,11 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         return Ok(());
     }
 
-    let project_config = load_topos_config(&inputs[0].path);
-    let priority = resolve_priority(&args, &project_config)?;
-    let target_ranking = resolve_target_ranking(&args, &project_config)?;
-
-    let (mut mdg, mut composable_warnings) = resolve_evaluate_mdg(&args, &inputs);
-    let mut results = classify_evaluate_inputs(&inputs, &mut mdg, priority, args.json)?;
-    if mdg.is_some() && !pillar_measured(&results, "composable") {
-        composable_warnings.push(
-            "COMPOSABLE not scored — dependency graph contains no File nodes matching the \
-             evaluated path(s); re-run 'topos depgraph generate'."
-                .to_string(),
-        );
-    }
-    // A multi-file run is one codebase: read advisories against it.
-    if results.len() > 1 {
-        rescore_population(&mut results);
-    }
+    let ProjectEvaluation {
+        results,
+        warnings: composable_warnings,
+        target_ranking,
+    } = evaluate_project(&args, &inputs)?;
 
     if let Some(pillar) = failure_pillar {
         ensure_pillar_measured(&results, pillar)?;
@@ -156,6 +138,50 @@ pub fn run(args: EvaluateArgs) -> Result<(), String> {
         target_ranking.as_ref(),
         &composable_warnings,
     )
+}
+
+pub(crate) fn lease_inputs(inputs: &[SourceInput]) -> Result<Vec<impl Sized>, String> {
+    inputs
+        .iter()
+        .map(|input| {
+            topos_mcp::cache::lease_managed_path(&input.path)
+                .map_err(|error| format!("could not lease the managed PR cache: {error}"))
+        })
+        .collect()
+}
+
+pub(crate) struct ProjectEvaluation {
+    pub(crate) results: Vec<ClassificationResult>,
+    pub(crate) warnings: Vec<String>,
+    pub(crate) target_ranking: Option<[Generator; RANKING_LEN]>,
+}
+
+pub(crate) fn evaluate_project(
+    args: &EvaluateArgs,
+    inputs: &[SourceInput],
+) -> Result<ProjectEvaluation, String> {
+    let project_config = load_topos_config(&inputs[0].path);
+    let priority = resolve_priority(args, &project_config)?;
+    let target_ranking = resolve_target_ranking(args, &project_config)?;
+
+    let (mut mdg, mut warnings) = resolve_evaluate_mdg(args, inputs);
+    let mut results = classify_evaluate_inputs(inputs, &mut mdg, priority, args.json)?;
+    if mdg.is_some() && !pillar_measured(&results, "composable") {
+        warnings.push(
+            "COMPOSABLE not scored — dependency graph contains no File nodes matching the \
+             evaluated path(s); re-run 'topos depgraph generate'."
+                .to_string(),
+        );
+    }
+    // A multi-file run is one codebase: read advisories against it.
+    if results.len() > 1 {
+        rescore_population(&mut results);
+    }
+    Ok(ProjectEvaluation {
+        results,
+        warnings,
+        target_ranking,
+    })
 }
 
 fn validate_evaluate_args(args: &EvaluateArgs) -> Result<(), String> {

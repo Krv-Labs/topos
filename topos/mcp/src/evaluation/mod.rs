@@ -38,6 +38,8 @@ pub use gitref::{git_head_mtime, git_head_sha, gitnexus_mtime};
 
 use std::path::{Path, PathBuf};
 
+use topos_engine::graphs::mdg::object::UNFINISHED_WRITE_MARKER;
+
 use crate::security::{
     composable_default_root, resolve_existing_prefix, resolve_file_root, resolve_path_within,
     resolve_project_path,
@@ -326,6 +328,9 @@ pub(crate) fn is_branch_not_indexed(message: &str) -> bool {
 fn dep_graph_load_warning(load_error: Option<&str>) -> Vec<String> {
     match load_error {
         Some(err) if is_branch_not_indexed(err) => {
+            vec![format!("COMPOSABLE not scored — {err}")]
+        }
+        Some(err) if err.contains(UNFINISHED_WRITE_MARKER) => {
             vec![format!("COMPOSABLE not scored — {err}")]
         }
         Some(err) if is_schema_mismatch(err) => vec![format!(

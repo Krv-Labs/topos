@@ -34,8 +34,10 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 ### Fixed
 
 - A file that parsed at base and no longer parses at head now raises a
-  blocking `pillar_lost` finding. It used to raise nothing, and the check
-  passed.
+  blocking `pillar_lost` finding, and an added source file that does not
+  parse raises a blocking `new_file_slop` finding, split child or not. Both
+  used to raise nothing, and the check passed. Skipped files (unsupported
+  types, generated or vendored paths) are still not judged.
 
 ## [0.15.0] - 2026-10-30
 

@@ -344,9 +344,14 @@ fn importance(a: &Finding, b: &Finding) -> Ordering {
 /// An added file is judged on arrival. A split child is left to its
 /// split's gates: code moved out of the parent brings its findings along,
 /// and charging them to the child would fail every split of an imperfect
-/// file.
+/// file. A file that does not parse is judged whatever it belongs to:
+/// nothing in it can be measured, so it holds no pillar.
 fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
-    if file.is_split_child() || file.medal_after.is_none() {
+    if file.medal_after.is_none() {
+        found.push(unparsed_new_file(file));
+        return;
+    }
+    if file.is_split_child() {
         return;
     }
     for (pillar, delta) in &file.pillars {
@@ -480,6 +485,22 @@ fn unparsed_finding(file: &FileRecap) -> Finding {
         ),
     );
     finding.fix = "Fix the syntax error so the file parses again.".to_string();
+    finding.magnitude = UNPARSED_MAGNITUDE;
+    finding
+}
+
+/// An added file that does not parse lands as SLOP: one `new_file_slop`
+/// finding saying why.
+fn unparsed_new_file(file: &FileRecap) -> Finding {
+    let mut finding = Finding::new(
+        GateId::NewFileSlop,
+        &file.path,
+        format!(
+            "{} is new and does not parse, so no pillar can be measured (SLOP).",
+            file.path
+        ),
+    );
+    finding.fix = "Fix the syntax error so the file parses.".to_string();
     finding.magnitude = UNPARSED_MAGNITUDE;
     finding
 }
@@ -1856,5 +1877,36 @@ mod tests {
         commit_all(&repo, "leave it broken");
         let unchanged = recap(&repo, "HEAD~1", "HEAD", 0);
         assert!(unchanged.findings.is_empty(), "{:?}", unchanged.findings);
+    }
+
+    #[test]
+    fn an_added_file_that_does_not_parse_is_a_blocking_new_file_slop() {
+        let mut file = changed("src/new.py");
+        file.change = FileChange::Added;
+        file.medal_before = None;
+        file.medal_after = None;
+        file.pillars.clear();
+        for preset in [
+            PrGatePreset::Relaxed,
+            PrGatePreset::Recommended,
+            PrGatePreset::Strict,
+        ] {
+            let cfg = PrGateConfig::for_preset(preset);
+            let (readiness, findings) = unmoved(std::slice::from_ref(&file), &[], 0, &cfg);
+            assert_eq!(readiness, Readiness::Blocked, "{preset:?}");
+            let [finding] = findings.as_slice() else {
+                panic!("one finding for the file: {findings:?}");
+            };
+            assert_eq!(finding.gate, GateId::NewFileSlop);
+            assert_eq!(finding.severity, Severity::Block);
+            assert!(finding.text.contains("does not parse"), "{}", finding.text);
+        }
+
+        file.cluster = Some(ClusterMembership {
+            parent: "src/big.py".to_string(),
+            role: ClusterRole::Child,
+        });
+        let (readiness, _) = unmoved(&[file], &[], 0, &PrGateConfig::default());
+        assert_eq!(readiness, Readiness::Blocked, "a split child is not exempt");
     }
 }

@@ -173,7 +173,7 @@ Readiness / exit codes:
   code moved in from another file in the range is `moved_pillar` (info, warn
   under strict), not `pillar_lost`; a moved function that grew still loses it.
   A file that parsed at base and no longer parses at head is one `pillar_lost`
-  for the whole file.
+  for the whole file; an added file that does not parse is `new_file_slop`.
   The policy is the flags, else the .topos.toml at the repository root as
   committed at the base revision, else the recommended preset. The head's own
   .topos.toml never judges the change: a waiver, a looser gate, fail_on or an

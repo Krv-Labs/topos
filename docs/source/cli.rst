@@ -487,12 +487,16 @@ base's file as before. Running ``topos pr-recap`` with no arguments follows
 the same rule with ``HEAD`` as the base, so an uncommitted ``.topos.toml``
 edit is listed as not applied until it is committed.
 
-**A file that stops parsing**
+**A file that does not parse**
 
 A file that parsed at base and does not parse at head has no head scores to
 compare, so it raises one ``pillar_lost`` finding for the whole file
 (``block`` under every preset): it can no longer be shown to hold any pillar
-it held.
+it held. An added file that does not parse holds no pillar at all, so it
+lands as SLOP and raises ``new_file_slop`` (``block`` under every preset),
+whether or not it is a split child. Files the recap skips, such as
+unsupported file types and generated or vendored paths, are not parsed and
+raise nothing.
 
 **Split evidence in --json**
 

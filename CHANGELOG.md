@@ -9,6 +9,8 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-24
+
 ### Added
 
 - `topos pr-recap --json` records how each split child was tied to its parent:

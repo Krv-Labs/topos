@@ -388,12 +388,28 @@ default card so existing scripts keep working.
 Each gate in ``[pr_recap]`` (set with ``topos config``, see `config`_) turns
 what happened into a finding with a severity: ``off``, ``info``, ``warn`` or
 ``block``. Under the recommended preset, a lost pillar, a new file that fails
-SECURE or is SLOP, and a split that gained SECURE findings block; a score drop
-past ``[pr_recap.score_drop]`` (10 points, in a file with at least 20 changed
-lines), a score that moved while the structure did not, and a function that
-grew as a split moved it need attention; a pillar that already failed and got
-worse, a new file failing another pillar, a bloated split, and skipped files
-are info. ``topos config show`` lists every gate and its severity.
+SIMPLE, NAVIGABLE or SECURE or is SLOP, and a split that gained SECURE findings block; a score
+drop past ``[pr_recap.score_drop]`` (10 points, in a file with at least 20
+changed lines), a score that moved while the structure did not, and a function
+that grew as a split moved it need attention; a pillar that already failed and
+got worse, a new file failing COMPOSABLE, a bloated split, and skipped files
+are info. ``topos config show``
+lists every gate and its severity.
+
+New code meets the same complexity and nesting limits as changed code. A new
+file that fails SIMPLE or NAVIGABLE raises ``new_file_pillar``, which blocks
+under every preset, as ``pillar_lost`` does. A new file failing COMPOSABLE
+raises the same gate at most at info (warn under strict, off under relaxed):
+fan-out comes from the dependency graph, whose false edges could otherwise
+block a file on imports it does not have. The finding names the most complex function
+that is new logic, its complexity and the limit. A file that splits out of a
+changed file (a split child) is spared for code it carried over, not for code
+it adds: when a child fails SIMPLE or NAVIGABLE and the failing function is new,
+grew on the way, or cannot be traced to the parent, it raises the same
+``new_file_pillar`` finding. A function moved unchanged, or moved without
+growing, is a refactor: in a split child it raises nothing, and in any other
+new file it is reported under ``moved_pillar``, as a move into an existing file
+is.
 
 Moving code is not charged as a regression. When a file loses a pillar only
 because code moved into it from another file in the same range (the function
@@ -568,6 +584,11 @@ listed as skipped and the recap is marked incomplete.
    warning/block false-positive rate on merged first-time contributors; see
    the `PR Recap calibration report <https://topos.krv.ai/pr-recap.html>`_
    and `full lab notes <https://github.com/Krv-Labs/topos-leaderboard/blob/main/docs/graphs-for-pr-filtering.md>`_.
+   One default was changed by owner decision after that calibration:
+   ``new_file_pillar`` blocks SIMPLE and NAVIGABLE failures under every
+   preset, so new code meets the same limits as changed code. Replayed on 23
+   merged pull requests (39 added files), the block rate stayed at 1 of 23;
+   see ``docs/decisions/new-code-complexity.md``.
 
 Other commands
 ===============

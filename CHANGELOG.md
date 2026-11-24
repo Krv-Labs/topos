@@ -9,6 +9,23 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Changed
+
+- `topos pr-recap`: new code meets the same limit as changed code. A new file
+  that fails SIMPLE or NAVIGABLE now blocks under every preset
+  (`new_file_pillar` defaults to `block`, as `pillar_lost` does; it was off,
+  info and warn under relaxed, recommended and strict). A new file failing
+  COMPOSABLE keeps that old severity, since fan-out comes from a dependency
+  graph that still has false edges. A split child that
+  fails SIMPLE or NAVIGABLE because of new logic (a function that is new, grew
+  as it moved, or cannot be traced to the parent) raises the same finding, so
+  moving one function into a new file no longer exempts new code written beside
+  it. The finding names the function, its complexity and the limit. A function
+  moved unchanged stays a refactor: nothing in a split child, `moved_pillar` in
+  any other new file. Set `new_file_pillar` in `[pr_recap.gates]` to keep the
+  old severity. Replayed on 23 merged pull requests, the block rate stayed at
+  1 of 23.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

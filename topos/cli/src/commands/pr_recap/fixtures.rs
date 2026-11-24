@@ -110,6 +110,7 @@ fn build(spec: Spec<'_>) -> FileRecap {
             role,
         }),
         hotspots: Vec::new(),
+        promoted: false,
         severity: None,
     }
 }

@@ -702,6 +702,7 @@ mod tests {
                 fan_out_after: None,
                 cluster: None,
                 hotspots: Vec::new(),
+                promoted: false,
             },
             before,
             after,

@@ -208,7 +208,7 @@ mod tests {
 
     use super::super::tests::{abs, fixture};
     use super::*;
-    use crate::pr_recap::model::SkippedFile;
+    use crate::pr_recap::model::{SkipKind, SkippedFile};
     use crate::pr_recap::tests::{branchy, commit_all, recap, write_files, write_repo};
     use crate::pr_recap::PrRecap;
 
@@ -308,6 +308,8 @@ mod tests {
             path: "docs/huge.py".to_string(),
             reason: "over the size limit".to_string(),
             source: false,
+            kind: SkipKind::NotSource,
+            lines_changed: 0,
         });
         recap.deleted.push("old.py".to_string());
         let asked = [

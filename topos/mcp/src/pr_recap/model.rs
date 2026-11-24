@@ -188,6 +188,11 @@ pub struct FileRecap {
     pub cluster: Option<ClusterMembership>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hotspots: Vec<Hotspot>,
+    /// The file existed at base, but nothing reviewed it there (it sat at
+    /// a skipped path, or was generated code), so it is judged as added
+    /// and never excused as a split child.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub promoted: bool,
 }
 
 impl FileRecap {
@@ -435,16 +440,46 @@ pub struct Scope {
     pub coupling: CouplingStatus,
 }
 
+/// Why a changed file was not scored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipKind {
+    /// Source in a supported language, set aside for where it sits (a
+    /// vendor, fixtures or build path), the base `.toposignore`, or a
+    /// generated-code header. The author of a change controls the first.
+    PathOrPolicy,
+    /// Source in a language Topos does not score. A limitation of the
+    /// tool, not a choice the change made.
+    LanguageNotScored,
+    /// Scoreable, and left out by the scoring cap.
+    ScoringCap,
+    /// Not source: docs, config, data.
+    NotSource,
+}
+
+impl SkipKind {
+    /// How a count of these reads in a sentence.
+    pub fn phrase(self) -> &'static str {
+        match self {
+            SkipKind::PathOrPolicy => "skipped by path or policy",
+            SkipKind::LanguageNotScored => "in a language Topos does not score",
+            SkipKind::ScoringCap => "over the scoring cap",
+            SkipKind::NotSource => "not source",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SkippedFile {
     pub path: String,
     pub reason: String,
-    /// Source in a supported language that no gate looked at, because of
-    /// where it sits (a vendor, fixtures or build path), the base
-    /// `.toposignore`, or a generated-code header. `false` for a file
-    /// that is not source, and for one over the scoring cap, which
-    /// `incomplete` reports.
+    /// Source code that no gate looked at: every [`SkipKind`] except
+    /// `not_source`.
     pub source: bool,
+    pub kind: SkipKind,
+    /// Lines added plus removed; a renamed file counts in full, since all
+    /// of it is new to where it now sits.
+    pub lines_changed: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -580,12 +615,37 @@ impl PrRecap {
         self.files.iter().filter(|f| f.is_new()).collect()
     }
 
-    /// The skipped files that are source, in the recap's order.
+    /// The skipped files that are source, most changed lines first, so
+    /// small filler cannot push a large file out of a truncated list.
     pub fn unreviewed(&self) -> Vec<&SkippedFile> {
-        self.skipped.iter().filter(|file| file.source).collect()
+        let mut files: Vec<&SkippedFile> = self.skipped.iter().filter(|file| file.source).collect();
+        files.sort_by(|a, b| {
+            b.lines_changed
+                .cmp(&a.lines_changed)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        files
     }
 
-    /// `2 source files not reviewed (skipped by path or policy): a.py,
+    /// `1 skipped by path or policy, 3 in a language Topos does not
+    /// score`: the unreviewed source files by [`SkipKind`], so a hiding
+    /// place reads differently from a plain limitation.
+    pub fn unreviewed_breakdown(&self) -> String {
+        [
+            SkipKind::PathOrPolicy,
+            SkipKind::LanguageNotScored,
+            SkipKind::ScoringCap,
+        ]
+        .into_iter()
+        .filter_map(|kind| {
+            let count = self.skipped.iter().filter(|file| file.kind == kind).count();
+            (count > 0).then(|| format!("{count} {}", kind.phrase()))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+    }
+
+    /// `2 source files not reviewed (2 skipped by path or policy): a.py,
     /// b.py and 3 more`, naming at most `shown` paths, or `None` when
     /// every skipped file is non-source.
     pub fn unreviewed_note(&self, shown: usize) -> Option<String> {
@@ -601,9 +661,10 @@ impl PrRecap {
         };
         (!files.is_empty()).then(|| {
             format!(
-                "{} source file{} not reviewed (skipped by path or policy): {}{more}",
+                "{} source file{} not reviewed ({}): {}{more}",
                 files.len(),
                 if files.len() == 1 { "" } else { "s" },
+                self.unreviewed_breakdown(),
                 named.join(", ")
             )
         })

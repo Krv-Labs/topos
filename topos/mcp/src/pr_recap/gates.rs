@@ -371,13 +371,14 @@ fn importance(a: &Finding, b: &Finding) -> Ordering {
 /// split's gates: code moved out of the parent brings its findings along,
 /// and charging them to the child would fail every split of an imperfect
 /// file. A file that does not parse is judged whatever it belongs to:
-/// nothing in it can be measured, so it holds no pillar.
+/// nothing in it can be measured, so it holds no pillar. So is a promoted
+/// file: nothing reviewed its base side, so none of it is known moved code.
 fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
     if file.medal_after.is_none() {
         found.push(unparsed_new_file(file));
         return;
     }
-    if file.is_split_child() {
+    if file.is_split_child() && !file.promoted {
         return;
     }
     for (pillar, delta) in &file.pillars {
@@ -1104,6 +1105,7 @@ mod tests {
             fan_out_after: None,
             cluster: None,
             hotspots: Vec::new(),
+            promoted: false,
         }
     }
 

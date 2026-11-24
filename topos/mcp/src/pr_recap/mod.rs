@@ -41,7 +41,9 @@ use crate::server::ToposServer;
 
 use self::clusters::{build_clusters, changed_list};
 use self::gh::{ensure_commit, git_root, merge_base, pull_request, resolve_commit};
-use self::git::{cap_by_churn, changed_files, churn, file_change, worktree_files, DiffEntry};
+use self::git::{
+    cap_by_churn, changed_files, churn, file_change, show_file, worktree_files, DiffEntry,
+};
 use self::hotspots::top_hotspots;
 pub use self::model::*;
 use self::moves::RangeMoves;
@@ -479,18 +481,47 @@ pub fn build_recap(
     let exclusions = policy::Exclusions {
         repo: &repo,
         base: &base_sha,
-        head: &head_sha,
+        head: if worktree {
+            policy::WORKTREE
+        } else {
+            &head_sha
+        },
         ignore: &judging.ignore,
+    };
+    let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
+    // A file read in full: one that is all new to where it sits (moved,
+    // or promoted), or an untracked one the diff has no numbers for.
+    let size = |path: &str, whole: bool| {
+        let counted = churn.get(path).copied().filter(|_| !whole);
+        counted.unwrap_or_else(|| {
+            let text = if worktree {
+                std::fs::read_to_string(repo.join(path)).ok()
+            } else {
+                show_file(&repo, &head_sha, path).ok()
+            };
+            text.map_or(0, |text| text.lines().count())
+                .max(churn.get(path).copied().unwrap_or(0))
+        })
     };
     let mut skipped = Vec::new();
     let mut scoreable = Vec::new();
+    let mut promoted = BTreeSet::new();
     for entry in diff.entries {
+        let change = file_change(&entry.status);
         match exclusions.review(entry) {
-            Ok(entry) => scoreable.push(entry),
-            Err(file) => skipped.push(file),
+            Ok(entry) => {
+                if change != FileChange::Added && file_change(&entry.status) == FileChange::Added {
+                    promoted.insert(entry.path.clone());
+                }
+                scoreable.push(entry);
+            }
+            Err(mut file) => {
+                let whole = change == FileChange::Renamed && file.source;
+                file.lines_changed = size(&file.path, whole);
+                skipped.push(file);
+            }
         }
     }
-    let files_unreviewed = skipped.iter().filter(|file| file.source).count();
     let head_to_base: HashMap<String, String> = scoreable
         .iter()
         .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
@@ -504,29 +535,22 @@ pub fn build_recap(
     };
     let mut capped_entries = Vec::new();
     if capped > 0 {
-        let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
         let (kept, dropped) = cap_by_churn(scoreable, max_files, |path| {
-            churn
-                .get(path)
-                .copied()
-                .or_else(|| {
-                    worktree
-                        .then(|| std::fs::read_to_string(repo.join(path)).ok())
-                        .flatten()
-                        .map(|source| source.lines().count())
-                })
-                .unwrap_or(0)
+            size(path, promoted.contains(path))
         });
         scoreable = kept;
         capped_entries = dropped;
         for entry in &capped_entries {
             skipped.push(SkippedFile {
-                path: entry.path.clone(),
                 reason: format!("over the {max_files}-file scoring cap"),
-                source: false,
+                source: true,
+                kind: SkipKind::ScoringCap,
+                lines_changed: size(&entry.path, promoted.contains(&entry.path)),
+                path: entry.path.clone(),
             });
         }
     }
+    let files_unreviewed = skipped.iter().filter(|file| file.source).count();
 
     let base_graph = stores.and_then(|stores| load_graph(&stores.base));
     let head_graph = stores.and_then(|stores| load_graph(&stores.head));
@@ -552,6 +576,9 @@ pub fn build_recap(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    for file in &mut scored {
+        file.recap.promoted = promoted.contains(&file.recap.path);
+    }
     let changed = changed_list(&scoreable, &diff.deleted);
     let report = if measured {
         detect_splits(

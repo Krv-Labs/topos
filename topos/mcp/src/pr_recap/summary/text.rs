@@ -90,7 +90,8 @@ impl Summary {
         match self.scope.counts.files_unreviewed {
             0 => String::new(),
             files => format!(
-                "Not reviewed: {files} source file(s) skipped by path or policy; \
+                "Not reviewed: {files} source file(s) no gate looked at (skipped by path or \
+                 policy, in a language Topos does not score, or over the cap); \
                  `detail: \"full\"` lists them under `skipped`.\n"
             ),
         }

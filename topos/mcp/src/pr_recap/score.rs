@@ -271,6 +271,7 @@ impl Scoring<'_> {
             fan_out_after: measured.then(|| raw(&after, "mdg.fan_out")).flatten(),
             cluster: None,
             hotspots,
+            promoted: false,
         };
         Ok(Scored {
             recap,

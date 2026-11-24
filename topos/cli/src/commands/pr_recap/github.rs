@@ -174,12 +174,19 @@ fn not_reviewed(recap: &PrRecap) -> String {
         return String::new();
     }
     let mut out = format!(
-        "**Not reviewed** — {} skipped by path or policy; no gate looked at {}:\n\n",
+        "**Not reviewed** — {}; no gate looked at {} ({}):\n\n",
         plural(files.len(), "source file", "source files"),
         if files.len() == 1 { "it" } else { "them" },
+        recap.unreviewed_breakdown(),
     );
     for file in files.iter().take(MAX_UNREVIEWED) {
-        let _ = writeln!(out, "- `{}` — {}", file.path, file.reason);
+        let _ = writeln!(
+            out,
+            "- `{}` — {} · {}",
+            file.path,
+            file.reason,
+            plural(file.lines_changed, "line", "lines")
+        );
     }
     if files.len() > MAX_UNREVIEWED {
         let _ = writeln!(out, "- and {} more", files.len() - MAX_UNREVIEWED);

@@ -198,11 +198,17 @@ Skipped files:
   A file that leaves a skipped place (renamed out of fixtures/, renamed from
   an unsupported type, or a generated file that lost its header) is judged as
   a new file, since its old content was never reviewed.
-  Skipped source files are named: `! N source files not reviewed` on the
-  card, a "Not reviewed" block in the GitHub comment, skipped[].source and
-  scope.files_unreviewed in --json. They do not change the exit code, and the
-  recap cannot tell a real fixture from code hidden under such a name, so
-  read that list on a pull request from an untrusted contributor.
+  Such a file is never excused as a split child, and --max-files ranks it by
+  its whole length.
+  Skipped source files are named, largest first: `! N source files not
+  reviewed` on the card, a "Not reviewed" block in the GitHub comment,
+  skipped[].source, .kind and scope.files_unreviewed in --json. The kind tells
+  a file skipped by path or policy from one in a language Topos does not score
+  (.jsx, .c, .java, ...) and one left out by --max-files. None of them changes
+  the exit code. The recap cannot tell a real fixture from code hidden under
+  such a name, and a file that keeps a generated-code header on both sides is
+  skipped whatever its body becomes, so read that list on a pull request from
+  an untrusted contributor.
   A file that is valid but that Topos cannot parse can only be exempted by a
   maintainer, on the base branch: a .toposignore entry or a [[pr_recap.waive]].
 

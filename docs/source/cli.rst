@@ -539,28 +539,62 @@ never reviewed, so it is no baseline. A file renamed out of a skipped path
 removes, is reported as an added file and has to clear the new-file gates
 (``new_file_insecure``, ``new_file_slop``, ``new_file_pillar``) on its own.
 
-**Skipped source is named.** The author picks the path, so a skipped file
-that is source in a supported language is called out, apart from skipped
-docs and config:
+A promoted file is marked ``promoted`` in ``--json`` and is never excused as
+a split child, even when another changed file starts importing from it:
+nothing reviewed its base side, so none of it is known to be moved code.
+Under ``--max-files`` it is ranked by its whole length, like any added file,
+and not by the zero changed lines of an unchanged rename.
 
-- ``--json``: ``skipped[].source`` is ``true`` and
-  ``scope.files_unreviewed`` counts them;
-- the card: ``! 2 source files not reviewed (skipped by path or policy):``
-  followed by the first three paths;
-- the GitHub comment: a **Not reviewed** block listing up to ten with their
-  reasons, beside the findings;
-- the ``topos_pr_recap`` summary: the same count.
+**Skipped source is named.** The author picks the path, so skipped source
+code is called out, apart from skipped docs and config. ``skipped[].kind``
+in ``--json`` says which of four things happened:
+
+- ``path_or_policy``: source in a supported language, set aside for its
+  path, the base ``.toposignore`` or a generated header. This is the one a
+  change can choose;
+- ``language_not_scored``: source in a language Topos does not score
+  (``.jsx``, ``.mts``, ``.cts``, ``.pyi``, ``.c``, ``.h``, ``.cpp``,
+  ``.java``, ``.kt``, ``.swift``, ``.rb``, ``.php``, ``.cs``, ``.scala``,
+  ``.m``, ``.sh``, ``.vue``, ``.svelte`` and similar). A limit of the tool,
+  not a hiding place;
+- ``scoring_cap``: a scoreable file ``--max-files`` left out;
+- ``not_source``: docs, config, data.
+
+Every kind but the last has ``skipped[].source`` set, counts toward
+``scope.files_unreviewed``, and is shown:
+
+- the card:
+  ``! 4 source files not reviewed (1 skipped by path or policy, 3 in a
+  language Topos does not score):`` followed by the first three paths;
+- the GitHub comment: a **Not reviewed** block beside the findings, with the
+  total and the same breakdown first, then up to ten files with their reason
+  and line count, then ``and N more``;
+- the ``topos_pr_recap`` summary: the count.
+
+The files are listed largest first, by lines changed (``skipped[].lines_changed``;
+a renamed file counts in full), so small filler cannot push a large file
+past the cut. Filler can still be made larger than the file it hides, which
+is why the total comes first: a count that is higher than the pull request
+explains is the signal.
 
 It does not change the readiness or the exit code: plenty of honest pull
-requests touch vendored code.
+requests touch vendored code, and a repository mostly in a language Topos
+does not score will see this block on every pull request.
 
 .. warning::
    A required check does not review code under a directory named
    ``fixtures``, ``testdata``, ``vendor``, ``__snapshots__``,
    ``node_modules``, ``dist`` and the like, and the recap cannot tell a real
-   fixture from code hidden under that name. For pull requests from
-   untrusted contributors, read the **Not reviewed** block, or protect those
-   paths with ``CODEOWNERS``.
+   fixture from code hidden under that name.
+
+   Nor does it review a file that carries a generated-code header at both
+   the base and the head, **whatever its body becomes**. A change can
+   rewrite such a file by hand and keep the header. The recap lists it under
+   **Not reviewed** and looks no further; that is what trusting a header
+   means.
+
+   For pull requests from untrusted contributors, read the **Not reviewed**
+   block, or protect those paths and generated files with ``CODEOWNERS``.
 
 **Split evidence in --json**
 

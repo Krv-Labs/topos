@@ -16,11 +16,14 @@ use topos_engine::config::{parse_topos_config, ToposConfig};
 use topos_engine::graphs::ast::languages::language_for_path;
 
 use super::git::{file_change, show_file, skip_reason, DiffEntry};
-use super::model::{FileChange, SkippedFile};
+use super::model::{FileChange, SkipKind, SkippedFile};
 use super::{priority_name, resolve_priority};
 
 const CONFIG_FILE: &str = ".topos.toml";
 const IGNORE_FILE: &str = ".toposignore";
+
+/// The head that means "the files on disk", as `resolve_range` spells it.
+pub const WORKTREE: &str = ":worktree";
 
 /// The project config for one run, and what the range did to it.
 pub struct BasePolicy {
@@ -41,7 +44,7 @@ pub struct BasePolicy {
 /// `head` is a revision, or `:worktree` for the files on disk.
 pub fn base_policy(root: &Path, base: &str, fork: &str, head: &str) -> BasePolicy {
     let at = |rev: &str, file: &str| {
-        if rev == ":worktree" {
+        if rev == WORKTREE {
             std::fs::read_to_string(root.join(file)).ok()
         } else {
             show_file(root, rev, file).ok()
@@ -77,8 +80,7 @@ pub struct Exclusions<'a> {
     pub repo: &'a Path,
     /// The revision the before side is read at.
     pub base: &'a str,
-    /// The head revision, or `worktree` / `:worktree` for the files on
-    /// disk.
+    /// The head revision, or [`WORKTREE`] for the files on disk.
     pub head: &'a str,
     /// The base revision's `.toposignore` patterns.
     pub ignore: &'a [String],
@@ -136,7 +138,7 @@ impl Exclusions<'_> {
     }
 
     fn generated(&self, rev: &str, path: &str) -> bool {
-        let text = if rev.ends_with("worktree") {
+        let text = if rev == WORKTREE {
             std::fs::read_to_string(self.repo.join(path)).ok()
         } else {
             show_file(self.repo, rev, path).ok()
@@ -145,13 +147,46 @@ impl Exclusions<'_> {
     }
 }
 
+/// Extensions of source code in languages Topos does not score. A changed
+/// file with one of these is code nobody reviewed, not a doc or a data
+/// file, and is reported as such.
+const UNSCORED_SOURCE_EXTENSIONS: &[&str] = &[
+    "jsx", "mts", "cts", "pyi", "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "java", "kt", "kts",
+    "swift", "rb", "php", "cs", "scala", "m", "mm", "sh", "bash", "zsh", "vue", "svelte", "lua",
+    "pl", "dart", "ex", "exs", "erl", "hs", "clj", "groovy", "sql",
+];
+
+const LANGUAGE_NOT_SCORED: &str = "source file in a language Topos does not score";
+
 fn skipped(path: String, reason: String) -> SkippedFile {
+    let scored_language = language_for_path(&path).is_some();
+    let unscored_language = !scored_language
+        && Path::new(&path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                UNSCORED_SOURCE_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
+            });
+    let (kind, reason) = match (scored_language, unscored_language) {
+        (true, _) => (SkipKind::PathOrPolicy, reason),
+        // A vendored file in an unscored language is skipped for its path.
+        (false, true) if reason == UNSUPPORTED_FILE => {
+            (SkipKind::LanguageNotScored, LANGUAGE_NOT_SCORED.to_string())
+        }
+        (false, true) => (SkipKind::PathOrPolicy, reason),
+        (false, false) => (SkipKind::NotSource, reason),
+    };
     SkippedFile {
-        source: language_for_path(&path).is_some(),
+        source: kind != SkipKind::NotSource,
+        kind,
+        lines_changed: 0,
         path,
         reason,
     }
 }
+
+/// What `skip_reason` says about a file in no supported language.
+const UNSUPPORTED_FILE: &str = "not a supported source file";
 
 /// What `head` changes about how a range is judged, one phrase each.
 fn edits(fork: &ToposConfig, head: &ToposConfig) -> Vec<String> {

@@ -18,13 +18,16 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   coupling stores. The schema stays `topos.pr_recap.v3`.
 - `gate.unapplied` in `topos.pr_recap.v3` and in the `topos_pr_recap` summary
   lists the edits a change makes to `.topos.toml` that did not judge it.
-- `topos pr-recap` names the source files it skipped. `skipped[].source` and
-  `scope.files_unreviewed` in `topos.pr_recap.v3` tell a skipped source file
-  (vendor, fixtures, build path, `.toposignore`, generated header) from a
-  skipped doc or config file; the card prints
-  `! N source files not reviewed`, the GitHub comment gets a **Not reviewed**
-  block, and the `topos_pr_recap` summary carries the count. The exit code
-  does not change.
+- `topos pr-recap` names the source files no gate looked at. In
+  `topos.pr_recap.v3`, `skipped[].kind` is `path_or_policy` (vendor, fixtures,
+  build path, `.toposignore`, generated header), `language_not_scored`
+  (`.jsx`, `.c`, `.java` and other code Topos does not score),
+  `scoring_cap` (left out by `--max-files`) or `not_source`;
+  `skipped[].source` is set for all but the last, `skipped[].lines_changed`
+  gives its size, and `scope.files_unreviewed` counts them. The card prints
+  `! N source files not reviewed` with the breakdown, the GitHub comment gets
+  a **Not reviewed** block listing the largest ten, and the `topos_pr_recap`
+  summary carries the count. The exit code does not change.
 
 ### Changed
 
@@ -60,7 +63,9 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   of a skipped path or from an unsupported type, or a generated file whose
   header the change removes. Its base content was never reviewed, so it no
   longer serves as the baseline that made an existing dangerous call look
-  unchanged.
+  unchanged. Such a file is marked `promoted`, is never excused from the
+  new-file gates as a split child, and is ranked by its whole length under
+  `--max-files`.
 - The findings for a file that does not parse now show their remedy on the
   card and in the GitHub comment, including that a valid file Topos cannot
   parse needs a `.toposignore` entry or a waiver on the base branch.

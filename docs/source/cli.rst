@@ -35,6 +35,7 @@ Quick reference
    topos inspect module.py
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
+   topos badge --out docs/topos.svg
    topos depgraph generate
    topos cache status
    topos cache clean --pr 123 --dry-run
@@ -48,9 +49,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: 🏅 Quality commands
       :shadow: md
 
-      Classify files, drill into metrics, measure AST drift, score structural test overlap, and recap a pull request.
+      Classify files, drill into metrics, measure AST drift, score structural test overlap, recap a pull request, and write a README badge.
       ^^^
-      ``evaluate`` · ``inspect`` · ``compare`` · ``coverage`` · ``pr-recap``
+      ``evaluate`` · ``inspect`` · ``compare`` · ``coverage`` · ``pr-recap`` · ``badge``
 
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
@@ -568,6 +569,79 @@ listed as skipped and the recap is marked incomplete.
    warning/block false-positive rate on merged first-time contributors; see
    the `PR Recap calibration report <https://topos.krv.ai/pr-recap.html>`_
    and `full lab notes <https://github.com/Krv-Labs/topos-leaderboard/blob/main/docs/graphs-for-pr-filtering.md>`_.
+
+badge
+-----
+
+Write a medal badge for any repository. ``badge`` scores the paths the same
+way ``evaluate -r`` does and renders the project result: a pillar counts as
+passed only when every scored file passes it, and the medal is the number of
+passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``, ``BRONZE``, or
+``NO MEDAL``).
+
+.. code-block:: bash
+
+   topos badge [PATHS]... [OPTIONS]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Option
+     - Description
+   * - ``PATHS``
+     - Files or directories to score (default: current directory).
+       Directories are searched recursively.
+   * - ``-o``, ``--out PATH``
+     - Write the SVG to ``PATH``. Missing parent directories are created.
+   * - ``--endpoint PATH``
+     - Write a `shields.io endpoint <https://shields.io/badges/endpoint-badge>`_
+       JSON document to ``PATH``.
+   * - ``--style lattice|verdict``
+     - ``lattice`` (default) draws one chip per pillar; ``verdict`` draws the
+       Topos mark beside the medal.
+   * - ``--json``
+     - Print the medal, lattice element, and per-pillar state as JSON.
+   * - ``--no-composable``
+     - Skip GitNexus; COMPOSABLE is reported as not measured.
+   * - ``--gitnexus-dir PATH``
+     - Use this ``.gitnexus`` store for COMPOSABLE.
+
+With none of ``--out``, ``--endpoint``, or ``--json``, the SVG is printed to
+standard output. A low medal is not an error: the command exits ``0`` whatever
+the result and non-zero only when it cannot score or write.
+
+In the ``lattice`` design a passed pillar takes the medal color, a failed
+pillar is dark gray, and a pillar that was not measured is a light chip with
+dark text. COMPOSABLE is not measured when no dependency graph is available;
+it does not count for or against the medal, so three passed pillars out of
+three measured is ``GOLD``.
+
+**Examples**
+
+.. code-block:: bash
+
+   # Commit an SVG and reference it from the README
+   topos badge --out docs/topos.svg
+
+   # Or publish an endpoint document and let shields.io draw the badge
+   topos badge --endpoint badges/topos.json
+
+.. code-block:: markdown
+
+   ![Topos](docs/topos.svg)
+   ![Topos](https://img.shields.io/endpoint?url=https://example.com/badges/topos.json)
+
+The endpoint document looks like this:
+
+.. code-block:: json
+
+   {
+     "schemaVersion": 1,
+     "label": "topos",
+     "message": "GOLD",
+     "color": "b45309"
+   }
 
 Other commands
 ===============

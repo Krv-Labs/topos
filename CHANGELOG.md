@@ -9,6 +9,17 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- `topos badge [PATHS]...` writes a medal badge for any repository. It scores
+  the paths the way `topos evaluate -r` does and renders the project result as
+  an SVG (`--out`, or standard output), a shields.io endpoint document
+  (`--endpoint`), or JSON (`--json`). `--style lattice` draws one chip per
+  pillar and `--style verdict` draws the Topos mark beside the medal. A pillar
+  that was not measured, such as COMPOSABLE without a dependency graph, gets
+  its own chip and does not count against the medal. The command exits `0`
+  whatever the medal.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

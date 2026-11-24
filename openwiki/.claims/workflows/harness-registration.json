@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:74501071ca0208c341bcef8b0512ff5b4281c1c552cc10b966014319c95af44f",
+  "pageVersion": "sha256:67a050adf8a5ee7ec823c3d1a61d2593c138a7d063f60eb1750007942208d233",
   "claims": [
     {
       "id": "claim_74f28609c9e24ccd8ca4b841c7a0678b",
@@ -295,10 +295,56 @@
           "version": "repo-lines-v1:sha256:7d75bcd5a55877db1bb2db3b8595f537878e2dfaf1c336c96a85a370da7580ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZDA2ZTA0OGNkMjcyNzM4ZDgzN2IwYzBlYzZhYWIwYjAzMTQ1N2U0NzVmZDQ5YWJiY2JhZmM1ZjczYzAyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MjQ4Y2RiNmRmYTU1MzM0MmM4M2E0YjdkMjg0ZTk1OGEzMmZkZjI2YjZhODA4ODA3YTFlNmYyYWFiYTkyNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_df6e865718894f8bab3520ea4a09c0ca",
+      "statement": "The VS Code extension (topos-vscode) registers an McpServerDefinitionProvider under provider ID topos-mcp, preflights host MCP API and Windows platform compatibility, passes TOPOS_MCP_FILE_ROOT bound to the workspace root, and resolves executable paths using a fallback hierarchy across custom paths, bundled binaries, cached storage, global PATH, Python virtual environments, and GitHub release manifest downloads.",
+      "evidence": [
+        {
+          "resource": "repo://extensions/vscode/package.json#L47-L60",
+          "version": "repo-lines-v1:sha256:1d88cedc00f574e4a7446a28d859ec46c8b728e854546946c78c2a2a5b3fea8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NGQ4YzA3MzQyOTg5MzEwMTU3NmQ4OGQ5OTEyN2U4OWQ2ODkxZDNiMTdlODlkZjAyZWM5YWU3MDcwNWQ4YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YzUyMDEwNDZkNzU1MmQ3YWM1MmIyMGE2NTM0OWNjM2RjMWU0ZDkwYTBkZWRlYTk1ZmE2M2M0NzMyNWMzYzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ5ZDQwMzQxOGIyYzQ0YTNmNmFiMjQ2OWRmYTA5ZjRlMzQ4MzEwZjkxMDUxZGQyOGUyY2QzY2E2ZTgwYWZmOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3NzExYzgyYWZiNDJjNzczOGEyMjE5ZWUxMjkyODFlY2Y3NzA5NDM0ZDU0ZDcwOGVhOTM4ZDc3NmMzNzQ2M2IifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/extension.ts#L67-L125",
+          "version": "repo-lines-v1:sha256:c9047ffb63082d0883c759478b2684090d81668c3a9723f0403a878e6c4ef459:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZDYyNWI5NTk4ODhlY2FlMjQ1YmY5OTFkNDEwZjAyODQxNjgyMmRkNzA0MTM5YmQxNjZhYmEyNGE2ZTAwNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0YWRlMDQ1YjZmZjAyMDFiMDY0ZWYxYmMxYjhhYmU3NjQzMTE3NDdkMjg1MGZjOGEwOTAzYjkwYTYyNzVkZWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5ZjVjNjU5YmJkZGI3ODUzYTAzNDYyMGUyYTQwNDZkZTNlYWRhMDIxZjViNWE4ZTc2YmJhNjlkMWU0Y2IzNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhYWQ4ZGM5OWQwNDdhNTM4ZWY4MDBhY2YyOWZiNmE2ODMzM2JiYzkzMjA3MzRhZGZkYzgzNWM1NTc4OTg0NDAifQ"
+        },
+        {
+          "resource": "repo://extensions/vscode/src/runtime.ts#L30-L55",
+          "version": "repo-lines-v1:sha256:1476deac0d4c26fa586f5969b9e14b0e6b71bed9d9a97c389950b87b856a8e4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NTllZjU3ZDhiNmY4MjM0NDAzNmNmMWNjMWNkNjU4MThkMWFhNmU2NGIyMDQ5YTZmYzVjNjk0YzAxMDc5NDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZTk1ZjhkMDhjMGViNjUxODk4ZmRjNWE2M2JjMzFmNzQxY2ZiZGZjYTljMDI2ZjIwYjBhYmNjMTA1YTg0YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2ODMxZGM5NzI5YTI1Y2E3Nzg5ODlkOGRlYWQyMmI0NGI5ODVkMTUzZmVkZmQzMWQ4MDJjZjMwY2JlZTcyZGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_017f5191aed4419b9604732cd7858ebe",
+      "statement": "The validation script scripts/check_agent_plugin.py enforces Agent Plugins 1.0.0 and MCP 1.0.0 manifest compliance for agent-plugin/, validating plugin.json schema and Cargo.toml version sync, mcp.json transport and command safety bounds, symlink prohibition, and byte-for-byte synchronization of skills/topos/SKILL.md.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L225-L340",
+          "version": "repo-lines-v1:sha256:f6da2c8572e33b74774c1eb56dcdaf54c0afed65304f5eddd723060db62657b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MmEzYjk4MTA3MDY4YTU5ZmQwNjMyMGZmYTZmZjNjNDI2OWIyNGQ0MTljZTA1MmU3ZWM2OTEzNjgyZTExNGYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxNjIzM2IzZmZlYTMyYTIzZGY1MzA2NTM0MzQ4ZjJkZWU3NzZhNWE2Zjc0ZmI1MzMxNzVkZGM1MzlhOGZlNDY0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhYmQ0NjhjNjEyZjczOWFmMzFkNjBiOWVmNDAzMDkzZWJmZDA5MjEzNDIyZWNmNjBiZjA4YWQ4NTBmOTY5NDMwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzZDQxMzQwY2MyMzlhMTU5Y2U5YjYwMjJlOWY2MzIyODMyZTJlYWQ3NmNhZTllNDc1NGQyMTBlYjhmYjZkNWU4In0"
+        },
+        {
+          "resource": "repo://scripts/check_agent_plugin.py#L75-L165",
+          "version": "repo-lines-v1:sha256:8996c72977964e3d20b567632e59d0e9fbb30bc821b6effa7a4ee722d27df142:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNWJhZDYyYmFjMGIyODBiMmQ5N2U3MmM2OGFiNTA3NDZlZjlmZDI4OWM1MDAxMDgyYWQ0YjE3ODY1MjQ0MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYTg5ZWY1N2QxZWE1MzM5NzRiNjI5YzExODBlNjZjZjM2MTJmODYxM2NiMDM4NDlmMzJlNWY2ZDUzOTQ5MTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_166b5e03c9504a3ea37de852af0a90bb",
+      "statement": "The dedicated topos-mcp binary handles --version and --help diagnostic arguments directly without initiating stdio MCP transport, preventing host handshake stalls during command discovery while serving stdio MCP requests.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/main.rs#L15-L38",
+          "version": "repo-lines-v1:sha256:7d75bcd5a55877db1bb2db3b8595f537878e2dfaf1c336c96a85a370da7580ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZDA2ZTA0OGNkMjcyNzM4ZDgzN2IwYzBlYzZhYWIwYjAzMTQ1N2U0NzVmZDQ5YWJiY2JhZmM1ZjczYzAyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MjQ4Y2RiNmRmYTU1MzM0MmM4M2E0YjdkMjg0ZTk1OGEzMmZkZjI2YjZhODA4ODA3YTFlNmYyYWFiYTkyNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L1-L85",
+          "version": "repo-lines-v1:sha256:93117f4eb8bd3a3564d2d369bd4952289e0db165ee2b33f98dac9e91927f82b3:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkM2JlOTQ1NDRiODA3MmViODFlNzYyOWEwY2VlNDkyODJkZWI0YjRkMTI1ZjE2MTBjZjk0ZWJkMzljZTczNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyZDE1Y2U2N2U0ZTdjZjc3OTlhZGQyYmMwMmVhOGE3N2VlY2Y3MzJjZDgyNGM3M2FmN2JkODQzYTgzMDNhNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjY2Y1MWM1NDUzOTNhMGM5NjVjZWU0ZjBlOWIzOGYzNWY5Yzg5MzIyNThhNzRiNGE5ZDdkNDI3MDRiNDg4NDAifQ"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-30T12:01:57.716Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-24T23:14:31.861Z"
   }
 }

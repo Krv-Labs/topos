@@ -1,11 +1,11 @@
 ---
 type: operations runbook
 title: Verification, Testing, and Release Operations
-description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, CI admission, and release channels.
-tags: [operations, testing, ci, release, packaging, rust]
+description: Focused validation and delivery runbook for the Rust workspace, MCP lifecycle, GitNexus fixture, installer, VS Code extension, agent assets, Docker builds, CI admission, and release channels.
+tags: [operations, testing, ci, release, packaging, rust, docker]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T23:14:31.861Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -21,6 +21,8 @@ sources:
     resource: repo://.github/workflows/release.yml
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
+  - id: openwiki-source-bb1ebe868e35e9e500714501
+    resource: repo://Dockerfile
   - id: openwiki-source-03ffc32a0ca502ab67c54b25
     resource: repo://install.sh
   - id: openwiki-source-2c152778a1a90158712820eb
@@ -37,12 +39,12 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
 ---
 
 # Verification, Testing, and Release Operations
 
-Topos is a Rust workspace with separate CLI and MCP packages, then ships that analyzer through native release binaries, a `topos-mcp` bin wheel and registry record, a VS Code extension, an Agent Plugins package, a skill publication workflow, and a container. Start with the narrowest check that proves the changed contract; use the full workspace suite for shared code or before merge. The [distribution guide](../integrations/distribution.md) explains what each delivered surface runs, while [agent and CLI workflows](../workflows/agent-and-cli.md) describes consumer use.
+Topos is a Rust workspace with separate CLI and MCP packages, then ships that analyzer through native release binaries, a `topos-mcp` bin wheel and registry record, a VS Code extension, an Agent Plugins package, a skill publication workflow, and a container image. Start with the narrowest check that proves the changed contract; use the full workspace suite for shared code or before merge. The [distribution guide](../integrations/distribution.md) explains what each delivered surface runs, while [Quickstart](../quickstart.md) and [Source Map](../source-map.md) detail workspace orientation.
 
 ## Local validation selection
 
@@ -66,6 +68,7 @@ cargo test --workspace
 | VS Code extension | In `extensions/vscode/`: `pnpm install --frozen-lockfile`, then `pnpm run check-types`, `pnpm run lint`, and `pnpm run test:unit`. Use `pnpm run test` when staging behavior changed. | The extension bundle, VSIX contents, or host integration changed. |
 | Agent skills or plugin | Run both `python3 scripts/check_skill.py` and `python3 scripts/check_agent_plugin.py`. | A release version changes or a canonical skill is copied into the plugin package. |
 | Binary installer or Homebrew guidance | `pytest tests/packaging/test_install_sh_preflight.py` (with the repository's Python test environment). | Installer preflight, channel detection, formula template, or advertised command changed. |
+| Docker image | `docker build -t topos-mcp .` and run `docker run -i --rm topos-mcp` with stdio JSON-RPC initialization frames. | Container dependencies, base images, or environment variables changed. |
 
 The Rust CI job also builds the MCP binary and asserts its `tools/list` response contains `topos_evaluate_code`; retain this end-to-end check when changing server registration or tool exposure.
 
@@ -119,6 +122,22 @@ The workspace package version in `Cargo.toml` (currently `0.15.0`) is authoritat
 
 ClawHub publication is a separate reusable-workflow operation (`.github/workflows/clawhub-publish.yml`). It runs a dry-run for qualifying PRs and publishes skill changes on `main` pushes targeting `skills/**` through a pinned `openclaw/clawhub` reusable workflow (`v0.23.1`), with `CLAWHUB_TOKEN` passed by name and OIDC permissions (`id-token: write`). A missing token does not prevent the PR dry run, but upstream publishing fails on main events; fork PRs cannot receive the required OIDC token.
 
+## Docker and container builds
+
+The repository includes a multi-stage `Dockerfile` to build containerized `topos-mcp` images (such as for Glama releases):
+
+```mermaid
+flowchart TD
+  RustSrc["Rust source (topos/mcp, topos-engine)"] --> Builder["Builder: python:3.12-slim + Rust + Maturin"]
+  Builder --> Wheel["Release bin wheel (/wheels/*.whl)"]
+  Wheel --> Runtime["Runtime: python:3.12-slim + Node 20 + GitNexus"]
+  Runtime --> Entrypoint["ENTRYPOINT ['topos-mcp'] (stdio, ROOT=/workspace)"]
+```
+Figure 2: Container build pipeline compiling the Rust MCP server into a wheel and installing it alongside Node.js and GitNexus in the runtime image.
+
+- **Builder stage:** Uses `python:3.12-slim`, installs system build tools (`build-essential`, `curl`, `cmake`, `pkg-config`), provisions Rust stable via `rustup`, installs `maturin` (`>=1.5,<2.0`), and runs `maturin build --release --bindings bin --manifest-path topos/mcp/Cargo.toml --out /wheels` to produce a standalone executable wheel.
+- **Runtime stage:** Uses `python:3.12-slim`, installs Node.js 20 from NodeSource and GitNexus (`gitnexus@1.6.8`) for COMPOSABLE scoring, installs the `/wheels/*.whl` wheel, sets `TOPOS_MCP_FILE_ROOT=/workspace`, sets `WORKDIR /workspace`, and configures the default entrypoint to `topos-mcp`.
+
 ## Installer and Homebrew checks
 
 `install.sh` is Bash, and all documented pipe examples must use `| bash`, not `| sh`. It resolves a Linux/macOS amd64/arm64 asset, downloads the matching release checksum, verifies SHA-256 before moving the executable into `TOPOS_INSTALL` (default `~/.local/bin`), optionally adds a marked PATH block, records binary-installer provenance, and verifies the installed binary. It supports `TOPOS_VERSION`, `TOPOS_NO_MODIFY_PATH`, `TOPOS_FORCE` / `TOPOS_YES`, and `TOPOS_SKIP_MAIN` for tests.
@@ -142,7 +161,7 @@ flowchart TD
   Wheels --> PyPI["PyPI publish skip existing"]
   PyPI --> Registry["Validate and publish MCP registry"]
 ```
-Figure 2: Execution pipeline and artifact dependencies for full release and PyPI-only delivery.
+Figure 3: Execution pipeline and artifact dependencies for full release and PyPI-only delivery.
 
 This is the delivery dependency graph for a normal release; `pypi_only` follows the right-hand wheel path.
 

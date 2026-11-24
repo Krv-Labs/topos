@@ -31,6 +31,7 @@
 //!
 //! [`ModuleDependencyGraph::from_lbug_path`] dispatches on the path shape.
 
+use super::edge_filter::{count_by_reason, find_false_edges, DroppedEdge, DroppedEdgeCounts};
 use super::models::{GraphNode, GraphRelationship};
 use crate::functors::probes::mdg::coupling::{
     calculate_coupling, calculate_dependency_depth, calculate_instability_from_result,
@@ -104,6 +105,8 @@ pub struct MdgTopology {
     /// into two extra indices).
     outgoing: HashMap<String, Vec<String>>,
     incoming: HashMap<String, Vec<String>>,
+    /// Edges [`ModuleDependencyGraph::drop_false_edges`] removed.
+    dropped_edges: Vec<DroppedEdge>,
 }
 
 /// Inter-module dependency-graph representation parsed from GitNexus
@@ -177,6 +180,39 @@ impl ModuleDependencyGraph {
             .or_default()
             .push(rel.id.clone());
         topology.relationships.insert(rel.id.clone(), rel);
+    }
+
+    /// Remove the edges [`find_false_edges`] proves false and remember
+    /// them, so callers can report what was filtered.
+    pub fn drop_false_edges(&mut self) {
+        let dropped = find_false_edges(self);
+        if dropped.is_empty() {
+            return;
+        }
+        let MdgTopology {
+            relationships,
+            outgoing,
+            incoming,
+            dropped_edges,
+            ..
+        } = Arc::make_mut(&mut self.topology);
+        for edge in &dropped {
+            relationships.remove(&edge.relationship_id);
+        }
+        for ids in outgoing.values_mut().chain(incoming.values_mut()) {
+            ids.retain(|id| relationships.contains_key(id));
+        }
+        dropped_edges.extend(dropped);
+    }
+
+    /// Edges removed as false when the graph was loaded.
+    pub fn dropped_edges(&self) -> &[DroppedEdge] {
+        &self.topology.dropped_edges
+    }
+
+    /// [`Self::dropped_edges`] counted per reason.
+    pub fn dropped_edge_counts(&self) -> DroppedEdgeCounts {
+        count_by_reason(&self.topology.dropped_edges)
     }
 
     // --- Lookups -------------------------------------------------------

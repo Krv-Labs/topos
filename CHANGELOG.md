@@ -85,6 +85,22 @@ every other error from each command.
 
 ### Fixed
 
+- The dependency graph no longer counts edges GitNexus matched by bare name
+  when the source proves them false. On load, Topos removes calls into a
+  non-exported free function of another Rust crate (`std::fs::write` matched to a
+  private `fn write`), Python standard-library imports matched to a
+  same-named repository module (`import json` → `pkg/http/json.py`), and
+  JavaScript/TypeScript bare package imports matched to a same-named
+  repository file (`@codemirror/state` → `src/state.ts`). Edges an alias, a
+  relative import, or a repository module of the same name could explain are
+  kept. Every consumer sees the filtered graph, so `mdg.fan_out`,
+  `mdg.fan_in`, `mdg.coupling`, and COMPOSABLE verdicts can drop for files
+  that had false edges, and the pr-recap coupling gates stop reporting
+  cycles, fan-in growth, and blast radius through them.
+  `topos_depgraph_status` reports `dropped_edges` per rule, and the new
+  `topos depgraph status [--json]` prints the counts and lists every removed
+  edge.
+
 - `topos evaluate` and the MCP tools no longer crash with a segmentation fault
   on a dependency graph store that an interrupted `gitnexus analyze` left
   half-written. Topos now checks for a leftover `lbug.wal` or an

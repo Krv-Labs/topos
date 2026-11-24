@@ -20,10 +20,11 @@ use crate::evaluation::{
 use crate::execution::{EvalCancelled, StatusReporter};
 use crate::formatting::{depgraph_unavailable_risk_flags, finish_agent_contract, to_tool_result};
 use crate::schemas::{
-    DepgraphState, DepgraphStatusInput, DepgraphStatusResult, GenerateDepgraphInput,
-    GenerateDepgraphResult,
+    DepgraphState, DepgraphStatusInput, DepgraphStatusResult, DroppedEdgeCounts,
+    GenerateDepgraphInput, GenerateDepgraphResult,
 };
 use crate::server::ToposServer;
+use topos_engine::graphs::mdg::edge_filter::{count_by_reason, DroppedEdge};
 
 fn parse_state(state: &str) -> DepgraphState {
     match state {
@@ -101,6 +102,8 @@ fn status_to_result(status: &DepgraphStatus) -> DepgraphStatusResult {
         git_head_mtime: status.git_head_mtime,
         coupling_available: state == DepgraphState::Present,
         detail: status.detail.clone(),
+        dropped_edges: matches!(state, DepgraphState::Present | DepgraphState::Stale)
+            .then(|| dropped_edge_counts(&status.dropped_edges)),
         recommended_next_action: action.to_string(),
         agent_contract: Some(finish_agent_contract(
             blocked_by,
@@ -113,6 +116,29 @@ fn status_to_result(status: &DepgraphStatus) -> DepgraphStatusResult {
     }
 }
 
+/// Per-rule counts of the edges the loader dropped.
+pub fn dropped_edge_counts(edges: &[DroppedEdge]) -> DroppedEdgeCounts {
+    let counts = count_by_reason(edges);
+    DroppedEdgeCounts {
+        rust_private_cross_crate: counts.rust_private_cross_crate,
+        python_stdlib_import: counts.python_stdlib_import,
+        js_bare_package_import: counts.js_bare_package_import,
+        total: counts.total(),
+    }
+}
+
+/// One status line naming how many false edges were dropped, per rule.
+pub fn dropped_edges_line(counts: &DroppedEdgeCounts) -> String {
+    format!(
+        "{} false dependency edges dropped (Rust private cross-crate calls: {}, \
+         Python stdlib imports: {}, JS/TS bare package imports: {})",
+        counts.total,
+        counts.rust_private_cross_crate,
+        counts.python_stdlib_import,
+        counts.js_bare_package_import
+    )
+}
+
 fn status_error(message: String) -> DepgraphStatusResult {
     DepgraphStatusResult {
         state: DepgraphState::InvalidDir,
@@ -121,6 +147,7 @@ fn status_error(message: String) -> DepgraphStatusResult {
         git_head_mtime: None,
         coupling_available: false,
         detail: None,
+        dropped_edges: None,
         recommended_next_action: "Fix the gitnexus_dir path, then retry.".to_string(),
         agent_contract: Some(finish_agent_contract(
             vec!["invalid_gitnexus_dir".to_string()],
@@ -233,6 +260,9 @@ pub(crate) fn render_status_md(r: &DepgraphStatusResult) -> String {
     }
     if let Some(detail) = &r.detail {
         lines.push(format!("**Detail:** {detail}"));
+    }
+    if let Some(counts) = &r.dropped_edges {
+        lines.push(format!("**Filtered:** {}", dropped_edges_line(counts)));
     }
     lines.push(format!("**Next:** {}", r.recommended_next_action));
     lines.join("\n")
@@ -611,5 +641,46 @@ mod tests {
             let (_, _, blocked) = state_guidance(state);
             assert_eq!(blocked, code, "{state:?}");
         }
+    }
+
+    #[test]
+    fn a_loaded_graph_reports_its_dropped_edges_per_rule() {
+        use topos_engine::graphs::mdg::edge_filter::DropReason;
+        let edge = |reason| DroppedEdge {
+            relationship_id: "r".to_string(),
+            rel_type: "IMPORTS".to_string(),
+            source_file: "a.py".to_string(),
+            target_file: "pkg/json.py".to_string(),
+            reason,
+        };
+        let status = DepgraphStatus {
+            state: "present",
+            gitnexus_dir: Some("/repo/.gitnexus".to_string()),
+            gitnexus_mtime: None,
+            git_head_mtime: None,
+            detail: None,
+            dropped_edges: vec![
+                edge(DropReason::PythonStdlibImport),
+                edge(DropReason::PythonStdlibImport),
+                edge(DropReason::RustPrivateCrossCrate),
+            ],
+        };
+        let result = status_to_result(&status);
+        let counts = result.dropped_edges.expect("loaded graph reports counts");
+        assert_eq!(counts.python_stdlib_import, 2);
+        assert_eq!(counts.rust_private_cross_crate, 1);
+        assert_eq!(counts.total, 3);
+        assert!(
+            render_status_md(&result).contains("3 false dependency edges dropped"),
+            "{}",
+            render_status_md(&result)
+        );
+
+        let missing = status_to_result(&DepgraphStatus {
+            state: "missing",
+            dropped_edges: Vec::new(),
+            ..status
+        });
+        assert!(missing.dropped_edges.is_none());
     }
 }

@@ -906,6 +906,16 @@ after dependency changes. If a graph reported as current appears stale, rerun
 with ``--force``. When ``evaluate`` cannot measure COMPOSABLE, its terminal
 summary points back to this command.
 
+.. code-block:: bash
+
+   topos depgraph status [PATH] [--json]
+
+Reports whether the graph loads (``present``, ``stale``, ``missing``,
+``load_error``, ...) and how many dependency edges were removed as false when
+it loaded, per rule (see :doc:`measures`). ``--json`` adds
+``dropped_edge_counts`` and the full ``dropped_edges`` list, each with its
+source file, target file, and rule.
+
 cache
 -----
 

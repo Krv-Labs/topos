@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="447" height="20" role="img" aria-label="topos: SIMPLE 85%, COMPOSABLE 83%, SECURE 100%, NAVIGABLE 96%">
+  <title>topos: SIMPLE 85%, COMPOSABLE 83%, SECURE 100%, NAVIGABLE 96%</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="447" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect x="0" width="41" height="20" fill="#555"/>
+    <rect x="41" width="85" height="20" fill="#a4a61d"/>
+    <rect x="126" width="121" height="20" fill="#dfb317"/>
+    <rect x="126" width="1" height="20" fill="#000" fill-opacity=".2"/>
+    <rect x="247" width="94" height="20" fill="#44cc11"/>
+    <rect x="247" width="1" height="20" fill="#000" fill-opacity=".2"/>
+    <rect x="341" width="106" height="20" fill="#97ca00"/>
+    <rect x="341" width="1" height="20" fill="#000" fill-opacity=".2"/>
+    <rect width="447" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+    <text x="205" y="150" transform="scale(.1)" fill="#010101" fill-opacity=".3" textLength="310" lengthAdjust="spacingAndGlyphs" aria-hidden="true">topos</text>
+    <text x="205" y="140" transform="scale(.1)" textLength="310" lengthAdjust="spacingAndGlyphs">topos</text>
+    <text x="835" y="150" transform="scale(.1)" fill="#010101" fill-opacity=".3" textLength="750" lengthAdjust="spacingAndGlyphs" aria-hidden="true">SIMPLE 85%</text>
+    <text x="835" y="140" transform="scale(.1)" textLength="750" lengthAdjust="spacingAndGlyphs">SIMPLE 85%</text>
+    <text x="1865" y="150" transform="scale(.1)" fill="#010101" fill-opacity=".3" textLength="1110" lengthAdjust="spacingAndGlyphs" aria-hidden="true">COMPOSABLE 83%</text>
+    <text x="1865" y="140" transform="scale(.1)" textLength="1110" lengthAdjust="spacingAndGlyphs">COMPOSABLE 83%</text>
+    <text x="2940" y="150" transform="scale(.1)" fill="#010101" fill-opacity=".3" textLength="840" lengthAdjust="spacingAndGlyphs" aria-hidden="true">SECURE 100%</text>
+    <text x="2940" y="140" transform="scale(.1)" textLength="840" lengthAdjust="spacingAndGlyphs">SECURE 100%</text>
+    <text x="3940" y="150" transform="scale(.1)" fill="#010101" fill-opacity=".3" textLength="960" lengthAdjust="spacingAndGlyphs" aria-hidden="true">NAVIGABLE 96%</text>
+    <text x="3940" y="140" transform="scale(.1)" textLength="960" lengthAdjust="spacingAndGlyphs">NAVIGABLE 96%</text>
+  </g>
+</svg>

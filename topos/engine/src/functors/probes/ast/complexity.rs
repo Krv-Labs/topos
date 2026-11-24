@@ -117,6 +117,12 @@ pub fn calculate_function_complexities(uast_root: &UASTNode) -> HashMap<String, 
     complexities
 }
 
+/// Cyclomatic complexity of the whole tree, top-level code included: `1`
+/// when the file makes no decision anywhere.
+pub fn calculate_file_complexity(uast_root: &UASTNode) -> usize {
+    node_complexity(uast_root)
+}
+
 /// Maximum cyclomatic complexity found in any function/method; `0` if
 /// there are none.
 pub fn calculate_max_function_complexity(uast_root: &UASTNode) -> usize {

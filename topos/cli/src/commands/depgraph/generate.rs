@@ -9,7 +9,7 @@ use topos_mcp::evaluation::depgraph_status;
 use topos_mcp::pr_recap::store::prepare_pr_stores;
 
 use super::print_json;
-use crate::commands::gh::{ensure_commit, git_root, merge_base, pull_request};
+use crate::commands::gh::{ensure_pull_request_commits, git_root, merge_base, pull_request};
 use crate::commands::render::{guide, guide_line, paint, RenderOptions};
 
 #[derive(Args)]
@@ -99,8 +99,7 @@ pub fn run_generate_pr(args: GeneratePrArgs) -> Result<(), String> {
     let repo = std::env::current_dir().map_err(|e| format!("current directory: {e}"))?;
     let refs = pull_request(&repo, args.pr)?;
     let root = git_root(&repo)?;
-    ensure_commit(&root, &refs.base_sha)?;
-    ensure_commit(&root, &refs.head_sha)?;
+    ensure_pull_request_commits(&root, &refs)?;
     // Build at the fork point, as `pr-recap` does, so both commands share
     // the stores' `commits` key instead of each rebuilding over the other.
     let base = merge_base(&root, &refs.base_sha, &refs.head_sha)?;

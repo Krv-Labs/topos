@@ -496,12 +496,156 @@ unknown gate or carrying a malformed date is dropped with a warning.
 Waivers are not gate settings: they do not make the preset ``custom``, and
 ``topos config set --pr-preset`` keeps them.
 
-The policy comes from the flags, else the nearest ``.topos.toml``, else the
-``recommended`` preset. Every card ends with a dim gate line that names it,
+The policy comes from the flags, else the ``.topos.toml`` at the root of the
+repository **as committed at the base revision**, else the ``recommended``
+preset. Every card ends with a dim gate line that names it,
 so a reader knows which rules produced the verdict: ``gate: recommended``,
 ``gate: strict``, or ``gate: custom · 2 changes · ./.topos.toml``. When the
 change needs attention under a policy that fails only on blocks, the line
 adds ``· warnings don't fail the check``.
+
+**Config is read from the base**
+
+A change is never judged by rules it brings with it. The gate policy, the
+waivers, the ``[[secure.allow]]`` allowlist and the configured priority are
+read from ``.topos.toml`` at the base revision: the pull request's base
+commit, ``--base``, or ``HEAD`` when uncommitted edits are reviewed. A base
+with no ``.topos.toml`` is judged by the defaults, never by the head's file.
+So a pull request that adds a waiver, turns a gate off, sets
+``fail_on = "never"`` or allowlists a call for its own regression is still
+blocked by it. The edit takes effect once it is on the base branch.
+
+When the change does edit ``.topos.toml`` or ``.toposignore``, the recap says so instead of
+ignoring it silently: the card and the GitHub comment list each edit that was
+not applied (``fail_on: block → never``,
+``waiver added: pillar_lost on src/**``), ``--json`` carries the same list as
+``gate.unapplied``, and a warning goes to stderr. Edits are measured from the
+merge-base, so a config change that landed on the base branch after the fork
+is applied and is not reported as the change's own.
+
+The flags are the caller's and keep their precedence: ``--preset``,
+``--fail-on``, ``--strict``, ``--advisory`` and ``--priority`` override the
+base's file as before. Running ``topos pr-recap`` with no arguments follows
+the same rule with ``HEAD`` as the base, so an uncommitted ``.topos.toml``
+edit is listed as not applied until it is committed.
+
+**A file that does not parse**
+
+A file that parsed at base and does not parse at head has no head scores to
+compare, so it raises one ``pillar_lost`` finding for the whole file
+(``block`` under every preset): it can no longer be shown to hold any pillar
+it held. An added file that does not parse holds no pillar at all, so it
+lands as SLOP and raises ``new_file_slop`` (``block`` under every preset),
+whether or not it is a split child. Files the recap skips are not parsed
+and raise nothing.
+
+Both findings carry the remedy on the card and in the GitHub comment: fix
+the syntax error. A file can also be valid and still not parse, when it uses
+syntax newer than the bundled grammar or is a template with a source
+extension. The change cannot exempt itself, so that case needs a maintainer:
+add the path to ``.toposignore``, or add a ``[[pr_recap.waive]]`` for
+``pillar_lost`` or ``new_file_slop``, **on the base branch**.
+
+**Skipped files**
+
+A changed file is skipped, and never judged, when it is one of these:
+
+- an unsupported file type;
+- anything ``topos evaluate -r`` does not score by its path. This part is
+  project discovery's own code, so the recap skips every path discovery
+  skips: a cache, build or dependency directory (``node_modules``,
+  ``target``, ``.venv``, ``htmlcov``, ..., and ``build``, ``dist``, ``out``,
+  ``coverage`` or ``env`` at the repository root), a ``fixtures``,
+  ``testdata``, ``vendor`` or ``__snapshots__`` directory at any depth (so an
+  intentionally broken parser fixture does not block), and ``*.min.*``;
+- four more that only the recap skips and ``topos evaluate -r`` still
+  scores, because they are generated or bundled output that is large and
+  slow to diff: ``openwiki/`` at any depth, ``builds/`` at the repository
+  root, a ``dist/`` directory that is not directly inside ``src/``, and
+  ``*.bundle.*``;
+- a path matched by ``.toposignore`` **at the base revision**;
+- a file that carries a generated-code header (``@generated``,
+  ``Code generated ... DO NOT EDIT``) **at both the base and the head**.
+
+``.toposignore`` and the generated header are policy like ``.topos.toml``,
+so a change cannot bring its own: a ``.toposignore`` pattern the change adds
+is listed under ``gate.unapplied`` and hides nothing, a header added to an
+existing file does not skip it, and an added file is never skipped for its
+header. A newly added generated file is therefore scored until its path is
+in the base's ``.toposignore``.
+
+**Code that leaves a skipped place is judged as new.** Its old content was
+never reviewed, so it is no baseline. A file renamed out of a skipped path
+(``fixtures/x.py`` to ``src/x.py``), renamed from an unsupported type
+(``notes/x.txt`` to ``x.py``), or a generated file whose header the change
+removes, is reported as an added file and has to clear the new-file gates
+(``new_file_insecure``, ``new_file_slop``, ``new_file_pillar``) on its own.
+
+A promoted file is marked ``promoted`` in ``--json`` and is never excused as
+a split child, even when another changed file starts importing from it:
+nothing reviewed its base side, so none of it is known to be moved code.
+Under ``--max-files`` it is ranked by its whole length, like any added file,
+and not by the zero changed lines of an unchanged rename.
+
+**Skipped source is named.** The author picks the path, so skipped source
+code is called out, apart from skipped docs and config. ``skipped[].kind``
+in ``--json`` says which of four things happened:
+
+- ``path_or_policy``: source in a supported language, set aside for its
+  path, the base ``.toposignore`` or a generated header. This is the one a
+  change can choose;
+- ``language_not_scored``: source in a language Topos does not score
+  (``.jsx``, ``.mts``, ``.cts``, ``.pyi``, ``.c``, ``.h``, ``.cpp``,
+  ``.java``, ``.kt``, ``.swift``, ``.rb``, ``.php``, ``.cs``, ``.scala``,
+  ``.m``, ``.sh``, ``.vue``, ``.svelte`` and similar). A limit of the tool,
+  not a hiding place;
+- ``scoring_cap``: a scoreable file ``--max-files`` left out;
+- ``not_source``: docs, config, data.
+
+Every kind but the last has ``skipped[].source`` set, counts toward
+``scope.files_unreviewed``, and is shown:
+
+- the card:
+  ``! 4 source files not reviewed (1 skipped by path or policy, 3 in a
+  language Topos does not score):`` followed by the first three paths;
+- the GitHub comment: a **Not reviewed** block beside the findings, with the
+  total and the same breakdown first, then up to ten files with their reason
+  and line count, then ``and N more``;
+- the ``topos_pr_recap`` summary: the count.
+
+The files are listed largest first, by lines changed (``skipped[].lines_changed``;
+a renamed file counts in full), so small filler cannot push a large file
+past the cut. Filler can still be made larger than the file it hides, which
+is why the total comes first: a count that is higher than the pull request
+explains is the signal.
+
+It does not change the readiness or the exit code: plenty of honest pull
+requests touch vendored code, and a repository mostly in a language Topos
+does not score will see this block on every pull request.
+
+.. warning::
+   A required check does not review code under a directory named
+   ``fixtures``, ``testdata``, ``vendor``, ``__snapshots__``,
+   ``node_modules``, ``dist`` and the like, and the recap cannot tell a real
+   fixture from code hidden under that name.
+
+   Nor does it review a file that carries a generated-code header at both
+   the base and the head, **whatever its body becomes**. A change can
+   rewrite such a file by hand and keep the header. The recap lists it under
+   **Not reviewed** and looks no further; that is what trusting a header
+   means.
+
+   For pull requests from untrusted contributors, read the **Not reviewed**
+   block, or protect those paths and generated files with ``CODEOWNERS``.
+
+**Split evidence in --json**
+
+Each ``clusters[].children[]`` entry carries ``attached_by``: ``graph`` when
+the base and head dependency graphs reported the split, or ``import_line``
+when no graphs were measured and the child was found from an import line in
+the parent. Either way a child is kept only when the function ledger shows
+code moved into it; the field says how much of a split rests on the coupling
+stores.
 
 **Sample card**
 

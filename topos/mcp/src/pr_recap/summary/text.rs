@@ -3,7 +3,7 @@
 
 use crate::shaping::{clip, omitted_line, sig3};
 
-use super::super::model::{FileRecap, Medal};
+use super::super::model::{unapplied_note, FileRecap, Medal};
 use super::paths::NotFound;
 use super::types::{AttentionFile, Summary, SummaryFinding};
 
@@ -19,6 +19,8 @@ impl Summary {
         let mut out = self.header();
         out.push_str(&self.direction_line());
         out.push_str(&self.incomplete_line());
+        out.push_str(&self.unapplied_line());
+        out.push_str(&self.unreviewed_line());
         out.push_str(&self.findings_block());
         out.push_str(&attention_block(&self.attention));
         for file in &self.files {
@@ -77,6 +79,22 @@ impl Summary {
             "Incomplete: {} file(s) over the max_files cap went unscored.\n",
             self.scope.counts.files_capped
         )
+    }
+
+    fn unapplied_line(&self) -> String {
+        unapplied_note(&self.gate.unapplied)
+            .map_or(String::new(), |note| format!("Config: {note}\n"))
+    }
+
+    fn unreviewed_line(&self) -> String {
+        match self.scope.counts.files_unreviewed {
+            0 => String::new(),
+            files => format!(
+                "Not reviewed: {files} source file(s) no gate looked at (skipped by path or \
+                 policy, in a language Topos does not score, or over the cap); \
+                 `detail: \"full\"` lists them under `skipped`.\n"
+            ),
+        }
     }
 
     fn findings_block(&self) -> String {

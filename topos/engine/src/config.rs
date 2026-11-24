@@ -144,6 +144,13 @@ pub fn load_topos_config(start: &Path) -> ToposConfig {
             ..ToposConfig::default()
         };
     };
+    parse_topos_config(&text, root)
+}
+
+/// Parse the text of a `.topos.toml` that lives in `root`, wherever the
+/// text came from: the working tree, or a git revision. Malformed text is
+/// an empty config, as in [`load_topos_config`].
+pub fn parse_topos_config(text: &str, root: Option<PathBuf>) -> ToposConfig {
     let Ok(data) = text.parse::<toml::Table>() else {
         return ToposConfig {
             root,
@@ -319,6 +326,25 @@ mod tests {
 
         let config = load_topos_config(&dir);
         assert!(config.allow.is_empty());
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn text_parses_the_same_as_the_file_it_came_from() {
+        let dir = std::env::temp_dir().join(format!("topos-cfg-text-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let text = "[evaluation]\npriority = \"simple\"\n[pr_recap]\nfail_on = \"warn\"\n[[secure.allow]]\npattern = \"eval\"\nreason = \"sandboxed\"\n";
+        fs::write(dir.join(CONFIG_FILENAME), text).unwrap();
+
+        let parsed = parse_topos_config(text, Some(dir.clone()));
+        assert_eq!(parsed, load_topos_config(&dir));
+        assert_eq!(parsed.pr_recap.fail_on, FailOn::Warn);
+        assert_eq!(parsed.allow.len(), 1);
+        assert_eq!(
+            parse_topos_config("not = [toml", None),
+            ToposConfig::default()
+        );
 
         fs::remove_dir_all(&dir).ok();
     }

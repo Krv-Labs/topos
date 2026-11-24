@@ -142,6 +142,7 @@ fn gate_of(recap: &PrRecap) -> SummaryGate {
         fail_on: recap.gate.fail_on,
         changes: recap.gate.changes,
         source: recap.gate.source.clone(),
+        unapplied: recap.gate.unapplied.clone(),
     }
 }
 

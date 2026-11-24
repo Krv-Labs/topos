@@ -719,6 +719,7 @@ mod tests {
                 fan_out_after: None,
                 cluster: None,
                 hotspots: Vec::new(),
+                promoted: false,
                 entropy_role: None,
             },
             before,

@@ -17,8 +17,11 @@ pub struct SummaryGate {
     pub fail_on: &'static str,
     pub changes: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// The `.topos.toml` consulted.
+    /// The `.topos.toml` consulted, read at the base revision.
     pub source: Option<String>,
+    /// Edits the change makes to `.topos.toml`; none of them judged it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unapplied: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]

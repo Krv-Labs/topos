@@ -12,6 +12,7 @@ pub mod hotspots;
 mod mcp;
 pub mod model;
 pub mod moves;
+pub mod policy;
 mod progress;
 pub mod score;
 pub mod store;
@@ -41,7 +42,7 @@ use crate::server::ToposServer;
 use self::clusters::{build_clusters, changed_list};
 use self::gh::{ensure_pull_request_commits, git_root, merge_base, pull_request, resolve_commit};
 use self::git::{
-    cap_by_churn, changed_files, churn, file_change, skip_reason, worktree_files, DiffEntry,
+    cap_by_churn, changed_files, churn, file_change, show_file, worktree_files, DiffEntry,
 };
 use self::hotspots::top_hotspots;
 pub use self::model::*;
@@ -61,12 +62,19 @@ pub const LARGE_RECAP_WARN_THRESHOLD: usize = 100;
 
 /// Everything a recap is judged by: the pillar emphasis, the project
 /// config (for its allowlist), the resolved gate policy with the file it
-/// came from, and the date its waivers are checked against.
+/// came from, and the date its waivers are checked against. The config is
+/// the base revision's ([`policy::base_policy`]), never the head's.
 pub struct Judging {
     pub priority: Priority,
     pub topos: ToposConfig,
     pub gate: PrGateConfig,
     pub source: Option<PathBuf>,
+    /// Edits the range makes to `.topos.toml` or `.toposignore`, which
+    /// did not judge it.
+    pub unapplied: Vec<String>,
+    /// The base revision's `.toposignore` patterns: files under them are
+    /// skipped, as project discovery skips them.
+    pub ignore: Vec<String>,
     /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
     /// nothing.
     pub today: String,
@@ -469,26 +477,56 @@ pub fn build_recap(
         changed_files(&repo, &base_sha, &head_sha)?
     };
 
-    let head_to_base: HashMap<String, String> = diff
-        .entries
-        .iter()
-        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
-        .collect();
-    let mut changed_sources = BTreeSet::new();
+    let exclusions = policy::Exclusions {
+        repo: &repo,
+        base: &base_sha,
+        head: if worktree {
+            policy::WORKTREE
+        } else {
+            &head_sha
+        },
+        ignore: &judging.ignore,
+    };
+    let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
+    // A file read in full: one that is all new to where it sits (moved,
+    // or promoted), or an untracked one the diff has no numbers for.
+    let size = |path: &str, whole: bool| {
+        let counted = churn.get(path).copied().filter(|_| !whole);
+        counted.unwrap_or_else(|| {
+            let text = if worktree {
+                std::fs::read_to_string(repo.join(path)).ok()
+            } else {
+                show_file(&repo, &head_sha, path).ok()
+            };
+            text.map_or(0, |text| text.lines().count())
+                .max(churn.get(path).copied().unwrap_or(0))
+        })
+    };
     let mut skipped = Vec::new();
     let mut scoreable = Vec::new();
+    let mut promoted = BTreeSet::new();
     for entry in diff.entries {
-        match skip_reason(&entry) {
-            Some(reason) => skipped.push(SkippedFile {
-                path: entry.path,
-                reason,
-            }),
-            None => {
-                changed_sources.insert(entry.path.clone());
+        let change = file_change(&entry.status);
+        match exclusions.review(entry) {
+            Ok(entry) => {
+                if change != FileChange::Added && file_change(&entry.status) == FileChange::Added {
+                    promoted.insert(entry.path.clone());
+                }
                 scoreable.push(entry);
+            }
+            Err(mut file) => {
+                let whole = change == FileChange::Renamed && file.source;
+                file.lines_changed = size(&file.path, whole);
+                skipped.push(file);
             }
         }
     }
+    let head_to_base: HashMap<String, String> = scoreable
+        .iter()
+        .filter_map(|entry| Some((entry.path.clone(), entry.old_path.clone()?)))
+        .collect();
+    let changed_sources: BTreeSet<String> =
+        scoreable.iter().map(|entry| entry.path.clone()).collect();
     let capped = if max_files == 0 {
         0
     } else {
@@ -496,28 +534,22 @@ pub fn build_recap(
     };
     let mut capped_entries = Vec::new();
     if capped > 0 {
-        let churn = churn(&repo, &base_sha, (!worktree).then_some(head_sha.as_str()))?;
         let (kept, dropped) = cap_by_churn(scoreable, max_files, |path| {
-            churn
-                .get(path)
-                .copied()
-                .or_else(|| {
-                    worktree
-                        .then(|| std::fs::read_to_string(repo.join(path)).ok())
-                        .flatten()
-                        .map(|source| source.lines().count())
-                })
-                .unwrap_or(0)
+            size(path, promoted.contains(path))
         });
         scoreable = kept;
         capped_entries = dropped;
         for entry in &capped_entries {
             skipped.push(SkippedFile {
-                path: entry.path.clone(),
                 reason: format!("over the {max_files}-file scoring cap"),
+                source: true,
+                kind: SkipKind::ScoringCap,
+                lines_changed: size(&entry.path, promoted.contains(&entry.path)),
+                path: entry.path.clone(),
             });
         }
     }
+    let files_unreviewed = skipped.iter().filter(|file| file.source).count();
 
     let base_graph = stores.and_then(|stores| load_graph(&stores.base));
     let head_graph = stores.and_then(|stores| load_graph(&stores.head));
@@ -543,6 +575,9 @@ pub fn build_recap(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    for file in &mut scored {
+        file.recap.promoted = promoted.contains(&file.recap.path);
+    }
     let changed = changed_list(&scoreable, &diff.deleted);
     let report = if measured {
         detect_splits(
@@ -628,6 +663,7 @@ pub fn build_recap(
         lines_added: files.iter().map(|file| file.lines_added).sum(),
         lines_removed: files.iter().map(|file| file.lines_removed).sum(),
         files_skipped: skipped.len(),
+        files_unreviewed,
         files_deleted: diff.deleted.len(),
         files_capped: capped,
         coupling,
@@ -639,7 +675,10 @@ pub fn build_recap(
         head: head_sha,
         priority: priority_name(judging.priority),
         review: None,
-        gate: gates::summary(&judging.gate, judging.source.as_deref()),
+        gate: GateSummary {
+            unapplied: judging.unapplied.clone(),
+            ..gates::summary(&judging.gate, judging.source.as_deref())
+        },
         readiness,
         exit_code,
         check: if exit_code == 1 { "fail" } else { "pass" },
@@ -790,6 +829,8 @@ pub(super) mod tests {
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
+            unapplied: Vec::new(),
+            ignore: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }

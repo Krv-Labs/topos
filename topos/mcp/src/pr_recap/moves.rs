@@ -23,6 +23,7 @@ use topos_engine::graphs::mdg::split::SymbolMove;
 
 use super::clusters::secure_findings;
 use super::git::{show_file, skip_reason, DiffEntry};
+use super::model::FunctionRef;
 use super::score::Scored;
 use crate::evaluation::detect_language;
 
@@ -56,6 +57,7 @@ struct Arrival {
     name: String,
     qualified_name: String,
     start_line: usize,
+    complexity: usize,
     kind: MatchKind,
     complexity_delta: i64,
     /// The base file, when the function changed files.
@@ -217,6 +219,7 @@ impl RangeMoves {
                 name: after.name.clone(),
                 qualified_name: after.qualified_name.clone(),
                 start_line: after.start_line,
+                complexity: after.complexity,
                 kind: row.kind,
                 complexity_delta: row.complexity_delta,
                 from,
@@ -266,6 +269,22 @@ impl RangeMoves {
             .filter(|_| !contradicted)
             .map(|moved| MoveCause {
                 from: Some(moved.from.clone()),
+            })
+    }
+
+    /// The most complex function at head in `file` over `limit` that did
+    /// not arrive from another file without growing: new logic, a function
+    /// that grew on the way, or one the ledger matched to nothing.
+    pub fn new_logic_over(&self, file: &str, limit: usize) -> Option<FunctionRef> {
+        self.arrivals
+            .get(file)?
+            .iter()
+            .filter(|arrival| arrival.complexity > limit && !arrival.moved_intact())
+            .max_by_key(|arrival| arrival.complexity)
+            .map(|arrival| FunctionRef {
+                name: arrival.name.clone(),
+                line: arrival.start_line,
+                complexity: arrival.complexity,
             })
     }
 

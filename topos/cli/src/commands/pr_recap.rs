@@ -201,6 +201,9 @@ Range:
   The base side is the merge-base of the base and the head, so commits that
   landed on the base branch after the fork are not charged to the change. With no
   arguments, uncommitted edits (tracked and untracked) are reviewed against HEAD.
+  A PR number is resolved through `gh`. A pull request from a fork is fetched
+  from `origin`'s `refs/pull/<N>/head`, so `origin` must be the repository the
+  pull request targets; no remote for the fork is needed.
   Every scorable file is scored; pass --max-files N to score only the N files
   with the most changed lines, in which case the recap is marked incomplete
   and the rest are listed as skipped.

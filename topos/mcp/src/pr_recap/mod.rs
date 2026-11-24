@@ -12,6 +12,7 @@ pub mod hotspots;
 mod mcp;
 pub mod model;
 pub mod moves;
+pub mod policy;
 mod progress;
 pub mod score;
 pub mod store;
@@ -61,12 +62,15 @@ pub const LARGE_RECAP_WARN_THRESHOLD: usize = 100;
 
 /// Everything a recap is judged by: the pillar emphasis, the project
 /// config (for its allowlist), the resolved gate policy with the file it
-/// came from, and the date its waivers are checked against.
+/// came from, and the date its waivers are checked against. The config is
+/// the base revision's ([`policy::base_policy`]), never the head's.
 pub struct Judging {
     pub priority: Priority,
     pub topos: ToposConfig,
     pub gate: PrGateConfig,
     pub source: Option<PathBuf>,
+    /// Edits the range makes to `.topos.toml`, which did not judge it.
+    pub unapplied: Vec<String>,
     /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
     /// nothing.
     pub today: String,
@@ -640,7 +644,10 @@ pub fn build_recap(
         head: head_sha,
         priority: priority_name(judging.priority),
         review: None,
-        gate: gates::summary(&judging.gate, judging.source.as_deref()),
+        gate: GateSummary {
+            unapplied: judging.unapplied.clone(),
+            ..gates::summary(&judging.gate, judging.source.as_deref())
+        },
         readiness,
         exit_code,
         check: if exit_code == 1 { "fail" } else { "pass" },
@@ -791,6 +798,7 @@ pub(super) mod tests {
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
+            unapplied: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }

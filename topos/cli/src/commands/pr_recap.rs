@@ -18,14 +18,12 @@ mod view;
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, PrGateConfig, PrGatePreset,
-};
+use topos_engine::config::{FailOn, PrGateConfig, PrGatePreset};
 use topos_engine::evaluation::waivers::today_utc;
 pub(crate) use topos_mcp::pr_recap::git::{changed_files, skip_reason, worktree_files};
 pub(crate) use topos_mcp::pr_recap::{
-    build_recap, gates, head_commit, model, resolve_priority, resolve_range, Judging,
-    ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
+    build_recap, gates, head_commit, model, policy::base_policy, resolve_priority, resolve_range,
+    Judging, ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
 };
 #[cfg(test)]
 use {self::model::*, std::path::Path, topos_mcp::pr_recap::moves};
@@ -174,8 +172,14 @@ Readiness / exit codes:
   ([pr_recap.score_drop]); a smaller one is info. A pillar lost only because
   code moved in from another file in the range is `moved_pillar` (info, warn
   under strict), not `pillar_lost`; a moved function that grew still loses it.
-  The policy is the flags, else the nearest .topos.toml, else the recommended
-  preset. --preset picks a built-in preset and ignores the file's [pr_recap],
+  A file that parsed at base and no longer parses at head is one `pillar_lost`
+  for the whole file.
+  The policy is the flags, else the .topos.toml at the repository root as
+  committed at the base revision, else the recommended preset. The head's own
+  .topos.toml never judges the change: a waiver, a looser gate, fail_on or an
+  allowlist entry the change adds is listed as not applied (gate.unapplied in
+  --json) and takes effect once it is on the base. With no arguments the base
+  is HEAD, so uncommitted config edits are not applied either. --preset picks a built-in preset and ignores the file's [pr_recap],
   waivers included; --fail-on sets fail_on (block, warn, or never), --strict
   is fail_on = "warn", and --advisory is fail_on = "never" (always exit 0 on a
   verdict while still reporting readiness in the card and JSON). An error (a
@@ -211,7 +215,8 @@ Coupling:
   GitNexus, and a new head rebuilds only the head graph. `--no-coupling` skips
   that work and reports COMPOSABLE as not measured. With `--base/--head` there
   is no PR store, so splits are detected from import lines and the
-  moved-function ledger instead.
+  moved-function ledger instead. In --json each split child says which it was:
+  attached_by is "graph" or "import_line".
   With both graphs measured, three more gates read them, over every changed
   file (--max-files aside):
     import_cycle   an import cycle new at head, cut at an import this change
@@ -400,6 +405,19 @@ fn warn_if_large_recap(root: &std::path::Path, base: &str, head: &str, max_files
     }
 }
 
+/// Say on stderr what the config did not do: a mistyped key is dropped,
+/// and an edit the change makes to `.topos.toml` does not judge it. Neither
+/// is silent, even under `--json`.
+fn warn_about_config(dropped: &[String], unapplied: &[String]) {
+    for warning in dropped
+        .iter()
+        .cloned()
+        .chain(model::unapplied_note(unapplied))
+    {
+        eprintln!("warning: {warning}");
+    }
+}
+
 fn large_recap_warning(count: usize) -> Option<String> {
     (count > LARGE_RECAP_WARN_THRESHOLD).then(|| {
         format!(
@@ -433,27 +451,23 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         .clone()
         .unwrap_or(std::env::current_dir().map_err(|e| format!("current directory: {e}"))?);
     let root = git_root(&repo)?;
-    let topos = load_topos_config(&root);
-    // A mistyped key is dropped, never silent.
-    for warning in &topos.pr_recap.warnings {
-        eprintln!("warning: {warning}");
-    }
+    let (requested_base, head, review) =
+        resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
+    let format = resolve_format(args.compact, args.format, args.no_marker);
+    // The stores must be built at the commit the sources are read from.
+    let base = merge_base(&root, &requested_base, head_commit(&head))?;
+    let policy = base_policy(&root, &requested_base, &base, &head);
+    let topos = policy.topos;
+    warn_about_config(&topos.pr_recap.warnings, &policy.unapplied);
     let judging = Judging {
         priority: resolve_priority(args.priority.as_deref(), &topos)?,
         gate: resolve_gate_policy_from_args(&args, &topos.pr_recap),
-        source: args
-            .preset
-            .is_none()
-            .then(|| find_config_file(&root))
-            .flatten(),
+        source: policy.source.filter(|_| args.preset.is_none()),
+        unapplied: policy.unapplied,
         topos,
         today: today_utc(),
         cap_name: gates::CLI_CAP_NAME,
     };
-    let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
-    let format = resolve_format(args.compact, args.format, args.no_marker);
-    // The stores must be built at the commit the sources are read from.
-    let base = merge_base(&root, &base, head_commit(&head))?;
     warn_if_large_recap(&root, &base, &head, args.max_files);
 
     // Any question is asked here, before the progress lines take stderr.
@@ -536,6 +550,7 @@ mod tests {
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
+            unapplied: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }

@@ -276,6 +276,7 @@ pub(in crate::commands::pr_recap) fn facts(item: &Item<'_>) -> String {
 fn fact(finding: &Finding) -> String {
     let pillar = pillar_word(finding);
     match finding.gate {
+        GateId::PillarLost if finding.pillar.is_none() => "no longer parses at head".to_string(),
         GateId::PillarLost
         | GateId::PillarInherited
         | GateId::MovedPillar

@@ -9,6 +9,34 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Added
+
+- `topos pr-recap --json` records how each split child was tied to its parent:
+  `clusters[].children[].attached_by` is `graph` when the dependency graphs
+  reported the split and `import_line` when the no-graph fallback found it from
+  an import line, so a reviewer can tell how much of a card rests on the
+  coupling stores. The schema stays `topos.pr_recap.v3`.
+- `gate.unapplied` in `topos.pr_recap.v3` and in the `topos_pr_recap` summary
+  lists the edits a change makes to `.topos.toml` that did not judge it.
+
+### Changed
+
+- `topos pr-recap` and `topos_pr_recap` read the gate policy, the waivers, the
+  `[[secure.allow]]` allowlist and the priority from `.topos.toml` at the base
+  revision instead of the working tree, so a change can no longer waive or
+  switch off the gate for its own regression. Edits the change makes to the
+  file are listed on the card, in the GitHub comment, in `--json` and on
+  stderr, and take effect once they are on the base branch. A base with no
+  `.topos.toml` is judged by the defaults, and only the file at the repository
+  root is read. Flags keep their precedence. With no arguments the base is
+  `HEAD`, so an uncommitted config edit is not applied until it is committed.
+
+### Fixed
+
+- A file that parsed at base and no longer parses at head now raises a
+  blocking `pillar_lost` finding. It used to raise nothing, and the check
+  passed.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

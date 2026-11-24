@@ -454,12 +454,54 @@ unknown gate or carrying a malformed date is dropped with a warning.
 Waivers are not gate settings: they do not make the preset ``custom``, and
 ``topos config set --pr-preset`` keeps them.
 
-The policy comes from the flags, else the nearest ``.topos.toml``, else the
-``recommended`` preset. Every card ends with a dim gate line that names it,
+The policy comes from the flags, else the ``.topos.toml`` at the root of the
+repository **as committed at the base revision**, else the ``recommended``
+preset. Every card ends with a dim gate line that names it,
 so a reader knows which rules produced the verdict: ``gate: recommended``,
 ``gate: strict``, or ``gate: custom · 2 changes · ./.topos.toml``. When the
 change needs attention under a policy that fails only on blocks, the line
 adds ``· warnings don't fail the check``.
+
+**Config is read from the base**
+
+A change is never judged by rules it brings with it. The gate policy, the
+waivers, the ``[[secure.allow]]`` allowlist and the configured priority are
+read from ``.topos.toml`` at the base revision: the pull request's base
+commit, ``--base``, or ``HEAD`` when uncommitted edits are reviewed. A base
+with no ``.topos.toml`` is judged by the defaults, never by the head's file.
+So a pull request that adds a waiver, turns a gate off, sets
+``fail_on = "never"`` or allowlists a call for its own regression is still
+blocked by it. The edit takes effect once it is on the base branch.
+
+When the change does edit ``.topos.toml``, the recap says so instead of
+ignoring it silently: the card and the GitHub comment list each edit that was
+not applied (``fail_on: block → never``,
+``waiver added: pillar_lost on src/**``), ``--json`` carries the same list as
+``gate.unapplied``, and a warning goes to stderr. Edits are measured from the
+merge-base, so a config change that landed on the base branch after the fork
+is applied and is not reported as the change's own.
+
+The flags are the caller's and keep their precedence: ``--preset``,
+``--fail-on``, ``--strict``, ``--advisory`` and ``--priority`` override the
+base's file as before. Running ``topos pr-recap`` with no arguments follows
+the same rule with ``HEAD`` as the base, so an uncommitted ``.topos.toml``
+edit is listed as not applied until it is committed.
+
+**A file that stops parsing**
+
+A file that parsed at base and does not parse at head has no head scores to
+compare, so it raises one ``pillar_lost`` finding for the whole file
+(``block`` under every preset): it can no longer be shown to hold any pillar
+it held.
+
+**Split evidence in --json**
+
+Each ``clusters[].children[]`` entry carries ``attached_by``: ``graph`` when
+the base and head dependency graphs reported the split, or ``import_line``
+when no graphs were measured and the child was found from an import line in
+the parent. Either way a child is kept only when the function ledger shows
+code moved into it; the field says how much of a split rests on the coupling
+stores.
 
 **Sample card**
 

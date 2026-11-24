@@ -19,7 +19,7 @@ use topos_engine::graphs::uast::models::{NativeRef, SourceSpan, UASTNode};
 
 use super::gates;
 use super::model::{
-    Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingReason,
+    Attachment, Cluster, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, CouplingReason,
     CouplingStatus, FileChange, FileRecap, FunctionRef, Headline, Hotspot, Medal, PillarDelta,
     PillarRollup, PrRecap, ProjectRollup as Rollup, PullRequest, Scope, SCHEMA,
 };
@@ -125,6 +125,7 @@ fn function(name: &str, complexity: usize) -> FunctionRef {
 fn child(path: &str, reach: Reach, importers: usize, moved_in: usize) -> ClusterChild {
     ClusterChild {
         path: path.to_string(),
+        attached_by: Attachment::Graph,
         reach: Some(reach),
         importers: (0..importers)
             .map(|index| format!("caller{index}.ts"))

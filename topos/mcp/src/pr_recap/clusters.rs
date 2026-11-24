@@ -332,6 +332,9 @@ fn cluster_children(seed: &Seed<'_>, ledger: Option<&Ledger>) -> Vec<ClusterChil
         .map(|path| {
             let reported = reported(seed, path);
             ClusterChild {
+                attached_by: seed
+                    .split
+                    .map_or(Attachment::ImportLine, |_| Attachment::Graph),
                 reach: reported.map(|child| child.reach),
                 importers: reported
                     .map(|child| child.importers.clone())
@@ -599,6 +602,45 @@ mod tests {
         let json = serde_json::to_value(&recap).expect("recap serializes");
         assert_eq!(json["clusters"][0]["parent"], "src/big.py");
         assert_eq!(json["schema"], SCHEMA);
+        assert_eq!(cluster.children[0].attached_by, Attachment::ImportLine);
+        assert_eq!(
+            json["clusters"][0]["children"][0]["attached_by"],
+            "import_line"
+        );
+    }
+
+    #[test]
+    fn a_child_records_whether_the_graphs_or_an_import_line_attached_it() {
+        let split = SplitCluster {
+            parent: "src/big.py".to_string(),
+            children: vec![ChildModule {
+                path: "src/helpers.py".to_string(),
+                importers: Vec::new(),
+                reach: Reach::Private,
+                moved_in: 2,
+            }],
+            moved: Vec::new(),
+            new_symbols: Vec::new(),
+            lost: Vec::new(),
+            parent_fan_out_before: 0,
+            parent_fan_out_after: 1,
+            parent_fan_out_after_excluding_children: 0,
+        };
+        let attached = |split| {
+            let seed = Seed {
+                parent: "src/big.py".to_string(),
+                children: vec!["src/helpers.py".to_string()],
+                split,
+            };
+            cluster_children(&seed, None).remove(0)
+        };
+        let by_graph = attached(Some(&split));
+        assert_eq!(by_graph.attached_by, Attachment::Graph);
+        assert_eq!(
+            serde_json::to_value(&by_graph).unwrap()["attached_by"],
+            "graph"
+        );
+        assert_eq!(attached(None).attached_by, Attachment::ImportLine);
     }
 
     /// Moving a dangerous call out of the parent is not new risk: the child

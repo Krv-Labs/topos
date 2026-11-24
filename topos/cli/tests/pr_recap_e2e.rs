@@ -286,6 +286,78 @@ fn a_waiver_the_change_adds_for_its_own_regression_does_not_pass_the_check() {
     assert_eq!(run.code, 1, "{value:#}");
     assert_eq!(value["check"], "fail");
     assert!(gates(&value).contains(&"pillar_lost"), "{value:#}");
+    assert_eq!(
+        value["gate"]["unapplied"],
+        serde_json::json!(["waiver added: pillar_lost on src/**"])
+    );
+    assert!(value.get("waivers").is_none(), "{value:#}");
+    assert!(
+        run.stderr.contains("these edits were not applied"),
+        "{}",
+        run.stderr
+    );
+    let card = topos(
+        &repo,
+        &bin,
+        &["pr-recap", "--base", "HEAD~1", "--head", "HEAD"],
+    );
+    assert_eq!(card.code, 1, "{}", card.stdout);
+    assert!(
+        card.stdout.contains("waiver added: pillar_lost on src/**"),
+        "{}",
+        card.stdout
+    );
+    let comment = topos(
+        &repo,
+        &bin,
+        &[
+            "pr-recap", "--base", "HEAD~1", "--head", "HEAD", "--format", "github",
+        ],
+    );
+    assert!(comment.stdout.contains("**Config:**"), "{}", comment.stdout);
+}
+
+/// The other half of the rule: a waiver already on the base still counts.
+#[test]
+fn a_waiver_on_the_base_revision_still_waives() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN), (".topos.toml", SELF_WAIVER)],
+        &[("src/a.py", SHELL)],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 0, "{value:#}");
+    assert_eq!(value["waivers"][0]["status"], "used");
+    assert!(value["gate"].get("unapplied").is_none(), "{value:#}");
+}
+
+/// A flag is the caller's, not the change's: it still wins over the base.
+#[test]
+fn an_explicit_flag_still_overrides_the_base_policy() {
+    let (_keep, repo, bin) = range(&[("src/a.py", CLEAN)], &[("src/a.py", SHELL)]);
+    let run = committed_range(&repo, &bin, &["--advisory"]);
+    let value = json(&run);
+    assert_eq!(run.code, 0, "{value:#}");
+    assert_eq!(value["readiness"], "BLOCKED");
+}
+
+/// With no arguments the base is HEAD: an uncommitted waiver does not
+/// clear an uncommitted regression.
+#[test]
+fn uncommitted_config_edits_do_not_judge_the_worktree() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[("src/a.py", CLEAN), ("b.txt", "")],
+    );
+    fs::write(repo.join("src/a.py"), SHELL).unwrap();
+    fs::write(repo.join(".topos.toml"), SELF_WAIVER).unwrap();
+    let run = topos(&repo, &bin, &["pr-recap", "--json"]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(
+        value["gate"]["unapplied"],
+        serde_json::json!(["waiver added: pillar_lost on src/**"])
+    );
 }
 
 #[test]
@@ -298,6 +370,10 @@ fn fail_on_never_set_by_the_change_does_not_pass_the_check() {
     let value = json(&run);
     assert_eq!(run.code, 1, "{value:#}");
     assert_eq!(value["gate"]["fail_on"], "block");
+    assert_eq!(
+        value["gate"]["unapplied"],
+        serde_json::json!(["fail_on: block → never"])
+    );
 }
 
 #[test]
@@ -319,4 +395,13 @@ fn a_file_that_stops_parsing_fails_the_check() {
     let value = json(&run);
     assert_eq!(run.code, 1, "{value:#}");
     assert_eq!(value["readiness"], "BLOCKED");
+    let finding = &value["findings"][0];
+    assert_eq!(finding["gate"], "pillar_lost");
+    assert_eq!(finding["severity"], "block");
+    assert!(
+        finding["text"]
+            .as_str()
+            .is_some_and(|text| text.contains("no longer parses at head")),
+        "{finding:#}"
+    );
 }

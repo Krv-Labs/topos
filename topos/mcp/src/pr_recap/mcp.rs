@@ -9,10 +9,10 @@ use std::time::Duration;
 
 use rmcp::model::CallToolResult;
 use serde_json::{json, Value};
-use topos_engine::config::{find_config_file, load_topos_config};
 use topos_engine::evaluation::waivers::today_utc;
 
 use super::gh::{git_root, merge_base};
+use super::policy::base_policy;
 use super::progress::{Progress, Watch};
 use super::summary::{self, not_found_block, resolve_paths, NotFound, SUMMARY_SCHEMA};
 use super::{
@@ -158,9 +158,10 @@ fn run_pr_recap(
     progress: &Progress,
 ) -> Result<(PrRecap, PathBuf), String> {
     let root = git_root(&project_root(params.directory.as_deref())?)?;
-    let judging = judging_for(&params, &root)?;
-    let (base, head, review) = resolve_range(&root, params.pr, params.base, params.head)?;
-    let base = merge_base(&root, &base, head_commit(&head))?;
+    let (requested_base, head, review) =
+        resolve_range(&root, params.pr, params.base.clone(), params.head.clone())?;
+    let base = merge_base(&root, &requested_base, head_commit(&head))?;
+    let judging = judging_for(&params, &root, &requested_base, &base, &head)?;
     let plan = plan_coupling(
         &root,
         &base,
@@ -195,13 +196,22 @@ fn project_root(directory: Option<&str>) -> Result<PathBuf, String> {
     Ok(composable_default_root(&project))
 }
 
-fn judging_for(params: &PrRecapInput, root: &Path) -> Result<Judging, String> {
+/// The judging for `fork..head`, from the config at `base`.
+fn judging_for(
+    params: &PrRecapInput,
+    root: &Path,
+    base: &str,
+    fork: &str,
+    head: &str,
+) -> Result<Judging, String> {
     let preset = params.preset.as_deref().map(parse_preset).transpose()?;
-    let topos = load_topos_config(root);
+    let policy = base_policy(root, base, fork, head);
+    let topos = policy.topos;
     Ok(Judging {
         priority: resolve_priority(params.priority.as_deref(), &topos)?,
         gate: resolve_gate_policy(params.strict, preset, &topos.pr_recap),
-        source: preset.is_none().then(|| find_config_file(root)).flatten(),
+        source: policy.source.filter(|_| preset.is_none()),
+        unapplied: policy.unapplied,
         topos,
         today: today_utc(),
         cap_name: MCP_CAP_NAME,

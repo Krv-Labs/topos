@@ -93,10 +93,7 @@ pub(super) fn render_card(recap: &PrRecap, detail: Detail, options: RenderOption
         }
     }
 
-    if let Some(note) = view.waiver_note() {
-        lines.extend(dim_wrapped("", "", &note, options));
-    }
-    lines.extend(dim_wrapped("", "", &findings::gate_line(recap), options));
+    lines.extend(policy_lines(&view, options));
     lines.push(footer(recap, options));
 
     if detail.info && !items.is_empty() {
@@ -190,6 +187,23 @@ fn meta(view: &RecapView<'_>) -> String {
         parts.push(format!("{} deleted", recap.deleted.len()));
     }
     format!("{}{}", parts.join(" · "), view.incomplete_note())
+}
+
+// ------------------------------------------------------------- policy
+
+/// What the waivers did, any `.topos.toml` edit the change made that did
+/// not judge it, and the gate line.
+fn policy_lines(view: &RecapView<'_>, options: RenderOptions) -> Vec<String> {
+    let recap = view.recap;
+    let mut lines = Vec::new();
+    if let Some(note) = view.waiver_note() {
+        lines.extend(dim_wrapped("", "", &note, options));
+    }
+    if let Some(note) = recap.gate.unapplied_note() {
+        lines.extend(dim_wrapped("! ", "  ", &note, options));
+    }
+    lines.extend(dim_wrapped("", "", &findings::gate_line(recap), options));
+    lines
 }
 
 // ------------------------------------------------------------ waivers

@@ -39,6 +39,10 @@ pub use self::coupling::Coupling;
 /// outranks a few points of score drop or added complexity.
 const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
 
+/// Sort points for a file that stopped parsing: the whole 0–100 scale, as
+/// every score it had is gone.
+const UNPARSED_MAGNITUDE: f64 = 100.0;
+
 /// Whether the change is ready to merge under the configured gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -228,6 +232,8 @@ pub fn evaluate(
     for file in files {
         if file.is_new() {
             new_file_findings(file, &mut found);
+        } else if stopped_parsing(file) {
+            found.push(unparsed_finding(file));
         } else {
             // A split parent's fan-out rose only because it imports its
             // own children: COMPOSABLE is set aside, as its status did.
@@ -449,6 +455,33 @@ fn changed_file_findings(
             found.push(finding);
         }
     }
+}
+
+/// Scored at base, unparseable at head. No pillar has a head score, so a
+/// per-pillar comparison would find nothing to compare.
+fn stopped_parsing(file: &FileRecap) -> bool {
+    file.medal_after.is_none()
+        && file
+            .pillars
+            .values()
+            .any(|delta| delta.before_score.is_some())
+}
+
+/// A file that stopped parsing loses every pillar at once: one
+/// `pillar_lost` finding for the file, naming the cause.
+fn unparsed_finding(file: &FileRecap) -> Finding {
+    let mut finding = Finding::new(
+        GateId::PillarLost,
+        &file.path,
+        format!(
+            "{} parsed at base and no longer parses at head, so no pillar can be \
+             measured: every pillar it held is lost.",
+            file.path
+        ),
+    );
+    finding.fix = "Fix the syntax error so the file parses again.".to_string();
+    finding.magnitude = UNPARSED_MAGNITUDE;
+    finding
 }
 
 /// A finding about one pillar's gate, pointed at the hotspot for that
@@ -872,6 +905,7 @@ pub fn summary(cfg: &PrGateConfig, source: Option<&Path>) -> GateSummary {
         fail_on: cfg.fail_on.as_str(),
         changes: cfg.overrides().len(),
         source: source.map(|path| path.display().to_string()),
+        unapplied: Vec::new(),
         max_hotspots: cfg.max_hotspots as usize,
     }
 }
@@ -909,8 +943,8 @@ mod tests {
     use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 
     use super::super::model::{
-        ClusterChild, ClusterMark, ClusterMembership, ClusterRole, FileChange, FunctionRef,
-        Hotspot, Medal, PillarDelta,
+        Attachment, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, FileChange,
+        FunctionRef, Hotspot, Medal, PillarDelta,
     };
     use super::*;
 
@@ -1074,6 +1108,7 @@ mod tests {
             parent: parent.to_string(),
             children: vec![ClusterChild {
                 path: child.to_string(),
+                attached_by: Attachment::ImportLine,
                 reach: None,
                 importers: Vec::new(),
                 moved_in: 1,
@@ -1792,5 +1827,34 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, "src/old.rs");
         assert_eq!(found[0].related, ["src/user.rs"]);
+    }
+
+    #[test]
+    fn a_file_that_stops_parsing_is_one_blocking_pillar_lost() {
+        use super::super::tests::{commit_all, recap, write_files, write_repo};
+
+        let (_keep, repo) = write_repo(&[("src/a.py", "def ready():\n    return 1\n")]);
+        write_files(&repo, &[("src/a.py", "def broken(:\n")]);
+        commit_all(&repo, "break the file");
+        let broken = recap(&repo, "HEAD~1", "HEAD", 0);
+        assert_eq!(broken.readiness, Readiness::Blocked);
+        assert_eq!(broken.exit_code, 1);
+        let [finding] = broken.findings.as_slice() else {
+            panic!("one finding for the file: {:?}", broken.findings);
+        };
+        assert_eq!(finding.gate, GateId::PillarLost);
+        assert_eq!(finding.severity, Severity::Block);
+        assert_eq!(finding.path, "src/a.py");
+        assert!(
+            finding.text.contains("no longer parses at head"),
+            "{}",
+            finding.text
+        );
+        assert_eq!(broken.reason, finding.text);
+
+        write_files(&repo, &[("src/a.py", "def still_broken(:\n")]);
+        commit_all(&repo, "leave it broken");
+        let unchanged = recap(&repo, "HEAD~1", "HEAD", 0);
+        assert!(unchanged.findings.is_empty(), "{:?}", unchanged.findings);
     }
 }

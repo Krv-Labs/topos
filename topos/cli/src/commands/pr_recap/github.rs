@@ -57,6 +57,9 @@ pub(super) fn render_github(recap: &PrRecap) -> String {
     let _ = writeln!(head, "{}\n", title(&view));
     let _ = writeln!(head, "<sub>{}</sub>\n", meta(&view));
     let _ = writeln!(head, "**Why:** {}.\n", headline(recap, &items));
+    if let Some(note) = recap.gate.unapplied_note() {
+        let _ = writeln!(head, "**Config:** {note}\n");
+    }
     let summary = summary(&view);
     if !summary.is_empty() {
         let _ = writeln!(head, "{summary}\n");

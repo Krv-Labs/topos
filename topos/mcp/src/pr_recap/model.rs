@@ -219,9 +219,23 @@ pub enum ClusterMark {
     Fail,
 }
 
+/// What made a new file a candidate child of a split. Either way it is
+/// kept only when code moved into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Attachment {
+    /// The base and head dependency graphs report the split.
+    Graph,
+    /// No graphs were measured: the parent's head source has an import
+    /// line naming the file.
+    ImportLine,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ClusterChild {
     pub path: String,
+    /// The evidence that tied this child to the parent.
+    pub attached_by: Attachment,
     /// `None` when COMPOSABLE was not measured.
     pub reach: Option<Reach>,
     /// Distinct files importing or calling this child at head, excluding itself.
@@ -438,13 +452,37 @@ pub struct GateSummary {
     pub fail_on: &'static str,
     /// Settings that differ from the preset's.
     pub changes: usize,
-    /// The `.topos.toml` consulted, or `None` when `--preset` set the
-    /// policy or no file was found.
+    /// The `.topos.toml` consulted, read at the base revision, or `None`
+    /// when `--preset` set the policy or the base has no file.
     pub source: Option<String>,
+    /// What the change itself does to `.topos.toml`, one phrase per edit
+    /// (`fail_on: block → never`, `waiver added: pillar_lost on src/**`).
+    /// None of it judged this run: an edit counts once it is on the base.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unapplied: Vec<String>,
     /// How many findings a card lists before folding the rest into
     /// `N more` (`max_hotspots`). Rendering only; not in the document.
     #[serde(skip)]
     pub max_hotspots: usize,
+}
+
+impl GateSummary {
+    /// One sentence on the config edits that were set aside, for a card.
+    pub fn unapplied_note(&self) -> Option<String> {
+        unapplied_note(&self.unapplied)
+    }
+}
+
+/// One sentence listing `edits` to `.topos.toml` that were set aside, or
+/// `None` when there are none.
+pub fn unapplied_note(edits: &[String]) -> Option<String> {
+    (!edits.is_empty()).then(|| {
+        format!(
+            "This change edits .topos.toml. It is judged by the base revision's config, so \
+             these edits were not applied: {}.",
+            edits.join("; ")
+        )
+    })
 }
 
 /// What one `[[pr_recap.waive]]` entry did on this run.

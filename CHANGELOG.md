@@ -70,6 +70,13 @@ every other error from each command.
 
 ### Fixed
 
+- `topos update` no longer misses an outdated install when the machine is
+  busy. Asking each `topos` binary for its version gave up after two seconds,
+  which a healthy binary can exceed on a loaded CI runner; the install then
+  showed an unknown version and `topos update --yes` skipped it. Installs are
+  now asked in parallel and each gets five seconds, the same budget as the
+  release lookup.
+
 - A file named by two overlapping path arguments spelled differently
   (`topos evaluate src ./src/a.py -r`) is scored once instead of twice.
 

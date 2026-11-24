@@ -180,6 +180,8 @@ Readiness / exit codes:
   under strict), not `pillar_lost`; a moved function that grew still loses it.
   The same holds for a new file: a function moved into it unchanged is
   `moved_pillar`, not `new_file_pillar`.
+  A test or literal-data file that fails SIMPLE on entropy alone (repeated
+  cases or table entries) warns instead of blocking, except under strict.
   The policy is the flags, else the nearest .topos.toml, else the recommended
   preset. --preset picks a built-in preset and ignores the file's [pr_recap],
   waivers included; --fail-on sets fail_on (block, warn, or never), --strict

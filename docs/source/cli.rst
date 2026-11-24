@@ -430,6 +430,23 @@ warn under strict. A score drop the same move explains is info. A moved
 function that grew on the way is still ``pillar_lost``, and a SECURE loss is
 never excused when the range as a whole gained SECURE findings.
 
+Repeated text is expected in tests and in literal data, so a file there that
+fails SIMPLE only because ``ast.entropy`` fell out of its band (every other
+SIMPLE gate still passes) is at most ``warn`` under the relaxed and recommended
+presets, and the finding says why. Under strict it keeps its gate's severity
+(``pillar_lost`` blocks). A *test file* sits under a ``tests``, ``test`` or
+``__tests__`` directory, is named ``*_test.*``, ``test_*.py``, ``*.test.*`` or
+``*.spec.*``, or is more than half inline tests as structural coverage counts
+them (Rust ``#[cfg(test)]`` and ``#[test]`` items, Go ``Test*`` functions,
+Python ``test_*`` functions and ``Test*`` classes). A *data file* makes no
+decision anywhere (no branch, loop, comprehension or short-circuit) and has
+more than half of its text inside literal collections: dict, list, tuple and
+set displays, object and array literals, Rust array, tuple and struct
+expressions, Go composite literals, C++ brace initializers. A class of trivial
+accessors is neither, so it still blocks. Repetitive tests can be parametrized
+(one table of cases run by one test); large tables can move to a data file the
+code loads.
+
 Three gates read the file dependency graphs at base and head, so they run only
 when COMPOSABLE was measured (not with ``--no-coupling``), and they see every
 changed source file, not only the ``--max-files`` that were scored:

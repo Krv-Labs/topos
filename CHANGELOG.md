@@ -28,6 +28,21 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Changed
 
+- An empty or whitespace-only file has no `ast.entropy` reading, so the
+  entropy gate no longer fails it: an empty `__init__.py` passes SIMPLE in
+  `topos evaluate` and every MCP tool (and so counts toward badge pass
+  rates), instead of being told to consolidate repetitive code. `topos_inspect_code` reports no entropy ratio
+  for it.
+- `topos pr-recap`: a test file or literal-data file that fails SIMPLE only
+  because `ast.entropy` fell below its band now warns instead of blocking
+  under the relaxed and recommended presets (strict still blocks). The
+  finding says that entropy measures repeated text, that the file is a test
+  or data file, and how to clear it (parametrize repeated cases, or load the
+  table from a data file). A test file follows the test-path conventions or
+  is mostly inline tests; a data file makes no decision and is mostly literal
+  collections. Ordinary code that turns repetitive still blocks, as does a
+  test file that loses SIMPLE through function complexity.
+
 - SECURE reads a call's callee from its syntax instead of the text that
   follows it, so `cpg.dangerous_calls` and `cpg.taint_flows` now see
   `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`, `x!.eval()`, a receiver on the

@@ -69,6 +69,15 @@ desirabilities, so `achieved` ⇔ score ≥ 50. A dispatch module with
 least 50; the high cyclomatic reading lowers the score within the passing
 half and is flagged if it is atypical for the codebase.
 
+**`ast.entropy` measures repeated text.** Below 0.2 the file compresses
+very well, which usually means repeated code. An empty or whitespace-only
+file has no entropy reading at all (the key is absent from `raw_metrics`),
+so the entropy gate does not apply and the file is judged on
+`ast.max_function_complexity` alone; an empty `__init__.py` passes SIMPLE.
+In `topos pr-recap`, a test file or literal-data file that fails SIMPLE on
+entropy alone warns rather than blocks outside the strict preset (see the
+`pr-recap` gates in the CLI docs).
+
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
 `mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`

@@ -7,7 +7,6 @@ on:
       - "topos/**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - "scripts/generate_self_badge.py"
       - ".github/workflows/badge.yml"
   pull_request:
     branches: [main]
@@ -15,7 +14,6 @@ on:
       - "topos/**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - "scripts/generate_self_badge.py"
       - ".github/workflows/badge.yml"
   workflow_dispatch:
 
@@ -69,25 +67,24 @@ jobs:
       - name: Generate self badge
         run: |
           set -euo pipefail
-          python scripts/generate_self_badge.py --summary-json | tee badge-summary.json
+          ./target/release/topos badge topos/cli topos/engine topos/mcp \
+            --out docs/source/_static/topos-badge.svg \
+            --endpoint docs/source/_static/topos-badge.json
 
       - name: Print badge report
         run: |
-          echo "=== Self badge summary ==="
-          cat badge-summary.json
+          echo "=== Badge endpoint ==="
+          cat docs/source/_static/topos-badge.json
           echo ""
           echo "=== Badge SVG ==="
-          cat docs/source/_static/topos-lattice-badge.svg
-          echo ""
-          echo "=== Footer badge SVG ==="
-          cat docs/source/_static/topos-verdict.svg
+          cat docs/source/_static/topos-badge.svg
 
       - name: Commit badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/source/_static/topos-lattice-badge.svg docs/source/_static/topos-verdict.svg
+          git add docs/source/_static/topos-badge.svg docs/source/_static/topos-badge.json
           if git diff --staged --quiet; then
             echo "Badge unchanged"
           else

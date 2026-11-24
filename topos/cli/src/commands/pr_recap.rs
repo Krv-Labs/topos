@@ -132,9 +132,13 @@ Changed files (--verbose):
     ✓ NAVIGABLE gained  a pillar the base failed now passes.
     ↓ SIMPLE 69 → 64    a score moved at least one point without crossing a gate.
     new                 an added file; `X SECURE fails` when it arrives failing.
-                        New code is gated like changed code; a split child is
-                        judged through its split instead, since moved code
-                        brings its findings with it.
+                        New code is gated like changed code: a new file failing
+                        SIMPLE or NAVIGABLE blocks (new_file_pillar), as a lost
+                        pillar does; failing COMPOSABLE is info (warn under
+                        strict). A split child is judged through its split, since
+                        moved code brings its findings with it, except for new
+                        logic: a function over the SIMPLE or NAVIGABLE limit
+                        that did not move unchanged still blocks.
     cosmetic            scores moved while the syntax tree barely changed (an
                         agent-slop signal: the shape of the code is the same, the
                         numbers are not).
@@ -174,6 +178,8 @@ Readiness / exit codes:
   ([pr_recap.score_drop]); a smaller one is info. A pillar lost only because
   code moved in from another file in the range is `moved_pillar` (info, warn
   under strict), not `pillar_lost`; a moved function that grew still loses it.
+  The same holds for a new file: a function moved into it unchanged is
+  `moved_pillar`, not `new_file_pillar`.
   The policy is the flags, else the nearest .topos.toml, else the recommended
   preset. --preset picks a built-in preset and ignores the file's [pr_recap],
   waivers included; --fail-on sets fail_on (block, warn, or never), --strict
@@ -195,6 +201,9 @@ Range:
   The base side is the merge-base of the base and the head, so commits that
   landed on the base branch after the fork are not charged to the change. With no
   arguments, uncommitted edits (tracked and untracked) are reviewed against HEAD.
+  A PR number is resolved through `gh`. A pull request from a fork is fetched
+  from `origin`'s `refs/pull/<N>/head`, so `origin` must be the repository the
+  pull request targets; no remote for the fork is needed.
   Every scorable file is scored; pass --max-files N to score only the N files
   with the most changed lines, in which case the recap is marked incomplete
   and the rest are listed as skipped.

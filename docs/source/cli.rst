@@ -575,9 +575,9 @@ badge
 
 Write a medal badge for any repository. ``badge`` scores the paths the same
 way ``evaluate -r`` does and renders the project result: a pillar counts as
-passed only when every scored file passes it, and the medal is the number of
-passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``, ``BRONZE``, or
-``NO MEDAL``).
+passed only when every scored file was measured for it and passes it, and the
+medal is the number of passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``,
+``BRONZE``, or ``NO MEDAL``).
 
 .. code-block:: bash
 
@@ -593,10 +593,11 @@ passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``, ``BRONZE``, or
      - Files or directories to score (default: current directory).
        Directories are searched recursively.
    * - ``-o``, ``--out PATH``
-     - Write the SVG to ``PATH``. Missing parent directories are created.
+     - Write the SVG to ``PATH``; ``-`` prints it to standard output. Missing
+       parent directories are created.
    * - ``--endpoint PATH``
      - Write a `shields.io endpoint <https://shields.io/badges/endpoint-badge>`_
-       JSON document to ``PATH``.
+       JSON document to ``PATH``. It must not be the ``--out`` path.
    * - ``--style lattice|verdict``
      - ``lattice`` (default) draws one chip per pillar; ``verdict`` draws the
        Topos mark beside the medal.
@@ -608,14 +609,25 @@ passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``, ``BRONZE``, or
      - Use this ``.gitnexus`` store for COMPOSABLE.
 
 With none of ``--out``, ``--endpoint``, or ``--json``, the SVG is printed to
-standard output. A low medal is not an error: the command exits ``0`` whatever
-the result and non-zero only when it cannot score or write.
+standard output. Each file written is named on standard error, along with
+progress when standard error is a terminal. A low medal is not an error: the
+command exits ``0`` whatever the result and non-zero only when it cannot score
+or write.
 
 In the ``lattice`` design a passed pillar takes the medal color, a failed
 pillar is dark gray, and a pillar that was not measured is a light chip with
-dark text. COMPOSABLE is not measured when no dependency graph is available;
-it does not count for or against the medal, so three passed pillars out of
-three measured is ``GOLD``.
+dark text. A pillar that was not measured does not count for or against the
+medal, so three passed pillars out of three measured is ``GOLD``.
+
+COMPOSABLE needs a dependency graph. When GitNexus is installed, ``badge``
+builds or refreshes one in ``.gitnexus/`` at the project root, as ``evaluate``
+does; pass ``--no-composable`` to skip that and leave ``.gitnexus/`` untouched.
+COMPOSABLE is reported as not measured when there is no graph, and also when
+the graph has no entry for one or more of the scored files (a stale graph, or
+a file outside the indexed project): a file the graph does not know cannot
+pass. The command then warns with the number of files missing from the graph;
+``topos depgraph generate`` refreshes it. A pillar that a measured file fails
+is still reported as failed.
 
 **Examples**
 
@@ -632,7 +644,11 @@ three measured is ``GOLD``.
    ![Topos](docs/topos.svg)
    ![Topos](https://img.shields.io/endpoint?url=https://example.com/badges/topos.json)
 
-The endpoint document looks like this:
+shields.io fetches the endpoint document itself, so ``url`` must be a public
+``https`` address of the committed or published file, for example
+``https://raw.githubusercontent.com/OWNER/REPO/main/badges/topos.json`` or a
+GitHub Pages URL such as ``https://OWNER.github.io/REPO/badges/topos.json``.
+The document looks like this:
 
 .. code-block:: json
 

@@ -16,9 +16,15 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
   an SVG (`--out`, or standard output), a shields.io endpoint document
   (`--endpoint`), or JSON (`--json`). `--style lattice` draws one chip per
   pillar and `--style verdict` draws the Topos mark beside the medal. A pillar
-  that was not measured, such as COMPOSABLE without a dependency graph, gets
-  its own chip and does not count against the medal. The command exits `0`
-  whatever the medal.
+  that was not measured gets its own chip and does not count against the
+  medal: COMPOSABLE without a dependency graph, or with a graph that has no
+  entry for some scored file (the command warns with the count). The command
+  exits `0` whatever the medal.
+
+### Fixed
+
+- A file named by two overlapping path arguments spelled differently
+  (`topos evaluate src ./src/a.py -r`) is scored once instead of twice.
 
 ## [0.15.0] - 2026-10-30
 

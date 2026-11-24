@@ -1,14 +1,14 @@
+mod coverage;
 mod model;
 mod svg;
 
 use std::path::{Path, PathBuf};
 
-use clap::{Args, ValueEnum};
-use topos_engine::core::characteristic_morphism::CharacteristicMorphism;
-
 use super::evaluate::inputs::resolve_evaluate_inputs;
 use super::evaluate::{evaluate_project, lease_inputs, EvaluateArgs};
+use clap::{Args, ValueEnum};
 
+use self::coverage::measured_rollup;
 use self::model::Badge;
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -24,7 +24,7 @@ pub struct BadgeArgs {
     /// Files or directories to evaluate; directories are searched recursively.
     #[arg(default_value = ".")]
     pub paths: Vec<PathBuf>,
-    /// Write the SVG here instead of printing it.
+    /// Write the SVG here instead of printing it (`-` prints it).
     #[arg(short, long, value_name = "PATH")]
     pub out: Option<PathBuf>,
     /// Write a shields.io endpoint JSON document here.
@@ -45,6 +45,7 @@ pub struct BadgeArgs {
 }
 
 pub fn run(args: BadgeArgs) -> Result<(), String> {
+    check_outputs(&args)?;
     let evaluate_args = EvaluateArgs {
         paths: args.paths.clone(),
         recursive: true,
@@ -52,7 +53,7 @@ pub fn run(args: BadgeArgs) -> Result<(), String> {
         no_composable: args.no_composable,
         gitnexus_dir: args.gitnexus_dir.clone(),
         verbose: false,
-        json: true,
+        json: args.json,
         info: false,
         failures: None,
         priority: None,
@@ -63,11 +64,66 @@ pub fn run(args: BadgeArgs) -> Result<(), String> {
     }
     let _cache_leases = lease_inputs(&inputs)?;
     let evaluation = evaluate_project(&evaluate_args, &inputs)?;
-    for warning in &evaluation.warnings {
+    let rollup = measured_rollup(&evaluation.results);
+    let warnings = [evaluation.warnings, rollup.warnings].concat();
+    for warning in &warnings {
         eprintln!("warning: {warning}");
     }
-    let badge = Badge::from_rollup(&CharacteristicMorphism.combine_dimensions(&evaluation.results));
-    emit(&args, &badge, inputs.len(), &evaluation.warnings)
+    emit(
+        &args,
+        &Badge::from_rollup(&rollup.overall),
+        inputs.len(),
+        &warnings,
+    )
+}
+
+fn svg_to_stdout(args: &BadgeArgs) -> bool {
+    match &args.out {
+        Some(path) => path.as_os_str() == "-",
+        None => args.endpoint.is_none() && !args.json,
+    }
+}
+
+fn svg_file(args: &BadgeArgs) -> Option<&Path> {
+    args.out.as_deref().filter(|path| path.as_os_str() != "-")
+}
+
+fn check_outputs(args: &BadgeArgs) -> Result<(), String> {
+    if args.json && svg_to_stdout(args) {
+        return Err(
+            "--out - cannot be combined with --json; both print to standard output".to_string(),
+        );
+    }
+    let Some(endpoint) = &args.endpoint else {
+        return Ok(());
+    };
+    if endpoint.as_os_str() == "-" {
+        return Err("--endpoint needs a file path; only --out can print with `-`".to_string());
+    }
+    match svg_file(args) {
+        Some(out) if same_file(out, endpoint) => Err(format!(
+            "--out and --endpoint name the same file ({}); give each its own path",
+            out.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn same_file(left: &Path, right: &Path) -> bool {
+    normalized(left) == normalized(right)
+}
+
+fn normalized(path: &Path) -> PathBuf {
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    if let Ok(existing) = absolute.canonicalize() {
+        return existing;
+    }
+    match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(name)) => parent
+            .canonicalize()
+            .map_or(absolute.clone(), |parent| parent.join(name)),
+        _ => absolute,
+    }
 }
 
 fn emit(args: &BadgeArgs, badge: &Badge, files: usize, warnings: &[String]) -> Result<(), String> {
@@ -75,21 +131,27 @@ fn emit(args: &BadgeArgs, badge: &Badge, files: usize, warnings: &[String]) -> R
         BadgeStyle::Lattice => svg::render_lattice(badge),
         BadgeStyle::Verdict => svg::render_verdict(badge),
     };
-    if let Some(path) = &args.endpoint {
-        write_output(path, &format!("{}\n", pretty(&badge.endpoint_json())?))?;
-    }
-    if let Some(path) = &args.out {
-        write_output(path, &image)?;
+    let endpoint = format!("{}\n", pretty(&badge.endpoint_json())?);
+    let written = [
+        (args.endpoint.as_deref(), endpoint.as_str()),
+        (svg_file(args), image.as_str()),
+    ];
+    for (path, contents) in written {
+        let Some(path) = path else { continue };
+        write_output(path, contents)?;
+        eprintln!("Wrote {}", path.display());
     }
     if args.json {
         println!("{}", pretty(&badge.result_json(files, warnings))?);
-    } else if args.out.is_none() && args.endpoint.is_none() {
+    } else if svg_to_stdout(args) {
         print!("{image}");
-    } else {
+    }
+    if written.iter().any(|(path, _)| path.is_some()) {
         eprintln!(
-            "{} · {} ({files} files)",
+            "{} · {} ({files} file{})",
             badge.medal(),
-            badge.pillar_summary()
+            badge.pillar_summary(),
+            if files == 1 { "" } else { "s" }
         );
     }
     Ok(())

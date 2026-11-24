@@ -556,3 +556,190 @@ fn a_generated_header_skips_a_file_only_when_the_base_has_it() {
         run.stdout
     );
 }
+
+/// One more commit on top of [`range`]'s two, made by `change`, so the
+/// range under review is `HEAD~1..HEAD` with moves and deletions in it.
+fn then(repo: &Path, change: impl FnOnce()) {
+    change();
+    git(repo, &["add", "-A"]);
+    git(repo, &["commit", "-qm", "change"]);
+}
+
+fn first_finding(value: &Value) -> (&str, &str) {
+    let finding = &value["findings"][0];
+    (
+        finding["gate"].as_str().unwrap_or(""),
+        finding["path"].as_str().unwrap_or(""),
+    )
+}
+
+/// A generated file whose header the change removes is hand-written code
+/// nobody reviewed: it is judged as a new file, in place or renamed.
+#[test]
+fn a_generated_file_that_loses_its_header_is_judged_as_new() {
+    let generated = format!("{GENERATED}{CLEAN}");
+    let (_keep, repo, bin) = range(
+        &[("README.md", "# hi\n")],
+        &[("src/gen.py", generated.as_str())],
+    );
+    then(&repo, || fs::write(repo.join("src/gen.py"), SHELL).unwrap());
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(first_finding(&value), ("new_file_insecure", "src/gen.py"));
+
+    let (_keep, repo, bin) = range(
+        &[("README.md", "# hi\n")],
+        &[("src/gen.py", generated.as_str())],
+    );
+    then(&repo, || {
+        git(&repo, &["mv", "src/gen.py", "src/handwritten.py"]);
+        fs::write(repo.join("src/handwritten.py"), SHELL).unwrap();
+    });
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(
+        first_finding(&value),
+        ("new_file_insecure", "src/handwritten.py")
+    );
+}
+
+/// A file moved out of a skipped place was never reviewed at base, so its
+/// old content is no baseline: it is judged as a new file.
+#[test]
+fn a_file_promoted_out_of_a_skipped_path_is_judged_as_new() {
+    for (from, to) in [
+        ("fixtures/evil.py", "src/evil.py"),
+        ("notes/evil.txt", "src/evil.py"),
+        ("samples/evil.py", "src/evil.py"),
+    ] {
+        let (_keep, repo, bin) = range(
+            &[("README.md", "# hi\n"), (".toposignore", "samples/\n")],
+            &[(from, SHELL)],
+        );
+        then(&repo, || {
+            fs::create_dir_all(repo.join("src")).unwrap();
+            git(&repo, &["mv", from, to]);
+        });
+        let run = committed_range(&repo, &bin, &[]);
+        let value = json(&run);
+        assert_eq!(run.code, 1, "{from}: {value:#}");
+        assert_eq!(first_finding(&value), ("new_file_insecure", to), "{from}");
+    }
+}
+
+/// The author picks the path, so source that was skipped must be named
+/// where a maintainer reads, without failing the check.
+#[test]
+fn skipped_source_files_are_named_in_every_output() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[
+            ("tests/fixtures/evil.py", SHELL),
+            ("vendor/lib.py", SHELL),
+            ("README.md", "# hi\n"),
+        ],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 0, "{value:#}");
+    assert_eq!(value["scope"]["files_skipped"], 3);
+    assert_eq!(value["scope"]["files_unreviewed"], 2);
+    let source = |path: &str| {
+        value["skipped"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|file| file["path"] == path)
+            .map(|file| file["source"] == true)
+    };
+    assert_eq!(source("tests/fixtures/evil.py"), Some(true));
+    assert_eq!(source("README.md"), Some(false));
+
+    let range_args = ["pr-recap", "--base", "HEAD~1", "--head", "HEAD"];
+    let card = topos(&repo, &bin, &range_args);
+    assert!(
+        card.stdout.contains("2 source files not reviewed")
+            && card.stdout.contains("tests/fixtures/evil.py"),
+        "{}",
+        card.stdout
+    );
+    let mut github = range_args.to_vec();
+    github.extend(["--format", "github"]);
+    let comment = topos(&repo, &bin, &github);
+    assert!(
+        comment.stdout.contains("**Not reviewed**") && comment.stdout.contains("`vendor/lib.py`"),
+        "{}",
+        comment.stdout
+    );
+}
+
+/// The remedy for a file Topos cannot parse is on the card, both halves.
+#[test]
+fn an_unparseable_file_says_how_to_fix_or_exempt_it() {
+    let (_keep, repo, bin) = range(&[("src/a.py", CLEAN)], &[("src/new.py", BROKEN)]);
+    for format in ["card", "github"] {
+        let run = topos(
+            &repo,
+            &bin,
+            &[
+                "pr-recap", "--base", "HEAD~1", "--head", "HEAD", "--format", format,
+            ],
+        );
+        assert!(
+            run.stdout.contains("fix the syntax error")
+                && run.stdout.contains(".toposignore")
+                && run.stdout.contains("base branch"),
+            "{format}: {}",
+            run.stdout
+        );
+    }
+}
+
+#[test]
+fn a_split_child_says_what_attached_it_through_the_binary() {
+    let alpha = "def alpha(x):\n    if x:\n        return 1\n    return 0\n";
+    let moved = "def beta(x):\n    if x:\n        return 2\n    return 0\n\n\ndef gamma(x):\n    if x:\n        return 3\n    return 0\n";
+    let (_keep, repo, bin) = range(
+        &[("src/big.py", &format!("{alpha}\n\n{moved}"))],
+        &[
+            (
+                "src/big.py",
+                &format!("from helpers import beta, gamma\n\n\n{alpha}"),
+            ),
+            ("src/helpers.py", moved),
+        ],
+    );
+    let value = json(&committed_range(&repo, &bin, &[]));
+    let child = &value["clusters"][0]["children"][0];
+    assert_eq!(child["path"], "src/helpers.py", "{value:#}");
+    assert_eq!(child["attached_by"], "import_line");
+}
+
+/// The base branch moved on after the fork. Its tip is the policy, and
+/// what it changed is not charged to the branch as the branch's own edit.
+#[test]
+fn the_base_branch_tip_judges_a_branch_that_forked_before_it() {
+    let (_keep, repo, bin) = range(&[("README.md", "# hi\n")], &[("src/a.py", CLEAN)]);
+    git(&repo, &["branch", "-M", "main"]);
+    git(&repo, &["checkout", "-q", "-b", "feature"]);
+    then(&repo, || fs::write(repo.join("src/a.py"), SHELL).unwrap());
+    git(&repo, &["checkout", "-q", "main"]);
+    then(&repo, || {
+        fs::write(repo.join(".topos.toml"), SELF_WAIVER).unwrap()
+    });
+
+    let args = ["pr-recap", "--base", "main", "--head", "feature", "--json"];
+    let waived = topos(&repo, &bin, &args);
+    let value = json(&waived);
+    assert_eq!(waived.code, 0, "the tip's waiver applies: {value:#}");
+    assert_eq!(value["waivers"][0]["status"], "used");
+    assert!(value["gate"].get("unapplied").is_none(), "{value:#}");
+
+    then(&repo, || fs::remove_file(repo.join(".topos.toml")).unwrap());
+    let blocked = topos(&repo, &bin, &args);
+    let value = json(&blocked);
+    assert_eq!(blocked.code, 1, "the tip dropped the waiver: {value:#}");
+    assert!(value["gate"].get("unapplied").is_none(), "{value:#}");
+}

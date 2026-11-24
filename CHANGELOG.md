@@ -85,6 +85,15 @@ every other error from each command.
 
 ### Fixed
 
+- `topos evaluate` and the MCP tools no longer crash with a segmentation fault
+  on a dependency graph store that an interrupted `gitnexus analyze` left
+  half-written. Topos now checks for a leftover `lbug.wal` or an
+  `incrementalInProgress` flag in the store's `meta.json` before opening it,
+  and treats such a store as unloadable: evaluate regenerates it when GitNexus
+  is installed, and otherwise reports COMPOSABLE as not scored with a warning
+  that names the store and the fix (`topos depgraph generate --force`, or
+  delete the store directory).
+
 - `topos evaluate` no longer panics on a file name containing multi-byte
   characters (for example `src/ünîcödé/fîlé.ts`); the supported-suffix check
   now compares bytes instead of slicing the name mid-character.

@@ -478,8 +478,8 @@ impl GateSummary {
 pub fn unapplied_note(edits: &[String]) -> Option<String> {
     (!edits.is_empty()).then(|| {
         format!(
-            "This change edits .topos.toml. It is judged by the base revision's config, so \
-             these edits were not applied: {}.",
+            "This change edits .topos.toml or .toposignore. It is judged by the base \
+             revision's, so these edits were not applied: {}.",
             edits.join("; ")
         )
     })

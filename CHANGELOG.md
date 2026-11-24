@@ -36,8 +36,15 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 - A file that parsed at base and no longer parses at head now raises a
   blocking `pillar_lost` finding, and an added source file that does not
   parse raises a blocking `new_file_slop` finding, split child or not. Both
-  used to raise nothing, and the check passed. Skipped files (unsupported
-  types, generated or vendored paths) are still not judged.
+  used to raise nothing, and the check passed. Skipped files are still not
+  judged.
+- `topos pr-recap` skips the same files as `topos evaluate -r`, through the
+  same path rules: `fixtures`, `testdata` and `__snapshots__` directories and
+  the remaining cache directories are now skipped, as are paths in
+  `.toposignore` and files with a generated-code header. An intentionally
+  broken parser fixture no longer blocks. `.toposignore` and the header are
+  read at the base revision, so a change cannot use either to hide its own
+  file; `.toposignore` edits the change makes are listed in `gate.unapplied`.
 
 ## [0.15.0] - 2026-10-30
 

@@ -212,6 +212,7 @@ fn judging_for(
         gate: resolve_gate_policy(params.strict, preset, &topos.pr_recap),
         source: policy.source.filter(|_| preset.is_none()),
         unapplied: policy.unapplied,
+        ignore: policy.ignore,
         topos,
         today: today_utc(),
         cap_name: MCP_CAP_NAME,

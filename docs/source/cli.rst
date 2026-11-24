@@ -473,7 +473,7 @@ So a pull request that adds a waiver, turns a gate off, sets
 ``fail_on = "never"`` or allowlists a call for its own regression is still
 blocked by it. The edit takes effect once it is on the base branch.
 
-When the change does edit ``.topos.toml``, the recap says so instead of
+When the change does edit ``.topos.toml`` or ``.toposignore``, the recap says so instead of
 ignoring it silently: the card and the GitHub comment list each edit that was
 not applied (``fail_on: block → never``,
 ``waiver added: pillar_lost on src/**``), ``--json`` carries the same list as
@@ -494,9 +494,44 @@ compare, so it raises one ``pillar_lost`` finding for the whole file
 (``block`` under every preset): it can no longer be shown to hold any pillar
 it held. An added file that does not parse holds no pillar at all, so it
 lands as SLOP and raises ``new_file_slop`` (``block`` under every preset),
-whether or not it is a split child. Files the recap skips, such as
-unsupported file types and generated or vendored paths, are not parsed and
-raise nothing.
+whether or not it is a split child. Files the recap skips are not parsed
+and raise nothing.
+
+**Skipped files**
+
+A changed file is skipped, and never judged, when ``topos evaluate -r``
+would not score it either. The path rules are the same code as project
+discovery, so the two cannot disagree:
+
+- an unsupported file type;
+- a cache, build or dependency directory (``node_modules``, ``target``,
+  ``.venv``, ``htmlcov``, ..., and ``build``, ``dist``, ``out``,
+  ``coverage`` or ``env`` at the repository root);
+- a ``fixtures``, ``testdata``, ``vendor`` or ``__snapshots__`` directory at
+  any depth, so an intentionally broken parser fixture does not block;
+- a minified or bundled file (``*.min.*``, ``*.bundle.*``);
+- a path matched by ``.toposignore`` **at the base revision**;
+- a file that already carried a generated-code header (``@generated``,
+  ``Code generated ... DO NOT EDIT``) **at the base revision**.
+
+Each skipped file is listed with its reason in ``--json`` (``skipped``) and
+counted on the card.
+
+``.toposignore`` and the generated header are policy like ``.topos.toml``,
+so a change cannot bring its own: a ``.toposignore`` pattern the change adds
+is listed under ``gate.unapplied`` and hides nothing, a header added to an
+existing file does not skip it, and an added file is never skipped for its
+header. A newly added generated file is therefore scored until its path is
+in the base's ``.toposignore``.
+
+.. warning::
+   The directory names are a different matter, and they matter for a
+   required check. A change that puts code under a directory named
+   ``fixtures``, ``testdata``, ``vendor``, ``__snapshots__`` or
+   ``node_modules`` is not reviewed there, exactly as ``topos evaluate -r``
+   would not score it. The recap cannot tell a real fixture from code hidden
+   under that name. Review the ``skipped`` list of a pull request from an
+   untrusted contributor, or protect those paths with ``CODEOWNERS``.
 
 **Split evidence in --json**
 

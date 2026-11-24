@@ -179,13 +179,23 @@ Readiness / exit codes:
   .topos.toml never judges the change: a waiver, a looser gate, fail_on or an
   allowlist entry the change adds is listed as not applied (gate.unapplied in
   --json) and takes effect once it is on the base. With no arguments the base
-  is HEAD, so uncommitted config edits are not applied either. --preset picks a built-in preset and ignores the file's [pr_recap],
-  waivers included; --fail-on sets fail_on (block, warn, or never), --strict
+  is HEAD, so uncommitted config edits are not applied either. --preset picks
+  a built-in preset and ignores the file's [pr_recap], waivers included; --fail-on sets fail_on (block, warn, or never), --strict
   is fail_on = "warn", and --advisory is fail_on = "never" (always exit 0 on a
   verdict while still reporting readiness in the card and JSON). An error (a
   bad range, git or gh failing) exits 2. The direction (IMPROVEMENT, SCORE
   DOWN, LATERAL, ...) says which way the structure moved and never changes the
   exit code.
+
+Skipped files:
+  A changed file is skipped, listed with its reason and never judged, when
+  `topos evaluate -r` would not score it either: an unsupported file type; a
+  cache, build, vendor, fixtures, testdata or __snapshots__ directory; a
+  minified or bundled file; a path the base revision's .toposignore lists; or
+  a file that already carried a generated-code header at base. A
+  .toposignore entry or a generated header the change itself adds hides
+  nothing. A directory name does: code under a new fixtures/ or vendor/
+  directory is not reviewed, so read the skipped list (--json `skipped`).
 
 Waivers:
   A [[pr_recap.waive]] entry (gate, path glob, reason, optional expires =
@@ -464,6 +474,7 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         gate: resolve_gate_policy_from_args(&args, &topos.pr_recap),
         source: policy.source.filter(|_| args.preset.is_none()),
         unapplied: policy.unapplied,
+        ignore: policy.ignore,
         topos,
         today: today_utc(),
         cap_name: gates::CLI_CAP_NAME,
@@ -551,6 +562,7 @@ mod tests {
             gate: PrGateConfig::default(),
             source: None,
             unapplied: Vec::new(),
+            ignore: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }

@@ -69,8 +69,12 @@ pub struct Judging {
     pub topos: ToposConfig,
     pub gate: PrGateConfig,
     pub source: Option<PathBuf>,
-    /// Edits the range makes to `.topos.toml`, which did not judge it.
+    /// Edits the range makes to `.topos.toml` or `.toposignore`, which
+    /// did not judge it.
     pub unapplied: Vec<String>,
+    /// The base revision's `.toposignore` patterns: files under them are
+    /// skipped, as project discovery skips them.
+    pub ignore: Vec<String>,
     /// Today, `YYYY-MM-DD` in UTC: a waiver past its `expires` waives
     /// nothing.
     pub today: String,
@@ -483,7 +487,9 @@ pub fn build_recap(
     let mut skipped = Vec::new();
     let mut scoreable = Vec::new();
     for entry in diff.entries {
-        match skip_reason(&entry) {
+        let reason = skip_reason(&entry)
+            .or_else(|| policy::excluded_at_base(&repo, &base_sha, &entry, &judging.ignore));
+        match reason {
             Some(reason) => skipped.push(SkippedFile {
                 path: entry.path,
                 reason,
@@ -799,6 +805,7 @@ pub(super) mod tests {
             gate: PrGateConfig::default(),
             source: None,
             unapplied: Vec::new(),
+            ignore: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }

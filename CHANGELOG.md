@@ -9,6 +9,15 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Fixed
+
+- `topos update` no longer misses an outdated install when the machine is
+  busy. Asking each `topos` binary for its version gave up after two seconds,
+  which a healthy binary can exceed on a loaded CI runner; the install then
+  showed an unknown version and `topos update --yes` skipped it. Installs are
+  now asked in parallel and each gets five seconds, the same budget as the
+  release lookup.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

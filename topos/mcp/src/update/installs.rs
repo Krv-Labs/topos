@@ -16,6 +16,7 @@
 use std::path::{Path, PathBuf};
 
 use super::channel::{self, Channel};
+use super::release;
 
 /// File name of the topos executable on this platform.
 #[cfg(not(windows))]
@@ -45,14 +46,14 @@ impl Install {
 /// a source checkout invoked by absolute path is the case where `PATH` order
 /// says nothing useful.
 pub fn discover(home: &Path) -> Vec<Install> {
-    let mut found: Vec<Install> = Vec::new();
-    for dir in candidate_dirs(home) {
-        consider(&dir.join(EXE_NAME), home, &mut found);
-    }
+    let mut candidates: Vec<PathBuf> = candidate_dirs(home)
+        .into_iter()
+        .map(|dir| dir.join(EXE_NAME))
+        .collect();
     if let Ok(exe) = std::env::current_exe() {
-        consider(&absolutize(exe), home, &mut found);
+        candidates.push(absolutize(exe));
     }
-    found
+    probe_all(distinct_executables(candidates), home)
 }
 
 /// Directories worth looking in, in resolution order.
@@ -78,28 +79,45 @@ fn candidate_dirs(home: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-/// Add `path` to `found` if it is an executable file not already present.
-fn consider(path: &Path, home: &Path, found: &mut Vec<Install>) {
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) if metadata.is_file() => metadata,
-        _ => return,
-    };
-    // A file with no execute bit cannot be the binary a person is running; it
-    // is usually a partial extraction.
-    if lacks_exec_bit(&metadata) {
-        return;
+fn distinct_executables(candidates: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = Vec::new();
+    for path in candidates {
+        let executable = std::fs::metadata(&path)
+            // A file with no execute bit cannot be the binary a person is
+            // running; it is usually a partial extraction.
+            .is_ok_and(|metadata| metadata.is_file() && !lacks_exec_bit(&metadata));
+        if executable && !found.iter().any(|known| same_file(known, &path)) {
+            found.push(path);
+        }
     }
-    if found.iter().any(|known| same_file(&known.path, path)) {
-        return;
-    }
-    let channel = channel::classify(path, home);
-    let version = probe_version(path);
-    found.push(Install {
-        path: path.to_path_buf(),
-        channel,
-        version,
-    });
+    found
 }
+
+fn probe_all(paths: Vec<PathBuf>, home: &Path) -> Vec<Install> {
+    std::thread::scope(|scope| {
+        let probes: Vec<_> = paths
+            .into_iter()
+            .map(|path| {
+                scope.spawn(move || Install {
+                    channel: channel::classify(&path, home),
+                    version: probe_version(&path),
+                    path,
+                })
+            })
+            .collect();
+        probes
+            .into_iter()
+            .map(|probe| {
+                probe
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            })
+            .collect()
+    })
+}
+
+const PROBE_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(release::LOOKUP_TIMEOUT_SECS);
 
 /// Run `<path> --version` and pull the version out.
 ///
@@ -109,7 +127,7 @@ fn consider(path: &Path, home: &Path, found: &mut Vec<Install>) {
 /// present. A binary that hangs or refuses is bounded by the timeout and
 /// simply reports an unknown version.
 fn probe_version(path: &Path) -> Option<String> {
-    probe_version_with_timeout(path, std::time::Duration::from_secs(2))
+    probe_version_with_timeout(path, PROBE_TIMEOUT)
 }
 
 fn probe_version_with_timeout(path: &Path, timeout: std::time::Duration) -> Option<String> {
@@ -279,9 +297,11 @@ mod tests {
     fn the_test_binary_itself_is_discoverable_and_versioned() {
         // Proves the probe and the identity comparison against real files on
         // disk rather than fixtures.
-        let mut found = Vec::new();
         let exe = std::env::current_exe().unwrap();
-        consider(&exe, Path::new("/nonexistent-home"), &mut found);
+        let found = probe_all(
+            distinct_executables([exe.clone(), exe.clone()]),
+            Path::new("/nonexistent-home"),
+        );
         assert_eq!(found.len(), 1, "must be added exactly once");
         assert!(same_file(&found[0].path, &exe));
         // Whatever cargo test binary this is, it answers `--version` somehow;
@@ -300,8 +320,7 @@ mod tests {
             use std::os::unix::fs::PermissionsExt as _;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         }
-        let mut found = Vec::new();
-        consider(&path, Path::new("/nonexistent-home"), &mut found);
+        let found = distinct_executables([path]);
         assert!(
             found.is_empty(),
             "a file with no exec bit is not an install"
@@ -320,10 +339,10 @@ mod tests {
         let link = root.join("link").join(EXE_NAME);
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        let mut found = Vec::new();
-        let home = Path::new("/nonexistent-home");
-        consider(&link, home, &mut found);
-        consider(&target, home, &mut found);
+        let found = probe_all(
+            distinct_executables([link, target]),
+            Path::new("/nonexistent-home"),
+        );
         assert_eq!(found.len(), 1, "one physical file, one entry");
         assert_eq!(
             found[0].version.as_deref(),

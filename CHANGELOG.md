@@ -85,6 +85,10 @@ every other error from each command.
 
 ### Fixed
 
+- `topos evaluate` no longer panics on a file name containing multi-byte
+  characters (for example `src/ünîcödé/fîlé.ts`); the supported-suffix check
+  now compares bytes instead of slicing the name mid-character.
+
 - `topos update` no longer misses an outdated install when the machine is
   busy. Asking each `topos` binary for its version gave up after two seconds,
   which a healthy binary can exceed on a loaded CI runner; the install then

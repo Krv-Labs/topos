@@ -230,3 +230,93 @@ fn a_cold_store_builds_without_a_prompt_when_no_one_can_answer() {
     assert_no_prompt(&again);
     assert_eq!(reason(&json(&again)), "cached");
 }
+
+const CLEAN: &str = "def ready():\n    return 1\n";
+const SHELL: &str = "import os\n\ndef run(cmd):\n    os.system(cmd)\n";
+const SELF_WAIVER: &str =
+    "[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/**\"\nreason = \"trust me\"\n";
+const ADVISORY: &str = "[pr_recap]\nfail_on = \"never\"\n";
+const ALLOW_SHELL: &str = "[[secure.allow]]\npattern = \"os.system\"\nreason = \"trust me\"\n";
+
+/// A repository whose base commit holds `base` and whose head commit
+/// writes `head` over it, with an empty `bin` directory beside it.
+fn range(base: &[(&str, &str)], head: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let repo = dir.path().join("repo");
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(repo.join("src")).unwrap();
+    fs::create_dir_all(&bin).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["config", "user.email", "recap@example.com"]);
+    git(&repo, &["config", "user.name", "Recap"]);
+    for (message, files) in [("base", base), ("head", head)] {
+        for (path, body) in files {
+            fs::write(repo.join(path), body).unwrap();
+        }
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", message]);
+    }
+    (dir, repo, bin)
+}
+
+fn committed_range(repo: &Path, bin: &Path, extra: &[&str]) -> Run {
+    let mut args = vec!["pr-recap", "--base", "HEAD~1", "--head", "HEAD", "--json"];
+    args.extend(extra);
+    topos(repo, bin, &args)
+}
+
+fn gates(value: &Value) -> Vec<&str> {
+    value["findings"]
+        .as_array()
+        .expect("findings")
+        .iter()
+        .filter(|finding| finding.get("waived").is_none())
+        .filter_map(|finding| finding["gate"].as_str())
+        .collect()
+}
+
+#[test]
+fn a_waiver_the_change_adds_for_its_own_regression_does_not_pass_the_check() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[("src/a.py", SHELL), (".topos.toml", SELF_WAIVER)],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(value["check"], "fail");
+    assert!(gates(&value).contains(&"pillar_lost"), "{value:#}");
+}
+
+#[test]
+fn fail_on_never_set_by_the_change_does_not_pass_the_check() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[("src/a.py", SHELL), (".topos.toml", ADVISORY)],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(value["gate"]["fail_on"], "block");
+}
+
+#[test]
+fn an_allowlist_entry_the_change_adds_does_not_clear_its_own_dangerous_call() {
+    let (_keep, repo, bin) = range(
+        &[("src/a.py", CLEAN)],
+        &[("src/a.py", SHELL), (".topos.toml", ALLOW_SHELL)],
+    );
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert!(gates(&value).contains(&"pillar_lost"), "{value:#}");
+}
+
+#[test]
+fn a_file_that_stops_parsing_fails_the_check() {
+    let (_keep, repo, bin) = range(&[("src/a.py", CLEAN)], &[("src/a.py", "def broken(:\n")]);
+    let run = committed_range(&repo, &bin, &[]);
+    let value = json(&run);
+    assert_eq!(run.code, 1, "{value:#}");
+    assert_eq!(value["readiness"], "BLOCKED");
+}

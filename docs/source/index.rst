@@ -9,25 +9,25 @@ Topos
 .. raw:: html
 
    <div class="topos-hero">
-     <p class="topos-eyebrow">Code quality evaluation</p>
+     <p class="topos-eyebrow">Structural verification</p>
      <div class="topos-hero-row">
        <img class="topos-hero-logo only-light" src="_static/topos-logo.svg" alt="Topos" />
        <img class="topos-hero-logo only-dark" src="_static/topos-logo-dark.svg" alt="" aria-hidden="true" />
      </div>
-     <p class="topos-tagline">Structural code quality your agents can measure&nbsp;&mdash;&nbsp;and optimize toward.</p>
-     <p class="topos-lead"><strong>Stop paying agents to rediscover and repair their own structural mess.</strong>
-       Topos gives coding agents concrete quality targets before complexity, coupling, and risky data paths compound into expensive context archaeology.
-       Pick a preference ranking and Topos measures program structure&nbsp;&mdash;&nbsp;not just syntax&nbsp;&mdash;&nbsp;so agents can optimize toward the code shape you want on every pass.</p>
+     <p class="topos-tagline">Deterministic structural checks for the code your agents write.</p>
+     <p class="topos-lead"><strong>Stop trusting agent output because it looks right.</strong>
+       Topos measures program structure and returns a pass/fail verdict with a location for every failure, so the agent can fix its own work and the reviewer can see the evidence.
+       Pick a preference ranking, and Topos holds every pass to it.</p>
      <div class="topos-cta-row">
        <a class="topos-btn" href="quickstart.html">Get started →</a>
        <a class="topos-btn ghost" href="https://github.com/Krv-Labs/topos">View on GitHub</a>
      </div>
    </div>
 
-.. admonition:: Correctness is expected. Quality is the new currency.
+.. admonition:: Trust comes from checks, not from reading every diff.
    :class: philosophy-box
 
-   Passing unit tests only proves that your code is a solution to a finite set of requirements. Agents have proved to be exceptional at this and will continue to improve. We believe the new currency is the quality of these solutions. Topos provides the structural evaluations that empower coding agents to find higher quality solutions.
+   Passing tests proves that code meets a finite set of requirements, and agents are already good at that. What breaks down at agent speed is structure: complexity, coupling, and nesting that compound until no one, human or agent, can change the code safely. Topos makes structure a check with a pass/fail result, so it can gate a merge the same way a test does.
 
 .. grid:: 1 1 2 2
    :gutter: 3

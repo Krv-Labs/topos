@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Rust CLI for Topos structural code quality evaluation (binary name: topos)."
+description = "Rust CLI for Topos, structural verification for agent-written code (binary name: topos)."
 
 [[bin]]
 name = "topos"

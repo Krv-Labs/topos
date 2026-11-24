@@ -28,6 +28,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Changed
 
+- README, docs landing page, "For Agents" intro, CLI `--help` summary, and
+  crate description now describe Topos as a structural verification layer for
+  agent-written code rather than an agent harness. "Harness" now refers only
+  to the host agents that `topos install` configures.
+
 - SECURE reads a call's callee from its syntax instead of the text that
   follows it, so `cpg.dangerous_calls` and `cpg.taint_flows` now see
   `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`, `x!.eval()`, a receiver on the

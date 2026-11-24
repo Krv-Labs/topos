@@ -9,6 +9,19 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ## [Unreleased]
 
+### Changed
+
+- SECURE reads a call's callee from its syntax instead of the text that
+  follows it, so `cpg.dangerous_calls` and `cpg.taint_flows` now see
+  `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`, `x!.eval()`, a receiver on the
+  previous line, `window . eval(x)`, `a.b().eval(x)`, generic and cast
+  callees, Python `os .system(c)` and `(os.system)(c)`, every Rust
+  `::`-qualified call (`std::mem::transmute(p)`, `transmute::<A, B>(x)`,
+  `Box::from_raw(p)`), and JavaScript/TypeScript `new Function(...)`. Files
+  that passed SECURE because of how a call was spelled may now fail it. The
+  JavaScript/TypeScript `innerHTML` entry is removed: it is an assignment, not
+  a call, so it never matched.
+
 ## [0.15.0] - 2026-10-30
 
 ### Added

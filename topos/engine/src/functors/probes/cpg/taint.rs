@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::danger::{callee_from_text, effective_registry, matches_registry};
+use super::danger::{call_callee, effective_registry, matches_registry};
 use crate::graphs::cpg::models::CPGEdgeKind;
 use crate::graphs::cpg::object::CodePropertyGraph;
 
@@ -131,11 +131,10 @@ fn classify_sources_and_sinks<'a>(
             continue;
         }
         let snippet = text.trim();
-        if node.kind() == "CallExpr" {
-            let callee = callee_from_text(snippet);
-            if !callee.is_empty() && matches_registry(&callee, sink_registry.iter().copied()) {
-                sinks.insert(id.as_str());
-            }
+        if call_callee(cpg, node)
+            .is_some_and(|callee| matches_registry(&callee, sink_registry.iter().copied()))
+        {
+            sinks.insert(id.as_str());
         }
         if matches!(node.kind(), "Identifier" | "MemberExpr") && source_registry.contains(snippet) {
             sources.push(id.as_str());
@@ -277,5 +276,13 @@ mod tests {
         let result = parse_source(source, "python", None).unwrap();
         let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
         assert_eq!(taint_flow_paths(&cpg, &HashSet::new()), 0);
+    }
+
+    #[test]
+    fn a_parenthesized_sink_still_receives_the_flow() {
+        let source = "def f():\n    x = input()\n    (eval)(x)\n";
+        let result = parse_source(source, "python", None).unwrap();
+        let cpg = CodePropertyGraph::from_uast(&result.uast_root, source);
+        assert_eq!(taint_flow_paths(&cpg, &HashSet::new()), 1);
     }
 }

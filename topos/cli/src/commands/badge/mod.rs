@@ -6,18 +6,10 @@ use std::path::{Path, PathBuf};
 
 use super::evaluate::inputs::resolve_evaluate_inputs;
 use super::evaluate::{evaluate_project, lease_inputs, EvaluateArgs};
-use clap::{Args, ValueEnum};
+use clap::Args;
 
 use self::coverage::measured_rollup;
 use self::model::Badge;
-
-#[derive(Clone, Copy, ValueEnum)]
-pub enum BadgeStyle {
-    /// One chip per pillar, colored when the pillar passes.
-    Lattice,
-    /// The Topos mark beside the medal.
-    Verdict,
-}
 
 #[derive(Args)]
 pub struct BadgeArgs {
@@ -30,10 +22,7 @@ pub struct BadgeArgs {
     /// Write a shields.io endpoint JSON document here.
     #[arg(long, value_name = "PATH")]
     pub endpoint: Option<PathBuf>,
-    /// Badge design.
-    #[arg(long, value_enum, default_value = "lattice")]
-    pub style: BadgeStyle,
-    /// Print the medal and pillar results as JSON.
+    /// Print the per-pillar pass rates as JSON.
     #[arg(long)]
     pub json: bool,
     /// Skip GitNexus detection/generation; COMPOSABLE shows as not measured.
@@ -60,7 +49,7 @@ pub fn run(args: BadgeArgs) -> Result<(), String> {
     };
     let inputs = resolve_evaluate_inputs(&evaluate_args.paths, None, true)?;
     if inputs.is_empty() {
-        return Err("no supported source files found; nothing to award a badge to".to_string());
+        return Err("no supported source files found; nothing to badge".to_string());
     }
     let _cache_leases = lease_inputs(&inputs)?;
     let evaluation = evaluate_project(&evaluate_args, &inputs)?;
@@ -69,12 +58,8 @@ pub fn run(args: BadgeArgs) -> Result<(), String> {
     for warning in &warnings {
         eprintln!("warning: {warning}");
     }
-    emit(
-        &args,
-        &Badge::from_rollup(&rollup.overall),
-        inputs.len(),
-        &warnings,
-    )
+    let badge = Badge::new(&evaluation.results, &rollup.overall);
+    emit(&args, &badge, inputs.len(), &warnings)
 }
 
 fn svg_to_stdout(args: &BadgeArgs) -> bool {
@@ -127,10 +112,7 @@ fn normalized(path: &Path) -> PathBuf {
 }
 
 fn emit(args: &BadgeArgs, badge: &Badge, files: usize, warnings: &[String]) -> Result<(), String> {
-    let image = match args.style {
-        BadgeStyle::Lattice => svg::render_lattice(badge),
-        BadgeStyle::Verdict => svg::render_verdict(badge),
-    };
+    let image = svg::render(badge);
     let endpoint = format!("{}\n", pretty(&badge.endpoint_json())?);
     let written = [
         (args.endpoint.as_deref(), endpoint.as_str()),
@@ -147,10 +129,13 @@ fn emit(args: &BadgeArgs, badge: &Badge, files: usize, warnings: &[String]) -> R
         print!("{image}");
     }
     if written.iter().any(|(path, _)| path.is_some()) {
+        let unparsed = match badge.unparsed() {
+            0 => String::new(),
+            count => format!(", {count} unparsed"),
+        };
         eprintln!(
-            "{} · {} ({files} file{})",
-            badge.medal(),
-            badge.pillar_summary(),
+            "{} ({files} file{}{unparsed})",
+            badge.summary(),
             if files == 1 { "" } else { "s" }
         );
     }

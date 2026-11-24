@@ -26,7 +26,7 @@ const ROOT_COMMANDS: [(&str, &str); 14] = [
     ("config", "Set project priorities"),
     ("compare", "Compare two files"),
     ("coverage", "Compare source structure with tests"),
-    ("badge", "Write a medal badge for a README"),
+    ("badge", "Write a pass-rate badge for a README"),
     ("depgraph", "Build the COMPOSABLE graph"),
     ("cache", "Inspect, discover, and clean cache locations"),
     ("install", "Configure agent harnesses to use Topos"),
@@ -71,9 +71,9 @@ enum Command {
         after_help = "Examples:\n  topos coverage src/ --recursive --language rust\n  topos coverage src/lib.rs --tests tests/lib.rs --language rust\n  topos coverage src/ --tests tests/ --recursive --language rust"
     )]
     Coverage(coverage::CoverageArgs),
-    /// Write a medal badge (SVG, shields.io endpoint) for a repository.
+    /// Write a pass-rate badge (SVG, shields.io endpoint) for a repository.
     #[command(
-        after_help = "Examples:\n  topos badge --out docs/topos.svg\n  topos badge src/ --endpoint .github/badges/topos.json\n  topos badge --style verdict > topos.svg"
+        after_help = "Examples:\n  topos badge --out docs/topos.svg\n  topos badge src/ --endpoint .github/badges/topos.json\n  topos badge > topos.svg"
     )]
     Badge(badge::BadgeArgs),
     /// Build the GitNexus graph used by COMPOSABLE.

@@ -573,11 +573,10 @@ listed as skipped and the recap is marked incomplete.
 badge
 -----
 
-Write a medal badge for any repository. ``badge`` scores the paths the same
-way ``evaluate -r`` does and renders the project result: a pillar counts as
-passed only when every scored file was measured for it and passes it, and the
-medal is the number of passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``,
-``BRONZE``, or ``NO MEDAL``).
+Write a README badge for any repository. ``badge`` scores the paths the same
+way ``evaluate -r`` does and shows, for each pillar, the share of files that
+pass it: ``SIMPLE 85%``, ``COMPOSABLE 83%``, ``SECURE 100%``,
+``NAVIGABLE 96%``. The numbers rise as a team cleans up, one file at a time.
 
 .. code-block:: bash
 
@@ -598,36 +597,73 @@ medal is the number of passed pillars (``PLATINUM``, ``GOLD``, ``SILVER``,
    * - ``--endpoint PATH``
      - Write a `shields.io endpoint <https://shields.io/badges/endpoint-badge>`_
        JSON document to ``PATH``. It must not be the ``--out`` path.
-   * - ``--style lattice|verdict``
-     - ``lattice`` (default) draws one chip per pillar; ``verdict`` draws the
-       Topos mark beside the medal.
    * - ``--json``
-     - Print the medal, lattice element, and per-pillar state as JSON.
+     - Print the per-pillar pass rates, file counts, and warnings as JSON.
    * - ``--no-composable``
      - Skip GitNexus; COMPOSABLE is reported as not measured.
    * - ``--gitnexus-dir PATH``
      - Use this ``.gitnexus`` store for COMPOSABLE.
 
 With none of ``--out``, ``--endpoint``, or ``--json``, the SVG is printed to
-standard output. Each file written is named on standard error, along with
-progress when standard error is a terminal. A low medal is not an error: the
-command exits ``0`` whatever the result and non-zero only when it cannot score
-or write.
+standard output. Each file written is named on standard error, followed by a
+summary line such as
+``SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96% (252 files)``, and
+progress is shown when standard error is a terminal. A low rate is not an
+error: the command exits ``0`` whatever the result and non-zero only when it
+cannot score or write.
 
-In the ``lattice`` design a passed pillar takes the medal color, a failed
-pillar is dark gray, and a pillar that was not measured is a light chip with
-dark text. A pillar that was not measured does not count for or against the
-medal, so three passed pillars out of three measured is ``GOLD``.
+**How a rate is counted.** A pillar's rate is the number of files that pass it
+divided by the number of files measured for it, as a whole percent rounded
+down, so 99.6% shows as 99% and 100% always means every measured file passes.
+Files that cannot be parsed are left out of every rate and reported as a
+separate count. A pillar with no measured files shows ``n/a``.
+
+**Badge vs. evaluate.** ``topos evaluate`` keeps its strict project medal: a
+pillar holds only when every scored file passes it. That is the right gate for
+a change, but as a public badge it reads as failure for almost every real
+project, because one file in hundreds is enough to drop a pillar; well-kept
+projects such as ``requests`` and ``django`` get no medal at all. A pass rate
+says how much of the code meets each pillar and moves with every file fixed.
+``--json`` still reports the strict medal under ``strict`` for reference.
+
+**Reading the SVG.** The badge has a gray ``topos`` label followed by one
+segment per pillar, each with the full pillar name and its rate. Segments are
+colored on a fixed scale: 100% bright green, 95% and up green, 85% and up
+yellow-green, 70% and up yellow, 50% and up orange, below 50% red, and gray
+for ``n/a``. The image's ``aria-label`` and ``<title>`` spell out all four
+rates.
 
 COMPOSABLE needs a dependency graph. When GitNexus is installed, ``badge``
 builds or refreshes one in ``.gitnexus/`` at the project root, as ``evaluate``
 does; pass ``--no-composable`` to skip that and leave ``.gitnexus/`` untouched.
-COMPOSABLE is reported as not measured when there is no graph, and also when
-the graph has no entry for one or more of the scored files (a stale graph, or
-a file outside the indexed project): a file the graph does not know cannot
-pass. The command then warns with the number of files missing from the graph;
-``topos depgraph generate`` refreshes it. A pillar that a measured file fails
-is still reported as failed.
+Without a graph COMPOSABLE shows ``n/a``. When the graph has no entry for some
+of the scored files (a stale graph, or a file outside the indexed project),
+the COMPOSABLE rate is taken over the files the graph covers, the command
+warns with the number of files missing from it, and ``--json`` marks the
+pillar ``partial``; ``topos depgraph generate`` refreshes the graph.
+
+**JSON output.** Each pillar reports ``passed``, ``measured``, ``unmeasured``
+(scored files the pillar has no result for), ``rate`` (``null`` when not
+measured), and ``state`` (``measured``, ``partial``, or ``not_measured``):
+
+.. code-block:: json
+
+   {
+     "pillars": {
+       "simple": {"passed": 216, "measured": 252, "unmeasured": 0, "rate": 85, "state": "measured"},
+       "composable": {"passed": 201, "measured": 242, "unmeasured": 10, "rate": 83, "state": "partial"},
+       "secure": {"passed": 252, "measured": 252, "unmeasured": 0, "rate": 100, "state": "measured"},
+       "navigable": {"passed": 244, "measured": 252, "unmeasured": 0, "rate": 96, "state": "measured"}
+     },
+     "files": 252,
+     "unparsed": 0,
+     "strict": {
+       "rule": "a pillar holds only if every scored file passes it, as in `topos evaluate`",
+       "medal": "BRONZE",
+       "lattice_element": "SECURE"
+     },
+     "warnings": ["COMPOSABLE only partly measured — 10 of 252 files had no dependency-graph entry; ..."]
+   }
 
 **Examples**
 
@@ -648,15 +684,16 @@ shields.io fetches the endpoint document itself, so ``url`` must be a public
 ``https`` address of the committed or published file, for example
 ``https://raw.githubusercontent.com/OWNER/REPO/main/badges/topos.json`` or a
 GitHub Pages URL such as ``https://OWNER.github.io/REPO/badges/topos.json``.
-The document looks like this:
+An endpoint badge has a single message, so it lists all four rates and takes
+its color from the lowest measured rate:
 
 .. code-block:: json
 
    {
      "schemaVersion": 1,
      "label": "topos",
-     "message": "GOLD",
-     "color": "b45309"
+     "message": "SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96%",
+     "color": "dfb317"
    }
 
 Other commands

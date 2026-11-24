@@ -11,15 +11,18 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Added
 
-- `topos badge [PATHS]...` writes a medal badge for any repository. It scores
-  the paths the way `topos evaluate -r` does and renders the project result as
-  an SVG (`--out`, or standard output), a shields.io endpoint document
-  (`--endpoint`), or JSON (`--json`). `--style lattice` draws one chip per
-  pillar and `--style verdict` draws the Topos mark beside the medal. A pillar
-  that was not measured gets its own chip and does not count against the
-  medal: COMPOSABLE without a dependency graph, or with a graph that has no
-  entry for some scored file (the command warns with the count). The command
-  exits `0` whatever the medal.
+- `topos badge [PATHS]...` writes a README badge for any repository. It
+  scores the paths the way `topos evaluate -r` does and shows each pillar's
+  pass rate, the share of measured files that pass it, rounded down to a whole
+  percent (`SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96%`). Output
+  is a shields-style SVG with one colored segment per pillar (`--out`, or
+  standard output), a shields.io endpoint document (`--endpoint`), or JSON
+  with per-pillar counts (`--json`). Unparsed files are counted apart and left
+  out of every rate; a pillar with no measured files shows `n/a`; when the
+  dependency graph covers only some files, COMPOSABLE is rated over the
+  covered files with a warning. `topos evaluate` keeps its strict all-files
+  medal, which `--json` also reports for reference. The command exits `0`
+  whatever the rates.
 
 ### Fixed
 

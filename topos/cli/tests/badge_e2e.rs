@@ -77,10 +77,38 @@ fn assert_well_formed(svg: &str) {
     assert!(svg.ends_with("</svg>\n"));
 }
 
+fn write_tangle(root: &Path) {
+    let mut source = String::from(
+        "def tangle(a, b, c, d):\n    \"\"\"Branch on everything.\"\"\"\n    total = 0\n",
+    );
+    for i in 0..12 {
+        source.push_str(&format!(
+            "    if a > {i}:\n        if b > {i}:\n            if c > {i}:\n                \
+             if d > {i}:\n                    total += {i}\n                else:\n                    \
+             total -= {i}\n"
+        ));
+    }
+    source.push_str("    return total\n");
+    fs::write(root.join("src/tangle.py"), source).unwrap();
+}
+
+fn one_failing_of_four() -> tempfile::TempDir {
+    let root = fixture();
+    write_module(root.path(), "sub.py");
+    write_module(root.path(), "mul.py");
+    write_tangle(root.path());
+    root
+}
+
+fn json_of(output: &Output) -> Value {
+    assert!(output.status.success(), "{output:?}");
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
 #[test]
 fn writes_an_svg_and_a_shields_endpoint_for_a_directory() {
     let root = fixture();
-    let output = badge(
+    let result = json_of(&badge(
         root.path(),
         &[
             "--no-composable",
@@ -90,55 +118,123 @@ fn writes_an_svg_and_a_shields_endpoint_for_a_directory() {
             "badges/topos.json",
             "--json",
         ],
-    );
-    assert!(output.status.success(), "{output:?}");
-
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["medal"], "GOLD", "{result:#}");
+    ));
     assert_eq!(result["files"], 1);
-    assert_eq!(result["pillars"]["composable"], "not_measured");
+    assert_eq!(result["unparsed"], 0);
+    assert_eq!(
+        result["pillars"]["composable"],
+        json!({"passed": 0, "measured": 0, "unmeasured": 1, "rate": null, "state": "not_measured"})
+    );
     for pillar in ["simple", "secure", "navigable"] {
-        assert_eq!(result["pillars"][pillar], "pass", "{pillar}");
+        assert_eq!(
+            result["pillars"][pillar],
+            json!({"passed": 1, "measured": 1, "unmeasured": 0, "rate": 100, "state": "measured"}),
+            "{pillar}"
+        );
     }
+    assert_eq!(result["strict"]["medal"], "GOLD", "{result:#}");
 
     let endpoint: Value =
         serde_json::from_str(&fs::read_to_string(root.path().join("badges/topos.json")).unwrap())
             .unwrap();
-    assert_eq!(endpoint["schemaVersion"], 1);
-    assert_eq!(endpoint["label"], "topos");
-    assert_eq!(endpoint["message"], "GOLD");
-    assert_eq!(endpoint["color"], "b45309");
+    assert_eq!(
+        endpoint,
+        json!({
+            "schemaVersion": 1,
+            "label": "topos",
+            "message": "SIMPLE 100% · COMPOSABLE n/a · SECURE 100% · NAVIGABLE 100%",
+            "color": "44cc11",
+        })
+    );
 
     let svg = fs::read_to_string(root.path().join("badges/topos.svg")).unwrap();
     assert_well_formed(&svg);
-    for state in [
-        "SIMPLE pass",
-        "COMPOSABLE not measured",
-        "SECURE pass",
-        "NAVIGABLE pass",
+    for text in [
+        ">SIMPLE 100%<",
+        ">COMPOSABLE n/a<",
+        ">SECURE 100%<",
+        ">NAVIGABLE 100%<",
     ] {
-        assert!(svg.contains(state), "missing {state:?}");
+        assert!(svg.contains(text), "missing {text:?}");
     }
+    assert!(
+        !svg.contains("GOLD"),
+        "the medal belongs to `topos evaluate`, not the badge"
+    );
+}
+
+#[test]
+fn one_failing_file_of_four_shows_as_a_pass_rate_everywhere() {
+    let root = one_failing_of_four();
+    let output = badge(
+        root.path(),
+        &[
+            "--no-composable",
+            "--out",
+            "topos.svg",
+            "--endpoint",
+            "topos.json",
+            "--json",
+        ],
+    );
+    let result = json_of(&output);
+    assert_eq!(result["files"], 4);
+    assert_eq!(
+        result["pillars"]["simple"],
+        json!({"passed": 3, "measured": 4, "unmeasured": 0, "rate": 75, "state": "measured"}),
+        "{result:#}"
+    );
+    assert_eq!(result["pillars"]["secure"]["rate"], 100, "{result:#}");
+    let navigable = result["pillars"]["navigable"]["rate"].as_u64().unwrap();
+    let navigable = format!("NAVIGABLE {navigable}%");
+
+    let svg = fs::read_to_string(root.path().join("topos.svg")).unwrap();
+    assert_well_formed(&svg);
+    assert!(svg.contains(">SIMPLE 75%<"), "{svg}");
+    assert!(svg.contains(&format!(">{navigable}<")), "{svg}");
+
+    let endpoint: Value =
+        serde_json::from_str(&fs::read_to_string(root.path().join("topos.json")).unwrap()).unwrap();
+    let message = endpoint["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("SIMPLE 75% · COMPOSABLE n/a · SECURE 100% · "),
+        "{message}"
+    );
+    assert!(message.ends_with(&navigable), "{message}");
+    assert_eq!(endpoint["color"], "dfb317", "75% is the lowest rate here");
+
+    let status = stderr(&output);
+    assert!(
+        status.contains(&format!(
+            "SIMPLE 75% · COMPOSABLE n/a · SECURE 100% · {navigable} (4 files)"
+        )),
+        "{status}"
+    );
 }
 
 #[test]
 fn prints_the_svg_when_no_output_is_named() {
     let root = fixture();
-    let output = badge(root.path(), &["--no-composable", "--style", "verdict"]);
+    let output = badge(root.path(), &["--no-composable"]);
     assert!(output.status.success(), "{output:?}");
     let svg = String::from_utf8(output.stdout).unwrap();
     assert_well_formed(&svg);
-    assert!(svg.contains("aria-label=\"Topos lattice verdict: GOLD\""));
+    assert!(svg.contains(
+        "aria-label=\"topos: SIMPLE 100%, COMPOSABLE n/a, SECURE 100%, NAVIGABLE 100%\""
+    ));
 }
 
 #[test]
-fn a_failing_project_still_exits_zero() {
+fn an_unparsed_file_is_counted_apart_and_left_out_of_every_rate() {
     let root = fixture();
     fs::write(root.path().join("src/broken.py"), "def broken(:\n").unwrap();
     let output = badge(root.path(), &["--no-composable", "--json"]);
-    assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["medal"], "NO MEDAL", "{result:#}");
+    let result = json_of(&output);
+    assert_eq!(result["files"], 2);
+    assert_eq!(result["unparsed"], 1);
+    assert_eq!(result["pillars"]["simple"]["measured"], 1, "{result:#}");
+    assert_eq!(result["pillars"]["simple"]["rate"], 100, "{result:#}");
+    assert_eq!(result["strict"]["medal"], "NO MEDAL", "{result:#}");
 }
 
 #[test]
@@ -151,27 +247,29 @@ fn a_directory_without_source_files_is_an_error() {
 }
 
 #[test]
-fn a_graph_that_covers_every_file_can_award_platinum() {
+fn a_graph_that_covers_every_file_measures_composable() {
     let root = graph_fixture(&["add.py", "sub.py"]);
-    let output = badge(root.path(), &["--json"]);
-    assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["pillars"]["composable"], "pass", "{result:#}");
-    assert_eq!(result["medal"], "PLATINUM", "{result:#}");
+    let result = json_of(&badge(root.path(), &["--json"]));
+    assert_eq!(
+        result["pillars"]["composable"],
+        json!({"passed": 2, "measured": 2, "unmeasured": 0, "rate": 100, "state": "measured"}),
+        "{result:#}"
+    );
+    assert_eq!(result["strict"]["medal"], "PLATINUM", "{result:#}");
     assert_eq!(result["files"], 2);
 }
 
 #[test]
-fn a_graph_that_misses_a_file_leaves_composable_unmeasured() {
+fn a_graph_that_misses_a_file_rates_composable_over_the_covered_files() {
     let root = graph_fixture(&["add.py"]);
     let output = badge(root.path(), &["--json"]);
-    assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let result = json_of(&output);
     assert_eq!(
-        result["pillars"]["composable"], "not_measured",
+        result["pillars"]["composable"],
+        json!({"passed": 1, "measured": 1, "unmeasured": 1, "rate": 100, "state": "partial"}),
         "{result:#}"
     );
-    assert_eq!(result["medal"], "GOLD", "{result:#}");
+    assert_eq!(result["strict"]["medal"], "GOLD", "{result:#}");
     let warnings = result["warnings"].to_string();
     assert!(
         warnings.contains("1 of 2 files had no dependency-graph entry"),
@@ -210,8 +308,7 @@ fn a_file_named_twice_is_scored_once() {
         &["src", "./src/add.py", "--no-composable", "--json"],
     );
     assert!(output.status.success(), "{output:?}");
-    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["files"], 1, "{result:#}");
+    assert_eq!(json_of(&output)["files"], 1);
 }
 
 #[test]
@@ -226,7 +323,10 @@ fn written_files_are_named_and_a_dash_means_standard_output() {
     assert_well_formed(&String::from_utf8(output.stdout).unwrap());
     assert!(!root.path().join("-").exists());
     assert!(status.contains("Wrote topos.json"), "{status}");
-    assert!(status.contains("(1 file)"), "{status}");
+    assert!(
+        status.contains("SIMPLE 100% · COMPOSABLE n/a · SECURE 100% · NAVIGABLE 100% (1 file)"),
+        "{status}"
+    );
 
     let output = badge(root.path(), &["--no-composable", "--out", "-", "--json"]);
     assert_eq!(output.status.code(), Some(1), "{output:?}");

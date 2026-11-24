@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use topos_engine::functors::probes::cpg::danger::{
-    callee_from_text, effective_registry, matches_registry,
+    call_callee, effective_registry, matches_registry,
 };
 use topos_engine::functors::probes::cpg::taint::taint_sources;
 use topos_engine::graphs::cpg::models::CPGEdgeKind;
@@ -140,17 +140,13 @@ pub fn dangerous_call_findings(
 
     let mut findings = Vec::new();
     for node in nodes {
-        if node.kind() != "CallExpr" {
+        let Some(callee) = call_callee(cpg, node) else {
+            continue;
+        };
+        if !matches_registry(&callee, registry.iter().copied()) {
             continue;
         }
         let text = cpg.node_text(node).trim().to_string();
-        if text.is_empty() {
-            continue;
-        }
-        let callee = callee_from_text(&text);
-        if callee.is_empty() || !matches_registry(&callee, registry.iter().copied()) {
-            continue;
-        }
         let line = node.uast.span.start_line.max(1);
         let snippet = line_snippet(&cpg.source, line).unwrap_or(text);
         findings.push(SecurityFinding {
@@ -208,21 +204,20 @@ fn collect_taint_sources_and_sinks<'a>(
     cpg: &'a CodePropertyGraph,
     source_registry: &HashSet<&str>,
     sink_registry: &HashSet<&str>,
-) -> (Vec<&'a str>, Vec<(&'a str, String)>) {
+) -> (Vec<&'a str>, Vec<(&'a str, String, String)>) {
     let mut node_items: Vec<_> = cpg.nodes.iter().collect();
     node_items.sort_by_key(|(_, n)| (n.uast.span.start_line, n.uast.span.start_byte));
 
     let mut sources: Vec<&str> = Vec::new();
-    let mut sinks: Vec<(&str, String)> = Vec::new();
+    let mut sinks: Vec<(&str, String, String)> = Vec::new();
     for (node_id, node) in &node_items {
         let snippet = cpg.node_text(node).trim().to_string();
         if snippet.is_empty() {
             continue;
         }
-        if node.kind() == "CallExpr" {
-            let callee = callee_from_text(&snippet);
-            if !callee.is_empty() && matches_registry(&callee, sink_registry.iter().copied()) {
-                sinks.push((node_id.as_str(), snippet.clone()));
+        if let Some(callee) = call_callee(cpg, node) {
+            if matches_registry(&callee, sink_registry.iter().copied()) {
+                sinks.push((node_id.as_str(), callee, snippet.clone()));
             }
         }
         if (node.kind() == "Identifier" || node.kind() == "MemberExpr")
@@ -239,13 +234,13 @@ fn join_sources_to_sinks(
     cpg: &CodePropertyGraph,
     forward: &HashMap<&str, Vec<&str>>,
     sources: &[&str],
-    sinks: &[(&str, String)],
+    sinks: &[(&str, String, String)],
     max_findings: usize,
 ) -> Vec<SecurityFinding> {
     let mut findings = Vec::new();
     for &source_id in sources {
         let reachable = bfs_reachable(forward, source_id);
-        for (sink_id, sink_snippet) in sinks {
+        for (sink_id, callee, sink_snippet) in sinks {
             if !reachable.contains(sink_id) {
                 continue;
             }
@@ -253,12 +248,11 @@ fn join_sources_to_sinks(
             let sink_node = &cpg.nodes[*sink_id];
             let source_snippet = cpg.node_text(source_node).trim().to_string();
             let line = sink_node.uast.span.start_line.max(1);
-            let callee = callee_from_text(sink_snippet);
             findings.push(SecurityFinding {
                 kind: "taint_flow".to_string(),
                 line: line as u32,
                 snippet: line_snippet(&cpg.source, line).unwrap_or_else(|| sink_snippet.clone()),
-                callee: (!callee.is_empty()).then_some(callee),
+                callee: Some(callee.clone()),
                 source: Some(source_snippet),
                 sink: Some(sink_snippet.clone()),
                 mode: Some("taint".to_string()),

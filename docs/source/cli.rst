@@ -35,6 +35,7 @@ Quick reference
    topos inspect module.py
    topos compare before.py after.py
    topos coverage src/logic.py --tests tests/test_logic.py
+   topos badge --out docs/topos.svg
    topos depgraph generate
    topos cache status
    topos cache clean --pr 123 --dry-run
@@ -48,9 +49,9 @@ Run ``topos mcp`` as a smoke check, then stop it with ``Ctrl-C``.
    .. grid-item-card:: 🏅 Quality commands
       :shadow: md
 
-      Classify files, drill into metrics, measure AST drift, score structural test overlap, and recap a pull request.
+      Classify files, drill into metrics, measure AST drift, score structural test overlap, recap a pull request, and write a README badge.
       ^^^
-      ``evaluate`` · ``inspect`` · ``compare`` · ``coverage`` · ``pr-recap``
+      ``evaluate`` · ``inspect`` · ``compare`` · ``coverage`` · ``pr-recap`` · ``badge``
 
    .. grid-item-card:: ⚙️ Other commands
       :shadow: md
@@ -382,18 +383,42 @@ default card so existing scripts keep working.
   fork are not charged to the change.
 - With no arguments, ``pr-recap`` reviews the uncommitted edits in the working
   tree (``--base HEAD --head :worktree``), including untracked files.
+- A pull request number is resolved through ``gh``. A pull request from a fork
+  is fetched from ``origin``'s ``refs/pull/<N>/head``, so ``origin`` must be the
+  repository the pull request targets; no remote for the fork is needed.
+  ``topos depgraph generate-pr <N>`` resolves pull requests the same way.
+- The fork point must be in the clone. In a shallow clone, such as the
+  ``actions/checkout`` default, set ``fetch-depth: 0`` or run
+  ``git fetch --unshallow origin`` first; ``pr-recap`` says so and exits 2
+  when the history is missing, and never unshallows on its own.
 
 **Gates**
 
 Each gate in ``[pr_recap]`` (set with ``topos config``, see `config`_) turns
 what happened into a finding with a severity: ``off``, ``info``, ``warn`` or
 ``block``. Under the recommended preset, a lost pillar, a new file that fails
-SECURE or is SLOP, and a split that gained SECURE findings block; a score drop
-past ``[pr_recap.score_drop]`` (10 points, in a file with at least 20 changed
-lines), a score that moved while the structure did not, and a function that
-grew as a split moved it need attention; a pillar that already failed and got
-worse, a new file failing another pillar, a bloated split, and skipped files
-are info. ``topos config show`` lists every gate and its severity.
+SIMPLE, NAVIGABLE or SECURE or is SLOP, and a split that gained SECURE findings block; a score
+drop past ``[pr_recap.score_drop]`` (10 points, in a file with at least 20
+changed lines), a score that moved while the structure did not, and a function
+that grew as a split moved it need attention; a pillar that already failed and
+got worse, a new file failing COMPOSABLE, a bloated split, and skipped files
+are info. ``topos config show``
+lists every gate and its severity.
+
+New code meets the same complexity and nesting limits as changed code. A new
+file that fails SIMPLE or NAVIGABLE raises ``new_file_pillar``, which blocks
+under every preset, as ``pillar_lost`` does. A new file failing COMPOSABLE
+raises the same gate at most at info (warn under strict, off under relaxed):
+fan-out comes from the dependency graph, whose false edges could otherwise
+block a file on imports it does not have. The finding names the most complex function
+that is new logic, its complexity and the limit. A file that splits out of a
+changed file (a split child) is spared for code it carried over, not for code
+it adds: when a child fails SIMPLE or NAVIGABLE and the failing function is new,
+grew on the way, or cannot be traced to the parent, it raises the same
+``new_file_pillar`` finding. A function moved unchanged, or moved without
+growing, is a refactor: in a split child it raises nothing, and in any other
+new file it is reported under ``moved_pillar``, as a move into an existing file
+is.
 
 Moving code is not charged as a regression. When a file loses a pillar only
 because code moved into it from another file in the same range (the function
@@ -585,6 +610,137 @@ listed as skipped and the recap is marked incomplete.
    warning/block false-positive rate on merged first-time contributors; see
    the `PR Recap calibration report <https://topos.krv.ai/pr-recap.html>`_
    and `full lab notes <https://github.com/Krv-Labs/topos-leaderboard/blob/main/docs/graphs-for-pr-filtering.md>`_.
+   One default was changed by owner decision after that calibration:
+   ``new_file_pillar`` blocks SIMPLE and NAVIGABLE failures under every
+   preset, so new code meets the same limits as changed code. Replayed on 23
+   merged pull requests (39 added files), the block rate stayed at 1 of 23;
+   see ``docs/decisions/new-code-complexity.md``.
+
+badge
+-----
+
+Write a README badge for any repository. ``badge`` scores the paths the same
+way ``evaluate -r`` does and shows, for each pillar, the share of files that
+pass it: ``SIMPLE 85%``, ``COMPOSABLE 83%``, ``SECURE 100%``,
+``NAVIGABLE 96%``. The numbers rise as a team cleans up, one file at a time.
+
+.. code-block:: bash
+
+   topos badge [PATHS]... [OPTIONS]
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Option
+     - Description
+   * - ``PATHS``
+     - Files or directories to score (default: current directory).
+       Directories are searched recursively.
+   * - ``-o``, ``--out PATH``
+     - Write the SVG to ``PATH``; ``-`` prints it to standard output. Missing
+       parent directories are created.
+   * - ``--endpoint PATH``
+     - Write a `shields.io endpoint <https://shields.io/badges/endpoint-badge>`_
+       JSON document to ``PATH``. It must not be the ``--out`` path.
+   * - ``--json``
+     - Print the per-pillar pass rates, file counts, and warnings as JSON.
+   * - ``--no-composable``
+     - Skip GitNexus; COMPOSABLE is reported as not measured.
+   * - ``--gitnexus-dir PATH``
+     - Use this ``.gitnexus`` store for COMPOSABLE.
+
+With none of ``--out``, ``--endpoint``, or ``--json``, the SVG is printed to
+standard output. Each file written is named on standard error, followed by a
+summary line such as
+``SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96% (252 files)``, and
+progress is shown when standard error is a terminal. A low rate is not an
+error: the command exits ``0`` whatever the result and non-zero only when it
+cannot score or write.
+
+**How a rate is counted.** A pillar's rate is the number of files that pass it
+divided by the number of files measured for it, as a whole percent rounded
+down, so 99.6% shows as 99% and 100% always means every measured file passes.
+Files that cannot be parsed are left out of every rate and reported as a
+separate count. A pillar with no measured files shows ``n/a``.
+
+**Badge vs. evaluate.** ``topos evaluate`` keeps its strict project medal: a
+pillar holds only when every scored file passes it. That is the right gate for
+a change, but as a public badge it reads as failure for almost every real
+project, because one file in hundreds is enough to drop a pillar; well-kept
+projects such as ``requests`` and ``django`` get no medal at all. A pass rate
+says how much of the code meets each pillar and moves with every file fixed.
+``--json`` still reports the strict medal under ``strict`` for reference.
+
+**Reading the SVG.** The badge has a gray ``topos`` label followed by one
+segment per pillar, each with the full pillar name and its rate. Segments are
+colored on a fixed scale: 100% bright green, 95% and up green, 85% and up
+yellow-green, 70% and up yellow, 50% and up orange, below 50% red, and gray
+for ``n/a``. The image's ``aria-label`` and ``<title>`` spell out all four
+rates.
+
+COMPOSABLE needs a dependency graph. When GitNexus is installed, ``badge``
+builds or refreshes one in ``.gitnexus/`` at the project root, as ``evaluate``
+does; pass ``--no-composable`` to skip that and leave ``.gitnexus/`` untouched.
+Without a graph COMPOSABLE shows ``n/a``. When the graph has no entry for some
+of the scored files (a stale graph, or a file outside the indexed project),
+the COMPOSABLE rate is taken over the files the graph covers, the command
+warns with the number of files missing from it, and ``--json`` marks the
+pillar ``partial``; ``topos depgraph generate`` refreshes the graph.
+
+**JSON output.** Each pillar reports ``passed``, ``measured``, ``unmeasured``
+(scored files the pillar has no result for), ``rate`` (``null`` when not
+measured), and ``state`` (``measured``, ``partial``, or ``not_measured``):
+
+.. code-block:: json
+
+   {
+     "pillars": {
+       "simple": {"passed": 216, "measured": 252, "unmeasured": 0, "rate": 85, "state": "measured"},
+       "composable": {"passed": 201, "measured": 242, "unmeasured": 10, "rate": 83, "state": "partial"},
+       "secure": {"passed": 252, "measured": 252, "unmeasured": 0, "rate": 100, "state": "measured"},
+       "navigable": {"passed": 244, "measured": 252, "unmeasured": 0, "rate": 96, "state": "measured"}
+     },
+     "files": 252,
+     "unparsed": 0,
+     "strict": {
+       "rule": "a pillar holds only if every scored file passes it, as in `topos evaluate`",
+       "medal": "BRONZE",
+       "lattice_element": "SECURE"
+     },
+     "warnings": ["COMPOSABLE only partly measured — 10 of 252 files had no dependency-graph entry; ..."]
+   }
+
+**Examples**
+
+.. code-block:: bash
+
+   # Commit an SVG and reference it from the README
+   topos badge --out docs/topos.svg
+
+   # Or publish an endpoint document and let shields.io draw the badge
+   topos badge --endpoint badges/topos.json
+
+.. code-block:: markdown
+
+   ![Topos](docs/topos.svg)
+   ![Topos](https://img.shields.io/endpoint?url=https://example.com/badges/topos.json)
+
+shields.io fetches the endpoint document itself, so ``url`` must be a public
+``https`` address of the committed or published file, for example
+``https://raw.githubusercontent.com/OWNER/REPO/main/badges/topos.json`` or a
+GitHub Pages URL such as ``https://OWNER.github.io/REPO/badges/topos.json``.
+An endpoint badge has a single message, so it lists all four rates and takes
+its color from the lowest measured rate:
+
+.. code-block:: json
+
+   {
+     "schemaVersion": 1,
+     "label": "topos",
+     "message": "SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96%",
+     "color": "dfb317"
+   }
 
 Other commands
 ===============

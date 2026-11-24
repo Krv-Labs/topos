@@ -25,12 +25,13 @@ use std::path::Path;
 use schemars::JsonSchema;
 use serde::{Serialize, Serializer};
 use topos_engine::config::{FailOn, GateId, PrGateConfig, PrGatePreset, Severity};
+use topos_engine::evaluation::policies::gates::GATE_SPECS;
 use topos_engine::evaluation::waivers::{self, Waiver};
 
 use super::hotspots::FUNCTION_COMPLEXITY;
 use super::model::{
-    percent_change, Cluster, FileRecap, FileRole, GateCrossing, GateSummary, Headline,
-    WaiverSummary,
+    percent_change, Cluster, FileRecap, FileRole, FunctionRef, GateCrossing, GateSummary, Headline,
+    PillarDelta, WaiverSummary,
 };
 use super::moves::{MoveCause, RangeMoves};
 
@@ -233,7 +234,7 @@ pub fn evaluate(
     let mut found = Vec::new();
     for file in files {
         if file.is_new() {
-            new_file_findings(file, &mut found);
+            new_file_findings(file, moves, &mut found);
         } else {
             // A split parent's fan-out rose only because it imports its
             // own children: COMPOSABLE is set aside, as its status did.
@@ -333,10 +334,26 @@ fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     {
         finding.text.push_str(" It warns instead of blocking.");
         Severity::Warn
+    } else if finding.gate == GateId::NewFilePillar
+        && finding.pillar.as_deref() == Some("composable")
+    {
+        severity.min(new_file_composable_cap(cfg.preset))
     } else {
         severity
     };
     (finding.severity != Severity::Off).then_some(finding)
+}
+
+/// The most a new file failing COMPOSABLE can weigh: fan-out comes from the
+/// dependency graph, whose false edges could block a file on imports it
+/// does not have, so it keeps the severity `new_file_pillar` had before new
+/// code was held to the SIMPLE and NAVIGABLE limits.
+fn new_file_composable_cap(preset: PrGatePreset) -> Severity {
+    match preset {
+        PrGatePreset::Relaxed => Severity::Off,
+        PrGatePreset::Strict => Severity::Warn,
+        PrGatePreset::Recommended | PrGatePreset::Custom => Severity::Info,
+    }
 }
 
 fn importance(a: &Finding, b: &Finding) -> Ordering {
@@ -348,24 +365,35 @@ fn importance(a: &Finding, b: &Finding) -> Ordering {
         .then_with(|| a.line.cmp(&b.line))
 }
 
-/// An added file is judged on arrival. A split child is left to its
-/// split's gates: code moved out of the parent brings its findings along,
-/// and charging them to the child would fail every split of an imperfect
-/// file.
-fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
-    if file.is_split_child() || file.medal_after.is_none() {
+/// An added file is judged on arrival, and its new code meets the same
+/// limits as a changed file's. A split child is left to its split's gates
+/// except for new logic failing SIMPLE or NAVIGABLE: code moved out of the
+/// parent brings its findings along, and charging them to the child would
+/// fail every split of an imperfect file.
+fn new_file_findings(file: &FileRecap, moves: &RangeMoves, found: &mut Vec<Finding>) {
+    if file.medal_after.is_none() {
+        return;
+    }
+    if file.is_split_child() {
+        for pillar in ["simple", "navigable"] {
+            if let Some(delta) = file.pillars.get(pillar) {
+                if delta.after_passed == Some(false) {
+                    found.extend(new_code_finding(file, pillar, delta, moves, true));
+                }
+            }
+        }
         return;
     }
     for (pillar, delta) in &file.pillars {
         if delta.after_passed != Some(false) {
             continue;
         }
-        let gate = if pillar == "secure" {
-            GateId::NewFileInsecure
+        if pillar == "secure" {
+            let gate = GateId::NewFileInsecure;
+            found.push(pillar_finding(gate, file, pillar, delta.gate.as_ref(), 0.0));
         } else {
-            GateId::NewFilePillar
-        };
-        found.push(pillar_finding(gate, file, pillar, delta.gate.as_ref(), 0.0));
+            found.extend(new_code_finding(file, pillar, delta, moves, false));
+        }
     }
     if file.landed_slop() {
         found.push(Finding::new(
@@ -374,6 +402,75 @@ fn new_file_findings(file: &FileRecap, found: &mut Vec<Finding>) {
             format!("{} is new and passes no pillar (SLOP).", file.path),
         ));
     }
+}
+
+/// A new file failing a pillar other than SECURE, judged like a changed
+/// file that lost it. A function over the complexity limit that did not
+/// arrive from another file without growing is named first. A failure the
+/// range's moves explain is `moved_pillar`, and a split child leaves it,
+/// and any failure no function accounts for, to its split.
+fn new_code_finding(
+    file: &FileRecap,
+    pillar: &str,
+    delta: &PillarDelta,
+    moves: &RangeMoves,
+    child: bool,
+) -> Option<Finding> {
+    let (new_function, new_crossing) = match pillar {
+        "simple" => new_complex_function(file, moves).unzip(),
+        _ => (None, None),
+    };
+    let crossing = new_crossing.as_ref().or(delta.gate.as_ref());
+    let mut finding = pillar_finding(GateId::NewFilePillar, file, pillar, crossing, 0.0);
+    if let Some(function) = new_function {
+        finding.function = Some(function.name);
+        finding.line = Some(function.line);
+    } else {
+        let function = finding.function.as_deref();
+        if let Some(cause) = moves.caused(&file.path, pillar, function, finding.line) {
+            return (!child).then(|| moved_pillar(finding, file, pillar, crossing, cause));
+        }
+        if child && function.is_none() {
+            return None;
+        }
+    }
+    let what = if child {
+        "adds new code that fails"
+    } else {
+        "is new and fails"
+    };
+    finding.text = format!(
+        "{} {what} {}{}{}.",
+        file.path,
+        pillar.to_ascii_uppercase(),
+        site(finding.function.as_deref(), finding.line),
+        crossing.map_or(String::new(), measured)
+    );
+    Some(finding)
+}
+
+/// The most complex function in a new file over the complexity limit that
+/// is new logic, and its crossing, when the file's worst function is over.
+fn new_complex_function(
+    file: &FileRecap,
+    moves: &RangeMoves,
+) -> Option<(FunctionRef, GateCrossing)> {
+    let limit = GATE_SPECS
+        .iter()
+        .find(|spec| spec.metric == FUNCTION_COMPLEXITY)?
+        .high?;
+    if file.worst_function_after.as_ref()?.complexity as f64 <= limit {
+        return None;
+    }
+    let function = moves.new_logic_over(&file.path, limit as usize)?;
+    let crossing = GateCrossing {
+        metric: FUNCTION_COMPLEXITY.to_string(),
+        before: None,
+        after: function.complexity as f64,
+        limit,
+        worse: true,
+    };
+    Some((function, crossing))
 }
 
 /// An existing file, one pillar at a time, so losing one pillar while
@@ -1151,6 +1248,35 @@ mod tests {
 
     fn gates(findings: &[Finding]) -> Vec<GateId> {
         findings.iter().map(|finding| finding.gate).collect()
+    }
+
+    #[test]
+    fn a_new_file_failing_only_composable_does_not_block() {
+        let mut file = added("src/wide.py");
+        let fan_out = file.pillars.get_mut("composable").unwrap();
+        fan_out.measured = true;
+        fan_out.after_passed = Some(false);
+        fan_out.after_score = Some(40.0);
+        fan_out.gate = crossing("mdg.fan_out", 0.0, 30.0, 20.0);
+        let mut simple = added("src/deep.py");
+        set(&mut simple, "simple", (true, false), (0.0, 40.0));
+        for (preset, severity) in [
+            (PrGatePreset::Relaxed, None),
+            (PrGatePreset::Recommended, Some(Severity::Info)),
+            (PrGatePreset::Strict, Some(Severity::Warn)),
+        ] {
+            let cfg = PrGateConfig::for_preset(preset);
+            let (_, findings) = unmoved(&[file.clone(), simple.clone()], &[], 0, &cfg);
+            let at = |path: &str| {
+                findings
+                    .iter()
+                    .filter(|f| f.path == path && f.gate == GateId::NewFilePillar)
+                    .map(|f| f.severity)
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(at("src/wide.py"), Vec::from_iter(severity), "{preset:?}");
+            assert_eq!(at("src/deep.py"), [Severity::Block], "{preset:?}");
+        }
     }
 
     #[test]

@@ -755,7 +755,7 @@ pub(crate) fn score_rail(score: f64, width: usize) -> String {
         .collect()
 }
 
-fn floor_verdict(overall: &BTreeMap<String, EvaluationValue>) -> EvaluationValue {
+pub(crate) fn floor_verdict(overall: &BTreeMap<String, EvaluationValue>) -> EvaluationValue {
     let bits = PILLARS.iter().fold(0, |bits, pillar| {
         bits | overall
             .get(*pillar)

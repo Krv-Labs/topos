@@ -124,6 +124,18 @@ arxiv:1909.03496).  Always available.
 | `cpg.dangerous_calls` | Count of reachable call sites whose callee matches the per-language dangerous-API registry (Python: `eval`, `exec`, `pickle.loads`, `subprocess.*(shell=True)`, ...; C++: `gets`, `strcpy`, ...). | **0** (strict) |
 | `cpg.taint_flows`     | DDG paths from any taint source (e.g. `input`, `request.args`) to any dangerous-API sink. | **0** (strict) |
 
+**How a callee is read.** The callee is the call's syntax node, not the text
+that follows it. Parentheses, `!`, `as`/`satisfies` casts, generic arguments
+and Rust turbofish around it are seen through; whitespace is dropped and `?.`
+and `::` read as `.`. So `(eval)(x)`, `eval?.(x)`, `obj?.eval(x)`,
+`window . eval(x)`, `std::mem::transmute(p)` and `Box::from_raw(p)` all count,
+and `new Function(...)` counts as a call to `Function`. A callee matches a
+registry entry exactly or when it ends in `.` followed by the entry, so
+`model.eval()` matches `eval`; a call on a computed receiver
+(`getModel().eval()`) matches the same way. A callee with no name
+(`wrap(eval)(x)`, `obj["eval"](x)`) and a string containing `eval(` never
+count.
+
 Each count's desirability is 1 at zero and `0.5·exp(−v/3)` otherwise, so any
 finding puts the score below 50. **`achieved`** requires zero dangerous calls
 and zero taint flows.

@@ -383,6 +383,14 @@ default card so existing scripts keep working.
   fork are not charged to the change.
 - With no arguments, ``pr-recap`` reviews the uncommitted edits in the working
   tree (``--base HEAD --head :worktree``), including untracked files.
+- A pull request number is resolved through ``gh``. A pull request from a fork
+  is fetched from ``origin``'s ``refs/pull/<N>/head``, so ``origin`` must be the
+  repository the pull request targets; no remote for the fork is needed.
+  ``topos depgraph generate-pr <N>`` resolves pull requests the same way.
+- The fork point must be in the clone. In a shallow clone, such as the
+  ``actions/checkout`` default, set ``fetch-depth: 0`` or run
+  ``git fetch --unshallow origin`` first; ``pr-recap`` says so and exits 2
+  when the history is missing, and never unshallows on its own.
 
 **Gates**
 

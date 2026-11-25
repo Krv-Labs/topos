@@ -1,0 +1,48 @@
+name: Homebrew formula
+
+# The Krv-Labs/homebrew-tap formula is packaging/homebrew/topos.rb.template
+# rendered with a release's version and checksums. The tap's CI runs
+# `brew style` on it, so a template the tap would reject used to surface only
+# after a release had shipped (v0.16.0: Homebrew/SingleUseMethod). Render it
+# here and run the same check before then. The weekly run catches style cops
+# Homebrew adds on its own schedule, when nothing in this repo changed.
+on:
+  pull_request:
+    paths:
+      - packaging/homebrew/**
+      - scripts/render_homebrew_formula.py
+      - .github/workflows/homebrew-formula.yml
+  push:
+    branches: [main]
+    paths:
+      - packaging/homebrew/**
+      - scripts/render_homebrew_formula.py
+      - .github/workflows/homebrew-formula.yml
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same pin as Krv-Labs/homebrew-tap's CI.
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@18fcb8e3e06b4247c676c506750dc95ea7226479 # 2026.07.13.1
+
+      - name: Render the formula from the template
+        run: python3 scripts/render_homebrew_formula.py --placeholder -o "$RUNNER_TEMP/tap/Formula/topos.rb"
+
+      - name: brew style
+        run: brew style "$RUNNER_TEMP/tap/Formula/topos.rb"
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error title=Homebrew formula template::The formula rendered from packaging/homebrew/topos.rb.template fails brew style, so the tap would reject the next release's formula. Fix the template (each offense above names the change), then render it with scripts/render_homebrew_formula.py --placeholder and rerun brew style on the result."

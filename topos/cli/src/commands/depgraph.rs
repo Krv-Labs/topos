@@ -6,10 +6,12 @@
 //! extension, and agent docs (issue #206).
 
 mod generate;
+mod status;
 
 use clap::{Args, Subcommand};
 
 use generate::{run_generate, GenerateArgs};
+use status::{run_status, StatusArgs};
 
 pub(crate) use generate::gitnexus_available;
 pub(crate) use topos_mcp::pr_recap::store::StoreState;
@@ -30,12 +32,15 @@ pub enum DepgraphAction {
     /// Does not print the review.
     #[command(name = "generate-pr")]
     GeneratePr(generate::GeneratePrArgs),
+    /// Show whether the graph loads, and how many false edges it dropped.
+    Status(StatusArgs),
 }
 
 pub fn run(args: DepgraphArgs) -> Result<(), String> {
     match args.action {
         DepgraphAction::Generate(args) => run_generate(args),
         DepgraphAction::GeneratePr(args) => generate::run_generate_pr(args),
+        DepgraphAction::Status(args) => run_status(args),
     }
 }
 

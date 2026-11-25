@@ -18,14 +18,12 @@ mod view;
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use topos_engine::config::{
-    find_config_file, load_topos_config, FailOn, PrGateConfig, PrGatePreset,
-};
+use topos_engine::config::{FailOn, PrGateConfig, PrGatePreset};
 use topos_engine::evaluation::waivers::today_utc;
-pub(crate) use topos_mcp::pr_recap::git::{changed_files, skip_reason, worktree_files};
+pub(crate) use topos_mcp::pr_recap::git::{changed_files, worktree_files};
 pub(crate) use topos_mcp::pr_recap::{
-    build_recap, gates, head_commit, model, resolve_priority, resolve_range, Judging,
-    ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
+    build_recap, gates, head_commit, model, policy::base_policy, policy::Exclusions,
+    resolve_priority, resolve_range, Judging, ScoreProgress, LARGE_RECAP_WARN_THRESHOLD,
 };
 #[cfg(test)]
 use {self::model::*, std::path::Path, topos_mcp::pr_recap::moves};
@@ -180,14 +178,47 @@ Readiness / exit codes:
   under strict), not `pillar_lost`; a moved function that grew still loses it.
   The same holds for a new file: a function moved into it unchanged is
   `moved_pillar`, not `new_file_pillar`.
-  The policy is the flags, else the nearest .topos.toml, else the recommended
-  preset. --preset picks a built-in preset and ignores the file's [pr_recap],
-  waivers included; --fail-on sets fail_on (block, warn, or never), --strict
+  A file that parsed at base and no longer parses at head is one `pillar_lost`
+  for the whole file; an added file that does not parse is `new_file_slop`.
+  A test or literal-data file that fails SIMPLE on entropy alone (repeated
+  cases or table entries) warns instead of blocking, except under strict.
+  The policy is the flags, else the .topos.toml at the repository root as
+  committed at the base revision, else the recommended preset. The head's own
+  .topos.toml never judges the change: a waiver, a looser gate, fail_on or an
+  allowlist entry the change adds is listed as not applied (gate.unapplied in
+  --json) and takes effect once it is on the base. With no arguments the base
+  is HEAD, so uncommitted config edits are not applied either. --preset picks
+  a built-in preset and ignores the file's [pr_recap], waivers included; --fail-on sets fail_on (block, warn, or never), --strict
   is fail_on = "warn", and --advisory is fail_on = "never" (always exit 0 on a
   verdict while still reporting readiness in the card and JSON). An error (a
   bad range, git or gh failing) exits 2. The direction (IMPROVEMENT, SCORE
   DOWN, LATERAL, ...) says which way the structure moved and never changes the
   exit code.
+
+Skipped files:
+  A changed file is skipped and never judged when it is: an unsupported file
+  type; any path `topos evaluate -r` does not score (cache, build, vendor,
+  fixtures, testdata and __snapshots__ directories, *.min.*); generated or
+  bundled output only pr-recap skips (openwiki/, a root builds/, a dist/ not
+  directly inside src/, *.bundle.*); a path the base revision's .toposignore
+  lists; or a file with a generated-code header at both base and head. A
+  .toposignore entry or a header the change itself adds hides nothing.
+  A file that leaves a skipped place (renamed out of fixtures/, renamed from
+  an unsupported type, or a generated file that lost its header) is judged as
+  a new file, since its old content was never reviewed.
+  Such a file is never excused as a split child, and --max-files ranks it by
+  its whole length.
+  Skipped source files are named, largest first: `! N source files not
+  reviewed` on the card, a "Not reviewed" block in the GitHub comment,
+  skipped[].source, .kind and scope.files_unreviewed in --json. The kind tells
+  a file skipped by path or policy from one in a language Topos does not score
+  (.jsx, .c, .java, ...) and one left out by --max-files. None of them changes
+  the exit code. The recap cannot tell a real fixture from code hidden under
+  such a name, and a file that keeps a generated-code header on both sides is
+  skipped whatever its body becomes, so read that list on a pull request from
+  an untrusted contributor.
+  A file that is valid but that Topos cannot parse can only be exempted by a
+  maintainer, on the base branch: a .toposignore entry or a [[pr_recap.waive]].
 
 Waivers:
   A [[pr_recap.waive]] entry (gate, path glob, reason, optional expires =
@@ -220,7 +251,8 @@ Coupling:
   GitNexus, and a new head rebuilds only the head graph. `--no-coupling` skips
   that work and reports COMPOSABLE as not measured. With `--base/--head` there
   is no PR store, so splits are detected from import lines and the
-  moved-function ledger instead.
+  moved-function ledger instead. In --json each split child says which it was:
+  attached_by is "graph" or "import_line".
   With both graphs measured, three more gates read them, over every changed
   file (--max-files aside):
     import_cycle   an import cycle new at head, cut at an import this change
@@ -376,22 +408,19 @@ fn resolve_format(compact: bool, format: Option<RecapFormat>, no_marker: bool) -
 
 /// Best-effort count of files about to be scored, for the large-recap
 /// warning. `None` when the diff itself cannot be read, in which case the
-/// recap runs without the warning instead of failing.
-fn files_to_score(
-    root: &std::path::Path,
-    base: &str,
-    head: &str,
-    max_files: usize,
-) -> Option<usize> {
-    let diff = if head == ":worktree" {
-        worktree_files(root, base).ok()?
+/// recap runs without the warning instead of failing. Path rules only: the
+/// generated-header check reads every base blob, and `build_recap` runs it
+/// anyway, so the estimate may count a generated file the recap skips.
+fn files_to_score(exclusions: &Exclusions<'_>, max_files: usize) -> Option<usize> {
+    let diff = if exclusions.head == ":worktree" {
+        worktree_files(exclusions.repo, exclusions.base).ok()?
     } else {
-        changed_files(root, base, head).ok()?
+        changed_files(exclusions.repo, exclusions.base, exclusions.head).ok()?
     };
     let scoreable = diff
         .entries
-        .iter()
-        .filter(|entry| skip_reason(entry).is_none())
+        .into_iter()
+        .filter(|entry| exclusions.path_skip(&entry.path).is_none())
         .count();
     Some(if max_files == 0 {
         scoreable
@@ -400,12 +429,25 @@ fn files_to_score(
     })
 }
 
-fn warn_if_large_recap(root: &std::path::Path, base: &str, head: &str, max_files: usize) {
-    let Some(count) = files_to_score(root, base, head, max_files) else {
+fn warn_if_large_recap(exclusions: &Exclusions<'_>, max_files: usize) {
+    let Some(count) = files_to_score(exclusions, max_files) else {
         return;
     };
     if let Some(warning) = large_recap_warning(count) {
         eprintln!("{warning}");
+    }
+}
+
+/// Say on stderr what the config did not do: a mistyped key is dropped,
+/// and an edit the change makes to `.topos.toml` does not judge it. Neither
+/// is silent, even under `--json`.
+fn warn_about_config(dropped: &[String], unapplied: &[String]) {
+    for warning in dropped
+        .iter()
+        .cloned()
+        .chain(model::unapplied_note(unapplied))
+    {
+        eprintln!("warning: {warning}");
     }
 }
 
@@ -442,28 +484,33 @@ fn run_recap(args: PrRecapArgs) -> Result<i32, String> {
         .clone()
         .unwrap_or(std::env::current_dir().map_err(|e| format!("current directory: {e}"))?);
     let root = git_root(&repo)?;
-    let topos = load_topos_config(&root);
-    // A mistyped key is dropped, never silent.
-    for warning in &topos.pr_recap.warnings {
-        eprintln!("warning: {warning}");
-    }
+    let (requested_base, head, review) =
+        resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
+    let format = resolve_format(args.compact, args.format, args.no_marker);
+    // The stores must be built at the commit the sources are read from.
+    let base = merge_base(&root, &requested_base, head_commit(&head))?;
+    let policy = base_policy(&root, &requested_base, &base, &head);
+    let topos = policy.topos;
+    warn_about_config(&topos.pr_recap.warnings, &policy.unapplied);
     let judging = Judging {
         priority: resolve_priority(args.priority.as_deref(), &topos)?,
         gate: resolve_gate_policy_from_args(&args, &topos.pr_recap),
-        source: args
-            .preset
-            .is_none()
-            .then(|| find_config_file(&root))
-            .flatten(),
+        source: policy.source.filter(|_| args.preset.is_none()),
+        unapplied: policy.unapplied,
+        ignore: policy.ignore,
         topos,
         today: today_utc(),
         cap_name: gates::CLI_CAP_NAME,
     };
-    let (base, head, review) = resolve_range(&root, args.pr, args.base.clone(), args.head.clone())?;
-    let format = resolve_format(args.compact, args.format, args.no_marker);
-    // The stores must be built at the commit the sources are read from.
-    let base = merge_base(&root, &base, head_commit(&head))?;
-    warn_if_large_recap(&root, &base, &head, args.max_files);
+    warn_if_large_recap(
+        &Exclusions {
+            repo: &root,
+            base: &base,
+            head: &head,
+            ignore: &judging.ignore,
+        },
+        args.max_files,
+    );
 
     // Any question is asked here, before the progress lines take stderr.
     let streams = Streams::detect();
@@ -545,6 +592,8 @@ mod tests {
             topos: ToposConfig::default(),
             gate: PrGateConfig::default(),
             source: None,
+            unapplied: Vec::new(),
+            ignore: Vec::new(),
             today: "2026-09-22".to_string(),
             cap_name: gates::CLI_CAP_NAME,
         }
@@ -715,9 +764,23 @@ mod tests {
         let base = "HEAD~1";
         let head = "HEAD";
         let merge = crate::commands::gh::merge_base(&repo, base, head).unwrap();
-        assert_eq!(files_to_score(&repo, &merge, head, 0), Some(3));
-        assert_eq!(files_to_score(&repo, &merge, head, 2), Some(2));
-        assert_eq!(files_to_score(&repo, &merge, head, 10), Some(3));
+        let count = |ignore: &[String], max_files| {
+            let exclusions = Exclusions {
+                repo: &repo,
+                base: &merge,
+                head,
+                ignore,
+            };
+            files_to_score(&exclusions, max_files)
+        };
+        assert_eq!(count(&[], 0), Some(3));
+        assert_eq!(count(&[], 2), Some(2));
+        assert_eq!(count(&[], 10), Some(3));
+        assert_eq!(
+            count(&["src".to_string()], 0),
+            Some(0),
+            "files the base .toposignore skips are not about to be scored"
+        );
     }
 
     #[test]

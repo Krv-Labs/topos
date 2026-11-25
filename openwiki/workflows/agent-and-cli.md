@@ -4,8 +4,8 @@ title: Agent & CLI Workflows
 description: Detailed execution workflows for Topos CLI commands and MCP agent tool calls, covering entrypoint dispatch, input resolution, COMPOSABLE preparation, security overlays, and snapshot refactoring.
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T23:14:31.861Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,7 +47,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
 ---
 
 # Agent & CLI Workflows
@@ -80,7 +80,7 @@ flowchart TD
 
 ## Select an entrypoint
 
-The root `topos` executable dispatches thirteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help to standard error and exits with status 2, while explicit help prints to standard output and exits with status 0.
+The root `topos` executable dispatches fourteen public subcommands: `config`, `evaluate`, `inspect`, `pr-recap`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. Handlers report execution errors as `Error: ...` and exit with status 1. Subcommand dispatch logic intercepts empty argument lists and lone `-h`/`--help` flags before clap parsing: an empty invocation prints root help to standard error and exits with status 2, while explicit help prints to standard output and exits with status 0.
 
 ```mermaid
 flowchart TD
@@ -106,6 +106,7 @@ flowchart TD
 | `topos depgraph generate [PATH]` | You want to explicitly build or refresh the GitNexus graph used for COMPOSABLE. |
 | `topos pr-recap RANGE_OR_PR` | You want structural before/after summaries for a Git revision range or pull request number. |
 | `topos coverage PATH...` | You want to compare source structure against test declarations without executing test code. |
+| `topos badge [PATH]` | You want to generate an SVG or shields.io JSON pass-rate badge for a repository. |
 | `topos cache ...` | You want to inspect, discover, or clean cache locations across Topos operations. |
 | `topos mcp` | An MCP host launches the unified CLI executable as a stdio server. |
 | `topos-mcp` | An MCP host launches the standalone server binary; without `--help` or `--version`, it serves stdio. |

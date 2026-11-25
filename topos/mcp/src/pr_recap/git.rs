@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use topos_engine::adapters::discovery::is_excluded_path;
 use topos_engine::graphs::ast::languages::language_for_path;
 
 use super::gh::git;
@@ -233,6 +234,7 @@ fn is_generated_or_vendor_path(path: &str) -> bool {
         || is_dist_output_dir(&dirs)
         || file_name.contains(".min.")
         || file_name.contains(".bundle.")
+        || is_excluded_path(Path::new(path))
 }
 
 fn is_dist_output_dir(dirs: &[&str]) -> bool {

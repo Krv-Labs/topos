@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f6b6c3436eee04b9f3ccde01ff2c5d29606cd03100fb42a83305dc8aee91941c",
+  "pageVersion": "sha256:a6022a74ee402f0b4ea37a1e4b7ee3c272780fcbed3400bfb5a2a0e8db4c2d31",
   "claims": [
     {
       "id": "claim_b8167f4a6dc049f08d3b062b0c0de27d",
       "statement": "The CI workflow uses an unfiltered pull-request trigger and a gate output consumed by the rust, composable, wheel, and extension jobs, so stacked pull requests targeting topic branches can receive the same validation jobs.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L3-L29",
-          "version": "repo-lines-v1:sha256:248bc4bd666f849cd013f4f3496df51baaa20a7e9f37dc0b10bb477fbc631a2b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1N2Q1YjE4M2NmY2FkOTdlYmM5NGQ3NGVhOGE0MzNhYjY3MmI4YjRjYjYyMjI2ZDA4YTAzNWQ5YjE1Mjg0MTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiY2I0NDM0MjI1ZDljMjU4Y2UxOTUxM2Y4MTUyYmM4YWQ5Y2MxMTMxNzM3ZjI3NWYwMzAzZThlNDIwNjMzYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4NjZjYWNlZmFjMzJiYzhjMzk3MjNhOGI2ZmQ0YTM0MzM3MGQ4ZWZkNDAzZGE1N2UxZGFhMWMzOTdhNmQ1MmUifQ"
+          "resource": "repo://.github/workflows/ci.yml#L3-L70",
+          "version": "repo-lines-v1:sha256:5645b56002955824ea2b7de3d88e2db4c739c0bff72520da0c42602b71486fe0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2YWI2YmJiMjEwNjI3Yjc2NWFhYTVmZDc1YWRlY2JiMGI4M2E0N2I0YmQyMjU5ODQ2NGVhODYzNjQ4MGQzMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiY2I0NDM0MjI1ZDljMjU4Y2UxOTUxM2Y4MTUyYmM4YWQ5Y2MxMTMxNzM3ZjI3NWYwMzAzZThlNDIwNjMzYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2NTU5MDE4ZjgyOWRhMzFjMTA2NmI1ZTJkODYxYTQ5ZjY0Njc5MWQzMWE1YjAwNWRjOGNhMmJlYzFmNzViMmYifQ"
         },
         {
           "resource": "repo://.github/workflows/ci.yml#L72-L278",
-          "version": "repo-lines-v1:sha256:806d349cfca3aee1b6b27c5334792b31f1ed887f983995c20d85cc2c805e2de4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ODg2MzQzYjRmYWRlOTlhMGMwYmE3MTJiMzBiNzk3N2JmNGY5YjE1ZDhmNmQ5NTM1YmM4YmRjNjZhYzlhZGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MWRjYThmZDZmNTYxYWEwNDlmY2JjNjk2NTVlMzNlNzQzMTI1YWJhMzNlM2NmYzMxMTI4YjA5ZDVjMTk0OTJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MDFlYzY0OGI0NWU3NzdmZTA1NTUwZjQzOTFkYTk3NTdjNzAyMjM5YWIzYjljZWU3MmNlYWRkNDY2ZWQxZjAzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "version": "repo-lines-v1:sha256:c0d50b7d1cfc46c88f030c6bd4e371539939355a7bf7cf22e54ce94a6cb55122:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ODg2MzQzYjRmYWRlOTlhMGMwYmE3MTJiMzBiNzk3N2JmNGY5YjE1ZDhmNmQ5NTM1YmM4YmRjNjZhYzlhZGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MWRjYThmZDZmNTYxYWEwNDlmY2JjNjk2NTVlMzNlNzQzMTI1YWJhMzNlM2NmYzMxMTI4YjA5ZDVjMTk0OTJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MDFlYzY0OGI0NWU3NzdmZTA1NTUwZjQzOTFkYTk3NTdjNzAyMjM5YWIzYjljZWU3MmNlYWRkNDY2ZWQxZjAzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -123,12 +123,12 @@
       "statement": "Normal releases verify metadata, build Linux amd64/arm64 and macOS arm64 native binaries, package matching VSIX artifacts, create a checksummed GitHub Release, and publish Marketplace packages, PyPI wheels, and the MCP registry record; pypi_only dispatches omit this native path.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/release.yml#L27-L312",
-          "version": "repo-lines-v1:sha256:4c1b83013bbd664eb3262d2ef7b9f8d8c5361222a5aacd18a72c3d8f4eccf492:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjg2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGMwMWEwY2QxNjFkODQ3NzUxNzFhMjkxZmQ1YTgyZDUxNjVhOTI4M2FhNjdkMmMwYmYzY2E2YTBhZDU0NmQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4ZWQ2ODQ5MTIyMTE5MDE4MmIyNjA2MzYyMTdlYmM0NTgwOGYxZmNlOWRkNjFkMDU5NWU3ZGM5Nzk5MjVkNzNhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNjFiZGRhNjEzODFiN2FiMDYxZjM4MzI2ZTExZjE3NGEzOTU5YmE5MjU4NDU3ZTBhZjdjNmEwYzY1MjgzZTY3In0"
+          "resource": "repo://.github/workflows/release.yml#L25-L322",
+          "version": "repo-lines-v1:sha256:2d8dfc1531cfd5f46413c8d97fcba13c9c6f3274a20e5fe44a3f71c92172a014:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmMGNhNDJiODUzZTM1YmJjOGU5MDE1MzZlZDkwMzFlMmMyODc2Y2I0YWYzZDU1ODMyMTgyZGEwNjUwNWNhYmY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlMmEzMWM3Yjg4YjdhNGJiM2Q5YzVlZjg1ODBkNmYxMDJlMzEyNzI3YmQxYjYyOGJlZmEyMmM3MmE2MzBkZjVlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwYjNlMDMzYzY3OTViYWM2NjJhYTMwMGViNDdkZWEzOGE2NTIxZjU2MTUzZmU5YWY4NGM0MDBkY2NlMzg2NjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzODEwODUyMjllNzc5Y2VkOWIwN2QwZjFkMDljZjIxYjVjOGJjNTRhZGJlNjAyZTMzY2YwYTFjMmY1N2UzY2U1In0"
         },
         {
-          "resource": "repo://.github/workflows/release.yml#L313-L392",
-          "version": "repo-lines-v1:sha256:2f35733c67390ab04e4c89fce36a0758a1636005f2014e97b6dc1e0980b173cb:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2ZkOTg2MGU1MzVhNTgzOWEzYzFkYTRiYmU5MzkzODZkYjRiMDJlMTkyODM2NDRmMzE3MTBhNDg2ZWYwNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMzFhZTlmMTM1YTIzMmRhZmU3M2Y0NTJlNTZkNWI0YzkyY2RmN2EzZjU2MTA0NWU4NTI2M2U1M2QyZjM5OWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOTVjMjdmZmUwZTgwNWE3YWYxOTU3NDI0ZmU4NGNjZGYyNTU2NjU0NGUyZGVmODMxZTQ3MTYzODA1Y2JhYjcifQ"
+          "resource": "repo://.github/workflows/release.yml#L324-L392",
+          "version": "repo-lines-v1:sha256:77a7d9eafa146908b9b258aec3f779f47b7643d87f00e8cb46dd7004d9d1c2fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMTQ4MzlkNjhkMWE5ZmY2MTdlNjQyODI5NGIxOThlNzA5ODQzNTM0MzEwYmM2ZmM0YmE1OWJkMzkyYjAyMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1YmUxNjRiYTZkNmRjMWUwNTVhYWE5NjhmYTk0ODhiNmViMDIxNjU5MzJjYTgxYjM4YTFhMWZmM2E1YzQ0YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOTVjMjdmZmUwZTgwNWE3YWYxOTU3NDI0ZmU4NGNjZGYyNTU2NjU0NGUyZGVmODMxZTQ3MTYzODA1Y2JhYjcifQ"
         },
         {
           "resource": "repo://.github/workflows/release.yml#L394-L726",
@@ -183,8 +183,8 @@
       "statement": "The docs workflow builds Sphinx through uv and deploys only successful main-push output, while the badge workflow rebuilds/indexes on selected core changes and commits generated badges only on main.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/badge.yml#L3-L95",
-          "version": "repo-lines-v1:sha256:d8d20396db146943538ffdeff8944a3f1c094a7ded2fef2500e12c3f51617127:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OTRiYzI2OTdkYjJhZDk3OWI5ZWNmNjcwNTU1MzY3MGMwMmY1MTVjM2IwNzNiNjNmM2VmMzE2Mjc0ZDA3ZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjRiZWUyOTMwZDQ4YTA3M2FmMWQxNjNiM2RiMDU3M2E1OWRhYTAxNTE1NDBlYTg2YmQwMjI3ZDg5MDk4MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUifQ"
+          "resource": "repo://.github/workflows/badge.yml#L3-L93",
+          "version": "repo-lines-v1:sha256:66cb27e147e2ce50a89f772e7121af36ec0ab967cddda47f9865dbb8f2225c7c:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjRiZWUyOTMwZDQ4YTA3M2FmMWQxNjNiM2RiMDU3M2E1OWRhYTAxNTE1NDBlYTg2YmQwMjI3ZDg5MDk4MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://.github/workflows/docs.yml#L1-L40",
@@ -219,14 +219,24 @@
       "statement": "The OpenWiki update workflow triggers on main pushes or manual dispatch, executes openwiki CLI code update with Gemini 3.6 Flash, discards generated openwiki-update.yml cron workflow overwrites, and opens documentation pull requests that exclude workflow path additions.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki.yml#L18-L83",
-          "version": "repo-lines-v1:sha256:d7bf158ef6ac01eaec8739f4b165e75f1201f6637354c6e58890d27fa442ddc9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5YTdiOTgxMzVjYWFmNWEyMThhNjAyNmNkZWZlY2I4MzJkNDliOWM4MzE0NGQxMWM5MDU4ODZlZGNhYmQ2MjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZDZhMmMyOGQ5Njc1YzdlMjliNGEzNmViZTBhMWRiNDMzZDE2YmI3OTE2MjRmZDQyY2ZhYzhmOGE4MTVkNTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhMWMxNDE3MjUzOTkxMTdiZDEwYTliYTBkNzMwYWMxMTY5MDNiOTk5ZmUzNjYwOGI2MjA2YjZlYzZjMWZiY2MifQ"
+          "resource": "repo://.github/workflows/openwiki.yml#L18-L93",
+          "version": "repo-lines-v1:sha256:61f3db8b4996b9a36ad156ccad3c1430787d1a8b866ceecb426f0a5b6c3b58a7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZjIwMTMzYWNkMjRhMThiM2QyODY1NDM4MGYzOWQ5MDUwYWU3NzdiOWJmY2M0N2RhZDgzMzZkODQzODM0OWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZDZhMmMyOGQ5Njc1YzdlMjliNGEzNmViZTBhMWRiNDMzZDE2YmI3OTE2MjRmZDQyY2ZhYzhmOGE4MTVkNTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_01807fa0a7324d72a5af96637398d546",
+      "statement": "The multi-stage Docker build compiles the `topos-mcp` stdio server into a release bin wheel using Rust and Maturin in a builder stage, then installs the wheel alongside Node.js 20 and GitNexus in a Python 3.12-slim runtime image configured with `/workspace` as `TOPOS_MCP_FILE_ROOT`.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L1-L63",
+          "version": "repo-lines-v1:sha256:bd21553448871657482b7ae5551e77d30a962ab62b06f21a392cc18519fa1c5d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjQ4YmQ3NThhMDRiMjU4MGM2MDIxYTg2ZGZiY2UyMTFmMDE1YTFkZDVjYzRmMzljMTNiNmVjZmUxNTcyOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0YmJjOTlkYTA3MzI2MDhjOTAzMmQyNDdjNzAwOTk2ZGQ2MTdmZTU5YWY4YTlhN2U5MGFlY2VhNTY1MTVmYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.2",
-    "at": "2026-10-30T12:01:57.716Z"
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-24T23:14:31.861Z"
   }
 }

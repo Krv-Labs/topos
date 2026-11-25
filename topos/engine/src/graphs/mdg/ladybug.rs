@@ -29,7 +29,33 @@ impl ModuleDependencyGraph {
     }
 }
 
+/// Why `lbug_path` is mid-write and must not be opened, or `None` when it
+/// was closed cleanly.
+///
+/// A clean close checkpoints and removes `lbug.wal`, and a finished
+/// `gitnexus analyze` clears `incrementalInProgress` from `meta.json`. Either
+/// marker left behind means the run stopped part way. Replaying such a WAL
+/// has segfaulted lbug 0.17.1, which no error handling here can catch.
+pub fn unfinished_write(lbug_path: &Path) -> Option<&'static str> {
+    let mut wal = lbug_path.as_os_str().to_owned();
+    wal.push(".wal");
+    if Path::new(&wal).exists() {
+        return Some("lbug.wal was never checkpointed");
+    }
+    let meta = std::fs::read_to_string(lbug_path.parent()?.join("meta.json")).ok()?;
+    let meta: Value = serde_json::from_str(&meta).ok()?;
+    meta.get("incrementalInProgress")
+        .is_some_and(|flag| !flag.is_null())
+        .then_some("meta.json still has incrementalInProgress set")
+}
+
 fn open_database(lbug_path: &Path) -> Result<Database, MdgError> {
+    if let Some(reason) = unfinished_write(lbug_path) {
+        return Err(MdgError::UnfinishedWrite {
+            store: lbug_path.to_path_buf(),
+            reason,
+        });
+    }
     match Database::new(lbug_path, SystemConfig::default().read_only(true)) {
         Ok(db) => Ok(db),
         Err(read_only_err) => Database::new(lbug_path, SystemConfig::default()).map_err(|rw_err| {
@@ -246,6 +272,81 @@ mod tests {
             as_f64(&LbugValue::String("nope".into())).unwrap_or(1.0),
             1.0
         );
+    }
+
+    fn interrupted_store(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "topos_lbug_interrupted_{label}_{}",
+            std::process::id()
+        ));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        let lbug = dir.join("lbug");
+        let db = Database::new(&lbug, SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        for query in [
+            "CREATE NODE TABLE File(id STRING, filePath STRING, PRIMARY KEY(id))",
+            "CREATE REL TABLE CodeRelation(FROM File TO File, type STRING, \
+             confidence DOUBLE, reason STRING, step INT64)",
+            "CREATE (:File {id: 'a', filePath: 'src/a.rs'})",
+            "CREATE (:File {id: 'b', filePath: 'src/b.rs'})",
+        ] {
+            conn.query(query).unwrap();
+        }
+        drop(conn);
+        drop(db);
+        lbug
+    }
+
+    #[test]
+    fn a_store_left_with_its_wal_is_refused_before_the_native_open() {
+        let lbug = interrupted_store("wal");
+        let db = Database::new(&lbug, SystemConfig::default()).unwrap();
+        let conn = Connection::new(&db).unwrap();
+        conn.query("MATCH (n:File {id: 'a'}) DELETE n").unwrap();
+        std::mem::forget(conn);
+        std::mem::forget(db);
+        assert!(
+            lbug.with_extension("wal").exists(),
+            "the fixture must leave lbug.wal behind like a killed writer"
+        );
+
+        let err = ModuleDependencyGraph::from_lbug_path(&lbug, "src/a.rs").unwrap_err();
+        let dir = lbug.parent().unwrap().to_path_buf();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(err, MdgError::UnfinishedWrite { .. }),
+            "expected UnfinishedWrite, got {err}"
+        );
+        let message = err.to_string();
+        assert!(message.contains(&dir.display().to_string()), "{message}");
+        assert!(
+            message.contains("topos depgraph generate --force"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_store_whose_meta_marks_an_unfinished_analyze_is_refused() {
+        let lbug = interrupted_store("meta");
+        let dir = lbug.parent().unwrap().to_path_buf();
+        std::fs::write(
+            dir.join("meta.json"),
+            r#"{"branch":"main","incrementalInProgress":{"startedAt":1,"toWriteCount":168}}"#,
+        )
+        .unwrap();
+        let refused = ModuleDependencyGraph::from_lbug_path(&lbug, "src/a.rs");
+
+        std::fs::write(dir.join("meta.json"), r#"{"branch":"main"}"#).unwrap();
+        let loaded = ModuleDependencyGraph::from_lbug_path(&lbug, "src/a.rs");
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(
+            matches!(refused, Err(MdgError::UnfinishedWrite { .. })),
+            "expected UnfinishedWrite, got {:?}",
+            refused.map(|g| g.nodes().len())
+        );
+        assert_eq!(loaded.unwrap().nodes_of_label("File").len(), 2);
     }
 
     #[test]

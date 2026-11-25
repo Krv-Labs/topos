@@ -163,9 +163,14 @@ pub(crate) fn empty_discovery_message(
 
 fn has_any_suffix(path: &Path, suffixes: &[&str]) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    suffixes.iter().any(|suffix| {
-        name.len() >= suffix.len() && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
-    })
+    suffixes
+        .iter()
+        .any(|suffix| ends_with_ignore_ascii_case(name, suffix))
+}
+
+fn ends_with_ignore_ascii_case(name: &str, suffix: &str) -> bool {
+    let (name, suffix) = (name.as_bytes(), suffix.as_bytes());
+    name.len() >= suffix.len() && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
 }
 
 fn supported_suffix(path: &Path) -> Option<&'static str> {
@@ -173,9 +178,7 @@ fn supported_suffix(path: &Path) -> Option<&'static str> {
     for language in SUPPORTED_LANGUAGES {
         if let Some(suffixes) = language_file_suffixes(language) {
             for suffix in suffixes {
-                if name.len() >= suffix.len()
-                    && name[name.len() - suffix.len()..].eq_ignore_ascii_case(suffix)
-                {
+                if ends_with_ignore_ascii_case(name, suffix) {
                     return Some(*suffix);
                 }
             }
@@ -314,6 +317,22 @@ mod tests {
     fn discovery_suffixes_rejects_unknown_language() {
         let err = discovery_suffixes(Some("cobol")).unwrap_err();
         assert!(err.contains("unsupported language"), "{err}");
+    }
+
+    #[test]
+    fn multi_byte_file_names_are_matched_without_panicking() {
+        let dir = tmp_dir("unicode");
+        let path = dir.join("fîlé.ts");
+        fs::write(&path, "export const a = 1;\n").unwrap();
+
+        let inputs = resolve_evaluate_inputs(std::slice::from_ref(&path), None, false).unwrap();
+        assert_eq!(inputs[0].language, "typescript");
+        assert!(!has_any_suffix(Path::new("é"), &["x"]));
+        assert_eq!(supported_suffix(Path::new("fîlé.ts")), Some(".ts"));
+        assert_eq!(supported_suffix(Path::new("ÄPP.TS")), Some(".ts"));
+        assert!(has_any_suffix(Path::new("ÄPP.TS"), &[".ts"]));
+
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

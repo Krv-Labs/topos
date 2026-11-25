@@ -267,7 +267,7 @@ pub(in crate::commands::pr_recap) fn facts(item: &Item<'_>) -> String {
         }
     }
     let lead = item.lead();
-    if lead.metric.is_some() {
+    if lead.metric.is_some() || lead.is_unparsed() {
         parts.push(lowercase_first(&sentence(&lead.fix)));
     }
     parts.join(" · ")
@@ -276,6 +276,7 @@ pub(in crate::commands::pr_recap) fn facts(item: &Item<'_>) -> String {
 fn fact(finding: &Finding) -> String {
     let pillar = pillar_word(finding);
     match finding.gate {
+        GateId::PillarLost if finding.pillar.is_none() => "no longer parses at head".to_string(),
         GateId::PillarLost
         | GateId::PillarInherited
         | GateId::MovedPillar

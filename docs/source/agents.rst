@@ -468,7 +468,10 @@ Dependency Graph
    ``load_error``, ``schema_mismatch``, or ``invalid_dir`` (a bad ``gitnexus_dir``
    override). Staleness is anchored to the commit the graph was built from
    (falling back to file mtimes for graphs built before that marker existed), so
-   a regenerate reliably clears ``stale``. Never shells out.
+   a regenerate reliably clears ``stale``. A store that an interrupted
+   ``gitnexus analyze`` left half-written (a leftover ``lbug.wal``, or
+   ``incrementalInProgress`` in its ``meta.json``) reports ``load_error`` without
+   being opened; evaluate regenerates it when GitNexus is installed. Never shells out.
 
 ``topos_generate_depgraph({"directory": ..., "force": ...})``
    Runs ``gitnexus analyze`` and writes ``.gitnexus/``. Side-effecting and

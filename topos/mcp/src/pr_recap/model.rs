@@ -188,6 +188,23 @@ pub struct FileRecap {
     pub cluster: Option<ClusterMembership>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hotspots: Vec<Hotspot>,
+    /// The file existed at base, but nothing reviewed it there (it sat at
+    /// a skipped path, or was generated code), so it is judged as added
+    /// and never excused as a split child.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub promoted: bool,
+    /// Set when SIMPLE fails at head on `ast.entropy` alone and the file
+    /// is a test or literal-data file, where repeated text is expected.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub entropy_role: Option<FileRole>,
+}
+
+/// Why repeated text is expected in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileRole {
+    Test,
+    Data,
 }
 
 impl FileRecap {
@@ -219,9 +236,23 @@ pub enum ClusterMark {
     Fail,
 }
 
+/// What made a new file a candidate child of a split. Either way it is
+/// kept only when code moved into it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Attachment {
+    /// The base and head dependency graphs report the split.
+    Graph,
+    /// No graphs were measured: the parent's head source has an import
+    /// line naming the file.
+    ImportLine,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ClusterChild {
     pub path: String,
+    /// The evidence that tied this child to the parent.
+    pub attached_by: Attachment,
     /// `None` when COMPOSABLE was not measured.
     pub reach: Option<Reach>,
     /// Distinct files importing or calling this child at head, excluding itself.
@@ -412,16 +443,55 @@ pub struct Scope {
     pub lines_added: usize,
     pub lines_removed: usize,
     pub files_skipped: usize,
+    /// Skipped files that are source in a supported language: see
+    /// [`SkippedFile::source`].
+    pub files_unreviewed: usize,
     pub files_deleted: usize,
     /// Scoreable files left out by `--max-files`, lowest churn first out.
     pub files_capped: usize,
     pub coupling: CouplingStatus,
 }
 
+/// Why a changed file was not scored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipKind {
+    /// Source in a supported language, set aside for where it sits (a
+    /// vendor, fixtures or build path), the base `.toposignore`, or a
+    /// generated-code header. The author of a change controls the first.
+    PathOrPolicy,
+    /// Source in a language Topos does not score. A limitation of the
+    /// tool, not a choice the change made.
+    LanguageNotScored,
+    /// Scoreable, and left out by the scoring cap.
+    ScoringCap,
+    /// Not source: docs, config, data.
+    NotSource,
+}
+
+impl SkipKind {
+    /// How a count of these reads in a sentence.
+    pub fn phrase(self) -> &'static str {
+        match self {
+            SkipKind::PathOrPolicy => "skipped by path or policy",
+            SkipKind::LanguageNotScored => "in a language Topos does not score",
+            SkipKind::ScoringCap => "over the scoring cap",
+            SkipKind::NotSource => "not source",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SkippedFile {
     pub path: String,
     pub reason: String,
+    /// Source code that no gate looked at: every [`SkipKind`] except
+    /// `not_source`.
+    pub source: bool,
+    pub kind: SkipKind,
+    /// Lines added plus removed; a renamed file counts in full, since all
+    /// of it is new to where it now sits.
+    pub lines_changed: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -438,13 +508,37 @@ pub struct GateSummary {
     pub fail_on: &'static str,
     /// Settings that differ from the preset's.
     pub changes: usize,
-    /// The `.topos.toml` consulted, or `None` when `--preset` set the
-    /// policy or no file was found.
+    /// The `.topos.toml` consulted, read at the base revision, or `None`
+    /// when `--preset` set the policy or the base has no file.
     pub source: Option<String>,
+    /// What the change itself does to `.topos.toml`, one phrase per edit
+    /// (`fail_on: block → never`, `waiver added: pillar_lost on src/**`).
+    /// None of it judged this run: an edit counts once it is on the base.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unapplied: Vec<String>,
     /// How many findings a card lists before folding the rest into
     /// `N more` (`max_hotspots`). Rendering only; not in the document.
     #[serde(skip)]
     pub max_hotspots: usize,
+}
+
+impl GateSummary {
+    /// One sentence on the config edits that were set aside, for a card.
+    pub fn unapplied_note(&self) -> Option<String> {
+        unapplied_note(&self.unapplied)
+    }
+}
+
+/// One sentence listing `edits` to `.topos.toml` that were set aside, or
+/// `None` when there are none.
+pub fn unapplied_note(edits: &[String]) -> Option<String> {
+    (!edits.is_empty()).then(|| {
+        format!(
+            "This change edits .topos.toml or .toposignore. It is judged by the base \
+             revision's, so these edits were not applied: {}.",
+            edits.join("; ")
+        )
+    })
 }
 
 /// What one `[[pr_recap.waive]]` entry did on this run.
@@ -531,6 +625,61 @@ pub struct PrRecap {
 impl PrRecap {
     pub fn new_files(&self) -> Vec<&FileRecap> {
         self.files.iter().filter(|f| f.is_new()).collect()
+    }
+
+    /// The skipped files that are source, most changed lines first, so
+    /// small filler cannot push a large file out of a truncated list.
+    pub fn unreviewed(&self) -> Vec<&SkippedFile> {
+        let mut files: Vec<&SkippedFile> = self.skipped.iter().filter(|file| file.source).collect();
+        files.sort_by(|a, b| {
+            b.lines_changed
+                .cmp(&a.lines_changed)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        files
+    }
+
+    /// `1 skipped by path or policy, 3 in a language Topos does not
+    /// score`: the unreviewed source files by [`SkipKind`], so a hiding
+    /// place reads differently from a plain limitation.
+    pub fn unreviewed_breakdown(&self) -> String {
+        [
+            SkipKind::PathOrPolicy,
+            SkipKind::LanguageNotScored,
+            SkipKind::ScoringCap,
+        ]
+        .into_iter()
+        .filter_map(|kind| {
+            let count = self.skipped.iter().filter(|file| file.kind == kind).count();
+            (count > 0).then(|| format!("{count} {}", kind.phrase()))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+    }
+
+    /// `2 source files not reviewed (2 skipped by path or policy): a.py,
+    /// b.py and 3 more`, naming at most `shown` paths, or `None` when
+    /// every skipped file is non-source.
+    pub fn unreviewed_note(&self, shown: usize) -> Option<String> {
+        let files = self.unreviewed();
+        let named: Vec<&str> = files
+            .iter()
+            .take(shown)
+            .map(|file| file.path.as_str())
+            .collect();
+        let more = match files.len() - named.len() {
+            0 => String::new(),
+            more => format!(" and {more} more"),
+        };
+        (!files.is_empty()).then(|| {
+            format!(
+                "{} source file{} not reviewed ({}): {}{more}",
+                files.len(),
+                if files.len() == 1 { "" } else { "s" },
+                self.unreviewed_breakdown(),
+                named.join(", ")
+            )
+        })
     }
 }
 

@@ -50,6 +50,12 @@ pub fn calculate_kolmogorov_proxy(source: &str) -> f64 {
     ratio
 }
 
+/// The `ast.entropy` reading for a whole file: `None` when the source is
+/// empty or only whitespace, where a compression ratio measures nothing.
+pub fn source_entropy(source: &str) -> Option<f64> {
+    (!source.trim().is_empty()).then(|| calculate_kolmogorov_proxy(source))
+}
+
 /// Detailed entropy analysis result, with a human-readable interpretation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntropyResult {
@@ -131,6 +137,16 @@ mod tests {
     #[test]
     fn kolmogorov_proxy_empty_is_zero() {
         assert_eq!(calculate_kolmogorov_proxy(""), 0.0);
+    }
+
+    #[test]
+    fn source_entropy_is_undefined_for_blank_source() {
+        assert_eq!(source_entropy(""), None);
+        assert_eq!(source_entropy(" \n\t\r\n"), None);
+        assert_eq!(
+            source_entropy("x = 1\n"),
+            Some(calculate_kolmogorov_proxy("x = 1\n"))
+        );
     }
 
     #[test]

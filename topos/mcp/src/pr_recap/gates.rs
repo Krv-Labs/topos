@@ -30,7 +30,7 @@ use topos_engine::evaluation::waivers::{self, Waiver};
 
 use super::hotspots::FUNCTION_COMPLEXITY;
 use super::model::{
-    percent_change, Cluster, FileRecap, FunctionRef, GateCrossing, GateSummary, Headline,
+    percent_change, Cluster, FileRecap, FileRole, FunctionRef, GateCrossing, GateSummary, Headline,
     PillarDelta, WaiverSummary,
 };
 use super::moves::{MoveCause, RangeMoves};
@@ -40,6 +40,17 @@ pub use self::coupling::Coupling;
 /// Sort points per SECURE finding a split added, so one new finding
 /// outranks a few points of score drop or added complexity.
 const SPLIT_SECURE_FINDING_WEIGHT: f64 = 10.0;
+
+/// Sort points for a file that stopped parsing: the whole 0–100 scale, as
+/// every score it had is gone.
+const UNPARSED_MAGNITUDE: f64 = 100.0;
+
+/// Both ways out of an unparsed-file finding. The second matters for a
+/// valid file the parser cannot handle (newer syntax, a template with a
+/// source extension): the exemption has to land on the base branch.
+const UNPARSED_FIX: &str = "Fix the syntax error so the file parses; or, if the file is valid \
+     and Topos cannot parse it, have a maintainer add it to .toposignore or waive it with \
+     [[pr_recap.waive]] on the base branch.";
 
 /// Whether the change is ready to merge under the configured gates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, JsonSchema)]
@@ -137,6 +148,13 @@ pub struct Finding {
     /// Every file in a new import cycle, for its per-language severity.
     #[serde(skip)]
     cycle: Vec<String>,
+    /// The finding is that the file does not parse at head.
+    #[serde(skip)]
+    unparsed: bool,
+    /// A SIMPLE finding on `ast.entropy` alone in a test or data file,
+    /// which [`judged`] caps at warn outside the strict preset.
+    #[serde(skip)]
+    entropy_role: Option<FileRole>,
 }
 
 impl Finding {
@@ -163,6 +181,23 @@ impl Finding {
             text,
             magnitude: 0.0,
             cycle: Vec::new(),
+            unparsed: false,
+            entropy_role: None,
+        }
+    }
+
+    /// A finding that the file does not parse at head. It has no metric,
+    /// and its `fix` is the only remedy there is, so a card shows it.
+    pub fn is_unparsed(&self) -> bool {
+        self.unparsed
+    }
+
+    fn unparsed(gate: GateId, path: &str, text: String) -> Finding {
+        Finding {
+            fix: UNPARSED_FIX.to_string(),
+            magnitude: UNPARSED_MAGNITUDE,
+            unparsed: true,
+            ..Finding::new(gate, path, text)
         }
     }
 
@@ -230,6 +265,8 @@ pub fn evaluate(
     for file in files {
         if file.is_new() {
             new_file_findings(file, moves, &mut found);
+        } else if stopped_parsing(file) {
+            found.push(unparsed_finding(file));
         } else {
             // A split parent's fan-out rose only because it imports its
             // own children: COMPOSABLE is set aside, as its status did.
@@ -312,9 +349,10 @@ pub fn waive(
 }
 
 /// The policy's severity for the finding, or `None` when its gate is off.
-/// A score drop under the materiality thresholds is at most info, and an
+/// A score drop under the materiality thresholds is at most info, an
 /// import cycle takes the strictest `[pr_recap.import_cycle]` row among
-/// its files' languages.
+/// its files' languages, and a test or data file that fails SIMPLE on
+/// entropy alone is at most warn unless the preset is strict.
 fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     let severity = match finding.gate {
         GateId::ImportCycle => cfg.cycle_severity(finding.cycle.iter().map(String::as_str)),
@@ -322,6 +360,12 @@ fn judged(mut finding: Finding, cfg: &PrGateConfig) -> Option<Finding> {
     };
     finding.severity = if finding.gate == GateId::ScoreDrop && !finding.material {
         severity.min(Severity::Info)
+    } else if finding.entropy_role.is_some()
+        && cfg.preset != PrGatePreset::Strict
+        && severity > Severity::Warn
+    {
+        finding.text.push_str(" It warns instead of blocking.");
+        Severity::Warn
     } else if finding.gate == GateId::NewFilePillar
         && finding.pillar.as_deref() == Some("composable")
     {
@@ -357,12 +401,16 @@ fn importance(a: &Finding, b: &Finding) -> Ordering {
 /// limits as a changed file's. A split child is left to its split's gates
 /// except for new logic failing SIMPLE or NAVIGABLE: code moved out of the
 /// parent brings its findings along, and charging them to the child would
-/// fail every split of an imperfect file.
+/// fail every split of an imperfect file. A file that does not parse is
+/// judged whatever it belongs to: nothing in it can be measured, so it
+/// holds no pillar. So is a promoted file: nothing reviewed its base side,
+/// so none of it is known moved code.
 fn new_file_findings(file: &FileRecap, moves: &RangeMoves, found: &mut Vec<Finding>) {
     if file.medal_after.is_none() {
+        found.push(unparsed_new_file(file));
         return;
     }
-    if file.is_split_child() {
+    if file.is_split_child() && !file.promoted {
         for pillar in ["simple", "navigable"] {
             if let Some(delta) = file.pillars.get(pillar) {
                 if delta.after_passed == Some(false) {
@@ -549,6 +597,43 @@ fn changed_file_findings(
     }
 }
 
+/// Scored at base, unparseable at head. No pillar has a head score, so a
+/// per-pillar comparison would find nothing to compare.
+fn stopped_parsing(file: &FileRecap) -> bool {
+    file.medal_after.is_none()
+        && file
+            .pillars
+            .values()
+            .any(|delta| delta.before_score.is_some())
+}
+
+/// A file that stopped parsing loses every pillar at once: one
+/// `pillar_lost` finding for the file, naming the cause.
+fn unparsed_finding(file: &FileRecap) -> Finding {
+    Finding::unparsed(
+        GateId::PillarLost,
+        &file.path,
+        format!(
+            "{} parsed at base and no longer parses at head, so no pillar can be \
+             measured: every pillar it held is lost.",
+            file.path
+        ),
+    )
+}
+
+/// An added file that does not parse lands as SLOP: one `new_file_slop`
+/// finding saying why.
+fn unparsed_new_file(file: &FileRecap) -> Finding {
+    Finding::unparsed(
+        GateId::NewFileSlop,
+        &file.path,
+        format!(
+            "{} is new and does not parse, so no pillar can be measured (SLOP).",
+            file.path
+        ),
+    )
+}
+
 /// A finding about one pillar's gate, pointed at the hotspot for that
 /// gate's metric, else at the worst function when the gate is the
 /// per-function complexity one.
@@ -608,7 +693,40 @@ fn pillar_finding(
         }
     }
     finding.magnitude += drop.max(0.0);
+    if let Some(role) = file
+        .entropy_role
+        .filter(|_| pillar == "simple" && finding.metric.as_deref() == Some(ENTROPY))
+    {
+        expected_repetition(&mut finding, role);
+    }
     finding
+}
+
+const ENTROPY: &str = "ast.entropy";
+
+/// Say why low entropy is expected in a test or data file, and what to do
+/// if the file is not one.
+fn expected_repetition(finding: &mut Finding, role: FileRole) {
+    let (kind, why, fix) = match role {
+        FileRole::Test => (
+            "a test file",
+            "repeated cases are expected",
+            "If these are repeated cases, parametrize them: one table of inputs and expected \
+             results, run by one test. If this is not a test file, consolidate the repeated code.",
+        ),
+        FileRole::Data => (
+            "a data file (mostly literal tables, no branching)",
+            "repeated entries are expected",
+            "If this is literal data, consider loading it from a data file (JSON, CSV, YAML) at \
+             runtime. If it is not data, consolidate the repeated code.",
+        ),
+    };
+    finding.text = format!(
+        "{} Entropy measures how repetitive the text is, and this is {kind}, where {why}.",
+        finding.text
+    );
+    finding.fix = fix.to_string();
+    finding.entropy_role = Some(role);
 }
 
 /// A lost pillar the range's moves explain: the same finding, reported
@@ -970,6 +1088,7 @@ pub fn summary(cfg: &PrGateConfig, source: Option<&Path>) -> GateSummary {
         fail_on: cfg.fail_on.as_str(),
         changes: cfg.overrides().len(),
         source: source.map(|path| path.display().to_string()),
+        unapplied: Vec::new(),
         max_hotspots: cfg.max_hotspots as usize,
     }
 }
@@ -1007,8 +1126,8 @@ mod tests {
     use topos_engine::graphs::mdg::object::ModuleDependencyGraph;
 
     use super::super::model::{
-        ClusterChild, ClusterMark, ClusterMembership, ClusterRole, FileChange, FunctionRef,
-        Hotspot, Medal, PillarDelta,
+        Attachment, ClusterChild, ClusterMark, ClusterMembership, ClusterRole, FileChange,
+        FunctionRef, Hotspot, Medal, PillarDelta,
     };
     use super::*;
 
@@ -1127,6 +1246,8 @@ mod tests {
             fan_out_after: None,
             cluster: None,
             hotspots: Vec::new(),
+            promoted: false,
+            entropy_role: None,
         }
     }
 
@@ -1172,6 +1293,7 @@ mod tests {
             parent: parent.to_string(),
             children: vec![ClusterChild {
                 path: child.to_string(),
+                attached_by: Attachment::ImportLine,
                 reach: None,
                 importers: Vec::new(),
                 moved_in: 1,
@@ -1259,6 +1381,82 @@ mod tests {
             "src/a.rs lost SIMPLE in pick (line 12): ast.max_function_complexity 9→14, limit 10."
         );
         assert_eq!(lost.fix, advice_for("ast.max_function_complexity").unwrap());
+    }
+
+    fn entropy_lost(path: &str, role: Option<FileRole>) -> FileRecap {
+        let mut file = changed(path);
+        set(&mut file, "simple", (true, false), (80.0, 70.0));
+        file.pillars.get_mut("simple").unwrap().gate = crossing("ast.entropy", 0.23, 0.18, 0.2);
+        file.entropy_role = role;
+        file
+    }
+
+    #[test]
+    fn a_test_or_data_file_losing_simple_on_entropy_warns_outside_strict() {
+        for (preset, expected) in [
+            (PrGatePreset::Relaxed, Severity::Warn),
+            (PrGatePreset::Recommended, Severity::Warn),
+            (PrGatePreset::Strict, Severity::Block),
+        ] {
+            for role in [FileRole::Test, FileRole::Data] {
+                let file = entropy_lost("tests/cache.rs", Some(role));
+                let cfg = PrGateConfig::for_preset(preset);
+                let (_, findings) = unmoved(&[file], &[], 0, &cfg);
+                assert_eq!(gates(&findings), [GateId::PillarLost]);
+                assert_eq!(findings[0].severity, expected, "{preset:?} {role:?}");
+                let warns = findings[0].text.ends_with("It warns instead of blocking.");
+                assert_eq!(warns, expected == Severity::Warn, "{}", findings[0].text);
+            }
+        }
+    }
+
+    #[test]
+    fn an_entropy_loss_in_a_test_file_explains_itself() {
+        let (readiness, findings) = unmoved(
+            &[entropy_lost("tests/cache.rs", Some(FileRole::Test))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert_eq!(readiness, Readiness::NeedsAttention);
+        assert_eq!(
+            findings[0].text,
+            "tests/cache.rs lost SIMPLE: ast.entropy 0.23→0.18, min 0.2. Entropy measures how \
+             repetitive the text is, and this is a test file, where repeated cases are expected. \
+             It warns instead of blocking."
+        );
+        assert!(findings[0]
+            .fix
+            .starts_with("If these are repeated cases, parametrize them"));
+
+        let (_, findings) = unmoved(
+            &[entropy_lost("src/codes.py", Some(FileRole::Data))],
+            &[],
+            0,
+            &recommended(),
+        );
+        assert!(findings[0].text.contains("this is a data file"));
+        assert!(findings[0].fix.contains("loading it from a data file"));
+    }
+
+    #[test]
+    fn an_entropy_loss_in_ordinary_code_still_blocks() {
+        let (readiness, findings) =
+            unmoved(&[entropy_lost("src/a.py", None)], &[], 0, &recommended());
+        assert_eq!(readiness, Readiness::Blocked);
+        assert_eq!(findings[0].severity, Severity::Block);
+        assert_eq!(findings[0].fix, advice_for("ast.entropy").unwrap());
+    }
+
+    #[test]
+    fn a_role_does_not_soften_a_complexity_loss() {
+        let mut file = changed("tests/a.rs");
+        set(&mut file, "simple", (true, false), (60.0, 40.0));
+        file.pillars.get_mut("simple").unwrap().gate =
+            crossing("ast.max_function_complexity", 9.0, 14.0, 10.0);
+        file.entropy_role = Some(FileRole::Test);
+        let (_, findings) = unmoved(&[file], &[], 0, &recommended());
+        assert_eq!(findings[0].severity, Severity::Block);
     }
 
     #[test]
@@ -1919,5 +2117,65 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].path, "src/old.rs");
         assert_eq!(found[0].related, ["src/user.rs"]);
+    }
+
+    #[test]
+    fn a_file_that_stops_parsing_is_one_blocking_pillar_lost() {
+        use super::super::tests::{commit_all, recap, write_files, write_repo};
+
+        let (_keep, repo) = write_repo(&[("src/a.py", "def ready():\n    return 1\n")]);
+        write_files(&repo, &[("src/a.py", "def broken(:\n")]);
+        commit_all(&repo, "break the file");
+        let broken = recap(&repo, "HEAD~1", "HEAD", 0);
+        assert_eq!(broken.readiness, Readiness::Blocked);
+        assert_eq!(broken.exit_code, 1);
+        let [finding] = broken.findings.as_slice() else {
+            panic!("one finding for the file: {:?}", broken.findings);
+        };
+        assert_eq!(finding.gate, GateId::PillarLost);
+        assert_eq!(finding.severity, Severity::Block);
+        assert_eq!(finding.path, "src/a.py");
+        assert!(
+            finding.text.contains("no longer parses at head"),
+            "{}",
+            finding.text
+        );
+        assert_eq!(broken.reason, finding.text);
+
+        write_files(&repo, &[("src/a.py", "def still_broken(:\n")]);
+        commit_all(&repo, "leave it broken");
+        let unchanged = recap(&repo, "HEAD~1", "HEAD", 0);
+        assert!(unchanged.findings.is_empty(), "{:?}", unchanged.findings);
+    }
+
+    #[test]
+    fn an_added_file_that_does_not_parse_is_a_blocking_new_file_slop() {
+        let mut file = changed("src/new.py");
+        file.change = FileChange::Added;
+        file.medal_before = None;
+        file.medal_after = None;
+        file.pillars.clear();
+        for preset in [
+            PrGatePreset::Relaxed,
+            PrGatePreset::Recommended,
+            PrGatePreset::Strict,
+        ] {
+            let cfg = PrGateConfig::for_preset(preset);
+            let (readiness, findings) = unmoved(std::slice::from_ref(&file), &[], 0, &cfg);
+            assert_eq!(readiness, Readiness::Blocked, "{preset:?}");
+            let [finding] = findings.as_slice() else {
+                panic!("one finding for the file: {findings:?}");
+            };
+            assert_eq!(finding.gate, GateId::NewFileSlop);
+            assert_eq!(finding.severity, Severity::Block);
+            assert!(finding.text.contains("does not parse"), "{}", finding.text);
+        }
+
+        file.cluster = Some(ClusterMembership {
+            parent: "src/big.py".to_string(),
+            role: ClusterRole::Child,
+        });
+        let (readiness, _) = unmoved(&[file], &[], 0, &PrGateConfig::default());
+        assert_eq!(readiness, Readiness::Blocked, "a split child is not exempt");
     }
 }

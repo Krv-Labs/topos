@@ -1,8 +1,11 @@
 ---
 type: integration boundary guide
 title: Distribution and Integration Systems
-description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, and shell installers.
-tags: [integrations, gitnexus, sighthound, mcp, docker, vscode, distribution, update, maturin, pypi, installer]
+description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, Homebrew, and shell installers.
+tags: [integrations, gitnexus, sighthound, mcp, docker, homebrew, vscode, distribution, update, maturin, pypi, installer]
+verified:
+  - by: openwiki/0.9.0
+    at: 2026-11-24T23:14:31.861Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -26,6 +29,8 @@ sources:
     resource: repo://extensions/vscode/src/runtime.ts
   - id: openwiki-source-03ffc32a0ca502ab67c54b25
     resource: repo://install.sh
+  - id: openwiki-source-2c152778a1a90158712820eb
+    resource: repo://packaging/homebrew/topos.rb.template
   - id: openwiki-source-05ccef8d4cf1698187f20464
     resource: repo://pyproject.toml
   - id: openwiki-source-cde23208842b0b3ea8e3c334
@@ -72,31 +77,30 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
 ---
 
 # Distribution and Integration Systems
 
-Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, and update delivery mechanics across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent usage and registration workflows, see the [agent and CLI workflow](../workflows/agent-and-cli.md) and [harness registration](../workflows/harness-registration.md).
+Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, update delivery mechanics, and external graph adapter integrations across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent harness integration and registration workflows, see [harness registration](../workflows/harness-registration.md).
 
 ## External topology: GitNexus and the MDG
 
-GitNexus is the optional executable behind the COMPOSABLE pillar. Both `topos depgraph generate` and MCP `topos_generate_depgraph` use the shared engine adapter, which runs `gitnexus analyze --skip-agents-md --skip-skills` in the selected analysis root. Topos looks for `gitnexus` on `PATH`, recognizes `1.5.0` as the minimum supported version, and pins the known-good install to `gitnexus@1.6.8`. A version newer than that pin is reported as *untested*, rather than categorically rejected, because it can still work but its store format may have drifted.
+GitNexus is the optional executable behind the COMPOSABLE pillar. Both `topos depgraph generate` and MCP `topos_generate_depgraph` use the shared engine adapter in `topos/engine/src/adapters/gitnexus.rs`, which runs `gitnexus analyze --skip-agents-md --skip-skills` in the selected analysis root. Topos looks for `gitnexus` on `PATH`, recognizes `1.5.0` as the minimum supported version, and pins the known-good tested version to `gitnexus@1.6.8`. A version newer than that pin is reported as *untested*, rather than categorically rejected, because it can still work but its store format may have drifted.
 
-GitNexus produces `.gitnexus/`; Topos consumes it as an inter-module `ModuleDependencyGraph`, not as a replacement parser. The loader supports legacy JSON directories and current LadybugDB `lbug` stores. For a native store it discovers node tables, loads node properties, and reads `CodeRelation` edges including confidence and reason. The resulting graph supplies coupling, instability, call fan-in/out, and import-chain depth. Call fan measures symbols transitively contained by the target File through `CONTAINS`, `DEFINES`, `HAS_METHOD`, and `HAS_PROPERTY`; following `MEMBER_OF` would incorrectly cross into a community cluster.
+GitNexus produces `.gitnexus/`; Topos consumes it as an inter-module `ModuleDependencyGraph` (MDG), not as a replacement parser. The loader supports legacy JSON directories and native LadybugDB `lbug` stores loaded via `from_ladybug_native` in `topos/engine/src/graphs/mdg/ladybug.rs`. Before opening a native store, Topos checks `unfinished_write`: if `lbug.wal` exists or `meta.json` retains an `incrementalInProgress` flag, opening is rejected to prevent segfaulting the embedded database client on an incomplete write. When opening a clean store, it discovers node tables, loads node properties, and reads `CodeRelation` edges including confidence and reason.
+
+The resulting graph supplies coupling, instability, call fan-in/out, and import-chain depth metrics. Call fan measures symbols transitively contained by the target File through `CONTAINMENT_RELS` (`CONTAINS`, `DEFINES`, `HAS_METHOD`, and `HAS_PROPERTY`); following `MEMBER_OF` is deliberately avoided because it points a symbol at its community cluster rather than its parent module.
 
 ### Generation, freshness, and recoverability
 
-Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including a branch-scoped store). It captures a source-content fingerprint, file count, start/end times, and Git HEAD when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale.
+Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including branch-scoped stores). It captures a source-content fingerprint, file count, start/end times, and Git HEAD commit SHA when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale.
 
-Graph status inspection and resolution are handled by `depgraph_status`, which checks `.gitnexus` availability, branch store selection, store open validity (`load_error`, `branch_not_indexed`, `schema_mismatch`), and graph freshness without executing `gitnexus analyze`. Freshness evaluation evaluates anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
+Graph status inspection and resolution are handled by `depgraph_status`, which checks `.gitnexus` availability, branch store selection, store open validity (`load_error`, `branch_not_indexed`, `schema_mismatch`), and graph freshness without executing `gitnexus analyze`. Freshness evaluation checks anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
 
 The resolve-and-generate decision is standardized across both CLI (`topos evaluate`) and MCP evaluation tools through `ensure_gitnexus_dir` and `ensure_gitnexus_dir_with_progress`. The progress-aware function invokes a status closure with phase labels (such as `"Checking dependency graph freshness"` and `"Running gitnexus analyze"`) so CLI callers can drive interactive spinners while distinguishing freshness checks from generation.
 
-By default, evaluation attempts one generation for recoverable graph states (`missing`, `stale`, `branch_not_indexed`, or `load_error`). The `--no-composable` flag / `skip` parameter restores read-only behavior and bypasses generation. If `gitnexus` is absent from `$PATH`, or if `generate_depgraph` fails, the error is handled gracefully: `cap_generation_detail` bounds child failure output to 200 bytes with an explicit elision note to avoid context window inflation, returning a structured `generation_note` while leaving SIMPLE, SECURE, and NAVIGABLE fully usable. Subprocess execution is bounded by default to 300 seconds; `TOPOS_DEPGRAPH_TIMEOUT` overrides it, and a non-positive value disables the limit. In contrast, terminal states like schema mismatches or outside-root overrides (`invalid_dir`) are not retried because subprocess generation cannot safely resolve them.
+By default, evaluation attempts one generation attempt for recoverable graph states (`missing`, `stale`, `branch_not_indexed`, or `load_error`). The `--no-composable` flag / `skip` parameter restores read-only behavior and bypasses generation. If `gitnexus` is absent from `$PATH`, or if `generate_depgraph` fails, the error is handled gracefully: `cap_generation_detail` bounds child failure output to 200 bytes with an explicit elision note to avoid context window inflation, returning a structured `generation_note` while leaving SIMPLE, SECURE, and NAVIGABLE fully usable. Subprocess execution is bounded by default to 300 seconds; `TOPOS_DEPGRAPH_TIMEOUT` overrides it, and a non-positive value disables the limit. In contrast, terminal states like schema mismatches or outside-root overrides (`invalid_dir`) are not retried because subprocess generation cannot safely resolve them.
 
 ```mermaid
 flowchart TD
@@ -123,7 +127,7 @@ An explicit `--gitnexus-dir` / `gitnexus_dir` is resolved once before deriving i
 
 ## Sighthound is supplementary evidence, not SECURE scoring
 
-`topos-mcp` links Sighthound at a pinned Git revision. It does not discover or execute a user-installed `sighthound` command. For Python, JavaScript, TypeScript, and Go, it runs Sighthound’s explicit scan and taint analysis in process with embedded rules, maps findings to `SecurityFinding`, applies the caller’s allowlist, and stops at the requested finding cap. It scans an actual supplied file when possible, otherwise a temporary source file. Unsupported languages, scan failure, or a non-empty `TOPOS_DISABLE_SIGHTHOUND` value other than `0` select the local CPG-probe fallback.
+`topos-mcp` links Sighthound at a pinned Git revision in `Cargo.toml`. It does not discover or execute a user-installed `sighthound` command. For Python, JavaScript, TypeScript, and Go, it runs Sighthound’s explicit scan and taint analysis in process with embedded rules, maps findings to `SecurityFinding`, applies the caller’s allowlist, and stops at the requested finding cap. It scans an actual supplied file when possible, otherwise a temporary source file. Unsupported languages, scan failure, or a non-empty `TOPOS_DISABLE_SIGHTHOUND` value other than `0` select the local CPG-probe fallback.
 
 **The canonical SECURE verdict remains CPG-native.** Sighthound-derived `security_findings` are supplementary, advisory evidence returned with the analysis; they neither replace the SECURE score nor define its gate. Keep tests and documentation for the two layers separate: changing an embedded rule mapping can change diagnostic detail without changing the canonical SECURE classification.
 
@@ -158,9 +162,9 @@ MCP filesystem containment flow: canonicalizes requests and verifies that resolv
 
 A separate resolver supports paths that may not exist yet, chiefly a graph-store override. `resolve_existing_prefix` canonicalizes every existing component; it applies a missing tail lexically, but resumes symlink resolution if `..` removes that tail. `resolve_path_within` then compares that result with the canonical root. This is why a missing leaf and paths such as `link/missing/..` cannot hide an existing symlink escape; lexical normalization alone is unsafe here.
 
-## Registry wheels, native binaries, Docker image, and shell installer
+## Registry wheels, native binaries, Homebrew formula, Docker image, and shell installer
 
-Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native binaries, a container image, and a shell installation script. All packaging manifests are synchronized to version `0.15.0`.
+Distribution artifacts span PyPI wheels, the MCP Server Registry manifest, platform-native release binaries, a Homebrew tap formula, a container image, and a shell installation script. All packaging manifests are synchronized to workspace version `0.15.0`.
 
 ### Maturin PyPI packaging and MCP Registry manifest
 
@@ -178,6 +182,17 @@ The release workflow (`.github/workflows/release.yml`) running the `verify-versi
 
 Release CI (`.github/workflows/release.yml`) builds native `topos` binaries across target platforms (Linux amd64/arm64, macOS arm64). Before publishing, Linux builds check for unexpected dynamic linkage via `readelf`, while macOS builds verify that binaries link only system libraries via `otool`, run a `--version` smoke test, sign with Apple Developer ID certificates (enforcing hardened runtime options), run a signed library validation smoke test, and optionally notarize the archive. Staged native binaries are also packed into target-specific VSIX packages for VS Code distribution.
 
+### Homebrew formula and OpenSSL relinking
+
+Homebrew distribution is driven by the formula template at `packaging/homebrew/topos.rb.template` targeting the `krv-labs/tap/topos` tap. The formula supports macOS arm64 (`on_macos`) and Linux amd64/arm64 (`on_linux`).
+
+On macOS, the formula declares a dependency on `openssl@3`. Because release binaries built on runner runners dynamically link Homebrew OpenSSL paths, loading foreign Team ID dynamic libraries into Developer ID signed binaries triggers macOS runtime rejection. To resolve this, the Homebrew formula `install` block invokes `bundle_openssl_on_macos`:
+1. Copies `libssl.3.dylib` and `libcrypto.3.dylib` into `libexec/lib`.
+2. Uses MachO rewriting (`MachO.open`) to update the install names and linked dylibs on `bin/topos` and libexec dylibs to use `@loader_path/../libexec` or `@loader_path`.
+3. Re-signs the modified binary and dylibs ad-hoc via `codesign --force --sign -`.
+
+The formula also incorporates preflight checks via `foreign_topos_binaries`, scanning standard locations outside the Homebrew prefix (such as `~/.local/bin/topos` or `~/bin/topos`). If a foreign binary is found, non-blocking warnings are printed during `install` (`opoo`) and in `caveats` advising users that shell `$PATH` precedence determines which binary executes.
+
 ### Docker image architecture
 
 The `Dockerfile` provides a two-stage Glama-oriented container build based on `python:3.12-slim`:
@@ -189,10 +204,12 @@ Python exists in the image purely as the wheel installation substrate; the serve
 ### Shell installation script (`install.sh`)
 
 The standalone shell installer (`install.sh`) provides automated binary installation via `curl -fsSL https://docs.krv.ai/topos/install.sh | bash`. Key mechanics include:
-- **Installation Directory:** Places the native `topos` binary into `INSTALL_DIR` (default: `~/.local/bin`).
-- **Environment Controls:** Supports `TOPOS_VERSION` (default `latest`), `TOPOS_INSTALL`, `TOPOS_NO_MODIFY_PATH` (suppresses PATH modification), `TOPOS_FORCE` / `TOPOS_YES` (bypasses interactive prompts when overwriting existing non-installer binaries), and `TOPOS_SKIP_MAIN` (for testing helper functions).
-- **Preflight & Discovery:** Scans `$PATH` and standard locations (`~/.local/bin`, Homebrew prefixes) for existing `topos` executables. It classifies found binaries by installation channel (Homebrew, Python/pipx package, binary install) and prompts or warns before overwriting foreign binaries.
-- **Provenance & PATH Setup:** Writes installation provenance metadata to `~/.local/state/topos/install-provenance` (respecting `XDG_STATE_HOME`). Modifies shell startup files (`.bashrc`, `.zshrc`, etc.) enclosed by `# BEGIN TOPOS INSTALLER PATH` and `# END TOPOS INSTALLER PATH` delimiters.
+- **Installation Directory:** Places the native `topos` binary into `INSTALL_DIR` (default: `~/.local/bin`, configurable via `TOPOS_INSTALL`).
+- **Environment Controls:** Supports `TOPOS_VERSION` (default `latest`), `TOPOS_NO_MODIFY_PATH` (suppresses PATH modification), `TOPOS_FORCE` / `TOPOS_YES` (bypasses interactive prompts when overwriting existing non-installer binaries), `TOPOS_UPDATE` (bypasses optional dependency prompts during upgrades), and `TOPOS_SKIP_MAIN` (sourcing helper functions for test suites).
+- **Preflight & Discovery:** Scans `$PATH` and standard locations (`~/.local/bin`, Homebrew prefixes `/opt/homebrew`, `/usr/local`, `/home/linuxbrew/.linuxbrew`) via `discover_topos_executables`. It uses `is_homebrew_path` to detect Homebrew binaries without running `brew` (keeping preflight fast and offline-friendly). Scanned binaries are classified by installation channel (`Homebrew`, `Python package`, `binary install`), outputting channel-specific upgrade advice.
+- **Interactive Prompts:** Safely checks `[ -t 0 ]` (interactive stdin TTY) before prompting to overwrite or install optional dependencies. It deliberately avoids reading `/dev/tty` so piped installer executions, CI environments, and agent terminals never hang.
+- **Provenance & PATH Setup:** Writes installation provenance metadata to `PROVENANCE_FILE` (`~/.local/state/topos/install-provenance`, respecting `XDG_STATE_HOME`). Modifies shell startup files (`.bashrc`, `.zshrc`, etc.) enclosed by `# BEGIN TOPOS INSTALLER PATH` and `# END TOPOS INSTALLER PATH` delimiters.
+- **Optional Dependencies:** Interactively prompts to install `gitnexus` via `pnpm add -g gitnexus` (or `npm install -g gitnexus@1.6.8`), matching the pnpm-first resolution order used across Topos integrations.
 
 ## Agent Plugin and VS Code surfaces
 
@@ -262,7 +279,7 @@ Update check, throttle, and notice delivery workflow across CLI and MCP executio
 Notice delivery behavior adapts to the execution context:
 - **CLI passive notices:** On interactive commands where standard input, output, and error streams are terminals (`interactive()`), `passive_notice()` invokes `refresh(&home)` to perform the network fetch when stale. If an update is available or shadowed binaries exist, it prints a single-line advisory to `stderr` so machine-readable `stdout` outputs (such as `--json`) are preserved. Notice delivery is explicitly suppressed for `topos update` and `topos mcp`.
 - **MCP server notice injection:** The stdio `topos-mcp` server **never initiates network checks** during tool execution to guarantee fast, deterministic response times. Instead, it reads the cache file populated by previous CLI runs. When an update is available and display throttle permits, an in-memory `EMITTED` atomic boolean latch ensures that a Markdown update banner is injected into at most **one** tool execution response per server process lifecycle.
-- **Shadowed installation discovery:** `Survey` discovers all `topos` executables across `$PATH` (`installs::discover`). When multiple binaries are found, it detects shadowed installs where $PATH ordering causes a different binary to run, warning the user when an upgrade might appear ineffective.
+- **Shadowed installation discovery:** `Survey` discovers all `topos` executables across `$PATH` (`installs::discover`). When multiple binaries are found, it detects shadowed installs where `$PATH` ordering causes a different binary to run, warning the user when an upgrade might appear ineffective.
 
 `topos update` performs direct channel-aware upgrades or downloads signed, checksum-verified native release binaries from official release assets.
 
@@ -272,6 +289,7 @@ Notice delivery behavior adapts to the execution context:
 - **MCP containment and lifecycle:** run `cargo test -p topos-mcp security` and lifecycle tests. Keep regressions for missing in-root leaves and direct or `..`-mediated symlink escapes, and exercise both initialize and `server/discover` protocol eras.
 - **Sighthound:** test supported-language mapping, disable/fallback behavior, cap and allowlist handling, and taint sink selection independently from canonical CPG SECURE tests.
 - **Distribution metadata:** run `python3 scripts/check_versions.py` and `python3 scripts/check_agent_plugin.py`. A version or registry metadata change should also be checked through the release workflow’s platform/linkage paths.
+- **Homebrew formula and packaging:** inspect `packaging/homebrew/topos.rb.template` and run `pytest tests/packaging/test_install_sh_preflight.py` to verify preflight discovery, channel hints, and macOS OpenSSL relinking rules.
 - **VS Code:** run `pnpm run test` in `extensions/vscode`. Its unit tests cover invocation formation, language detection, SHA-256, manifest selection, redirects, non-200 responses, and timeout behavior without reaching the network.
 - **Harness changes:** use `topos/cli/tests/install_e2e.rs` plus dry-run, conflict, repair, and uninstall scenarios. Do not merge a convenience change that lets harness registration overwrite a user-owned entry or install skill contents.
 - **Update checks and notices:** run `cargo test -p topos-cli update_e2e` to verify survey reporting, cached throttle handling, shadowed binary detection, and offline behavior.

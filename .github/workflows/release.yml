@@ -236,7 +236,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "26"
           cache: pnpm
           cache-dependency-path: extensions/vscode/pnpm-lock.yaml
 
@@ -319,7 +319,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "26"
 
       - name: Download VSIX artifacts
         uses: actions/download-artifact@v8

@@ -1,11 +1,11 @@
 ---
-type: architecture overview
-title: System Architecture Overview
+type: concept
+title: Architecture Overview
 description: Details Topos's multi-crate workspace design (topos-engine, topos CLI, topos-mcp), categorical primitives, program representations (AST/CFG/PDG/CPG/MDG), evaluation pipeline, and component boundaries.
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T23:14:31.861Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
 ---
 
-# System Architecture Overview
+# Architecture Overview
 
-Topos is a category-theoretic system for structural software quality evaluation and static program analysis. The Cargo workspace (version 0.15.0) consists of three Rust crates: `topos-engine` (`topos/engine`), `topos` (`topos/cli`), and `topos-mcp` (`topos/mcp`).
+Topos is a category-theoretic system for structural software quality evaluation and static program analysis. The Cargo workspace consists of three Rust crates: `topos-engine` (`topos/engine`), `topos` (`topos/cli`), and `topos-mcp` (`topos/mcp`).
 
 The `topos-engine` crate is a pure, transport-free analysis engine with no CLI, MCP, or Python runtime concerns. It owns source parsing, language dispatch, unified AST (UAST) mapping, graph construction (CFG, PDG, CPG, MDG), metric probes, quality policy translation, and raw characteristic classification.
 
@@ -70,7 +70,7 @@ Both consumer crates depend on `topos-engine`. The `topos-mcp` crate implements 
 
 ```mermaid
 flowchart TD
-    subgraph CLI["topos (CLI binary)"]
+    subgraph CLI["topos CLI binary"]
         CLICmds["Command Handlers (evaluate, inspect, etc.)"]
         CLIMcp["mcp subcommand"]
     end
@@ -100,7 +100,7 @@ flowchart TD
 
 *Caption: Workspace crate dependency topology and key module boundaries across topos CLI, topos-mcp, and topos-engine.*
 
-## Categorical and Mathematical Framework
+## Categorical Framework and Lattice Mechanics
 
 Topos models a codebase as a topos $\mathcal{E} = \mathbf{Set}^{\mathcal{C} \times \mathcal{H}^{\text{op}}}$, where:
 - Objects are program representations (ASTs, call graphs, dependence graphs).
@@ -115,14 +115,18 @@ The characteristic morphism $\chi_S : P \to \Omega$ classifies a program $P$ by 
 
 A single-file evaluation evaluates each pillar through a policy translator $\Phi_i$. For multi-file evaluations, `combine_dimensions` computes the pointwise lattice meet $\bigwedge_f \chi_S(f)$ across files:
 - A quality pillar is satisfied for the codebase if and only if it is satisfied by **every** file that evaluated it.
-- Unmeasured dimensions (such as `COMPOSABLE` when no dependency graph is available) do not invalidate other pillars.
-- Parse failures collapse the overall file classification to `SLOP`, causing multi-file aggregation to fail all reported pillars.
+- Unmeasured dimensions (such as `COMPOSABLE` when no dependency graph is available) yield an unmeasured dimension rather than a failed one and do not invalidate other pillars.
+- Parse failures collapse the overall file classification to `SLOP`, causing multi-file aggregation to fail all reported pillars (as every file in a rollup must be parseable).
 
 ## From Source to Verdict
 
-`ProgramMorphism` owns the original source text, language identifier, optional file path, parsed `ProgramObject`, and lazily cached control flow graph (`ControlFlowGraph`), program dependence graph (`ProgramDependenceGraph`), and code property graph (`CodePropertyGraph`). Construction immediately attempts parsing using tree-sitter across supported languages (Python, Rust, JavaScript, TypeScript, C++, and Go).
+`ProgramMorphism` owns the original source text, language identifier, optional file path, parsed `ProgramObject`, and lazily cached control flow graph (`ControlFlowGraph`), program dependence graph (`ProgramDependenceGraph`), and code property graph (`CodePropertyGraph`). Construction immediately attempts parsing using tree-sitter across supported languages (Python, Rust, JavaScript, TypeScript, C++, and Go). An unsupported language has no AST, and an invalid tree-sitter parse fails `ProgramMorphism::is_valid`.
 
-Before parsing TypeScript source, dispatch identifies dynamic `import` expressions inside generic type arguments, such as `load<typeof import("...")>()`. It replaces the type argument text with `any` and padding spaces without altering byte length. This prevents tree-sitter from misinterpreting `<` as a relational comparison while maintaining exact byte offsets for source spans.
+Tree-sitter is the sole parser path in `topos-engine`. Parsing dispatches to specific grammars based on the language name and file extension, selecting the TSX grammar when a TypeScript file path ends in `.tsx`. Each parse maps the concrete tree into a Unified AST (UAST).
+
+Before parsing TypeScript source, dispatch identifies dynamic `import` expressions inside generic type arguments, such as `load<typeof import("...")>()`. It replaces the type argument text with `any` and padding spaces without altering byte length. This prevents tree-sitter from misinterpreting `<` as a relational comparison while maintaining exact byte offsets so UAST node spans remain aligned with the caller's original source text.
+
+Normal CLI and MCP classification assembly builds CFG, PDG, CPG, and abstractness representations, optionally attaches an MDG, and delegates shared verdict calculation to `CharacteristicMorphism::classify_detailed`.
 
 ```mermaid
 flowchart TD
@@ -164,15 +168,15 @@ flowchart TD
 | UAST / `AstRepresentation` | Single parsed file | Compression entropy and worst-function complexity feed `SIMPLE`. |
 | `NavigableRepresentation` | Same UAST | Maximum Semantic Compositional Divergence (SCD) across functions feeds `NAVIGABLE`. |
 | `ControlFlowGraph` (CFG) | All callables in file | Provides control-flow structure and `cfg.cyclomatic` complexity for `SIMPLE`. |
-| `ProgramDependenceGraph` (PDG) | Intra-procedural statements | Connects data and control dependences; feeds `CodePropertyGraph` construction. |
-| `CodePropertyGraph` (CPG) | Single file | Merges AST, CFG, DDG, and CDG edges to compute dangerous call and taint path metrics for `SECURE`. |
+| `ProgramDependenceGraph` (PDG) | Intra-procedural statements | Connects data and control dependences; feeds `CodePropertyGraph` construction. Uses coarse textual-order reaching definitions without alias analysis, SSA, or flow sensitivity. |
+| `CodePropertyGraph` (CPG) | Single file | Merges AST, CFG edges projected onto statements, and PDG data/control dependence edges to compute dangerous call and taint path metrics for `SECURE`. |
 | `ModuleDependencyGraph` (MDG) | Cross-file repository topology | GitNexus-derived graph providing inter-module coupling and stability metrics for `COMPOSABLE`. |
 
 `ProgramMorphism` caches derived graphs lazily. CPG construction independently projects block-level CFG edges between statement boundaries while retaining AST, CFG, DDG, and CDG edges. PDG data dependence uses textual-order reaching definitions without full flow-sensitive alias analysis.
 
 ## Classification Semantics and Policy Translation
 
-For syntactically valid code, `CharacteristicMorphism` always generates `AstRepresentation` and `NavigableRepresentation`, measuring `SIMPLE` and `NAVIGABLE`. Callers attach CFG and CPG representations for `SECURE` measurements, and an MDG for `COMPOSABLE`.
+For syntactically valid code, `CharacteristicMorphism` always evaluates `SIMPLE` from AST metrics and `NAVIGABLE` from the UAST. Callers attach CPG representations for `SECURE` measurements, and an MDG for `COMPOSABLE`. If a representation is unavailable, that dimension yields an unmeasured state rather than a failed gate. If parsing fails entirely, classification returns the default `SLOP` result.
 
 Metrics are routed by namespace:
 - `ast.*` and `cfg.*` $\to$ `SIMPLE`
@@ -180,22 +184,22 @@ Metrics are routed by namespace:
 - `cpg.*` $\to$ `SECURE`
 - `nav.*` $\to$ `NAVIGABLE`
 
-Policy translators ($\Phi_{\text{SIMPLE}}$, $\Phi_{\text{COMPOSABLE}}$, $\Phi_{\text{SECURE}}$, $\Phi_{\text{NAVIGABLE}}$) evaluate raw metrics against policy gates. Each policy returns a `ScoredDecision` containing a continuous score in $[0.0, 1.0]$ and an `achieved` Boolean computed as an unweighted AND across raw metric gates. `Priority` is retained in classification metadata to guide agent priority preferences, but does not alter individual gate thresholds.
+Policy translators ($\Phi_{\text{SIMPLE}}$, $\Phi_{\text{COMPOSABLE}}$, $\Phi_{\text{SECURE}}$, $\Phi_{\text{NAVIGABLE}}$) evaluate raw metrics against policy gates. Each policy returns a `ScoredDecision` containing a continuous score in $[0.0, 1.0]$ and an `achieved` Boolean computed as an unweighted AND across raw metric gates. Normalized scores are for reporting only, and `Priority` settings do not alter per-metric pass/fail thresholds.
 
 ### Pillar Input Definitions
 
-- **SIMPLE**: Evaluates source compression entropy and worst-function cyclomatic/AST complexity. Whole-file CFG cyclomatic metrics are advisory to avoid penalizing large single files composed of small functions. Import/export entrypoint modules receive specific entropy exemptions.
-- **NAVIGABLE**: Gates `nav.max_function_divergence` (Semantic Compositional Divergence). It measures deeply nested block scopes and fanout rather than flat sequential branches.
-- **SECURE**: Evaluates reachable dangerous APIs and source-to-sink taint paths using CPG analysis. Both counts must equal zero to pass the raw SECURE gate. Raw classification uses an empty allowlist.
+- **SIMPLE**: Evaluates source compression entropy and worst-function cyclomatic/AST complexity. Whole-file `cfg.cyclomatic` metrics are advisory to avoid penalizing large single files composed of small functions. Import/export entrypoint modules receive specific entropy exemptions.
+- **NAVIGABLE**: Gates `nav.max_function_divergence` (Semantic Compositional Divergence), measuring deeply nested block scopes and worst-function nesting divergence rather than flat sequential branches.
+- **SECURE**: Evaluates reachable dangerous APIs and source-to-sink taint paths using CPG analysis. Raw SECURE verdict strictly requires zero dangerous calls and zero taint flows. Raw classification uses an empty allowlist.
 - **COMPOSABLE**: Evaluates inter-module coupling, instability, fan-in/fan-out, and dependency depth from the GitNexus MDG. File-level evaluation emphasizes fan-out while accounting for entrypoint and leaf module roles.
 
 The [quality model](../domain/quality-model.md) provides detailed product-level references for policy thresholds and gate specifications.
 
 ## Identity and Graph Safety Contracts
 
-Nodes in the UAST preserve original parser provenance and source spans while receiving deterministic IDs computed using BLAKE2b over language, node kind, span, and parent ID.
+Nodes in the UAST preserve original parser provenance and source spans while receiving deterministic IDs computed using BLAKE2b over language, native node kind, span, and parent ID.
 
-Cross-representation references use `node_key`, which selects the deterministic UAST ID or falls back to an `anon::<address>` identifier for synthetic nodes. Synthetic addresses are valid only for the lifespan of that specific in-memory UAST.
+Cross-representation references use `node_key`, which selects the deterministic UAST ID or falls back to an `anon::<address>` identifier for synthetic nodes. Synthetic addresses are valid only for the lifespan of that specific in-memory live tree.
 
 Cloning, equality comparisons, and destruction passes on UAST and CPG instances are implemented iteratively to prevent call-stack overflow on deeply nested ASTs. CFG longest-acyclic-path algorithms ignore explicit `Loopback` and `Continue` edges, degrading to `0` if unexpected cycles are encountered rather than overflowing or panicking.
 
@@ -203,22 +207,24 @@ Cloning, equality comparisons, and destruction passes on UAST and CPG instances 
 
 ### CLI Boundary (`topos`)
 
-The CLI commands (`evaluate`, `inspect`, etc.) discover supported source files recursively when language filters are omitted. Unless `--no-composable` is specified, `evaluate` and `inspect` attempt to resolve or generate `.gitnexus` index data via `gitnexus analyze`. If GitNexus resolution fails (e.g., missing binary or schema mismatch), the evaluation degrades gracefully to measure the remaining three pillars with a notice printed to stderr.
+The CLI commands (`evaluate`, `inspect`, etc.) discover supported source files recursively when language filters are omitted. Unless `--no-composable` is specified, `evaluate` and `inspect` attempt to resolve or generate GitNexus state via `gitnexus analyze`. If GitNexus resolution fails (e.g., missing binary or schema mismatch), the evaluation degrades gracefully to measure the remaining three pillars with a notice printed to stderr.
 
 ### MCP Server Boundary (`topos-mcp`)
 
 The MCP server provides tool interfaces (`topos_evaluate_file`, `topos_evaluate_code`, `topos_inspect_code`, `topos_depgraph_status`) over stdio.
 
-Inline code evaluations (`topos_evaluate_code`) cannot attach an MDG because inline snippets lack a file path for repository graph lookup; COMPOSABLE is marked as unmeasured. File evaluations (`topos_evaluate_file`) load depgraphs via a process-wide `STORE_CACHE` keyed by directory path, Git branch, and `.gitnexus` modification time, retargeting loaded graph data across files in the same project.
+Inline code evaluations (`topos_evaluate_code`) cannot attach an MDG because inline snippets lack a file path for repository graph lookup; `COMPOSABLE` is marked as unmeasured. File evaluations (`topos_evaluate_file`) load depgraphs via a process-wide dep-graph cache keyed by directory path, Git branch, and `.gitnexus` modification time, retargeting loaded graph data across files in the same project.
 
 ### Security Allowlist Overlay
 
-Raw engine classifications (`ClassificationResult`) always reflect unsuppressed security findings.
+Raw engine classifications (`ClassificationResult`) always reflect canonical raw SECURE metrics with unsuppressed findings.
 
-When a parseable raw classification fails `SECURE`, MCP constructs a CPG and applies project config (`.topos.toml`) and one-off tool allowances:
-1. Raw CPG findings are partitioned into active and acknowledged risks.
-2. Adjusted SECURE status is recomputed using filtered active counts.
-3. If acknowledged risks exist and the adjusted element would yield `IDEAL`, the grade is capped by clearing SECURE in the adjusted lattice element and setting `grade_capped = true`.
+Allowlist processing is an explicit overlay over the canonical raw classification. MCP applies its allowlist overlay only when a parseable raw classification fails `SECURE`. It constructs a CPG and applies project config (`.topos.toml`) and one-off tool allowances:
+1. Raw CPG security findings are partitioned into active and acknowledged risks.
+2. Adjusted `SECURE` status is recomputed using filtered active counts.
+3. If acknowledged risks exist and the adjusted element would yield `IDEAL`, the grade is capped by clearing `SECURE` in the adjusted lattice element and setting `grade_capped = true` (preventing acknowledged risk from producing `IDEAL`).
+
+The response exposes raw and adjusted verdict fields while preserving the engine result as the canonical raw classification.
 
 ```mermaid
 flowchart TD
@@ -243,4 +249,4 @@ See [agent and CLI workflows](../workflows/agent-and-cli.md) for interface contr
 - **Adding a language**: Register the language in tree-sitter dispatch, suffix discovery, and UAST mapping functions. Ensure TypeScript dynamic-import sanitization maintains exact byte lengths to preserve span alignment.
 - **Adding a metric**: Implement probe calculation on the appropriate `Representation` type using a unique namespace prefix, then route the metric in `CharacteristicMorphism`.
 - **Modifying policy gates**: Maintain raw gate evaluation and remediation metadata in `evaluation/policies/gates.rs` to keep CLI, MCP, and suggestion engine results synchronized.
-- **Testing**: Run `cargo test -p topos-engine` for core graph and evaluation tests, and run `topos-cli` and `topos-mcp` integration suites to verify consumer interfaces.
+- **Testing**: Run `cargo test -p topos-engine` for core graph and evaluation tests, and run `topos` and `topos-mcp` integration suites to verify consumer interfaces.

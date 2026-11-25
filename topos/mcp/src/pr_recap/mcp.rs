@@ -9,10 +9,10 @@ use std::time::Duration;
 
 use rmcp::model::CallToolResult;
 use serde_json::{json, Value};
-use topos_engine::config::{find_config_file, load_topos_config};
 use topos_engine::evaluation::waivers::today_utc;
 
 use super::gh::{git_root, merge_base};
+use super::policy::base_policy;
 use super::progress::{Progress, Watch};
 use super::summary::{self, not_found_block, resolve_paths, NotFound, SUMMARY_SCHEMA};
 use super::{
@@ -158,9 +158,10 @@ fn run_pr_recap(
     progress: &Progress,
 ) -> Result<(PrRecap, PathBuf), String> {
     let root = git_root(&project_root(params.directory.as_deref())?)?;
-    let judging = judging_for(&params, &root)?;
-    let (base, head, review) = resolve_range(&root, params.pr, params.base, params.head)?;
-    let base = merge_base(&root, &base, head_commit(&head))?;
+    let (requested_base, head, review) =
+        resolve_range(&root, params.pr, params.base.clone(), params.head.clone())?;
+    let base = merge_base(&root, &requested_base, head_commit(&head))?;
+    let judging = judging_for(&params, &root, &requested_base, &base, &head)?;
     let plan = plan_coupling(
         &root,
         &base,
@@ -195,13 +196,23 @@ fn project_root(directory: Option<&str>) -> Result<PathBuf, String> {
     Ok(composable_default_root(&project))
 }
 
-fn judging_for(params: &PrRecapInput, root: &Path) -> Result<Judging, String> {
+/// The judging for `fork..head`, from the config at `base`.
+fn judging_for(
+    params: &PrRecapInput,
+    root: &Path,
+    base: &str,
+    fork: &str,
+    head: &str,
+) -> Result<Judging, String> {
     let preset = params.preset.as_deref().map(parse_preset).transpose()?;
-    let topos = load_topos_config(root);
+    let policy = base_policy(root, base, fork, head);
+    let topos = policy.topos;
     Ok(Judging {
         priority: resolve_priority(params.priority.as_deref(), &topos)?,
         gate: resolve_gate_policy(params.strict, preset, &topos.pr_recap),
-        source: preset.is_none().then(|| find_config_file(root)).flatten(),
+        source: policy.source.filter(|_| preset.is_none()),
+        unapplied: policy.unapplied,
+        ignore: policy.ignore,
         topos,
         today: today_utc(),
         cap_name: MCP_CAP_NAME,
@@ -229,7 +240,7 @@ mod tests {
         assert_eq!(deadline_from(Some("1e30")), NO_DEADLINE);
     }
     use crate::pr_recap::progress::Phase;
-    use crate::pr_recap::summary::tests::{fixture, input};
+    use crate::pr_recap::summary::tests::{fixture, fixture_on, input};
     use crate::pr_recap::tests::{
         branchy, commit_all, judging, no_coupling, recap, write_files, write_repo,
     };
@@ -278,13 +289,16 @@ mod tests {
 
     #[test]
     fn summary_and_text_stay_under_their_ceilings() {
-        let (_keep, repo) = fixture(40, 3);
-        write_files(
-            &repo,
-            &[(
-                ".topos.toml",
-                "[pr_recap.gates]\nnew_file_pillar = \"info\"\n",
-            )],
+        let (_keep, repo) = fixture_on(
+            &[
+                ("README.md", "# hi\n"),
+                (
+                    ".topos.toml",
+                    "[pr_recap.gates]\nnew_file_pillar = \"info\"\n",
+                ),
+            ],
+            40,
+            3,
         );
         let response = respond_untimed(input(&repo, Detail::Summary, &[]), None);
         let structured = response.structured_content.expect("structured");
@@ -349,6 +363,78 @@ mod tests {
         };
         assert_eq!(unify(&cli, "--max-files"), unify(&mcp, "max_files"));
         assert!(mcp.contains("src/--max-files.py"));
+    }
+
+    const SHELL: &str = "import os\n\ndef run(cmd):\n    os.system(cmd)\n";
+
+    /// The tool reads policy where the CLI does: at the base revision.
+    #[test]
+    fn the_tool_judges_by_the_base_config_and_the_base_toposignore() {
+        let (_keep, repo) = write_repo(&[
+            ("src/a.py", "def ready():\n    return 1\n"),
+            (".toposignore", "samples/\n"),
+        ]);
+        write_files(
+            &repo,
+            &[
+                ("src/a.py", SHELL),
+                ("samples/b.py", SHELL),
+                ("hidden/c.py", SHELL),
+                (".toposignore", "samples/\nhidden/\n"),
+                (
+                    ".topos.toml",
+                    "[pr_recap]\nfail_on = \"never\"\n\n[[pr_recap.waive]]\ngate = \"pillar_lost\"\npath = \"src/**\"\nreason = \"trust me\"\n",
+                ),
+            ],
+        );
+        commit_all(&repo, "regress and self-exempt");
+
+        let response = respond_untimed(input(&repo, Detail::Full, &[]), None);
+        let full = response.structured_content.expect("structured");
+        assert_eq!(full["check"], "fail", "{full:#}");
+        assert_eq!(full["exit_code"], 1);
+        assert_eq!(full["gate"]["fail_on"], "block");
+        assert_eq!(
+            full["gate"]["unapplied"],
+            json!([
+                "fail_on: block → never",
+                "waiver added: pillar_lost on src/**",
+                ".toposignore pattern added: hidden"
+            ])
+        );
+        let gates: Vec<(&str, &str)> = full["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|finding| finding["severity"] == "block")
+            .map(|finding| {
+                (
+                    finding["gate"].as_str().unwrap(),
+                    finding["path"].as_str().unwrap(),
+                )
+            })
+            .collect();
+        assert!(gates.contains(&("pillar_lost", "src/a.py")), "{gates:?}");
+        assert!(
+            gates.contains(&("new_file_insecure", "hidden/c.py")),
+            "a path the change adds to .toposignore is still judged: {gates:?}"
+        );
+        assert_eq!(full["scope"]["files_unreviewed"], 1);
+        let skipped = full["skipped"].as_array().unwrap();
+        assert!(
+            skipped.iter().any(|file| file["path"] == "samples/b.py"
+                && file["reason"] == "ignored by .toposignore at base"
+                && file["source"] == true),
+            "{skipped:?}"
+        );
+
+        let summary = respond_untimed(input(&repo, Detail::Summary, &[]), None);
+        let text = summary.content[0].as_text().unwrap().text.clone();
+        assert!(text.contains("these edits were not applied"), "{text}");
+        assert!(text.contains("Not reviewed: 1 source file(s)"), "{text}");
+        let structured = summary.structured_content.unwrap();
+        assert_eq!(structured["check"], "fail");
+        assert_eq!(structured["scope"]["files_unreviewed"], 1);
     }
 
     #[test]

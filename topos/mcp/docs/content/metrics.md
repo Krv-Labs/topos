@@ -69,6 +69,15 @@ desirabilities, so `achieved` ⇔ score ≥ 50. A dispatch module with
 least 50; the high cyclomatic reading lowers the score within the passing
 half and is flagged if it is atypical for the codebase.
 
+**`ast.entropy` measures repeated text.** Below 0.2 the file compresses
+very well, which usually means repeated code. An empty or whitespace-only
+file has no entropy reading at all (the key is absent from `raw_metrics`),
+so the entropy gate does not apply and the file is judged on
+`ast.max_function_complexity` alone; an empty `__init__.py` passes SIMPLE.
+In `topos pr-recap`, a test file or literal-data file that fails SIMPLE on
+entropy alone warns rather than blocks outside the strict preset (see the
+`pr-recap` gates in the CLI docs).
+
 ## COMPOSABLE generator (← Dependency Graph + UAST Abstractness)
 
 `mdg.instability`/`mdg.coupling`/`mdg.fan_in`/`mdg.fan_out`/`mdg.dep_depth`
@@ -104,6 +113,29 @@ diagnostic only. See `docs/decisions/file-level-composable.md`.
 
 **`achieved`** ⇔ `mdg.fan_out ≤ 10` ⇔ COMPOSABLE score ≥ 50. Fan-in and
 instability move the score within its half only.
+
+### False edges removed before scoring
+
+GitNexus resolves calls and imports by bare name, so some edges point at a
+repository file that the code never uses. When the graph loads, Topos
+removes an edge only when the source proves it false:
+
+| Rule | Removed edge | Why it is false |
+|---|---|---|
+| `rust_private_cross_crate` | `CALLS` between files of different crates (nearest `Cargo.toml`) whose target is a non-exported free function | A private function cannot be called from another crate (`std::fs::write` matched to a private `fn write`). Methods are kept: a trait impl method has no `pub` and is still callable through the trait. |
+| `python_stdlib_import` | `IMPORTS` to a module named only by absolute standard-library imports in the source (`import json`, `from json import x`) | `import json` loads the standard library, not `pkg/http/json.py`. Kept when the repository has its own top-level `json` module, and when any relative or repository import in the file names the same module. |
+| `js_bare_package_import` | `IMPORTS` to a file named only by bare package specifiers (`@codemirror/state`, `roughjs/bin/math`) | A package import resolves under `node_modules`. Kept when a `paths` alias, `baseUrl` entry, workspace package name, `#`/`~`/`@/` alias, or a relative import could also name the file, and when the nearest `tsconfig.json`/`jsconfig.json` cannot be read in full (for example, it extends a package config). |
+
+The filter applies to every consumer: `mdg.fan_out`, `mdg.fan_in`,
+`mdg.coupling`, and the pr-recap coupling gates. `topos_depgraph_status`
+(and `topos depgraph status`) reports how many edges each rule removed;
+`topos depgraph status --json` lists every removed edge.
+
+Known limits, not filtered: TypeScript `paths` aliases that GitNexus routes to
+the wrong file (`@pkg/element/types` → `packages/pkg/types.ts`), dynamic
+imports with computed specifiers, and Python modules wired by string
+(plugin settings, `importlib.import_module`), which GitNexus does not see at
+all.
 
 ## SECURE generator (← Code Property Graph)
 

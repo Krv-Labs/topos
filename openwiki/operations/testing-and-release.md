@@ -5,7 +5,7 @@ description: Focused validation and delivery runbook for the Rust workspace, MCP
 tags: [operations, testing, ci, release, packaging, rust, docker]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-52ede14ca39633f994b4447a
     resource: repo://.github/workflows/badge.yml
@@ -39,7 +39,7 @@ sources:
     resource: repo://scripts/setup-lbug-prebuilt.sh
   - id: openwiki-source-109b3cc8dcd24a7fc78b0a8d
     resource: repo://tests/packaging/test_install_sh_preflight.py
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Verification, Testing, and Release Operations
@@ -176,7 +176,7 @@ Secret identifiers such as `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64` and `VSCE
 ## Documentation, badges, and OpenWiki CI automation
 
 - **Sphinx documentation workflow:** `.github/workflows/docs.yml` builds Sphinx HTML using Python 3.12 and `uv` on `main` pushes and pull requests targeting `main`. Only successful pushes to `main` deploy the Pages site artifact.
-- **Self-badge generator workflow:** `.github/workflows/badge.yml` triggers on path-filtered core Rust inputs and badge generation logic. It builds and indexes the repository with pinned GitNexus and commits updated SVG badges on `main` using `[skip ci]` to prevent workflow loops.
+- **Self-badge generator workflow:** `.github/workflows/badge.yml` triggers on path-filtered core Rust inputs and badge generation logic. It builds and indexes the repository with pinned GitNexus and opens an automated badge refresh pull request (`bot/self-badge`) via `peter-evans/create-pull-request@v7` on `main` pushes.
 - **OpenWiki update workflow:** `.github/workflows/openwiki.yml` automates documentation synchronization. It runs on manual dispatch (`workflow_dispatch`) or on pushes to `main` that do not touch `openwiki/**`, `AGENTS.md`, or `CLAUDE.md`. The job sets up Node.js 22, installs `openwiki` globally, and executes `openwiki code --update --print` using Gemini 3.6 Flash (`OPENWIKI_MODEL_ID=gemini-3.6-flash`). Because the `openwiki` CLI writes a stock daily scheduled workflow (`.github/workflows/openwiki-update.yml`) as a side effect during code updates, the job explicitly deletes `openwiki-update.yml` and restores `openwiki.yml` before calling `peter-evans/create-pull-request@v7`. The pull request step targets branch `openwiki/update` and configures `add-paths` strictly to `openwiki`, `AGENTS.md`, and `CLAUDE.md`, omitting `.github/workflows/**` so automated documentation updates cannot alter workflow permissions, triggers, or schedules.
 
 ## Before merge or release

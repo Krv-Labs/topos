@@ -1,11 +1,11 @@
 ---
 type: integration boundary guide
 title: Distribution and Integration Systems
-description: Comprehensive reference for packaging and distributing Topos via PyPI/Maturin, MCP Registry, Agent Plugins, Docker, Homebrew, and shell installers.
+description: Comprehensive reference for distribution channels, artifact manifests, path security containment, update delivery, and GitNexus graph adapter integration.
 tags: [integrations, gitnexus, sighthound, mcp, docker, homebrew, vscode, distribution, update, maturin, pypi, installer]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-4d1d392666be6dfdd7a91a2e
     resource: repo://.github/workflows/release.yml
@@ -77,14 +77,48 @@ sources:
     resource: repo://topos/mcp/src/update/notice.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Distribution and Integration Systems
 
 Topos is a Rust workspace. The native `topos` CLI and the `topos-mcp` stdio server use `topos-engine`; distribution mechanisms change how a host locates, starts, confines, and updates that analyzer, not its scoring model. This page covers launch contracts, artifact channels, path security controls, packaging manifests, update delivery mechanics, and external graph adapter integrations across all distribution surfaces. For the core analysis pipeline, see the [architecture overview](../architecture/overview.md); for agent harness integration and registration workflows, see [harness registration](../workflows/harness-registration.md).
 
-## External topology: GitNexus and the MDG
+```mermaid
+flowchart TD
+    Workspace["Topos Rust Workspace"] --> Maturin["Maturin Build (bindings = 'bin')"]
+    Maturin --> PyPI["PyPI Binary Wheel (topos-mcp)"]
+    PyPI --> MCPReg["MCP Registry (.mcp/server.json via uvx)"]
+    Workspace --> Native["Native Binary Releases (Linux & macOS)"]
+    Native --> Homebrew["Homebrew Tap (topos.rb.template)"]
+    Native --> Shell["Shell Installer (install.sh)"]
+    Native --> VSCode["VS Code Extension (extensions/vscode)"]
+    Workspace --> Docker["Docker Multi-stage Build (Dockerfile)"]
+    Docker --> Container["Glama Container Image"]
+    Workspace --> PluginPkg["Agent Plugin Package (agent-plugin/plugin.json)"]
+```
+Distribution surfaces matrix: source code artifacts flow into PyPI wheels, native binaries, container images, Homebrew taps, shell installers, and host-managed plugin packages.
+
+## External topology: GitNexus, LadybugDB, and Sighthound
+
+Topos integrates external engines and stores to augment its structural code-quality pillars while maintaining engine isolation.
+
+```mermaid
+flowchart TD
+    Engine["Topos Engine"] --> Adapter["GitNexus Adapter (adapters/gitnexus.rs)"]
+    Adapter -->|Min 1.5.0, Pinned 1.6.8| CLI["gitnexus analyze --skip-agents-md --skip-skills"]
+    CLI --> Store[".gitnexus/ store"]
+    Store --> Preflight{"unfinished_write check (lbug.wal & incrementalInProgress)"}
+    Preflight -->|Clean| NativeLoader["LadybugDB Native Loader (graphs/mdg/ladybug.rs)"]
+    Preflight -->|Unfinished| Reject["Reject store loading"]
+    NativeLoader --> MDG["ModuleDependencyGraph (lbug crate)"]
+    MDG --> Composable["COMPOSABLE Metric Engine"]
+    Engine --> Sighthound["Embedded Sighthound SAST (sighthound crate)"]
+    Sighthound --> Secure["SECURE Metric Supplementary Findings"]
+```
+Graph adapter dependencies and security scan integration: GitNexus CLI generation feeds LadybugDB store loading for COMPOSABLE scoring, while embedded Sighthound provides supplementary findings for SECURE analysis.
+
+### GitNexus and the Module Dependency Graph (MDG)
 
 GitNexus is the optional executable behind the COMPOSABLE pillar. Both `topos depgraph generate` and MCP `topos_generate_depgraph` use the shared engine adapter in `topos/engine/src/adapters/gitnexus.rs`, which runs `gitnexus analyze --skip-agents-md --skip-skills` in the selected analysis root. Topos looks for `gitnexus` on `PATH`, recognizes `1.5.0` as the minimum supported version, and pins the known-good tested version to `gitnexus@1.6.8`. A version newer than that pin is reported as *untested*, rather than categorically rejected, because it can still work but its store format may have drifted.
 
@@ -94,7 +128,7 @@ The resulting graph supplies coupling, instability, call fan-in/out, and import-
 
 ### Generation, freshness, and recoverability
 
-Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including branch-scoped stores). It captures a source-content fingerprint, file count, start/end times, and Git HEAD commit SHA when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale.
+Generation records a Topos-owned `.topos-fingerprint.json` beside the resolved store (including branch-scoped stores). It captures a source-content fingerprint (computed via BLAKE2b), file count, start/end times, and Git HEAD commit SHA when available. The same discovery and ignore rules used for evaluation determine the fingerprint, so changing ignored inputs does not make COMPOSABLE stale.
 
 Graph status inspection and resolution are handled by `depgraph_status`, which checks `.gitnexus` availability, branch store selection, store open validity (`load_error`, `branch_not_indexed`, `schema_mismatch`), and graph freshness without executing `gitnexus analyze`. Freshness evaluation checks anchors in strict priority order: source-content hash, Git HEAD commit SHA, the `generated_at` mtime walk across project source files, then the legacy directory mtime comparison.
 
@@ -116,7 +150,6 @@ flowchart TD
     Recover -->|no| Terminal["Report invalid override or schema mismatch"]
     Load --> Score["Attach MDG to COMPOSABLE"]
 ```
-
 Shared graph generation and recovery decision: recoverable graph states receive one bounded generation attempt, while unsafe or schema-mismatched states do not.
 
 ### Root selection is also a containment rule
@@ -157,7 +190,6 @@ flowchart TD
     Project -->|yes| Accept["Use resolved path and project root"]
     Project -->|no| RejectProject["Reject request"]
 ```
-
 MCP filesystem containment flow: canonicalizes requests and verifies that resolved paths and discovered project markers satisfy containment boundaries.
 
 A separate resolver supports paths that may not exist yet, chiefly a graph-store override. `resolve_existing_prefix` canonicalizes every existing component; it applies a missing tail lexically, but resumes symlink resolution if `..` removes that tail. `resolve_path_within` then compares that result with the canonical root. This is why a missing leaf and paths such as `link/missing/..` cannot hide an existing symlink escape; lexical normalization alone is unsafe here.
@@ -271,7 +303,6 @@ flowchart TD
     Latch -->|yes| Banner["Inject Markdown banner into 1 tool result"]
     Latch -->|no| Quiet
 ```
-
 Update check, throttle, and notice delivery workflow across CLI and MCP execution surfaces.
 
 ### Surface-specific delivery mechanics

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bafde30f3ab1fa42df5461296499db7cb6af401af5abdf1cc255284877cb8b15",
+  "pageVersion": "sha256:0523ee5b926e0027ed2f20a48b60fb82d55e5fe829dcda543720725375505558",
   "claims": [
     {
       "id": "claim_e4c0eafe313c458291568721ef6e14b0",
@@ -187,8 +187,8 @@
       "statement": "CI uses a gate script that runs trunk and stacked pull requests but fails open when stack membership is unavailable or malformed, and the Rust verification job performs formatting, warning-denying Clippy, workspace tests, package checks, and an MCP stdio smoke test.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L116-L143",
-          "version": "repo-lines-v1:sha256:1c61dcc6dd6cba9b798ddb7c12ff2afb604762b5028a8b61e5eba58e8da49c9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkMjc2ODQ0ZmJhY2JhOTFiNzVhMjExYWIyMTMyZDdmMjE0ZTUzNmE4YmE1NzkzY2RjNzUyODFlNGVlZDE4MDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkZTYxYWFmMGY5YTRmODRmMDFlZTNiM2I2NGVjZjU0MjQ5OGJmYmM5Y2JkOTYzY2FjOTlkM2MzODE4NjA4ZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlMDMzZmI2MDAzMjNlMGY5YzBjNzY0NmFjZGQ5YWJhZmU4OTc5N2NiZWE5MDhmYmQ5ODU3MzE4NzBmMjEyYTgifQ"
+          "resource": "repo://.github/workflows/ci.yml#L118-L152",
+          "version": "repo-lines-v1:sha256:8e72ed87fdc719fca08b265d9a5186dd7dbafc4c02ca909cc8633fb6554e0fd4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMzU5ODg3OTZmMjFiZjEwM2JlODA3ZmUxNTA1Mjk5NzJmY2EzNmFmYWMxNjI3NTQzNjhhZGFjYzE1NzBiMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNDFlYjcxMmJjYzUxZWFhODRjMzVhMTZjNzk4OTMxZDU0MGQwYzRiMDVhY2Q0ZDllNWMyNDU2ZDg5YTZlYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5YmM1N2VlMGY4ODJhNGNiNTZiYTg1MmUzOGZjMTU3NDViNmU1ZTExMDc2NzU2NmZlNzQxNzMxNDkwNTQzYzgifQ"
         },
         {
           "resource": "repo://.github/workflows/ci.yml#L18-L71",
@@ -209,7 +209,7 @@
       "statement": "The CI COMPOSABLE job installs pinned GitNexus, analyzes a fixture, and asserts that CLI evaluation returns a non-null COMPOSABLE score rather than silently using the no-store path.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L144-L211",
+          "resource": "repo://.github/workflows/ci.yml#L158-L225",
           "version": "repo-lines-v1:sha256:874f7c28ee03f202c13c531373271d8a044d2d2bf5e4ab3aeb79f02b0f654a06:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNDY4NWYyNWY0MzI4MjU0YmFlM2YxZTlkOGJhNDM3ZWZmYTU0Yjg0MTc1ZTJjMDdkYjUxY2E2YzgwZGY4NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkY2NiODZmZTQ2OTNhYzQyMjNjNzRjMWY5YzY1YTRjNjk0OTFiMGM5MTFjNjlmYTgyM2RkZGNjMjdhODUwZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZTk0YjM1NjA4ZjdjMjI3YmNhZjQwNDhjNmY1YjgyOTRiOTEyYzEyNjJhZjQyNWQ1NTU0ZTE1MWEyMzk3ZjMifQ"
         }
       ]
@@ -249,6 +249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-25T03:58:47.865Z"
+    "at": "2026-11-25T22:07:40.661Z"
   }
 }

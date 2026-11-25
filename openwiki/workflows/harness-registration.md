@@ -5,7 +5,7 @@ description: Workflows and life cycle mechanics for installing Topos, registerin
 tags: [workflows, cli, mcp, agents, configuration, safety, installation, plugins, vscode]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-6b1d82c5b3e8f760360a25c5
     resource: repo://.mcp/server.json
@@ -53,18 +53,18 @@ sources:
     resource: repo://topos/mcp/src/main.rs
   - id: openwiki-source-3812b1def9fbad0607404761
     resource: repo://topos/mcp/src/server.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Harness & Plugin Registration Workflow
 
 Topos integrates into AI agent workflows through binary distribution, agent plugin manifests, integrated editor extensions, and agent-harness Model Context Protocol (MCP) registration. `topos install`, `topos uninstall`, and `topos status` manage a user-scope MCP integration boundary. For each supported agent harness, Topos manages a single MCP server entry named `topos`, configured with an absolute executable `command` and exactly `args: ["mcp"]`. `topos install status` is an alias for the status workflow.
 
-The core rule is one MCP artifact per harness; **pi is the intentional exception**, as it may additionally receive a path reference to an already-installed Topos skill directory. Topos never writes skill contents, instruction blocks, or `@import` directives. See [distribution surfaces](../integrations/distribution.md) for the ownership boundary between CLI tools, agent plugins, and skill packages.
+The core safety rule is a strict single MCP server entry per harness; **pi is the single intentional exception**, as it may additionally receive a path reference to an already-installed Topos skill directory in its own `settings.json`. Topos never writes skill contents, instruction blocks, or `@import` directives. See [distribution surfaces](../integrations/distribution.md) for the ownership boundary between CLI tools, agent plugins, and skill packages.
 
 ## Installer Lifecycle and Shell Distribution
 
-Topos supplies a shell installer (`install.sh`) for automated binary deployment alongside direct CLI execution. The installer verifies shell dependencies (`curl`, `mktemp`, `sed`, `grep`, `uname`, `mkdir`, `mv`, `chmod`), preflights existing installations (such as Homebrew or existing binary builds), deploys the `topos` binary into `INSTALL_DIR` (`~/.local/bin` by default), configures shell profile PATH entries when required (using `# BEGIN TOPOS INSTALLER PATH` markers), records an installation provenance record in `${XDG_STATE_HOME:-$HOME/.local/state}/topos/install-provenance`, and verifies execution.
+Topos supplies an automated shell installer (`install.sh`) for binary deployment alongside direct CLI execution. The installer verifies shell dependencies (`curl`, `mktemp`, `sed`, `grep`, `uname`, `mkdir`, `mv`, `chmod`), preflights existing installations (such as Homebrew or existing binary builds), deploys the `topos` binary into `INSTALL_DIR` (`~/.local/bin` by default), configures shell profile PATH entries when required (using `# BEGIN TOPOS INSTALLER PATH` markers), records an installation provenance record in `${XDG_STATE_HOME:-$HOME/.local/state}/topos/install-provenance`, and verifies execution.
 
 ```mermaid
 flowchart TD
@@ -85,7 +85,7 @@ Topos also provides standardized plugin and package metadata manifests for regis
 
 ## Supported Agent Harnesses and Metadata Formats
 
-The `HARNESSES` table defines the supported agent integration targets. Each entry declares the harness identifier, user configuration path, artifact format, presence detector function, user messages, operational notes/caveats, and whether the pi skill reference applies. Command logic iterates this table rather than hardcoding harness-specific branches. Detection pre-checks interactive choices via `detect_*` predicates (`binary_installed` and `app_installed`), probing PATH, user bin candidates (`~/.local/bin`, `~/.cargo/bin`, `~/.opencode/bin`, `~/bin`, `%APPDATA%\npm`, `%LOCALAPPDATA%\npm`, `%LOCALAPPDATA%\Microsoft\WindowsApps`), and platform desktop app paths (`/Applications`, `%ProgramFiles%`, `/usr/share`, `/opt`), but detection never blocks an explicit command-line selection.
+The `HARNESSES` table defines the supported agent integration targets. Each entry declares the harness identifier, user configuration path, artifact format (`McpJson`, `McpToml`, `VsCodeJson`, `OpenCodeJson`), presence detector function, user messages, operational notes/caveats, and whether the pi skill reference applies. Command logic iterates this table rather than hardcoding harness-specific branches. Detection pre-checks interactive choices via `detect_*` predicates (`binary_installed` and `app_installed`), probing PATH, user bin candidates (`~/.local/bin`, `~/.cargo/bin`, `~/.opencode/bin`, `~/bin`, `%APPDATA%\npm`, `%LOCALAPPDATA%\npm`, `%LOCALAPPDATA%\Microsoft\WindowsApps`), and platform desktop app paths (`/Applications`, `%ProgramFiles%`, `/usr/share`, `/opt`), but detection never blocks an explicit command-line selection.
 
 | Id | Harness | User configuration | Topos-owned MCP location | Format / Structure |
 | --- | --- | --- | --- | --- |
@@ -212,7 +212,7 @@ flowchart TD
     CheckState -- Conflict --> AbortConflict["Refuse write (preserve foreign JSONC and comments)"]
     CheckState -- Absent or Incomplete --> CreateBackup["Create .topos.backup (only if pre-existing file)"]
     CreateBackup --> AtomicWrite["Atomic write via temp file (field-level update, preserve foreign keys)"]
-    AtomicWrite --> RecordLedger["Record created file and dirs in install.json ledger"]
+    AtomicWrite --> RecordLedger["Record created file and dirs in topos-install-ledger.json"]
     RecordLedger --> CheckPi{"Harness is pi?"}
     CheckPi -- No --> Done["Registration Complete"]
     CheckPi -- Yes --> PiSkill["Check pi skill source (~/.pi/agent/skills or candidate dirs)"]
@@ -238,17 +238,9 @@ pi lacks a native MCP client: its MCP registration is inactive until the user in
 
 This mechanism references an external skill search directory rather than copying skill files. Insertion is idempotent, appends to the existing `skills` array without overwriting foreign entries, and preserves unrelated settings. `topos status --json` reports pi's `skillRef` status independently (`active`, `conflict`, `discovered`, or `unavailable`) so that MCP server status and skill reference status remain distinct.
 
-## Status Inspection and Read-Only Residue
-
-`topos status` inspects the executable path, checks all entries in `HARNESSES`, scans for legacy residue, and prints structured console output or machine-readable JSON (`topos status --json`). The JSON output includes resolved binary paths, active count totals, per-harness status details, residue records, and pi skill reference state.
-
-Residue scanning is strictly read-only. `topos status` identifies draft-era Copilot instruction blocks, Gemini `@import` directives, copied skill files, and foreign-key duplicate MCP registrations. Topos never modifies or deletes residue artifacts during install or uninstall operations because these files may be shared across tools or managed by external distribution channels (such as OpenClaw, ClawHub, or Hermes).
-
-Google Antigravity includes a specific migration warning: prior to migration, a legacy data-directory `mcp_config.json` can overwrite `~/.gemini/config/mcp_config.json` on application launch. Migration markers or back-compatibility symlinks suppress the warning. Topos never writes directly to legacy data directories.
-
 ## Ledger-Authorized Cleanup and Uninstallation
 
-Topos uses a persistent state ledger located at `~/.local/state/topos/install.json` (or `%APPDATA%\topos\install.json` on Windows) to track ownership authority. The ledger records:
+Topos uses a persistent state ledger file—`install.json` (also referenced as the `topos-install-ledger.json` state ledger)—located at `${XDG_STATE_HOME:-$HOME/.local/state}/topos/install.json` (or `%APPDATA%\topos\install.json` on Windows) to track ownership authority. The ledger records:
 - Files created by `install` per harness (`createdFiles`).
 - Directory paths created by `install` writes (`createdDirs`).
 - Pi skill references appended by `install` (`addedSkillRef`).
@@ -273,9 +265,17 @@ Uninstallation performs cleanup in a strict sequence to preserve authorization e
 1. Purge `.topos.backup` files when requested (`--purge-backups`) for selected harnesses only.
 2. Remove Topos MCP entries and clear harness ledger records.
 3. If all managed MCP registrations and ledger-owned skill references have been removed, prune recorded directories deepest-first if effectively empty (allowing minor system artifacts like `.DS_Store`).
-4. Delete `install.json` and prune the state directory last.
+4. Delete `install.json` (the installer state ledger) and prune the state directory last.
 
 Protected system roots—including `$HOME`, `~/.local`, `~/.local/state`, `~/.config`, `~/Library`, `~/Library/Application Support`, and `%APPDATA%`—are excluded from directory pruning. Shared cache indexing data (`~/.local/state/topos/cache-index/`) is preserved across uninstallation and reported in human-readable output.
+
+## Status Inspection and Read-Only Residue
+
+`topos status` inspects the executable path, checks all entries in `HARNESSES`, scans for legacy residue, and prints structured console output or machine-readable JSON (`topos status --json`). The JSON output includes resolved binary paths, active count totals, per-harness status details, residue records, and pi skill reference state.
+
+Residue scanning is strictly read-only. `topos status` identifies draft-era Copilot instruction blocks, Gemini `@import` directives, copied skill files, and foreign-key duplicate MCP registrations. Topos never modifies or deletes residue artifacts during install or uninstall operations because these files may be shared across tools or managed by external distribution channels (such as OpenClaw, ClawHub, or Hermes).
+
+Google Antigravity includes a specific migration warning: prior to migration, a legacy data-directory `mcp_config.json` can overwrite `~/.gemini/config/mcp_config.json` on application launch. Migration markers or back-compatibility symlinks suppress the warning. Topos never writes directly to legacy data directories.
 
 ## Invocation Safety and Verification Suite
 

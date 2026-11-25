@@ -1,11 +1,11 @@
 ---
 type: domain model
-title: Quality Model
-description: Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, and grade capping invariants.
-tags: [domain-model, quality, security, metrics, policies, rust]
+title: Quality Model and Categorical Primitives
+description: Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, categorical graph representations, and evaluation functors in topos-engine.
+tags: [domain-model, quality, security, metrics, policies, rust, graph-primitives, functors]
 verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-30T12:01:57.716Z
+  - by: openwiki/0.9.0
+    at: 2026-11-24T23:14:31.861Z
 sources:
   - id: openwiki-source-ba5fb5e64f76cdc661dea47e
     resource: repo://topos/cli/src/commands/coverage.rs
@@ -45,10 +45,10 @@ sources:
     resource: repo://topos/mcp/src/evaluation/analysis.rs
   - id: openwiki-source-95838d4cc7205bfd5c485808
     resource: repo://topos/mcp/src/tools/refactor.rs
-generated: { by: "openwiki/0.7.2", at: "2026-10-30T12:01:57.716Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
 ---
 
-Topos expresses source quality through category-theoretic principles using four independent generator atoms: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. In the category of programs, source code functions as a `ProgramMorphism` between computational states. The evaluation lattice codomain $\Omega$ acts as a subobject classifier (a 16-element Heyting algebra), while `CharacteristicMorphism` computes the unique characteristic map $\chi_S : P \to \Omega$ that evaluates each program morphism against canonical raw-metric gate thresholds.
+Topos expresses source quality through category-theoretic principles using four independent generator atoms: **SIMPLE**, **COMPOSABLE**, **SECURE**, and **NAVIGABLE**. In the category of programs $\mathbf{E} = \mathbf{Set}^{\mathbf{C} \times \mathbf{H}^{\text{op}}}$, source code functions as a `ProgramMorphism` between computational states. The evaluation lattice codomain $\Omega$ acts as a subobject classifier (a 16-element Heyting algebra), while `CharacteristicMorphism` computes the unique characteristic map $\chi_S : P \to \Omega$ that evaluates each program morphism against canonical raw-metric gate thresholds.
 
 An `EvaluationValue` represents the subset of generator atoms that pass their raw-metric gates. The satisfied subset forms a 16-element lattice rather than a continuous score scale. An `IDEAL` verdict indicates that all four generators are satisfied and corresponds to the **PLATINUM** medal tier. Satisfying three, two, one, or zero pillars yields **GOLD**, **SILVER**, **BRONZE**, and **SLOP** respectively. For example, satisfying `SIMPLE`, `COMPOSABLE`, and `SECURE` yields `SIMPLE_COMPOSABLE_SECURE` (GOLD), which is distinct from `IDEAL`.
 
@@ -89,6 +89,66 @@ flowchart TD
 
 `SIMPLE` and `NAVIGABLE` are measured locally for every parseable file. If MDG representations are omitted, `composable` remains unmeasured; if CPG representations are omitted, `secure` remains unmeasured. **Unmeasured is strictly distinct from failed or passed**: missing optional evidence leaves a pillar unmeasured without granting a pass or forcing a failure bit.
 
+## Categorical Program Representations (Graphs)
+
+Topos represents program structural views as typed objects implementing the `Representation` protocol in `topos-engine`. Each graph representation captures a distinct architectural or semantic slice:
+
+- **AST (`AstRepresentation`)**: Derived directly via tree-sitter parsers. Serves as the base representation for token distribution, syntax node counts, AST entropy, and function-level complexity.
+- **UAST (`UastRepresentation`)**: Universal AST mapper normalizing concrete language semantics (Rust, Python, JavaScript, TypeScript, C++, Go) into unified node kinds and declaration semantics.
+- **CFG (`ControlFlowGraph`)**: Models basic blocks and directed control edges (branches, loops, jumps, matches). Provides the topology for whole-file cyclomatic complexity ($\mathcal{E} - \mathcal{N} + 2\mathcal{P}$) and 1-dimensional Betti homology ($\beta_1$).
+- **CPG (`CodePropertyGraph`)**: Synthesizes AST, CFG, and dataflow reachability edges. Used for static security analysis to detect dangerous API reachability and trace source-to-sink taint flows.
+- **PDG (`ProgramDependenceGraph`)**: Integrates control dependence and data dependence edges between statements and expressions.
+- **MDG (`ModuleDependencyGraph`)**: Models file/module coupling, imports, calls, and structural boundaries. Uses language-specific stdlib filters (Rust, Python, JS, JSONC) to isolate project dependencies.
+- **Process Graph**: Captures temporal churn, author interaction patterns, and commit dynamics for process-level evaluation.
+
+### LadybugDB Native Graph Loading
+
+For large codebases, `ModuleDependencyGraph` can load natively from `.gitnexus/lbug` using the embedded `lbug` Rust client (`topos/engine/src/graphs/mdg/ladybug.rs`). 
+
+To guarantee store integrity and prevent process panics:
+1. **Safety Inspection (`unfinished_write`)**: Before opening the database, `unfinished_write` checks whether `lbug.wal` exists (indicating an un-checkpointed Write-Ahead Log) or if `meta.json` still has `incrementalInProgress` set. If an unfinished write is detected, loading halts with `MdgError::UnfinishedWrite`.
+2. **Read-Only Fallback**: Topos opens the database in read-only mode (`SystemConfig::default().read_only(true)`). If read-only opening fails, it retries in read-write mode before returning an error.
+3. **Table & Schema Discovery**: Topos queries `CALL show_tables() RETURN *` to discover all node tables, maps properties to JSON values, and queries `CodeRelation` edges (including edge confidence, reason, and optional step markers).
+
+<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: an unescaped angle bracket inside a label breaks rendering; rephrase the label. -->
+```text
+flowchart TD
+    Path[".gitnexus/lbug directory path"] --> SafetyCheck{"unfinished_write check: lbug.wal exists or incrementalInProgress set?"}
+    SafetyCheck -->|Yes| Fail["Return MdgError::UnfinishedWrite"]
+    SafetyCheck -->|No| OpenRO["Try Database::new in read-only mode"]
+    OpenRO -->|Success| Conn["Create lbug Connection"]
+    OpenRO -->|Error| OpenRW["Retry Database::new in read-write mode"]
+    OpenRW --> Conn
+    Conn --> Tables["CALL show_tables to discover node tables"]
+    Tables --> LoadNodes["Query MATCH n RETURN n for all node tables"]
+    LoadNodes --> LoadEdges["Query MATCH src-r:CodeRelation->dst"]
+    LoadEdges --> MDG["Populated ModuleDependencyGraph"]
+```
+*LadybugDB native loading lifecycle: safety checks guard against un-checkpointed WAL files before reading nodes and CodeRelation edges into the MDG.*
+
+## Evaluation Functors: Probes and Profunctors
+
+Topos structures metric extraction and structural comparison through categorical functors defined in `topos/engine/src/functors`:
+
+### Probes ($P : \mathbf{E} \to \mathbb{R}$)
+
+Probes are single-program functors mapping a program representation object to a real metric value:
+
+- **AST Probes**: `ast.entropy` (Shannon entropy across node types), `ast.max_function_complexity` (highest per-function cyclomatic complexity), `ast.divergence` (Semantic Compositional Divergence $SCD$), and `ast.scopes`.
+- **UAST Probes**: `uast.abstractness` (ratio of abstract contracts to concrete implementations) and structural signature hashes.
+- **CFG Probes**: `cfg.cyclomatic` (whole-file complexity) and `cfg.homology` (1D Betti number / cycle basis dimension).
+- **CPG Probes**: `cpg.dangerous_calls` (reachable dangerous API sinks) and `cpg.taint_flows` (source-to-sink flow paths).
+- **MDG Probes**: `mdg.fan_out` (outward module coupling count), `mdg.fan_in` (inward dependent count), `mdg.instability` ($I = \frac{\text{fan\_out}}{\text{fan\_in} + \text{fan\_out}}$), and `mdg.curvature` (Forman-Ricci curvature over coupling topologies).
+- **Process Probes**: `process.curvature` (Ricci curvature on commit/author interaction graphs).
+
+### Profunctors ($D : \mathbf{E} \times \mathbf{E}^{\text{op}} \to \mathbb{R}$)
+
+Profunctors compute structural comparisons and distances between two program objects ($A, B \in \mathbf{E}$):
+
+- **AST Profunctors**: Tree edit distance and AST diffing.
+- **UAST Profunctors**: Ledger matching and structural test coverage mapping.
+- **CFG/CPG/PDG/MDG Profunctors**: Isomorphism and structural alignment distances used by automated refactoring engines.
+
 ## Gates, Scores, and Policy Translators
 
 Each policy translator returns a `ScoredDecision` structured into separate concerns:
@@ -99,24 +159,18 @@ Each policy translator returns a `ScoredDecision` structured into separate conce
 
 Gate evaluation is centralized in `evaluate_gates` (`gates.rs`), serving as a single source of truth for classifiers, diagnostic tools, and refactor target generators. The gate registry includes `NaN` guards that fail closed, ensuring non-numeric or missing metric values never pass bounded gate comparisons.
 
+```mermaid
+flowchart TD
+    Metrics["Raw Metric Values"] --> Gates["evaluate_gates and NaN Guard"]
+    Gates --> PassCheck{"All registered gates passed?"}
+    PassCheck -->|Yes| Pass["Gate Pass: achieved = true"]
+    PassCheck -->|No| Fail["Gate Fail: achieved = false"]
+    Pass --> SetBit["Set Generator Bit in Omega"]
+    Fail --> ClearBit["Clear Generator Bit in Omega"]
+    SetBit --> Join["Lattice Join (Omega)"]
+    ClearBit --> Join
 ```
-                  ┌─────────────────────────────────────┐
-                  │          Raw Metric Values          │
-                  └──────────────────┬──────────────────┘
-                                     │
-                        evaluate_gates / NaN Guard
-                                     │
-                  ┌──────────────────┴──────────────────┐
-                  ▼                                     ▼
-        Gate Pass (achieved = true)           Gate Fail (achieved = false)
-                  │                                     │
-                  ▼                                     ▼
-      Set Generator Bit in Ω                Clear Generator Bit in Ω
-                  │                                     │
-                  └──────────────────┬──────────────────┘
-                                     ▼
-                          Lattice Join (Omega)
-```
+*Gate evaluation architecture: evaluate_gates enforces NaN guards and sets or clears generator bits prior to lattice join.*
 
 ### SIMPLE: Local Code Structure
 

@@ -6,10 +6,10 @@
   </picture>
 </p>
 
-<h3 align="center">the agent harness for structural code quality</h3>
+<h3 align="center">the verification layer for agent-written code</h3>
 
 <p align="center">
- Topos measures complexity, coupling, risky data flows, and agent cognitive load, then gives your agent a concrete target&mdash;from SLOP to PLATINUM.
+ Your agent writes the code. Topos checks its structure: complexity, coupling, risky data flows, and nesting depth, each a pass/fail gate with the exact file that failed. Medals run from SLOP to PLATINUM.
 </p>
 
 <p align="center">
@@ -60,13 +60,13 @@ known limitations, and a reproduction command. Avoid labeling repositories as
 
 ## Why Topos
 
-Coding agents produce working code quickly. The harder question is whether the result is still easy to understand, safe to change, and well-fitted to the rest of the repository. **[Quality is the new currency.](https://krv.ai/field-notes/evaluating-code-generation)**
+Coding agents now produce more code than anyone can read line by line. Trust has to come from layers that work without a human reading every diff: constraints in the architecture, static checks in CI, rules the agent follows, and verification that produces evidence.
 
-Topos computes that signal from program structure—not from an LLM review or a style opinion—and returns concrete failure locations and next actions. It is fast enough to sit inside the agent loop: measure, edit, verify, repeat.
+Topos is the structural layer of that stack. It computes four verdicts from program structure, with no LLM in the loop, and points at the file and the construct behind each failure. It is fast enough to run on every agent edit and stable enough to gate a merge. **[Quality is the new currency.](https://krv.ai/field-notes/evaluating-code-generation)**
 
-**Tests check behavior. Topos checks whether the implementation is built to keep changing.**
+**Tests tell you the code works. Topos tells you whether the next agent can safely change it.**
 
-> Grounded in category theory, written in Rust.
+> Grounded in category theory, written in Rust. The layered-trust framing (architecture, static checks, rules, then verification) follows Lauren Tan's talk "All Code Is Slop (Except Mine)."
 
 ## Install and Quick Start
 
@@ -198,7 +198,7 @@ Topos is a self-contained Rust CLI and MCP server. Analysis runs locally; your s
 | [GitNexus](https://github.com/abhigyanpatwari/GitNexus) | Supplies the repository dependency graph scored by COMPOSABLE (`topos depgraph generate`). Requires `npm install -g gitnexus@1.6.8`. |
 | [Sighthound](https://github.com/Corgea/Sighthound) | Embedded in the MCP server for supplementary security findings; native CPG probes remain the SECURE scoring source. |
 
-The result is one agent-facing contract over several structural lenses: one score to optimize, explicit evidence for each failure, and a verification loop that can tell a real improvement from cosmetic churn.
+The result is one verdict that an agent, a reviewer, or CI can all act on: four gates, explicit evidence for each failure, and a before/after check that tells a real improvement from cosmetic churn.
 
 
 ## More ways to use Topos

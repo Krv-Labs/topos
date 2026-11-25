@@ -89,10 +89,6 @@ impl PillarRate {
             .map_or_else(|| "n/a".to_string(), |rate| format!("{rate}%"))
     }
 
-    pub(crate) fn color(&self) -> &'static str {
-        rate_color(self.rate())
-    }
-
     fn json(&self) -> Value {
         json!({
             "passed": self.passed,
@@ -247,7 +243,6 @@ pub(crate) mod tests {
         assert_eq!(composable.rate(), None);
         assert_eq!(composable.coverage(), Coverage::NotMeasured);
         assert_eq!(composable.shown(), "n/a");
-        assert_eq!(composable.color(), NOT_MEASURED_COLOR);
         let result = badge.result_json(1, &[]);
         assert_eq!(
             result["pillars"]["composable"],

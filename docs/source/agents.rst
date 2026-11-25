@@ -4,14 +4,13 @@
 For Agents
 ==========
 
-.. admonition:: The Agent Loop
+.. admonition:: The verification loop
    :class: philosophy-box
 
-   Give any MCP-compatible coding agent a live feed of Topos verdicts so it can
-   evaluate and iterate on its own output.
-   
-   Topos lets you set the quality target while the agent handles the loop:
-   measure, change, verify, stop when the target or budget is reached.
+   Topos does not drive your agent. Your harness (Claude Code, Codex, Cursor,
+   and the rest) runs the loop. Topos is the check inside it: the agent
+   measures, changes the code, and verifies, then stops when the gate passes
+   or the budget runs out. You set the bar once, and every pass is held to it.
 
 Find the MCP server
 -------------------

@@ -40,7 +40,7 @@ const ROOT_COMMANDS: [(&str, &str); 14] = [
 #[command(
     name = "topos",
     version,
-    about = "Category-theoretic code quality evaluation.",
+    about = "Structural verification for agent-written code.",
     disable_help_subcommand = true
 )]
 struct Cli {
@@ -234,7 +234,7 @@ fn root_help(styled: bool) -> String {
             Style::new().bold()
         ),
         emphasis(
-            "Category-theoretic code quality evaluation.",
+            "Structural verification for agent-written code.",
             Style::new().dim()
         )
     )

@@ -31,6 +31,11 @@ that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CO
 
 ### Changed
 
+- README, docs landing page, "For Agents" intro, CLI `--help` summary, and
+  crate description now describe Topos as a structural verification layer for
+  agent-written code rather than an agent harness. "Harness" now refers only
+  to the host agents that `topos install` configures.
+
 - `topos pr-recap` and `topos_pr_recap` read the gate policy, the waivers, the
   `[[secure.allow]]` allowlist and the priority from `.topos.toml` at the base
   revision instead of the working tree, so a change can no longer waive or
@@ -130,8 +135,11 @@ every other error from each command.
   scores the paths the way `topos evaluate -r` does and shows each pillar's
   pass rate, the share of measured files that pass it, rounded down to a whole
   percent (`SIMPLE 85% · COMPOSABLE 83% · SECURE 100% · NAVIGABLE 96%`). Output
-  is a shields-style SVG with one colored segment per pillar (`--out`, or
-  standard output), a shields.io endpoint document (`--endpoint`), or JSON
+  is a compact SVG in the style of the earlier lattice badge (`--out`, or
+  standard output): the Topos logo, then one chip per pillar (`Si`, `Co`, `Se`,
+  `Na`) with a thin meter showing its pass rate, grey and without a meter when
+  the pillar was not measured; the exact rates are in its title and alt text.
+  Also available: a shields.io endpoint document (`--endpoint`), or JSON
   with per-pillar counts (`--json`). Unparsed files are counted apart and left
   out of every rate; a pillar with no measured files shows `n/a`; when the
   dependency graph covers only some files, COMPOSABLE is rated over the

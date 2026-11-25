@@ -172,8 +172,12 @@ def test_homebrew_formula_template_has_foreign_detection() -> None:
     assert "opoo" in template
     assert "brew upgrade topos" in template
     assert 'depends_on "openssl@3"' in template
-    assert "bundle_openssl_on_macos if OS.mac?" in template
-    assert "def bundle_openssl_on_macos" in template
+    # macOS OpenSSL bundling runs inline in `install`: `brew style` enforces
+    # Homebrew/SingleUseMethod, so a helper with one caller fails tap CI.
+    assert "    if OS.mac?\n" in template
+    assert 'formula_opt_lib("openssl@3")' in template
+    assert 'system "codesign", "--force", "--sign", "-"' in template
+    assert "def bundle_openssl_on_macos" not in template
     assert "def rewrite_openssl_links" in template
     assert "releases/download/v{{VERSION}}/" in template
     assert not any(

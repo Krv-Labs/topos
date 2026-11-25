@@ -5,7 +5,7 @@ description: Workflows and life cycle mechanics for installing Topos, registerin
 tags: [workflows, cli, mcp, agents, configuration, safety, installation, plugins, vscode]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T23:14:31.861Z
+    at: 2026-11-25T03:58:47.865Z
 sources:
   - id: openwiki-source-6b1d82c5b3e8f760360a25c5
     resource: repo://.mcp/server.json
@@ -53,7 +53,7 @@ sources:
     resource: repo://topos/mcp/src/main.rs
   - id: openwiki-source-3812b1def9fbad0607404761
     resource: repo://topos/mcp/src/server.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
 ---
 
 # Harness & Plugin Registration Workflow
@@ -79,13 +79,13 @@ flowchart TD
 *Installer lifecycle flow for shell-based binary distribution and environment setup.*
 
 Topos also provides standardized plugin and package metadata manifests for registry discovery and dedicated MCP transport execution:
-- `.mcp/server.json`: Standard Model Context Protocol server manifest (conforming to schema version `2025-12-11`), declaring package registry bindings (PyPI `topos-mcp`), `uvx` runtime hints, and stdio transport configurations.
-- `agent-plugin/plugin.json`: Plugin manifest for agent plugin ecosystems (conforming to `agent-plugins.org` schema `1.0.0`), declaring plugin ownership (`Krv Labs`), licensing (`BSD-3-Clause`), and repository links.
-- `topos-mcp`: Dedicated stdio binary (`topos/mcp/src/main.rs`) serving Model Context Protocol requests directly or launched via `topos mcp`. It honors `--version` and `--help` flags directly without initiating stdio MCP transport, preventing handshake stalls during diagnostic queries or host discovery inspect passes.
+- `.mcp/server.json`: Standard Model Context Protocol server manifest (conforming to schema version `2025-12-11` at `https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json`), declaring server identity `io.github.Krv-Labs/topos`, package registry bindings for PyPI package `topos-mcp` (version `0.16.0`), `uvx` runtime hints, and stdio transport configurations.
+- `agent-plugin/plugin.json`: Plugin manifest for agent plugin ecosystems (conforming to `agent-plugins.org` schema `1.0.0` at `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`), declaring plugin name `topos` (version `0.16.0`), ownership (`Krv Labs`, `https://krv.ai`), licensing (`BSD-3-Clause`), and repository links (`https://github.com/Krv-Labs/topos`).
+- `topos-mcp`: Dedicated stdio binary (`topos/mcp/src/main.rs`) serving Model Context Protocol requests directly or launched via `topos mcp`. It honors `--version` (`-V`) and `--help` (`-h`) flags directly without initiating stdio MCP transport, preventing handshake stalls during diagnostic queries or host discovery inspect passes.
 
 ## Supported Agent Harnesses and Metadata Formats
 
-The `HARNESSES` table defines the supported agent integration targets. Each entry declares the harness identifier, user configuration path, artifact format, presence detector function, user messages, operational notes/caveats, and whether the pi skill reference applies. Command logic iterates this table rather than hardcoding harness-specific branches. Detection pre-checks interactive choices but never blocks an explicit command-line selection.
+The `HARNESSES` table defines the supported agent integration targets. Each entry declares the harness identifier, user configuration path, artifact format, presence detector function, user messages, operational notes/caveats, and whether the pi skill reference applies. Command logic iterates this table rather than hardcoding harness-specific branches. Detection pre-checks interactive choices via `detect_*` predicates (`binary_installed` and `app_installed`), probing PATH, user bin candidates (`~/.local/bin`, `~/.cargo/bin`, `~/.opencode/bin`, `~/bin`, `%APPDATA%\npm`, `%LOCALAPPDATA%\npm`, `%LOCALAPPDATA%\Microsoft\WindowsApps`), and platform desktop app paths (`/Applications`, `%ProgramFiles%`, `/usr/share`, `/opt`), but detection never blocks an explicit command-line selection.
 
 | Id | Harness | User configuration | Topos-owned MCP location | Format / Structure |
 | --- | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ The `HARNESSES` table defines the supported agent integration targets. Each entr
 
 Platform paths adapt across environments: Claude Desktop and VS Code target `~/Library/Application Support/...` on macOS, `~/.config/...` on Linux, and `%APPDATA%/...` on Windows. OpenCode configuration resides in `~/.config/opencode/`, probing `opencode.jsonc`, `opencode.json`, or `config.json` (defaulting to `opencode.jsonc`). Path resolution functions accept the home directory, enabling end-to-end testing against isolated scratch directories without affecting developer configurations.
 
-Plain JSON registrations specify `command` and `args`; Codex uses `toml_edit` to preserve comments and formatting; VS Code requires `"type": "stdio"`; OpenCode uses `mcp` with `"type": "local"` and an array `command` containing `["<binary>", "mcp"]`. The resolved command is stored as an absolute path, while command comparison uses file identity (inode/file-id) so stable `$PATH` symlinks can be recorded without version churn.
+Plain JSON registrations specify `command` and `args`; Codex uses `toml_edit` to preserve comments and formatting; VS Code requires `"type": "stdio"`; OpenCode uses `mcp` with `"type": "local"` and an array `command` containing `["<binary>", "mcp"]`. The resolved command is stored as an absolute path, while command comparison uses file identity (inode/file-id) so stable `$PATH` symlinks can be recorded without version churn. Automated configuration via `topos install` manages these registrations across all supported harnesses including VS Code, Claude Desktop, Cursor, and Gemini CLI.
 
 ## VS Code Extension Integration (`topos-vscode`)
 
@@ -116,7 +116,7 @@ flowchart TD
     CheckApi -- Unsupported Host --> WarnApi["Show host warning and abort provider setup"]
     CheckApi -- API Available --> RegProvider["Register topos-mcp ServerDefinitionProvider"]
     
-    RegProvider --> ResolveExec["Resolve Topos executable path via Fallback Chain"]
+    RegProvider --> ResolveExec["Resolve Topos executable path via Fallback Hierarchy"]
     ResolveExec --> Step1["1. Custom executablePath override"]
     Step1 -- Found --> BuildDef
     Step1 -- Empty --> Step2["2. Bundled binary (bin/topos)"]

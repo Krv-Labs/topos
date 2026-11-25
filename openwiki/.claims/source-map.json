@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4b0d3f4db4e7ea9e4a9a90142b0c7026607bb5e1d7bdad79ce9c55c61d02d4ed",
+  "pageVersion": "sha256:bafde30f3ab1fa42df5461296499db7cb6af401af5abdf1cc255284877cb8b15",
   "claims": [
     {
       "id": "claim_e4c0eafe313c458291568721ef6e14b0",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml#L1-L9",
-          "version": "repo-lines-v1:sha256:f75e0af19eb16f422b8f83c17d8b20c565629809e684fc57e25dd6a1c2138834:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:23db8f84202c430e36f72522973b5e17660f1c5600dbf2aa0a31625af8f17bd1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0ZTEwMmM4NjFmOTk0ZDJhYWNlOTExNGQzOTJkYmMxNjIxOTBlMDBiZThmZTM1N2Q0NzIxNTBjYTQzOTYxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg4MjMyNWQ5MTRiMjQ2MDkzMGNkMDdjM2NkOTRmNDBlOGZlYzQ2ZDYyZmVmYTIyMWRjMTgzMWRjYThiYjNiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://topos/cli/src/main.rs#L20-L96",
-          "version": "repo-lines-v1:sha256:7f800083d0b591622c38b96aa0bbf6497ce37aacba9e60cc1f71ba5db73ab5e1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZmIyZmUwM2I1ODdjZDk2N2Q3N2Y2ZTk1NTY5MDMzZDhjYTJhNzY2NTViMTI2YmVjMGUxZWU2YzM4YzFkOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjMWM1MGEyYjIzY2I4MTk1NWEzOGU3MGY2NGFlOGM1ODFkNTQzZTlkZWQyYzU2MGNiZDBiMGI3NDI1YzhjMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxOTgxYjRjYjljZGE5MjI3YjhjNzAwNGMwYWVlOGY4YjVmMDg5YTY4MDE4ZjFhZjhiNDJmZmI3ZDZmZWI3NTYifQ"
+          "version": "repo-lines-v1:sha256:6580ca3ba493c7153d925fdd9c00f522aaab94b10ebfaf449881ddbcb6444bf7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZmIyZmUwM2I1ODdjZDk2N2Q3N2Y2ZTk1NTY5MDMzZDhjYTJhNzY2NTViMTI2YmVjMGUxZWU2YzM4YzFkOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjMWM1MGEyYjIzY2I4MTk1NWEzOGU3MGY2NGFlOGM1ODFkNTQzZTlkZWQyYzU2MGNiZDBiMGI3NDI1YzhjMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYxOTgxYjRjYjljZGE5MjI3YjhjNzAwNGMwYWVlOGY4YjVmMDg5YTY4MDE4ZjFhZjhiNDJmZmI3ZDZmZWI3NTYifQ"
         },
         {
           "resource": "repo://topos/cli/src/main.rs#L98-L191",
@@ -219,7 +219,7 @@
       "statement": "The shell installer preflight treats an existing target at its installation path as an in-place upgrade, but warns and continues rather than blocking for foreign installations in non-interactive or piped runs; force variables bypass confirmation. The focused packaging suite exercises those cases and Homebrew-specific guidance.",
       "evidence": [
         {
-          "resource": "repo://tests/packaging/test_install_sh_preflight.py#L242-L280",
+          "resource": "repo://tests/packaging/test_install_sh_preflight.py#L246-L284",
           "version": "repo-lines-v1:sha256:f31d5314f0ed08479b139fbec1c219db1456252c4c5b7a03c3701ae5e90c6ea3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzYWQ5M2NiYWI5M2ZjMWVhMzg4NTYwZjg0ODA0ZTNhZDBkNThkNTlmMDkxNjZiZTcyNzI0YzQxYzEyN2Y3YjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzU4ZmUzYWExYTk2NDk3MTkwN2E4M2I4YTVhY2UzOTcxZTRkYTllYmRhYjQ4Y2M0N2M4MTk4MGE2MTczMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjYjA0NTY5NTY5ZDBhZjU0MmQ3MzIzYjRlOTAwNTU0NTE4NDg2NDhjMzU3MDlkYTU2ODQyNzAzMDQxN2IzZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhNjk2ZWM4NzJkZDExZTI0Nzg5ZWUxYWJlYTI0NTA5ODkzZjY2MTc3YzU2ZmY4MTA5M2JiNTcyMDk4YzhhMGEifQ"
         },
         {
@@ -249,6 +249,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-24T23:14:31.861Z"
+    "at": "2026-11-25T03:58:47.865Z"
   }
 }

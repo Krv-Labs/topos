@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:12c84693ce76cf1c24552a626e3402277b49a04761f14edb87f717a2f7b1a2a9",
+  "pageVersion": "sha256:610e34cc51e166a6b9fa17d8183ba54fc3a3ab15ecdc8f5fa1e4ed0e660ee599",
   "claims": [
     {
       "id": "claim_d35c701b1fbb45b5aefbd07c78c3df4c",
@@ -323,10 +323,50 @@
           "version": "repo-lines-v1:sha256:ebf800231728ccf43b608c250b4e1cc55638afb93699f3912be6772bde927b7f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYzUwMWZjZDNmZGEzNmMxMzFmMGFmNGQwOWQ5ZjkwYmRlODRlZGFiZjZiMzViY2Y1ZTNiZjQ4ZGQ1ZTI3OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0MWM4MDRlYzVjODliNmEzNmE5YWZiZTEwODc3ZGNjZDg4YzAxYzlkMDg5MDlhOWEwY2JmYjNlY2QzNjFhNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhZWQyNTMzYTQ5MGU1YTU2OTFmOWNjZTQ0NDZhZWYzNGVmOGQ4NGYwZWU1MWUzOTliM2M4YmRhNzdlZTdmODkifQ"
         }
       ]
+    },
+    {
+      "id": "claim_bc513133164d4f79abfba259eae187aa",
+      "statement": "topos CLI pre-dispatch checks intercept empty argument lists to print root help to stderr with exit status 2, and explicit help flags (-h or --help) to stdout with exit status 0, prior to clap parsing or subcommand execution.",
+      "evidence": [
+        {
+          "resource": "repo://topos/cli/src/main.rs#L101-L137",
+          "version": "repo-lines-v1:sha256:2f5238c46212001616d597412ca3664e4b0fac165001432de7d6be8973ba8be0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YWY1Mzk2YWFlZTNhMDE5ZTEzYjg3ZDg3NTQ5NzQxMzc4YTVhMjc0MWM3MzRmZGU2MWRlOTJhZjZlN2ZmYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMWQ5MDZiZWZkN2NjN2U5OTJlM2FkNjVhYzcxOGYwYzU0NGFiNzgxNDVlY2EzYjdiYjY5NTM1NDZlOWZhMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YjZkNWU1ZjI1ODkwMTk4MzJmNjNjZjkzNTM4YjU5OWZjZjljY2M4MTBkZTc3ZDljZGVhMzZmNzNmNTM5YjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4e8b0a9bff4446f78788c9a8bc8a12a4",
+      "statement": "MCP file and project evaluation tools execute ensure_gitnexus_dir_with_cancel to auto-generate or refresh GitNexus graph stores when missing or stale, falling back gracefully to three-pillar scoring if generation fails or times out.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/evaluation/build.rs#L30-L80",
+          "version": "repo-lines-v1:sha256:793dbc7d74ee6f962ed8f5e25ea8f053c21e6749653a9d3f46eecb4e0f7371ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NzdmYTM0NThiYmIzNjJmOTE1MTRkMTFmMDAzMGNiNjAwM2IzN2VjNmQwOWIyOGFlNTY3M2RlYmMyMjhkYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4Y2M0MjE3ZWUzMDcyOTExNGJiNGJiYTBjNjQ4YjkxYzRhMTg2NjYwZWViZDI1M2JlM2JlODk0ZjU1NzU5MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMGFlMTgwZWIwNDU2YjI4NWE5ZjZiYTZhMzZmMjE5YzMyYjMxYjFhYzdjZTAxYzdlZDRjMzI4OWIyZjM3OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwMTg0NmVjNWQyZDAyMzMxYmZkYjc5ZTI5NDg0NWZiNmRkYTFjYjdlMzg0NjEzNDZmOTBhMjI0MWUzMTcxODEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_753a112b52254b4592a698d13b5b3adc",
+      "statement": "The topos_refactor_until_ideal MCP prompt generates structured instructions for LLM agents to execute iterative evaluate-edit-assess refactoring loops until reaching an IDEAL quality verdict.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/server.rs#L250-L300",
+          "version": "repo-lines-v1:sha256:dcf01f96a320dd82ca698b4168331ed7fe9701978341498b7aa2145736afcf3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZWI5NmZhYjQ2ZmI1MWZkMTFiYWIyYWQwOTEzMzM2MWY1Mzk5NjBiMTVmZDBkYzZmOTdkMGNiNjM5ZDZkZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMmM5YWJjZGMxZDhkYTkwMjgzNjg5Yjc5MDU5N2NhNDM4YWMwNTI5ZmRhMzcwZTI2MjcwNDUyMzNiODBlNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3ZWY1OGQxZjg2Nzc3MjJiNjgzNGVlZjk1NTRjZmMwYmYzNTgyYzE4ZDBmMjU3ZDE3YjcyMmUzYjNmNGY3ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2ZGY3ZTZiYTNjMjllYWVmMWExZmRlZTVlNTAwNzVhNzNiMmVhM2JmNWIzODcyOGZkM2YwYTY0ZWU2MWFmYTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_63e18abc6ddb4784a30f7755f291ba99",
+      "statement": "Topos assessment tools assign SUSPICIOUS_NO_STRUCTURAL_CHANGE status when normalized AST edit distance is below 0.02 while score delta magnitude is at least 3.0.",
+      "evidence": [
+        {
+          "resource": "repo://topos/mcp/src/tools/assess.rs#L40-L140",
+          "version": "repo-lines-v1:sha256:b29c9d8666f465eeefd8886334d437fde777cbfdfdfd05b8118c43a6063b3668:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZDhmYjU2YTgxMGQyMTgwYTAwODRhYzBlZjA1MmJhZmZlNTFkNjViZDU1OTRjOTJiYzhkNmFkZGUzMWYyZTU2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJjZGIyNjQ5NTA5ZjNiNTNkOGZhOTgxODJkNDY5NmM3MWI2MDJiNDcyYjQ5OWNiMjk4ZTM2ZGUwYzgzNWI3MjkwIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzMTZlMDIxOWJhNjFiOTc1NjM2ZWMxY2EzOGI5NTA1YjI5YjY0ZTlmOGY3YzlhNGU5NjZkMTE3YWNkYjFjZjIzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1N2M5MTc3NzIxODBhNDc2YWFmZDdjNGI4YTg5OTc4ZmRkNWU3OTM5NTNjYjJlZDUxMzFhMTQyZDZjNTg3MDEzIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-24T23:14:31.861Z"
+    "at": "2026-11-25T03:58:47.865Z"
   }
 }

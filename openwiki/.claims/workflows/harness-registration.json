@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:67a050adf8a5ee7ec823c3d1a61d2593c138a7d063f60eb1750007942208d233",
+  "pageVersion": "sha256:ceaeb28a16aa1662b5994550b5e098d631e3470fa9d3c0f93e1998591b7af371",
   "claims": [
     {
       "id": "claim_74f28609c9e24ccd8ca4b841c7a0678b",
@@ -280,11 +280,11 @@
       "evidence": [
         {
           "resource": "repo://.mcp/server.json",
-          "version": "repo-file-v1:sha256:b64b648748bc5f490c64453f406aee798b51e4a92f1e6e2e6b92ffbb81cb3088"
+          "version": "repo-file-v1:sha256:24dcb8394ad1690d6af5ca061c0482b0315c83afbfd383bed27675bc5c9cd15a"
         },
         {
           "resource": "repo://agent-plugin/plugin.json",
-          "version": "repo-file-v1:sha256:ab075920ee8277d66365ac2b8d9b7f5f6320106404e250e9d3a7a2244d2af7c0"
+          "version": "repo-file-v1:sha256:55d6185075835a9579ace868a0ba14d96cf203e650688163fc8c84540e65f70e"
         },
         {
           "resource": "repo://install.sh#L73-L115",
@@ -345,6 +345,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-24T23:14:31.861Z"
+    "at": "2026-11-25T03:58:47.865Z"
   }
 }

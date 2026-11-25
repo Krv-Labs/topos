@@ -5,7 +5,7 @@ description: Details Topos's multi-crate workspace design (topos-engine, topos C
 tags: [architecture, rust, program-graphs, evaluation, mcp, cli]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T23:14:31.861Z
+    at: 2026-11-25T03:58:47.865Z
 sources:
   - id: openwiki-source-651d1fb6c9e49916a916ab51
     resource: repo://Cargo.toml
@@ -55,12 +55,12 @@ sources:
     resource: repo://topos/mcp/src/formatting.rs
   - id: openwiki-source-ecd7c4d7704d807f81a44137
     resource: repo://topos/mcp/src/tools/inspect.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
 ---
 
 # Architecture Overview
 
-Topos is a category-theoretic system for structural software quality evaluation and static program analysis. The Cargo workspace consists of three Rust crates: `topos-engine` (`topos/engine`), `topos` (`topos/cli`), and `topos-mcp` (`topos/mcp`).
+Topos is a category-theoretic system for structural software quality evaluation and static program analysis. The Cargo workspace (package version 0.16.0) consists of three Rust crates: `topos-engine` (`topos/engine`), `topos` (`topos/cli`), and `topos-mcp` (`topos/mcp`).
 
 The `topos-engine` crate is a pure, transport-free analysis engine with no CLI, MCP, or Python runtime concerns. It owns source parsing, language dispatch, unified AST (UAST) mapping, graph construction (CFG, PDG, CPG, MDG), metric probes, quality policy translation, and raw characteristic classification.
 

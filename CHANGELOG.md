@@ -4,8 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Merged PRs add their entries to `[Unreleased]` as they land; the release PR renames
-that section. See the Git History & Release Convention in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+PRs add their entries as fragment files in [`changes/`](changes/README.md); the release
+PR folds them into a version section, so `[Unreleased]` stays empty. See the Git
+History & Release Convention in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## [Unreleased]
 

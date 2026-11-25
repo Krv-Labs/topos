@@ -122,6 +122,11 @@ jobs:
       - name: Check Agent Plugins package
         run: python3 scripts/check_agent_plugin.py
 
+      # install.sh, the Homebrew formula template and its renderer. These
+      # tests existed before any workflow ran them.
+      - name: Packaging tests
+        run: pipx run pytest -q tests/packaging
+
       - name: Format check
         run: cargo fmt --all --check
 

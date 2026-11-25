@@ -122,6 +122,12 @@ jobs:
       - name: Check agent skills
         run: python3 scripts/check_skill.py
 
+      # Entries go in changes/<slug>.<kind>.md, not under [Unreleased].
+      - name: Check changelog fragments
+        run: |
+          python3 scripts/changelog.py check
+          pipx run pytest -q tests/tooling
+
       - name: Check Agent Plugins package
         run: python3 scripts/check_agent_plugin.py
 

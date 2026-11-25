@@ -20,5 +20,5 @@ Use the repository's documented maintenance process to refresh generated pages a
 
 - Test with `cargo test --workspace`. Lint with `cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings`.
 - Use American English spelling.
-- Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for squash-merged PRs and `CHANGELOG.md` `[Unreleased]` entries.
+- Follow [`CONTRIBUTING.md`](CONTRIBUTING.md) for squash-merged PRs and changelog entries, which go in `changes/<slug>.<kind>.md` fragments, not `CHANGELOG.md`.
 <!-- REPO:END -->

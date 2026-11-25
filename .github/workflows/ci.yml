@@ -113,6 +113,9 @@ jobs:
           # never restored into a job that needs it.
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST LBUG_LIBRARY_DIR
 
+      - name: Check workflows open PRs instead of pushing to a branch
+        run: python3 scripts/check_workflows.py
+
       - name: Check versions (Cargo.toml is source of truth)
         run: python3 scripts/check_versions.py
 

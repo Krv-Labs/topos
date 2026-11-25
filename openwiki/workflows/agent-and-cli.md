@@ -5,7 +5,7 @@ description: Execution workflows for code analysis, PR recaps, refactoring guida
 tags: [workflows, cli, mcp, agents, refactoring, rust]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-93f85226798aef0cc55ea558
     resource: repo://topos/cli/src/commands/composable.rs
@@ -47,7 +47,7 @@ sources:
     resource: repo://topos/mcp/src/tools/refactor.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Agent and CLI Workflows
@@ -125,6 +125,7 @@ The table below maps human CLI commands to their MCP tool counterparts:
 | Single/Multi File Evaluation | `topos evaluate PATH... [flags]` | `topos_evaluate_file`, `topos_evaluate_project`, `topos_evaluate_code` | Scores quality lattice pillars (SIMPLE, SECURE, NAVIGABLE, and COMPOSABLE if graph available). Emits terminal summary/details or JSON document. |
 | Single File Inspection | `topos inspect FILE [flags]` | `topos_inspect_code` | Provides function-level metrics, UAST representation, line-level targets, and remediation guidance for a single source target or snippet. |
 | Pull Request / Range Recap | `topos pr-recap RANGE_OR_PR [flags]` | `topos_pr_recap` | Computes structural diff ledger between base and head commits, detects split clusters, applies PR gate policies (`relaxed`, `recommended`, `strict`), and produces terminal cards or Markdown review comments. |
+| Refactor Hotspot Analysis | `topos refactor FILE [flags]` | `topos_refactor_hotspots` | Computes CFG cycle bases (homology), MDG Forman curvature, or GitNexus process graph curvature to identify architectural friction points outside scoring. |
 | Structural Test Coverage | `topos coverage PATH...` | `topos_calculate_coverage` | Matches UAST declarations and k-gram call paths against test files without executing test code, operating outside the quality lattice. |
 | Dependency Graph Management | `topos depgraph generate [PATH]`, `topos depgraph status` | `topos_depgraph_status` (read-only), `topos_generate_depgraph` (side-effecting) | Generates, refreshes, or verifies the GitNexus Module Dependency Graph (MDG) required for COMPOSABLE scoring. |
 | Structural AST Comparison | `topos compare PATH1 PATH2` | `topos_compare_files`, `topos_compare_revisions` | Calculates tree edit distance, operation breakdown, and structural similarity percentage between two source files or Git revisions. |
@@ -175,12 +176,11 @@ Security findings are generated when CPG or CFG analyses detect dangerous call p
 
 The stdio `ToposServer` aggregates ten tool routers (`evaluate`, `inspect`, `pr_recap`, `coverage`, `depgraph`, `compare`, `assess`, `refactor`, `preferences`, and `docs`). It advertises tools, resources (`topos://docs/<slug>` and `topos://build`), prompts (`topos_refactor_until_ideal`), and task capabilities.
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Heuristic: an unescaped angle bracket inside a label breaks rendering; rephrase the label. -->
-```text
+```mermaid
 sequenceDiagram
     participant Host as MCP Host
     participant Server as ToposServer
-    alt initialize era (protocol <= 2025-11-25)
+    alt initialize era (protocol 2025-11-25 and earlier)
         Host->>Server: initialize (protocol version)
         Server-->>Host: negotiated version & capabilities
         Host->>Server: notifications/initialized

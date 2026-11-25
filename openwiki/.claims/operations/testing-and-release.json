@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:75ff6e6e73c16263a321800cdaf76e8ad5057c8df78c989b70ba201bd436c71f",
+  "pageVersion": "sha256:2f1dbeba7c9d53d8b195128f832ae87058e0b7fd239b27015861bc17e188b3af",
   "claims": [
     {
       "id": "claim_b8167f4a6dc049f08d3b062b0c0de27d",
@@ -11,8 +11,8 @@
           "version": "repo-lines-v1:sha256:5645b56002955824ea2b7de3d88e2db4c739c0bff72520da0c42602b71486fe0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2YWI2YmJiMjEwNjI3Yjc2NWFhYTVmZDc1YWRlY2JiMGI4M2E0N2I0YmQyMjU5ODQ2NGVhODYzNjQ4MGQzMzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiY2I0NDM0MjI1ZDljMjU4Y2UxOTUxM2Y4MTUyYmM4YWQ5Y2MxMTMxNzM3ZjI3NWYwMzAzZThlNDIwNjMzYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2NTU5MDE4ZjgyOWRhMzFjMTA2NmI1ZTJkODYxYTQ5ZjY0Njc5MWQzMWE1YjAwNWRjOGNhMmJlYzFmNzViMmYifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L72-L278",
-          "version": "repo-lines-v1:sha256:c0d50b7d1cfc46c88f030c6bd4e371539939355a7bf7cf22e54ce94a6cb55122:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ODg2MzQzYjRmYWRlOTlhMGMwYmE3MTJiMzBiNzk3N2JmNGY5YjE1ZDhmNmQ5NTM1YmM4YmRjNjZhYzlhZGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MWRjYThmZDZmNTYxYWEwNDlmY2JjNjk2NTVlMzNlNzQzMTI1YWJhMzNlM2NmYzMxMTI4YjA5ZDVjMTk0OTJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MDFlYzY0OGI0NWU3NzdmZTA1NTUwZjQzOTFkYTk3NTdjNzAyMjM5YWIzYjljZWU3MmNlYWRkNDY2ZWQxZjAzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://.github/workflows/ci.yml#L72-L292",
+          "version": "repo-lines-v1:sha256:5bbeb3cb301376f39e973249cf6d55fba923146dc535dca3789b879c66194f22:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3ODg2MzQzYjRmYWRlOTlhMGMwYmE3MTJiMzBiNzk3N2JmNGY5YjE1ZDhmNmQ5NTM1YmM4YmRjNjZhYzlhZGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MWRjYThmZDZmNTYxYWEwNDlmY2JjNjk2NTVlMzNlNzQzMTI1YWJhMzNlM2NmYzMxMTI4YjA5ZDVjMTk0OTJmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MDFlYzY0OGI0NWU3NzdmZTA1NTUwZjQzOTFkYTk3NTdjNzAyMjM5YWIzYjljZWU3MmNlYWRkNDY2ZWQxZjAzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -35,8 +35,8 @@
       "statement": "The Rust CI job provisions the lbug prebuilt environment before restoring the Cargo cache because stale build-script output otherwise can omit the native library search path, then runs metadata checks, Rust checks, and an MCP stdio tools-list smoke test.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L89-L142",
-          "version": "repo-lines-v1:sha256:6633da2723e0ed49b620f2e06de4e672a4565d753c830c62a01e90612258693c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0YjI1Y2ZmNTcwZWMxNGNjMTUwMTEwN2MyZTUzMDBiYTM0NmIxMTdhOTRkMWJlYzE3OWVmOTc1ZTdiMmRmZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5YzQxZDBkZmRlM2FhZmUxMmQ1YmZkZDMyNDNkNTE1NWUwZTgxOTA5YTdmMWQwZWE1N2MxZDZmZWZjMWYxZmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxNmFhZjJiNmRkMmNlN2E5MjM4NmMxM2EzYWI1OWEzY2U4ZGUxOGI4N2VjZGUyMWYyMTZjMTgxNGVhYTkzMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViNTUxNDc5ZTQ2NmU3NGY3MTIzOGE5ZWE1MzQxYmExODlkMDAzMjZkNjRiMzZmMjdiODcwZjM5MzdjYzY3M2EifQ"
+          "resource": "repo://.github/workflows/ci.yml#L72-L162",
+          "version": "repo-lines-v1:sha256:7d1a7a2e82a0cf73cdf70e9c368e146ab2393212e0006cae4193b93caf8f5081:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ODYzNDNiNGZhZGU5OWEwYzBiYTcxMmIzMGI3OTc3YmY0ZjliMTVkOGY2ZDk1MzViYzhiZGM2NmFjOWFkZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OTk5MTEwM2Y2YmE4ODhlM2RlNzY1MWM1YTMwNWM3N2U1NTQ3Njc3M2FiYTgzOTU5MWVjYzViZDBmMmFiMWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwMWVjNjQ4YjQ1ZTc3N2ZlMDU1NTBmNDM5MWRhOTc1N2M3MDIyMzlhYjNiOWNlZTcyY2VhZGQ0NjZlZDFmMDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhZjdkZjAxOGE5NmQ2MzdlZTA3ZjRkOWMwZTMwZWQ0NWU0NzgxNTBmNDgwNTc3YThjMmJmNzlhYWYzNDM3MTAifQ"
         },
         {
           "resource": "repo://scripts/setup-lbug-prebuilt.sh#L1-L71",
@@ -49,7 +49,7 @@
       "statement": "The COMPOSABLE CI job generates a GitNexus store from a committed fixture and fails if evaluation falls back to missing-store messaging or does not return a COMPOSABLE score.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L175-L211",
+          "resource": "repo://.github/workflows/ci.yml#L189-L225",
           "version": "repo-lines-v1:sha256:aa21fa9364177bc277982307a0159738c556d3bb879531fb1407e3569a4e3cb8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYjQ1Mjk0M2JmMDk5NDQ4NzFiZDY4YTBiZWQ2MTBkZjAzMTU3YmM3YjhlNjNjM2E3ZDM2MmYxMGRhNGYxNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4MGRmNDY1MWZhMWQ4YzlmNjFlOWJhODhmNzU4NDcxMTZlM2M3MTU3MGIxMTNhOWJmYTE5OGY4MDA3NGI1ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZTk0YjM1NjA4ZjdjMjI3YmNhZjQwNDhjNmY1YjgyOTRiOTEyYzEyNjJhZjQyNWQ1NTU0ZTE1MWEyMzk3ZjMifQ"
         }
       ]
@@ -184,11 +184,11 @@
     },
     {
       "id": "claim_688b33ab56334169ba39f6d522ad7810",
-      "statement": "The docs workflow builds Sphinx through uv and deploys only successful main-push output, while the badge workflow rebuilds/indexes on selected core changes and commits generated badges only on main.",
+      "statement": "The docs workflow builds Sphinx through uv and deploys only successful main-push output, while the badge workflow rebuilds and indexes on selected core changes and opens an automated badge refresh pull request on main.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/badge.yml#L3-L93",
-          "version": "repo-lines-v1:sha256:66cb27e147e2ce50a89f772e7121af36ec0ab967cddda47f9865dbb8f2225c7c:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NmRjNDgxNDlmNWE4M2QxZWQ2ZGJiMzliYmM3ZTJiOTAyYWEzZDM0ZDZiZDVhZTRiMjkxYjY4ZGYwY2E3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjRiZWUyOTMwZDQ4YTA3M2FmMWQxNjNiM2RiMDU3M2E1OWRhYTAxNTE1NDBlYTg2YmQwMjI3ZDg5MDk4MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://.github/workflows/badge.yml#L1-L100",
+          "version": "repo-lines-v1:sha256:1382dda233828f5175a6cc6593e152fea087670774eb054dc67e46586b3b4c76:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzNzZhMDc0ZTk2YjkyY2U0MjhlMjg3MDc2MWFhZTdkY2Q4MjFiMDc0NDJhMDNiYjBiZTZiMTViYjU4ODg1M2Y1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwNzJhODZhNGEyMjlmOTRhMTFlNjQ1MmJhN2QyMWI0YTkxZjk5MzdiZmEzYWNmODg0NGYzMGRlZjBlNDAzMDNjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://.github/workflows/docs.yml#L1-L40",
@@ -245,6 +245,6 @@
   ],
   "verification": {
     "by": "openwiki/0.9.0",
-    "at": "2026-11-25T03:58:47.865Z"
+    "at": "2026-11-25T22:07:40.661Z"
   }
 }

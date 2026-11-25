@@ -5,7 +5,7 @@ description: Ownership-oriented starting points and directory layouts for Topos 
 tags: [source-map, maintenance, navigation, rust, directory-layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -45,28 +45,51 @@ sources:
     resource: repo://topos/mcp/src/tools/depgraph.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Topos maintenance source map
 
 Use this as a change-planning map and directory layout reference for the Topos repository. The root Cargo workspace (`Cargo.toml`) contains three Rust crates: `topos-engine` (`topos/engine`) as the transport-free analysis core, `topos` (`topos/cli`) as the human CLI binary and local MCP launcher, and `topos-mcp` (`topos/mcp`) as the stdio MCP server implementation. `Cargo.toml` serves as the release-version authority across the workspace (version `0.16.0`).
 
+For broader context, see the [Architecture Overview](architecture/overview.md), [Quickstart Guide](quickstart.md), and [Testing and Release Operations](operations/testing-and-release.md).
+
 ```mermaid
 flowchart TD
     subgraph CargoWorkspace ["Cargo Workspace Root (Cargo.toml)"]
-        CLI ["topos (CLI Crate: topos/cli)"]
-        MCP ["topos-mcp (MCP Server Crate: topos/mcp)"]
-        Engine ["topos-engine (Core Analysis Library: topos/engine)"]
+        Engine ["topos-engine (topos/engine)"]
+        CLI ["topos (topos/cli)"]
+        MCP ["topos-mcp (topos/mcp)"]
     end
 
-    CLI -->|"Human Commands / Dispatch"| Engine
+    subgraph Integrations ["Integrations & Extensions"]
+        VSCode ["VS Code Extension (extensions/vscode)"]
+        AgentPlugin ["Agent Plugin (agent-plugin)"]
+    end
+
+    subgraph PackagingTooling ["Packaging & Scripts"]
+        InstallSh ["install.sh & packaging/"]
+        Scripts ["scripts/ (CI & Version Tools)"]
+    end
+
+    subgraph TestSuites ["Test Suites"]
+        CLITests ["topos/cli/tests/ (CLI Integration)"]
+        MCPTests ["topos/mcp/tests/ (MCP Lifecycle)"]
+        PkgTests ["tests/packaging/ (Pytest Preflight)"]
+    end
+
+    CLI -->|"Direct Analysis Calls"| Engine
     CLI -->|"topos mcp (In-process MCP launch)"| MCP
-    MCP -->|"Analysis & Evaluation"| Engine
-    VSCode ["VS Code Extension"] -->|"Stdio Launch (topos mcp)"| CLI
-    AgentPlugin ["Agent Plugin"] -->|"Stdio Launch (topos mcp)"| CLI
+    MCP -->|"Evaluation & Metrics"| Engine
+    VSCode -->|"Stdio Launch (topos mcp)"| CLI
+    AgentPlugin -->|"Stdio Launch (topos mcp)"| CLI
+    InstallSh -->|"Installs CLI Binary"| CLI
+    Scripts -->|"Enforces Version & CI Gates"| CargoWorkspace
+    CLITests -->|"Verifies CLI Subcommands"| CLI
+    MCPTests -->|"Verifies Stdio JSON-RPC"| MCP
+    PkgTests -->|"Verifies Shell Installer"| InstallSh
 ```
-Workspace crate dependencies and execution entrypoints.
+Workspace crate boundaries, integration points, scripts, and test suites.
 
 ## Directory and file layout
 
@@ -140,26 +163,38 @@ The stdio Model Context Protocol (MCP) server implementation and standalone exec
   - `path_resolution.rs`: Security boundary and path containment validation.
   - `evaluate_project_summary.rs`, `coverage.rs`, `tasks.rs`: Tool behavior integration tests.
 
-### 4. `tests/`
+### 4. `extensions/` & `agent-plugin/`
+Integrations for agent environments and IDE host applications.
+
+- `extensions/vscode/`: VS Code Extension package.
+  - `src/extension.ts`: Registers stdio MCP definitions, command palette workflows, and status indicators. Sets `TOPOS_MCP_FILE_ROOT` to host workspace.
+  - `src/runtime.ts`: Ordered binary runtime resolution (configured path, bundled binary, cache, `PATH`, virtual environments, verified download).
+- `agent-plugin/`: Agent Plugin distribution package.
+  - `plugin.json`: Plugin metadata and identity declaration.
+  - `mcp.json`: Stdio MCP registration executing `topos mcp`.
+  - `skills/topos/SKILL.md`: Distributed skill definition and agent guidance.
+
+### 5. `packaging/` & `install.sh`
+Distribution package definitions, formulas, and shell installer.
+
+- `install.sh`: POSIX shell installer handling target binary selection, SHA-256 verification, in-place upgrade preflight checks, Homebrew detection, and non-interactive execution flags (`TOPOS_FORCE`/`TOPOS_YES`).
+- `packaging/homebrew/topos.rb.template`: Homebrew formula template populated during release generation.
+
+### 6. `scripts/`
+Repository maintenance, release validation, and CI gating scripts.
+
+- `scripts/check_versions.py`: Enforces version parity across `Cargo.toml`, VS Code extension `package.json`, `agent-plugin/plugin.json`, and `.mcp/server.json`.
+- `scripts/ci_gate.py`: Gating script for GitHub Actions CI runs, evaluating trunk and stacked PR status while failing open on malformed/missing stack payloads.
+- `scripts/check_agent_plugin.py`: Validates agent plugin manifest structure and file presence.
+- `scripts/check_skill.py`: Validates agent skill payload integrity and frontmatter structure.
+- `scripts/setup-lbug-prebuilt.sh`: Downloads prebuilt `liblbug` static libraries for Cargo linking before workspace builds.
+
+### 7. `tests/`
 Root integration test fixtures and packaging test suites.
 
 - `tests/fixtures/composable_mdg/`: Multi-file Rust project fixture (`Cargo.toml`, `README.md`, `src/lib.rs`, `src/helper.rs`) used by COMPOSABLE MDG tests.
-- `tests/packaging/`: Distribution and installer test suites.
+- `tests/packaging/`: Packaging test suites.
   - `test_install_sh_preflight.py`: Pytest suite verifying shell installer (`install.sh`) preflight checks, in-place upgrades, non-interactive piping, and Homebrew coexistence.
-
-### 5. `packaging/`
-Distribution package definitions and formula templates.
-
-- `packaging/homebrew/topos.rb.template`: Template used to generate Homebrew core/tap formula during release workflows.
-
-### 6. `scripts/`
-Repository scripts for build, release, CI gating, and manifest verification.
-
-- `scripts/check_versions.py`: Verifies version alignment across workspace `Cargo.toml`, VS Code extension (`extensions/vscode/package.json`), Agent Plugin (`agent-plugin/plugin.json`), and MCP manifest (`.mcp/server.json`).
-- `scripts/ci_gate.py`: CI gate checking trunk and stacked PR commit statuses.
-- `scripts/check_agent_plugin.py`: Agent plugin metadata structure checker.
-- `scripts/check_skill.py`: Distributed skill syntax and payload validator.
-- `scripts/setup-lbug-prebuilt.sh`: Downloads prebuilt `lbug` binaries for CI dependency setup before Cargo compilation.
 
 ## Owned systems
 

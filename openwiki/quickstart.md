@@ -1,11 +1,11 @@
 ---
 type: quickstart
 title: Quickstart Guide
-description: Immediate onboarding entry point, workspace CLI/MCP command references, agent guidelines, and task-based routing map across OpenWiki.
+description: Immediate developer onboarding entry point, workspace CLI/MCP command references, agent guidelines, Python verification scripts, and task-based routing across OpenWiki.
 tags: [topos, quickstart, rust, cli, mcp, navigation]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-25T03:58:47.865Z
+    at: 2026-11-25T22:07:40.661Z
 sources:
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
@@ -29,28 +29,28 @@ sources:
     resource: repo://topos/mcp/src/server.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T22:07:40.661Z" }
 ---
 
 # Quickstart Guide
 
-Topos is a three-crate Cargo workspace: `topos-engine` owns shared structural analysis, categorical model representations, and quality classification; `topos` provides the human CLI interface and command dispatch; and `topos-mcp` implements the stdio Model Context Protocol (MCP) server. Keep domain policy and structural analysis in the engine crate. The CLI and MCP crates wrap engine capabilities into their respective transport interfaces; `topos mcp` launches the same in-process MCP server implementation as the standalone `topos-mcp` binary.
+Topos is a three-crate Cargo workspace: `topos-engine` owns shared structural analysis, categorical model representations, and quality classification; `topos` provides the human CLI interface and command dispatch; and `topos-mcp` implements the stdio Model Context Protocol (MCP) server. Keep domain policy and structural analysis in the engine crate. The CLI and MCP crates wrap engine capabilities into their respective transport interfaces; `topos mcp` launches the same in-process MCP server implementation exposed by the standalone `topos-mcp` binary crate.
 
-Source code and tests are authoritative. Use this quickstart to route maintenance tasks, apply agent guidelines, run targeted verification, and navigate the OpenWiki documentation suite across architecture, domain concepts, workflows, operations, source map, and integrations.
+Source code and tests are primary authority. Use this quickstart guide to onboard immediately, route maintenance tasks across the repository, apply AI agent interaction guidelines, run targeted verification workflows, and navigate the OpenWiki documentation suite.
 
 ## Workspace Architecture
 
-The root `Cargo.toml` defines the workspace package version (`0.16.0`) and contains three member crates:
+The root [`Cargo.toml`](../Cargo.toml) defines the workspace package version (`0.16.0`) and contains three member crates (`members = ["topos/engine", "topos/cli", "topos/mcp"]`):
 
-- **`topos-engine`**: Pure-Rust evaluation core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics/functors (`functors`), quality translators (`evaluation`), and adapters (`adapters`).
-- **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 14 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to stderr and exit with status 1.
-- **`topos-mcp`**: Stdio MCP server combining evaluate, assess, compare, coverage, depgraph, docs, inspect, preferences, pr-recap, and refactor tool routers, embedded documentation resources (`topos://docs/*`), build identity resource (`topos://build`), and the `topos_refactor_until_ideal` prompt.
+- **`topos-engine`**: Shared pure-Rust analysis core containing configuration (`.topos.toml`), categorical primitives (`core`), AST/CFG/CPG/PDG/MDG/UAST representations (`graphs`), metrics and curvature functors (`functors`), quality policy evaluation (`evaluation`), and subprocess/filesystem edge adapters (`adapters`). It excludes CLI and MCP transport concerns.
+- **`topos`**: Standalone CLI binary (`src/main.rs`) dispatching 14 root subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, and `mcp`. On failure, commands print an error message to `stderr` and exit with status 1.
+- **`topos-mcp`**: Stdio MCP server combining evaluate, assess, compare, coverage, dependency-graph, documentation, inspection, preferences, pr-recap, and refactor tool routers, embedded documentation resources (`topos://docs/*`), build identity resource (`topos://build`), and the `topos_refactor_until_ideal` prompt.
 
 ```mermaid
 flowchart TD
     subgraph Workspace ["Cargo Workspace (v0.16.0)"]
-        Engine["topos-engine (Evaluation Core and Categorical Primitives)"]
-        CLI["topos CLI (Command Dispatcher and Human UI)"]
+        Engine["topos-engine (Evaluation Core & Categorical Primitives)"]
+        CLI["topos CLI (Command Dispatcher & Human UI)"]
         MCP["topos-mcp (Stdio MCP Server)"]
     end
 
@@ -67,9 +67,9 @@ flowchart TD
     CLI -->|dispatches to| Engine
     MCP -->|calls evaluation core| Engine
 ```
-*Topos workspace component relationships, entrypoints, and communication channels.*
+*Topos workspace crate topology, entrypoints, and communication channels.*
 
-## Start Safely
+## Onboarding and Verification Workflows
 
 From a clean repository checkout, verify the CLI binary and run a baseline evaluation that disables automatic GitNexus background graph generation:
 
@@ -78,15 +78,26 @@ cargo run -p topos -- --help
 cargo run -p topos -- evaluate . -r --no-composable
 ```
 
-Use the narrowest relevant test during development, then expand validation before committing or opening a pull request:
+Use the narrowest relevant test command during development, then expand validation before committing or submitting a pull request:
 
 ```bash
+# Code formatting and linting
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+
+# Unit and integration test suites
 cargo test --workspace
+
+# Focused crate and test suite targets
+cargo test -p topos-engine <filter>
+cargo test -p topos <filter>
+cargo test -p topos-mcp --test lifecycle
+cargo test -p topos --test install_e2e
 ```
 
-For package, version, skill, or agent plugin updates, also run the Python verification scripts:
+### Python Validation Scripts
+
+For workspace versioning, agent skill definitions, or plugin manifest changes, run the Python verification scripts:
 
 ```bash
 python3 scripts/check_versions.py
@@ -94,19 +105,23 @@ python3 scripts/check_skill.py
 python3 scripts/check_agent_plugin.py
 ```
 
-## Route the Task
+- **[`scripts/check_versions.py`](../scripts/check_versions.py)**: Reads the Cargo workspace version (`0.16.0`) from `Cargo.toml` and enforces exact version matching across `extensions/vscode/package.json`, `agent-plugin/plugin.json`, `.mcp/server.json`, and `.mcp/server.json` package arrays. When called with `--tag <tag>`, it normalizes the release git tag (stripping a leading `v`) and verifies it equals the workspace version.
+- **[`scripts/check_skill.py`](../scripts/check_skill.py)**: Validates bundled agent skills under `skills/`, checking frontmatter requirements, name matching, description length caps, required sections, and metadata schemas.
+- **[`scripts/check_agent_plugin.py`](../scripts/check_agent_plugin.py)**: Validates Agent Plugins 1.0 specifications under `agent-plugin/`, ensuring valid schema URIs, non-symlink manifest structures, command paths, and environment variable bounds.
 
-When undertaking maintenance tasks across the Topos workspace, use the routing map and diagram below to identify target documentation, starting source directories, and focused verification proof commands.
+## Task-Based Routing Map
+
+When undertaking maintenance tasks across the Topos codebase, use the routing diagram and table below to identify primary wiki documentation, starting source directories, and focused verification proof commands.
 
 ```mermaid
 flowchart TD
     Start["Maintenance Task or Symptom"] --> Choice{"Which area is affected?"}
     
-    Choice -->|"Engine and Categorical Core"| EngineTask["Engine Domain and Metrics (topos/engine/src/)"]
-    Choice -->|"CLI Subcommands and Terminal UI"| CLITask["CLI Commands and Dispatch (topos/cli/src/)"]
-    Choice -->|"MCP Server and JSON-RPC"| MCPTask["MCP Routers and Lifecycle (topos/mcp/src/)"]
-    Choice -->|"Harnesses and Registration"| InstallTask["Harness Registration and Setup (topos/cli/src/commands/install/)"]
-    Choice -->|"Release, Versioning and CI"| ReleaseTask["Distribution and CI Workflows (scripts/, .github/workflows/)"]
+    Choice -->|"Engine & Categorical Core"| EngineTask["Engine Domain & Metrics (topos/engine/src/)"]
+    Choice -->|"CLI Subcommands & Terminal UI"| CLITask["CLI Commands & Dispatch (topos/cli/src/)"]
+    Choice -->|"MCP Server & JSON-RPC"| MCPTask["MCP Routers & Lifecycle (topos/mcp/src/)"]
+    Choice -->|"Harnesses & Registration"| InstallTask["Harness Registration & Setup (topos/cli/src/commands/install/)"]
+    Choice -->|"Release, Versioning & Distribution"| ReleaseTask["Distribution & CI Workflows (scripts/, .github/workflows/)"]
 
     EngineTask --> EngineProof["cargo test -p topos-engine FILTER"]
     CLITask --> CLIProof["cargo test -p topos FILTER"]
@@ -118,31 +133,31 @@ flowchart TD
 
 | Task or Symptom | Read First | Start Location | Focused Proof |
 | --- | --- | --- | --- |
-| Pillars (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`), gate decisions, thresholds, suppressions, preferences | [Quality Model & Domain Concepts](domain/quality-model.md) | `topos/engine/src/evaluation/`, `topos/engine/src/core/` | `cargo test -p topos-engine <filter>` |
-| Structural views (AST, UAST, CFG, PDG, CPG, MDG), graph metrics, categorical functors, curvature | [System Architecture Overview](architecture/overview.md) | `topos/engine/src/graphs/`, `topos/engine/src/functors/` | `cargo test -p topos-engine <filter>` |
-| CLI subcommands (`evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`), terminal rendering, JSON output | [Agent & CLI Workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, `topos/cli/src/commands/` | `cargo test -p topos <filter>` and `cargo run -p topos -- <cmd> --help` |
-| MCP tools, JSON-RPC schemas, resources, prompts, stdio transport lifecycle, MCP protocol versions | [Agent & CLI Workflows](workflows/agent-and-cli.md) | `topos/mcp/src/main.rs`, `topos/mcp/src/server.rs` | `cargo test -p topos-mcp --test lifecycle` |
-| Agent harness registration (`install`, `uninstall`, `status`), harness configs (`~/.claude.json`, Codex, Gemini), clean-home residue | [Harness & Plugin Registration Workflow](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `cargo test -p topos --test install_e2e` |
-| GitNexus (`.gitnexus` store), distribution channels (binary installer `install.sh`, Homebrew, Cargo, Python wheel, VS Code VSIX, agent skills/plugins), updates | [Integration & Distribution Models](integrations/distribution.md) | `topos/engine/src/adapters/gitnexus.rs`, `topos/cli/src/commands/update/`, `install.sh` | `python3 scripts/check_skill.py` and channel-specific checks |
-| CI pipelines, release packaging, version consistency, release tags, publishing workflows | [Testing, CI/CD, & Release Runbook](operations/testing-and-release.md) | `.github/workflows/`, `scripts/check_versions.py` | `python3 scripts/check_versions.py` |
-| Complete codebase file structure, cross-crate module paths, script locations | [Source Code Map & Module Guide](source-map.md) | Target source file named in the map | Relevant crate or module unit tests |
+| Pillars (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`), gate decisions, thresholds, suppressions, preferences | [Quality Model & Categorical Engine](domain/quality-model.md) | `topos/engine/src/evaluation/`, `topos/engine/src/core/` | `cargo test -p topos-engine <filter>` |
+| Structural views (AST, UAST, CFG, PDG, CPG, MDG), graph metrics, categorical functors, curvature | [Architecture Overview](architecture/overview.md) | `topos/engine/src/graphs/`, `topos/engine/src/functors/` | `cargo test -p topos-engine <filter>` |
+| CLI subcommands (`evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`), terminal UI, JSON output | [Agent and CLI Workflows](workflows/agent-and-cli.md) | `topos/cli/src/main.rs`, `topos/cli/src/commands/` | `cargo test -p topos <filter>` and `cargo run -p topos -- <cmd> --help` |
+| MCP tools, JSON-RPC schemas, resources, prompts, stdio transport lifecycle, MCP protocol versions | [Agent and CLI Workflows](workflows/agent-and-cli.md) | `topos/mcp/src/main.rs`, `topos/mcp/src/server.rs` | `cargo test -p topos-mcp --test lifecycle` |
+| Agent harness registration (`install`, `uninstall`, `status`), harness configs (`~/.claude.json`, Codex TOML, Gemini settings), clean-home residue | [Harness & Plugin Registration Workflow](workflows/harness-registration.md) | `topos/cli/src/commands/install/` | `cargo test -p topos --test install_e2e` |
+| GitNexus (`.gitnexus` store), distribution channels (`install.sh`, Homebrew, Cargo, Python wheel, VS Code VSIX, agent skills/plugins), updates | [Distribution and Integration Systems](integrations/distribution.md) | `topos/engine/src/adapters/gitnexus.rs`, `topos/cli/src/commands/update/`, `install.sh` | `python3 scripts/check_skill.py` and channel-specific checks |
+| CI pipelines, release packaging, version consistency, release tags, publishing workflows | [Verification, Testing, and Release Operations](operations/testing-and-release.md) | `.github/workflows/`, `scripts/check_versions.py` | `python3 scripts/check_versions.py` |
+| Codebase directory structure, cross-crate module layout, script locations, crate ownership | [Source Code Map & Module Guide](source-map.md) | Target source file named in the map | Relevant crate or module unit tests |
 
-## Agent Interaction Policies
+## Agent Interaction Guidelines
 
-When working as an AI agent or maintainer in the Topos repository, adhere to the guidelines defined in `AGENTS.md`:
+When operating as an AI agent or maintainer in the Topos repository, adhere to the directives defined in [`AGENTS.md`](../AGENTS.md):
 
-- **Just-in-Time Documentation Retrieval**: Do not enumerate, preload, or search wikis at task start. Retrieve documentation only when requested or when unfamiliar architecture materially impacts the task. If MCP retrieval tools are unavailable, read `quickstart.md` and follow relative links.
-- **Authoritative Sources**: Source code and tests are primary authority. Briefs or documentation notes represent verification gaps, not automatic requirements.
-- **Quiet, Targeted Validation**: Prefer the narrowest quiet validation command that proves the changed behavior. Always preserve complete failure output when tests fail.
-- **Skill and Plugin Parity**: Synchronize versions and content across `skills/topos/SKILL.md`, `agent-plugin/`, `.mcp/server.json`, `extensions/vscode/package.json`, and `Cargo.toml`. Validate changes using `python3 scripts/check_versions.py`, `python3 scripts/check_skill.py`, and `python3 scripts/check_agent_plugin.py`.
+- **Just-in-Time Documentation Retrieval**: Do not enumerate, preload, or search wikis at task start. Retrieve documentation only when explicitly requested or when unfamiliar architecture materially impacts the task. If MCP retrieval tools are unavailable, read `quickstart.md` and follow relative links.
+- **Authoritative Sources**: Source code and test suites are primary authority. Briefs or documentation review notes represent verification gaps, not automatic implementation requirements.
+- **Quiet, Targeted Validation**: Use the narrowest quiet validation command that proves the changed behavior. Always preserve complete failure output when tests fail.
+- **Skill and Plugin Parity**: Keep versions and definitions synchronized across `skills/topos/SKILL.md`, `agent-plugin/`, `.mcp/server.json`, `extensions/vscode/package.json`, and `Cargo.toml`. Validate changes using `python3 scripts/check_versions.py`, `python3 scripts/check_skill.py`, and `python3 scripts/check_agent_plugin.py`.
 - **OpenWiki CI Policy**: The `.github/workflows/openwiki.yml` pipeline regenerates engineering documentation from source on `main` branch pushes or manual dispatch, submitting documentation PRs without modifying workflow files directly.
-- **Embedded MCP Docs vs Workspace Wiki**: Embedded MCP resources (`topos_get_doc` / `topos://docs/*`) serve six specific topics (`agent-contract`, `lattice`, `metrics`, `preferences`, `priority`, `workflows`). Broader workspace engineering guides live under `openwiki/` on the filesystem and are read directly by agents with repository access.
+- **Embedded MCP Docs vs Workspace Wiki**: Embedded MCP resources (`topos_get_doc` / `topos://docs/*`) serve six focused runtime topics (`agent-contract`, `lattice`, `metrics`, `preferences`, `priority`, `workflows`). Broader workspace engineering guides live under `openwiki/` on the filesystem and are read directly by agents with repository access.
 
-## Update Mechanics and Checking Options
+## Update Mechanics and Command Options
 
 The `topos update` command inspects the binary's installation channel and reports available upgrades:
 
-- **Distribution Channels**: Identifies whether the running binary was installed via binary download (`install.sh`), Homebrew (`brew install krv-labs/tap/topos`), Cargo (`cargo install`), or source checkout (`cargo build`).
+- **Distribution Channels**: Detects whether the running binary was installed via binary download (`install.sh`), Homebrew (`brew install krv-labs/tap/topos`), Cargo (`cargo install`), or source checkout (`cargo build`).
 - **Command Options**:
   - `topos update --check`: Reports installed vs published versions without making changes or prompting. Implied in non-terminal environments.
   - `topos update --yes` (`-y`): Applies channel-specific upgrades non-interactively without confirmation prompts.
@@ -153,6 +168,6 @@ The `topos update` command inspects the binary's installation channel and report
 
 - **Classification Belongs in the Engine**: Quality evaluations, metric scores, and gate verdicts MUST be computed within `topos-engine`. Never override or patch quality verdicts in CLI renderers or MCP formatters.
 - **Scores Are Not Gate Verdicts**: Quality metrics yield normalized float scores, but gate decisions (`SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`) are Heyting algebra elements evaluated against project priority thresholds.
-- **COMPOSABLE Graph Independence**: COMPOSABLE uses GitNexus module graphs. If GitNexus is uninstalled or graph generation fails, standard evaluation continues operating on `SIMPLE`, `SECURE`, and `NAVIGABLE` pillars. Use `topos depgraph generate` or `topos cache` to manage graph generation and cached structural artifacts.
-- **MCP Wire Safety**: `topos-mcp` explicitly bounds protocol version support (`2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28`) and isolates filesystem roots. Always run `cargo test -p topos-mcp --test lifecycle` when modifying MCP tool schemas, resources, or lifecycle handlers.
-- **Harness Clean-Up**: `topos install` and `topos uninstall` must preserve non-Topos configuration entries in `~/.claude.json`, Codex TOML, and Gemini settings. Running `cargo test -p topos --test install_e2e` verifies that installation and uninstallation leave no unwanted residue in `$HOME`.
+- **COMPOSABLE Graph Independence**: `COMPOSABLE` uses GitNexus module graphs. If GitNexus is uninstalled or graph generation fails, standard evaluation continues operating on `SIMPLE`, `SECURE`, and `NAVIGABLE` pillars. Shared adapter generation in `topos/engine/src/adapters/gitnexus.rs` shells out to `gitnexus analyze`, writes a BLAKE2b source fingerprint (`.topos-fingerprint.json`) into the `.gitnexus` store, and pins version `1.6.8` as known to work.
+- **MCP Wire Safety**: `topos-mcp` explicitly bounds protocol version support (`2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28`) rather than inheriting `rmcp` defaults. Changing protocol support is a wire-contract change. Always run `cargo test -p topos-mcp --test lifecycle` to test JSON-RPC initialize, tool listing, and tool calls.
+- **Harness Clean-Up Invariants**: `topos install` and `topos uninstall` must preserve non-Topos configuration entries in `~/.claude.json`, Codex TOML, and Gemini settings. Running `cargo test -p topos --test install_e2e` exercises the CLI binary against a scratch `$HOME` to verify that installation and uninstallation leave no unwanted residue.

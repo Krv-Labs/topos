@@ -1,3 +1,3 @@
 # Files
 
-- [Quality Model and Categorical Primitives](quality-model.md) - Core domain models for the four quality pillars, Omega subobject classifier algebra, metric evaluation gates, security suppression overlay, categorical graph representations, and evaluation functors in topos-engine.
+- [Quality Model & Categorical Engine](quality-model.md) - Theoretical and practical domain models for code quality, categorical graph representations, subobject classifier algebra, evaluation functors, probes, profunctors, and policy gates in Topos.

@@ -1,11 +1,11 @@
 ---
 type: maintenance source map
 title: Source Code Map & Module Guide
-description: Ownership-oriented starting points for changing Topos analysis, command-line and MCP delivery, integrations, and release controls. Each route identifies the behavior page, implementation boundary, and focused regression coverage to consult before editing.
-tags: [source-map, maintenance, navigation, rust]
+description: Ownership-oriented starting points and directory layouts for Topos engine analysis, CLI delivery, MCP servers, integration extensions, test suites, and operational scripts.
+tags: [source-map, maintenance, navigation, rust, directory-layout]
 verified:
   - by: openwiki/0.9.0
-    at: 2026-11-24T23:14:31.861Z
+    at: 2026-11-25T03:58:47.865Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -45,12 +45,12 @@ sources:
     resource: repo://topos/mcp/src/tools/depgraph.rs
   - id: openwiki-source-8680de586193e5fad2de692f
     resource: repo://topos/mcp/tests/lifecycle.rs
-generated: { by: "openwiki/0.9.0", at: "2026-11-24T23:14:31.861Z" }
+generated: { by: "openwiki/0.9.0", at: "2026-11-25T03:58:47.865Z" }
 ---
 
 # Topos maintenance source map
 
-Use this as a change-planning map, not as an inventory. Start with the system row that owns the observable behavior, read its linked wiki page for the contract, then follow the entrypoint through the shared engine or integration boundary. The workspace has three Rust crates: `topos-engine` (`topos/engine`) is the transport-free analysis library; `topos` (`topos/cli`) owns the human CLI and invokes the MCP server in-process; `topos-mcp` (`topos/mcp`) owns stdio protocol delivery. `Cargo.toml` is the workspace/version authority (workspace package version `0.15.0`).
+Use this as a change-planning map and directory layout reference for the Topos repository. The root Cargo workspace (`Cargo.toml`) contains three Rust crates: `topos-engine` (`topos/engine`) as the transport-free analysis core, `topos` (`topos/cli`) as the human CLI binary and local MCP launcher, and `topos-mcp` (`topos/mcp`) as the stdio MCP server implementation. `Cargo.toml` serves as the release-version authority across the workspace (version `0.16.0`).
 
 ```mermaid
 flowchart TD
@@ -67,6 +67,99 @@ flowchart TD
     AgentPlugin ["Agent Plugin"] -->|"Stdio Launch (topos mcp)"| CLI
 ```
 Workspace crate dependencies and execution entrypoints.
+
+## Directory and file layout
+
+### 1. `topos/engine` (`topos-engine` crate)
+The core category-theoretic compute engine for Topos. It contains no CLI or MCP transport code and no Python bindings, acting as a pure library linked by both `topos` and `topos-mcp`.
+
+- `src/lib.rs`: Engine entry point; exposes core modules (`adapters`, `config`, `core`, `evaluation`, `functors`, `graphs`).
+- `src/core/`: Mathematical category primitives and the subobject classifier.
+  - `category.rs`: Category structures and functor interfaces.
+  - `morphism.rs`: Structure-preserving transformations.
+  - `object.rs`: Core object representations (ASTs, program graphs).
+  - `omega.rs`: Subobject classifier $\Omega$ (free Heyting algebra built on `SIMPLE`, `COMPOSABLE`, `SECURE`, `NAVIGABLE`).
+  - `characteristic_morphism.rs`: Characteristic morphism $\chi_S: P \to \Omega$.
+- `src/graphs/`: Graph structures and Universal AST representations.
+  - `base.rs`: Shared `Representation` trait protocol.
+  - `ast/`: Language AST objects (`languages.rs`, `types.rs`, `dispatch.rs`, `object.rs`).
+  - `cfg/`: Control Flow Graphs (`builder.rs`, `models.rs`, `edge_contracts.rs`, `object.rs`).
+  - `cpg/`: Code Property Graphs (`builder.rs`, `models.rs`, `object.rs`).
+  - `mdg/`: Module Dependency Graphs (`file_graph.rs`, `ladybug.rs`, `json.rs`, `split.rs`, `edge_filter/` language syntax rules for JS, JSONC, Python, Rust, paths).
+  - `pdg/`: Program Dependency Graphs (`object.rs`, `dataflow.rs`).
+  - `process/`: Process execution models (`object.rs`).
+  - `uast/`: Universal AST mapping for supported languages (`mapper_rust.rs`, `mapper_python.rs`, `mapper_javascript.rs`, `mapper_typescript.rs`, `mapper_go.rs`, `mapper_cpp.rs`, `mapper_common.rs`, `models.rs`).
+- `src/functors/`: Metrics (probes) and cross-representation profunctors.
+  - `curvature.rs`: Forman-Ricci sectional curvature computation.
+  - `probes/`: Metric probes over representations (AST: `complexity`, `entropy`, `scopes`, `divergence`; CFG: `homology`; CPG: `taint`, `danger`; MDG: `fan`, `coupling`, `curvature`; UAST: `abstractness`, `signature`; process: `curvature`).
+  - `profunctors/`: Comparison profunctors (AST, CFG, CPG, MDG, PDG, UAST: `structural_test_coverage`, `inline_tests`, `ledger`, `compare`).
+- `src/evaluation/`: Quality evaluation and policy mapping.
+  - `policies/`: Quality pillar policy translators (`simple.rs`, `composable.rs`, `secure.rs`, `navigable.rs`, `advisory_priors.json`, `clones.rs`, `coverage.rs`, `desirability.rs`, `gates.rs`, `calibration.rs`).
+  - Policy & guidance helpers: `advisory.rs`, `file_roles.rs`, `preferences.rs`, `security_guidance.rs`, `suggestions.rs`, `suppression.rs`, `waivers.rs`.
+- `src/adapters/`: System and discovery interfaces.
+  - `discovery.rs`: Source tree scanner and file discovery.
+  - `gitnexus.rs`: GitNexus dependency graph invocation and store reader.
+  - `process.rs`: Internal process execution utility.
+- `src/config.rs` & `src/config/`: Configuration reader (`.topos.toml`), allowlist logic (`ToposConfig`), and PR gate rules (`pr_gate.rs`).
+
+### 2. `topos/cli` (`topos` crate)
+The CLI application and in-process MCP launcher binary.
+
+- `src/main.rs`: Command line parsing and dispatch (`Cli`, `Command` enum, `pre_dispatch()`, `run_command()`, `wants_no_notice()`, `dispatch()`). Defines the 14 user-facing subcommands: `evaluate`, `inspect`, `pr-recap`, `config`, `compare`, `coverage`, `badge`, `depgraph`, `cache`, `install`, `uninstall`, `update`, `status`, `mcp`.
+- `src/commands/`: Command modules and helpers.
+  - Subcommand directories: `evaluate/`, `inspect/`, `pr_recap/`, `badge/`, `depgraph/`, `install/`, `update/`.
+  - Single-file subcommands: `config.rs`, `compare.rs`, `coverage.rs`, `cache.rs`, `mcp.rs`.
+  - Harness installation modules (`commands/install/`): `harness.rs` (10-row harness table), `artifact.rs`, `binary.rs`, `configure.rs`, `fsops.rs`, `json_entry.rs`, `paths.rs`, `report.rs`, `residue.rs`, `skills_entry.rs`, `state.rs`, `status.rs`, `testing.rs`, `toml_entry.rs`, `uninstall.rs`.
+  - Shared CLI utilities: `classify.rs`, `composable.rs`, `gh.rs`, `interaction.rs`, `lang.rs`, `menu.rs`, `render.rs`.
+- `tests/`: Integration test suites for the CLI.
+  - `evaluate_e2e.rs`, `install_e2e.rs`, `badge_e2e.rs`, `cache_e2e.rs`, `composable_e2e.rs`, `coverage_cli.rs`, `pr_recap_e2e.rs`, `pr_recap_entropy_e2e.rs`, `pr_recap_new_code_e2e.rs`, `update_e2e.rs`.
+
+### 3. `topos/mcp` (`topos-mcp` crate)
+The stdio Model Context Protocol (MCP) server implementation and standalone executable.
+
+- `src/lib.rs`: Exposes MCP server components.
+- `src/main.rs`: Entrypoint for standalone binary (`topos-mcp`).
+- `src/server.rs`: Central `ToposServer` stdio JSON-RPC handler; aggregates tool routers, serves static resources, and handles protocol initialization.
+- `src/tools/`: Router modules tagged with `#[tool_router]`.
+  - `assess.rs`: Project snapshots and structure assessment.
+  - `compare.rs`: Two-file structural comparison.
+  - `coverage.rs`: Test structural coverage analysis.
+  - `depgraph.rs`: COMPOSABLE graph and GitNexus operations.
+  - `docs.rs`: In-server documentation tool.
+  - `evaluate/`: Multi-file evaluation (`mod.rs`, `file_targets.rs`, `large_tree.rs`, `summary.rs`, `worst.rs`).
+  - `inspect.rs`: Single-file deep inspection tool.
+  - `preferences.rs`: User preference and priority tools.
+  - `refactor.rs`: Refactor hotspots and curvature analysis.
+- Supporting MCP modules:
+  - `schemas.rs`, `formatting.rs`: MCP JSON-RPC schemas and response formatting.
+  - `security.rs`, `security_findings.rs`, `sighthound.rs`, `diagnostics.rs`: Path containment, project root resolution (`TOPOS_MCP_FILE_ROOT`), and security overlays.
+  - `evaluation/`, `cache/`, `pr_recap/`, `update/`: MCP-specific evaluation bridge, cache discovery/lease management, PR recap engine, and update notification channels.
+  - `docs/content/`: Static embedded documentation (`agent-contract.md`, `lattice.md`, `metrics.md`, `preferences.md`, `priority.md`, `workflows.md`).
+- `tests/`: Integration test suites for the MCP server.
+  - `lifecycle.rs`: Wire-level stdio JSON-RPC tests covering initialization, capabilities, discovery, and protocol negotiation.
+  - `path_resolution.rs`: Security boundary and path containment validation.
+  - `evaluate_project_summary.rs`, `coverage.rs`, `tasks.rs`: Tool behavior integration tests.
+
+### 4. `tests/`
+Root integration test fixtures and packaging test suites.
+
+- `tests/fixtures/composable_mdg/`: Multi-file Rust project fixture (`Cargo.toml`, `README.md`, `src/lib.rs`, `src/helper.rs`) used by COMPOSABLE MDG tests.
+- `tests/packaging/`: Distribution and installer test suites.
+  - `test_install_sh_preflight.py`: Pytest suite verifying shell installer (`install.sh`) preflight checks, in-place upgrades, non-interactive piping, and Homebrew coexistence.
+
+### 5. `packaging/`
+Distribution package definitions and formula templates.
+
+- `packaging/homebrew/topos.rb.template`: Template used to generate Homebrew core/tap formula during release workflows.
+
+### 6. `scripts/`
+Repository scripts for build, release, CI gating, and manifest verification.
+
+- `scripts/check_versions.py`: Verifies version alignment across workspace `Cargo.toml`, VS Code extension (`extensions/vscode/package.json`), Agent Plugin (`agent-plugin/plugin.json`), and MCP manifest (`.mcp/server.json`).
+- `scripts/ci_gate.py`: CI gate checking trunk and stacked PR commit statuses.
+- `scripts/check_agent_plugin.py`: Agent plugin metadata structure checker.
+- `scripts/check_skill.py`: Distributed skill syntax and payload validator.
+- `scripts/setup-lbug-prebuilt.sh`: Downloads prebuilt `lbug` binaries for CI dependency setup before Cargo compilation.
 
 ## Owned systems
 
@@ -101,4 +194,4 @@ Workspace crate dependencies and execution entrypoints.
 - `topos-engine` (`topos/engine`) is shared analysis code and must not absorb CLI, MCP transport, or Python-binding responsibilities.
 - The command `topos mcp` and the Agent Plugin registration are the common bridge from installed CLI to stdio MCP; the standalone `topos-mcp` binary exists for direct MCP clients and the bin wheel.
 - Native Rust tests are primarily module-local, while the installer E2E and MCP lifecycle suites cover boundaries that unit tests cannot: real filesystem mutation and wire-level stdio behavior.
-- CI needs the prebuilt `lbug` setup before Cargo caching/build steps that link the engine; retain that ordering when changing workflow caching or analysis dependencies.
+- CI needs the prebuilt `lbug` setup (`scripts/setup-lbug-prebuilt.sh`) before Cargo caching/build steps that link the engine; retain that ordering when changing workflow caching or analysis dependencies.
